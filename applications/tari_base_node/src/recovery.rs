@@ -30,7 +30,6 @@ use std::{
 
 use anyhow::anyhow;
 use log::*;
-
 use tari_common::{configuration::Network, exit_codes::ExitCodes, DatabaseType, GlobalConfig};
 use tari_core::{
     chain_storage::{
@@ -98,7 +97,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(node_config.max_randomx_vms);
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),

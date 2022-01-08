@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::{future, StreamExt};
+
 use crate::{
     connection_manager::ConnectionDirection,
     memsocket::MemorySocket,
@@ -27,7 +29,6 @@ use crate::{
     multiplexing::Yamux,
     transports::{MemoryTransport, Transport},
 };
-use futures::{future, StreamExt};
 
 pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket) {
     let (mut listener, addr) = MemoryTransport.listen("/memory/0".parse().unwrap()).await.unwrap();
@@ -39,13 +40,9 @@ pub async fn build_connected_sockets() -> (Multiaddr, MemorySocket, MemorySocket
 pub async fn build_multiplexed_connections() -> (Multiaddr, Yamux, Yamux) {
     let (addr, socket_out, socket_in) = build_connected_sockets().await;
 
-    let muxer_out = Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound)
-        .await
-        .unwrap();
+    let muxer_out = Yamux::upgrade_connection(socket_out, ConnectionDirection::Outbound).unwrap();
 
-    let muxer_in = Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound)
-        .await
-        .unwrap();
+    let muxer_in = Yamux::upgrade_connection(socket_in, ConnectionDirection::Inbound).unwrap();
 
     (addr, muxer_out, muxer_in)
 }

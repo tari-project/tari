@@ -20,6 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
+use log::*;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
+    Substream,
+};
+use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::{sync::mpsc, time::sleep};
+
 use crate::{
     base_node::StateMachineHandle,
     mempool::{
@@ -28,15 +39,6 @@ use crate::{
         MempoolServiceConfig,
     },
 };
-use log::*;
-use std::time::Duration;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    protocol::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolNotification},
-    Substream,
-};
-use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
-use tokio::{sync::mpsc, time::sleep};
 
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
 
@@ -74,7 +76,10 @@ impl ServiceInitializer for MempoolSyncInitializer {
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         context.spawn_until_shutdown(move |handles| async move {
+            log_mdc::extend(mdc.clone());
             let state_machine = handles.expect_handle::<StateMachineHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
             // Ensure that we get an subscription ASAP so that we don't miss any connectivity events
@@ -84,6 +89,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
             if !status_watch.borrow().bootstrapped {
                 debug!(target: LOG_TARGET, "Waiting for node to bootstrap...");
                 while status_watch.changed().await.is_ok() {
+                    log_mdc::extend(mdc.clone());
                     if status_watch.borrow().bootstrapped {
                         debug!(target: LOG_TARGET, "Node bootstrapped. Starting mempool sync protocol");
                         break;
@@ -94,6 +100,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                     );
                     sleep(Duration::from_secs(1)).await;
                 }
+                log_mdc::extend(mdc.clone());
             }
 
             MempoolSyncProtocol::new(config, notif_rx, connectivity_event_subscription, mempool)

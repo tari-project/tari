@@ -20,13 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{dns::DnsResolver, Transport};
-use crate::{
-    transports::dns::{DnsResolverRef, SystemDnsResolver},
-    utils::multiaddr::socketaddr_to_multiaddr,
-};
-use futures::{ready, FutureExt};
-use multiaddr::Multiaddr;
 use std::{
     future::Future,
     io,
@@ -34,8 +27,17 @@ use std::{
     sync::Arc,
     task::{Context, Poll},
 };
+
+use futures::{ready, FutureExt};
+use multiaddr::Multiaddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_stream::Stream;
+
+use super::{dns::DnsResolver, Transport};
+use crate::{
+    transports::dns::{DnsResolverRef, SystemDnsResolver},
+    utils::multiaddr::socketaddr_to_multiaddr,
+};
 
 /// Transport implementation for TCP
 #[derive(Clone)]

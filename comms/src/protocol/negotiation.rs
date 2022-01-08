@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{ProtocolError, ProtocolId};
+use std::convert::TryInto;
+
 use bitflags::bitflags;
 use bytes::{Bytes, BytesMut};
 use log::*;
-use std::convert::TryInto;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+use super::{ProtocolError, ProtocolId};
 
 const LOG_TARGET: &str = "comms::connection_manager::protocol";
 
@@ -199,10 +201,11 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{memsocket::MemorySocket, runtime};
     use futures::future;
     use tari_test_utils::unpack_enum;
+
+    use super::*;
+    use crate::{memsocket::MemorySocket, runtime};
 
     #[runtime::test]
     async fn negotiate_success() {

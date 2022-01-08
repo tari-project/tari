@@ -20,20 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
 use digest::Digest;
 use log::*;
-use std::{marker::PhantomData, sync::Arc};
 use tari_common::configuration::bootstrap::ApplicationType;
-use tari_crypto::{
-    common::Blake256,
-    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
-    signatures::{SchnorrSignature, SchnorrSignatureError},
-    tari_utilities::hex::Hex,
+use tari_common_types::{
+    transaction::TxId,
+    types::{ComSignature, PrivateKey, PublicKey},
 };
-
-use tari_common_types::types::{ComSignature, PrivateKey, PublicKey};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
@@ -51,7 +46,15 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_key_manager::key_manager::KeyManager;
+use tari_crypto::{
+    common::Blake256,
+    ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
+    script,
+    script::{ExecutionStack, TariScript},
+    signatures::{SchnorrSignature, SchnorrSignatureError},
+    tari_utilities::hex::Hex,
+};
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -62,6 +65,7 @@ use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
+    assets::{infrastructure::initializer::AssetManagerServiceInitializer, AssetManagerHandle},
     base_node_service::{handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
@@ -74,16 +78,15 @@ use crate::{
         OutputManagerServiceInitializer,
     },
     storage::database::{WalletBackend, WalletDatabase},
+    tokens::{infrastructure::initializer::TokenManagerServiceInitializer, TokenManagerHandle},
     transaction_service::{
         handle::TransactionServiceHandle,
         storage::database::TransactionBackend,
         TransactionServiceInitializer,
     },
     types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer},
+    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
-use tari_common_types::transaction::TxId;
-use tari_key_manager::cipher_seed::CipherSeed;
 
 const LOG_TARGET: &str = "wallet";
 
@@ -101,6 +104,8 @@ pub struct Wallet<T, U, V, W> {
     pub contacts_service: ContactsServiceHandle,
     pub base_node_service: BaseNodeServiceHandle,
     pub utxo_scanner_service: UtxoScannerHandle,
+    pub asset_manager: AssetManagerHandle,
+    pub token_manager: TokenManagerHandle,
     pub updater_service: Option<SoftwareUpdaterHandle>,
     pub db: WalletDatabase<T>,
     pub factories: CryptoFactories,
@@ -123,26 +128,13 @@ where
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
-        recovery_seed: Option<CipherSeed>,
+        master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
-        let master_seed = read_or_create_master_seed(recovery_seed, &mut wallet_database.clone()).await?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)?;
-
-        let node_identity = Arc::new(NodeIdentity::new(
-            comms_secret_key,
-            config.comms_config.node_identity.public_address(),
-            config.comms_config.node_identity.features(),
-        ));
-
-        let mut comms_config = config.comms_config.clone();
-        comms_config.node_identity = node_identity.clone();
-
-        let bn_service_db = wallet_database.clone();
-
         let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
+        let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
@@ -164,13 +156,14 @@ where
             config.rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(comms_config, publisher))
+            .add_initializer(P2pInitializer::new(config.comms_config.clone(), publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
-                output_manager_backend,
+                output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
                 master_seed,
+                node_identity.clone(),
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
@@ -183,15 +176,16 @@ where
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config.clone(),
-                bn_service_db,
+                wallet_database.clone(),
             ))
             .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
             .add_initializer(UtxoScannerServiceInitializer::new(
-                config.scan_for_utxo_interval,
                 wallet_database.clone(),
                 factories.clone(),
                 node_identity.clone(),
-            ));
+            ))
+            .add_initializer(AssetManagerServiceInitializer::new(output_manager_backend.clone()))
+            .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
         let stack = match config.updater_config {
@@ -222,6 +216,8 @@ where
 
         let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
         let utxo_scanner_service_handle = handles.expect_handle::<UtxoScannerHandle>();
+        let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
+        let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
         let updater_handle = config
             .updater_config
@@ -257,6 +253,10 @@ where
             wallet_connectivity,
             db: wallet_database,
             factories,
+            asset_manager: asset_manager_handle,
+            token_manager: token_manager_handle,
+            #[cfg(feature = "test_harness")]
+            transaction_backend: transaction_backend_handle,
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
@@ -274,26 +274,54 @@ where
     pub async fn set_base_node_peer(
         &mut self,
         public_key: CommsPublicKey,
-        net_address: String,
+        address: Multiaddr,
     ) -> Result<(), WalletError> {
         info!(
             "Wallet setting base node peer, public key: {}, net address: {}.",
-            public_key, net_address
+            public_key, address
         );
 
-        let address = net_address.parse::<Multiaddr>()?;
-        let peer = Peer::new(
-            public_key.clone(),
-            NodeId::from_key(&public_key),
-            vec![address].into(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-            Default::default(),
-            String::new(),
-        );
+        if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
+            self.comms
+                .connectivity()
+                .remove_peer_from_allow_list(current_node)
+                .await?;
+        }
 
-        self.comms.peer_manager().add_peer(peer.clone()).await?;
-        self.wallet_connectivity.set_base_node(peer);
+        let addresses = vec![address].into();
+        let peer_manager = self.comms.peer_manager();
+        let mut connectivity = self.comms.connectivity();
+        if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
+            // Only invalidate the identity signature if addresses are different
+            if current_peer.addresses != addresses {
+                info!(
+                    target: LOG_TARGET,
+                    "Address for base node differs from storage. Was {}, setting to {}",
+                    current_peer.addresses,
+                    addresses
+                );
+                current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
+                peer_manager.add_peer(current_peer.clone()).await?;
+            }
+            connectivity
+                .add_peer_to_allow_list(current_peer.node_id.clone())
+                .await?;
+            self.wallet_connectivity.set_base_node(current_peer);
+        } else {
+            let node_id = NodeId::from_key(&public_key);
+            let peer = Peer::new(
+                public_key,
+                node_id,
+                addresses,
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
+                Default::default(),
+                String::new(),
+            );
+            peer_manager.add_peer(peer.clone()).await?;
+            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
+            self.wallet_connectivity.set_base_node(peer);
+        }
 
         Ok(())
     }
@@ -354,6 +382,7 @@ where
         metadata_signature: ComSignature,
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
+        script_lock_height: u64,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -364,6 +393,7 @@ where
             script_private_key.clone(),
             sender_offset_public_key.clone(),
             metadata_signature,
+            script_lock_height,
         );
 
         let tx_id = self
@@ -372,7 +402,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
@@ -380,7 +410,8 @@ where
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 
@@ -407,7 +438,7 @@ where
             .await?;
 
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output.clone())
+            .add_output_with_tx_id(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
@@ -415,7 +446,8 @@ where
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 
@@ -459,10 +491,10 @@ where
             .await;
 
         match coin_split_tx {
-            Ok((tx_id, split_tx, amount, fee)) => {
+            Ok((tx_id, split_tx, amount)) => {
                 let coin_tx = self
                     .transaction_service
-                    .submit_transaction(tx_id, split_tx, fee, amount, message)
+                    .submit_transaction(tx_id, split_tx, amount, message)
                     .await;
                 match coin_tx {
                     Ok(_) => Ok(tx_id),
@@ -495,14 +527,13 @@ where
     /// Utility function to find out if there is data in the database indicating that there is an incomplete recovery
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
-        use crate::utxo_scanner_service::utxo_scanning::RECOVERY_KEY;
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
     }
 }
 
-async fn read_or_create_master_seed<T: WalletBackend + 'static>(
+pub async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     recovery_seed: Option<CipherSeed>,
-    db: &mut WalletDatabase<T>,
+    db: &WalletDatabase<T>,
 ) -> Result<CipherSeed, WalletError> {
     let db_master_seed = db.get_master_seed().await?;
 
@@ -533,7 +564,7 @@ async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     Ok(master_seed)
 }
 
-fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
+pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
         master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),
@@ -558,6 +589,7 @@ pub async fn persist_one_sided_payment_script_for_node_identity(
         private_key: node_identity.secret_key().clone(),
         script,
         input: ExecutionStack::default(),
+        script_lock_height: 0,
     };
 
     output_manager_service.add_known_script(known_script).await?;

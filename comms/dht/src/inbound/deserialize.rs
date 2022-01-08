@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
+use std::{convert::TryInto, sync::Arc, task::Poll};
+
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use std::{convert::TryInto, sync::Arc, task::Poll};
-use tari_comms::{message::InboundMessage, pipeline::PipelineError, PeerManager};
+use tari_comms::{message::InboundMessage, pipeline::PipelineError, OrNotFound, PeerManager};
 use tower::{layer::Layer, Service, ServiceExt};
+
+use crate::{inbound::DhtInboundMessage, proto::envelope::DhtEnvelope};
 
 const LOG_TARGET: &str = "comms::dht::deserialize";
 
@@ -82,7 +84,11 @@ where
 
             match DhtEnvelope::decode(&mut body) {
                 Ok(dht_envelope) => {
-                    let source_peer = peer_manager.find_by_node_id(&source_peer).await.map(Arc::new)?;
+                    let source_peer = peer_manager
+                        .find_by_node_id(&source_peer)
+                        .await
+                        .or_not_found()
+                        .map(Arc::new)?;
 
                     let inbound_msg =
                         DhtInboundMessage::new(tag, dht_envelope.header.try_into()?, source_peer, dht_envelope.body);
@@ -125,6 +131,11 @@ impl<S> Layer<S> for DeserializeLayer {
 
 #[cfg(test)]
 mod test {
+    use tari_comms::{
+        message::{MessageExt, MessageTag},
+        runtime,
+    };
+
     use super::*;
     use crate::{
         envelope::DhtMessageFlags,
@@ -136,10 +147,6 @@ mod test {
             make_node_identity,
             service_spy,
         },
-    };
-    use tari_comms::{
-        message::{MessageExt, MessageTag},
-        runtime,
     };
 
     #[runtime::test]

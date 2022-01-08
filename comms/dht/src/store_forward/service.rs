@@ -20,6 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryFrom, sync::Arc, time::Duration};
+
+use chrono::{DateTime, NaiveDateTime, Utc};
+use log::*;
+use tari_comms::{
+    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
+    peer_manager::{NodeId, PeerFeatures},
+    types::CommsPublicKey,
+    PeerManager,
+};
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    sync::{mpsc, oneshot},
+    task,
+    time,
+    time::MissedTickBehavior,
+};
+
 use super::{
     database::{NewStoredMessage, StoreAndForwardDatabase, StoredMessage},
     message::StoredMessagePriority,
@@ -35,22 +53,6 @@ use crate::{
     storage::{DbConnection, DhtMetadataKey},
     store_forward::{local_state::SafLocalState, SafConfig},
     DhtRequester,
-};
-use chrono::{DateTime, NaiveDateTime, Utc};
-use log::*;
-use std::{convert::TryFrom, sync::Arc, time::Duration};
-use tari_comms::{
-    connectivity::{ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
-    peer_manager::{NodeId, PeerFeatures},
-    types::CommsPublicKey,
-    PeerManager,
-};
-use tari_shutdown::ShutdownSignal;
-use tokio::{
-    sync::{mpsc, oneshot},
-    task,
-    time,
-    time::MissedTickBehavior,
 };
 
 const LOG_TARGET: &str = "comms::dht::storeforward::actor";
@@ -220,7 +222,7 @@ impl StoreAndForwardService {
     }
 
     pub fn spawn(self) {
-        info!(target: LOG_TARGET, "Store and forward service started");
+        debug!(target: LOG_TARGET, "Store and forward service started");
         task::spawn(self.run());
     }
 
@@ -243,7 +245,7 @@ impl StoreAndForwardService {
                 },
 
                 _ = cleanup_ticker.tick() => {
-                    if let Err(err) = self.cleanup().await {
+                    if let Err(err) = self.cleanup() {
                         error!(target: LOG_TARGET, "Error when performing store and forward cleanup: {:?}", err);
                     }
                 },
@@ -267,7 +269,7 @@ impl StoreAndForwardService {
         use StoreAndForwardRequest::*;
         trace!(target: LOG_TARGET, "Request: {:?}", request);
         match request {
-            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(query).await {
+            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(query) {
                 Ok(messages) => {
                     let _ = reply_tx.send(Ok(messages));
                 },
@@ -282,7 +284,7 @@ impl StoreAndForwardService {
             InsertMessage(msg, reply_tx) => {
                 let public_key = msg.destination_pubkey.clone();
                 let node_id = msg.destination_node_id.clone();
-                match self.database.insert_message_if_unique(msg).await {
+                match self.database.insert_message_if_unique(msg) {
                     Ok(existed) => {
                         let pub_key = public_key
                             .map(|p| format!("public key '{}'", p))
@@ -301,7 +303,7 @@ impl StoreAndForwardService {
                     },
                 }
             },
-            RemoveMessages(message_ids) => match self.database.remove_message(message_ids.clone()).await {
+            RemoveMessages(message_ids) => match self.database.remove_message(message_ids.clone()) {
                 Ok(_) => trace!(target: LOG_TARGET, "Removed messages: {:?}", message_ids),
                 Err(err) => error!(target: LOG_TARGET, "RemoveMessage failed because '{:?}'", err),
             },
@@ -319,7 +321,7 @@ impl StoreAndForwardService {
                 }
             },
             RemoveMessagesOlderThan(threshold) => {
-                match self.database.delete_messages_older_than(threshold.naive_utc()).await {
+                match self.database.delete_messages_older_than(threshold.naive_utc()) {
                     Ok(_) => trace!(target: LOG_TARGET, "Removed messages older than {}", threshold),
                     Err(err) => error!(target: LOG_TARGET, "RemoveMessage failed because '{:?}'", err),
                 }
@@ -453,7 +455,7 @@ impl StoreAndForwardService {
         }
     }
 
-    async fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
+    fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         use SafResponseType::*;
         let limit = i64::try_from(self.config.max_returned_messages)
             .ok()
@@ -461,47 +463,34 @@ impl StoreAndForwardService {
             .unwrap();
         let db = &self.database;
         let messages = match query.response_type {
-            ForMe => {
-                db.find_messages_for_peer(&query.public_key, &query.node_id, query.since, limit)
-                    .await?
-            },
-            Join => db.find_join_messages(query.since, limit).await?,
+            ForMe => db.find_messages_for_peer(&query.public_key, &query.node_id, query.since, limit)?,
+            Join => db.find_join_messages(query.since, limit)?,
             Discovery => {
-                db.find_messages_of_type_for_pubkey(&query.public_key, DhtMessageType::Discovery, query.since, limit)
-                    .await?
+                db.find_messages_of_type_for_pubkey(&query.public_key, DhtMessageType::Discovery, query.since, limit)?
             },
-            Anonymous => db.find_anonymous_messages(query.since, limit).await?,
+            Anonymous => db.find_anonymous_messages(query.since, limit)?,
         };
 
         Ok(messages)
     }
 
-    async fn cleanup(&mut self) -> SafResult<()> {
+    fn cleanup(&mut self) -> SafResult<()> {
         self.local_state
             .garbage_collect(self.config.max_inflight_request_age * 2);
 
-        let num_removed = self
-            .database
-            .delete_messages_with_priority_older_than(
-                StoredMessagePriority::Low,
-                since(self.config.low_priority_msg_storage_ttl),
-            )
-            .await?;
+        let num_removed = self.database.delete_messages_with_priority_older_than(
+            StoredMessagePriority::Low,
+            since(self.config.low_priority_msg_storage_ttl),
+        )?;
         debug!(target: LOG_TARGET, "Cleaned {} old low priority messages", num_removed);
 
-        let num_removed = self
-            .database
-            .delete_messages_with_priority_older_than(
-                StoredMessagePriority::High,
-                since(self.config.high_priority_msg_storage_ttl),
-            )
-            .await?;
+        let num_removed = self.database.delete_messages_with_priority_older_than(
+            StoredMessagePriority::High,
+            since(self.config.high_priority_msg_storage_ttl),
+        )?;
         debug!(target: LOG_TARGET, "Cleaned {} old high priority messages", num_removed);
 
-        let num_removed = self
-            .database
-            .truncate_messages(self.config.msg_storage_capacity)
-            .await?;
+        let num_removed = self.database.truncate_messages(self.config.msg_storage_capacity)?;
         if num_removed > 0 {
             debug!(
                 target: LOG_TARGET,

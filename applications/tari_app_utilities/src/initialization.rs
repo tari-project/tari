@@ -1,6 +1,6 @@
-use crate::consts;
-use config::Config;
 use std::{path::PathBuf, str::FromStr};
+
+use config::Config;
 use structopt::StructOpt;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
@@ -9,6 +9,8 @@ use tari_common::{
     DatabaseType,
     GlobalConfig,
 };
+
+use crate::consts;
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -30,8 +32,7 @@ pub fn init_configuration(
     log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
 
     // Populate the configuration struct
-    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone())
-        .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone(), bootstrap.network.clone())?;
 
     if let Some(str) = bootstrap.network.clone() {
         log::info!(target: LOG_TARGET, "Network selection requested");
@@ -53,14 +54,17 @@ pub fn init_configuration(
                 global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
                 global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
             },
-            Err(_) => {
-                log::warn!(
-                    target: LOG_TARGET,
-                    "Network selection was invalid, continuing with default network."
-                );
+            Err(e) => {
+                log::error!(target: LOG_TARGET, "Network selection was invalid, exiting.");
+                return Err(e.into());
             },
         }
     }
+
+    if let Some(str) = bootstrap.custom_base_node.clone() {
+        global_config.wallet_custom_base_node = Some(str);
+    }
+
     check_file_paths(&mut global_config, &bootstrap);
 
     Ok((bootstrap, global_config, cfg))
@@ -93,14 +97,7 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
         config.console_wallet_peer_db_path =
             concatenate_paths_normalized(prepend.clone(), config.console_wallet_peer_db_path.clone());
     }
-    if !config.console_wallet_identity_file.is_absolute() {
-        config.console_wallet_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_identity_file.clone());
-    }
-    if !config.console_wallet_tor_identity_file.is_absolute() {
-        config.console_wallet_tor_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_tor_identity_file.clone());
-    }
+
     if !config.wallet_db_file.is_absolute() {
         config.wallet_db_file = concatenate_paths_normalized(prepend.clone(), config.wallet_db_file.clone());
     }

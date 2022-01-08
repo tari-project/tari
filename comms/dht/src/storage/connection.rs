@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::error::StorageError;
-use diesel::{Connection, SqliteConnection};
-use log::*;
-use std::{
-    io,
-    path::PathBuf,
-    sync::{Arc, Mutex},
+use std::{io, path::PathBuf, time::Duration};
+
+use diesel::{
+    r2d2::{ConnectionManager, PooledConnection},
+    SqliteConnection,
 };
-use tokio::task;
+use log::*;
+use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+
+use crate::storage::error::StorageError;
 
 const LOG_TARGET: &str = "comms::dht::storage::connection";
+const SQLITE_POOL_SIZE: usize = 16;
 
 #[derive(Clone, Debug)]
 pub enum DbConnectionUrl {
@@ -58,94 +60,80 @@ impl DbConnectionUrl {
 
 #[derive(Clone)]
 pub struct DbConnection {
-    inner: Arc<Mutex<SqliteConnection>>,
+    pool: SqliteConnectionPool,
 }
 
 impl DbConnection {
     #[cfg(test)]
-    pub async fn connect_memory(name: String) -> Result<Self, StorageError> {
-        Self::connect_url(DbConnectionUrl::MemoryShared(name)).await
+    pub fn connect_memory(name: String) -> Result<Self, StorageError> {
+        Self::connect_url(DbConnectionUrl::MemoryShared(name))
     }
 
-    pub async fn connect_url(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+    pub fn connect_url(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
         debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
-        let conn = task::spawn_blocking(move || {
-            let conn = SqliteConnection::establish(&db_url.to_url_string())?;
-            conn.execute("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 60000;")?;
-            Result::<_, StorageError>::Ok(conn)
-        })
-        .await??;
 
-        Ok(Self::new(conn))
+        let mut pool = SqliteConnectionPool::new(
+            db_url.to_url_string(),
+            SQLITE_POOL_SIZE,
+            true,
+            true,
+            Duration::from_secs(60),
+        );
+        pool.create_pool()?;
+
+        Ok(Self::new(pool))
     }
 
-    pub async fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
-        let conn = Self::connect_url(db_url).await?;
-        let output = conn.migrate().await?;
-        info!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
+    pub fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+        let conn = Self::connect_url(db_url)?;
+        let output = conn.migrate()?;
+        debug!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
         Ok(conn)
     }
 
-    fn new(conn: SqliteConnection) -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(conn)),
-        }
+    fn new(pool: SqliteConnectionPool) -> Self {
+        Self { pool }
     }
 
-    pub async fn migrate(&self) -> Result<String, StorageError> {
+    pub fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, StorageError> {
+        self.pool.get_pooled_connection().map_err(StorageError::DieselR2d2Error)
+    }
+
+    pub fn migrate(&self) -> Result<String, StorageError> {
         embed_migrations!("./migrations");
 
-        self.with_connection_async(|conn| {
-            let mut buf = io::Cursor::new(Vec::new());
-            embedded_migrations::run_with_output(conn, &mut buf)
-                .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {}", err)))?;
-            Ok(String::from_utf8_lossy(&buf.into_inner()).to_string())
-        })
-        .await
-    }
-
-    pub async fn with_connection_async<F, R>(&self, f: F) -> Result<R, StorageError>
-    where
-        F: FnOnce(&SqliteConnection) -> Result<R, StorageError> + Send + 'static,
-        R: Send + 'static,
-    {
-        let conn_mutex = self.inner.clone();
-        let ret = task::spawn_blocking(move || {
-            let lock = acquire_lock!(conn_mutex);
-            f(&*lock)
-        })
-        .await??;
-        Ok(ret)
+        let mut buf = io::Cursor::new(Vec::new());
+        let conn = self.get_pooled_connection()?;
+        embedded_migrations::run_with_output(&conn, &mut buf)
+            .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {}", err)))?;
+        Ok(String::from_utf8_lossy(&buf.into_inner()).to_string())
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use diesel::{expression::sql_literal::sql, sql_types::Integer, RunQueryDsl};
     use tari_comms::runtime;
     use tari_test_utils::random;
 
+    use super::*;
+
     #[runtime::test]
     async fn connect_and_migrate() {
-        let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
-        let output = conn.migrate().await.unwrap();
+        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
+        let output = conn.migrate().unwrap();
         assert!(output.starts_with("Running migration"));
     }
 
     #[runtime::test]
     async fn memory_connections() {
         let id = random::string(8);
-        let conn = DbConnection::connect_memory(id.clone()).await.unwrap();
-        conn.migrate().await.unwrap();
-        let conn = DbConnection::connect_memory(id).await.unwrap();
-        let count: i32 = conn
-            .with_connection_async(|c| {
-                sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
-                    .get_result(c)
-                    .map_err(Into::into)
-            })
-            .await
+        let conn = DbConnection::connect_memory(id.clone()).unwrap();
+        conn.migrate().unwrap();
+        let conn = DbConnection::connect_memory(id).unwrap();
+        let conn = conn.get_pooled_connection().unwrap();
+        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
+            .get_result(&conn)
             .unwrap();
         assert_eq!(count, 0);
     }

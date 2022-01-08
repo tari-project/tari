@@ -19,6 +19,20 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use log::*;
+use strum_macros::Display;
+use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
+use tari_comms::peer_manager::NodeId;
+use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::ByteArray;
+use tokio::sync::Semaphore;
+
 use crate::{
     base_node::comms_interface::{
         error::CommsInterfaceError,
@@ -34,16 +48,6 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction::TransactionKernel,
 };
-use log::*;
-use std::{
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
-use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
-use tari_comms::peer_manager::NodeId;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
-use tokio::sync::Semaphore;
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_HEADERS_PER_RESPONSE: u32 = 100;
@@ -289,24 +293,25 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
-                let mut blocks = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    let hash_hex = hash.to_hex();
+            NodeCommsRequest::FetchBlocksWithUtxos(commitments) => {
+                let mut blocks = Vec::with_capacity(commitments.len());
+                for commitment in commitments {
+                    let commitment_hex = commitment.to_hex();
                     debug!(
                         target: LOG_TARGET,
-                        "A peer has requested a block with hash {}", hash_hex,
+                        "A peer has requested a block with commitment {}", commitment_hex,
                     );
-                    match self.blockchain_db.fetch_block_with_utxo(hash).await {
+                    match self.blockchain_db.fetch_block_with_utxo(commitment).await {
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", hash_hex,
+                            "Could not provide requested block with commitment {} to peer because not stored",
+                            commitment_hex,
                         ),
                         Err(e) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            hash_hex,
+                            "Could not provide requested block with commitment {} to peer because: {}",
+                            commitment_hex,
                             e.to_string()
                         ),
                     }
@@ -390,6 +395,66 @@ where T: BlockchainBackend + 'static
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
+            NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            } => {
+                debug!(target: LOG_TARGET, "Starting fetch tokens");
+                let mut outputs = vec![];
+                if unique_ids.is_empty() {
+                    // TODO: replace [0..1000] with parameters to allow paging
+                    for output in self
+                        .blockchain_db
+                        .fetch_all_unspent_by_parent_public_key(asset_public_key.clone(), 0..1000)
+                        .await?
+                    {
+                        match output.output {
+                            PrunedOutput::Pruned { .. } => {
+                                // TODO: should we return this?
+                            },
+                            PrunedOutput::NotPruned { output } => outputs.push(output),
+                        }
+                    }
+                } else {
+                    for id in unique_ids {
+                        let output = self
+                            .blockchain_db
+                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id, None)
+                            .await?;
+                        if let Some(out) = output {
+                            match out.output {
+                                PrunedOutput::Pruned { .. } => {
+                                    // TODO: should we return this?
+                                },
+                                PrunedOutput::NotPruned { output } => outputs.push(output),
+                            }
+                        }
+                    }
+                }
+                Ok(NodeCommsResponse::FetchTokensResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetRegistrations { range } => {
+                let top_level_pubkey = PublicKey::default();
+                let exclusive_range = (*range.start())..(*range.end() + 1);
+                let outputs = self
+                    .blockchain_db
+                    .fetch_all_unspent_by_parent_public_key(top_level_pubkey, exclusive_range)
+                    .await?
+                    .into_iter()
+                    // TODO: should we return this?
+                    .filter(|o|!o.output.is_pruned())
+                    .collect();
+                Ok(NodeCommsResponse::FetchAssetRegistrationsResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetMetadata { asset_public_key } => {
+                let output = self
+                    .blockchain_db
+                    .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
+                    .await?;
+                Ok(NodeCommsResponse::FetchAssetMetadataResponse {
+                    output: Box::new(output),
+                })
+            },
         }
     }
 
@@ -403,6 +468,15 @@ where T: BlockchainBackend + 'static
         source_peer: NodeId,
     ) -> Result<(), CommsInterfaceError> {
         let NewBlock { block_hash } = new_block;
+
+        if self.blockchain_db.inner().is_add_block_disabled() {
+            info!(
+                target: LOG_TARGET,
+                "Ignoring block message ({}) because add_block is locked",
+                block_hash.to_hex()
+            );
+            return Ok(());
+        }
 
         // Only a single block request can complete at a time.
         // As multiple NewBlock requests arrive from propagation, this semaphore prevents multiple requests to nodes for

@@ -20,6 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::HashMap,
+    future,
+    sync::Arc,
+    task::{Context, Poll},
+};
+
+use async_trait::async_trait;
+use bytes::Bytes;
+use futures::future::BoxFuture;
+use tokio::{
+    sync::{mpsc, Mutex, RwLock},
+    task,
+};
+use tower::{make::MakeService, Service};
+
 use crate::{
     connectivity::ConnectivitySelection,
     peer_manager::{NodeId, Peer},
@@ -48,21 +64,6 @@ use crate::{
     PeerManager,
     Substream,
 };
-use async_trait::async_trait;
-use bytes::Bytes;
-use futures::future::BoxFuture;
-use std::{
-    collections::HashMap,
-    future,
-    sync::Arc,
-    task::{Context, Poll},
-};
-use tokio::{
-    sync::{mpsc, Mutex, RwLock},
-    task,
-};
-use tower::Service;
-use tower_make::MakeService;
 
 pub struct RpcRequestMock {
     comms_provider: RpcCommsBackend,
@@ -78,6 +79,10 @@ impl RpcRequestMock {
             comms_provider: RpcCommsBackend::new(peer_manager, connectivity),
             connectivity_mock_state,
         }
+    }
+
+    pub fn peer_manager(&self) -> &PeerManager {
+        self.comms_provider.peer_manager()
     }
 
     pub fn request_with_context<T>(&self, node_id: NodeId, msg: T) -> Request<T> {
@@ -111,7 +116,7 @@ impl RpcRequestMock {
 /// //     async fn my_method(&self, request: Request<()>) -> Result<Response<()>, RpcStatus> {
 /// //         self.request_response(request, &self.my_method).await
 /// // }
-/// impl RpcMock for MyServiceMock{};
+/// impl RpcMock for MyServiceMock {};
 /// ```
 #[async_trait]
 pub trait RpcMock {

@@ -29,13 +29,14 @@
 //!    requires that `A` and `B` both have the same error type. This suits our implementation as all errors are
 //!    `RpcStatus` and removes the need for (often inelegant) error conversions.
 
-use futures::ready;
-use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::ready;
+use pin_project::pin_project;
 use tower::Service;
 
 /// Combine two different service types into a single type.

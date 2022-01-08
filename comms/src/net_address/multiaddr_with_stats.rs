@@ -1,12 +1,13 @@
-use chrono::{DateTime, Utc};
-use multiaddr::Multiaddr;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp::{Ord, Ordering},
     fmt,
     hash::{Hash, Hasher},
     time::Duration,
 };
+
+use chrono::{DateTime, Utc};
+use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
 
 const MAX_LATENCY_SAMPLE_COUNT: u32 = 100;
 
@@ -81,8 +82,8 @@ impl MutliaddrWithStats {
         self.rejected_message_count += 1;
     }
 
-    /// Mark that a successful connection was established with this net address
-    pub fn mark_successful_connection_attempt(&mut self) {
+    /// Mark that a successful interaction occurred with this address
+    pub fn mark_last_seen_now(&mut self) {
         self.last_seen = Some(Utc::now());
         self.connection_attempts = 0;
     }
@@ -186,8 +187,9 @@ impl fmt::Display for MutliaddrWithStats {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::{thread, time::Duration};
+
+    use super::*;
 
     #[test]
     fn test_update_latency() {
@@ -229,7 +231,7 @@ mod test {
         net_address_with_stats.mark_failed_connection_attempt();
         assert!(net_address_with_stats.last_seen.is_none());
         assert_eq!(net_address_with_stats.connection_attempts, 2);
-        net_address_with_stats.mark_successful_connection_attempt();
+        net_address_with_stats.mark_last_seen_now();
         assert!(net_address_with_stats.last_seen.is_some());
         assert_eq!(net_address_with_stats.connection_attempts, 0);
     }
@@ -251,10 +253,10 @@ mod test {
         let mut na1 = MutliaddrWithStats::from(net_address.clone());
         let mut na2 = MutliaddrWithStats::from(net_address);
         thread::sleep(Duration::from_millis(1));
-        na1.mark_successful_connection_attempt();
+        na1.mark_last_seen_now();
         assert!(na1 < na2);
         thread::sleep(Duration::from_millis(1));
-        na2.mark_successful_connection_attempt();
+        na2.mark_last_seen_now();
         assert!(na1 > na2);
         thread::sleep(Duration::from_millis(1));
         na1.mark_message_rejected();

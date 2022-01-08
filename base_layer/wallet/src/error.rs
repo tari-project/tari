@@ -20,18 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::error::BaseNodeServiceError,
-    contacts_service::error::ContactsServiceError,
-    output_manager_service::error::OutputManagerError,
-    storage::database::DbKey,
-    transaction_service::error::TransactionServiceError,
-    utxo_scanner_service::error::UtxoScannerError,
-};
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
 use tari_common::exit_codes::ExitCodes;
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
     multiaddr,
@@ -42,11 +35,26 @@ use tari_core::transactions::transaction::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
-use tari_service_framework::ServiceInitializationError;
+use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
 use thiserror::Error;
+
+use crate::{
+    base_node_service::error::BaseNodeServiceError,
+    contacts_service::error::ContactsServiceError,
+    output_manager_service::error::OutputManagerError,
+    storage::database::DbKey,
+    transaction_service::error::TransactionServiceError,
+    utxo_scanner_service::error::UtxoScannerError,
+};
 
 #[derive(Debug, Error)]
 pub enum WalletError {
+    #[error("Argument supplied `{argument}` has an invalid value: {value}. {message}")]
+    ArgumentError {
+        argument: String,
+        value: String,
+        message: String,
+    },
     #[error("Comms initialization error: `{0}`")]
     CommsInitializationError(#[from] CommsInitializationError),
     #[error("Output manager error: `{0}`")]
@@ -87,6 +95,12 @@ pub enum WalletError {
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
+
+    #[error("Transport channel error: `{0}`")]
+    TransportChannelError(#[from] TransportChannelError),
+
+    #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
+    UnexpectedApiResponse { method: String, api: String },
 }
 
 pub const LOG_TARGET: &str = "tari::application";
@@ -113,8 +127,8 @@ pub enum WalletStorageError {
     DbPathDoesNotExist,
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] SqliteStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]
@@ -157,6 +171,8 @@ pub enum WalletStorageError {
     DeprecatedOperation,
     #[error("Key Manager Error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
+    #[error("Recovery Seed Error: {0}")]
+    RecoverySeedError(String),
 }
 
 impl From<WalletStorageError> for ExitCodes {

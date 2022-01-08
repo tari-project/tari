@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::path::PathBuf;
+
 use tari_test_utils::random;
 use tari_wallet::storage::sqlite_utilities::{run_migration_and_create_sqlite_connection, WalletDbConnection};
 use tempfile::{tempdir, TempDir};
@@ -50,7 +51,7 @@ pub fn get_temp_sqlite_database_connection() -> (WalletDbConnection, TempDir) {
     let db_folder = db_tempdir.path().to_str().unwrap().to_string();
     let db_path = format!("{}/{}", db_folder, db_name);
     // let db_path = "/tmp/test.sqlite3".to_string();
-    let connection = run_migration_and_create_sqlite_connection(&db_path).unwrap();
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
 
     (connection, db_tempdir)
 }

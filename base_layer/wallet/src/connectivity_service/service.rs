@@ -20,13 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    base_node_service::config::BaseNodeServiceConfig,
-    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest},
-    util::watch::Watch,
-};
-use log::*;
 use std::{mem, time::Duration};
+
+use log::*;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{NodeId, Peer},
@@ -38,6 +34,12 @@ use tokio::{
     sync::{mpsc, oneshot, watch},
     time,
     time::MissedTickBehavior,
+};
+
+use crate::{
+    base_node_service::config::BaseNodeServiceConfig,
+    connectivity_service::{error::WalletConnectivityError, handle::WalletConnectivityRequest},
+    util::watch::Watch,
 };
 
 const LOG_TARGET: &str = "wallet::connectivity";
@@ -88,6 +90,7 @@ impl WalletConnectivityService {
         debug!(target: LOG_TARGET, "Wallet connectivity service has started.");
         let mut check_connection =
             time::interval_at(time::Instant::now() + Duration::from_secs(5), Duration::from_secs(5));
+        self.set_online_status(OnlineStatus::Offline);
         check_connection.set_missed_tick_behavior(MissedTickBehavior::Delay);
         loop {
             tokio::select! {
@@ -116,6 +119,7 @@ impl WalletConnectivityService {
         if let Some(pool) = self.pools.as_ref() {
             if !pool.base_node_wallet_rpc_client.is_connected().await {
                 debug!(target: LOG_TARGET, "Peer connection lost. Attempting to reconnect...");
+                self.set_online_status(OnlineStatus::Offline);
                 self.setup_base_node_connection().await;
             }
         }
@@ -155,6 +159,9 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "Base node connection failed: {}. Reconnecting...", e
                     );
+                    if let Some(node_id) = self.current_base_node() {
+                        self.disconnect_base_node(node_id).await;
+                    };
                     self.pending_requests.push(reply.into());
                 },
             },
@@ -185,6 +192,9 @@ impl WalletConnectivityService {
                         target: LOG_TARGET,
                         "Base node connection failed: {}. Reconnecting...", e
                     );
+                    if let Some(node_id) = self.current_base_node() {
+                        self.disconnect_base_node(node_id).await;
+                    };
                     self.pending_requests.push(reply.into());
                 },
             },
@@ -203,6 +213,14 @@ impl WalletConnectivityService {
 
     fn current_base_node(&self) -> Option<NodeId> {
         self.base_node_watch.borrow().as_ref().map(|p| p.node_id.clone())
+    }
+
+    async fn disconnect_base_node(&mut self, node_id: NodeId) {
+        if let Ok(Some(connection)) = self.connectivity.get_connection(node_id.clone()).await {
+            if connection.clone().disconnect().await.is_ok() {
+                debug!(target: LOG_TARGET, "Disconnected base node peer {}", node_id);
+            }
+        };
     }
 
     async fn setup_base_node_connection(&mut self) {
@@ -231,15 +249,18 @@ impl WalletConnectivityService {
                 },
                 Ok(false) => {
                     // Retry with updated peer
+                    self.disconnect_base_node(node_id).await;
+                    time::sleep(self.config.base_node_monitor_refresh_interval).await;
                     continue;
                 },
                 Err(e) => {
-                    if self.current_base_node() != Some(node_id) {
+                    if self.current_base_node() != Some(node_id.clone()) {
                         self.set_online_status(OnlineStatus::Connecting);
                     } else {
                         self.set_online_status(OnlineStatus::Offline);
                     }
                     warn!(target: LOG_TARGET, "{}", e);
+                    self.disconnect_base_node(node_id).await;
                     time::sleep(self.config.base_node_monitor_refresh_interval).await;
                     continue;
                 },
@@ -254,7 +275,10 @@ impl WalletConnectivityService {
     async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<bool, WalletConnectivityError> {
         let conn = match self.try_dial_peer(peer.clone()).await? {
             Some(c) => c,
-            None => return Ok(false),
+            None => {
+                warn!(target: LOG_TARGET, "Could not dial base node peer {}", peer);
+                return Ok(false);
+            },
         };
         debug!(
             target: LOG_TARGET,

@@ -20,14 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod lmdb;
-#[allow(clippy::module_inception)]
-mod lmdb_db;
-
-use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
+
+use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
+
+pub(crate) mod helpers;
+pub(crate) mod key_prefix_cursor;
+mod lmdb;
+#[allow(clippy::module_inception)]
+mod lmdb_db;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub(crate) struct TransactionOutputRowData {
@@ -37,6 +40,18 @@ pub(crate) struct TransactionOutputRowData {
     pub hash: HashOutput,
     pub witness_hash: HashOutput,
     pub mined_height: u64,
+}
+
+/// Transaction input row data taking references and used for serialization.
+/// This struct must mirror the fields in `TransactionInputRowData`
+#[derive(Serialize, Debug)]
+pub(crate) struct TransactionInputRowDataRef<'a> {
+    pub input: &'a TransactionInput,
+    #[allow(clippy::ptr_arg)]
+    pub header_hash: &'a HashOutput,
+    pub mmr_position: u32,
+    #[allow(clippy::ptr_arg)]
+    pub hash: &'a HashOutput,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

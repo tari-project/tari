@@ -19,16 +19,8 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use super::{DhtNetworkDiscovery, NetworkDiscoveryConfig};
-use crate::{
-    event::DhtEvent,
-    proto::rpc::GetPeersResponse,
-    rpc,
-    rpc::DhtRpcServiceMock,
-    test_utils::{build_peer_manager, make_node_identity},
-    DhtConfig,
-};
 use std::{iter, sync::Arc, time::Duration};
+
 use tari_comms::{
     connectivity::ConnectivityStatus,
     peer_manager::{Peer, PeerFeatures},
@@ -44,6 +36,16 @@ use tari_comms::{
 use tari_shutdown::Shutdown;
 use tari_test_utils::unpack_enum;
 use tokio::sync::broadcast;
+
+use super::{DhtNetworkDiscovery, NetworkDiscoveryConfig};
+use crate::{
+    event::DhtEvent,
+    proto::rpc::GetPeersResponse,
+    rpc,
+    rpc::DhtRpcServiceMock,
+    test_utils::{build_peer_manager, make_node_identity},
+    DhtConfig,
+};
 
 mod state_machine {
     use super::*;
@@ -79,7 +81,7 @@ mod state_machine {
         let (event_tx, event_rx) = broadcast::channel(2);
 
         let network_discovery = DhtNetworkDiscovery::new(
-            config,
+            Arc::new(config),
             node_identity.clone(),
             peer_manager.clone(),
             connectivity,
@@ -161,13 +163,14 @@ mod state_machine {
 }
 
 mod discovery_ready {
+    use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
+
     use super::*;
     use crate::network_discovery::{
         ready::DiscoveryReady,
         state_machine::{NetworkDiscoveryContext, StateEvent},
         DhtNetworkDiscoveryRoundInfo,
     };
-    use tari_comms::test_utils::{mocks::ConnectivityManagerMock, node_identity::build_many_node_identities};
 
     fn setup(
         config: NetworkDiscoveryConfig,
@@ -183,10 +186,10 @@ mod discovery_ready {
         let (connectivity, connectivity_mock) = create_connectivity_mock();
         let (event_tx, _) = broadcast::channel(1);
         let context = NetworkDiscoveryContext {
-            config: DhtConfig {
+            config: Arc::new(DhtConfig {
                 network_discovery: config,
                 ..Default::default()
-            },
+            }),
             peer_manager: peer_manager.clone(),
             connectivity,
             node_identity: node_identity.clone(),

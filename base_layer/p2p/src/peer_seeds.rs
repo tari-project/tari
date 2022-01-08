@@ -20,10 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::dns::DnsClientError;
-use crate::dns::{default_trust_anchor, DnsClient};
-use anyhow::anyhow;
 use std::str::FromStr;
+
+use anyhow::anyhow;
 use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -31,6 +30,9 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_utilities::hex::Hex;
+
+use super::dns::DnsClientError;
+use crate::dns::{default_trust_anchor, DnsClient};
 
 #[derive(Clone)]
 pub struct DnsSeedResolver {
@@ -118,8 +120,9 @@ impl From<SeedPeer> for Peer {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tari_utilities::hex::Hex;
+
+    use super::*;
 
     const TEST_NAME: &str = "test.local.";
 
@@ -184,8 +187,6 @@ mod test {
     }
 
     mod peer_seed_resolver {
-        use super::*;
-        use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
         use trust_dns_client::{
             proto::{
                 op::Query,
@@ -194,6 +195,9 @@ mod test {
             },
             rr::{rdata, RData, Record, RecordType},
         };
+
+        use super::*;
+        use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
 
         #[ignore = "This test requires network IO and is mostly useful during development"]
         #[tokio::test]

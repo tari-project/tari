@@ -20,6 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
+use async_trait::async_trait;
+use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
+
 use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
@@ -36,12 +44,6 @@ use crate::{
         PostOrphanBodyValidation,
     },
 };
-use async_trait::async_trait;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use tari_common_types::{chain_metadata::ChainMetadata, types::Commitment};
 
 #[derive(Clone)]
 pub struct MockValidator {

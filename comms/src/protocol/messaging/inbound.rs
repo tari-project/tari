@@ -20,19 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    message::InboundMessage,
-    peer_manager::NodeId,
-    protocol::messaging::{MessagingEvent, MessagingProtocol},
-    rate_limit::RateLimit,
-};
+use std::{sync::Arc, time::Duration};
+
 use futures::{future::Either, StreamExt};
 use log::*;
-use std::{sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc},
 };
+
+use super::{metrics, MessagingEvent, MessagingProtocol};
+use crate::{message::InboundMessage, peer_manager::NodeId, rate_limit::RateLimit};
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
@@ -67,6 +65,7 @@ impl InboundMessaging {
     pub async fn run<S>(self, socket: S)
     where S: AsyncRead + AsyncWrite + Unpin {
         let peer = &self.peer;
+        metrics::num_sessions().inc();
         debug!(
             target: LOG_TARGET,
             "Starting inbound messaging protocol for peer '{}'",
@@ -82,9 +81,11 @@ impl InboundMessaging {
         };
         tokio::pin!(stream);
 
+        let inbound_count = metrics::inbound_message_count(&self.peer);
         while let Some(result) = stream.next().await {
             match result {
                 Ok(Ok(raw_msg)) => {
+                    inbound_count.inc();
                     let msg_len = raw_msg.len();
                     let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
                     debug!(
@@ -112,6 +113,7 @@ impl InboundMessaging {
                     let _ = self.messaging_events_tx.send(Arc::new(event));
                 },
                 Ok(Err(err)) => {
+                    metrics::error_count(peer).inc();
                     error!(
                         target: LOG_TARGET,
                         "Failed to receive from peer '{}' because '{}'",
@@ -122,6 +124,7 @@ impl InboundMessaging {
                 },
 
                 Err(_) => {
+                    metrics::error_count(peer).inc();
                     debug!(
                         target: LOG_TARGET,
                         "Inbound messaging for peer '{}' has stopped because it was inactive for {:.0?}",
@@ -134,6 +137,7 @@ impl InboundMessaging {
             }
         }
 
+        metrics::num_sessions().dec();
         debug!(
             target: LOG_TARGET,
             "Inbound messaging handler exited for peer `{}`",

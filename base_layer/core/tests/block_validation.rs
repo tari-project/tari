@@ -20,32 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::helpers::{
-    block_builders::{
-        chain_block_with_coinbase,
-        chain_block_with_new_coinbase,
-        create_coinbase,
-        create_genesis_block_with_utxos,
-        find_header_with_achieved_difficulty,
-    },
-    test_blockchain::TestBlockchain,
-};
+use std::sync::Arc;
+
 use monero::blockdata::block::Block as MoneroBlock;
 use rand::{rngs::OsRng, RngCore};
-use std::sync::Arc;
 use tari_common::configuration::Network;
 use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
-    crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
         PowAlgorithm,
     },
-    tari_utilities::Hashable,
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
@@ -68,17 +57,29 @@ use tari_core::{
     },
 };
 use tari_crypto::{inputs, script};
+use tari_utilities::{hex::Hex, Hashable};
+
+use crate::helpers::{
+    block_builders::{
+        chain_block_with_coinbase,
+        chain_block_with_new_coinbase,
+        create_coinbase,
+        create_genesis_block_with_utxos,
+        find_header_with_achieved_difficulty,
+    },
+    test_blockchain::TestBlockchain,
+};
 
 mod helpers;
 
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Dibbler;
     let rules = ConsensusManager::builder(network).build();
     let backend = create_test_db();
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories),
     );
@@ -108,7 +109,7 @@ fn test_monero_blocks() {
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Dibbler;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
@@ -192,6 +193,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 
 #[tokio::test]
 async fn inputs_are_not_malleable() {
+    let _ = env_logger::try_init();
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
 
@@ -265,7 +267,7 @@ fn test_orphan_validator() {
     let backend = create_test_db();
     let orphan_validator = OrphanBlockValidator::new(rules.clone(), false, factories.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         orphan_validator.clone(),
     );
@@ -382,10 +384,10 @@ fn test_orphan_body_validation() {
         .with_block(genesis.clone())
         .build();
     let backend = create_test_db();
-    let body_only_validator = BodyOnlyValidator::default();
+    let body_only_validator = BodyOnlyValidator::new(rules.clone());
     let header_validator = HeaderValidator::new(rules.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
@@ -581,7 +583,7 @@ fn test_header_validation() {
     let backend = create_test_db();
     let header_validator = HeaderValidator::new(rules.clone());
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );
@@ -690,7 +692,7 @@ async fn test_block_sync_body_validator() {
     let backend = create_test_db();
 
     let validators = Validators::new(
-        BodyOnlyValidator::default(),
+        BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(rules.clone(), false, factories.clone()),
     );

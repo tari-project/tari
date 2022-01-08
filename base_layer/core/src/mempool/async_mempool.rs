@@ -20,36 +20,51 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use tari_common_types::types::Signature;
+
 use crate::{
     blocks::Block,
     mempool::{error::MempoolError, Mempool, StateResponse, StatsResponse, TxStorageResponse},
     transactions::transaction::Transaction,
 };
-use std::sync::Arc;
-use tari_common_types::types::Signature;
 
 macro_rules! make_async {
     ($fn:ident($($param1:ident:$ptype1:ty,$param2:ident:$ptype2:ty),+) -> $rtype:ty) => {
         pub async fn $fn(mp: Mempool, $($param1: $ptype1, $param2: $ptype2),+) -> Result<$rtype, MempoolError> {
-            tokio::task::spawn_blocking(move || mp.$fn($($param1,$param2),+))
-                .await
-                .or_else(|err| Err(MempoolError::BlockingTaskSpawnError(err.to_string())))
-                .and_then(|inner_result| inner_result)
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
+            tokio::task::spawn_blocking(move || {
+                log_mdc::extend(mdc.clone());
+                mp.$fn($($param1,$param2),+)
+            })
+            .await
+            .or_else(|err| Err(MempoolError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
         }
     };
 
     ($fn:ident($($param:ident:$ptype:ty),+) -> $rtype:ty) => {
         pub async fn $fn(mp: Mempool, $($param: $ptype),+) -> Result<$rtype, MempoolError> {
-            tokio::task::spawn_blocking(move || mp.$fn($($param),+))
-                .await
-                .or_else(|err| Err(MempoolError::BlockingTaskSpawnError(err.to_string())))
-                .and_then(|inner_result| inner_result)
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
+            tokio::task::spawn_blocking(move || {
+                    log_mdc::extend(mdc.clone());
+                    mp.$fn($($param),+)
+            })
+            .await
+            .or_else(|err| Err(MempoolError::BlockingTaskSpawnError(err.to_string())))
+            .and_then(|inner_result| inner_result)
         }
     };
 
     ($fn:ident() -> $rtype:ty) => {
         pub async fn $fn(mp: Mempool) -> Result<$rtype, MempoolError> {
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             tokio::task::spawn_blocking(move || {
+                log_mdc::extend(mdc.clone());
                 mp.$fn()
             })
             .await

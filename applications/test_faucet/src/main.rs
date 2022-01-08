@@ -9,9 +9,6 @@
 use std::{fs::File, io::Write};
 
 use serde::Serialize;
-use tari_crypto::script;
-use tokio::{sync::mpsc, task};
-
 use tari_common_types::types::{Commitment, PrivateKey};
 use tari_core::transactions::{
     tari_amount::{MicroTari, T},
@@ -19,7 +16,8 @@ use tari_core::transactions::{
     transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
     CryptoFactories,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::{script, tari_utilities::hex::Hex};
+use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;
 
@@ -107,7 +105,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
                     println!("{} outputs written", written);
                 }
             },
-            Err(e) => println!("{}", e.to_string()),
+            Err(e) => println!("{}", e),
         }
     }
     let (pk, sig) = test_helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);

@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{sync::Arc, time::Duration};
+
 use tari_comms::{
     message::MessageTag,
     multiaddr::Multiaddr,

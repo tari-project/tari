@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_sqlite::error::SqliteStorageError;
 use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::task;
@@ -42,4 +43,6 @@ pub enum StorageError {
     MessageFormatError(#[from] MessageFormatError),
     #[error("Unexpected result: {0}")]
     UnexpectedResult(String),
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] SqliteStorageError),
 }

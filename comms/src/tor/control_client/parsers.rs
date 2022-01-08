@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::response::ResponseLine;
+use std::{borrow::Cow, fmt};
+
 use nom::{
     bytes::complete::take_while1,
     character::complete::{anychar, char as chr, digit1},
     combinator::map_res,
     error::ErrorKind,
 };
-use std::{borrow::Cow, fmt};
+
+use super::response::ResponseLine;
 
 type NomErr<'a> = nom::Err<(&'a str, ErrorKind)>;
 

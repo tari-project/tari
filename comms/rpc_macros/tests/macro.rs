@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, ops::AddAssign, sync::Arc};
+
 use futures::StreamExt;
 use prost::Message;
-use std::{collections::HashMap, ops::AddAssign, sync::Arc};
 use tari_comms::{
     framing,
     message::MessageExt,
@@ -147,7 +148,7 @@ async fn it_returns_an_error_for_invalid_method_nums() {
         .await
         .unwrap_err();
 
-    unpack_enum!(RpcStatusCode::UnsupportedMethod = err.status_code());
+    unpack_enum!(RpcStatusCode::UnsupportedMethod = err.as_status_code());
 }
 
 #[tokio::test]

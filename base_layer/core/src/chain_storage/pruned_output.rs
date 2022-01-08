@@ -19,12 +19,15 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transactions::transaction::TransactionOutput;
+
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::Hashable;
 
+use crate::transactions::transaction::TransactionOutput;
+
 #[allow(clippy::large_enum_variant)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PrunedOutput {
     Pruned {
         output_hash: HashOutput,
@@ -47,6 +50,20 @@ impl PrunedOutput {
                 witness_hash: _,
             } => output_hash.clone(),
             PrunedOutput::NotPruned { output } => output.hash(),
+        }
+    }
+
+    pub fn as_transaction_output(&self) -> Option<&TransactionOutput> {
+        match self {
+            PrunedOutput::Pruned { .. } => None,
+            PrunedOutput::NotPruned { output } => Some(output),
+        }
+    }
+
+    pub fn into_unpruned_output(self) -> Option<TransactionOutput> {
+        match self {
+            PrunedOutput::Pruned { .. } => None,
+            PrunedOutput::NotPruned { output } => Some(output),
         }
     }
 }

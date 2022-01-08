@@ -21,8 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use crate::configuration::bootstrap::ApplicationType;
 use std::{fs, fs::File, io::Write, path::Path};
+
+use crate::configuration::bootstrap::ApplicationType;
 
 /// Set up application-level logging using the Log4rs configuration file specified in
 pub fn initialize_logging(config_file: &Path, base_path: &Path) -> bool {
@@ -42,7 +43,7 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path) -> bool {
     };
 
     if let Err(e) = log4rs::init_file(config_file, Default::default()) {
-        println!("We couldn't load a logging configuration file. {}", e.to_string());
+        println!("We couldn't load a logging configuration file. {}", e);
         return false;
     }
 
@@ -67,6 +68,7 @@ pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> R
         MiningNode => include_str!("../logging/log4rs_sample_mining_node.yml"),
         MergeMiningProxy => include_str!("../logging/log4rs_sample_proxy.yml"),
         StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),
+        ValidatorNode => include_str!("../logging/log4rs_sample_validator_node.yml"),
     };
 
     if let Some(d) = path.parent() {

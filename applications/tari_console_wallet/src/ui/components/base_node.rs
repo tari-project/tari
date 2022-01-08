@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::ui::{components::Component, state::AppState};
 use tari_wallet::connectivity_service::{OnlineStatus, WalletConnectivityInterface};
 use tui::{
     backend::Backend,
@@ -30,6 +29,8 @@ use tui::{
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
+
+use crate::ui::{components::Component, state::AppState};
 
 pub struct BaseNode {}
 
@@ -42,6 +43,7 @@ impl BaseNode {
 impl<B: Backend> Component<B> for BaseNode {
     fn draw(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
+        let base_node_state = app_state.get_base_node_state();
         let current_online_status = app_state.get_wallet_connectivity().get_connectivity_status();
 
         let chain_info = match current_online_status {
@@ -56,7 +58,6 @@ impl<B: Backend> Component<B> for BaseNode {
                 Span::styled("Offline", Style::default().fg(Color::Red)),
             ]),
             OnlineStatus::Online => {
-                let base_node_state = app_state.get_base_node_state();
                 if let Some(ref metadata) = base_node_state.chain_metadata {
                     let tip = metadata.height_of_longest_chain();
 
@@ -80,9 +81,9 @@ impl<B: Backend> Component<B> for BaseNode {
                         Span::raw(" "),
                         Span::styled(format!("#{}", tip), Style::default().fg(tip_color)),
                         Span::raw("  "),
-                        Span::styled(sync_text.to_string(), Style::default().fg(Color::DarkGray)),
+                        Span::styled(sync_text.to_string(), Style::default().fg(Color::White)),
                         Span::raw("  "),
-                        Span::styled("Latency", Style::default().fg(Color::DarkGray)),
+                        Span::styled("Latency", Style::default().fg(Color::White)),
                         Span::raw(" "),
                         Span::styled(latency.to_string(), Style::default().fg(latency_color)),
                         Span::styled(" ms", Style::default().fg(Color::DarkGray)),

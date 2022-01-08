@@ -20,6 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{Arc, RwLock};
+
+use tari_common_types::types::Signature;
+
 use crate::{
     blocks::Block,
     consensus::ConsensusManager,
@@ -34,12 +38,10 @@ use crate::{
     transactions::transaction::Transaction,
     validation::MempoolTransactionValidation,
 };
-use std::sync::{Arc, RwLock};
-use tari_common_types::types::Signature;
 
 /// The Mempool consists of an Unconfirmed Transaction Pool, Pending Pool, Orphan Pool and Reorg Pool and is responsible
-/// for managing and maintaining all unconfirmed transactions have not yet been included in a block, and transactions
-/// that have recently been included in a block.
+/// for managing and maintaining all unconfirmed transactions that have not yet been included in a block, and
+/// transactions that have recently been included in a block.
 #[derive(Clone)]
 pub struct Mempool {
     pool_storage: Arc<RwLock<MempoolStorage>>,

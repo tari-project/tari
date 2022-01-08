@@ -20,22 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{deserialize, error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
-use crate::{
-    blocks::BlockHeader,
-    crypto::tari_utilities::hex::Hex,
-    proof_of_work::monero_rx::helpers::create_block_hashing_blob,
-    tari_utilities::hex::to_hex,
-};
-use monero::{
-    consensus::{encode, Decodable, Encodable},
-    cryptonote::hash::Hashable,
-};
 use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
 };
+
+use monero::{
+    consensus::{encode, Decodable, Encodable},
+    cryptonote::hash::Hashable,
+};
+use tari_utilities::hex::{to_hex, Hex};
+
+use super::{deserialize, error::MergeMineError, fixed_array::FixedByteArray, merkle_tree::MerkleProof};
+use crate::{blocks::BlockHeader, proof_of_work::monero_rx::helpers::create_block_hashing_blob};
 
 /// This is a struct to deserialize the data from he pow field into data required for the randomX Monero merged mine
 /// pow.
@@ -81,7 +79,7 @@ impl Display for MoneroPowData {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         writeln!(fmt, "MoneroBlockHeader: {} ", self.header)?;
         writeln!(fmt, "RandomX vm key: {}", self.randomx_key.to_hex())?;
-        writeln!(fmt, "Monero tx count: {}", self.transaction_count.to_string())?;
+        writeln!(fmt, "Monero tx count: {}", self.transaction_count)?;
         writeln!(fmt, "Monero tx root: {}", to_hex(self.merkle_root.as_bytes()))?;
         writeln!(fmt, "Monero coinbase tx: {}", self.coinbase_tx)
     }
@@ -115,9 +113,10 @@ impl Encodable for MoneroPowData {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::crypto::tari_utilities::hex::from_hex;
     use monero::consensus;
+    use tari_utilities::hex::from_hex;
+
+    use super::*;
 
     const POW_DATA_BLOB: &str = "0e0eff8a828606e62827cbb1c8f13eeddaae1d2c5dbb36c12a3d30d20d20b35a540bdba9d8e162604a0000202378cf4e85ef9a0629719e228c8c9807575469c3f45b3710c7960079a5dfdd661600b3cdc310a8f619ea2feadb178021ea0b853caa2f41749f7f039dcd4102d24f0504b4d72f22ca81245c538371a07331546cbd9935068637166d9cd627c521fb0e98d6161a7d971ee608b2b93719327d1cf5f95f9cc15beab7c6fb0894205c9218e4f9810873976eaf62d53ce631e8ad37bbaacc5da0267cd38342d66bdecce6541bb5c761b8ff66e7f6369cd3b0c2cb106a325c7342603516c77c9dcbb67388128a04000000000002fd873401ffc1873401c983eae58cd001026eb5be712030e2d49c9329f7f578325daa8ad7296a58985131544d8fe8a24c934d01ad27b94726423084ffc0f7eda31a8c9691836839c587664a036c3986b33f568f020861f4f1c2c37735680300916c27a920e462fbbfce5ac661ea9ef91fc78d620c61c43d5bb6a9644e3c17e000";
 
@@ -147,8 +146,9 @@ mod test {
     }
 
     mod fuzz {
-        use super::*;
         use monero::TxIn;
+
+        use super::*;
 
         #[test]
         #[should_panic(expected = "capacity overflow")]

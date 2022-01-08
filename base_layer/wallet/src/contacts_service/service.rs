@@ -20,15 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use futures::{pin_mut, StreamExt};
+use log::*;
+use tari_service_framework::reply_channel;
+use tari_shutdown::ShutdownSignal;
+
 use crate::contacts_service::{
     error::ContactsServiceError,
     handle::{ContactsServiceRequest, ContactsServiceResponse},
     storage::database::{ContactsBackend, ContactsDatabase},
 };
-use futures::{pin_mut, StreamExt};
-use log::*;
-use tari_service_framework::reply_channel;
-use tari_shutdown::ShutdownSignal;
 
 const LOG_TARGET: &str = "wallet:contacts_service";
 
@@ -74,7 +75,7 @@ where T: ContactsBackend + 'static
             .expect("Output Manager Service initialized without shutdown signal");
         pin_mut!(shutdown);
 
-        info!(target: LOG_TARGET, "Contacts Service started");
+        debug!(target: LOG_TARGET, "Contacts Service started");
         loop {
             tokio::select! {
                 Some(request_context) = request_stream.next() => {

@@ -20,11 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fmt::Display};
+
+use log::*;
+use thiserror::Error;
+
 use super::RpcError;
 use crate::proto;
-use log::*;
-use std::{fmt, fmt::Display};
-use thiserror::Error;
 
 const LOG_TARGET: &str = "comms::rpc::status";
 
@@ -97,6 +99,13 @@ impl RpcStatus {
         }
     }
 
+    pub fn conflict<T: ToString>(details: T) -> Self {
+        Self {
+            code: RpcStatusCode::Conflict,
+            details: details.to_string(),
+        }
+    }
+
     /// Returns a closure that logs the given error and returns a generic general error that does not leak any
     /// potentially sensitive error information. Use this function with map_err to catch "miscellaneous" errors.
     pub fn log_internal_error<'a, E: std::error::Error + 'a>(target: &'a str) -> impl Fn(E) -> Self + 'a {
@@ -114,10 +123,10 @@ impl RpcStatus {
     }
 
     pub fn as_code(&self) -> u32 {
-        self.code as u32
+        self.code.as_u32()
     }
 
-    pub fn status_code(&self) -> RpcStatusCode {
+    pub fn as_status_code(&self) -> RpcStatusCode {
         self.code
     }
 
@@ -195,6 +204,8 @@ pub enum RpcStatusCode {
     ProtocolError = 8,
     /// RPC forbidden error
     Forbidden = 9,
+    /// RPC conflict error
+    Conflict = 10,
     // The following status represents anything that is not recognised (i.e not one of the above codes).
     /// Unrecognised RPC status code
     InvalidRpcStatusCode,
@@ -212,6 +223,14 @@ impl RpcStatusCode {
     pub fn is_timeout(self) -> bool {
         self == Self::Timeout
     }
+
+    pub fn as_u32(&self) -> u32 {
+        *self as u32
+    }
+
+    pub fn to_debug_string(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 impl From<u32> for RpcStatusCode {
@@ -228,6 +247,7 @@ impl From<u32> for RpcStatusCode {
             7 => NotFound,
             8 => ProtocolError,
             9 => Forbidden,
+            10 => Conflict,
             _ => InvalidRpcStatusCode,
         }
     }
@@ -251,6 +271,7 @@ mod test {
         assert_eq!(RpcStatusCode::from(InvalidRpcStatusCode as u32), InvalidRpcStatusCode);
         assert_eq!(RpcStatusCode::from(ProtocolError as u32), ProtocolError);
         assert_eq!(RpcStatusCode::from(Forbidden as u32), Forbidden);
+        assert_eq!(RpcStatusCode::from(Conflict as u32), Conflict);
         assert_eq!(RpcStatusCode::from(123), InvalidRpcStatusCode);
     }
 }

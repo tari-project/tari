@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use thiserror::Error;
+use tokio::{sync::mpsc, time::error::Elapsed};
+
 use crate::{
     connection_manager::PeerConnectionRequest,
     noise,
     peer_manager::PeerManagerError,
     protocol::{IdentityProtocolError, ProtocolError},
 };
-use thiserror::Error;
-use tokio::{sync::mpsc, time::error::Elapsed};
 
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
@@ -81,6 +82,12 @@ pub enum ConnectionManagerError {
     NoiseProtocolTimeout,
     #[error("Listener oneshot cancelled")]
     ListenerOneshotCancelled,
+    #[error("Peer sent invalid identity signature")]
+    PeerIdentityInvalidSignature,
+    #[error("Peer did not provide the identity timestamp")]
+    PeerIdentityNoUpdatedTimestampProvided,
+    #[error("Peer did not provide any public addresses")]
+    PeerHasNoAddresses,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

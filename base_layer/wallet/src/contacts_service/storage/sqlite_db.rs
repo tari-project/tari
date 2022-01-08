@@ -20,19 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
+use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
+use tari_common_types::types::PublicKey;
+use tari_crypto::tari_utilities::ByteArray;
+
 use crate::{
     contacts_service::{
         error::ContactsServiceStorageError,
         storage::database::{Contact, ContactsBackend, DbKey, DbKeyValuePair, DbValue, WriteOperation},
     },
     schema::contacts,
-    storage::sqlite_utilities::WalletDbConnection,
+    storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::diesel_ext::ExpectedRowsExtension,
 };
-use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
-use std::convert::TryFrom;
-use tari_common_types::types::PublicKey;
-use tari_crypto::tari_utilities::ByteArray;
 
 /// A Sqlite backend for the Output Manager Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -47,10 +49,10 @@ impl ContactsServiceSqliteDatabase {
 
 impl ContactsBackend for ContactsServiceSqliteDatabase {
     fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
 
         let result = match key {
-            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &(*conn)) {
+            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -67,13 +69,13 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
     }
 
     fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, ContactsServiceStorageError> {
-        let conn = self.database_connection.acquire_lock();
+        let conn = self.database_connection.get_pooled_connection()?;
 
         match op {
-            WriteOperation::Upsert(kvp) => match kvp {
-                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &(*conn)) {
+            WriteOperation::Upsert(kvp) => match *kvp {
+                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &conn) {
                     Ok(found_c) => {
-                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &(*conn))?;
+                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &conn)?;
                     },
                     Err(_) => {
                         ContactSql::from(c).commit(&conn)?;
@@ -81,7 +83,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
                 },
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &(*conn)) {
+                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &conn) {
                     Ok(c) => {
                         c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
@@ -181,19 +183,21 @@ pub struct UpdateContact {
 
 #[cfg(test)]
 mod test {
-    use crate::contacts_service::storage::{
-        database::Contact,
-        sqlite_db::{ContactSql, UpdateContact},
-    };
+    use std::convert::TryFrom;
+
     use diesel::{Connection, SqliteConnection};
     use rand::rngs::OsRng;
-    use std::convert::TryFrom;
     use tari_common_types::types::{PrivateKey, PublicKey};
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         tari_utilities::ByteArray,
     };
     use tari_test_utils::{paths::with_temp_dir, random::string};
+
+    use crate::contacts_service::storage::{
+        database::Contact,
+        sqlite_db::{ContactSql, UpdateContact},
+    };
 
     #[test]
     fn test_crud() {

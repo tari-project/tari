@@ -20,9 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transports::predicate::Predicate;
-use multiaddr::{Multiaddr, Protocol};
 use std::sync::Arc;
+
+use multiaddr::{Multiaddr, Protocol};
+
+use crate::transports::predicate::Predicate;
 
 #[derive(Debug, Clone)]
 pub struct TorProxyOpts {
@@ -63,6 +65,7 @@ fn is_tcp_address(addr: &Multiaddr) -> bool {
     let protocol = iter.next();
     matches!(protocol, Some(Tcp(_)))
 }
+
 #[cfg(test)]
 mod test {
     use super::*;

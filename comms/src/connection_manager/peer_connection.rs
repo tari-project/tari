@@ -20,21 +20,39 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "rpc")]
-use crate::protocol::rpc::{
-    NamedProtocolService,
-    RpcClient,
-    RpcClientBuilder,
-    RpcClientPool,
-    RpcError,
-    RpcPoolClient,
-    RPC_MAX_FRAME_SIZE,
+use std::{
+    fmt,
+    future::Future,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
 };
+
+use log::*;
+use multiaddr::Multiaddr;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{self, span, Instrument, Level};
 
 use super::{
     error::{ConnectionManagerError, PeerConnectionError},
     manager::ConnectionManagerEvent,
     types::ConnectionDirection,
+};
+#[cfg(feature = "rpc")]
+use crate::protocol::rpc::{
+    pool::RpcClientPool,
+    pool::RpcPoolClient,
+    NamedProtocolService,
+    RpcClient,
+    RpcClientBuilder,
+    RpcError,
+    RPC_MAX_FRAME_SIZE,
 };
 use crate::{
     framing,
@@ -45,22 +63,6 @@ use crate::{
     runtime,
     utils::atomic_ref_counter::AtomicRefCounter,
 };
-use log::*;
-use multiaddr::Multiaddr;
-use std::{
-    fmt,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::{Duration, Instant},
-};
-use tokio::{
-    sync::{mpsc, oneshot},
-    time,
-};
-use tokio_stream::StreamExt;
-use tracing::{self, span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
@@ -184,6 +186,12 @@ impl PeerConnection {
         !self.request_tx.is_closed()
     }
 
+    /// Returns a owned future that resolves on disconnection
+    pub fn on_disconnect(&self) -> impl Future<Output = ()> + 'static {
+        let request_tx = self.request_tx.clone();
+        async move { request_tx.closed().await }
+    }
+
     pub fn age(&self) -> Duration {
         self.started_at.elapsed()
     }
@@ -196,7 +204,7 @@ impl PeerConnection {
         Arc::strong_count(&self.handle_counter)
     }
 
-    #[tracing::instrument("peer_connection::open_substream", skip(self))]
+    #[tracing::instrument(level = "trace", "peer_connection::open_substream", skip(self))]
     pub async fn open_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -213,7 +221,7 @@ impl PeerConnection {
             .map_err(|_| PeerConnectionError::InternalReplyCancelled)?
     }
 
-    #[tracing::instrument("peer_connection::open_framed_substream", skip(self))]
+    #[tracing::instrument(level = "trace", "peer_connection::open_framed_substream", skip(self))]
     pub async fn open_framed_substream(
         &mut self,
         protocol_id: &ProtocolId,
@@ -224,14 +232,14 @@ impl PeerConnection {
     }
 
     #[cfg(feature = "rpc")]
-    #[tracing::instrument("peer_connection::connect_rpc", skip(self), fields(peer_node_id = self.peer_node_id.to_string().as_str()))]
+    #[tracing::instrument("peer_connection::connect_rpc", level="trace", skip(self), fields(peer_node_id = self.peer_node_id.to_string().as_str()))]
     pub async fn connect_rpc<T>(&mut self) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         self.connect_rpc_using_builder(Default::default()).await
     }
 
     #[cfg(feature = "rpc")]
-    #[tracing::instrument("peer_connection::connect_rpc_with_builder", skip(self, builder))]
+    #[tracing::instrument("peer_connection::connect_rpc_with_builder", level = "trace", skip(self, builder))]
     pub async fn connect_rpc_using_builder<T>(&mut self, builder: RpcClientBuilder<T>) -> Result<T, RpcError>
     where T: From<RpcClient> + NamedProtocolService {
         let protocol = ProtocolId::from_static(T::PROTOCOL_NAME);
@@ -242,7 +250,11 @@ impl PeerConnection {
             self.peer_node_id
         );
         let framed = self.open_framed_substream(&protocol, RPC_MAX_FRAME_SIZE).await?;
-        builder.with_protocol_id(protocol).connect(framed).await
+        builder
+            .with_protocol_id(protocol)
+            .with_node_id(self.peer_node_id.clone())
+            .connect(framed)
+            .await
     }
 
     /// Creates a new RpcClientPool that can be shared between tasks. The client pool will lazily establish up to
@@ -349,7 +361,7 @@ impl PeerConnectionActor {
                     match maybe_request {
                         Some(request) => self.handle_request(request).await,
                         None => {
-                            debug!(target: LOG_TARGET, "[{}] All peer connection handled dropped closing the connection", self);
+                            debug!(target: LOG_TARGET, "[{}] All peer connection handles dropped closing the connection", self);
                             break;
                         }
                     }
@@ -417,7 +429,7 @@ impl PeerConnectionActor {
         }
     }
 
-    #[tracing::instrument(skip(self, stream),fields(comms.direction="inbound"))]
+    #[tracing::instrument(level="trace", skip(self, stream),fields(comms.direction="inbound"))]
     async fn handle_incoming_substream(&mut self, mut stream: Substream) -> Result<(), PeerConnectionError> {
         let selected_protocol = ProtocolNegotiation::new(&mut stream)
             .negotiate_protocol_inbound(&self.our_supported_protocols)
@@ -463,11 +475,7 @@ impl PeerConnectionActor {
     }
 
     async fn notify_event(&mut self, event: ConnectionManagerEvent) {
-        log_if_error!(
-            target: LOG_TARGET,
-            self.event_notifier.send(event).await,
-            "Failed to send connection manager notification because '{}'",
-        );
+        let _ = self.event_notifier.send(event).await;
     }
 
     /// Disconnect this peer connection.

@@ -24,12 +24,6 @@ use std::{iter::repeat_with, sync::Arc};
 
 use croaring::Bitmap;
 use rand::{rngs::OsRng, RngCore};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    tari_utilities::{hash::Hashable, hex::Hex},
-};
-
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
@@ -59,6 +53,11 @@ use tari_core::{
         },
         CryptoFactories,
     },
+};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    script,
+    tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
 
@@ -100,10 +99,17 @@ fn genesis_template(
     (block, output)
 }
 
-// This is a helper function to generate and print out a block that can be used as the genesis block.
-// #[test]
-pub fn _create_act_gen_block() {
-    let network = Network::Weatherwax;
+#[test]
+#[ignore = "used to generate a new genesis block"]
+/// This is a helper function to generate and print out a block that can be used as the genesis block.
+/// 1. Pick a network
+/// 1. Run `cargo test --package tari_core --test mempool -- helpers::block_builders::print_new_genesis_block --exact
+/// --nocapture --ignored`
+/// 1. The block and range proof will be printed
+/// 1. Profit!
+fn print_new_genesis_block() {
+    let network = Network::Dibbler;
+
     let consensus_manager: ConsensusManager = ConsensusManagerBuilder::new(network).build();
     let factories = CryptoFactories::default();
     let mut header = BlockHeader::new(consensus_manager.consensus_constants(0).blockchain_version());
@@ -118,17 +124,14 @@ pub fn _create_act_gen_block() {
         .build()
         .unwrap();
 
-    let utxo_hash = utxo.hash();
-    let witness_hash = utxo.witness_hash();
-    let kern = kernel.hash();
-    header.kernel_mr = kern;
-    header.output_mr = utxo_hash;
-    header.witness_mr = witness_hash;
+    header.kernel_mr = kernel.hash();
+    header.output_mr = utxo.hash();
+    header.witness_mr = utxo.witness_hash();
+
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
     println!("{}", &block);
-    dbg!(&key.to_hex());
-    dbg!(&block.body.outputs()[0].proof.to_hex());
-    panic!(); // this is so that the output is printed
+    println!("spending key: {}", &key.to_hex());
+    println!("range proof: {}", &block.body.outputs()[0].proof.to_hex());
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo
@@ -146,7 +149,7 @@ pub fn create_genesis_block(
 fn update_genesis_block_mmr_roots(template: NewBlockTemplate) -> Result<Block, ChainStorageError> {
     let NewBlockTemplate { header, mut body, .. } = template;
     // Make sure the body components are sorted. If they already are, this is a very cheap call.
-    body.sort(header.version);
+    body.sort();
     let kernel_hashes: Vec<HashOutput> = body.kernels().iter().map(|k| k.hash()).collect();
     let out_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.hash()).collect();
     let rp_hashes: Vec<HashOutput> = body.outputs().iter().map(|out| out.witness_hash()).collect();

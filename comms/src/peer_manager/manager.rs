@@ -20,24 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fs::File, time::Duration};
+
+use multiaddr::Multiaddr;
+use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
+use tokio::sync::RwLock;
+
 use crate::{
     peer_manager::{
         migrations,
-        node_id::{NodeDistance, NodeId},
         peer::{Peer, PeerFlags},
         peer_id::PeerId,
         peer_storage::PeerStorage,
         wrapper::KeyValueWrapper,
+        NodeDistance,
+        NodeId,
         PeerFeatures,
         PeerManagerError,
         PeerQuery,
     },
     types::{CommsDatabase, CommsPublicKey},
 };
-use multiaddr::Multiaddr;
-use std::{fmt, fs::File, time::Duration};
-use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
-use tokio::sync::RwLock;
 
 /// The PeerManager consist of a routing table of previously discovered peers.
 /// It also provides functionality to add, find and delete peers.
@@ -84,18 +87,18 @@ impl PeerManager {
     }
 
     /// Find the peer with the provided NodeID
-    pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Peer, PeerManagerError> {
+    pub async fn find_by_node_id(&self, node_id: &NodeId) -> Result<Option<Peer>, PeerManagerError> {
         self.peer_storage.read().await.find_by_node_id(node_id)
+    }
+
+    /// Find the peer with the provided PublicKey
+    pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Option<Peer>, PeerManagerError> {
+        self.peer_storage.read().await.find_by_public_key(public_key)
     }
 
     /// Find the peer with the provided substring. This currently only compares the given bytes to the NodeId
     pub async fn find_all_starts_with(&self, partial: &[u8]) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage.read().await.find_all_starts_with(partial)
-    }
-
-    /// Find the peer with the provided PublicKey
-    pub async fn find_by_public_key(&self, public_key: &CommsPublicKey) -> Result<Peer, PeerManagerError> {
-        self.peer_storage.read().await.find_by_public_key(public_key)
     }
 
     /// Check if a peer exist using the specified public_key
@@ -123,7 +126,7 @@ impl PeerManager {
         peer_features: PeerFeatures,
     ) -> Result<Peer, PeerManagerError> {
         match self.find_by_public_key(pubkey).await {
-            Ok(mut peer) => {
+            Ok(Some(mut peer)) => {
                 peer.connection_stats.set_connection_success();
                 peer.addresses = addresses.into();
                 peer.set_offline(false);
@@ -131,7 +134,7 @@ impl PeerManager {
                 self.add_peer(peer.clone()).await?;
                 Ok(peer)
             },
-            Err(PeerManagerError::PeerNotFoundError) => {
+            Ok(None) => {
                 self.add_peer(Peer::new(
                     pubkey.clone(),
                     node_id,
@@ -143,7 +146,9 @@ impl PeerManager {
                 ))
                 .await?;
 
-                self.find_by_public_key(pubkey).await
+                self.find_by_public_key(pubkey)
+                    .await?
+                    .ok_or(PeerManagerError::PeerNotFoundError)
             },
             Err(err) => Err(err),
         }
@@ -193,6 +198,10 @@ impl PeerManager {
             .read()
             .await
             .closest_peers(node_id, n, excluded_peers, features)
+    }
+
+    pub async fn mark_last_seen(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
+        self.peer_storage.write().await.mark_last_seen(node_id)
     }
 
     /// Fetch n random peers
@@ -285,7 +294,10 @@ impl PeerManager {
     }
 
     pub async fn get_peer_features(&self, node_id: &NodeId) -> Result<PeerFeatures, PeerManagerError> {
-        let peer = self.find_by_node_id(node_id).await?;
+        let peer = self
+            .find_by_node_id(node_id)
+            .await?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
         Ok(peer.features)
     }
 
@@ -309,6 +321,10 @@ impl fmt::Debug for PeerManager {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_storage::HashmapDatabase;
+
     use super::*;
     use crate::{
         net_address::MultiaddressesWithStats,
@@ -319,9 +335,6 @@ mod test {
         },
         runtime,
     };
-    use rand::rngs::OsRng;
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-    use tari_storage::HashmapDatabase;
 
     fn create_test_peer(ban_flag: bool, features: PeerFeatures) -> Peer {
         let (_sk, pk) = RistrettoPublicKey::random_keypair(&mut OsRng);
@@ -388,6 +401,7 @@ mod test {
             assert!(!peer_manager
                 .find_by_node_id(&peer_identity.node_id)
                 .await
+                .unwrap()
                 .unwrap()
                 .is_banned(),);
         }

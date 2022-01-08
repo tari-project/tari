@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{notifier::Notifier, ui::state::AppStateInner};
-use log::*;
 use std::sync::Arc;
+
+use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
@@ -32,6 +32,11 @@ use tari_wallet::{
     transaction_service::handle::TransactionEvent,
 };
 use tokio::sync::{broadcast, RwLock};
+
+use crate::{
+    notifier::Notifier,
+    ui::state::{AppStateInner, EventListItem},
+};
 
 const LOG_TARGET: &str = "wallet::console_wallet::wallet_event_monitor";
 
@@ -82,6 +87,7 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet transaction service event {:?}", msg);
+                            self.app_state_inner.write().await.add_event(EventListItem{event_type: "TransactionEvent".to_string(), desc: (&*msg).to_string() });
                                 match (*msg).clone() {
                                     TransactionEvent::ReceivedFinalizedTransaction(tx_id) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
@@ -100,7 +106,7 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined(tx_id);
                                     },
-                                    TransactionEvent::TransactionCancelled(tx_id) => {
+                                    TransactionEvent::TransactionCancelled(tx_id, _) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_cancelled(tx_id);
@@ -119,7 +125,7 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_sent(tx_id);
                                     },
-                                    TransactionEvent::TransactionValidationSuccess(_) => {
+                                    TransactionEvent::TransactionValidationStateChanged(_) => {
                                         self.trigger_full_tx_state_refresh().await;
                                         self.trigger_balance_refresh();
                                     },
@@ -180,10 +186,8 @@ impl WalletEventMonitor {
                         match result {
                             Ok(msg) => {
                                 trace!(target: LOG_TARGET, "Wallet Event Monitor received base node event {:?}", msg);
-                                match (*msg).clone() {
-                                    BaseNodeEvent::BaseNodeStateChanged(state) => {
+                                if let BaseNodeEvent::BaseNodeStateChanged(state) = (*msg).clone() {
                                         self.trigger_base_node_state_refresh(state).await;
-                                    }
                                 }
                             },
                             Err(broadcast::error::RecvError::Lagged(n)) => {
@@ -259,6 +263,12 @@ impl WalletEventMonitor {
 
         if let Err(e) = inner.refresh_base_node_state(state).await {
             warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+        }
+
+        if inner.has_time_locked_balance() {
+            if let Err(e) = self.balance_enquiry_debounce_tx.send(()) {
+                warn!(target: LOG_TARGET, "Error refresh app_state: {}", e);
+            }
         }
     }
 

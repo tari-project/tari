@@ -1,5 +1,6 @@
-use chrono::{NaiveDateTime, Utc};
 use std::time::Duration;
+
+use chrono::{NaiveDateTime, Utc};
 use thiserror::Error;
 
 /// The error happens when a duration is negative.

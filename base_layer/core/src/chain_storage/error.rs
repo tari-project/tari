@@ -20,12 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::BlockError, chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
 use lmdb_zero::error;
 use tari_mmr::{error::MerkleMountainRangeError, MerkleProofError};
 use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
+
+use crate::{
+    blocks::BlockError,
+    chain_storage::MmrTree,
+    proof_of_work::PowError,
+    transactions::transaction::TransactionError,
+    validation::ValidationError,
+};
 
 #[derive(Debug, Error)]
 pub enum ChainStorageError {
@@ -116,6 +123,12 @@ pub enum ChainStorageError {
     DatabaseResyncRequired(&'static str),
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
+    #[error("Add block is currently locked. No blocks may be added using add_block until the flag is cleared.")]
+    AddBlockOperationLocked,
+    #[error("Transaction Error: {0}")]
+    TransactionError(#[from] TransactionError),
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
 }
 
 impl ChainStorageError {
@@ -169,13 +182,7 @@ pub trait OrNotFound<U> {
 
 impl<U> OrNotFound<U> for Result<Option<U>, ChainStorageError> {
     fn or_not_found(self, entity: &'static str, field: &'static str, value: String) -> Result<U, ChainStorageError> {
-        match self {
-            Ok(inner) => match inner {
-                None => Err(ChainStorageError::ValueNotFound { entity, field, value }),
-                Some(v) => Ok(v),
-            },
-            Err(err) => Err(err),
-        }
+        self.and_then(|inner| inner.ok_or(ChainStorageError::ValueNotFound { entity, field, value }))
     }
 }
 

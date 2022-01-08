@@ -20,18 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    error::TransactionServiceError,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
-};
+use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
+
 use aes_gcm::Aes256Gcm;
-use std::{collections::HashMap, fmt, sync::Arc};
-use tari_common_types::transaction::TxId;
+use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{Transaction, TransactionOutput},
+};
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
+
+use crate::{
+    transaction_service::{
+        error::TransactionServiceError,
+        protocols::TxRejection,
+        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+    },
+    OperationId,
+};
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
@@ -44,11 +54,26 @@ pub enum TransactionServiceRequest {
     GetCancelledCompletedTransactions,
     GetCompletedTransaction(TxId),
     GetAnyTransaction(TxId),
-    SendTransaction(CommsPublicKey, MicroTari, MicroTari, String),
-    SendOneSidedTransaction(CommsPublicKey, MicroTari, MicroTari, String),
+    SendTransaction {
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
+    SendOneSidedTransaction {
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        fee_per_gram: MicroTari,
+        message: String,
+    },
+    SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
-    SubmitCoinSplitTransaction(TxId, Transaction, MicroTari, MicroTari, String),
+    SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
     ApplyEncryption(Box<Aes256Gcm>),
@@ -72,9 +97,30 @@ impl fmt::Display for TransactionServiceRequest {
             Self::GetCancelledPendingOutboundTransactions => f.write_str("GetCancelledPendingOutboundTransactions"),
             Self::GetCancelledCompletedTransactions => f.write_str("GetCancelledCompletedTransactions"),
             Self::GetCompletedTransaction(t) => f.write_str(&format!("GetCompletedTransaction({})", t)),
-            Self::SendTransaction(k, v, _, msg) => f.write_str(&format!("SendTransaction (to {}, {}, {})", k, v, msg)),
-            Self::SendOneSidedTransaction(k, v, _, msg) => {
-                f.write_str(&format!("SendOneSidedTransaction (to {}, {}, {})", k, v, msg))
+            Self::SendTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendTransaction (to {}, {}, {})",
+                dest_pubkey.to_hex(),
+                amount,
+                message
+            )),
+            Self::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                message,
+                ..
+            } => f.write_str(&format!(
+                "SendOneSidedTransaction (to {}, {}, {})",
+                dest_pubkey.to_hex(),
+                amount,
+                message
+            )),
+            Self::SendShaAtomicSwapTransaction(k, v, _, msg) => {
+                f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
             Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
@@ -84,9 +130,7 @@ impl fmt::Display for TransactionServiceRequest {
                 msg,
                 maturity.unwrap_or(0)
             )),
-            Self::SubmitCoinSplitTransaction(tx_id, _, _, _, _) => {
-                f.write_str(&format!("SubmitTransaction ({})", tx_id))
-            },
+            Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
             Self::SetNormalPowerMode => f.write_str("SetNormalPowerMode"),
             Self::ApplyEncryption(_) => f.write_str("ApplyEncryption"),
@@ -110,9 +154,9 @@ impl fmt::Display for TransactionServiceRequest {
 pub enum TransactionServiceResponse {
     TransactionSent(TxId),
     TransactionCancelled,
-    PendingInboundTransactions(HashMap<u64, InboundTransaction>),
-    PendingOutboundTransactions(HashMap<u64, OutboundTransaction>),
-    CompletedTransactions(HashMap<u64, CompletedTransaction>),
+    PendingInboundTransactions(HashMap<TxId, InboundTransaction>),
+    PendingOutboundTransactions(HashMap<TxId, OutboundTransaction>),
+    CompletedTransactions(HashMap<TxId, CompletedTransaction>),
     CompletedTransaction(Box<CompletedTransaction>),
     BaseNodePublicKeySet,
     UtxoImported(TxId),
@@ -126,8 +170,9 @@ pub enum TransactionServiceResponse {
     AnyTransaction(Box<Option<WalletTransaction>>),
     NumConfirmationsRequired(u64),
     NumConfirmationsSet,
-    ValidationStarted(u64),
+    ValidationStarted(OperationId),
     CompletedTransactionValidityChanged,
+    ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
 }
 
 /// Events that can be published on the Text Message Service Event Stream
@@ -141,7 +186,7 @@ pub enum TransactionEvent {
     TransactionDirectSendResult(TxId, bool),
     TransactionCompletedImmediately(TxId),
     TransactionStoreForwardSendResult(TxId, bool),
-    TransactionCancelled(TxId),
+    TransactionCancelled(TxId, TxRejection),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
     TransactionMined {
@@ -155,12 +200,71 @@ pub enum TransactionEvent {
         num_confirmations: u64,
         is_valid: bool,
     },
-    TransactionValidationTimedOut(u64),
-    TransactionValidationSuccess(u64),
-    TransactionValidationFailure(u64),
-    TransactionValidationAborted(u64),
-    TransactionValidationDelayed(u64),
+    TransactionValidationStateChanged(OperationId),
     Error(String),
+}
+
+impl fmt::Display for TransactionEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            TransactionEvent::MempoolBroadcastTimedOut(tx_id) => {
+                write!(f, "MempoolBroadcastTimedOut for tx:{}", tx_id)
+            },
+            TransactionEvent::ReceivedTransaction(tx) => {
+                write!(f, "ReceivedTransaction for {}", tx)
+            },
+            TransactionEvent::ReceivedTransactionReply(tx) => {
+                write!(f, "ReceivedTransactionReply for {}", tx)
+            },
+            TransactionEvent::ReceivedFinalizedTransaction(tx) => {
+                write!(f, "ReceivedFinalizedTransaction for {}", tx)
+            },
+            TransactionEvent::TransactionDiscoveryInProgress(tx) => {
+                write!(f, "TransactionDiscoveryInProgress for {}", tx)
+            },
+            TransactionEvent::TransactionDirectSendResult(tx, success) => {
+                write!(f, "TransactionDirectSendResult for {}: {}", tx, success)
+            },
+            TransactionEvent::TransactionCompletedImmediately(tx) => {
+                write!(f, "TransactionCompletedImmediately for {}", tx)
+            },
+            TransactionEvent::TransactionStoreForwardSendResult(tx, success) => {
+                write!(f, "TransactionStoreForwardSendResult for {}:{}", tx, success)
+            },
+            TransactionEvent::TransactionCancelled(tx, rejection) => {
+                write!(f, "TransactionCancelled for {}:{:?}", tx, rejection)
+            },
+            TransactionEvent::TransactionBroadcast(tx) => {
+                write!(f, "TransactionBroadcast for {}", tx)
+            },
+            TransactionEvent::TransactionImported(tx) => {
+                write!(f, "TransactionImported for {}", tx)
+            },
+            TransactionEvent::TransactionMined { tx_id, is_valid } => {
+                write!(f, "TransactionMined for {}. is_valid: {}", tx_id, is_valid)
+            },
+            TransactionEvent::TransactionMinedRequestTimedOut(tx) => {
+                write!(f, "TransactionMinedRequestTimedOut for {}", tx)
+            },
+            TransactionEvent::TransactionMinedUnconfirmed {
+                tx_id,
+                num_confirmations,
+                is_valid,
+            } => {
+                write!(
+                    f,
+                    "TransactionMinedUnconfirmed for {} with num confirmations: {}. is_valid: {}",
+                    tx_id, num_confirmations, is_valid
+                )
+            },
+            TransactionEvent::Error(error) => {
+                write!(f, "Error:{}", error)
+            },
+            TransactionEvent::TransactionValidationStateChanged(operation_id) => {
+                write!(f, "Transaction validation state changed: {}", operation_id)
+            },
+        }
+    }
 }
 
 pub type TransactionEventSender = broadcast::Sender<Arc<TransactionEvent>>;
@@ -197,12 +301,40 @@ impl TransactionServiceHandle {
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SendTransaction(
+            .call(TransactionServiceRequest::SendTransaction {
                 dest_pubkey,
                 amount,
+                unique_id: None,
+                parent_public_key: None,
                 fee_per_gram,
                 message,
-            ))
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_transaction_or_token(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendTransaction {
+                dest_pubkey,
+                amount,
+                unique_id,
+                parent_public_key,
+                fee_per_gram,
+                message,
+            })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
@@ -219,12 +351,40 @@ impl TransactionServiceHandle {
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::SendOneSidedTransaction(
+            .call(TransactionServiceRequest::SendOneSidedTransaction {
                 dest_pubkey,
                 amount,
+                unique_id: None,
+                parent_public_key: None,
                 fee_per_gram,
                 message,
-            ))
+            })
+            .await??
+        {
+            TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_one_sided_transaction_or_token(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<TxId, TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendOneSidedTransaction {
+                dest_pubkey,
+                amount,
+                unique_id,
+                parent_public_key,
+                fee_per_gram,
+                message,
+            })
             .await??
         {
             TransactionServiceResponse::TransactionSent(tx_id) => Ok(tx_id),
@@ -245,7 +405,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingInboundTransactions)
@@ -258,7 +418,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_pending_inbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, InboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, InboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingInboundTransactions)
@@ -271,7 +431,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetPendingOutboundTransactions)
@@ -284,7 +444,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_pending_outbound_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, OutboundTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, OutboundTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledPendingOutboundTransactions)
@@ -297,7 +457,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_completed_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCompletedTransactions)
@@ -310,7 +470,7 @@ impl TransactionServiceHandle {
 
     pub async fn get_cancelled_completed_transactions(
         &mut self,
-    ) -> Result<HashMap<u64, CompletedTransaction>, TransactionServiceError> {
+    ) -> Result<HashMap<TxId, CompletedTransaction>, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::GetCancelledCompletedTransactions)
@@ -375,13 +535,13 @@ impl TransactionServiceHandle {
         &mut self,
         tx_id: TxId,
         tx: Transaction,
-        fee: MicroTari,
         amount: MicroTari,
         message: String,
     ) -> Result<(), TransactionServiceError> {
+        let fee = tx.body.get_total_fee();
         match self
             .handle
-            .call(TransactionServiceRequest::SubmitCoinSplitTransaction(
+            .call(TransactionServiceRequest::SubmitTransactionToSelf(
                 tx_id, tx, fee, amount, message,
             ))
             .await??
@@ -502,13 +662,38 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn validate_transactions(&mut self) -> Result<u64, TransactionServiceError> {
+    pub async fn validate_transactions(&mut self) -> Result<OperationId, TransactionServiceError> {
         match self
             .handle
             .call(TransactionServiceRequest::ValidateTransactions)
             .await??
         {
             TransactionServiceResponse::ValidationStarted(id) => Ok(id),
+            _ => Err(TransactionServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn send_sha_atomic_swap_transaction(
+        &mut self,
+        dest_pubkey: CommsPublicKey,
+        amount: MicroTari,
+        fee_per_gram: MicroTari,
+        message: String,
+    ) -> Result<(TxId, PublicKey, TransactionOutput), TransactionServiceError> {
+        match self
+            .handle
+            .call(TransactionServiceRequest::SendShaAtomicSwapTransaction(
+                dest_pubkey,
+                amount,
+                fee_per_gram,
+                message,
+            ))
+            .await??
+        {
+            TransactionServiceResponse::ShaAtomicSwapTransactionSent(boxed) => {
+                let (tx_id, pre_image, output) = *boxed;
+                Ok((tx_id, pre_image, output))
+            },
             _ => Err(TransactionServiceError::UnexpectedApiResponse),
         }
     }

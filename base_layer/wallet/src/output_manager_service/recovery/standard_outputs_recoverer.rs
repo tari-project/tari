@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Instant};
 
 use log::*;
 use rand::rngs::OsRng;
@@ -73,6 +73,8 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         outputs: Vec<TransactionOutput>,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+        let start = Instant::now();
+        let outputs_length = outputs.len();
         let mut rewound_outputs: Vec<UnblindedOutput> = outputs
             .into_iter()
             .filter_map(|output| {
@@ -93,6 +95,7 @@ where TBackend: OutputManagerBackend + 'static
                         )
                     })
             })
+            //Todo this needs some investigation. We assume Nop script here and recovery here might create an unspendable output if the script does not equal Nop.
             .map(
                 |(output, features, script, sender_offset_public_key, metadata_signature)| {
                     // Todo we need to look here that we might want to fail a specific output and not recover it as this
@@ -101,23 +104,31 @@ where TBackend: OutputManagerBackend + 'static
                     let script_key = PrivateKey::random(&mut OsRng);
                     UnblindedOutput::new(
                         output.committed_value,
-                        output.blinding_factor.clone(),
+                        output.blinding_factor,
                         features,
                         script,
                         inputs!(PublicKey::from_secret_key(&script_key)),
                         script_key,
                         sender_offset_public_key,
                         metadata_signature,
+                        0,
                     )
                 },
             )
             .collect();
+        let rewind_time = start.elapsed();
+        trace!(
+            target: LOG_TARGET,
+            "bulletproof rewind profile - rewound {} outputs in {} ms",
+            outputs_length,
+            rewind_time.as_millis(),
+        );
 
         for output in rewound_outputs.iter_mut() {
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
                 .await?;
 
-            let db_output = DbUnblindedOutput::from_unblinded_output(output.clone(), &self.factories)?;
+            let db_output = DbUnblindedOutput::from_unblinded_output(output.clone(), &self.factories, None)?;
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output(db_output).await {
                 match e {
@@ -134,10 +145,7 @@ where TBackend: OutputManagerBackend + 'static
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
-                output
-                    .as_transaction_input(&self.factories.commitment)?
-                    .commitment
-                    .to_hex(),
+                output_hex,
                 output.value,
                 output.features,
             );

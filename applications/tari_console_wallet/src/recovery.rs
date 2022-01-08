@@ -26,17 +26,16 @@ use log::*;
 use rustyline::Editor;
 use tari_common::exit_codes::ExitCodes;
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_key_manager::mnemonic::Mnemonic;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
 use tari_wallet::{
-    storage::sqlite_db::WalletSqliteDatabase,
-    utxo_scanner_service::{handle::UtxoScannerEvent, utxo_scanning::UtxoScannerService},
+    storage::sqlite_db::wallet::WalletSqliteDatabase,
+    utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletSqlite,
 };
+use tokio::sync::broadcast;
 
 use crate::wallet_modes::PeerConfig;
-use tari_key_manager::cipher_seed::CipherSeed;
-use tokio::sync::broadcast;
 
 pub const LOG_TARGET: &str = "wallet::recovery";
 
@@ -79,7 +78,11 @@ pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, E
 /// Recovers wallet funds by connecting to a given base node peer, downloading the transaction outputs stored in the
 /// blockchain, and attempting to rewind them. Any outputs that are successfully rewound are then imported into the
 /// wallet.
-pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfig) -> Result<(), ExitCodes> {
+pub async fn wallet_recovery(
+    wallet: &WalletSqlite,
+    base_node_config: &PeerConfig,
+    retry_limit: usize,
+) -> Result<(), ExitCodes> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
     // We dont care about the shutdown signal here, so we just create one
     let shutdown = Shutdown::new();
@@ -97,12 +100,16 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
             peer.node_id.to_hex()
         );
         peer_public_keys.push(peer.public_key.clone());
-        peer_manager.add_peer(peer).await?;
+        peer_manager
+            .add_peer(peer)
+            .await
+            .map_err(|err| ExitCodes::NetworkError(err.to_string()))?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
         .with_peers(peer_public_keys)
-        .with_retry_limit(3)
+        // Do not make this a small number as wallet recovery needs to be resilient
+        .with_retry_limit(retry_limit)
         .build_with_wallet(wallet, shutdown_signal);
 
     let mut event_stream = recovery_task.get_event_receiver();
@@ -119,24 +126,24 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 println!("OK (latency = {:.2?})", latency);
             },
             Ok(UtxoScannerEvent::Progress {
-                current_block: current,
-                current_chain_height: total,
+                current_height,
+                tip_height,
             }) => {
-                let percentage_progress = ((current as f32) * 100f32 / (total as f32)).round() as u32;
+                let percentage_progress = ((current_height as f32) * 100f32 / (tip_height as f32)).round() as u32;
                 debug!(
                     target: LOG_TARGET,
-                    "{}: Recovery process {}% complete ({} of {} utxos).",
+                    "{}: Recovery process {}% complete (Block {} of {}).",
                     Local::now(),
                     percentage_progress,
-                    current,
-                    total
+                    current_height,
+                    tip_height
                 );
                 println!(
-                    "{}: Recovery process {}% complete ({} of {} utxos).",
+                    "{}: Recovery process {}% complete (Block {} of {}).",
                     Local::now(),
                     percentage_progress,
-                    current,
-                    total
+                    current_height,
+                    tip_height
                 );
             },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
@@ -165,15 +172,15 @@ pub async fn wallet_recovery(wallet: &WalletSqlite, base_node_config: &PeerConfi
                 warn!(target: LOG_TARGET, "{}", s);
             },
             Ok(UtxoScannerEvent::Completed {
-                number_scanned: num_scanned,
-                number_received: num_utxos,
-                value_received: total_amount,
-                time_taken: elapsed,
+                final_height,
+                num_recovered,
+                value_recovered,
+                time_taken,
             }) => {
-                let rate = (num_scanned as f32) * 1000f32 / (elapsed.as_millis() as f32);
+                let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(
-                    "Recovery complete! Scanned = {} in {:.2?} ({:.2?} utxos/s), Recovered {} worth {}",
-                    num_scanned, elapsed, rate, num_utxos, total_amount
+                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
+                    final_height, time_taken, rate, num_recovered, value_recovered
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);

@@ -64,7 +64,13 @@ mod server;
 pub use server::{mock, NamedProtocolService, RpcServer, RpcServerError, RpcServerHandle};
 
 mod client;
-pub use client::{RpcClient, RpcClientBuilder, RpcClientConfig};
+pub use client::{
+    pool,
+    pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient},
+    RpcClient,
+    RpcClientBuilder,
+    RpcClientConfig,
+};
 
 mod either;
 
@@ -77,9 +83,6 @@ pub use error::RpcError;
 mod handshake;
 pub use handshake::{Handshake, RpcHandshakeError};
 
-mod client_pool;
-pub use client_pool::{RpcClientLease, RpcClientPool, RpcClientPoolError, RpcPoolClient};
-
 mod status;
 pub use status::{RpcStatus, RpcStatusCode};
 
@@ -87,12 +90,16 @@ mod not_found;
 
 // Re-exports used to keep things orderly in the #[tari_rpc] proc macro
 pub mod __macro_reexports {
+    pub use futures::{future, future::BoxFuture};
+    pub use tokio::io::{AsyncRead, AsyncWrite};
+    pub use tower::Service;
+
     pub use crate::{
         framing::CanonicalFraming,
         protocol::{
             rpc::{
-                client_pool::RpcPoolClient,
                 message::{Request, Response},
+                pool::RpcPoolClient,
                 server::{NamedProtocolService, RpcServerError},
                 Body,
                 ClientStreaming,
@@ -107,7 +114,4 @@ pub mod __macro_reexports {
         stream_id::StreamId,
         Bytes,
     };
-    pub use futures::{future, future::BoxFuture};
-    pub use tokio::io::{AsyncRead, AsyncWrite};
-    pub use tower::Service;
 }

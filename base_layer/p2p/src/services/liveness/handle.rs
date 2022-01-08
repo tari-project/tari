@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{error::LivenessError, state::Metadata};
-use crate::proto::liveness::MetadataKey;
 use std::sync::Arc;
+
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
+
+use super::{error::LivenessError, state::Metadata};
+use crate::proto::liveness::MetadataKey;
 
 /// Request types made through the `LivenessHandle` and are handled by the `LivenessService`
 #[derive(Debug, Clone)]

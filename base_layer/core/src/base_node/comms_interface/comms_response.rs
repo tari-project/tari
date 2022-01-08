@@ -20,14 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{self, Display, Formatter};
+
+use serde::{Deserialize, Serialize};
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+
 use crate::{
     blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::UtxoMinedInfo,
     proof_of_work::Difficulty,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
-use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
-use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
 
 /// API Response enum
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -48,6 +51,15 @@ pub enum NodeCommsResponse {
     TargetDifficulty(Difficulty),
     FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
+    FetchTokensResponse {
+        outputs: Vec<TransactionOutput>,
+    },
+    FetchAssetRegistrationsResponse {
+        outputs: Vec<UtxoMinedInfo>,
+    },
+    FetchAssetMetadataResponse {
+        output: Box<Option<UtxoMinedInfo>>,
+    },
 }
 
 impl Display for NodeCommsResponse {
@@ -75,6 +87,9 @@ impl Display for NodeCommsResponse {
             TargetDifficulty(_) => write!(f, "TargetDifficulty"),
             FetchHeadersAfterResponse(_) => write!(f, "FetchHeadersAfterResponse"),
             MmrNodes(_, _) => write!(f, "MmrNodes"),
+            FetchTokensResponse { .. } => write!(f, "FetchTokensResponse"),
+            FetchAssetRegistrationsResponse { .. } => write!(f, "FetchAssetRegistrationsResponse"),
+            FetchAssetMetadataResponse { .. } => write!(f, "FetchAssetMetadataResponse"),
         }
     }
 }

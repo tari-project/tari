@@ -1,9 +1,12 @@
 //! An ergonomic, multithreaded API for an LMDB datastore
 
-use crate::{
-    key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
-    lmdb_store::error::LMDBError,
+use std::{
+    cmp::max,
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
+
 use lmdb_zero::{
     db,
     error,
@@ -27,18 +30,17 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use std::{
-    cmp::max,
-    collections::HashMap,
-    path::{Path, PathBuf},
-    sync::Arc,
+
+use crate::{
+    key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
+    lmdb_store::error::LMDBError,
 };
 
 const LOG_TARGET: &str = "lmdb";
 const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// An atomic pointer to an LMDB database instance
-type DatabaseRef = Arc<Database<'static>>;
+pub type DatabaseRef = Arc<Database<'static>>;
 
 #[derive(Debug, Clone)]
 pub struct LMDBConfig {
@@ -107,9 +109,9 @@ impl Default for LMDBConfig {
 ///     .build()
 ///     .unwrap();
 /// ```
-#[derive(Default)]
 pub struct LMDBBuilder {
     path: PathBuf,
+    env_flags: open::Flags,
     max_dbs: usize,
     db_names: HashMap<String, db::Flags>,
     env_config: LMDBConfig,
@@ -124,12 +126,7 @@ impl LMDBBuilder {
     /// | path      | ./store/|
     /// | named DBs | none    |
     pub fn new() -> LMDBBuilder {
-        LMDBBuilder {
-            path: "./store/".into(),
-            db_names: HashMap::new(),
-            max_dbs: 8,
-            env_config: LMDBConfig::default(),
-        }
+        Default::default()
     }
 
     /// Set the directory where the LMDB database exists, or must be created.
@@ -137,6 +134,12 @@ impl LMDBBuilder {
     /// return `LMDBError::InvalidPath`.
     pub fn set_path<P: AsRef<Path>>(mut self, path: P) -> LMDBBuilder {
         self.path = path.as_ref().to_owned();
+        self
+    }
+
+    /// Set environment flags
+    pub fn set_env_flags(mut self, flags: open::Flags) -> LMDBBuilder {
+        self.env_flags = flags;
         self
     }
 
@@ -174,15 +177,15 @@ impl LMDBBuilder {
             let mut builder = EnvBuilder::new()?;
             builder.set_mapsize(self.env_config.init_size_bytes)?;
             builder.set_maxdbs(max_dbs)?;
-            // Using open::Flags::NOTLS does not compile!?! NOTLS=0x200000
-            let flags = open::Flags::from_bits(0x0020_0000).expect("LMDB open::Flag is correct");
+            // Always include NOTLS flag since we know that we're using this with tokio
+            let flags = self.env_flags | open::NOTLS;
             let env = builder.open(&path, flags, 0o600)?;
             // SAFETY: no transactions can be open at this point
             LMDBStore::resize_if_required(&env, &self.env_config)?;
             Arc::new(env)
         };
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
             path,
@@ -211,6 +214,18 @@ impl LMDBBuilder {
             env,
             databases,
         })
+    }
+}
+
+impl Default for LMDBBuilder {
+    fn default() -> Self {
+        Self {
+            path: "./store/".into(),
+            env_flags: open::Flags::empty(),
+            db_names: HashMap::new(),
+            max_dbs: 8,
+            env_config: LMDBConfig::default(),
+        }
     }
 }
 
@@ -706,7 +721,7 @@ impl<'txn, 'db: 'txn> LMDBReadTransaction<'txn, 'db> {
     {
         match val {
             Ok(None) => Ok(None),
-            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e.to_string()))),
+            Err(e) => Err(LMDBError::GetError(format!("LMDB get error: {}", e))),
             Ok(Some(v)) => match bincode::deserialize(v) {
                 // The reference to v is about to be dropped, so we must copy the data now
                 Ok(val) => Ok(Some(val)),
@@ -756,9 +771,11 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
 
 #[cfg(test)]
 mod test {
-    use crate::lmdb_store::{LMDBBuilder, LMDBConfig};
-    use lmdb_zero::db;
     use std::env;
+
+    use lmdb_zero::db;
+
+    use crate::lmdb_store::{LMDBBuilder, LMDBConfig};
 
     #[test]
     fn test_lmdb_builder() {

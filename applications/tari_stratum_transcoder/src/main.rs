@@ -31,15 +31,17 @@ mod common;
 mod error;
 mod proxy;
 
-use crate::error::StratumTranscoderProxyError;
+use std::convert::{Infallible, TryFrom};
+
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{StratumTranscoderProxyConfig, StratumTranscoderProxyService};
-use std::convert::{Infallible, TryFrom};
 use structopt::StructOpt;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tokio::time::Duration;
+
+use crate::error::StratumTranscoderProxyError;
 
 #[tokio::main]
 async fn main() -> Result<(), StratumTranscoderProxyError> {
@@ -95,6 +97,6 @@ fn initialize() -> Result<GlobalConfig, StratumTranscoderProxyError> {
     #[cfg(not(feature = "envlog"))]
     bootstrap.initialize_logging()?;
 
-    let cfg = GlobalConfig::convert_from(application_type, cfg)?;
+    let cfg = GlobalConfig::convert_from(application_type, cfg, bootstrap.network)?;
     Ok(cfg)
 }

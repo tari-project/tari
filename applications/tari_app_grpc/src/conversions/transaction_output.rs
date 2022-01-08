@@ -20,16 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
-use tari_core::{
-    crypto::{
-        script::TariScript,
-        tari_utilities::{ByteArray, Hashable},
-    },
-    transactions::transaction::TransactionOutput,
-};
+use tari_core::transactions::transaction::TransactionOutput;
+use tari_crypto::script::TariScript;
+use tari_utilities::{ByteArray, Hashable};
+
+use crate::tari_rpc as grpc;
 
 impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;
@@ -40,8 +38,8 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
-        let commitment = Commitment::from_bytes(&output.commitment)
-            .map_err(|err| format!("Invalid output commitment: {}", err.to_string()))?;
+        let commitment =
+            Commitment::from_bytes(&output.commitment).map_err(|err| format!("Invalid output commitment: {}", err))?;
         let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
             .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
@@ -70,10 +68,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
         let hash = output.hash();
         grpc::TransactionOutput {
             hash,
-            features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
-            }),
+            features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),
             range_proof: Vec::from(output.proof.as_bytes()),
             script: output.script.as_bytes(),

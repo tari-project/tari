@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]
 #![cfg_attr(not(debug_assertions), deny(dead_code))]
@@ -26,6 +27,7 @@
 #![deny(unused_must_use)]
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
+
 //! # Common logging and configuration utilities
 //!
 //! ## The global Tari configuration file
@@ -70,8 +72,8 @@
 //! # args.init = true;
 //! args.init_dirs(ApplicationType::BaseNode);
 //! let config = args.load_configuration().unwrap();
-//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config).unwrap();
-//! assert_eq!(global.network, Network::Weatherwax);
+//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("dibbler".into())).unwrap();
+//! assert_eq!(global.network, Network::Dibbler);
 //! assert!(global.core_threads.is_none());
 //! # std::fs::remove_dir_all(temp_dir).unwrap();
 //! ```
@@ -81,7 +83,6 @@ pub mod build;
 pub mod exit_codes;
 #[macro_use]
 mod logging;
-
 pub mod configuration;
 pub use configuration::{
     bootstrap::{install_configuration, ConfigBootstrap},
@@ -91,10 +92,9 @@ pub use configuration::{
     name_server::DnsNameServer,
     utils::{config_installer, default_config, load_configuration},
 };
-
 pub mod dir_utils;
-
 pub use logging::initialize_logging;
+pub mod file_lock;
 
 pub const DEFAULT_CONFIG: &str = "config/config.toml";
 pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";

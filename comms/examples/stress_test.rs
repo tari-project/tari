@@ -21,15 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod stress;
-use stress::{error::Error, prompt::user_prompt};
-
-use crate::stress::{node, prompt::parse_from_short_str, service, service::StressTestServiceRequest};
-use futures::{future, future::Either};
 use std::{env, net::Ipv4Addr, path::Path, process, sync::Arc, time::Duration};
+
+use futures::{future, future::Either};
+use stress::{error::Error, prompt::user_prompt};
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_shutdown::Shutdown;
 use tempfile::Builder;
 use tokio::{sync::oneshot, time};
+
+use crate::stress::{node, prompt::parse_from_short_str, service, service::StressTestServiceRequest};
 
 #[tokio::main]
 async fn main() {

@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use serde_derive::{Deserialize, Serialize};
 use std::{fmt, net::SocketAddr};
+
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug)]
 pub enum KeyType {

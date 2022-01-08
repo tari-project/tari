@@ -20,14 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
+
+use log::*;
+use tari_comms::peer_manager::PeerFeatures;
+
 use super::{
     state_machine::{DiscoveryParams, NetworkDiscoveryContext, StateEvent},
     NetworkDiscoveryError,
 };
 use crate::{network_discovery::DhtNetworkDiscoveryRoundInfo, DhtConfig};
-use log::*;
-use std::cmp;
-use tari_comms::peer_manager::PeerFeatures;
 
 const LOG_TARGET: &str = "comms::dht::network_discovery::ready";
 

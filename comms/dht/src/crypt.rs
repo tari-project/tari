@@ -20,11 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
-    outbound::DhtOutboundError,
-    version::DhtProtocolVersion,
-};
+use std::mem::size_of;
+
 use chacha20::{
     cipher::{NewCipher, StreamCipher},
     ChaCha20,
@@ -33,11 +30,16 @@ use chacha20::{
 };
 use digest::Digest;
 use rand::{rngs::OsRng, RngCore};
-use std::mem::size_of;
 use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey},
     tari_utilities::{epoch_time::EpochTime, ByteArray},
+};
+
+use crate::{
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
+    outbound::DhtOutboundError,
+    version::DhtProtocolVersion,
 };
 
 pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> PK
@@ -105,18 +107,15 @@ pub fn create_origin_mac_challenge_parts(
     body: &[u8],
 ) -> Challenge {
     let mut mac_challenge = Challenge::new();
-    // TODO: #testnet_reset remove conditional
-    if protocol_version.as_major() > 1 {
-        mac_challenge.update(&protocol_version.to_bytes());
-        mac_challenge.update(destination.to_inner_bytes().as_slice());
-        mac_challenge.update(&(*message_type as i32).to_le_bytes());
-        mac_challenge.update(&flags.bits().to_le_bytes());
-        if let Some(t) = expires {
-            mac_challenge.update(&t.as_u64().to_le_bytes());
-        }
-        if let Some(e_pk) = ephemeral_public_key.as_ref() {
-            mac_challenge.update(e_pk.as_bytes());
-        }
+    mac_challenge.update(&protocol_version.to_bytes());
+    mac_challenge.update(destination.to_inner_bytes().as_slice());
+    mac_challenge.update(&(*message_type as i32).to_le_bytes());
+    mac_challenge.update(&flags.bits().to_le_bytes());
+    if let Some(t) = expires {
+        mac_challenge.update(&t.as_u64().to_le_bytes());
+    }
+    if let Some(e_pk) = ephemeral_public_key.as_ref() {
+        mac_challenge.update(e_pk.as_bytes());
     }
     mac_challenge.update(&body);
     mac_challenge
@@ -124,8 +123,9 @@ pub fn create_origin_mac_challenge_parts(
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use tari_utilities::hex::from_hex;
+
+    use super::*;
 
     #[test]
     fn encrypt_decrypt() {

@@ -47,6 +47,17 @@
 //!                                      set: [env: TARI_LOG_CONFIGURATION=]
 //! ```
 
+use std::{
+    fmt,
+    fmt::{Display, Formatter},
+    io,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
+
+use structopt::StructOpt;
+
 use super::{
     error::ConfigError,
     utils::{config_installer, load_configuration},
@@ -62,14 +73,6 @@ use crate::{
     DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
-use std::{
-    fmt,
-    fmt::{Display, Formatter},
-    io,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
-use structopt::StructOpt;
 
 #[derive(StructOpt, Debug, Clone)]
 pub struct ConfigBootstrap {
@@ -153,6 +156,16 @@ pub struct ConfigBootstrap {
     /// Supply a network (overrides existing configuration)
     #[structopt(long, alias = "network")]
     pub network: Option<String>,
+    #[structopt(long, alias = "grpc-address")]
+    pub wallet_grpc_address: Option<String>,
+    /// Metrics server bind address (prometheus pull)
+    #[structopt(long, alias = "metrics-bind-addr")]
+    pub metrics_server_bind_addr: Option<SocketAddr>,
+    /// Metrics push endpoint (prometheus push)
+    #[structopt(long)]
+    pub metrics_push_endpoint: Option<String>,
+    #[structopt(long, alias = "custom_base_node")]
+    pub custom_base_node: Option<String>,
 }
 
 fn normalize_path(path: PathBuf) -> PathBuf {
@@ -189,6 +202,10 @@ impl Default for ConfigBootstrap {
             miner_max_diff: None,
             tracing_enabled: false,
             network: None,
+            wallet_grpc_address: None,
+            metrics_server_bind_addr: None,
+            metrics_push_endpoint: None,
+            custom_base_node: None,
         }
     }
 }
@@ -249,6 +266,12 @@ impl ConfigBootstrap {
                 ApplicationType::MiningNode => {
                     self.log_config = normalize_path(dir_utils::default_path(
                         DEFAULT_MINING_NODE_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
+                ApplicationType::ValidatorNode => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_BASE_NODE_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
@@ -320,7 +343,7 @@ where F: Fn(ApplicationType, &Path) -> Result<(), std::io::Error> {
         println!(
             "Failed to install a new configuration file in {}: {}",
             path.to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     }
 }
@@ -332,6 +355,7 @@ pub enum ApplicationType {
     MergeMiningProxy,
     MiningNode,
     StratumTranscoder,
+    ValidatorNode,
 }
 
 impl ApplicationType {
@@ -342,6 +366,7 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+            ValidatorNode => "Digital Assets Network Validator Node",
             StratumTranscoder => "Tari Stratum Transcoder",
         }
     }
@@ -354,6 +379,7 @@ impl ApplicationType {
             MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
             StratumTranscoder => "stratum-transcoder",
+            ValidatorNode => "validator-node",
         }
     }
 }
@@ -368,6 +394,7 @@ impl FromStr for ApplicationType {
             "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
             "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
+            "validator-node" => Ok(ValidatorNode),
             "stratum-proxy" => Ok(StratumTranscoder),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }
@@ -383,6 +410,11 @@ impl Display for ApplicationType {
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
+    use structopt::StructOpt;
+    use tempfile::tempdir;
+
     use crate::{
         configuration::bootstrap::ApplicationType,
         dir_utils,
@@ -392,9 +424,6 @@ mod test {
         DEFAULT_BASE_NODE_LOG_CONFIG,
         DEFAULT_CONFIG,
     };
-    use std::path::PathBuf;
-    use structopt::StructOpt;
-    use tempfile::tempdir;
 
     #[test]
     fn test_bootstrap_and_load_configuration() {

@@ -20,11 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{Display, Error, Formatter};
+
+use randomx_rs::RandomXFlag;
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_comms::peer_manager::NodeId;
+
 use crate::base_node::{
     state_machine_service::states::{
         BlockSync,
         DecideNextSync,
-        HeaderSync,
+        HeaderSyncState,
         HorizonStateSync,
         Listening,
         ListeningInfo,
@@ -34,15 +40,11 @@ use crate::base_node::{
     },
     sync::SyncPeer,
 };
-use randomx_rs::RandomXFlag;
-use std::fmt::{Display, Error, Formatter};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug)]
 pub enum BaseNodeState {
     Starting(Starting),
-    HeaderSync(HeaderSync),
+    HeaderSync(HeaderSyncState),
     DecideNextSync(DecideNextSync),
     HorizonStateSync(HorizonStateSync),
     BlockSync(BlockSync),
@@ -84,7 +86,11 @@ impl<E: std::error::Error> From<E> for StateEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata, Vec<SyncPeer>),
+    Lagging {
+        local: ChainMetadata,
+        network: ChainMetadata,
+        sync_peers: Vec<SyncPeer>,
+    },
     UpToDate,
 }
 
@@ -102,12 +108,14 @@ impl Display for SyncStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use SyncStatus::*;
         match self {
-            Lagging(m, v) => write!(
+            Lagging {
+                network, sync_peers, ..
+            } => write!(
                 f,
                 "Lagging behind {} peers (#{}, Difficulty: {})",
-                v.len(),
-                m.height_of_longest_chain(),
-                m.accumulated_difficulty(),
+                sync_peers.len(),
+                network.height_of_longest_chain(),
+                network.accumulated_difficulty(),
             ),
             UpToDate => f.write_str("UpToDate"),
         }
@@ -165,25 +173,30 @@ pub enum StateInfo {
 }
 
 impl StateInfo {
-    pub fn short_desc(&self) -> String {
+    pub fn short_desc(&self, full_log: bool) -> String {
         use StateInfo::*;
         match self {
             StartUp => "Starting up".to_string(),
             HeaderSync(None) => "Starting header sync".to_string(),
             HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string()),
-            HorizonSync(info) => match info.status {
+            HorizonSync(info) => match info.status.clone() {
                 HorizonSyncStatus::Starting => "Starting horizon sync".to_string(),
-                HorizonSyncStatus::Kernels(current, total) => format!(
-                    "Syncing kernels: {}/{} ({:.0}%)",
+                HorizonSyncStatus::Kernels(current, total, node) => format!(
+                    "Syncing kernels: {}/{} ({:.0}%){}",
                     current,
                     total,
-                    current as f64 / total as f64 * 100.0
+                    current as f64 / total as f64 * 100.0,
+                    match full_log {
+                        true => format!(" {}", node),
+                        false => "".to_string(),
+                    }
                 ),
-                HorizonSyncStatus::Outputs(current, total) => format!(
-                    "Syncing outputs: {}/{} ({:.0}%)",
+                HorizonSyncStatus::Outputs(current, total, node) => format!(
+                    "Syncing outputs: {}/{} ({:.0}%) from {}",
                     current,
                     total,
-                    current as f64 / total as f64 * 100.0
+                    current as f64 / total as f64 * 100.0,
+                    node
                 ),
                 HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
             },
@@ -315,14 +328,16 @@ impl Display for HorizonSyncInfo {
             fmt.write_str(&format!("{}\n", peer))?;
         }
 
-        match self.status {
+        match self.status.clone() {
             HorizonSyncStatus::Starting => fmt.write_str("Starting horizon state synchronization"),
-            HorizonSyncStatus::Kernels(current, total) => {
-                fmt.write_str(&format!("Horizon syncing kernels: {}/{}\n", current, total))
-            },
-            HorizonSyncStatus::Outputs(current, total) => {
-                fmt.write_str(&format!("Horizon syncing outputs: {}/{}\n", current, total))
-            },
+            HorizonSyncStatus::Kernels(current, total, node) => fmt.write_str(&format!(
+                "Horizon syncing kernels: {}/{} from {}\n",
+                current, total, node
+            )),
+            HorizonSyncStatus::Outputs(current, total, node) => fmt.write_str(&format!(
+                "Horizon syncing outputs: {}/{} from {}\n",
+                current, total, node
+            )),
             HorizonSyncStatus::Finalizing => fmt.write_str("Finalizing horizon state synchronization"),
         }
     }
@@ -330,7 +345,7 @@ impl Display for HorizonSyncInfo {
 #[derive(Clone, Debug, PartialEq)]
 pub enum HorizonSyncStatus {
     Starting,
-    Kernels(u64, u64),
-    Outputs(u64, u64),
+    Kernels(u64, u64, NodeId),
+    Outputs(u64, u64, NodeId),
     Finalizing,
 }

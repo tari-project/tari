@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use rand::{CryptoRng, Rng};
-use std::{fmt::Debug, thread, time::Duration};
 use tari_common_types::types::{CommitmentFactory, PrivateKey, PublicKey};
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -32,32 +31,6 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     script,
 };
-
-pub fn assert_change<F, T>(mut func: F, to: T, poll_count: usize)
-where
-    F: FnMut() -> T,
-    T: Eq + Debug,
-{
-    let mut i = 0;
-    loop {
-        let last_val = func();
-        if last_val == to {
-            break;
-        }
-
-        i += 1;
-        if i >= poll_count {
-            panic!(
-                "Value did not change to {:?} within {}ms (last value: {:?})",
-                to,
-                poll_count * 100,
-                last_val,
-            );
-        }
-
-        thread::sleep(Duration::from_millis(100));
-    }
-}
 
 pub struct TestParams {
     pub spend_key: PrivateKey,

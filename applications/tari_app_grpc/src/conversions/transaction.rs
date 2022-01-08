@@ -20,21 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
-use tari_common_types::transaction::{self as tx, TxId};
-use tari_core::{
-    crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
-    transactions::transaction::Transaction,
-};
 
-impl From<Transaction> for grpc::Transaction {
-    fn from(source: Transaction) -> Self {
-        Self {
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_core::transactions::transaction::Transaction;
+use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_utilities::ByteArray;
+
+use crate::tari_rpc as grpc;
+
+impl TryFrom<Transaction> for grpc::Transaction {
+    type Error = String;
+
+    fn try_from(source: Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
             offset: Vec::from(source.offset.as_bytes()),
-            body: Some(source.body.into()),
+            body: Some(source.body.try_into()?),
             script_offset: Vec::from(source.script_offset.as_bytes()),
-        }
+        })
     }
 }
 
@@ -43,21 +46,20 @@ impl TryFrom<grpc::Transaction> for Transaction {
 
     fn try_from(source: grpc::Transaction) -> Result<Self, Self::Error> {
         Ok(Self {
-            offset: RistrettoSecretKey::from_bytes(&source.offset)
-                .map_err(|e| format!("Offset is not valid:{}", e.to_string()))?,
+            offset: RistrettoSecretKey::from_bytes(&source.offset).map_err(|e| format!("Offset is not valid:{}", e))?,
             body: source
                 .body
                 .ok_or_else(|| "Transaction body not provided".to_string())?
                 .try_into()?,
             script_offset: RistrettoSecretKey::from_bytes(&source.script_offset)
-                .map_err(|e| format!("Script offset is not valid:{}", e.to_string()))?,
+                .map_err(|e| format!("Script offset is not valid:{}", e))?,
         })
     }
 }
 
-impl From<tx::TransactionDirection> for grpc::TransactionDirection {
-    fn from(status: tx::TransactionDirection) -> Self {
-        use tx::TransactionDirection::*;
+impl From<TransactionDirection> for grpc::TransactionDirection {
+    fn from(status: TransactionDirection) -> Self {
+        use TransactionDirection::*;
         match status {
             Unknown => grpc::TransactionDirection::Unknown,
             Inbound => grpc::TransactionDirection::Inbound,
@@ -66,9 +68,9 @@ impl From<tx::TransactionDirection> for grpc::TransactionDirection {
     }
 }
 
-impl From<tx::TransactionStatus> for grpc::TransactionStatus {
-    fn from(status: tx::TransactionStatus) -> Self {
-        use tx::TransactionStatus::*;
+impl From<TransactionStatus> for grpc::TransactionStatus {
+    fn from(status: TransactionStatus) -> Self {
+        use TransactionStatus::*;
         match status {
             Completed => grpc::TransactionStatus::Completed,
             Broadcast => grpc::TransactionStatus::Broadcast,
@@ -85,7 +87,7 @@ impl From<tx::TransactionStatus> for grpc::TransactionStatus {
 impl grpc::TransactionInfo {
     pub fn not_found(tx_id: TxId) -> Self {
         Self {
-            tx_id,
+            tx_id: tx_id.into(),
             status: grpc::TransactionStatus::NotFound as i32,
             ..Default::default()
         }

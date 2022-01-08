@@ -20,9 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{peer_manager::NodeId, PeerConnection};
-use nom::lib::std::collections::hash_map::Entry;
 use std::{collections::HashMap, fmt, time::Duration};
+
+use nom::lib::std::collections::hash_map::Entry;
+
+use crate::{peer_manager::NodeId, PeerConnection};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionStatus {
@@ -207,49 +209,41 @@ impl ConnectionPool {
     }
 
     pub fn count_connected_nodes(&self) -> usize {
-        self.connections
-            .values()
-            .filter(|c| {
-                c.status() == ConnectionStatus::Connected &&
-                    c.connection()
-                        .filter(|c| c.is_connected() && c.peer_features().is_node())
-                        .is_some()
-            })
-            .count()
+        self.count_filtered(|c| {
+            c.status() == ConnectionStatus::Connected &&
+                c.connection()
+                    .filter(|c| c.is_connected() && c.peer_features().is_node())
+                    .is_some()
+        })
     }
 
     pub fn count_connected_clients(&self) -> usize {
-        self.connections
-            .values()
-            .filter(|c| {
-                c.status() == ConnectionStatus::Connected &&
-                    c.connection()
-                        .filter(|c| c.is_connected() && c.peer_features().is_client())
-                        .is_some()
-            })
-            .count()
+        self.count_filtered(|c| {
+            c.status() == ConnectionStatus::Connected &&
+                c.connection()
+                    .filter(|c| c.is_connected() && c.peer_features().is_client())
+                    .is_some()
+        })
     }
 
     pub fn count_connected(&self) -> usize {
-        self.connections
-            .values()
-            .filter(|c| c.status() == ConnectionStatus::Connected || c.status() == ConnectionStatus::Connecting)
-            .count()
+        self.count_filtered(|c| c.is_connected())
     }
 
     pub fn count_failed(&self) -> usize {
-        self.count_status(ConnectionStatus::Failed)
+        self.count_filtered(|c| c.status() == ConnectionStatus::Failed)
     }
 
     pub fn count_disconnected(&self) -> usize {
-        self.count_status(ConnectionStatus::Disconnected)
+        self.count_filtered(|c| c.status() == ConnectionStatus::Disconnected)
     }
 
     pub fn count_entries(&self) -> usize {
         self.connections.len()
     }
 
-    fn count_status(&self, status: ConnectionStatus) -> usize {
-        self.connections.values().filter(|c| c.status() == status).count()
+    pub(in crate::connectivity) fn count_filtered<P>(&self, mut predicate: P) -> usize
+    where P: FnMut(&PeerConnectionState) -> bool {
+        self.connections.values().filter(|c| (predicate)(*c)).count()
     }
 }

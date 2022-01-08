@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use tari_core::base_node::state_machine_service::states::{StateInfo, StateInfo::*};
+
+use crate::tari_rpc as grpc;
 
 impl From<StateInfo> for grpc::BaseNodeState {
     fn from(info: StateInfo) -> Self {

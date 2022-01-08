@@ -20,25 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::{
-    dialer::{Dialer, DialerRequest},
-    error::ConnectionManagerError,
-    listener::PeerListener,
-    peer_connection::PeerConnection,
-    requester::ConnectionManagerRequest,
-};
-use crate::{
-    backoff::Backoff,
-    multiplexing::Substream,
-    noise::NoiseConfig,
-    peer_manager::{NodeId, NodeIdentity},
-    protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
-    transports::{TcpTransport, Transport},
-    PeerManager,
-};
+use std::{fmt, sync::Arc};
+
 use log::*;
 use multiaddr::Multiaddr;
-use std::{fmt, sync::Arc};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use time::Duration;
 use tokio::{
@@ -48,6 +33,24 @@ use tokio::{
     time,
 };
 use tracing::{span, Instrument, Level};
+
+use super::{
+    dialer::{Dialer, DialerRequest},
+    error::ConnectionManagerError,
+    listener::PeerListener,
+    peer_connection::PeerConnection,
+    requester::ConnectionManagerRequest,
+};
+use crate::{
+    backoff::Backoff,
+    connection_manager::{metrics, ConnectionDirection},
+    multiplexing::Substream,
+    noise::NoiseConfig,
+    peer_manager::{NodeId, NodeIdentity, PeerManagerError},
+    protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
+    transports::{TcpTransport, Transport},
+    PeerManager,
+};
 
 const LOG_TARGET: &str = "comms::connection_manager::manager";
 
@@ -397,10 +400,14 @@ where
                     node_id.short_str(),
                     proto_str
                 );
+                metrics::inbound_substream_counter(&node_id, &protocol).inc();
                 let notify_fut = self
                     .protocols
                     .notify(&protocol, ProtocolEvent::NewInboundSubstream(node_id, stream));
                 match time::timeout(Duration::from_secs(10), notify_fut).await {
+                    Ok(Ok(_)) => {
+                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
+                    },
                     Ok(Err(err)) => {
                         error!(
                             target: LOG_TARGET,
@@ -413,12 +420,21 @@ where
                             "Error sending NewSubstream notification for protocol '{}' because {}", proto_str, err
                         );
                     },
-                    _ => {
-                        debug!(target: LOG_TARGET, "Protocol notification for '{}' sent", proto_str);
-                    },
                 }
             },
 
+            PeerConnected(conn) => {
+                metrics::successful_connections(conn.peer_node_id(), conn.direction()).inc();
+                self.publish_event(PeerConnected(conn));
+            },
+            PeerConnectFailed(peer, err) => {
+                metrics::failed_connections(&peer, ConnectionDirection::Outbound).inc();
+                self.publish_event(PeerConnectFailed(peer, err));
+            },
+            PeerInboundConnectFailed(err) => {
+                metrics::failed_connections(&Default::default(), ConnectionDirection::Inbound).inc();
+                self.publish_event(PeerInboundConnectFailed(err));
+            },
             event => {
                 self.publish_event(event);
             },
@@ -437,16 +453,24 @@ where
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
-    #[tracing::instrument(skip(self, reply))]
+    #[tracing::instrument(level = "trace", skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,
         reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
-            Ok(peer) => {
+            Ok(Some(peer)) => {
                 self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
                     .await;
+            },
+            Ok(None) => {
+                warn!(target: LOG_TARGET, "Peer not found for dial");
+                if let Some(reply) = reply {
+                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(
+                        PeerManagerError::PeerNotFoundError,
+                    )));
+                }
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);

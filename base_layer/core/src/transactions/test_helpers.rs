@@ -20,6 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use rand::rngs::OsRng;
+use tari_common::configuration::Network;
+use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    common::Blake256,
+    inputs,
+    keys::{PublicKey as PK, SecretKey},
+    range_proof::RangeProofService,
+    script,
+    script::{ExecutionStack, TariScript},
+};
+
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
     transactions::{
@@ -40,19 +55,6 @@ use crate::{
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
-};
-use rand::rngs::OsRng;
-use std::sync::Arc;
-use tari_common::configuration::Network;
-use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, PublicKey, Signature};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    common::Blake256,
-    inputs,
-    keys::{PublicKey as PK, SecretKey},
-    range_proof::RangeProofService,
-    script,
-    script::{ExecutionStack, TariScript},
 };
 
 pub fn create_test_input(
@@ -155,6 +157,7 @@ impl TestParams {
             self.script_private_key.clone(),
             self.sender_offset_public_key.clone(),
             metadata_signature,
+            0,
         )
     }
 
@@ -282,7 +285,7 @@ macro_rules! txn_schema {
             to_outputs: vec![],
             fee: $fee,
             lock_height: $lock,
-            features: $features,
+            features: $features.clone(),
             script: tari_crypto::script![Nop],
             input_data: None,
         }
@@ -294,10 +297,18 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
+            features: $features.clone()
+        )
+    }};
+   (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee: 5.into(),
+            lock: 0,
             features: $features
         )
     }};
-
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
         txn_schema!(
             from: $input,
@@ -444,8 +455,10 @@ pub fn create_transaction_with(
         stx_builder.with_output(utxo, script_offset_pvt_key).unwrap();
     });
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
-    stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+    stx_protocol
+        .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+        .unwrap();
     stx_protocol.take_transaction().unwrap()
 }
 
@@ -513,7 +526,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             .unwrap();
     }
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories).unwrap();
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
     // The change output is assigned its own random script offset private key
     let change_sender_offset_public_key = stx_protocol.get_change_sender_offset_public_key().unwrap().unwrap();
@@ -531,7 +544,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
     let change_output = UnblindedOutput::new(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
-        schema.features,
+        OutputFeatures::default(),
         script,
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key
@@ -539,9 +552,12 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         test_params_change_and_txn.script_private_key.clone(),
         change_sender_offset_public_key,
         metadata_sig,
+        0,
     );
     outputs.push(change_output);
-    stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+    stx_protocol
+        .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+        .unwrap();
     let txn = stx_protocol.get_transaction().unwrap().clone();
     (txn, outputs, test_params_change_and_txn)
 }

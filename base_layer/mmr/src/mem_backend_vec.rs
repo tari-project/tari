@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    backend::{ArrayLike, ArrayLikeExt},
-    error::MerkleMountainRangeError,
-};
 use std::{
     cmp::min,
     sync::{Arc, RwLock},
+};
+
+use crate::{
+    backend::{ArrayLike, ArrayLikeExt},
+    error::MerkleMountainRangeError,
 };
 
 /// MemBackendVec is a shareable, memory only, vector that can be be used with MmrCache to store checkpoints.

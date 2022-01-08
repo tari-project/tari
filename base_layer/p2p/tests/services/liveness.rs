@@ -20,9 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::support::comms_and_services::setup_comms_services;
-use rand::rngs::OsRng;
 use std::{sync::Arc, time::Duration};
+
+use rand::rngs::OsRng;
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
@@ -37,6 +37,8 @@ use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
 use tari_test_utils::collect_try_recv;
 use tempfile::tempdir;
+
+use crate::support::comms_and_services::setup_comms_services;
 
 pub async fn setup_liveness_service(
     node_identity: Arc<NodeIdentity>,

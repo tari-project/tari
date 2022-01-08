@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::protocol::rpc::handshake::RpcHandshakeError;
-use prost::DecodeError;
 use std::io;
+
+use prost::DecodeError;
 use tokio::sync::oneshot;
+
+use crate::{proto, protocol::rpc::handshake::RpcHandshakeError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RpcServerError {
@@ -42,11 +44,37 @@ pub enum RpcServerError {
     #[error("Service not found for protocol `{0}`")]
     ProtocolServiceNotFound(String),
     #[error("Unexpected incoming message")]
-    UnexpectedIncomingMessage,
+    UnexpectedIncomingMessage(proto::rpc::RpcRequest),
+    #[error("Unexpected incoming MALFORMED message")]
+    UnexpectedIncomingMessageMalformed,
+    #[error("Client interrupted stream")]
+    ClientInterruptedStream,
+    #[error("Service call exceeded deadline")]
+    ServiceCallExceededDeadline,
+    #[error("Stream read exceeded deadline")]
+    ReadStreamExceededDeadline,
 }
 
 impl From<oneshot::error::RecvError> for RpcServerError {
     fn from(_: oneshot::error::RecvError) -> Self {
         RpcServerError::RequestCanceled
+    }
+}
+
+impl RpcServerError {
+    pub fn to_debug_string(&self) -> String {
+        use RpcServerError::*;
+        match self {
+            DecodeError(_) => "DecodeError".to_string(),
+            Io(err) => {
+                format!("Io({:?})", err.kind())
+            },
+            HandshakeError(_) => "HandshakeError".to_string(),
+            ProtocolServiceNotFound(_) => "ProtocolServiceNotFound".to_string(),
+            UnexpectedIncomingMessage(_) => "UnexpectedIncomingMessage".to_string(),
+            err => {
+                format!("{:?}", err)
+            },
+        }
     }
 }

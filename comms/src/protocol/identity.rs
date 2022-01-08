@@ -19,27 +19,29 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{convert::TryFrom, io, time::Duration};
+
+use bytes::Bytes;
+use log::*;
+use prost::Message;
+use thiserror::Error;
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    time,
+};
+use tracing;
+
 use crate::{
     connection_manager::ConnectionDirection,
     message::MessageExt,
     peer_manager::NodeIdentity,
     proto::identity::PeerIdentityMsg,
-    protocol::{NodeNetworkInfo, ProtocolError, ProtocolId, ProtocolNegotiation},
+    protocol::{NodeNetworkInfo, ProtocolError, ProtocolId},
 };
-use futures::{SinkExt, StreamExt};
-use log::*;
-use prost::Message;
-use std::{io, time::Duration};
-use thiserror::Error;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    time,
-};
-use tokio_util::codec::{Framed, LengthDelimitedCodec};
-use tracing;
 
-pub static IDENTITY_PROTOCOL: ProtocolId = ProtocolId::from_static(b"t/identity/1.0");
 const LOG_TARGET: &str = "comms::protocol::identity";
+
+const MAX_IDENTITY_PROTOCOL_MSG_SIZE: u16 = 1024;
 
 #[tracing::instrument(skip(socket, our_supported_protocols))]
 pub async fn identity_exchange<'p, TSocket, P>(
@@ -47,43 +49,12 @@ pub async fn identity_exchange<'p, TSocket, P>(
     direction: ConnectionDirection,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
-    mut socket: TSocket,
+    socket: &mut TSocket,
 ) -> Result<PeerIdentityMsg, IdentityProtocolError>
 where
     TSocket: AsyncRead + AsyncWrite + Unpin,
     P: IntoIterator<Item = &'p ProtocolId>,
 {
-    // Negotiate the identity protocol
-    let mut negotiation = ProtocolNegotiation::new(&mut socket);
-    let proto = match direction {
-        ConnectionDirection::Outbound => {
-            debug!(
-                target: LOG_TARGET,
-                "[ThisNode={}] Starting Outbound identity exchange with peer.",
-                node_identity.node_id().short_str()
-            );
-            negotiation
-                .negotiate_protocol_outbound_optimistic(&IDENTITY_PROTOCOL.clone())
-                .await?
-        },
-        ConnectionDirection::Inbound => {
-            debug!(
-                target: LOG_TARGET,
-                "[ThisNode={}] Starting Inbound identity exchange with peer.",
-                node_identity.node_id().short_str()
-            );
-            negotiation
-                .negotiate_protocol_inbound(&[IDENTITY_PROTOCOL.clone()])
-                .await?
-        },
-    };
-
-    debug_assert_eq!(proto, IDENTITY_PROTOCOL);
-
-    // Create length-delimited frame codec
-    let framed = Framed::new(socket, LengthDelimitedCodec::new());
-    let (mut sink, mut stream) = framed.split();
-
     let supported_protocols = our_supported_protocols.into_iter().map(|p| p.to_vec()).collect();
 
     // Send this node's identity
@@ -91,33 +62,79 @@ where
         addresses: vec![node_identity.public_address().to_vec()],
         features: node_identity.features().bits(),
         supported_protocols,
-        major: network_info.major_version,
-        minor: network_info.minor_version,
         user_agent: network_info.user_agent,
+        identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
     }
     .to_encoded_bytes();
 
-    sink.send(msg_bytes.into()).await?;
-    sink.close().await?;
+    write_protocol_frame(socket, network_info.major_version as u8, &msg_bytes).await?;
+    socket.flush().await?;
 
-    // Receive the connecting nodes identity
-    let msg_bytes = time::timeout(Duration::from_secs(10), stream.next())
-        .await?
-        .ok_or(IdentityProtocolError::PeerUnexpectedCloseConnection)??;
-    let identity_msg = PeerIdentityMsg::decode(msg_bytes)?;
+    // Receive the connecting node's identity
+    let (version, msg_bytes) = time::timeout(Duration::from_secs(10), read_protocol_frame(socket)).await??;
+    let identity_msg = PeerIdentityMsg::decode(Bytes::from(msg_bytes))?;
 
-    if identity_msg.major != network_info.major_version {
+    if version > network_info.major_version {
         warn!(
             target: LOG_TARGET,
-            "Peer sent mismatching major protocol version '{}'. This node has version '{}.{}'",
-            identity_msg.major,
-            network_info.major_version,
-            network_info.minor_version
+            "Peer sent mismatching major protocol version '{}'. This node has version '{}'",
+            version,
+            network_info.major_version
         );
         return Err(IdentityProtocolError::ProtocolVersionMismatch);
     }
 
     Ok(identity_msg)
+}
+
+async fn read_protocol_frame<S: AsyncRead + Unpin>(socket: &mut S) -> Result<(u8, Vec<u8>), IdentityProtocolError> {
+    let mut buf = [0u8; 3];
+    socket.read_exact(&mut buf).await?;
+    let version = buf[0];
+    let buf = [buf[1], buf[2]];
+    let len = u16::from_le_bytes(buf);
+    if len > MAX_IDENTITY_PROTOCOL_MSG_SIZE {
+        return Err(IdentityProtocolError::MaxMsgSizeExceeded {
+            expected: MAX_IDENTITY_PROTOCOL_MSG_SIZE,
+            got: len,
+        });
+    }
+    let len = len as usize;
+    let mut msg = vec![0u8; len];
+    socket.read_exact(&mut msg).await?;
+    Ok((version, msg))
+}
+
+async fn write_protocol_frame<S: AsyncWrite + Unpin>(
+    socket: &mut S,
+    version: u8,
+    msg_bytes: &[u8],
+) -> Result<(), IdentityProtocolError> {
+    debug_assert!(
+        msg_bytes.len() <= MAX_IDENTITY_PROTOCOL_MSG_SIZE as usize,
+        "Sending identity protocol message of size {}, greater than {} bytes. This is a protocol violation",
+        msg_bytes.len(),
+        MAX_IDENTITY_PROTOCOL_MSG_SIZE
+    );
+
+    let len = u16::try_from(msg_bytes.len()).map_err(|_| {
+        IdentityProtocolError::ProtocolError(format!(
+            "Identity protocol attempted to send a message larger than u16::MAX bytes. len = {}",
+            msg_bytes.len()
+        ))
+    })?;
+    let version_bytes = [version];
+    let len_bytes = len.to_le_bytes();
+
+    trace!(
+        target: LOG_TARGET,
+        "Writing {} bytes",
+        len_bytes.len() + msg_bytes.len() + 1
+    );
+    socket.write_all(&version_bytes[..]).await?;
+    socket.write_all(&len_bytes[..]).await?;
+    socket.write_all(msg_bytes).await?;
+    Ok(())
 }
 
 #[derive(Debug, Error, Clone)]
@@ -136,6 +153,8 @@ pub enum IdentityProtocolError {
     Timeout,
     #[error("Protocol version mismatch")]
     ProtocolVersionMismatch,
+    #[error("Max identity protocol message size exceeded. Expected <= {expected} got {got}")]
+    MaxMsgSizeExceeded { expected: u16, got: u16 },
 }
 
 impl From<time::error::Elapsed> for IdentityProtocolError {
@@ -164,6 +183,8 @@ impl From<prost::DecodeError> for IdentityProtocolError {
 
 #[cfg(test)]
 mod test {
+    use futures::{future, StreamExt};
+
     use crate::{
         connection_manager::ConnectionDirection,
         peer_manager::PeerFeatures,
@@ -172,7 +193,6 @@ mod test {
         test_utils::node_identity::build_node_identity,
         transports::{MemoryTransport, Transport},
     };
-    use futures::{future, StreamExt};
 
     #[runtime::test]
     async fn identity_exchange() {
@@ -182,8 +202,8 @@ mod test {
 
         let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
 
-        let out_sock = out_sock.unwrap();
-        let (in_sock, _) = in_sock.unwrap().unwrap();
+        let mut out_sock = out_sock.unwrap();
+        let (mut in_sock, _) = in_sock.unwrap().unwrap();
 
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
@@ -197,7 +217,7 @@ mod test {
                     minor_version: 1,
                     ..Default::default()
                 },
-                in_sock,
+                &mut in_sock,
             ),
             super::identity_exchange(
                 &node_identity2,
@@ -207,7 +227,7 @@ mod test {
                     minor_version: 2,
                     ..Default::default()
                 },
-                out_sock,
+                &mut out_sock,
             ),
         )
         .await;
@@ -231,8 +251,8 @@ mod test {
 
         let (out_sock, in_sock) = future::join(transport.dial(addr), listener.next()).await;
 
-        let out_sock = out_sock.unwrap();
-        let (in_sock, _) = in_sock.unwrap().unwrap();
+        let mut out_sock = out_sock.unwrap();
+        let (mut in_sock, _) = in_sock.unwrap().unwrap();
 
         let node_identity1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
         let node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_CLIENT);
@@ -246,7 +266,7 @@ mod test {
                     major_version: 0,
                     ..Default::default()
                 },
-                in_sock,
+                &mut in_sock,
             ),
             super::identity_exchange(
                 &node_identity2,
@@ -256,7 +276,7 @@ mod test {
                     major_version: 1,
                     ..Default::default()
                 },
-                out_sock,
+                &mut out_sock,
             ),
         )
         .await;
@@ -264,7 +284,7 @@ mod test {
         let err = result1.unwrap_err();
         assert!(matches!(err, IdentityProtocolError::ProtocolVersionMismatch));
 
-        let err = result2.unwrap_err();
-        assert!(matches!(err, IdentityProtocolError::ProtocolVersionMismatch));
+        // Passes because older versions are supported
+        result2.unwrap();
     }
 }

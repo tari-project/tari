@@ -20,6 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, task::Poll};
+
+use bytes::Bytes;
+use chrono::{DateTime, Utc};
+use digest::Digest;
+use futures::{
+    future,
+    future::BoxFuture,
+    stream::{self, StreamExt},
+    task::Context,
+};
+use log::*;
+use rand::rngs::OsRng;
+use tari_comms::{
+    message::{MessageExt, MessageTag},
+    peer_manager::{NodeId, NodeIdentity, Peer},
+    pipeline::PipelineError,
+    types::{Challenge, CommsPublicKey},
+    utils::signature,
+};
+use tari_crypto::{
+    keys::PublicKey,
+    tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
+};
+use tari_utilities::hex::Hex;
+use tokio::sync::oneshot;
+use tower::{layer::Layer, Service, ServiceExt};
+
 use super::{error::DhtOutboundError, message::DhtOutboundRequest};
 use crate::{
     actor::DhtRequester,
@@ -37,32 +65,6 @@ use crate::{
     version::DhtProtocolVersion,
     DhtConfig,
 };
-use bytes::Bytes;
-use chrono::{DateTime, Utc};
-use digest::Digest;
-use futures::{
-    future,
-    future::BoxFuture,
-    stream::{self, StreamExt},
-    task::Context,
-};
-use log::*;
-use rand::rngs::OsRng;
-use std::{sync::Arc, task::Poll};
-use tari_comms::{
-    message::{MessageExt, MessageTag},
-    peer_manager::{NodeId, NodeIdentity, Peer},
-    pipeline::PipelineError,
-    types::{Challenge, CommsPublicKey},
-    utils::signature,
-};
-use tari_crypto::{
-    keys::PublicKey,
-    tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
-};
-use tari_utilities::hex::Hex;
-use tokio::sync::oneshot;
-use tower::{layer::Layer, Service, ServiceExt};
 
 const LOG_TARGET: &str = "comms::dht::outbound::broadcast_middleware";
 
@@ -297,15 +299,10 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         .send(SendMessageResponse::PendingDiscovery(discovery_reply_rx));
 
                     match self.initiate_peer_discovery(target_public_key).await {
-                        Ok(Some(peer)) => {
+                        Ok(peer) => {
                             // Set the reply_tx so that it can be used later
                             reply_tx = Some(discovery_reply_tx);
                             peers = vec![peer.node_id];
-                        },
-                        Ok(None) => {
-                            // Message sent to 0 peers
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Queued(vec![].into()));
-                            return Ok(Vec::new());
                         },
                         Err(err @ DhtOutboundError::DiscoveryFailed) => {
                             let _ = discovery_reply_tx.send(SendMessageResponse::Failed(SendFailure::DiscoveryFailed));
@@ -374,7 +371,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
     async fn initiate_peer_discovery(
         &mut self,
         dest_public_key: Box<CommsPublicKey>,
-    ) -> Result<Option<Peer>, DhtOutboundError> {
+    ) -> Result<Peer, DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
             "Initiating peer discovery for public key '{}'",
@@ -389,20 +386,11 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         {
             // Peer found!
             Ok(peer) => {
-                if peer.is_banned() {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Peer discovery succeeded however peer with public key '{}' is marked as banned.",
-                        peer.public_key
-                    );
-                    return Ok(None);
-                }
-
                 debug!(
                     target: LOG_TARGET,
                     "Peer discovery succeeded for public key '{}'.", peer.public_key
                 );
-                Ok(Some(peer))
+                Ok(peer)
             },
             // Error during discovery
             Err(err) => {
@@ -569,6 +557,19 @@ fn create_origin_mac(node_identity: &NodeIdentity, mac_challenge: Challenge) -> 
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use rand::rngs::OsRng;
+    use tari_comms::{
+        multiaddr::Multiaddr,
+        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
+        runtime,
+        types::CommsPublicKey,
+    };
+    use tari_crypto::keys::PublicKey;
+    use tari_test_utils::unpack_enum;
+    use tokio::{sync::oneshot, task};
+
     use super::*;
     use crate::{
         outbound::SendMessageParams,
@@ -581,17 +582,6 @@ mod test {
             DhtDiscoveryMockState,
         },
     };
-    use rand::rngs::OsRng;
-    use std::time::Duration;
-    use tari_comms::{
-        multiaddr::Multiaddr,
-        peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-        runtime,
-        types::CommsPublicKey,
-    };
-    use tari_crypto::keys::PublicKey;
-    use tari_test_utils::unpack_enum;
-    use tokio::{sync::oneshot, task};
 
     #[runtime::test]
     async fn send_message_flood() {

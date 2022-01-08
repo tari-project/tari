@@ -19,16 +19,32 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{cmp, convert::TryInto, thread, time::Instant};
+
+use async_trait::async_trait;
+use futures::{stream::FuturesUnordered, StreamExt};
+use log::*;
+use tari_common_types::types::{Commitment, HashOutput, PublicKey};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
+use tari_utilities::Hashable;
+use tokio::task;
+
 use super::LOG_TARGET;
 use crate::{
     blocks::{Block, BlockHeader},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
     consensus::ConsensusManager,
-    crypto::tari_utilities::Hashable,
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{
+            KernelSum,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
     validation::{
@@ -38,13 +54,6 @@ use crate::{
         ValidationError,
     },
 };
-use async_trait::async_trait;
-use futures::{stream::FuturesUnordered, StreamExt};
-use log::*;
-use std::{cmp, cmp::Ordering, thread, time::Instant};
-use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::commitment::HomomorphicCommitmentFactory;
-use tokio::task;
 
 /// This validator checks whether a block satisfies consensus rules.
 /// It implements two validators: one for the `BlockHeader` and one for `Block`. The `Block` validator ONLY validates
@@ -86,6 +95,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
         // Start all validation tasks concurrently
         let kernels_task = self.start_kernel_validation(&valid_header, kernels);
+
         let inputs_task =
             self.start_input_validation(&valid_header, outputs.iter().map(|o| o.hash()).collect(), inputs);
 
@@ -93,6 +103,22 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         if !helpers::is_all_unique_and_sorted(&outputs) {
             return Err(ValidationError::UnsortedOrDuplicateOutput);
         }
+
+        // Check that unique_ids are unique in this block
+        let mut unique_ids = Vec::new();
+        for output in &outputs {
+            if output.features.flags.contains(OutputFlags::MINT_NON_FUNGIBLE) {
+                if let Some(unique_id) = output.features.unique_asset_id() {
+                    let parent_public_key = output.features.parent_public_key.as_ref();
+                    let asset_tuple = (parent_public_key, unique_id);
+                    if unique_ids.contains(&asset_tuple) {
+                        return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                    }
+                    unique_ids.push(asset_tuple);
+                }
+            }
+        }
+
         let outputs_task = self.start_output_validation(&valid_header, outputs);
 
         // Wait for them to complete
@@ -138,14 +164,6 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         kernels: Vec<TransactionKernel>,
     ) -> AbortOnDropJoinHandle<Result<KernelValidationData, ValidationError>> {
         let height = header.height;
-        let block_version = header.version;
-        let kernel_comparer = move |a: &TransactionKernel, b: &TransactionKernel| -> Ordering {
-            if block_version == 1 {
-                a.deprecated_cmp(b)
-            } else {
-                a.cmp(b)
-            }
-        };
 
         let total_kernel_offset = header.total_kernel_offset.clone();
         let total_reward = self.rules.calculate_coinbase_and_fees(height, &kernels);
@@ -164,12 +182,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             let mut coinbase_index = None;
             let mut max_kernel_timelock = 0;
             for (i, kernel) in kernels.iter().enumerate() {
-                if i > 0 &&
-                    matches!(
-                        kernel_comparer(kernel, &kernels[i - 1]),
-                        Ordering::Equal | Ordering::Less
-                    )
-                {
+                if i > 0 && kernel <= &kernels[i - 1] {
                     return Err(ValidationError::UnsortedOrDuplicateKernel);
                 }
 
@@ -224,24 +237,51 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         &self,
         header: &BlockHeader,
         output_hashes: Vec<HashOutput>,
-        inputs: Vec<TransactionInput>,
+        mut inputs: Vec<TransactionInput>,
     ) -> AbortOnDropJoinHandle<Result<InputValidationData, ValidationError>> {
         let block_height = header.height;
         let commitment_factory = self.factories.commitment.clone();
         let db = self.db.inner().clone();
+        let prev_hash: [u8; 32] = header.prev_hash.as_slice().try_into().unwrap_or([0; 32]);
+        let height = header.height;
         task::spawn_blocking(move || {
             let timer = Instant::now();
             let mut aggregate_input_key = PublicKey::default();
             let mut commitment_sum = Commitment::default();
             let mut not_found_inputs = Vec::new();
             let db = db.db_read_access()?;
+
+            // Check for duplicates and/or incorrect sorting
             for (i, input) in inputs.iter().enumerate() {
-                // Check for duplicates and/or incorrect sorting
                 if i > 0 && input <= &inputs[i - 1] {
                     return Err(ValidationError::UnsortedOrDuplicateInput);
                 }
+            }
 
-                if !input.is_mature_at(block_height) {
+            for input in inputs.iter_mut() {
+                // Read the spent_output for this compact input
+                if input.is_compact() {
+                    let output_mined_info = match db.fetch_output(&input.output_hash())? {
+                        None => return Err(ValidationError::TransactionInputSpentOutputMissing),
+                        Some(o) => o,
+                    };
+
+                    match output_mined_info.output {
+                        PrunedOutput::Pruned { .. } => {
+                            return Err(ValidationError::TransactionInputSpendsPrunedOutput);
+                        },
+                        PrunedOutput::NotPruned { output } => {
+                            input.add_output_data(
+                                output.features,
+                                output.commitment,
+                                output.script,
+                                output.sender_offset_public_key,
+                            );
+                        },
+                    }
+                }
+
+                if !input.is_mature_at(block_height)? {
                     warn!(
                         target: LOG_TARGET,
                         "Input found that has not yet matured to spending height: {}", block_height
@@ -253,12 +293,12 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                     Err(ValidationError::UnknownInput) => {
                         // Check if the input spends from the current block
                         let output_hash = input.output_hash();
-                        if output_hashes.iter().all(|hash| *hash != output_hash) {
+                        if output_hashes.iter().all(|hash| hash != &output_hash) {
                             warn!(
                                 target: LOG_TARGET,
                                 "Validation failed due to input: {} which does not exist yet", input
                             );
-                            not_found_inputs.push(output_hash);
+                            not_found_inputs.push(output_hash.clone());
                         }
                     },
                     Err(err) => return Err(err),
@@ -267,10 +307,16 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
                 // Once we've found unknown inputs, the aggregate data will be discarded and there is no reason to run
                 // the tari script
+                let commitment = match input.commitment() {
+                    Ok(c) => c,
+                    Err(e) => return Err(ValidationError::from(e)),
+                };
                 if not_found_inputs.is_empty() {
+                    let context = ScriptContext::new(height, &prev_hash, commitment);
                     // lets count up the input script public keys
-                    aggregate_input_key = aggregate_input_key + input.run_and_verify_script(&commitment_factory)?;
-                    commitment_sum = &commitment_sum + &input.commitment;
+                    aggregate_input_key =
+                        aggregate_input_key + input.run_and_verify_script(&commitment_factory, Some(context))?;
+                    commitment_sum = &commitment_sum + input.commitment()?;
                 }
             }
 
@@ -319,6 +365,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             .map(|outputs| {
                 let range_proof_prover = self.factories.range_proof.clone();
                 let db = self.db.inner().clone();
+                let max_script_size = self.rules.consensus_constants(height).get_max_script_byte_size();
                 task::spawn_blocking(move || {
                     let db = db.db_read_access()?;
                     let mut aggregate_sender_offset = PublicKey::default();
@@ -345,6 +392,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                             // We should not count the coinbase tx here
                             aggregate_sender_offset = aggregate_sender_offset + &output.sender_offset_public_key;
                         }
+
+                        helpers::check_tari_script_byte_size(&output.script, max_script_size)?;
 
                         output.verify_metadata_signature()?;
                         if !bypass_range_proof_verification {

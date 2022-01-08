@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::time::Duration;
+
 use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroTari;
 use tokio::sync::broadcast;
@@ -42,14 +43,14 @@ pub enum UtxoScannerEvent {
     },
     /// Progress of the recovery process (current_block, current_chain_height)
     Progress {
-        current_block: u64,
-        current_chain_height: u64,
+        current_height: u64,
+        tip_height: u64,
     },
     /// Completed Recovery (Number scanned, Num of Recovered outputs, Value of recovered outputs, Time taken)
     Completed {
-        number_scanned: u64,
-        number_received: u64,
-        value_received: MicroTari,
+        final_height: u64,
+        num_recovered: u64,
+        value_recovered: MicroTari,
         time_taken: Duration,
     },
     /// Scanning process has failed and scanning process has exited

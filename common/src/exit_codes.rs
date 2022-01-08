@@ -3,7 +3,7 @@ use thiserror::Error;
 /// Enum to show failure information
 #[derive(Debug, Clone, Error)]
 pub enum ExitCodes {
-    #[error("There is an error in the wallet configuration: {0}")]
+    #[error("There is an error in the configuration: {0}")]
     ConfigError(String),
     #[error("The application exited because an unknown error occurred: {0}. Check the logs for more details.")]
     UnknownError(String),
@@ -29,6 +29,8 @@ pub enum ExitCodes {
     IncorrectPassword,
     #[error("Your application is encrypted but no password was provided.")]
     NoPassword,
+    #[error("The application encountered a database error: {0}")]
+    DatabaseError(String),
     #[error("Tor connection is offline")]
     TorOffline,
     #[error("Database is in inconsistent state: {0}")]
@@ -51,6 +53,7 @@ impl ExitCodes {
             Self::ConversionError(_) => 111,
             Self::IncorrectPassword | Self::NoPassword => 112,
             Self::TorOffline => 113,
+            Self::DatabaseError(_) => 114,
             Self::DbInconsistentState(_) => 115,
         }
     }
@@ -82,6 +85,12 @@ impl From<super::ConfigError> for ExitCodes {
     fn from(err: super::ConfigError) -> Self {
         // TODO: Move it out
         // error!(target: LOG_TARGET, "{}", err);
+        Self::ConfigError(err.to_string())
+    }
+}
+
+impl From<crate::ConfigurationError> for ExitCodes {
+    fn from(err: crate::ConfigurationError) -> Self {
         Self::ConfigError(err.to_string())
     }
 }

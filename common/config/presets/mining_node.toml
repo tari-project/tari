@@ -14,7 +14,7 @@
 #base_node_grpc_address = "127.0.0.1:18142"
 
 # GRPC address of console wallet
-# Default: value from `base_node.grpc_console_wallet_address`
+# Default: value from `wallet.grpc_address`
 #wallet_grpc_address = "127.0.0.1:18143"
 
 # Start mining only when base node is bootstrapped
@@ -32,4 +32,3 @@
 # mining_pool_address = "miningcore.tari.com:3052"
 # mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
 # mining_worker_name = "worker1"
-

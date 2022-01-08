@@ -20,17 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    crypt,
-    envelope::DhtMessageHeader,
-    inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
-    proto::envelope::OriginMac,
-    DhtConfig,
-};
+use std::{sync::Arc, task::Poll, time::Duration};
+
 use futures::{future::BoxFuture, task::Context};
 use log::*;
 use prost::Message;
-use std::{sync::Arc, task::Poll, time::Duration};
 use tari_comms::{
     connectivity::ConnectivityRequester,
     message::EnvelopeBody,
@@ -42,6 +36,14 @@ use tari_comms::{
 use tari_utilities::ByteArray;
 use thiserror::Error;
 use tower::{layer::Layer, Service, ServiceExt};
+
+use crate::{
+    crypt,
+    envelope::DhtMessageHeader,
+    inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
+    proto::envelope::OriginMac,
+    DhtConfig,
+};
 
 const LOG_TARGET: &str = "comms::middleware::decryption";
 
@@ -73,11 +75,11 @@ enum DecryptionError {
 pub struct DecryptionLayer {
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
 }
 
 impl DecryptionLayer {
-    pub fn new(config: DhtConfig, node_identity: Arc<NodeIdentity>, connectivity: ConnectivityRequester) -> Self {
+    pub fn new(config: Arc<DhtConfig>, node_identity: Arc<NodeIdentity>, connectivity: ConnectivityRequester) -> Self {
         Self {
             node_identity,
             connectivity,
@@ -102,7 +104,7 @@ impl<S> Layer<S> for DecryptionLayer {
 /// Responsible for decrypting InboundMessages and passing a DecryptedInboundMessage to the given service
 #[derive(Clone)]
 pub struct DecryptionService<S> {
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
     inner: S,
@@ -110,7 +112,7 @@ pub struct DecryptionService<S> {
 
 impl<S> DecryptionService<S> {
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,
         service: S,
@@ -407,13 +409,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        envelope::DhtMessageFlags,
-        test_utils::{make_dht_inbound_message, make_node_identity},
-    };
-    use futures::{executor::block_on, future};
     use std::sync::Mutex;
+
+    use futures::{executor::block_on, future};
     use tari_comms::{
         message::MessageExt,
         runtime,
@@ -422,6 +420,12 @@ mod test {
     };
     use tari_test_utils::{counter_context, unpack_enum};
     use tower::service_fn;
+
+    use super::*;
+    use crate::{
+        envelope::DhtMessageFlags,
+        test_utils::{make_dht_inbound_message, make_node_identity},
+    };
 
     #[test]
     fn poll_ready() {

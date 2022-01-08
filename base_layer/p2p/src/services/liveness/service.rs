@@ -20,6 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{iter, sync::Arc, time::Instant};
+
+use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
+use log::*;
+use tari_comms::{
+    connectivity::{ConnectivityRequester, ConnectivitySelection},
+    peer_manager::NodeId,
+    types::CommsPublicKey,
+};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{DhtOutboundError, OutboundMessageRequester},
+};
+use tari_service_framework::reply_channel::RequestContext;
+use tari_shutdown::ShutdownSignal;
+use tokio::{time, time::MissedTickBehavior};
+use tokio_stream::wrappers;
+
 use super::{
     config::LivenessConfig,
     error::LivenessError,
@@ -34,22 +52,6 @@ use crate::{
     services::liveness::{handle::LivenessEventSender, LivenessEvent, PingPongEvent},
     tari_message::TariMessageType,
 };
-use futures::{future::Either, pin_mut, stream::StreamExt, Stream};
-use log::*;
-use std::{iter, sync::Arc, time::Instant};
-use tari_comms::{
-    connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::NodeId,
-    types::CommsPublicKey,
-};
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    outbound::{DhtOutboundError, OutboundMessageRequester},
-};
-use tari_service_framework::reply_channel::RequestContext;
-use tari_shutdown::ShutdownSignal;
-use tokio::{time, time::MissedTickBehavior};
-use tokio_stream::wrappers;
 
 /// Service responsible for testing Liveness of Peers.
 pub struct LivenessService<THandleStream, TPingStream> {
@@ -122,6 +124,11 @@ where
                     if let Err(err) = self.start_ping_round().await {
                         warn!(target: LOG_TARGET, "Error when pinging peers: {}", err);
                     }
+                    if self.config.max_allowed_ping_failures > 0 {
+                        if let Err(err) = self.disconnect_failed_peers().await {
+                            error!(target: LOG_TARGET, "Error occurred while disconnecting failed peers: {}", err);
+                        }
+                    }
                 },
 
                 // Incoming messages from the Comms layer
@@ -179,7 +186,7 @@ where
                     return Ok(());
                 }
 
-                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce);
+                let maybe_latency = self.state.record_pong(ping_pong_msg.nonce, &node_id);
                 debug!(
                     target: LOG_TARGET,
                     "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
@@ -263,7 +270,7 @@ where
             .collect::<Vec<_>>();
 
         if selected_peers.is_empty() {
-            warn!(
+            info!(
                 target: LOG_TARGET,
                 "Cannot broadcast pings because there are no broadcast peers available"
             )
@@ -282,6 +289,26 @@ where
 
         self.publish_event(LivenessEvent::PingRoundBroadcast(len_peers));
 
+        Ok(())
+    }
+
+    async fn disconnect_failed_peers(&mut self) -> Result<(), LivenessError> {
+        let max_allowed_ping_failures = self.config.max_allowed_ping_failures;
+        for node_id in self
+            .state
+            .failed_pings_iter()
+            .filter(|(_, n)| **n > max_allowed_ping_failures)
+            .map(|(node_id, _)| node_id)
+        {
+            if let Some(mut conn) = self.connectivity.get_connection(node_id.clone()).await? {
+                debug!(
+                    target: LOG_TARGET,
+                    "Disconnecting peer {} that failed {} rounds of pings", node_id, max_allowed_ping_failures
+                );
+                conn.disconnect().await?;
+            }
+        }
+        self.state.clear_failed_pings();
         Ok(())
     }
 
@@ -305,14 +332,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        proto::liveness::MetadataKey,
-        services::liveness::{handle::LivenessHandle, state::Metadata},
-    };
+    use std::time::Duration;
+
     use futures::stream;
     use rand::rngs::OsRng;
-    use std::time::Duration;
     use tari_comms::{
         message::MessageTag,
         multiaddr::Multiaddr,
@@ -330,6 +353,12 @@ mod test {
     use tokio::{
         sync::{broadcast, mpsc, oneshot},
         task,
+    };
+
+    use super::*;
+    use crate::{
+        proto::liveness::MetadataKey,
+        services::liveness::{handle::LivenessHandle, state::Metadata},
     };
 
     #[tokio::test]

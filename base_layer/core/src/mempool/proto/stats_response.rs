@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{proto::mempool::StatsResponse as ProtoStatsResponse, StatsResponse};
 use std::convert::TryFrom;
+
+use crate::mempool::{proto::mempool::StatsResponse as ProtoStatsResponse, StatsResponse};
 
 impl TryFrom<ProtoStatsResponse> for StatsResponse {
     type Error = String;

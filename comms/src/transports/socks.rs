@@ -20,19 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt::{Debug, Formatter},
+    io,
+    sync::Arc,
+};
+
+use log::*;
+use tokio::net::TcpStream;
+
 use crate::{
     multiaddr::Multiaddr,
     socks,
     socks::Socks5Client,
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
 };
-use log::*;
-use std::{
-    fmt::{Debug, Formatter},
-    io,
-    sync::Arc,
-};
-use tokio::net::TcpStream;
 
 const LOG_TARGET: &str = "comms::transports::socks";
 

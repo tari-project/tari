@@ -23,34 +23,41 @@
 #[cfg(feature = "base_node")]
 mod service;
 #[cfg(feature = "base_node")]
+pub mod sync_utxos_by_block_task;
+
+#[cfg(feature = "base_node")]
+pub use service::BaseNodeWalletRpcService;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms_rpc_macros::tari_rpc;
+
+#[cfg(feature = "base_node")]
 use crate::base_node::StateMachineHandle;
 #[cfg(feature = "base_node")]
 use crate::{
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     mempool::service::MempoolHandle,
 };
-#[cfg(feature = "base_node")]
-pub use service::BaseNodeWalletRpcService;
-
 use crate::{
     proto,
     proto::{
         base_node::{
             FetchMatchingUtxos,
             FetchUtxosResponse,
+            QueryDeletedRequest,
+            QueryDeletedResponse,
             Signatures,
+            SyncUtxosByBlockRequest,
+            SyncUtxosByBlockResponse,
             TipInfoResponse,
             TxQueryBatchResponses,
             TxQueryResponse,
             TxSubmissionResponse,
+            UtxoQueryRequest,
+            UtxoQueryResponses,
         },
         types::{Signature, Transaction},
     },
 };
-
-use crate::proto::base_node::{QueryDeletedRequest, QueryDeletedResponse, UtxoQueryRequest, UtxoQueryResponses};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
-use tari_comms_rpc_macros::tari_rpc;
 
 #[tari_rpc(protocol_name = b"t/bnwallet/1", server_struct = BaseNodeWalletRpcServer, client_struct = BaseNodeWalletRpcClient)]
 pub trait BaseNodeWalletService: Send + Sync + 'static {
@@ -95,6 +102,15 @@ pub trait BaseNodeWalletService: Send + Sync + 'static {
         &self,
         request: Request<u64>,
     ) -> Result<Response<proto::core::BlockHeader>, RpcStatus>;
+
+    #[rpc(method = 10)]
+    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;
+
+    #[rpc(method = 11)]
+    async fn sync_utxos_by_block(
+        &self,
+        request: Request<SyncUtxosByBlockRequest>,
+    ) -> Result<Streaming<SyncUtxosByBlockResponse>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]

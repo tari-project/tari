@@ -4,11 +4,11 @@ authors = ["The Tari Development Community"]
 description = "A Merkle Mountain Range implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.21.0"
+version = "0.22.1"
 edition = "2018"
 
 [features]
-default = ["native_bitmap"]
+default = []
 native_bitmap = ["croaring"]
 benches = ["criterion"]
 
@@ -24,7 +24,7 @@ criterion = { version="0.2", optional = true }
 [dev-dependencies]
 rand="0.8.0"
 blake2 = "0.9.0"
-tari_infra_derive= { path = "../../infrastructure/derive", version = "^0.21" }
+tari_infra_derive= { path = "../../infrastructure/derive", version = "^0.22" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 serde_json = "1.0"
 bincode = "1.1"

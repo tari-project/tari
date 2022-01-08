@@ -27,19 +27,11 @@
 //!
 //! [DhtRequest]: ./enum.DhtRequest.html
 
-use crate::{
-    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
-    dedup::DedupCacheDatabase,
-    discovery::DhtDiscoveryError,
-    outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
-    proto::{dht::JoinMessage, envelope::DhtMessageType},
-    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
-    DhtConfig,
-};
+use std::{cmp, fmt, fmt::Display, sync::Arc};
+
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
-use std::{cmp, fmt, fmt::Display, sync::Arc};
 use tari_comms::{
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
@@ -54,6 +46,16 @@ use tokio::{
     task,
     time,
     time::MissedTickBehavior,
+};
+
+use crate::{
+    broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
+    dedup::DedupCacheDatabase,
+    discovery::DhtDiscoveryError,
+    outbound::{DhtOutboundError, OutboundMessageRequester, SendMessageParams},
+    proto::{dht::JoinMessage, envelope::DhtMessageType},
+    storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
+    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -205,7 +207,7 @@ pub struct DhtActor {
     database: DhtDatabase,
     outbound_requester: OutboundMessageRequester,
     connectivity: ConnectivityRequester,
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     shutdown_signal: ShutdownSignal,
     request_rx: mpsc::Receiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
@@ -214,7 +216,7 @@ pub struct DhtActor {
 impl DhtActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         conn: DbConnection,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -254,10 +256,9 @@ impl DhtActor {
         let offline_ts = self
             .database
             .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
-            .await
             .ok()
             .flatten();
-        info!(
+        debug!(
             target: LOG_TARGET,
             "DhtActor started. {}",
             offline_ts
@@ -284,25 +285,24 @@ impl DhtActor {
                 },
 
                 _ = dedup_cache_trim_ticker.tick() => {
-                    if let Err(err) = self.msg_hash_dedup_cache.trim_entries().await {
+                    if let Err(err) = self.msg_hash_dedup_cache.trim_entries() {
                         error!(target: LOG_TARGET, "Error when trimming message dedup cache: {:?}", err);
                     }
                 },
 
                 _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
-                    self.mark_shutdown_time().await;
+                    self.mark_shutdown_time();
                     break Ok(());
                 },
             }
         }
     }
 
-    async fn mark_shutdown_time(&self) {
+    fn mark_shutdown_time(&self) {
         if let Err(err) = self
             .database
             .set_metadata_value(DhtMetadataKey::OfflineTimestamp, Utc::now())
-            .await
         {
             warn!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
         }
@@ -323,7 +323,7 @@ impl DhtActor {
             } => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    match msg_hash_cache.add_body_hash(message_hash, received_from).await {
+                    match msg_hash_cache.add_body_hash(message_hash, received_from) {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
@@ -341,7 +341,7 @@ impl DhtActor {
             GetMsgHashHitCount(hash, reply_tx) => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    let hit_count = msg_hash_cache.get_hit_count(hash).await?;
+                    let hit_count = msg_hash_cache.get_hit_count(hash)?;
                     let _ = reply_tx.send(hit_count);
                     Ok(())
                 })
@@ -352,7 +352,7 @@ impl DhtActor {
                 let connectivity = self.connectivity.clone();
                 let config = self.config.clone();
                 Box::pin(async move {
-                    match Self::select_peers(config, node_identity, peer_manager, connectivity, broadcast_strategy)
+                    match Self::select_peers(&config, node_identity, peer_manager, connectivity, broadcast_strategy)
                         .await
                     {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
@@ -366,14 +366,14 @@ impl DhtActor {
             GetMetadata(key, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    let _ = reply_tx.send(db.get_metadata_value_bytes(key).await.map_err(Into::into));
+                    let _ = reply_tx.send(db.get_metadata_value_bytes(key).map_err(Into::into));
                     Ok(())
                 })
             },
             SetMetadata(key, value, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    match db.set_metadata_value_bytes(key, value).await {
+                    match db.set_metadata_value_bytes(key, value) {
                         Ok(_) => {
                             debug!(target: LOG_TARGET, "Dht metadata '{}' set", key);
                             let _ = reply_tx.send(Ok(()));
@@ -414,7 +414,7 @@ impl DhtActor {
     }
 
     async fn select_peers(
-        config: DhtConfig,
+        config: &DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         mut connectivity: ConnectivityRequester,
@@ -500,7 +500,7 @@ impl DhtActor {
                 let dest_node_id = destination
                     .node_id()
                     .cloned()
-                    .or_else(|| destination.public_key().map(|pk| NodeId::from_public_key(pk)));
+                    .or_else(|| destination.public_key().map(NodeId::from_public_key));
 
                 let connections = match dest_node_id {
                     Some(node_id) => {
@@ -667,7 +667,7 @@ impl DhtActor {
 
     async fn select_closest_node_connected(
         closest_request: Box<BroadcastClosestRequest>,
-        config: DhtConfig,
+        config: &DhtConfig,
         mut connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
     ) -> Result<Vec<NodeId>, DhtActorError> {
@@ -712,12 +712,6 @@ impl DhtActor {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{
-        broadcast_strategy::BroadcastClosestRequest,
-        envelope::NodeDestination,
-        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
-    };
     use chrono::{DateTime, Utc};
     use tari_comms::{
         runtime,
@@ -726,9 +720,16 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
 
+    use super::*;
+    use crate::{
+        broadcast_strategy::BroadcastClosestRequest,
+        envelope::NodeDestination,
+        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
+    };
+
     async fn db_connection() -> DbConnection {
-        let conn = DbConnection::connect_memory(random::string(8)).await.unwrap();
-        conn.migrate().await.unwrap();
+        let conn = DbConnection::connect_memory(random::string(8)).unwrap();
+        conn.migrate().unwrap();
         conn
     }
 
@@ -817,10 +818,10 @@ mod test {
         // Note: This must be equal or larger than the minimum dedup cache capacity for DedupCacheDatabase
         let capacity = 10;
         let actor = DhtActor::new(
-            DhtConfig {
+            Arc::new(DhtConfig {
                 dedup_cache_capacity: capacity,
                 ..Default::default()
-            },
+            }),
             db_connection().await,
             node_identity,
             peer_manager,
@@ -838,7 +839,6 @@ mod test {
             let num_hits = actor
                 .msg_hash_dedup_cache
                 .add_body_hash(key.clone(), CommsPublicKey::default())
-                .await
                 .unwrap();
             assert_eq!(num_hits, 1);
         }
@@ -847,7 +847,6 @@ mod test {
             let num_hits = actor
                 .msg_hash_dedup_cache
                 .add_body_hash(key.clone(), CommsPublicKey::default())
-                .await
                 .unwrap();
             assert_eq!(num_hits, 2);
         }
@@ -855,7 +854,7 @@ mod test {
         let dedup_cache_db = actor.msg_hash_dedup_cache.clone();
         // The cleanup ticker starts when the actor is spawned; the first cleanup event will fire fairly soon after the
         // task is running on a thread. To remove this race condition, we trim the cache in the test.
-        let num_trimmed = dedup_cache_db.trim_entries().await.unwrap();
+        let num_trimmed = dedup_cache_db.trim_entries().unwrap();
         assert_eq!(num_trimmed, 10);
         actor.spawn();
 
@@ -877,7 +876,7 @@ mod test {
         }
 
         // Trim the database of excess entries
-        dedup_cache_db.trim_entries().await.unwrap();
+        dedup_cache_db.trim_entries().unwrap();
 
         // Verify that the last half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {

@@ -26,7 +26,7 @@ use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     transactions::{transaction::Transaction, CryptoFactories},
     validation::{
-        helpers::{check_inputs_are_utxos, check_not_duplicate_txos},
+        helpers::{check_inputs_are_utxos, check_outputs},
         MempoolTransactionValidation,
         ValidationError,
     },
@@ -41,24 +41,35 @@ pub const LOG_TARGET: &str = "c::val::transaction_validators";
 /// 1. Range proofs of the outputs are valid
 ///
 /// This function does NOT check that inputs come from the UTXO set
-pub struct TxInternalConsistencyValidator {
+pub struct TxInternalConsistencyValidator<B> {
+    db: BlockchainDatabase<B>,
     factories: CryptoFactories,
     bypass_range_proof_verification: bool,
 }
 
-impl TxInternalConsistencyValidator {
-    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool) -> Self {
+impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
+    pub fn new(factories: CryptoFactories, bypass_range_proof_verification: bool, db: BlockchainDatabase<B>) -> Self {
         Self {
+            db,
             factories,
             bypass_range_proof_verification,
         }
     }
 }
 
-impl MempoolTransactionValidation for TxInternalConsistencyValidator {
+impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistencyValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        tx.validate_internal_consistency(self.bypass_range_proof_verification, &self.factories, None)
-            .map_err(ValidationError::TransactionError)?;
+        let db = self.db.db_read_access()?;
+        let tip = db.fetch_chain_metadata()?;
+
+        tx.validate_internal_consistency(
+            self.bypass_range_proof_verification,
+            &self.factories,
+            None,
+            Some(tip.best_block().clone()),
+            Some(tip.height_of_longest_chain()),
+        )
+        .map_err(ValidationError::TransactionError)?;
         Ok(())
     }
 }
@@ -66,6 +77,8 @@ impl MempoolTransactionValidation for TxInternalConsistencyValidator {
 /// This validator will check the transaction against the current consensus rules.
 ///
 /// 1. The transaction weight should not exceed the maximum weight for 1 block
+/// 1. All of the outputs should have a unique asset id in the transaction
+/// 1. All of the outputs should have a unique asset id not already on chain
 #[derive(Clone)]
 pub struct TxConsensusValidator<B> {
     db: BlockchainDatabase<B>,
@@ -106,9 +119,10 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let constants = self.db.consensus_constants()?;
         let db = self.db.db_read_access()?;
         check_inputs_are_utxos(&*db, tx.body())?;
-        check_not_duplicate_txos(&*db, tx.body())?;
+        check_outputs(&*db, constants, tx.body())?;
 
         let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;

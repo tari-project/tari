@@ -20,8 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use log::*;
-use tari_comms_dht::{domain_message::OutboundDomainMessage, outbound::SendMessageResponse};
+use tari_common_types::transaction::TxId;
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageResponse},
+};
+use tari_core::transactions::transaction_protocol::proto;
 use tari_p2p::tari_message::TariMessageType;
 
 use crate::transaction_service::{
@@ -30,11 +38,6 @@ use crate::transaction_service::{
     storage::models::InboundTransaction,
     tasks::wait_on_dial::wait_on_dial,
 };
-use std::time::Duration;
-use tari_common_types::transaction::TxId;
-use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
-use tari_comms_dht::outbound::{OutboundEncryption, OutboundMessageRequester};
-use tari_core::transactions::transaction_protocol::proto;
 
 const LOG_TARGET: &str = "wallet::transaction_service::tasks::send_transaction_reply";
 
@@ -167,16 +170,18 @@ pub async fn send_transaction_reply_direct(
                         )
                         .await;
                     },
+
+                    Ok(SendMessageResponse::Failed(e)) => warn!(
+                        target: LOG_TARGET,
+                        "Failed to send message ({}) Discovery failed for TxId: {}", e, tx_id
+                    ),
+                    Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                     Err(e) => {
                         debug!(
                             target: LOG_TARGET,
                             "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
                         );
                     },
-                    _ => debug!(
-                        target: LOG_TARGET,
-                        "Empty message received waiting for Discovery to complete TxId: {}", tx_id
-                    ),
                 }
             },
         },

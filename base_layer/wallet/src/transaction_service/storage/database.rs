@@ -20,30 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    error::TransactionStorageError,
-    storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
-};
-use aes_gcm::Aes256Gcm;
-use chrono::Utc;
-use log::*;
-
-use crate::transaction_service::storage::{
-    models::WalletTransaction,
-    sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
-};
 use std::{
     collections::HashMap,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use aes_gcm::Aes256Gcm;
+use chrono::Utc;
+use log::*;
 use tari_common_types::{
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+
+use crate::transaction_service::{
+    error::TransactionStorageError,
+    storage::{
+        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
+    },
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::database";
 
@@ -165,13 +165,13 @@ impl fmt::Debug for DbKey {
         // Add in i64 representatives for easy debugging in sqlite. This should probably be removed at some point
         match self {
             PendingOutboundTransaction(tx_id) => {
-                write!(f, "PendingOutboundTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "PendingOutboundTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
             PendingInboundTransaction(tx_id) => {
-                write!(f, "PendingInboundTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "PendingInboundTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
             CompletedTransaction(tx_id) => {
-                write!(f, "CompletedTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "CompletedTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
             PendingOutboundTransactions => {
                 write!(f, "PendingOutboundTransactions ")
@@ -195,18 +195,20 @@ impl fmt::Debug for DbKey {
                 write!(
                     f,
                     "CancelledPendingOutboundTransaction ({}u64, {}i64)",
-                    tx_id, *tx_id as i64
+                    tx_id,
+                    i64::from(*tx_id)
                 )
             },
             CancelledPendingInboundTransaction(tx_id) => {
                 write!(
                     f,
                     "CancelledPendingInboundTransaction ({}u64, {}i64)",
-                    tx_id, *tx_id as i64
+                    tx_id,
+                    i64::from(*tx_id)
                 )
             },
             AnyTransaction(tx_id) => {
-                write!(f, "AnyTransaction ({}u64, {}i64)", tx_id, *tx_id as i64)
+                write!(f, "AnyTransaction ({}u64, {}i64)", tx_id, i64::from(*tx_id))
             },
         }
     }

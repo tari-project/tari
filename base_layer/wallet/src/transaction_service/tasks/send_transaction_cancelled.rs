@@ -19,22 +19,23 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::transaction_service::error::TransactionServiceError;
 use tari_common_types::transaction::TxId;
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     outbound::{OutboundEncryption, OutboundMessageRequester},
 };
-use tari_core::transactions::transaction_protocol::proto;
+use tari_core::transactions::transaction_protocol::proto::protocol as proto;
 use tari_p2p::tari_message::TariMessageType;
+
+use crate::transaction_service::error::TransactionServiceError;
 
 pub async fn send_transaction_cancelled_message(
     tx_id: TxId,
     destination_public_key: CommsPublicKey,
     mut outbound_message_service: OutboundMessageRequester,
 ) -> Result<(), TransactionServiceError> {
-    let proto_message = proto::TransactionCancelledMessage { tx_id };
+    let proto_message = proto::TransactionCancelledMessage { tx_id: tx_id.into() };
 
     // Send both direct and SAF we are not going to monitor the progress on these messages for potential resend as
     // they are just courtesy messages

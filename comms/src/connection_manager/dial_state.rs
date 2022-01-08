@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::oneshot;
+
 use crate::{
     connection_manager::{error::ConnectionManagerError, peer_connection::PeerConnection},
     peer_manager::Peer,
 };
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::oneshot;
 
 /// The state of the dial request
 pub struct DialState {

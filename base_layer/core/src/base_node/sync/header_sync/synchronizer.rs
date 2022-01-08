@@ -19,6 +19,23 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    convert::TryFrom,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use futures::StreamExt;
+use log::*;
+use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::NodeId,
+    protocol::rpc::{RpcError, RpcHandshakeError},
+    PeerConnection,
+};
+use tari_utilities::{hex::Hex, Hashable};
+use tracing;
 
 use super::{validator::BlockHeaderSyncValidator, BlockHeaderSyncError};
 use crate::{
@@ -31,24 +48,8 @@ use crate::{
         base_node as proto,
         base_node::{FindChainSplitRequest, SyncHeadersRequest},
     },
-    tari_utilities::{hex::Hex, Hashable},
     validation::ValidationError,
 };
-use futures::StreamExt;
-use log::*;
-use std::{
-    convert::TryFrom,
-    sync::Arc,
-    time::{Duration, Instant},
-};
-use tari_common_types::types::HashOutput;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcHandshakeError},
-    PeerConnection,
-};
-use tracing;
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
@@ -61,6 +62,7 @@ pub struct HeaderSynchronizer<'a, B> {
     connectivity: ConnectivityRequester,
     sync_peers: &'a [SyncPeer],
     hooks: Hooks,
+    local_metadata: &'a ChainMetadata,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
@@ -71,6 +73,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         connectivity: ConnectivityRequester,
         sync_peers: &'a [SyncPeer],
         randomx_factory: RandomXFactory,
+        local_metadata: &'a ChainMetadata,
     ) -> Self {
         Self {
             config,
@@ -79,6 +82,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             connectivity,
             sync_peers,
             hooks: Default::default(),
+            local_metadata,
         }
     }
 
@@ -114,7 +118,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 target: LOG_TARGET,
                 "Attempting to synchronize headers with `{}`", node_id
             );
-            match self.attempt_sync(sync_peer, peer_conn).await {
+            match self.attempt_sync(sync_peer, peer_conn.clone()).await {
                 Ok(()) => return Ok(sync_peer.clone()),
                 // Try another peer
                 Err(err @ BlockHeaderSyncError::NotInSync) => {
@@ -218,7 +222,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         mut conn: PeerConnection,
     ) -> Result<(), BlockHeaderSyncError> {
         let mut client = conn.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
-        let latency = client.get_last_request_latency().await?;
+        let latency = client.get_last_request_latency();
         debug!(
             target: LOG_TARGET,
             "Initiating header sync with peer `{}` (sync latency = {}ms)",
@@ -245,11 +249,28 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     );
                     Ok(())
                 } else {
+                    // Check if the metadata that we had when we decided to enter header sync is behind the peer's
+                    // claimed one. If so, our chain has updated in the meantime and the sync peer
+                    // is behaving.
+                    if self.local_metadata.accumulated_difficulty() <=
+                        sync_peer.claimed_chain_metadata().accumulated_difficulty()
+                    {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Local blockchain received a better block through propagation at height {} (was: {}). \
+                             Proceeding to archival/pruned block sync",
+                            metadata.height_of_longest_chain(),
+                            self.local_metadata.height_of_longest_chain()
+                        );
+                        return Ok(());
+                    }
                     debug!(
                         target: LOG_TARGET,
-                        "Headers and block state are already in-sync (Header Tip: {}, Block tip: {})",
+                        "Headers and block state are already in-sync (Header Tip: {}, Block tip: {}, Peer's height: \
+                         {})",
                         header_tip_height,
-                        metadata.height_of_longest_chain()
+                        metadata.height_of_longest_chain(),
+                        sync_peer.claimed_chain_metadata().height_of_longest_chain(),
                     );
                     Err(BlockHeaderSyncError::PeerSentInaccurateChainMetadata {
                         claimed: sync_peer.claimed_chain_metadata().accumulated_difficulty(),
@@ -315,7 +336,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
             let resp = match client.find_chain_split(request).await {
                 Ok(r) => r,
-                Err(RpcError::RequestFailed(err)) if err.status_code().is_not_found() => {
+                Err(RpcError::RequestFailed(err)) if err.as_status_code().is_not_found() => {
                     // This round we sent less hashes than the max, so the next round will not have any more hashes to
                     // send. Exit early in this case.
                     if block_hashes.len() < NUM_CHAIN_SPLIT_HEADERS {
@@ -362,13 +383,16 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             fork_hash_index,
             tip_height: remote_tip_height,
         } = resp;
-        debug!(
-            target: LOG_TARGET,
-            "Found split {} blocks back, received {} headers from peer `{}`",
-            steps_back,
-            headers.len(),
-            sync_peer
-        );
+
+        if steps_back > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Found chain split {} blocks back, received {} headers from peer `{}`",
+                steps_back,
+                headers.len(),
+                sync_peer
+            );
+        }
 
         if fork_hash_index >= block_hashes.len() as u64 {
             let _ = self
@@ -656,7 +680,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
 
         // Check that the remote tip is stronger than the local tip
         let proposed_tip = chain_headers.last().unwrap();
-        self.header_validator.compare_chains(current_tip, proposed_tip).is_lt()
+        self.header_validator.compare_chains(current_tip, proposed_tip).is_le()
     }
 
     async fn switch_to_pending_chain(&mut self, split_info: &ChainSplitInfo) -> Result<(), BlockHeaderSyncError> {

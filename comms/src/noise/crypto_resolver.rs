@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::types::{CommsPublicKey, CommsSecretKey};
 use rand::rngs::OsRng;
 use snow::{
     params::{CipherChoice, DHChoice, HashChoice},
@@ -31,6 +30,8 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey, SecretKey},
     tari_utilities::ByteArray,
 };
+
+use crate::types::{CommsPublicKey, CommsSecretKey};
 
 macro_rules! copy_slice {
     ($inslice:expr, $outslice:expr) => {
@@ -114,9 +115,10 @@ impl Dh for CommsDiffieHellman {
 
 #[cfg(test)]
 mod test {
+    use snow::Keypair;
+
     use super::*;
     use crate::noise::config::NOISE_IX_PARAMETER;
-    use snow::Keypair;
 
     fn build_keypair() -> Keypair {
         snow::Builder::with_resolver(

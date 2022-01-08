@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use rand::{rngs::OsRng, RngCore};
 use std::cmp;
+
+use rand::{rngs::OsRng, RngCore};
 
 pub trait ToProtoEnum {
     fn as_i32(&self) -> i32;

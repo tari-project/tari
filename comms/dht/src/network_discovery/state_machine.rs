@@ -20,6 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt,
+    fmt::Display,
+    future::Future,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
+
+use futures::{future, future::Either};
+use log::*;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, NodeIdentity, PeerManager};
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    sync::{broadcast, RwLock},
+    task,
+};
+
 use crate::{
     event::DhtEvent,
     network_discovery::{
@@ -31,23 +50,6 @@ use crate::{
         NetworkDiscoveryError,
     },
     DhtConfig,
-};
-use futures::{future, future::Either};
-use log::*;
-use std::{
-    fmt,
-    fmt::Display,
-    future::Future,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-};
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId, NodeIdentity, PeerManager};
-use tari_shutdown::ShutdownSignal;
-use tokio::{
-    sync::{broadcast, RwLock},
-    task,
 };
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
@@ -118,7 +120,7 @@ impl<E: Into<NetworkDiscoveryError>> From<E> for StateEvent {
 
 #[derive(Debug, Clone)]
 pub(super) struct NetworkDiscoveryContext {
-    pub config: DhtConfig,
+    pub config: Arc<DhtConfig>,
     pub peer_manager: Arc<PeerManager>,
     pub connectivity: ConnectivityRequester,
     pub node_identity: Arc<NodeIdentity>,
@@ -168,7 +170,7 @@ pub struct DhtNetworkDiscovery {
 
 impl DhtNetworkDiscovery {
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         connectivity: ConnectivityRequester,

@@ -7,6 +7,7 @@ const {
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
 const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
+const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
@@ -15,7 +16,7 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
-const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
+// const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
 
 class CustomWorld {
   constructor({ attach, parameters }) {
@@ -23,6 +24,7 @@ class CustomWorld {
     this.attach = attach;
     this.seeds = {};
     this.nodes = {};
+    this.dan_nodes = {};
     this.proxies = {};
     this.miners = {};
     this.wallets = {};
@@ -69,9 +71,36 @@ class CustomWorld {
     return res;
   }
 
+  currentBaseNodeName() {
+    return Object.keys(this.nodes)[0];
+  }
+
+  currentWalletName() {
+    return Object.keys(this.wallets)[0];
+  }
+
+  currentWallet() {
+    return Object.values(this.wallets)[0];
+  }
+
   /// Create but don't add the node
   createNode(name, options) {
     return new BaseNodeProcess(name, false, options, this.logFilePathBaseNode);
+  }
+
+  createDanNode(name, options) {
+    return new ValidatorNodeProcess(
+      name,
+      false,
+      options,
+      this.logFilePathBaseNode
+    );
+  }
+
+  async createAndAddDanNode(name) {
+    const node = this.createDanNode(name);
+    await node.init();
+    await this.addDanNode(name, node);
   }
 
   async createAndAddNode(name, addresses) {
@@ -86,6 +115,11 @@ class CustomWorld {
     }
     await node.startNew();
     await this.addNode(name, node);
+  }
+
+  async addDanNode(name, process) {
+    this.dan_nodes[name] = process;
+    // this.clients[name] = await process.createGrpcClient();
   }
 
   async addNode(name, process) {
@@ -254,7 +288,7 @@ class CustomWorld {
   }
 
   getNode(name) {
-    const node = this.nodes[name] || this.seeds[name];
+    const node = this.nodes[name] || this.seeds[name] || this.dan_nodes[name];
     if (!node) {
       throw new Error(`Node not found with name '${name}'`);
     }
@@ -397,6 +431,11 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await baseNode.init();
   await baseNode.compile();
 
+  // const danNode = new ValidatorNodeProcess("compile");
+  // console.log("Compiling validator node...");
+  // await danNode.init();
+  // await danNode.compile();
+
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");
   await wallet.init();
@@ -436,12 +475,12 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
-  console.log("Compiling wallet FFI...");
-  await InterfaceFFI.compile();
-  console.log("Finished compilation.");
-  console.log("Loading FFI interface..");
-  await InterfaceFFI.init();
-  console.log("FFI interface loaded.");
+  // console.log("Compiling wallet FFI...");
+  // await InterfaceFFI.compile();
+  // console.log("Finished compilation.");
+  // console.log("Loading FFI interface..");
+  // await InterfaceFFI.init();
+  // console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");
 });
@@ -457,6 +496,7 @@ After(async function (testCase) {
   await stopAndHandleLogs(this.nodes, testCase, this);
   await stopAndHandleLogs(this.proxies, testCase, this);
   await stopAndHandleLogs(this.miners, testCase, this);
+  await stopAndHandleLogs(this.dan_nodes, testCase, this);
   await stopAndHandleLogs(this.wallets, testCase, this);
 });
 

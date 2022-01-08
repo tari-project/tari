@@ -20,13 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
-    outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
-    version::DhtProtocolVersion,
-};
-use bytes::Bytes;
 use std::{fmt, fmt::Display, sync::Arc};
+
+use bytes::Bytes;
 use tari_comms::{
     message::{MessageTag, MessagingReplyTx},
     peer_manager::NodeId,
@@ -35,6 +31,12 @@ use tari_comms::{
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::sync::oneshot;
+
+use crate::{
+    envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
+    outbound::{message_params::FinalSendMessageParams, message_send_state::MessageSendStates},
+    version::DhtProtocolVersion,
+};
 
 /// Determines if an outbound message should be Encrypted and, if so, for which public key
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -134,7 +136,7 @@ impl SendMessageResponse {
             Queued(send_states) if !send_states.is_empty() => Ok(send_states),
             Queued(_) => Err(SendFailure::NoMessagesQueued),
             Failed(err) => Err(err),
-            PendingDiscovery(_) => panic!("ok_or_failed() called on PendingDiscovery"),
+            PendingDiscovery(_) => panic!("queued_or_failed() called on PendingDiscovery"),
         }
     }
 }

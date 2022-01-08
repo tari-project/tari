@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use super::protocol as proto;
-
 use crate::transactions::transaction_protocol::TransactionMetadata;
 
 impl From<proto::TransactionMetadata> for TransactionMetadata {

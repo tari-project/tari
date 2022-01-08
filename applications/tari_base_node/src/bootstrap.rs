@@ -24,7 +24,6 @@ use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::anyhow;
 use log::*;
-
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
@@ -37,6 +36,7 @@ use tari_core::{
         state_machine_service::{initializer::BaseNodeStateMachineInitializer, states::HorizonSyncConfig},
         BaseNodeStateMachineConfig,
         BlockSyncConfig,
+        LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
@@ -58,6 +58,7 @@ use tari_p2p::{
     initialization::{P2pConfig, P2pInitializer},
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
+    transport::TransportType,
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
@@ -169,7 +170,7 @@ where B: BlockchainBackend + 'static
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     max_randomx_vms: config.max_randomx_vms,
                     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                    block_sync_validation_concurrency: num_cpus::get(),
+                    sync_validation_concurrency: num_cpus::get(),
                     ..Default::default()
                 },
                 self.rules,
@@ -184,11 +185,16 @@ where B: BlockchainBackend + 'static
 
         let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), config);
-        let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
+        let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone()).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
-        identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-            .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
+        match transport_type {
+            TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
+            _ => {
+                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
+                    .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
+            },
+        };
         if let Some(hs) = comms.hidden_service() {
             identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
                 .map_err(|e| anyhow!("Failed to save tor identity: {:?}", e))?;
@@ -206,6 +212,7 @@ where B: BlockchainBackend + 'static
         config: &GlobalConfig,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
+        let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let builder = RpcServer::builder();
         let builder = match config.rpc_max_simultaneous_sessions {
             Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
@@ -223,7 +230,10 @@ where B: BlockchainBackend + 'static
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
         let rpc_server = rpc_server
             .add_service(dht.rpc_service())
-            .add_service(base_node::create_base_node_sync_rpc_service(db.clone()))
+            .add_service(base_node::create_base_node_sync_rpc_service(
+                db.clone(),
+                base_node_service,
+            ))
             .add_service(mempool::create_mempool_rpc_service(
                 handles.expect_handle::<MempoolHandle>(),
             ))

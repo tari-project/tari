@@ -20,15 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::peer_message::PeerMessage;
+use std::{pin::Pin, sync::Arc, task::Poll};
+
 use anyhow::anyhow;
 use futures::{task::Context, Future};
 use log::*;
-use std::{pin::Pin, sync::Arc, task::Poll};
 use tari_comms::pipeline::PipelineError;
 use tari_comms_dht::{domain_message::MessageHeader, inbound::DecryptedDhtMessage};
 use tokio::sync::mpsc;
 use tower::Service;
+
+use super::peer_message::PeerMessage;
 
 const LOG_TARGET: &str = "comms::middleware::inbound_connector";
 /// This service receives DecryptedDhtMessage, deserializes the MessageHeader and
@@ -106,13 +108,14 @@ impl InboundDomainConnector {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::test_utils::{make_dht_inbound_message, make_node_identity};
     use futures::executor::block_on;
     use tari_comms::{message::MessageExt, wrap_in_envelope_body};
     use tari_comms_dht::domain_message::MessageHeader;
     use tokio::sync::mpsc;
     use tower::ServiceExt;
+
+    use super::*;
+    use crate::test_utils::{make_dht_inbound_message, make_node_identity};
 
     #[tokio::test]
     async fn handle_message() {

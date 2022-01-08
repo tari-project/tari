@@ -21,11 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tokio::runtime;
-
 // Re-export
-pub use tokio::{runtime::Handle, task};
-
-pub use tokio::test;
+pub use tokio::{runtime::Handle, task, test};
 
 /// Return the current tokio executor. Panics if the tokio runtime is not started.
 #[inline]

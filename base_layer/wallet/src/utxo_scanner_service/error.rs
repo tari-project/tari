@@ -20,12 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{error::WalletStorageError, output_manager_service::error::OutputManagerError};
 use serde_json::Error as SerdeJsonError;
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_crypto::tari_utilities::hex::HexError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
+
+use crate::{error::WalletStorageError, output_manager_service::error::OutputManagerError};
 
 #[derive(Debug, Error)]
 pub enum UtxoScannerError {
@@ -55,4 +56,6 @@ pub enum UtxoScannerError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
+    #[error("Overflow Error")]
+    OverflowError,
 }

@@ -20,15 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, sync::Arc};
+
+use async_trait::async_trait;
+
 use super::RpcError;
 use crate::{
     connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::{NodeId, Peer},
+    peer_manager::{NodeId, OrNotFound, Peer},
     PeerConnection,
     PeerManager,
 };
-use async_trait::async_trait;
-use std::{fmt, sync::Arc};
 
 /// Abstraction of the comms backend calls provided to RPC services.
 #[async_trait]
@@ -61,7 +63,11 @@ impl RpcCommsBackend {
 #[async_trait]
 impl RpcCommsProvider for RpcCommsBackend {
     async fn fetch_peer(&self, node_id: &NodeId) -> Result<Peer, RpcError> {
-        self.peer_manager.find_by_node_id(node_id).await.map_err(Into::into)
+        self.peer_manager
+            .find_by_node_id(node_id)
+            .await
+            .or_not_found()
+            .map_err(Into::into)
     }
 
     async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {

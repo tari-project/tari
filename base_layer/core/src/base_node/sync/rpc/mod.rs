@@ -32,9 +32,14 @@ pub use service::BaseNodeSyncRpcService;
 #[cfg(test)]
 mod tests;
 
-#[cfg(feature = "base_node")]
-use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms_rpc_macros::tari_rpc;
 
+#[cfg(feature = "base_node")]
+use crate::{
+    base_node::LocalNodeCommsInterface,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+};
 use crate::{
     proto,
     proto::base_node::{
@@ -47,8 +52,6 @@ use crate::{
         SyncUtxosResponse,
     },
 };
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_comms_rpc_macros::tari_rpc;
 
 #[tari_rpc(protocol_name = b"t/blksync/1", server_struct = BaseNodeSyncRpcServer, client_struct = BaseNodeSyncRpcClient)]
 pub trait BaseNodeSyncService: Send + Sync + 'static {
@@ -95,6 +98,7 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 #[cfg(feature = "base_node")]
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
+    base_node_service: LocalNodeCommsInterface,
 ) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService<B>> {
-    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db))
+    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db, base_node_service))
 }

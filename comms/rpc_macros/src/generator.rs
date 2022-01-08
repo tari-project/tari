@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{method_info::RpcMethodInfo, options::RpcTraitOptions};
 use proc_macro2::TokenStream;
 use quote::quote;
+
+use crate::{method_info::RpcMethodInfo, options::RpcTraitOptions};
 
 pub struct RpcCodeGenerator {
     options: RpcTraitOptions,
@@ -197,7 +198,7 @@ impl RpcCodeGenerator {
             pub async fn connect<TSubstream>(framed: #dep_mod::CanonicalFraming<TSubstream>) -> Result<Self, #dep_mod::RpcError>
               where TSubstream: #dep_mod::AsyncRead + #dep_mod::AsyncWrite + Unpin + Send + #dep_mod::StreamId + 'static {
                 use #dep_mod::NamedProtocolService;
-                let inner = #dep_mod::RpcClient::connect(Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
+                let inner = #dep_mod::RpcClient::connect(Default::default(), Default::default(), framed, Self::PROTOCOL_NAME.into()).await?;
                 Ok(Self { inner })
             }
 
@@ -208,8 +209,8 @@ impl RpcCodeGenerator {
 
             #client_methods
 
-            pub async fn get_last_request_latency(&mut self) -> Result<Option<std::time::Duration>, #dep_mod::RpcError> {
-                self.inner.get_last_request_latency().await
+            pub fn get_last_request_latency(&mut self) -> Option<std::time::Duration> {
+                self.inner.get_last_request_latency()
             }
 
             pub async fn ping(&mut self) -> Result<std::time::Duration, #dep_mod::RpcError> {

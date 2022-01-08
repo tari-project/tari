@@ -23,10 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
-use tokio::sync::{broadcast, watch};
-
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
+use tokio::sync::{broadcast, watch};
 
 use crate::{
     base_node::{
@@ -93,7 +92,10 @@ where B: BlockchainBackend + 'static
         let db = self.db.clone();
         let config = self.config.clone();
 
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         context.spawn_when_ready(move |handles| async move {
+            log_mdc::extend(mdc);
             let chain_metadata_service = handles.expect_handle::<ChainMetadataHandle>();
             let node_local_interface = handles.expect_handle::<LocalNodeCommsInterface>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
@@ -104,7 +106,7 @@ where B: BlockchainBackend + 'static
                 rules.clone(),
                 factories,
                 config.bypass_range_proof_verification,
-                config.block_sync_validation_concurrency,
+                config.sync_validation_concurrency,
             );
             let max_randomx_vms = config.max_randomx_vms;
 

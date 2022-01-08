@@ -20,6 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryInto,
+    future::Future,
+    io::{Error, ErrorKind},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
+
+use futures::{future, FutureExt};
+use log::*;
+use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    sync::mpsc,
+    time,
+};
+use tokio_stream::StreamExt;
+use tracing::{span, Instrument, Level};
+
 use super::{
     common,
     error::ConnectionManagerError,
@@ -32,6 +54,7 @@ use crate::{
     bounded_executor::BoundedExecutor,
     connection_manager::{
         liveness::LivenessSession,
+        metrics,
         wire_mode::{WireMode, LIVENESS_WIRE_MODE},
     },
     multiaddr::Multiaddr,
@@ -41,31 +64,9 @@ use crate::{
     protocol::ProtocolId,
     runtime,
     transports::Transport,
-    types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
     PeerManager,
 };
-use futures::{future, FutureExt};
-use log::*;
-use std::{
-    convert::TryInto,
-    future::Future,
-    io::{Error, ErrorKind},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_shutdown::{oneshot_trigger, oneshot_trigger::OneshotTrigger, ShutdownSignal};
-use tokio::{
-    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    sync::mpsc,
-    time,
-};
-use tokio_stream::StreamExt;
-use tracing::{span, Instrument, Level};
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
@@ -240,6 +241,7 @@ where
 
         let span = span!(Level::TRACE, "connection_mann::listener::inbound_task",);
         let inbound_fut = async move {
+            metrics::pending_connections(None, ConnectionDirection::Inbound).inc();
             match Self::read_wire_format(&mut socket, config.time_to_first_byte).await {
                 Ok(WireMode::Comms(byte)) if byte == config.network_info.network_byte => {
                     let this_node_id_str = node_identity.node_id().short_str();
@@ -283,18 +285,14 @@ where
                     }
                 },
                 Ok(WireMode::Comms(byte)) => {
-                    // TODO: This call is expensive and only added for the benefit of improved logging and may lead to
-                    // TODO: DoS attacks. Remove later when not needed anymore or make it optional with a config file
-                    // TODO: setting.
-                    let public_key = Self::remote_public_key_from_socket(socket, noise_config).await;
                     warn!(
                         target: LOG_TARGET,
-                        "Peer at address '{}' ({}) sent invalid wire format byte. Expected {:x?} got: {:x?} ",
+                        "Peer at address '{}' sent invalid wire format byte. Expected {:x?} got: {:x?} ",
                         peer_addr,
-                        public_key,
                         config.network_info.network_byte,
                         byte,
                     );
+                    let _ = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
@@ -326,38 +324,14 @@ where
                     );
                 },
             }
+
+            metrics::pending_connections(None, ConnectionDirection::Inbound).dec();
         }
         .instrument(span);
 
         // This will block (asynchronously) if we have reached the maximum simultaneous connections, creating
         // back-pressure on nodes connecting to this node
         self.bounded_executor.spawn(inbound_fut).await;
-    }
-
-    async fn remote_public_key_from_socket(socket: TTransport::Output, noise_config: NoiseConfig) -> String {
-        let public_key: Option<CommsPublicKey> = match time::timeout(
-            Duration::from_secs(30),
-            noise_config.upgrade_socket(socket, ConnectionDirection::Inbound),
-        )
-        .await
-        .map_err(|_| ConnectionManagerError::NoiseProtocolTimeout)
-        {
-            Ok(Ok(noise_socket)) => {
-                match noise_socket
-                    .get_remote_public_key()
-                    .ok_or(ConnectionManagerError::InvalidStaticPublicKey)
-                {
-                    Ok(pk) => Some(pk),
-                    _ => None,
-                }
-            },
-            _ => None,
-        };
-
-        match public_key {
-            None => "public key not known".to_string(),
-            Some(pk) => pk.to_hex(),
-        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -377,7 +351,8 @@ where
             "Starting noise protocol upgrade for peer at address '{}'", peer_addr
         );
 
-        let noise_socket = time::timeout(
+        let timer = Instant::now();
+        let mut noise_socket = time::timeout(
             Duration::from_secs(30),
             noise_config.upgrade_socket(socket, CONNECTION_DIRECTION),
         )
@@ -388,21 +363,23 @@ where
             .get_remote_public_key()
             .ok_or(ConnectionManagerError::InvalidStaticPublicKey)?;
 
-        // Check if we know the peer and if it is banned
-        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
-
-        let mut muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
-            .await
-            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
-
-        trace!(
+        debug!(
             target: LOG_TARGET,
-            "Starting peer identity exchange for peer with public key '{}'",
+            "Noise socket upgrade completed in {:.2?} with public key '{}'",
+            timer.elapsed(),
             authenticated_public_key
         );
 
+        // Check if we know the peer and if it is banned
+        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
+        );
+
         let peer_identity = common::perform_identity_exchange(
-            &mut muxer,
+            &mut noise_socket,
             &node_identity,
             CONNECTION_DIRECTION,
             &our_supported_protocols,
@@ -435,6 +412,9 @@ where
             node_identity.node_id().short_str(),
             peer_node_id.short_str()
         );
+
+        let muxer = Yamux::upgrade_connection(noise_socket, CONNECTION_DIRECTION)
+            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
 
         peer_connection::create(
             muxer,

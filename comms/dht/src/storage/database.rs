@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use tari_utilities::message_format::MessageFormat;
+
 use super::{dht_setting_entry::DhtMetadataEntry, DbConnection, StorageError};
 use crate::{
     schema::dht_metadata,
     storage::{dht_setting_entry::NewDhtMetadataEntry, DhtMetadataKey},
 };
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
-use tari_utilities::message_format::MessageFormat;
 
 #[derive(Clone)]
 pub struct DhtDatabase {
@@ -38,49 +39,39 @@ impl DhtDatabase {
         Self { connection }
     }
 
-    pub async fn get_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey) -> Result<Option<T>, StorageError> {
-        match self.get_metadata_value_bytes(key).await? {
+    pub fn get_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey) -> Result<Option<T>, StorageError> {
+        match self.get_metadata_value_bytes(key)? {
             Some(bytes) => T::from_binary(&bytes).map(Some).map_err(Into::into),
             None => Ok(None),
         }
     }
 
-    pub async fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
-        self.connection
-            .with_connection_async(move |conn| {
-                dht_metadata::table
-                    .filter(dht_metadata::key.eq(key.to_string()))
-                    .first(conn)
-                    .map(|rec: DhtMetadataEntry| Some(rec.value))
-                    .or_else(|err| match err {
-                        diesel::result::Error::NotFound => Ok(None),
-                        err => Err(err.into()),
-                    })
+    pub fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
+        let conn = self.connection.get_pooled_connection()?;
+        dht_metadata::table
+            .filter(dht_metadata::key.eq(key.to_string()))
+            .first(&conn)
+            .map(|rec: DhtMetadataEntry| Some(rec.value))
+            .or_else(|err| match err {
+                diesel::result::Error::NotFound => Ok(None),
+                err => Err(err.into()),
             })
-            .await
     }
 
-    pub async fn set_metadata_value<T: MessageFormat>(
-        &self,
-        key: DhtMetadataKey,
-        value: T,
-    ) -> Result<(), StorageError> {
+    pub fn set_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey, value: T) -> Result<(), StorageError> {
         let bytes = value.to_binary()?;
-        self.set_metadata_value_bytes(key, bytes).await
+        self.set_metadata_value_bytes(key, bytes)
     }
 
-    pub async fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
-        self.connection
-            .with_connection_async(move |conn| {
-                diesel::replace_into(dht_metadata::table)
-                    .values(NewDhtMetadataEntry {
-                        key: key.to_string(),
-                        value,
-                    })
-                    .execute(conn)
-                    .map(|_| ())
-                    .map_err(Into::into)
+    pub fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
+        let conn = self.connection.get_pooled_connection()?;
+        diesel::replace_into(dht_metadata::table)
+            .values(NewDhtMetadataEntry {
+                key: key.to_string(),
+                value,
             })
-            .await
+            .execute(&conn)
+            .map(|_| ())
+            .map_err(Into::into)
     }
 }

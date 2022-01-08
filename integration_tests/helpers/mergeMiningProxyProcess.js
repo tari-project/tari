@@ -6,6 +6,8 @@ const { spawn } = require("child_process");
 const { expect } = require("chai");
 const MergeMiningProxyClient = require("./mergeMiningProxyClient");
 const { createEnv } = require("./config");
+require("https");
+require("http");
 
 let outputProcess;
 
@@ -38,7 +40,7 @@ class MergeMiningProxyProcess {
     // console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
   }
 
-  run(cmd, args) {
+  async run(cmd, args) {
     return new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
@@ -65,10 +67,9 @@ class MergeMiningProxyProcess {
       const extraEnvs = {
         TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
           this.submitOrigin,
-        TARI_MERGE_MINING_PROXY__LOCALNET__monerod_url:
-          "http://3.104.4.129:18081",
       };
       const completeEnvs = { ...envs, ...extraEnvs };
+      console.log(completeEnvs);
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
@@ -110,7 +111,8 @@ class MergeMiningProxyProcess {
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
-    return await this.run(await this.compile(), args, true);
+
+    return await this.run(await this.compile(), args);
   }
 
   async compile() {

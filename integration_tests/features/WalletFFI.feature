@@ -44,17 +44,11 @@ Feature: Wallet FFI
 
     Scenario: As a client I want to set the base node
         Given I have a base node BASE1
-        Given I have a base node BASE2
-        And I have a ffi wallet FFI_WALLET connected to base node BASE1
-        And I set base node BASE2 for ffi wallet FFI_WALLET
-        And I stop ffi wallet FFI_WALLET
-        And I stop node BASE2
-        And I restart ffi wallet FFI_WALLET connected to base node BASE2
-        And I wait 5 seconds
-        Then I wait for ffi wallet FFI_WALLET to receive EXACTLY 0 SAF message
-        And I start base node BASE2
-        Then I wait for ffi wallet FFI_WALLET to receive AT_LEAST 1 SAF message
-        And I stop ffi wallet FFI_WALLET
+        And I have a base node BASE2
+        Given I have a ffi wallet FFI_WALLET connected to base node BASE1
+        Then I wait for ffi wallet FFI_WALLET to connect to BASE1
+        Given I set base node BASE2 for ffi wallet FFI_WALLET
+        Then I wait for ffi wallet FFI_WALLET to connect to BASE2
 
     Scenario: As a client I want to cancel a transaction
         Given I have a base node BASE
@@ -133,6 +127,30 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to receive 1 mined
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
+        And I stop ffi wallet FFI_WALLET
+
+    Scenario: As a client I want to send a one-sided transaction
+        Given I have a seed node SEED
+        And I have a base node BASE1 connected to all seed nodes
+        And I have a base node BASE2 connected to all seed nodes
+        And I have wallet SENDER connected to base node BASE1
+        And I have a ffi wallet FFI_WALLET connected to base node BASE2
+        And I have wallet RECEIVER connected to base node BASE2
+        And I have mining node MINER connected to base node BASE1 and wallet SENDER
+        And mining node MINER mines 10 blocks
+        Then I wait for wallet SENDER to have at least 1000000 uT
+        And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
+        And mining node MINER mines 10 blocks
+        Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
+        And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20 via one-sided transactions
+        And mining node MINER mines 2 blocks
+        Then all nodes are at height 22
+        And mining node MINER mines 2 blocks
+        Then all nodes are at height 24
+        And mining node MINER mines 6 blocks
+        Then I wait for wallet RECEIVER to have at least 1000000 uT
+        Then I wait for ffi wallet FFI_WALLET to receive 2 mined
         And I stop ffi wallet FFI_WALLET
 
     # Scenario: As a client I want to get my balance

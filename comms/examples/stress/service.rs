@@ -20,16 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::Error;
-use crate::stress::{MAX_FRAME_SIZE, STRESS_PROTOCOL_NAME};
-use bytes::{Buf, Bytes, BytesMut};
-use futures::{stream, SinkExt, StreamExt};
-use rand::{rngs::OsRng, RngCore};
 use std::{
     iter::repeat_with,
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use bytes::{Buf, Bytes, BytesMut};
+use futures::{stream, SinkExt, StreamExt};
+use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     framing,
     message::{InboundMessage, OutboundMessage},
@@ -49,6 +48,9 @@ use tokio::{
     task::JoinHandle,
     time,
 };
+
+use super::error::Error;
+use crate::stress::{MAX_FRAME_SIZE, STRESS_PROTOCOL_NAME};
 
 pub fn start_service(
     comms_node: CommsNode,
@@ -79,6 +81,7 @@ pub fn start_service(
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum StressTestServiceRequest {
     BeginProtocol(Peer, StressProtocol, oneshot::Sender<Result<(), Error>>),
     Shutdown,

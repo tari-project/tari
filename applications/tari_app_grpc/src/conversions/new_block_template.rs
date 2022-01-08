@@ -20,16 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::types::BlindingFactor;
 use tari_core::{
     blocks::{NewBlockHeaderTemplate, NewBlockTemplate},
-    crypto::tari_utilities::ByteArray,
     proof_of_work::ProofOfWork,
 };
-impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
-    fn from(block: NewBlockTemplate) -> Self {
+use tari_utilities::ByteArray;
+
+use crate::tari_rpc as grpc;
+
+impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
+    type Error = String;
+
+    fn try_from(block: NewBlockTemplate) -> Result<Self, Self::Error> {
         let header = grpc::NewBlockHeaderTemplate {
             version: block.header.version as u32,
             height: block.header.height,
@@ -41,14 +46,14 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                 pow_data: block.header.pow.pow_data,
             }),
         };
-        Self {
+        Ok(Self {
             body: Some(grpc::AggregateBody {
                 inputs: block
                     .body
                     .inputs()
                     .iter()
-                    .map(|input| grpc::TransactionInput::from(input.clone()))
-                    .collect(),
+                    .map(|input| grpc::TransactionInput::try_from(input.clone()))
+                    .collect::<Result<Vec<grpc::TransactionInput>, _>>()?,
                 outputs: block
                     .body
                     .outputs()
@@ -63,7 +68,7 @@ impl From<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .collect(),
             }),
             header: Some(header),
-        }
+        })
     }
 }
 impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
@@ -72,9 +77,9 @@ impl TryFrom<grpc::NewBlockTemplate> for NewBlockTemplate {
     fn try_from(block: grpc::NewBlockTemplate) -> Result<Self, Self::Error> {
         let header = block.header.clone().ok_or_else(|| "No header provided".to_string())?;
         let total_kernel_offset = BlindingFactor::from_bytes(&header.total_kernel_offset)
-            .map_err(|err| format!("total_kernel_offset {}", err.to_string()))?;
+            .map_err(|err| format!("total_kernel_offset {}", err))?;
         let total_script_offset = BlindingFactor::from_bytes(&header.total_script_offset)
-            .map_err(|err| format!("total_script_offset {}", err.to_string()))?;
+            .map_err(|err| format!("total_script_offset {}", err))?;
         let pow = match header.pow {
             Some(p) => ProofOfWork::try_from(p)?,
             None => return Err("No proof of work provided".into()),

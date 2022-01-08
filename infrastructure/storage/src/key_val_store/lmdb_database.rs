@@ -20,6 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{marker::PhantomData, sync::Arc};
+
+use lmdb_zero::traits::AsLmdbBytes;
+use serde::{de::DeserializeOwned, Serialize};
+
 use crate::{
     key_val_store::{
         key_val_store::{IterationResult, KeyValueStore},
@@ -27,9 +32,6 @@ use crate::{
     },
     lmdb_store::LMDBDatabase,
 };
-use lmdb_zero::traits::AsLmdbBytes;
-use serde::{de::DeserializeOwned, Serialize};
-use std::{marker::PhantomData, sync::Arc};
 
 /// This is a simple wrapper struct that lifts the generic parameters so that KeyValStore can be implemented on
 /// LMDBDatabase. LMDBDatabase doesn't have the generics at the struct level because the LMDBStore can contain many
@@ -112,10 +114,12 @@ where
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
+    use serde::{Deserialize, Serialize};
+
     use super::*;
     use crate::lmdb_store::{LMDBBuilder, LMDBConfig, LMDBError, LMDBStore};
-    use serde::{Deserialize, Serialize};
-    use std::path::PathBuf;
 
     fn get_path(name: &str) -> String {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

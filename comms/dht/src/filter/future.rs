@@ -1,12 +1,13 @@
 //! Future types
 
-use futures::ready;
-use pin_project::pin_project;
 use std::{
     future::Future,
     pin::Pin,
     task::{Context, Poll},
 };
+
+use futures::ready;
+use pin_project::pin_project;
 use tari_comms::pipeline::PipelineError;
 use tower::Service;
 

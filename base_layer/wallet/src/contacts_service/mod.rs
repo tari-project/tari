@@ -25,11 +25,6 @@ pub mod handle;
 pub mod service;
 pub mod storage;
 
-use crate::contacts_service::{
-    handle::ContactsServiceHandle,
-    service::ContactsService,
-    storage::database::{ContactsBackend, ContactsDatabase},
-};
 use futures::future;
 use log::*;
 use tari_service_framework::{
@@ -38,6 +33,12 @@ use tari_service_framework::{
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+};
+
+use crate::contacts_service::{
+    handle::ContactsServiceHandle,
+    service::ContactsService,
+    storage::database::{ContactsBackend, ContactsDatabase},
 };
 
 const LOG_TARGET: &str = "wallet::contacts_service::initializer";

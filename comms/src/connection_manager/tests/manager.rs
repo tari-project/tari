@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
+use futures::future;
+use tari_shutdown::Shutdown;
+use tari_test_utils::{collect_try_recv, unpack_enum};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    runtime::Handle,
+    sync::{broadcast, mpsc, oneshot},
+};
+
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::{
@@ -31,7 +42,7 @@ use crate::{
     },
     noise::NoiseConfig,
     peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags, PeerManagerError},
-    protocol::{ProtocolEvent, ProtocolId, Protocols, IDENTITY_PROTOCOL},
+    protocol::{ProtocolEvent, ProtocolId, Protocols},
     runtime,
     runtime::task,
     test_utils::{
@@ -40,15 +51,6 @@ use crate::{
         test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
     },
     transports::{MemoryTransport, TcpTransport},
-};
-use futures::future;
-use std::time::Duration;
-use tari_shutdown::Shutdown;
-use tari_test_utils::{collect_try_recv, unpack_enum};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    runtime::Handle,
-    sync::{broadcast, mpsc, oneshot},
 };
 
 #[runtime::test]
@@ -153,16 +155,24 @@ async fn dial_success() {
 
     let mut conn_out = conn_man1.dial_peer(node_identity2.node_id().clone()).await.unwrap();
     assert_eq!(conn_out.peer_node_id(), node_identity2.node_id());
-    let peer2 = peer_manager1.find_by_node_id(conn_out.peer_node_id()).await.unwrap();
-    assert_eq!(peer2.supported_protocols, [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    let peer2 = peer_manager1
+        .find_by_node_id(conn_out.peer_node_id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(peer2.supported_protocols, [&TEST_PROTO]);
     assert_eq!(peer2.user_agent, "node2");
 
     let event = subscription2.recv().await.unwrap();
     unpack_enum!(ConnectionManagerEvent::PeerConnected(conn_in) = &*event);
     assert_eq!(conn_in.peer_node_id(), node_identity1.node_id());
 
-    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
-    assert_eq!(peer1.supported_protocols(), [&IDENTITY_PROTOCOL, &TEST_PROTO]);
+    let peer1 = peer_manager2
+        .find_by_node_id(node_identity1.node_id())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(peer1.supported_protocols(), [&TEST_PROTO]);
     assert_eq!(peer1.user_agent, "node1");
 
     let err = conn_out

@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::schema::dht_metadata;
 use std::fmt;
+
+use crate::schema::dht_metadata;
 
 #[derive(Debug, Clone, Copy)]
 pub enum DhtMetadataKey {

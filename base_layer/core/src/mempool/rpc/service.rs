@@ -20,14 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
+use log::*;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+
 use crate::{
     mempool::{rpc::MempoolService, service::MempoolHandle},
     proto,
     transactions::transaction::Transaction,
 };
-use log::*;
-use std::convert::{TryFrom, TryInto};
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
 
 const LOG_TARGET: &str = "c::mempool::rpc";
 
@@ -62,7 +64,10 @@ impl MempoolService for MempoolRpcService {
 
     async fn get_state(&self, _: Request<()>) -> Result<Response<proto::mempool::StateResponse>, RpcStatus> {
         let state = self.mempool().get_state().await.map_err(to_internal_error)?;
-        Ok(Response::new(state.into()))
+        Ok(Response::new(state.try_into().map_err(|e: String| {
+            error!(target: LOG_TARGET, "Internal error: {}", e);
+            RpcStatus::general(e)
+        })?))
     }
 
     async fn get_transaction_state_by_excess_sig(

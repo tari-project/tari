@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io;
+
 use hex::FromHexError;
 use hyper::header::InvalidHeaderValue;
-use std::io;
 use tari_common::{ConfigError, ConfigurationError};
 use tari_core::{proof_of_work::monero_rx::MergeMineError, transactions::CoinbaseBuildError};
 use thiserror::Error;
@@ -79,6 +80,10 @@ pub enum MmProxyError {
     InvalidHeaderValue(#[from] InvalidHeaderValue),
     #[error("Block was lost due to a failed precondition, and should be retried")]
     FailedPreconditionBlockLostRetry,
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
+    #[error("No reachable servers in configuration")]
+    ServersUnavailable,
 }
 
 impl From<tonic::Status> for MmProxyError {

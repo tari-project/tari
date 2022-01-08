@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use log::*;
 use std::{
     io::Error,
     path::PathBuf,
     process::{Command, Output},
 };
+
+use log::*;
 use tari_common_types::transaction::TxId;
-use tari_core::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     transaction_service::storage::models::{
         CompletedTransaction,

@@ -20,6 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{HashOutput, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+
 use crate::{
     blocks::Block,
     mempool::{
@@ -29,14 +39,6 @@ use crate::{
     },
     transactions::{transaction::Transaction, weight::TransactionWeight},
 };
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use tari_common_types::types::{HashOutput, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
 
@@ -479,6 +481,9 @@ impl UnconfirmedPool {
 
 #[cfg(test)]
 mod test {
+    use tari_common::configuration::Network;
+    use tari_common_types::types::HashDigest;
+
     use super::*;
     use crate::{
         consensus::ConsensusManagerBuilder,
@@ -494,8 +499,6 @@ mod test {
         },
         tx,
     };
-    use tari_common::configuration::Network;
-    use tari_common_types::types::HashDigest;
 
     #[test]
     fn test_find_duplicate_input() {
@@ -596,8 +599,12 @@ mod test {
             .unwrap();
 
         let factories = CryptoFactories::default();
-        let mut stx_protocol = stx_builder.build::<HashDigest>(&factories).unwrap();
-        stx_protocol.finalize(KernelFeatures::empty(), &factories).unwrap();
+        let mut stx_protocol = stx_builder
+            .build::<HashDigest>(&factories, None, Some(u64::MAX))
+            .unwrap();
+        stx_protocol
+            .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+            .unwrap();
 
         let tx3 = stx_protocol.get_transaction().unwrap().clone();
 

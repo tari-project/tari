@@ -19,23 +19,25 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::{
-    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader},
-    chain_storage::{error::ChainStorageError, MmrTree},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
-};
-use croaring::Bitmap;
+
 use std::{
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
 };
+
+use croaring::Bitmap;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput};
 use tari_crypto::tari_utilities::{
     hex::{to_hex, Hex},
     Hashable,
 };
-use tari_mmr::pruned_hashset::PrunedHashSet;
+
+use crate::{
+    blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
+    chain_storage::{error::ChainStorageError, HorizonData},
+    transactions::transaction::{TransactionKernel, TransactionOutput},
+};
 
 #[derive(Debug)]
 pub struct DbTransaction {
@@ -142,31 +144,26 @@ impl DbTransaction {
         self
     }
 
-    pub fn update_pruned_hash_set(
-        &mut self,
-        mmr_tree: MmrTree,
-        header_hash: HashOutput,
-        pruned_hash_set: PrunedHashSet,
-    ) -> &mut Self {
-        self.operations.push(WriteOperation::UpdatePrunedHashSet {
-            mmr_tree,
-            header_hash,
-            pruned_hash_set: Box::new(pruned_hash_set),
-        });
-        self
-    }
-
-    pub fn prune_outputs_and_update_horizon(&mut self, output_mmr_positions: Vec<u32>, horizon: u64) -> &mut Self {
-        self.operations.push(WriteOperation::PruneOutputsAndUpdateHorizon {
+    pub fn prune_outputs_at_positions(&mut self, output_mmr_positions: Vec<u32>) -> &mut Self {
+        self.operations.push(WriteOperation::PruneOutputsAtMmrPositions {
             output_positions: output_mmr_positions,
-            horizon,
         });
         self
     }
 
-    pub fn update_deleted_with_diff(&mut self, header_hash: HashOutput, deleted: Bitmap) -> &mut Self {
+    pub fn delete_all_inputs_in_block(&mut self, block_hash: BlockHash) -> &mut Self {
         self.operations
-            .push(WriteOperation::UpdateDeletedBlockAccumulatedDataWithDiff { header_hash, deleted });
+            .push(WriteOperation::DeleteAllInputsInBlock { block_hash });
+        self
+    }
+
+    pub fn update_block_accumulated_data(
+        &mut self,
+        header_hash: HashOutput,
+        values: UpdateBlockAccumulatedData,
+    ) -> &mut Self {
+        self.operations
+            .push(WriteOperation::UpdateBlockAccumulatedData { header_hash, values });
         self
     }
 
@@ -181,6 +178,15 @@ impl DbTransaction {
     /// data.
     pub fn insert_block_body(&mut self, block: Arc<ChainBlock>) -> &mut Self {
         self.operations.push(WriteOperation::InsertBlockBody { block });
+        self
+    }
+
+    /// Inserts a block hash into the bad block list
+    pub fn insert_bad_block(&mut self, block_hash: HashOutput, height: u64) -> &mut Self {
+        self.operations.push(WriteOperation::InsertBadBlock {
+            hash: block_hash,
+            height,
+        });
         self
     }
 
@@ -242,11 +248,14 @@ impl DbTransaction {
         self
     }
 
-    pub fn set_pruned_height(&mut self, height: u64, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
-        self.operations.push(WriteOperation::SetPrunedHeight {
-            height,
-            kernel_sum,
-            utxo_sum,
+    pub fn set_pruned_height(&mut self, height: u64) -> &mut Self {
+        self.operations.push(WriteOperation::SetPrunedHeight { height });
+        self
+    }
+
+    pub fn set_horizon_data(&mut self, kernel_sum: Commitment, utxo_sum: Commitment) -> &mut Self {
+        self.operations.push(WriteOperation::SetHorizonData {
+            horizon_data: HorizonData::new(kernel_sum, utxo_sum),
         });
         self
     }
@@ -292,31 +301,28 @@ pub enum WriteOperation {
         witness_hash: HashOutput,
         mmr_position: u32,
     },
+    InsertBadBlock {
+        hash: HashOutput,
+        height: u64,
+    },
     DeleteHeader(u64),
     DeleteOrphan(HashOutput),
     DeleteBlock(HashOutput),
     DeleteOrphanChainTip(HashOutput),
     InsertOrphanChainTip(HashOutput),
     InsertMoneroSeedHeight(Vec<u8>, u64),
-    UpdatePrunedHashSet {
-        mmr_tree: MmrTree,
+    UpdateBlockAccumulatedData {
         header_hash: HashOutput,
-        pruned_hash_set: Box<PrunedHashSet>,
-    },
-    UpdateDeletedBlockAccumulatedDataWithDiff {
-        header_hash: HashOutput,
-        deleted: Bitmap,
+        values: UpdateBlockAccumulatedData,
     },
     UpdateDeletedBitmap {
         deleted: Bitmap,
     },
-    PruneOutputsAndUpdateHorizon {
+    PruneOutputsAtMmrPositions {
         output_positions: Vec<u32>,
-        horizon: u64,
     },
-    UpdateKernelSum {
-        header_hash: HashOutput,
-        kernel_sum: Commitment,
+    DeleteAllInputsInBlock {
+        block_hash: BlockHash,
     },
     SetAccumulatedDataForOrphan(BlockHeaderAccumulatedData),
     SetBestBlock {
@@ -328,8 +334,9 @@ pub enum WriteOperation {
     SetPruningHorizonConfig(u64),
     SetPrunedHeight {
         height: u64,
-        kernel_sum: Commitment,
-        utxo_sum: Commitment,
+    },
+    SetHorizonData {
+        horizon_data: HorizonData,
     },
 }
 
@@ -383,14 +390,6 @@ impl fmt::Display for WriteOperation {
                 write!(f, "Insert Monero seed string {} for height: {}", data.to_hex(), height)
             },
             InsertChainOrphanBlock(block) => write!(f, "InsertChainOrphanBlock({})", block.hash().to_hex()),
-            UpdatePrunedHashSet {
-                mmr_tree, header_hash, ..
-            } => write!(
-                f,
-                "Update pruned hash set: {} header: {}",
-                mmr_tree,
-                header_hash.to_hex()
-            ),
             InsertPrunedOutput {
                 header_hash: _,
                 header_height: _,
@@ -398,23 +397,14 @@ impl fmt::Display for WriteOperation {
                 witness_hash: _,
                 mmr_position: _,
             } => write!(f, "Insert pruned output"),
-            UpdateDeletedBlockAccumulatedDataWithDiff {
-                header_hash: _,
-                deleted: _,
-            } => write!(f, "Add deleted data for block"),
+            UpdateBlockAccumulatedData { header_hash, .. } => {
+                write!(f, "Update Block data for block {}", header_hash.to_hex())
+            },
             UpdateDeletedBitmap { deleted } => {
                 write!(f, "Merge deleted bitmap at tip ({} new indexes)", deleted.cardinality())
             },
-            PruneOutputsAndUpdateHorizon {
-                output_positions,
-                horizon,
-            } => write!(
-                f,
-                "Prune {} outputs and set horizon to {}",
-                output_positions.len(),
-                horizon
-            ),
-            UpdateKernelSum { header_hash, .. } => write!(f, "Update kernel sum for block: {}", header_hash.to_hex()),
+            PruneOutputsAtMmrPositions { output_positions } => write!(f, "Prune {} output(s)", output_positions.len()),
+            DeleteAllInputsInBlock { block_hash } => write!(f, "Delete outputs in block {}", block_hash.to_hex()),
             SetAccumulatedDataForOrphan(accumulated_data) => {
                 write!(f, "Set accumulated data for orphan {}", accumulated_data)
             },
@@ -434,6 +424,8 @@ impl fmt::Display for WriteOperation {
             SetPrunedHeight { height, .. } => write!(f, "Set pruned height to {}", height),
             DeleteHeader(height) => write!(f, "Delete header at height: {}", height),
             DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash.to_hex()),
+            InsertBadBlock { hash, height } => write!(f, "Insert bad block #{} {}", height, hash.to_hex()),
+            SetHorizonData { .. } => write!(f, "Set horizon data"),
         }
     }
 }

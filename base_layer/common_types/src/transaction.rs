@@ -1,11 +1,12 @@
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
+
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub type TxId = u64;
+pub use crate::tx_id::TxId;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum TransactionStatus {

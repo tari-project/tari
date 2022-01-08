@@ -41,6 +41,11 @@ mod placeholder;
 #[cfg(test)]
 mod tests;
 
+use std::{fs::File, sync::Arc};
+
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::{broadcast, mpsc};
+
 use crate::{
     backoff::{Backoff, BoxedBackoff, ExponentialBackoff},
     connection_manager::{ConnectionManagerConfig, ConnectionManagerRequester},
@@ -51,9 +56,6 @@ use crate::{
     tor,
     types::CommsDatabase,
 };
-use std::{fs::File, sync::Arc};
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, mpsc};
 
 /// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
 pub struct CommsBuilder {
@@ -122,7 +124,7 @@ impl CommsBuilder {
     }
 
     /// Set a network major and minor version as per [RFC-173 Versioning](https://rfc.tari.com/RFC-0173_Versioning.html)
-    pub fn with_node_version(mut self, major_version: u32, minor_version: u32) -> Self {
+    pub fn with_node_version(mut self, major_version: u8, minor_version: u8) -> Self {
         self.connection_manager_config.network_info.major_version = major_version;
         self.connection_manager_config.network_info.minor_version = minor_version;
         self
@@ -205,7 +207,6 @@ impl CommsBuilder {
 
         match self.peer_storage.take() {
             Some(storage) => {
-                // TODO: Peer manager should be refactored to be backend agnostic
                 #[cfg(not(test))]
                 PeerManager::migrate_lmdb(&storage.inner())?;
 

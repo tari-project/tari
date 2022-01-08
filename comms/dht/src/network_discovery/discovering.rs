@@ -20,20 +20,22 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
+use futures::{stream::FuturesUnordered, Stream, StreamExt};
+use log::*;
+use tari_comms::{
+    connectivity::ConnectivityError,
+    peer_manager::{NodeDistance, NodeId, Peer, PeerFeatures},
+    PeerConnection,
+    PeerManager,
+};
+
 use super::{
     state_machine::{DhtNetworkDiscoveryRoundInfo, DiscoveryParams, NetworkDiscoveryContext, StateEvent},
     NetworkDiscoveryError,
 };
-use crate::{proto::rpc::GetPeersRequest, rpc, DhtConfig};
-use futures::{stream::FuturesUnordered, Stream, StreamExt};
-use log::*;
-use std::convert::TryInto;
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::{node_id::NodeDistance, NodeId, Peer, PeerFeatures},
-    validate_peer_addresses,
-    PeerConnection,
-};
+use crate::{peer_validator::PeerValidator, proto::rpc::GetPeersRequest, rpc, DhtConfig};
 
 const LOG_TARGET: &str = "comms::dht::network_discovery";
 
@@ -179,60 +181,53 @@ impl Discovering {
         Ok(())
     }
 
-    async fn validate_and_add_peer(&mut self, sync_peer: &NodeId, peer: Peer) -> Result<(), NetworkDiscoveryError> {
-        if self.context.node_identity.node_id() == &peer.node_id {
+    async fn validate_and_add_peer(&mut self, sync_peer: &NodeId, new_peer: Peer) -> Result<(), NetworkDiscoveryError> {
+        if self.context.node_identity.node_id() == &new_peer.node_id {
             debug!(target: LOG_TARGET, "Received our own node from peer sync. Ignoring.");
             return Ok(());
         }
 
-        let peer_manager = &self.context.peer_manager;
-        if peer_manager.exists_node_id(&peer.node_id).await {
-            self.stats.num_duplicate_peers += 1;
-            debug!(
-                target: LOG_TARGET,
-                "Peer `{}` already exists and will not be added to the peer list", peer.node_id
-            );
-            return Ok(());
-        }
+        let new_peer_node_id = new_peer.node_id.clone();
+        let peer_validator = PeerValidator::new(self.peer_manager(), self.config());
 
-        let peer_dist = peer.node_id.distance(self.context.node_identity.node_id());
+        let peer_dist = new_peer.node_id.distance(self.context.node_identity.node_id());
         let is_neighbour = peer_dist <= self.neighbourhood_threshold;
 
-        let addresses = peer.addresses.iter();
-        match validate_peer_addresses(addresses, self.config().allow_test_addresses) {
-            Ok(_) => {
+        match peer_validator.validate_and_add_peer(new_peer).await {
+            Ok(true) => {
                 if is_neighbour {
                     self.stats.num_new_neighbours += 1;
-                    debug!(
-                        target: LOG_TARGET,
-                        "Adding new neighbouring peer `{}`. A total of {} have been added this round.",
-                        peer.node_id,
-                        self.stats.num_new_neighbours
-                    );
                 }
-
-                debug!(
-                    target: LOG_TARGET,
-                    "Adding peer `{}` from `{}`", peer.node_id, sync_peer
-                );
                 self.stats.num_new_peers += 1;
-                peer_manager.add_peer(peer).await?;
+                Ok(())
+            },
+            Ok(false) => {
+                self.stats.num_duplicate_peers += 1;
+                Ok(())
             },
             Err(err) => {
-                // TODO: #banheuristic
-                debug!(
+                warn!(
                     target: LOG_TARGET,
-                    "Failed to validate peer received from `{}`: {}. Peer not added.", sync_peer, err
+                    "Received invalid peer from sync peer '{}': {}. Banning sync peer.", sync_peer, err
                 );
+                self.context
+                    .connectivity
+                    .ban_peer(
+                        sync_peer.clone(),
+                        format!("Network discovery peer sent invalid peer '{}'", new_peer_node_id),
+                    )
+                    .await?;
+                Err(err.into())
             },
         }
-
-        Ok(())
     }
 
-    #[inline]
     fn config(&self) -> &DhtConfig {
         &self.context.config
+    }
+
+    fn peer_manager(&self) -> &PeerManager {
+        &self.context.peer_manager
     }
 
     fn dial_all_candidates(&self) -> impl Stream<Item = Result<PeerConnection, ConnectivityError>> + 'static {

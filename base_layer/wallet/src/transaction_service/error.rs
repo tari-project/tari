@@ -20,14 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    error::WalletStorageError,
-    output_manager_service::error::OutputManagerError,
-    transaction_service::{
-        storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
-        utc::NegativeDurationError,
-    },
-};
 use diesel::result::Error as DieselError;
 use futures::channel::oneshot::Canceled;
 use serde_json::Error as SerdeJsonError;
@@ -40,6 +32,15 @@ use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use tokio::sync::broadcast::error::RecvError;
+
+use crate::{
+    error::WalletStorageError,
+    output_manager_service::error::OutputManagerError,
+    transaction_service::{
+        storage::{database::DbKey, sqlite_db::CompletedTransactionConversionError},
+        utc::NegativeDurationError,
+    },
+};
 
 #[derive(Debug, Error)]
 pub enum TransactionServiceError {
@@ -200,8 +201,8 @@ pub enum TransactionStorageError {
     CompletedConversionError(#[from] CompletedTransactionConversionError),
     #[error("Serde json error: `{0}`")]
     SerdeJsonError(#[from] SerdeJsonError),
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]
@@ -224,13 +225,14 @@ pub enum TransactionStorageError {
 /// include the ID of the protocol
 #[derive(Debug)]
 pub struct TransactionServiceProtocolError {
+    // TODO: Replace with T or something to account for OperationId or TxId
     pub id: u64,
     pub error: TransactionServiceError,
 }
 
 impl TransactionServiceProtocolError {
-    pub fn new(id: u64, error: TransactionServiceError) -> Self {
-        Self { id, error }
+    pub fn new<T: Into<u64>>(id: T, error: TransactionServiceError) -> Self {
+        Self { id: id.into(), error }
     }
 }
 
@@ -241,14 +243,14 @@ impl From<TransactionServiceProtocolError> for TransactionServiceError {
 }
 
 pub trait TransactionServiceProtocolErrorExt<TRes> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError>;
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError>;
 }
 
 impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError> {
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError> {
         match self {
             Ok(r) => Ok(r),
-            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
+            Err(e) => Err(TransactionServiceProtocolError::new(id.into(), e.into())),
         }
     }
 }

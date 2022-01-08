@@ -20,6 +20,30 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
+
+use futures::{pin_mut, stream::StreamExt, Stream};
+use log::*;
+use rand::rngs::OsRng;
+use tari_common_types::waiting_requests::{generate_request_key, RequestKey, WaitingRequests};
+use tari_comms::peer_manager::NodeId;
+use tari_comms_dht::{
+    domain_message::OutboundDomainMessage,
+    envelope::NodeDestination,
+    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
+};
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
+use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use tokio::{
+    sync::{mpsc, oneshot::Sender as OneshotSender},
+    task,
+};
+
 use crate::{
     base_node::{
         comms_interface::{BlockEvent, BlockEventReceiver},
@@ -37,24 +61,6 @@ use crate::{
     },
     proto,
     transactions::transaction::Transaction,
-};
-use futures::{pin_mut, stream::StreamExt, Stream};
-use log::*;
-use rand::rngs::OsRng;
-use std::{convert::TryInto, sync::Arc, time::Duration};
-use tari_common_types::waiting_requests::{generate_request_key, RequestKey, WaitingRequests};
-use tari_comms::peer_manager::NodeId;
-use tari_comms_dht::{
-    domain_message::OutboundDomainMessage,
-    envelope::NodeDestination,
-    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
-};
-use tari_crypto::tari_utilities::hex::Hex;
-use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
-use tari_service_framework::{reply_channel, reply_channel::RequestContext};
-use tokio::{
-    sync::{mpsc, oneshot::Sender as OneshotSender},
-    task,
 };
 
 const LOG_TARGET: &str = "c::mempool::service::service";
@@ -341,7 +347,7 @@ async fn handle_incoming_request(
 
     let message = mempool_proto::MempoolServiceResponse {
         request_key: inner_msg.request_key,
-        response: Some(response.into()),
+        response: Some(response.try_into().map_err(MempoolServiceError::ConversionError)?),
     };
 
     outbound_message_service
@@ -394,7 +400,7 @@ async fn handle_outbound_request(
     let request_key = generate_request_key(&mut OsRng);
     let service_request = mempool_proto::MempoolServiceRequest {
         request_key,
-        request: Some(request.into()),
+        request: Some(request.try_into().map_err(MempoolServiceError::ConversionError)?),
     };
 
     let send_result = outbound_message_service
@@ -491,7 +497,10 @@ async fn handle_outbound_tx(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
+            ),
         )
         .await;
 

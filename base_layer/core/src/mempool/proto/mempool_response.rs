@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
 use super::mempool::mempool_service_response::Response as ProtoMempoolResponse;
 use crate::mempool::{
     proto::mempool::{
@@ -28,7 +30,6 @@ use crate::mempool::{
     },
     service::{MempoolResponse, MempoolServiceResponse},
 };
-use std::convert::{TryFrom, TryInto};
 
 impl TryInto<MempoolResponse> for ProtoMempoolResponse {
     type Error = String;
@@ -62,16 +63,18 @@ impl TryFrom<ProtoMempoolServiceResponse> for MempoolServiceResponse {
     }
 }
 
-impl From<MempoolResponse> for ProtoMempoolResponse {
-    fn from(response: MempoolResponse) -> Self {
+impl TryFrom<MempoolResponse> for ProtoMempoolResponse {
+    type Error = String;
+
+    fn try_from(response: MempoolResponse) -> Result<Self, Self::Error> {
         use MempoolResponse::*;
-        match response {
+        Ok(match response {
             Stats(stats_response) => ProtoMempoolResponse::Stats(stats_response.into()),
-            State(state_response) => ProtoMempoolResponse::State(state_response.into()),
+            State(state_response) => ProtoMempoolResponse::State(state_response.try_into()?),
             TxStorage(tx_storage_response) => {
                 let tx_storage_response: ProtoTxStorageResponse = tx_storage_response.into();
                 ProtoMempoolResponse::TxStorage(tx_storage_response.into())
             },
-        }
+        })
     }
 }

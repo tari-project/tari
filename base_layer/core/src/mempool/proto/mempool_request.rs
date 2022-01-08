@@ -20,13 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::{TryFrom, TryInto};
+
+use tari_crypto::tari_utilities::ByteArrayError;
+
 use super::mempool::{
     mempool_service_request::Request as ProtoMempoolRequest,
     MempoolServiceRequest as ProtoMempoolServiceRequest,
 };
 use crate::mempool::service::{MempoolRequest, MempoolServiceRequest};
-use std::convert::{TryFrom, TryInto};
-use tari_crypto::tari_utilities::ByteArrayError;
 
 impl TryInto<MempoolRequest> for ProtoMempoolRequest {
     type Error = String;
@@ -46,15 +48,17 @@ impl TryInto<MempoolRequest> for ProtoMempoolRequest {
     }
 }
 
-impl From<MempoolRequest> for ProtoMempoolRequest {
-    fn from(request: MempoolRequest) -> Self {
+impl TryFrom<MempoolRequest> for ProtoMempoolRequest {
+    type Error = String;
+
+    fn try_from(request: MempoolRequest) -> Result<Self, Self::Error> {
         use MempoolRequest::*;
-        match request {
+        Ok(match request {
             GetStats => ProtoMempoolRequest::GetStats(true),
             GetState => ProtoMempoolRequest::GetState(true),
             GetTxStateByExcessSig(excess_sig) => ProtoMempoolRequest::GetTxStateByExcessSig(excess_sig.into()),
-            SubmitTransaction(tx) => ProtoMempoolRequest::SubmitTransaction(tx.into()),
-        }
+            SubmitTransaction(tx) => ProtoMempoolRequest::SubmitTransaction(tx.try_into()?),
+        })
     }
 }
 

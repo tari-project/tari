@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError};
 use tari_comms::{message::MessageError, peer_manager::PeerManagerError};
 use thiserror::Error;
+
+use crate::{discovery::DhtDiscoveryError, outbound::DhtOutboundError, peer_validator::PeerValidatorError};
 
 #[derive(Debug, Error)]
 pub enum DhtInboundError {
@@ -34,12 +35,14 @@ pub enum DhtInboundError {
     DhtOutboundError(#[from] DhtOutboundError),
     #[error("Message body invalid")]
     InvalidMessageBody,
-    #[error("Node ID is invalid")]
-    InvalidNodeId,
     #[error("All given addresses were invalid")]
     InvalidAddresses,
     #[error("DhtDiscoveryError: {0}")]
     DhtDiscoveryError(#[from] DhtDiscoveryError),
     #[error("OriginRequired: {0}")]
     OriginRequired(String),
+    #[error("Invalid peer identity signature: {0}")]
+    InvalidPeerIdentitySignature(String),
+    #[error("Invalid peer: {0}")]
+    PeerValidatorError(#[from] PeerValidatorError),
 }

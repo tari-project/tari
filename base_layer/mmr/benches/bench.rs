@@ -29,10 +29,11 @@ mod benches {
 
 #[cfg(feature = "benches")]
 mod benches {
+    use std::time::Duration;
+
     use blake2::Blake2b;
     use criterion::{criterion_group, BatchSize, Criterion};
     use digest::Digest;
-    use std::time::Duration;
     use tari_mmr::MerkleMountainRange;
 
     fn get_hashes(n: usize) -> Vec<Vec<u8>> {

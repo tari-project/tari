@@ -19,13 +19,31 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{future::Future, sync::Arc};
+
+use futures::{future, future::Either};
+use log::*;
+use randomx_rs::RandomXFlag;
+use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
+use tari_shutdown::ShutdownSignal;
+use tokio::sync::{broadcast, watch};
+
 use crate::{
     base_node::{
         chain_metadata_service::ChainMetadataEvent,
         comms_interface::LocalNodeCommsInterface,
         state_machine_service::{
             states,
-            states::{BaseNodeState, HorizonSyncConfig, StateEvent, StateInfo, StatusInfo, SyncPeerConfig, SyncStatus},
+            states::{
+                BaseNodeState,
+                HeaderSyncState,
+                HorizonSyncConfig,
+                StateEvent,
+                StateInfo,
+                StatusInfo,
+                SyncPeerConfig,
+                SyncStatus,
+            },
         },
         sync::{BlockSyncConfig, SyncValidators},
     },
@@ -33,13 +51,6 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
 };
-use futures::{future, future::Either};
-use log::*;
-use randomx_rs::RandomXFlag;
-use std::{future::Future, sync::Arc};
-use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
-use tari_shutdown::ShutdownSignal;
-use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "c::bn::base_node";
 
@@ -54,7 +65,7 @@ pub struct BaseNodeStateMachineConfig {
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
-    pub block_sync_validation_concurrency: usize,
+    pub sync_validation_concurrency: usize,
 }
 
 impl Default for BaseNodeStateMachineConfig {
@@ -68,7 +79,7 @@ impl Default for BaseNodeStateMachineConfig {
             max_randomx_vms: 0,
             blocks_behind_before_considered_lagging: 0,
             bypass_range_proof_verification: false,
-            block_sync_validation_concurrency: 8,
+            sync_validation_concurrency: 8,
         }
     }
 }
@@ -135,22 +146,51 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Describe the Finite State Machine for the base node. This function describes _every possible_ state
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(&self, state: BaseNodeState, event: StateEvent) -> BaseNodeState {
+        let db = self.db.inner();
         use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
-            (Listening(_), FallenBehind(Lagging(_, sync_peers))) => HeaderSync(sync_peers.into()),
-            (HeaderSync(s), HeaderSyncFailed) => Waiting(s.into()),
-            (HeaderSync(s), Continue | NetworkSilence) => Listening(s.into()),
+            (
+                Listening(_),
+                FallenBehind(Lagging {
+                    local: local_metadata,
+                    sync_peers,
+                    ..
+                }),
+            ) => {
+                db.set_disable_add_block_flag();
+                HeaderSync(HeaderSyncState::new(sync_peers, local_metadata))
+            },
+            (HeaderSync(s), HeaderSyncFailed) => {
+                db.clear_disable_add_block_flag();
+                Waiting(s.into())
+            },
+            (HeaderSync(s), Continue | NetworkSilence) => {
+                db.clear_disable_add_block_flag();
+                Listening(s.into())
+            },
             (HeaderSync(s), HeadersSynchronized(_)) => DecideNextSync(s.into()),
 
             (DecideNextSync(_), ProceedToHorizonSync(peer)) => HorizonStateSync(peer.into()),
-            (DecideNextSync(s), Continue) => Listening(s.into()),
+            (DecideNextSync(s), Continue) => {
+                db.clear_disable_add_block_flag();
+                Listening(s.into())
+            },
             (HorizonStateSync(s), HorizonStateSynchronized) => BlockSync(s.into()),
-            (HorizonStateSync(s), HorizonStateSyncFailure) => Waiting(s.into()),
+            (HorizonStateSync(s), HorizonStateSyncFailure) => {
+                db.clear_disable_add_block_flag();
+                Waiting(s.into())
+            },
 
             (DecideNextSync(_), ProceedToBlockSync(peer)) => BlockSync(peer.into()),
-            (BlockSync(s), BlocksSynchronized) => Listening(s.into()),
-            (BlockSync(s), BlockSyncFailed) => Waiting(s.into()),
+            (BlockSync(s), BlocksSynchronized) => {
+                db.clear_disable_add_block_flag();
+                Listening(s.into())
+            },
+            (BlockSync(s), BlockSyncFailed) => {
+                db.clear_disable_add_block_flag();
+                Waiting(s.into())
+            },
 
             (Waiting(s), Continue) => Listening(s.into()),
             (_, FatalError(s)) => Shutdown(states::Shutdown::with_reason(s)),
@@ -207,7 +247,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
         let mut state = Starting(states::Starting);
         loop {
             if let Shutdown(reason) = &state {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Base Node state machine is shutting down because {}", reason
                 );
@@ -218,7 +258,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let next_state_future = self.next_state_event(&mut state);
 
             // Get the next `StateEvent`, returning a `UserQuit` state event if the interrupt signal is triggered
+            let mut mdc = vec![];
+            log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
+            log_mdc::extend(mdc);
             // Publish the event on the event bus
             let _ = self.event_publisher.send(Arc::new(next_event.clone()));
             trace!(
@@ -256,9 +299,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
 /// Polls both the interrupt signal and the given future. If the given future `state_fut` is ready first it's value is
 /// returned, otherwise if the interrupt signal is triggered, `StateEvent::UserQuit` is returned.
-async fn select_next_state_event<F>(interrupt_signal: ShutdownSignal, state_fut: F) -> StateEvent
-where F: Future<Output = StateEvent> {
+async fn select_next_state_event<F, I>(interrupt_signal: I, state_fut: F) -> StateEvent
+where
+    F: Future<Output = StateEvent>,
+    I: Future<Output = ()>,
+{
     futures::pin_mut!(state_fut);
+    futures::pin_mut!(interrupt_signal);
     // If future A and B are both ready `future::select` will prefer A
     match future::select(interrupt_signal, state_fut).await {
         Either::Left(_) => StateEvent::UserQuit,

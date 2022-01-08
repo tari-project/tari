@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node_service::{
-    error::BaseNodeServiceError,
-    handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
-    service::BaseNodeState,
-};
 use futures::StreamExt;
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
+
+use crate::base_node_service::{
+    error::BaseNodeServiceError,
+    handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
+    service::BaseNodeState,
+};
 
 /// TODO Move this into the test support utilities when we remove the Test Harness feature from this crate
 pub struct MockBaseNodeService {
@@ -85,6 +86,7 @@ impl MockBaseNodeService {
             },
             None => (None, None),
         };
+
         self.state = BaseNodeState {
             chain_metadata,
             is_synced,
@@ -94,7 +96,7 @@ impl MockBaseNodeService {
     }
 
     pub fn set_default_base_node_state(&mut self) {
-        let metadata = ChainMetadata::new(u64::MAX, Vec::new(), 0, 0, 0);
+        let metadata = ChainMetadata::new(i64::MAX as u64, Vec::new(), 0, 0, 0);
         self.state = BaseNodeState {
             chain_metadata: Some(metadata),
             is_synced: Some(true),

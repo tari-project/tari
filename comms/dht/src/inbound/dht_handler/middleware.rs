@@ -20,15 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::task::ProcessDhtMessage;
-use crate::{discovery::DhtDiscoveryRequester, inbound::DecryptedDhtMessage, outbound::OutboundMessageRequester};
-use futures::{future::BoxFuture, task::Context};
 use std::{sync::Arc, task::Poll};
+
+use futures::{future::BoxFuture, task::Context};
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerManager},
     pipeline::PipelineError,
 };
 use tower::Service;
+
+use super::task::ProcessDhtMessage;
+use crate::{
+    discovery::DhtDiscoveryRequester,
+    inbound::DecryptedDhtMessage,
+    outbound::OutboundMessageRequester,
+    DhtConfig,
+};
 
 #[derive(Clone)]
 pub struct DhtHandlerMiddleware<S> {
@@ -37,6 +44,7 @@ pub struct DhtHandlerMiddleware<S> {
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
     discovery_requester: DhtDiscoveryRequester,
+    config: Arc<DhtConfig>,
 }
 
 impl<S> DhtHandlerMiddleware<S> {
@@ -45,16 +53,16 @@ impl<S> DhtHandlerMiddleware<S> {
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_service: OutboundMessageRequester,
-
         discovery_requester: DhtDiscoveryRequester,
+        config: Arc<DhtConfig>,
     ) -> Self {
         Self {
             next_service,
             peer_manager,
             node_identity,
-
             outbound_service,
             discovery_requester,
+            config,
         }
     }
 }
@@ -81,6 +89,7 @@ where
                 Arc::clone(&self.node_identity),
                 self.discovery_requester.clone(),
                 message,
+                self.config.clone(),
             )
             .run(),
         )

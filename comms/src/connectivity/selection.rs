@@ -20,10 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fmt::Display};
+
+use rand::{rngs::OsRng, seq::SliceRandom};
+
 use super::connection_pool::ConnectionPool;
 use crate::{connectivity::connection_pool::ConnectionStatus, peer_manager::NodeId, PeerConnection};
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fmt, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub struct ConnectivitySelection {
@@ -129,14 +131,16 @@ impl Display for SelectionMode {
 
 #[cfg(test)]
 mod test {
+    use std::iter::repeat_with;
+
+    use tokio::sync::mpsc;
+
     use super::*;
     use crate::{
         connection_manager::PeerConnectionRequest,
-        peer_manager::node_id::NodeDistance,
+        peer_manager::NodeDistance,
         test_utils::{mocks::create_dummy_peer_connection, node_id, node_identity::build_node_identity},
     };
-    use std::iter::repeat_with;
-    use tokio::sync::mpsc;
 
     fn create_pool_with_connections(n: usize) -> (ConnectionPool, Vec<mpsc::Receiver<PeerConnectionRequest>>) {
         let mut pool = ConnectionPool::new();

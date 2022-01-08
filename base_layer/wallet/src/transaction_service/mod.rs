@@ -22,27 +22,13 @@
 
 use std::sync::Arc;
 
-use crate::{
-    base_node_service::handle::BaseNodeServiceHandle,
-    output_manager_service::handle::OutputManagerHandle,
-    storage::database::{WalletBackend, WalletDatabase},
-    transaction_service::{
-        config::TransactionServiceConfig,
-        handle::TransactionServiceHandle,
-        service::TransactionService,
-        storage::database::{TransactionBackend, TransactionDatabase},
-    },
-};
 use futures::{Stream, StreamExt};
 use log::*;
-use tokio::sync::broadcast;
-
-use crate::connectivity_service::WalletConnectivityHandle;
 use tari_comms::peer_manager::NodeIdentity;
 use tari_comms_dht::Dht;
 use tari_core::{
     proto::base_node as base_node_proto,
-    transactions::{transaction_protocol::proto, CryptoFactories},
+    transactions::{transaction_protocol::proto::protocol as proto, CryptoFactories},
 };
 use tari_p2p::{
     comms_connector::SubscriptionFactory,
@@ -56,6 +42,20 @@ use tari_service_framework::{
     ServiceInitializationError,
     ServiceInitializer,
     ServiceInitializerContext,
+};
+use tokio::sync::broadcast;
+
+use crate::{
+    base_node_service::handle::BaseNodeServiceHandle,
+    connectivity_service::WalletConnectivityHandle,
+    output_manager_service::handle::OutputManagerHandle,
+    storage::database::{WalletBackend, WalletDatabase},
+    transaction_service::{
+        config::TransactionServiceConfig,
+        handle::TransactionServiceHandle,
+        service::TransactionService,
+        storage::database::{TransactionBackend, TransactionDatabase},
+    },
 };
 
 pub mod config;

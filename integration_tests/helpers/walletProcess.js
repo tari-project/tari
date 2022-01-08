@@ -59,7 +59,7 @@ class WalletProcess {
     this.peerSeeds = addresses;
   }
 
-  run(cmd, args, saveFile, input_buffer, output) {
+  run(cmd, args, saveFile, input_buffer, output, waitForCommand) {
     let thePromise = new Promise((resolve, reject) => {
       if (!fs.existsSync(this.baseDir)) {
         fs.mkdirSync(this.baseDir, { recursive: true });
@@ -89,7 +89,7 @@ class WalletProcess {
           this.peerSeeds
         );
       } else if (this.options["grpc_console_wallet_address"]) {
-        envs[`TARI_BASE_NODE__${network}__GRPC_CONSOLE_WALLET_ADDRESS`] =
+        envs[`TARI_WALLET__GRPC_ADDRESS`] =
           this.options["grpc_console_wallet_address"];
         this.grpcPort =
           this.options["grpc_console_wallet_address"].split(":")[1];
@@ -110,17 +110,22 @@ class WalletProcess {
         ps.stdin.write(input_buffer);
       }
       ps.stdout.on("data", (data) => {
-        //console.log(`stdout: ${data}`);
+        //console.log(`\nstdout: ${data}`);
         if (output !== undefined && output.buffer !== undefined) {
           output.buffer += data;
         }
         fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
         if (
-          (!this.recoverWallet &&
-            data.toString().match(/Starting grpc server/)) ||
-          (this.recoverWallet &&
-            data.toString().match(/Initializing logging according/))
+          (!waitForCommand &&
+            data.toString().match(/Tari Console Wallet running/i)) ||
+          (waitForCommand &&
+            data
+              .toString()
+              .match(
+                /(?=.*Tari Console Wallet running)(?=.*Command mode completed)/gim
+              ))
         ) {
+          this.recoverWallet = false;
           resolve(ps);
         }
       });
@@ -144,7 +149,6 @@ class WalletProcess {
       });
       expect(ps.error).to.be.undefined;
       this.ps = ps;
-      resolve(ps);
     });
     return thePromise;
   }
@@ -173,12 +177,13 @@ class WalletProcess {
 
   stop() {
     return new Promise((resolve) => {
+      let name = this.name;
       if (!this.ps) {
         return resolve();
       }
       this.ps.on("close", (code) => {
         if (code) {
-          console.log(`child process exited with code ${code}`);
+          console.log(`child process (${name}) exited with code ${code}`);
         }
         resolve();
       });
@@ -244,11 +249,12 @@ class WalletProcess {
     }
     let output = { buffer: "" };
     // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
-    await this.run(await this.compile(), args, true, "\n", output);
+    await this.run(await this.compile(), args, true, "\n", output, true);
     return output;
   }
 
   async exportSpentOutputs() {
+    await this.stop();
     const args = [
       "--init",
       "--base-path",
@@ -259,11 +265,13 @@ class WalletProcess {
       "--command",
       "export-spent-utxos --csv-file exported_outputs.csv",
     ];
+    let output = { buffer: "" };
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
-    await this.run(outputProcess, args, true);
+    await this.run(outputProcess, args, true, "\n", output, true);
   }
 
   async exportUnspentOutputs() {
+    await this.stop();
     const args = [
       "--init",
       "--base-path",
@@ -274,8 +282,9 @@ class WalletProcess {
       "--command",
       "export-utxos --csv-file exported_outputs.csv",
     ];
+    let output = { buffer: "" };
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
-    await this.run(outputProcess, args, true);
+    await this.run(outputProcess, args, true, "\n", output, true);
   }
 
   async readExportedOutputs() {

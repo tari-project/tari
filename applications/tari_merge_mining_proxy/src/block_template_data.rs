@@ -19,13 +19,15 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::error::MmProxyError;
-use chrono::{self, DateTime, Duration, Utc};
 use std::{collections::HashMap, sync::Arc};
+
+use chrono::{self, DateTime, Duration, Utc};
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::proof_of_work::monero_rx::FixedByteArray;
 use tokio::sync::RwLock;
 use tracing::trace;
+
+use crate::error::MmProxyError;
 
 pub const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
 

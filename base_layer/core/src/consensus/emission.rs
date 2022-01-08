@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transactions::tari_amount::MicroTari;
 use std::cmp;
+
+use crate::transactions::tari_amount::MicroTari;
 
 pub trait Emission {
     fn block_reward(&self, height: u64) -> MicroTari;
@@ -140,8 +141,7 @@ impl EmissionSchedule {
     /// This is an infinite iterator, and each value returned is a tuple of (block number, reward, and total supply)
     ///
     /// ```edition2018
-    /// use tari_core::consensus::emission::EmissionSchedule;
-    /// use tari_core::transactions::tari_amount::MicroTari;
+    /// use tari_core::{consensus::emission::EmissionSchedule, transactions::tari_amount::MicroTari};
     /// // Print the reward and supply for first 100 blocks
     /// let schedule = EmissionSchedule::new(10.into(), &[3], 1.into());
     /// for (n, reward, supply) in schedule.iter().take(100) {

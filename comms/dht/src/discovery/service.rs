@@ -20,16 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
-    envelope::{DhtMessageType, NodeDestination},
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
-    proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
-    DhtConfig,
-};
+use std::{collections::HashMap, sync::Arc, time::Instant};
+
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use std::{collections::HashMap, sync::Arc, time::Instant};
 use tari_comms::{
     log_if_error,
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager},
@@ -41,6 +35,14 @@ use tari_utilities::{hex::Hex, ByteArray};
 use tokio::{
     sync::{mpsc, oneshot},
     task,
+};
+
+use crate::{
+    discovery::{requester::DhtDiscoveryRequest, DhtDiscoveryError},
+    envelope::{DhtMessageType, NodeDestination},
+    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
+    proto::dht::{DiscoveryMessage, DiscoveryResponseMessage},
+    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_service";
@@ -62,7 +64,7 @@ impl DiscoveryRequestState {
 }
 
 pub struct DhtDiscoveryService {
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     node_identity: Arc<NodeIdentity>,
     outbound_requester: OutboundMessageRequester,
     peer_manager: Arc<PeerManager>,
@@ -73,7 +75,7 @@ pub struct DhtDiscoveryService {
 
 impl DhtDiscoveryService {
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_requester: OutboundMessageRequester,
@@ -92,14 +94,17 @@ impl DhtDiscoveryService {
     }
 
     pub fn spawn(self) {
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         task::spawn(async move {
+            log_mdc::extend(mdc);
             info!(target: LOG_TARGET, "Discovery service started");
             self.run().await
         });
     }
 
     pub async fn run(mut self) {
-        info!(target: LOG_TARGET, "Dht discovery service started");
+        debug!(target: LOG_TARGET, "Dht discovery service started");
         loop {
             tokio::select! {
                 biased;
@@ -316,6 +321,7 @@ impl DhtDiscoveryService {
             addresses: vec![self.node_identity.public_address().to_string()],
             peer_features: self.node_identity.features().bits(),
             nonce,
+            identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
         };
         debug!(
             target: LOG_TARGET,
@@ -343,15 +349,17 @@ impl DhtDiscoveryService {
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use tari_comms::runtime;
+    use tari_shutdown::Shutdown;
+
     use super::*;
     use crate::{
         discovery::DhtDiscoveryRequester,
         outbound::mock::create_outbound_service_mock,
         test_utils::{build_peer_manager, make_node_identity},
     };
-    use std::time::Duration;
-    use tari_comms::runtime;
-    use tari_shutdown::Shutdown;
 
     #[runtime::test]
     async fn send_discovery() {
@@ -367,7 +375,7 @@ mod test {
         let shutdown = Shutdown::new();
 
         DhtDiscoveryService::new(
-            DhtConfig::default(),
+            Default::default(),
             node_identity,
             peer_manager,
             outbound_requester,

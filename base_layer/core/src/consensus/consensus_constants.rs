@@ -20,6 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{collections::HashMap, ops::Add};
+
+use chrono::{DateTime, Duration, Utc};
+use tari_common::configuration::Network;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+
 use crate::{
     consensus::network::NetworkConsensus,
     proof_of_work::{Difficulty, PowAlgorithm},
@@ -28,10 +34,6 @@ use crate::{
         weight::TransactionWeight,
     },
 };
-use chrono::{DateTime, Duration, Utc};
-use std::{collections::HashMap, ops::Add};
-use tari_common::configuration::Network;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// This is the inner struct used to control all consensus values.
 #[derive(Debug, Clone)]
@@ -67,6 +69,8 @@ pub struct ConsensusConstants {
     faucet_value: MicroTari,
     /// Transaction Weight params
     transaction_weight: TransactionWeight,
+    /// Maximum byte size of TariScript
+    max_script_byte_size: usize,
 }
 
 /// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
@@ -167,6 +171,11 @@ impl ConsensusConstants {
         self.median_timestamp_count
     }
 
+    /// The maximum serialized byte size of TariScript
+    pub fn get_max_script_byte_size(&self) -> usize {
+        self.max_script_byte_size
+    }
+
     /// This is the min initial difficulty that can be requested for the pow
     pub fn min_pow_difficulty(&self, pow_algo: PowAlgorithm) -> Difficulty {
         match self.proof_of_work.get(&pow_algo) {
@@ -226,6 +235,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -235,7 +245,7 @@ impl ConsensusConstants {
         // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 60_00.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
@@ -260,6 +270,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -281,7 +292,7 @@ impl ConsensusConstants {
         // });
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 60_00.into(),
             max_difficulty: 60_000_000.into(),
             target_time: 300,
         });
@@ -321,6 +332,7 @@ impl ConsensusConstants {
                 proof_of_work: algos,
                 faucet_value: (5000 * 4000) * T,
                 transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
             },
             ConsensusConstants {
                 effective_from_height: 1400,
@@ -337,6 +349,7 @@ impl ConsensusConstants {
                 proof_of_work: algos2,
                 faucet_value: (5000 * 4000) * T,
                 transaction_weight: TransactionWeight::v1(),
+                max_script_byte_size: 2048,
             },
         ]
     }
@@ -345,10 +358,10 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            max_target_time: 180,
+            min_difficulty: 60_00.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 300,
+            target_time: 30,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
@@ -367,16 +380,17 @@ impl ConsensusConstants {
             emission_initial: 5_538_846_115 * uT,
             emission_decay: &EMISSION_DECAY,
             emission_tail: 100.into(),
-            max_randomx_seed_height: u64::MAX,
+            max_randomx_seed_height: std::u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
         }]
     }
 
     pub fn igor() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // setting sha3/monero to 40/60 split
+        // seting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -407,6 +421,41 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
+        }]
+    }
+
+    pub fn dibbler() -> Vec<Self> {
+        let mut algos = HashMap::new();
+        // setting sha3/monero to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 1800,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 30,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 20,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 6,
+            blockchain_version: 2,
+            future_time_limit: 540,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 127_795,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 
@@ -416,13 +465,13 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 40_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 800,
-            min_difficulty: 60_000_000.into(),
+            min_difficulty: 70_000_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
@@ -441,6 +490,7 @@ impl ConsensusConstants {
             proof_of_work: algos,
             faucet_value: MicroTari::from(0),
             transaction_weight: TransactionWeight::v2(),
+            max_script_byte_size: 2048,
         }]
     }
 }
@@ -475,6 +525,11 @@ impl ConsensusConstantsBuilder {
 
     pub fn with_coinbase_lockheight(mut self, height: u64) -> Self {
         self.consensus.coinbase_lock_height = height;
+        self
+    }
+
+    pub fn with_max_script_byte_size(mut self, byte_size: usize) -> Self {
+        self.consensus.max_script_byte_size = byte_size;
         self
     }
 

@@ -20,8 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::peer_manager::{migrations::MIGRATION_VERSION_KEY, Peer, PeerId};
 use tari_storage::{IterationResult, KeyValStoreError, KeyValueStore};
+
+use crate::peer_manager::{migrations::MIGRATION_VERSION_KEY, Peer, PeerId};
 
 // TODO: Hack to get around current peer database design. Once PeerManager uses a PeerDatabase abstraction and the LMDB
 //       implementation has access to multiple databases we can remove this wrapper.
@@ -40,9 +41,10 @@ impl<T> KeyValueStore<PeerId, Peer> for KeyValueWrapper<T>
 where T: KeyValueStore<PeerId, Peer>
 {
     fn insert(&self, key: u64, value: Peer) -> Result<(), KeyValStoreError> {
-        if key == MIGRATION_VERSION_KEY {
-            panic!("MIGRATION_VERSION_KEY used in `KeyValueWrapper::insert`. MIGRATION_VERSION_KEY is a reserved key");
-        }
+        assert!(
+            !(key == MIGRATION_VERSION_KEY),
+            "MIGRATION_VERSION_KEY used in `KeyValueWrapper::insert`. MIGRATION_VERSION_KEY is a reserved key"
+        );
         self.inner.insert(key, value)
     }
 
@@ -87,9 +89,10 @@ where T: KeyValueStore<PeerId, Peer>
     }
 
     fn delete(&self, key: &u64) -> Result<(), KeyValStoreError> {
-        if key == &MIGRATION_VERSION_KEY {
-            panic!("MIGRATION_VERSION_KEY used in `KeyValueWrapper::delete`. MIGRATION_VERSION_KEY is a reserved key");
-        }
+        assert!(
+            !(key == &MIGRATION_VERSION_KEY),
+            "MIGRATION_VERSION_KEY used in `KeyValueWrapper::delete`. MIGRATION_VERSION_KEY is a reserved key"
+        );
         self.inner.delete(key)
     }
 }

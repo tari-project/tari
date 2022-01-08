@@ -20,6 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    fmt::{Display, Formatter},
+    ops::Deref,
+    time::{Duration, Instant},
+};
+
+use log::*;
+use num_format::{Locale, ToFormattedString};
+use serde::{Deserialize, Serialize};
+use tari_common_types::chain_metadata::ChainMetadata;
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tokio::sync::broadcast;
+
 use crate::{
     base_node::{
         chain_metadata_service::{ChainMetadataEvent, PeerChainMetadata},
@@ -27,7 +40,7 @@ use crate::{
             states::{
                 BlockSync,
                 DecideNextSync,
-                HeaderSync,
+                HeaderSyncState,
                 StateEvent,
                 StateEvent::FatalError,
                 StateInfo,
@@ -39,17 +52,6 @@ use crate::{
     },
     chain_storage::BlockchainBackend,
 };
-use log::*;
-use num_format::{Locale, ToFormattedString};
-use serde::{Deserialize, Serialize};
-use std::{
-    fmt::{Display, Formatter},
-    ops::Deref,
-    time::{Duration, Instant},
-};
-use tari_common_types::chain_metadata::ChainMetadata;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
-use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
@@ -112,8 +114,11 @@ impl Listening {
         info!(target: LOG_TARGET, "Listening for chain metadata updates");
         shared.set_state_info(StateInfo::Listening(ListeningInfo::new(self.is_synced)));
         let mut time_since_better_block = None;
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         loop {
             let metadata_event = shared.metadata_event_stream.recv().await;
+            log_mdc::extend(mdc.clone());
             match metadata_event.as_ref().map(|v| v.deref()) {
                 Ok(ChainMetadataEvent::NetworkSilence) => {
                     debug!("NetworkSilence event received");
@@ -139,6 +144,7 @@ impl Listening {
                             .peer_manager
                             .set_peer_metadata(peer.node_id(), 1, peer_data.to_bytes())
                             .await;
+                        log_mdc::extend(mdc.clone());
                     }
 
                     let configured_sync_peers = &shared.config.block_sync_config.sync_peers;
@@ -182,13 +188,14 @@ impl Listening {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
+                    log_mdc::extend(mdc.clone());
 
                     // If this node is just one block behind, wait for block propagation before
                     // rushing to sync mode
                     if self.is_synced &&
                         best_metadata.height_of_longest_chain() == local.height_of_longest_chain() + 1 &&
                         time_since_better_block
-                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(30))
+                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(60))
                             .unwrap_or(true)
                     {
                         if time_since_better_block.is_none() {
@@ -205,21 +212,22 @@ impl Listening {
 
                     // If we have configured sync peers, they are already filtered at this point
                     let sync_peers = if configured_sync_peers.is_empty() {
-                        select_sync_peers(&best_metadata, &peer_metadata_list)
+                        select_sync_peers(best_metadata, &peer_metadata_list)
                     } else {
                         peer_metadata_list
                     };
 
-                    let local = match shared.db.get_chain_metadata().await {
+                    let local_metadata = match shared.db.get_chain_metadata().await {
                         Ok(m) => m,
                         Err(e) => {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
                         },
                     };
+                    log_mdc::extend(mdc.clone());
 
                     let sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
-                        &local,
+                        &local_metadata,
                         best_metadata,
                         sync_peers,
                     );
@@ -258,8 +266,8 @@ impl From<Waiting> for Listening {
     }
 }
 
-impl From<HeaderSync> for Listening {
-    fn from(sync: HeaderSync) -> Self {
+impl From<HeaderSyncState> for Listening {
+    fn from(sync: HeaderSyncState) -> Self {
         Self {
             is_synced: sync.is_synced(),
         }
@@ -348,12 +356,15 @@ fn determine_sync_mode(
             return UpToDate;
         };
 
-        let sync_peers = sync_peers.into_iter().cloned().collect();
         debug!(
             target: LOG_TARGET,
             "Lagging (local height = {}, network height = {})", local_tip_height, network_tip_height
         );
-        Lagging(network.clone(), sync_peers)
+        Lagging {
+            local: local.clone(),
+            network: network.clone(),
+            sync_peers: sync_peers.into_iter().cloned().collect(),
+        }
     } else {
         info!(
             target: LOG_TARGET,
@@ -370,10 +381,11 @@ fn determine_sync_mode(
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use rand::rngs::OsRng;
     use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
     use tari_crypto::keys::PublicKey;
+
+    use super::*;
 
     fn random_node_id() -> NodeId {
         let (_secret_key, public_key) = CommsPublicKey::random_keypair(&mut OsRng);
@@ -488,28 +500,28 @@ mod test {
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
     }

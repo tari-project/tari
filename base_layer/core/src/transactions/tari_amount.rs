@@ -20,19 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::format_currency;
-use decimal_rs::{Decimal, DecimalConvertError};
-use derive_more::{Add, AddAssign, Div, From, FromStr, Into, Mul, Rem, Sub, SubAssign};
-use newtype_ops::newtype_ops;
-use serde::{Deserialize, Serialize};
 use std::{
     convert::{TryFrom, TryInto},
     fmt::{Display, Error, Formatter},
     iter::Sum,
     ops::{Add, Mul},
 };
+
+use decimal_rs::{Decimal, DecimalConvertError};
+use derive_more::{Add, AddAssign, Div, From, FromStr, Into, Mul, Rem, Sub, SubAssign};
+use newtype_ops::newtype_ops;
+use serde::{Deserialize, Serialize};
 use tari_crypto::ristretto::RistrettoSecretKey;
 use thiserror::Error as ThisError;
+
+use super::format_currency;
 
 /// All calculations using Tari amounts should use these newtypes to prevent bugs related to rounding errors, unit
 /// conversion errors etc.
@@ -56,10 +58,10 @@ pub enum MicroTariError {
 }
 /// A convenience constant that makes it easier to define Tari amounts.
 /// ```edition2018
-///   use tari_core::transactions::tari_amount::{MicroTari, uT, T};
-///   assert_eq!(MicroTari::from(42), 42 * uT);
-///   assert_eq!(1 * T, 1_000_000.into());
-///   assert_eq!(3_000_000 * uT, 3 * T);
+/// use tari_core::transactions::tari_amount::{uT, MicroTari, T};
+/// assert_eq!(MicroTari::from(42), 42 * uT);
+/// assert_eq!(1 * T, 1_000_000.into());
+/// assert_eq!(3_000_000 * uT, 3 * T);
 /// ```
 #[allow(non_upper_case_globals)]
 pub const uT: MicroTari = MicroTari(1);
@@ -277,8 +279,9 @@ impl From<MicroTari> for Tari {
 
 #[cfg(test)]
 mod test {
-    use super::{MicroTari, Tari};
     use std::{convert::TryFrom, str::FromStr};
+
+    use super::{MicroTari, Tari};
 
     #[test]
     fn micro_tari_arithmetic() {

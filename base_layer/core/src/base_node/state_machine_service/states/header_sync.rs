@@ -20,28 +20,32 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{cmp::Ordering, time::Instant};
+
+use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
+
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
-        state_machine_service::states::{BlockSyncInfo, Listening, StateEvent, StateInfo, StatusInfo},
+        state_machine_service::states::{BlockSyncInfo, StateEvent, StateInfo, StatusInfo},
         sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
         BaseNodeStateMachine,
     },
     chain_storage::BlockchainBackend,
 };
-use log::*;
-use std::{cmp::Ordering, time::Instant};
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
-#[derive(Clone, Debug, Default)]
-pub struct HeaderSync {
+#[derive(Clone, Debug)]
+pub struct HeaderSyncState {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
+    local_metadata: ChainMetadata,
 }
 
-impl HeaderSync {
-    pub fn new(mut sync_peers: Vec<SyncPeer>) -> Self {
+impl HeaderSyncState {
+    pub fn new(mut sync_peers: Vec<SyncPeer>, local_metadata: ChainMetadata) -> Self {
         // Sort by latency lowest to highest
         sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
             (None, None) => Ordering::Equal,
@@ -53,6 +57,7 @@ impl HeaderSync {
         Self {
             sync_peers,
             is_synced: false,
+            local_metadata,
         }
     }
 
@@ -75,6 +80,7 @@ impl HeaderSync {
             shared.connectivity.clone(),
             &self.sync_peers,
             shared.randomx_factory.clone(),
+            &self.local_metadata,
         );
 
         let status_event_sender = shared.status_event_sender.clone();
@@ -111,36 +117,31 @@ impl HeaderSync {
         });
 
         let timer = Instant::now();
+        let mut mdc = vec![];
+        log_mdc::iter(|k, v| mdc.push((k.to_owned(), v.to_owned())));
         match synchronizer.synchronize().await {
             Ok(sync_peer) => {
+                log_mdc::extend(mdc);
                 info!(target: LOG_TARGET, "Headers synchronized in {:.0?}", timer.elapsed());
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
             },
             Err(err @ BlockHeaderSyncError::SyncFailedAllPeers) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "{}. Continuing...", err);
                 StateEvent::Continue
             },
             Err(err @ BlockHeaderSyncError::NetworkSilence) => {
+                log_mdc::extend(mdc);
                 warn!(target: LOG_TARGET, "{}", err);
                 self.is_synced = true;
                 StateEvent::NetworkSilence
             },
             Err(err) => {
+                log_mdc::extend(mdc);
                 debug!(target: LOG_TARGET, "Header sync failed: {}", err);
                 StateEvent::HeaderSyncFailed
             },
         }
-    }
-}
-
-impl From<Listening> for HeaderSync {
-    fn from(_: Listening) -> Self {
-        Default::default()
-    }
-}
-impl From<Vec<SyncPeer>> for HeaderSync {
-    fn from(peers: Vec<SyncPeer>) -> Self {
-        Self::new(peers)
     }
 }

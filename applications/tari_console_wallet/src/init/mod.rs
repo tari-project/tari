@@ -25,16 +25,17 @@ use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
-
 use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
+    multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
-    types::CommsSecretKey,
+    types::CommsPublicKey,
     NodeIdentity,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
+use tari_crypto::keys::PublicKey;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
@@ -50,6 +51,7 @@ use tari_wallet::{
     output_manager_service::config::OutputManagerServiceConfig,
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
     transaction_service::config::{TransactionRoutingMechanism, TransactionServiceConfig},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -153,7 +155,18 @@ pub async fn get_base_node_peer_config(
     wallet: &mut WalletSqlite,
 ) -> Result<PeerConfig, ExitCodes> {
     // custom
-    let base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
+    let mut base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
+
+    if let Some(custom) = config.wallet_custom_base_node.clone() {
+        match SeedPeer::from_str(&custom) {
+            Ok(node) => {
+                base_node_custom = Some(Peer::from(node));
+            },
+            Err(err) => {
+                return Err(ExitCodes::ConfigError(format!("Malformed custom base node: {}", err)));
+            },
+        }
+    }
 
     // config
     let base_node_peers = config
@@ -272,7 +285,7 @@ pub async fn init_wallet(
     // test encryption by initializing with no passphrase...
     let db_path = config.console_wallet_db_file.clone();
 
-    let result = initialize_sqlite_database_backends(db_path.clone(), None);
+    let result = initialize_sqlite_database_backends(db_path.clone(), None, config.wallet_connection_manager_pool_size);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
             // wallet is not encrypted
@@ -281,7 +294,8 @@ pub async fn init_wallet(
         Err(WalletStorageError::NoPasswordError) => {
             // get supplied or prompt password
             let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
-            let backends = initialize_sqlite_database_backends(db_path, passphrase)?;
+            let backends =
+                initialize_sqlite_database_backends(db_path, passphrase, config.wallet_connection_manager_pool_size)?;
 
             (backends, true)
         },
@@ -297,21 +311,51 @@ pub async fn init_wallet(
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
 
-    let node_address = match wallet_db.get_node_address().await? {
-        None => config.public_address.clone(),
-        Some(a) => a,
+    let node_address = match config.public_address.clone() {
+        Some(addr) => addr,
+        None => match wallet_db.get_node_address().await? {
+            Some(addr) => addr,
+            None => Multiaddr::empty(),
+        },
     };
 
-    let node_features = match wallet_db.get_node_features().await? {
-        None => PeerFeatures::COMMUNICATION_CLIENT,
-        Some(nf) => nf,
-    };
+    let node_features = wallet_db
+        .get_node_features()
+        .await?
+        .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
 
-    let node_identity = Arc::new(NodeIdentity::new(
-        CommsSecretKey::default(),
+    let identity_sig = wallet_db.get_comms_identity_signature().await?;
+
+    let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db).await?;
+    let comms_secret_key = derive_comms_secret_key(&master_seed)?;
+
+    // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig to
+    // None
+    let identity_sig = identity_sig.filter(|sig| {
+        let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+        sig.is_valid(&comms_public_key, node_features, [&node_address])
+    });
+
+    // SAFETY: we are manually checking the validity of this signature before adding Some(..)
+    let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
+        comms_secret_key,
         node_address,
         node_features,
+        identity_sig,
     ));
+    if !node_identity.is_signed() {
+        node_identity.sign();
+        // unreachable panic: signed above
+        wallet_db
+            .set_comms_identity_signature(
+                node_identity
+                    .identity_signature_read()
+                    .as_ref()
+                    .expect("unreachable panic")
+                    .clone(),
+            )
+            .await?;
+    }
 
     let transport_type = create_transport_type(config);
     let transport_type = match transport_type {
@@ -399,7 +443,6 @@ pub async fn init_wallet(
             config.buffer_size_console_wallet,
         )),
         Some(config.buffer_rate_limit_console_wallet),
-        Some(config.scan_for_utxo_interval),
         Some(updater_config),
         config.autoupdate_check_interval,
     );
@@ -411,7 +454,7 @@ pub async fn init_wallet(
         output_manager_backend,
         contacts_backend,
         shutdown_signal,
-        recovery_seed.clone(),
+        master_seed,
     )
     .await
     .map_err(|e| {
@@ -463,12 +506,12 @@ pub async fn init_wallet(
                 },
             };
         }
-        if let Some(file_name) = seed_words_file_name {
-            let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
-            let _ = fs::write(file_name, seed_words)
-                .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
-        };
     }
+    if let Some(file_name) = seed_words_file_name {
+        let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
+        let _ = fs::write(file_name, seed_words)
+            .map_err(|e| ExitCodes::WalletError(format!("Problem writing seed words to file: {}", e)));
+    };
 
     Ok(wallet)
 }
@@ -485,11 +528,10 @@ pub async fn start_wallet(
     let net_address = base_node
         .addresses
         .first()
-        .ok_or_else(|| ExitCodes::ConfigError("Configured base node has no address!".to_string()))?
-        .to_string();
+        .ok_or_else(|| ExitCodes::ConfigError("Configured base node has no address!".to_string()))?;
 
     wallet
-        .set_base_node_peer(base_node.public_key.clone(), net_address)
+        .set_base_node_peer(base_node.public_key.clone(), net_address.address.clone())
         .await
         .map_err(|e| ExitCodes::WalletError(format!("Error setting wallet base node peer. {}", e)))?;
 

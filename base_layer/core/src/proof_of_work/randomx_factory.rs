@@ -1,21 +1,28 @@
-use crate::proof_of_work::monero_rx::MergeMineError;
-use log::*;
-use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     time::Instant,
 };
 
+use log::*;
+use randomx_rs::{RandomXCache, RandomXDataset, RandomXError, RandomXFlag, RandomXVM};
+
+use crate::proof_of_work::monero_rx::MergeMineError;
+
 const LOG_TARGET: &str = "c::pow::randomx_factory";
+
+struct RandomXVMInstanceInner {
+    vm: RandomXVM,
+    _cache: RandomXCache,
+    _dataset: Option<RandomXDataset>,
+}
 
 #[derive(Clone)]
 pub struct RandomXVMInstance {
     // Note: If a cache and dataset (if assigned) allocated to the VM drops, the VM will crash.
     // The cache and dataset for the VM need to be stored together with it since they are not
     // mix and match.
-    instance: Arc<Mutex<(RandomXVM, RandomXCache, Option<RandomXDataset>)>>,
-    _flags: RandomXFlag,
+    instance: Arc<RwLock<RandomXVMInstanceInner>>,
 }
 
 impl RandomXVMInstance {
@@ -47,16 +54,23 @@ impl RandomXVMInstance {
         // light mode. These are not set by RandomX automatically even in fast mode.
 
         Ok(Self {
-            instance: Arc::new(Mutex::new((vm, cache, None))),
-            _flags: flags,
+            instance: Arc::new(RwLock::new(RandomXVMInstanceInner {
+                vm,
+                _cache: cache,
+                _dataset: None,
+            })),
         })
     }
 
     pub fn calculate_hash(&self, input: &[u8]) -> Result<Vec<u8>, RandomXError> {
-        self.instance.lock().unwrap().0.calculate_hash(input)
+        self.instance.read().unwrap().vm.calculate_hash(input)
     }
 }
 
+// TODO: Find a better way of marking this Send and Sync
+// This type should be Send and Sync since it is wrapped in an Arc RwLock, but
+// for some reason Rust and clippy don't see it automatically.
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for RandomXVMInstance {}
 unsafe impl Sync for RandomXVMInstance {}
 

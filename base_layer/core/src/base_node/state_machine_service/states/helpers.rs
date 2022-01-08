@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
+use log::*;
+use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
+
 use crate::{
     base_node::comms_interface::CommsInterfaceError,
     chain_storage::ChainStorageError,
     proof_of_work::PowError,
 };
-use log::*;
-use std::time::Duration;
-use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError};
 
 // If more than one sync peer discovered with the correct chain, enable or disable the selection of a random sync peer
 // to query headers and blocks.

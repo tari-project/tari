@@ -20,15 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::error::Error;
-use crate::stress::service::{StressProtocol, StressProtocolKind};
 use std::{io::stdin, str::FromStr};
+
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
 use tari_crypto::tari_utilities::hex::Hex;
+
+use super::error::Error;
+use crate::stress::service::{StressProtocol, StressProtocolKind};
 
 macro_rules! or_continue {
     ($expr:expr, $($arg:tt)*) => {

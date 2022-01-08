@@ -19,6 +19,31 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{
+    cmp::max,
+    convert::TryInto,
+    fmt::{Display, Error, Formatter},
+};
+
+use log::*;
+use serde::{Deserialize, Serialize};
+use tari_common_types::types::{
+    BlindingFactor,
+    Commitment,
+    CommitmentFactory,
+    HashOutput,
+    PrivateKey,
+    PublicKey,
+    RangeProofService,
+};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::PedersenCommitment,
+    script::ScriptContext,
+    tari_utilities::hex::Hex,
+};
+
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
     transactions::{
@@ -36,26 +61,6 @@ use crate::{
         },
         weight::TransactionWeight,
     },
-};
-use log::*;
-use serde::{Deserialize, Serialize};
-use std::{
-    cmp::max,
-    fmt::{Display, Error, Formatter},
-};
-use tari_common_types::types::{
-    BlindingFactor,
-    Commitment,
-    CommitmentFactory,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitment,
-    tari_utilities::hex::Hex,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -215,18 +220,13 @@ impl AggregateBody {
     }
 
     /// Sort the component lists of the aggregate body
-    pub fn sort(&mut self, version: u16) {
+    pub fn sort(&mut self) {
         if self.sorted {
             return;
         }
         self.inputs.sort();
         self.outputs.sort();
-        // TODO: #testnet_reset clean up this code
-        if version <= 1 {
-            self.kernels.sort_by(|a, b| a.deprecated_cmp(b));
-        } else {
-            self.kernels.sort();
-        }
+        self.kernels.sort();
         self.sorted = true;
     }
 
@@ -323,7 +323,7 @@ impl AggregateBody {
     /// This function will check all stxo to ensure that feature flags where followed
     pub fn check_stxo_rules(&self, height: u64) -> Result<(), TransactionError> {
         for input in self.inputs() {
-            if input.features.maturity > height {
+            if input.features()?.maturity > height {
                 warn!(
                     target: LOG_TARGET,
                     "Input found that has not yet matured to spending height: {}", input
@@ -342,6 +342,7 @@ impl AggregateBody {
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
+    #[allow(clippy::too_many_arguments)]
     pub fn validate_internal_consistency(
         &self,
         tx_offset: &BlindingFactor,
@@ -349,6 +350,8 @@ impl AggregateBody {
         bypass_range_proof_verification: bool,
         total_reward: MicroTari,
         factories: &CryptoFactories,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Result<(), TransactionError> {
         self.verify_kernel_signatures()?;
 
@@ -361,7 +364,7 @@ impl AggregateBody {
         self.verify_metadata_signatures()?;
 
         let script_offset_g = PublicKey::from_secret_key(script_offset);
-        self.validate_script_offset(script_offset_g, &factories.commitment)
+        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -369,10 +372,16 @@ impl AggregateBody {
     }
 
     /// Calculate the sum of the outputs - inputs
-    fn sum_commitments(&self) -> Commitment {
-        let sum_inputs = &self.inputs.iter().map(|i| &i.commitment).sum::<Commitment>();
+    fn sum_commitments(&self) -> Result<Commitment, TransactionError> {
+        let sum_inputs = &self
+            .inputs
+            .iter()
+            .map(|i| i.commitment())
+            .collect::<Result<Vec<&Commitment>, _>>()?
+            .into_iter()
+            .sum::<Commitment>();
         let sum_outputs = &self.outputs.iter().map(|o| &o.commitment).sum::<Commitment>();
-        sum_outputs - sum_inputs
+        Ok(sum_outputs - sum_inputs)
     }
 
     /// Calculate the sum of the kernels, taking into account the provided offset, and their constituent fees
@@ -401,7 +410,7 @@ impl AggregateBody {
     ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel total");
         let KernelSum { sum: excess, fees } = self.sum_kernels(offset_and_reward);
-        let sum_io = self.sum_commitments();
+        let sum_io = self.sum_commitments()?;
         trace!(target: LOG_TARGET, "Total outputs - inputs:{}", sum_io.to_hex());
         let fees = factory.commit_value(&PrivateKey::default(), fees.into());
         trace!(
@@ -425,12 +434,17 @@ impl AggregateBody {
         &self,
         script_offset: PublicKey,
         factory: &CommitmentFactory,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
+        let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
+        let height = height.unwrap_or_default();
         for input in &self.inputs {
-            input_keys = input_keys + input.run_and_verify_script(factory)?;
+            let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
+            input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
         }
 
         // Now lets gather the output public keys and hashes.
@@ -451,11 +465,7 @@ impl AggregateBody {
     fn validate_range_proofs(&self, range_proof_service: &RangeProofService) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking range proofs");
         for o in &self.outputs {
-            if !o.verify_range_proof(range_proof_service)? {
-                return Err(TransactionError::ValidationError(
-                    "Range proof could not be verified".into(),
-                ));
-            }
+            o.verify_range_proof(range_proof_service)?;
         }
         Ok(())
     }
@@ -506,6 +516,16 @@ impl AggregateBody {
         self.kernels()
             .iter()
             .fold(0, |max_timelock, kernel| max(max_timelock, kernel.lock_height))
+    }
+
+    /// Return a cloned version of self with TransactionInputs in their compact form
+    pub fn to_compact(&self) -> Self {
+        Self {
+            sorted: self.sorted,
+            inputs: self.inputs.iter().map(|i| i.to_compact()).collect(),
+            outputs: self.outputs.clone(),
+            kernels: self.kernels.clone(),
+        }
     }
 }
 

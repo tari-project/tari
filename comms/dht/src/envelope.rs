@@ -20,17 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use bitflags::bitflags;
-use bytes::Bytes;
-use chrono::{DateTime, NaiveDateTime, Utc};
-use prost_types::Timestamp;
-use serde::{Deserialize, Serialize};
 use std::{
     cmp,
     convert::{TryFrom, TryInto},
     fmt,
     fmt::Display,
 };
+
+use bitflags::bitflags;
+use bytes::Bytes;
+use chrono::{DateTime, NaiveDateTime, Utc};
+use prost_types::Timestamp;
+use serde::{Deserialize, Serialize};
 use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey, NodeIdentity};
 use tari_utilities::{epoch_time::EpochTime, ByteArray, ByteArrayError};
 use thiserror::Error;
@@ -48,9 +49,9 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
 }
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
-pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> DateTime<Utc> {
-    let naive = NaiveDateTime::from_timestamp(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32);
-    DateTime::from_utc(naive, Utc)
+pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc>> {
+    let naive = NaiveDateTime::from_timestamp_opt(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32)?;
+    Some(DateTime::from_utc(naive, Utc))
 }
 
 /// Utility function that converts a `chrono::DateTime` to a `EpochTime`
@@ -185,7 +186,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
             )
         };
 
-        let expires: Option<DateTime<Utc>> = header.expires.map(timestamp_to_datetime);
+        let expires = header.expires.and_then(timestamp_to_datetime);
         let version = DhtProtocolVersion::try_from((header.major, header.minor))?;
 
         Ok(Self {

@@ -20,6 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{error::Error, time::Duration};
+
+use multiaddr::Protocol;
+use tari_shutdown::Shutdown;
+use tari_test_utils::unpack_enum;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::{mpsc, oneshot},
+    time::timeout,
+};
+
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::{
@@ -35,15 +46,6 @@ use crate::{
     runtime,
     test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
     transports::MemoryTransport,
-};
-use multiaddr::Protocol;
-use std::{error::Error, time::Duration};
-use tari_shutdown::Shutdown;
-use tari_test_utils::unpack_enum;
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::{mpsc, oneshot},
-    time::timeout,
 };
 
 #[runtime::test]
@@ -164,8 +166,16 @@ async fn smoke() {
 
     shutdown.trigger();
 
-    let peer2 = peer_manager1.find_by_node_id(node_identity2.node_id()).await.unwrap();
-    let peer1 = peer_manager2.find_by_node_id(node_identity1.node_id()).await.unwrap();
+    let peer2 = peer_manager1
+        .find_by_node_id(node_identity2.node_id())
+        .await
+        .unwrap()
+        .unwrap();
+    let peer1 = peer_manager2
+        .find_by_node_id(node_identity1.node_id())
+        .await
+        .unwrap()
+        .unwrap();
 
     assert_eq!(&peer1.public_key, node_identity1.public_key());
     assert_eq!(&peer2.public_key, node_identity2.public_key());

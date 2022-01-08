@@ -20,6 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt;
+
+use digest::Digest;
+use serde::{Deserialize, Serialize};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, ComSignature, HashOutput, PrivateKey, PublicKey, RangeProofService, Signature},
+};
+use tari_crypto::{
+    keys::PublicKey as PublicKeyTrait,
+    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
+    script::TariScript,
+    tari_utilities::ByteArray,
+};
+
 use crate::{
     consensus::ConsensusConstants,
     transactions::{
@@ -47,16 +62,6 @@ use crate::{
         },
     },
 };
-use digest::Digest;
-use serde::{Deserialize, Serialize};
-use std::fmt;
-use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProofService, Signature};
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
-    tari_utilities::ByteArray,
-};
 
 //----------------------------------------   Local Data types     ----------------------------------------------------//
 
@@ -69,7 +74,7 @@ pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
     pub amount_to_self: MicroTari,
-    pub tx_id: u64,
+    pub tx_id: TxId,
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_output_features: Vec<OutputFeatures>,
@@ -98,12 +103,14 @@ pub(super) struct RawTransactionInfo {
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
     pub message: String,
+    pub height: Option<u64>,
+    pub prev_header: Option<HashOutput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
-    pub tx_id: u64,
+    pub tx_id: TxId,
     /// The amount, in µT, being sent to the recipient
     pub amount: MicroTari,
     /// The offset public excess for this transaction
@@ -152,8 +159,8 @@ pub struct SenderTransactionProtocol {
 }
 
 impl SenderTransactionProtocol {
-    /// Begin constructing a new transaction. All the up-front data is collected via the `SenderTransactionInitializer`
-    /// builder function
+    /// Begin constructing a new transaction. All the up-front data is collected via the
+    /// `SenderTransactionInitializer` builder function
     pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionInitializer {
         SenderTransactionInitializer::new(num_recipients, consensus_constants)
     }
@@ -209,7 +216,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Method to check if the provided tx_id matches this transaction
-    pub fn check_tx_id(&self, tx_id: u64) -> bool {
+    pub fn check_tx_id(&self, tx_id: TxId) -> bool {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
@@ -218,7 +225,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn get_tx_id(&self) -> Result<u64, TPE> {
+    pub fn get_tx_id(&self) -> Result<TxId, TPE> {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
@@ -385,11 +392,7 @@ impl SenderTransactionProtocol {
     ) -> Result<(), TPE> {
         match &mut self.state {
             SenderState::CollectingSingleSignature(info) => {
-                if !rec.output.verify_range_proof(prover)? {
-                    return Err(TPE::ValidationError(
-                        "Recipient output range proof failed to verify".into(),
-                    ));
-                }
+                rec.output.verify_range_proof(prover)?;
                 // Consolidate transaction info
                 info.outputs.push(rec.output.clone());
 
@@ -487,7 +490,9 @@ impl SenderTransactionProtocol {
             .with_signature(&s_agg)
             .build()?;
         tx_builder.with_kernel(kernel);
-        tx_builder.build(factories).map_err(TPE::from)
+        tx_builder
+            .build(factories, info.prev_header.clone(), info.height)
+            .map_err(TPE::from)
     }
 
     /// Performs sanity checks on the collected transaction pieces prior to building the final Transaction instance
@@ -543,7 +548,13 @@ impl SenderTransactionProtocol {
     /// formally validate the transaction terms (no inflation, signature matches etc). If any step fails,
     /// the transaction protocol moves to Failed state and we are done; you can't rescue the situation. The function
     /// returns `Ok(false)` in this instance.
-    pub fn finalize(&mut self, features: KernelFeatures, factories: &CryptoFactories) -> Result<(), TPE> {
+    pub fn finalize(
+        &mut self,
+        features: KernelFeatures,
+        factories: &CryptoFactories,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
+    ) -> Result<(), TPE> {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
             SenderState::Finalizing(_) => {
@@ -566,7 +577,7 @@ impl SenderTransactionProtocol {
                 }
                 let transaction = result.unwrap();
                 let result = transaction
-                    .validate_internal_consistency(true, factories, None)
+                    .validate_internal_consistency(true, factories, None, prev_header, height)
                     .map_err(TPE::TransactionBuildError);
                 if let Err(e) = result {
                     self.state = SenderState::Failed(e.clone());
@@ -630,14 +641,14 @@ impl fmt::Display for SenderTransactionProtocol {
     }
 }
 
-pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
+pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> TxId {
     let hash = D::new()
         .chain(pub_nonce.as_bytes())
         .chain(index.to_le_bytes())
         .finalize();
     let mut bytes: [u8; 8] = [0u8; 8];
     bytes.copy_from_slice(&hash[..8]);
-    u64::from_le_bytes(bytes)
+    u64::from_le_bytes(bytes).into()
 }
 
 //----------------------------------------      Sender State      ----------------------------------------------------//
@@ -721,6 +732,7 @@ impl fmt::Display for SenderState {
 #[cfg(test)]
 mod test {
     use rand::rngs::OsRng;
+    use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         common::Blake256,
@@ -738,7 +750,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction::{KernelFeatures, OutputFeatures, TransactionOutput},
+            transaction::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
             transaction_protocol::{
                 sender::SenderTransactionProtocol,
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -747,7 +759,6 @@ mod test {
             },
         },
     };
-    use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
 
     #[test]
     fn test_metadata_signature_finalize() {
@@ -840,10 +851,10 @@ mod test {
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
-        let mut sender = builder.build::<Blake256>(&factories).unwrap();
+        let mut sender = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
-        match sender.finalize(KernelFeatures::empty(), &factories) {
+        match sender.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         }
@@ -874,7 +885,7 @@ mod test {
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
-        let mut alice = builder.build::<Blake256>(&factories).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
@@ -892,7 +903,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories) {
+        match alice.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -939,7 +950,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, MicroTari(5000));
-        let mut alice = builder.build::<Blake256>(&factories).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         println!(
@@ -973,7 +984,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories) {
+        match alice.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -987,7 +998,7 @@ mod test {
         assert_eq!(tx.body.outputs().len(), 2);
         assert!(tx
             .clone()
-            .validate_internal_consistency(false, &factories, None)
+            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
             .is_ok());
     }
 
@@ -1019,7 +1030,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, (2u64.pow(32) + 1).into());
-        let mut alice = builder.build::<Blake256>(&factories).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
@@ -1031,7 +1042,9 @@ mod test {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
                 e,
-                TransactionProtocolError::ValidationError("Recipient output range proof failed to verify".into())
+                TransactionProtocolError::TransactionBuildError(TransactionError::ValidationError(
+                    "Recipient output range proof failed to verify".into()
+                ))
             ),
         }
     }
@@ -1062,7 +1075,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
-        match builder.build::<Blake256>(&factories) {
+        match builder.build::<Blake256>(&factories, None, Some(u64::MAX)) {
             Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
             Err(e) => assert_eq!(e.message, "Fee is greater than amount".to_string()),
         };
@@ -1095,7 +1108,7 @@ mod test {
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
-        match builder.build::<Blake256>(&factories) {
+        match builder.build::<Blake256>(&factories, None, Some(u64::MAX)) {
             Ok(_) => {},
             Err(e) => panic!("Unexpected error: {:?}", e),
         };
@@ -1145,7 +1158,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let mut alice = builder.build::<Blake256>(&factories).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
 
@@ -1173,7 +1186,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories) {
+        match alice.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };

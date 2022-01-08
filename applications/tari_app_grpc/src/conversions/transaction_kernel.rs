@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::tari_rpc as grpc;
 use std::convert::{TryFrom, TryInto};
+
 use tari_common_types::types::Commitment;
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -29,12 +29,14 @@ use tari_core::transactions::{
 };
 use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
+use crate::tari_rpc as grpc;
+
 impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: grpc::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess = Commitment::from_bytes(&kernel.excess)
-            .map_err(|err| format!("Excess could not be converted:{}", err.to_string()))?;
+        let excess =
+            Commitment::from_bytes(&kernel.excess).map_err(|err| format!("Excess could not be converted:{}", err))?;
 
         let excess_sig = kernel
             .excess_sig

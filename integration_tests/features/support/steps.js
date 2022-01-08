@@ -16,6 +16,7 @@ const {
   consoleLogTransactionDetails,
   withTimeout,
   waitForIterate,
+  byteArrayToHex,
 } = require("../../helpers/util");
 const { ConnectivityStatus, PaymentType } = require("../../helpers/types");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
@@ -113,6 +114,12 @@ Given(
   }
 );
 
+Given("I have {int} wallet(s)", { timeout: -1 }, async function (numWallets) {
+  for (let i = 0; i < numWallets; i++) {
+    await this.createAndAddWallet(`wallet${i}`, "", {});
+  }
+});
+
 Given(
   /I have a wallet (.*) with auto update enabled/,
   { timeout: 20 * 1000 },
@@ -164,6 +171,16 @@ Given(
     await this.createAndAddNode(name);
   }
 );
+
+Given("I have {int} base nodes", { timeout: 20 * 1000 }, async function (n) {
+  for (let i = 0; i < n; i++) {
+    await this.createAndAddNode(`basenode${i}`);
+  }
+});
+
+Given("I have 1 base node", { timeout: 20 * 1000 }, async function () {
+  await this.createAndAddNode(`basenode`);
+});
 
 Given(
   /I have a SHA3 miner (.*) connected to seed node (.*)/,
@@ -346,9 +363,9 @@ Given(
 );
 
 Given(
-  /I have wallet (.*) connected to seed node (.*)/,
+  /I have (a )?wallet (.*) connected to seed node (.*)/,
   { timeout: 20 * 1000 },
-  async function (walletName, seedName) {
+  async function (a, walletName, seedName) {
     await this.createAndAddWallet(
       walletName,
       this.seeds[seedName].peerAddress()
@@ -631,6 +648,7 @@ When(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,
+  { timeout: 120 * 1000 }, // The timeout must make provision for testing the monerod URL /get_height response
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -649,6 +667,7 @@ Given(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission disabled/,
+  { timeout: 120 * 1000 }, // The timeout must make provision for testing the monerod URL /get_height response
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -667,6 +686,7 @@ Given(
 
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with origin submission enabled/,
+  { timeout: 120 * 1000 }, // The timeout must make provision for testing the monerod URL /get_height response
   async function (mmProxy, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
@@ -684,7 +704,7 @@ Given(
 );
 
 Given(
-  /I have mining node (.*) connected to base node (.*) and wallet (.*)/,
+  /I have mining node (.*) connected to (?:base|seed) node (.*) and wallet (.*)/,
   async function (miner, node, wallet) {
     await this.createMiningNode(miner, node, wallet);
   }
@@ -1348,7 +1368,7 @@ When(
 );
 
 When(
-  /mining node (.*) mines (\d+) blocks$/,
+  /mining node (.*) mines (\d+) blocks?$/,
   { timeout: 1200 * 1000 }, // Must allow many blocks to be mined; dynamic time out below limits actual time
   async function (miner, numBlocks) {
     const miningNode = this.getMiningNode(miner);
@@ -1362,12 +1382,13 @@ When(
   }
 );
 
-When(
-  /I update the parent of block (.*) to be an orphan/,
-  async function (_block) {
-    // TODO
+When("I mine {int} block(s)", { timeout: -1 }, async function (numBlocks) {
+  let name = this.currentBaseNodeName();
+  // const tipHeight = await this.getClient(name).getTipHeight();
+  for (let i = 0; i < numBlocks; i++) {
+    await withTimeout(60 * 1000, this.mineBlock(name, 0));
   }
-);
+});
 
 When(
   /I mine (\d+) blocks on (.*)/,
@@ -1791,8 +1812,245 @@ When(
 );
 
 When(
+  /I broadcast HTLC transaction with (.*) uT from wallet (.*) to wallet (.*) at fee (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (tariAmount, source, dest, feePerGram) {
+    const sourceClient = await this.getWallet(source).connectClient();
+    const destClient = await this.getWallet(dest).connectClient();
+
+    const sourceInfo = await sourceClient.identify();
+    const destInfo = await destClient.identify();
+    console.log("Starting HTLC transaction of", tariAmount, "to", dest);
+    let success = false;
+    let retries = 1;
+    const retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            this.lastResult = await sourceClient.sendHtlc({
+              recipient: {
+                address: destInfo.public_key,
+                amount: tariAmount,
+                fee_per_gram: feePerGram,
+                message: "msg",
+              },
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
+      success = this.lastResult.is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            lastResult.failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+    if (success) {
+      this.addTransaction(
+        sourceInfo.public_key,
+        this.lastResult.transaction_id
+      );
+      this.addTransaction(destInfo.public_key, this.lastResult.transaction_id);
+    }
+    expect(success).to.equal(true);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.transaction_id
+    );
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
+  /I claim an HTLC transaction with wallet (.*) at fee (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (source, feePerGram) {
+    const sourceClient = await this.getWallet(source).connectClient();
+
+    const sourceInfo = await sourceClient.identify();
+    console.log("Claiming HTLC transaction of", source);
+    let success = false;
+    let retries = 1;
+    const retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            this.lastResult = await sourceClient.claimHtlc({
+              output: this.lastResult.output_hash,
+              pre_image: this.lastResult.pre_image,
+              fee_per_gram: feePerGram,
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
+      success = this.lastResult.results.is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            this.lastResult.results.failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+
+    if (success) {
+      this.addTransaction(
+        sourceInfo.public_key,
+        this.lastResult.results.transaction_id
+      );
+    }
+    expect(success).to.equal(true);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.results.transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.results.transaction_id
+    );
+
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
+  /I claim an HTLC refund transaction with wallet (.*) at fee (.*)/,
+  { timeout: 25 * 5 * 1000 },
+  async function (source, feePerGram) {
+    const sourceClient = await this.getWallet(source).connectClient();
+
+    const sourceInfo = await sourceClient.identify();
+    console.log("Claiming HTLC refund transaction of", source);
+    let success = false;
+    let retries = 1;
+    let hash = this.lastResult.output_hash;
+    const retries_limit = 25;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            this.lastResult = await sourceClient.claimHtlcRefund({
+              output_hash: hash,
+              fee_per_gram: feePerGram,
+            });
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+
+      success = this.lastResult.results.is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            this.lastResult.results.failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+
+    if (success) {
+      this.addTransaction(
+        sourceInfo.public_key,
+        this.lastResult.results.transaction_id
+      );
+    }
+    expect(success).to.equal(true);
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.results.transaction_id
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.results.transaction_id
+    );
+
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+When(
   /I send(.*) uT without waiting for broadcast from wallet (.*) to wallet (.*) at fee (.*)/,
-  { timeout: 20 * 1000 },
+  { timeout: 120 * 1000 },
   async function (tariAmount, source, dest, feePerGram) {
     const sourceWallet = this.getWallet(source);
     const sourceClient = await sourceWallet.connectClient();
@@ -2175,9 +2433,9 @@ When(
   }
 );
 
-When(/I wait (.*) seconds/, { timeout: 600 * 1000 }, async function (int) {
-  console.log("Waiting for", int, "seconds");
-  await sleep(int * 1000);
+When("I wait {int} seconds", { timeout: 600 * 1000 }, async function (seconds) {
+  console.log("Waiting for", seconds, "seconds");
+  await sleep(seconds * 1000);
   console.log("Waiting finished");
 });
 
@@ -3420,7 +3678,7 @@ Then(
 );
 
 When(
-  /I wait for (.*) to connect to (.*)/,
+  "I wait for {word} to connect to {word}",
   async function (firstNode, secondNode) {
     const firstNodeClient = await this.getNodeOrWalletClient(firstNode);
     const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
@@ -3490,6 +3748,7 @@ Given(
 async function wallet_run_command(
   wallet,
   command,
+  timeOutSeconds = 15,
   message = "",
   printMessage = true
 ) {
@@ -3511,7 +3770,7 @@ async function wallet_run_command(
       return true;
     },
     true,
-    45 * 1000,
+    timeOutSeconds * 1000,
     5 * 1000,
     5
   );
@@ -3523,7 +3782,7 @@ Then(
   { timeout: 180 * 1000 },
   async function (name, amount) {
     let wallet = this.getWallet(name);
-    let output = await wallet_run_command(wallet, "get-balance");
+    let output = await wallet_run_command(wallet, "get-balance", 180);
     let parse = output.buffer.match(/Available balance: (\d*.\d*) T/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parseFloat(parse[1])).to.be.greaterThanOrEqual(amount / 1000000);
@@ -3538,7 +3797,8 @@ When(
     let dest_pubkey = this.getWalletPubkey(receiver);
     await wallet_run_command(
       wallet,
-      `send-tari ${amount} ${dest_pubkey} test message`
+      `send-tari ${amount} ${dest_pubkey} test message`,
+      180
     );
     // await wallet.sendTari(dest_pubkey, amount, "test message");
   }
@@ -3552,7 +3812,8 @@ When(
     let dest_pubkey = this.getWalletPubkey(receiver);
     await wallet_run_command(
       wallet,
-      `send-one-sided ${amount} ${dest_pubkey} test message`
+      `send-one-sided ${amount} ${dest_pubkey} test message`,
+      180
     );
     // await wallet.sendOneSided(dest_pubkey, amount, "test message");
   }
@@ -3566,7 +3827,8 @@ Then(
     let dest_pubkey = this.getWalletPubkey(receiver);
     await wallet_run_command(
       wallet,
-      `make-it-rain ${freq} ${duration} ${amount} ${amount_inc} now ${dest_pubkey} negotiated test message`
+      `make-it-rain ${freq} ${duration} ${amount} ${amount_inc} now ${dest_pubkey} negotiated test message`,
+      300
     );
   }
 );
@@ -3589,7 +3851,8 @@ When(
     let wallet = this.getWallet(name);
     await wallet_run_command(
       wallet,
-      `coin-split ${amount_per_coin} ${number_of_coins}`
+      `coin-split ${amount_per_coin} ${number_of_coins}`,
+      180
     );
   }
 );
@@ -3600,7 +3863,7 @@ When(
   async function (node, name) {
     let wallet = this.getWallet(name);
     let peer = this.getNode(node).peerAddress().split("::")[0];
-    let output = await wallet_run_command(wallet, `discover-peer ${peer}`);
+    let output = await wallet_run_command(wallet, `discover-peer ${peer}`, 120);
     let parse = output.buffer.match(/Discovery succeeded/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
   }
@@ -3613,7 +3876,7 @@ When(
     await sleep(5000);
     let wallet = this.getWallet(name);
     let pubkey = this.getNode(who).peerAddress().split("::")[0];
-    let output = await wallet_run_command(wallet, `whois ${pubkey}`);
+    let output = await wallet_run_command(wallet, `whois ${pubkey}`, 20);
     let parse = output.buffer.match(/Public Key: (.+)\n/);
     expect(parse, "Parsing the output buffer failed").to.not.be.null;
     expect(parse[1]).to.be.equal(pubkey);
@@ -4006,3 +4269,163 @@ Then(
     expect(resp["result"]["untrusted"]).to.be.equal(false);
   }
 );
+
+Given(
+  "I have committee from {int} validator nodes connected",
+  { timeout: 20 * 1000 },
+  async function (nodes_cnt) {
+    console.log(`Starting ${nodes_cnt} validator nodes`);
+    const promises = [];
+    for (let i = 0; i < nodes_cnt; i++) {
+      promises.push(this.createAndAddDanNode(`DanNode${i}`));
+    }
+    await Promise.all(promises);
+    let committee = Array(nodes_cnt)
+      .fill()
+      .map((_, i) => this.getNode(`DanNode${i}`).getPubKey());
+    let peers = Array(nodes_cnt)
+      .fill()
+      .map((_, i) => this.getNode(`DanNode${i}`).peerAddress());
+    for (let i = 0; i < nodes_cnt; ++i) {
+      let dan_node = this.getNode(`DanNode${i}`);
+      dan_node.setCommittee(committee);
+      dan_node.setPeerSeeds(peers.filter((_, j) => i != j));
+      promises.push(dan_node.start());
+    }
+    await Promise.all(promises);
+  }
+);
+
+Then(
+  /I send instruction successfully with metadata (.*)/,
+  { timeout: 20 * 1000 },
+  async function (metadata) {
+    console.log("metadata", metadata);
+    let dan_node = this.getNode("DanNode0"); // Only the first node has GRPC
+    let grpc_dan_node = await dan_node.createGrpcClient();
+    let response = await grpc_dan_node.executeInstruction(
+      "f665775dbbf4e428e5c8c2bb1c5e7d2e508e93c83250c495ac617a0a1fb2d76d", // asset
+      "update", // method
+      metadata,
+      "eee280877ef836f1026d8a848a5da3eb6364cd0343372235e6ca10e2a697fc6f" // token
+    );
+    expect(response.status).to.be.equal("Accepted");
+  }
+);
+
+Then(
+  "At least {int} out of {int} validator nodes have filled asset data",
+  { timeout: 1200 * 1000 },
+  async function (at_least, total) {
+    let retries = 1;
+    let success = false;
+    let retries_limit = 239;
+    while (retries < retries_limit) {
+      let count = 0;
+      for (let i = 0; i < total; ++i) {
+        let node = this.getNode(`DanNode${i}`);
+        if (node.hasAssetData()) {
+          count += 1;
+        }
+      }
+      success = count >= at_least;
+      if (success) break;
+      ++retries;
+      await sleep(5000);
+    }
+    expect(success).to.be.true;
+  }
+);
+
+Then(
+  "I register asset {word} on wallet {word} via command line",
+  { timeout: 20 * 1000 },
+  async function (asset_name, wallet_name) {
+    let wallet = this.getWallet(wallet_name);
+    let output = await wallet_run_command(
+      wallet,
+      `register-asset ${asset_name}`
+    );
+    // console.log(output.buffer);
+    expect(output.buffer).to.have.string("Registering asset");
+  }
+);
+
+Then(
+  "I register asset {word} on wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (asset_name, wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const public_key = await walletClient.registerAsset(asset_name);
+    console.log(`Asset ${asset_name} registered with public key ${public_key}`);
+  }
+);
+
+Then(
+  "I have asset {word} on wallet {word} with status {word}",
+  { timeout: 20 * 1000 },
+  async function (asset_name, wallet_name, status) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    expect(
+      assets.some(
+        (asset) =>
+          asset.name === asset_name &&
+          asset.registration_output_status.toUpperCase() === status
+      )
+    ).to.be.true;
+  }
+);
+
+Then(
+  "I mint tokens {string} for asset {word} on wallet {word}",
+  { timeout: 20 * 1000 },
+  async function (token_names, asset_name, wallet_name) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    const asset = assets.find((asset) => asset.name === asset_name);
+    const tokens = token_names.split(" ");
+    await walletClient.mintTokens(asset.public_key, tokens);
+  }
+);
+
+Then(
+  "I mint tokens {string} for asset {word} on wallet {word} via command line",
+  { timeout: 20 * 1000 },
+  async function (token_names, asset_name, wallet_name) {
+    let wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    const asset = assets.find((asset) => asset.name === asset_name);
+    let output = await wallet_run_command(
+      wallet,
+      `mint-tokens ${byteArrayToHex(asset.public_key)} ${token_names}`
+    );
+    console.log(output.buffer);
+    expect(output.buffer).to.have.string("Minting tokens for asset");
+  }
+);
+
+Then(
+  "I have token {word} for asset {word} on wallet {word} in state {word}",
+  { timeout: 20 * 1000 },
+  async function (token_name, asset_name, wallet_name, status) {
+    const wallet = this.getWallet(wallet_name);
+    const walletClient = await wallet.connectClient();
+    const assets = await walletClient.getOwnedAssets();
+    const asset = assets.find((asset) => asset.name === asset_name);
+    let tokens = await walletClient.getOwnedTokens(asset.public_key);
+    expect(
+      tokens.some(
+        (token) =>
+          String.fromCharCode(...token.unique_id) === token_name &&
+          token.output_status.toUpperCase() === status
+      )
+    ).to.be.true;
+  }
+);
+
+//endregion

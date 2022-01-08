@@ -68,6 +68,7 @@ table! {
         private_key -> Binary,
         script -> Binary,
         input -> Binary,
+        script_lock_height -> BigInt,
     }
 }
 
@@ -112,6 +113,22 @@ table! {
         received_in_tx_id -> Nullable<BigInt>,
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
+        metadata -> Nullable<Binary>,
+        features_parent_public_key -> Nullable<Binary>,
+        features_unique_id -> Nullable<Binary>,
+        script_lock_height -> BigInt,
+        spending_priority -> Integer,
+        features_json -> Text,
+    }
+}
+
+table! {
+    scanned_blocks (header_hash) {
+        header_hash -> Binary,
+        height -> BigInt,
+        num_outputs -> Nullable<BigInt>,
+        amount -> Nullable<BigInt>,
+        timestamp -> Timestamp,
     }
 }
 
@@ -131,5 +148,6 @@ allow_tables_to_appear_in_same_query!(
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
+    scanned_blocks,
     wallet_settings,
 );

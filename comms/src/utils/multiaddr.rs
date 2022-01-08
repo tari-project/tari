@@ -19,11 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use crate::multiaddr::{Multiaddr, Protocol};
 use std::{
     io,
     net::{IpAddr, SocketAddr, ToSocketAddrs},
 };
+
+use crate::multiaddr::{Multiaddr, Protocol};
 
 /// Convert a multiaddr to a socket address required for `TcpStream`
 pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
@@ -79,9 +80,11 @@ pub fn socketaddr_to_multiaddr(socket_addr: &SocketAddr) -> Multiaddr {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use multiaddr::multiaddr;
     use std::{net::Ipv4Addr, str::FromStr};
+
+    use multiaddr::multiaddr;
+
+    use super::*;
 
     #[test]
     fn multiaddr_to_socketaddr_ok() {

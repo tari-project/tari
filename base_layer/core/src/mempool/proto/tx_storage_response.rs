@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::mempool::{proto::mempool as proto, TxStorageResponse};
 use std::convert::TryFrom;
+
+use crate::mempool::{proto::mempool as proto, TxStorageResponse};
 
 impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
     type Error = String;
@@ -38,15 +39,16 @@ impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
 }
 
 impl From<TxStorageResponse> for proto::TxStorageResponse {
-    fn from(resp: TxStorageResponse) -> Self {
+    fn from(response: TxStorageResponse) -> Self {
         use TxStorageResponse::*;
-        match resp {
+        match response {
             UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,
             ReorgPool => proto::TxStorageResponse::ReorgPool,
             NotStored => proto::TxStorageResponse::NotStored,
             NotStoredOrphan => proto::TxStorageResponse::NotStored,
             NotStoredTimeLocked => proto::TxStorageResponse::NotStored,
             NotStoredAlreadySpent => proto::TxStorageResponse::NotStored,
+            NotStoredConsensus => proto::TxStorageResponse::NotStored,
         }
     }
 }

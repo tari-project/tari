@@ -20,22 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity_service::WalletConnectivityInterface,
-    transaction_service::{
-        error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::TransactionEvent,
-        service::TransactionServiceResources,
-        storage::{database::TransactionBackend, models::CompletedTransaction},
-    },
-};
-use futures::FutureExt;
-use log::*;
 use std::{
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use futures::FutureExt;
+use log::*;
 use tari_common_types::{
     transaction::{TransactionStatus, TxId},
     types::Signature,
@@ -49,6 +41,17 @@ use tari_core::{
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::watch, time::sleep};
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::TransactionEvent,
+        protocols::TxRejection,
+        service::TransactionServiceResources,
+        storage::{database::TransactionBackend, models::CompletedTransaction},
+    },
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::broadcast_protocol";
 
@@ -80,7 +83,7 @@ where
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         let mut shutdown = self.resources.shutdown_signal.clone();
         let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
         let mut timeout_update_receiver = self.timeout_update_receiver.clone();
@@ -179,7 +182,12 @@ where
         tx: Transaction,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<bool, TransactionServiceProtocolError> {
-        let response = match client.submit_transaction(tx.into()).await {
+        let response = match client
+            .submit_transaction(tx.try_into().map_err(|e| {
+                TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidMessageError(e))
+            })?)
+            .await
+        {
             Ok(r) => match TxSubmissionResponse::try_from(r) {
                 Ok(r) => r,
                 Err(_) => {
@@ -212,19 +220,6 @@ where
 
             self.cancel_transaction().await;
 
-            let _ = self
-                .resources
-                .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
-                .map_err(|e| {
-                    trace!(
-                        target: LOG_TARGET,
-                        "Error sending event because there are no subscribers: {:?}",
-                        e
-                    );
-                    e
-                });
-
             let reason = match response.rejection_reason {
                 TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => {
                     TransactionServiceError::MempoolRejectionInvalidTransaction
@@ -234,6 +229,31 @@ where
                 TxSubmissionRejectionReason::TimeLocked => TransactionServiceError::MempoolRejectionTimeLocked,
                 _ => TransactionServiceError::UnexpectedBaseNodeResponse,
             };
+
+            let cancellation_event_reason = match reason {
+                TransactionServiceError::MempoolRejectionInvalidTransaction => TxRejection::InvalidTransaction,
+                TransactionServiceError::MempoolRejectionDoubleSpend => TxRejection::DoubleSpend,
+                TransactionServiceError::MempoolRejectionOrphan => TxRejection::Orphan,
+                TransactionServiceError::MempoolRejectionTimeLocked => TxRejection::TimeLocked,
+                _ => TxRejection::Unknown,
+            };
+
+            let _ = self
+                .resources
+                .event_publisher
+                .send(Arc::new(TransactionEvent::TransactionCancelled(
+                    self.tx_id,
+                    cancellation_event_reason,
+                )))
+                .map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
+
             return Err(TransactionServiceProtocolError::new(self.tx_id, reason));
         } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
             info!(
@@ -339,7 +359,10 @@ where
                 let _ = self
                     .resources
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id)))
+                    .send(Arc::new(TransactionEvent::TransactionCancelled(
+                        self.tx_id,
+                        TxRejection::InvalidTransaction,
+                    )))
                     .map_err(|e| {
                         trace!(
                             target: LOG_TARGET,

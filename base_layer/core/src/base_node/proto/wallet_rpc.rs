@@ -20,17 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    crypto::tari_utilities::ByteArrayError,
-    proto::{base_node as proto, types},
-};
-
-use serde::{Deserialize, Serialize};
 use std::{
     convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
+
+use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlockHash, Signature};
+use tari_utilities::ByteArrayError;
+
+use crate::proto::{base_node as proto, types};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TxSubmissionResponse {
@@ -51,13 +50,14 @@ pub enum TxSubmissionRejectionReason {
 
 impl Display for TxSubmissionRejectionReason {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        use TxSubmissionRejectionReason::*;
         let response = match self {
-            TxSubmissionRejectionReason::AlreadyMined => "Already Mined ",
-            TxSubmissionRejectionReason::DoubleSpend => "Double Spend",
-            TxSubmissionRejectionReason::Orphan => "Orphan",
-            TxSubmissionRejectionReason::TimeLocked => "Time Locked",
-            TxSubmissionRejectionReason::ValidationFailed => "Validation Failed",
-            TxSubmissionRejectionReason::None => "None",
+            AlreadyMined => "Already Mined ",
+            DoubleSpend => "Double Spend",
+            Orphan => "Orphan",
+            TimeLocked => "Time Locked",
+            ValidationFailed => "Validation Failed",
+            None => "None",
         };
         fmt.write_str(response)
     }
@@ -80,9 +80,9 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
 }
 
 impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
-    fn from(resp: TxSubmissionRejectionReason) -> Self {
+    fn from(response: TxSubmissionRejectionReason) -> Self {
         use TxSubmissionRejectionReason::*;
-        match resp {
+        match response {
             None => proto::TxSubmissionRejectionReason::None,
             AlreadyMined => proto::TxSubmissionRejectionReason::AlreadyMined,
             DoubleSpend => proto::TxSubmissionRejectionReason::DoubleSpend,

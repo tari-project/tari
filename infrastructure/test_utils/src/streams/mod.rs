@@ -20,8 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{stream, Stream, StreamExt};
 use std::{borrow::BorrowMut, collections::HashMap, hash::Hash, time::Duration};
+
+use futures::{stream, Stream, StreamExt};
 use tokio::sync::{broadcast, mpsc};
 
 #[allow(dead_code)]
@@ -50,7 +51,10 @@ where
 ///
 /// let mut rt = Runtime::new().unwrap();
 /// let mut stream = stream::iter(1..10);
-/// assert_eq!(rt.block_on(async { collect_stream!(stream, take=3, timeout=Duration::from_secs(1)) }), vec![1,2,3]);
+/// assert_eq!(
+///     rt.block_on(async { collect_stream!(stream, take = 3, timeout = Duration::from_secs(1)) }),
+///     vec![1, 2, 3]
+/// );
 /// ```
 #[macro_export]
 macro_rules! collect_stream {
@@ -181,8 +185,12 @@ macro_rules! collect_try_recv {
 /// # use tari_test_utils::collect_stream_count;
 ///
 /// let rt = Runtime::new().unwrap();
-/// let mut stream = stream::iter(vec![1,2,2,3,2]);
-/// assert_eq!(rt.block_on(async { collect_stream_count!(&mut stream, timeout=Duration::from_secs(1)) }).get(&2), Some(&3));
+/// let mut stream = stream::iter(vec![1, 2, 2, 3, 2]);
+/// assert_eq!(
+///     rt.block_on(async { collect_stream_count!(&mut stream, timeout = Duration::from_secs(1)) })
+///         .get(&2),
+///     Some(&3)
+/// );
 /// ```
 #[macro_export]
 macro_rules! collect_stream_count {

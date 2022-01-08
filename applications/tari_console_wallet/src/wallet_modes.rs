@@ -19,6 +19,17 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{fs, io::Stdout, path::PathBuf};
+
+use log::*;
+use rand::{rngs::OsRng, seq::SliceRandom};
+use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_wallet::WalletSqlite;
+use tokio::runtime::Handle;
+use tonic::transport::Server;
+use tui::backend::CrosstermBackend;
+
 use crate::{
     automation::{command_parser::parse_command, commands::command_runner},
     grpc::WalletGrpcServer,
@@ -28,15 +39,6 @@ use crate::{
     ui::App,
     utils::db::get_custom_base_node_peer_from_db,
 };
-use log::*;
-use rand::{rngs::OsRng, seq::SliceRandom};
-use std::{fs, io::Stdout, path::PathBuf};
-use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
-use tari_wallet::WalletSqlite;
-use tokio::runtime::Handle;
-use tonic::transport::Server;
-use tui::backend::CrosstermBackend;
 
 pub const LOG_TARGET: &str = "wallet::app::main";
 
@@ -132,8 +134,17 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
         global_config, handle, ..
     } = config.clone();
     let commands = vec![parse_command(&command)?];
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Command mode started)";
+    println!("{}", CUCUMBER_TEST_MARKER_A);
+
     info!(target: LOG_TARGET, "Starting wallet command mode");
     handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Command mode completed)";
+    println!("{}", CUCUMBER_TEST_MARKER_B);
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
@@ -164,8 +175,16 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
     }
     println!("{} commands parsed successfully.", commands.len());
 
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Script mode started)";
+    println!("{}", CUCUMBER_TEST_MARKER_A);
+
     println!("Starting the command runner!");
     handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
+    println!("{}", CUCUMBER_TEST_MARKER_B);
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
 
@@ -205,22 +224,27 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
 
 pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<(), ExitCodes> {
     let WalletModeConfig {
-        mut base_node_config,
+        base_node_config,
         mut base_node_selected,
         global_config,
         handle,
         notify_script,
         ..
     } = config;
-    let grpc = WalletGrpcServer::new(wallet.clone());
-    handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address.clone()));
+    if let Some(grpc_address) = global_config
+        .wallet_config
+        .as_ref()
+        .and_then(|c| c.grpc_address.as_ref())
+    {
+        let grpc = WalletGrpcServer::new(wallet.clone());
+        handle.spawn(run_grpc(grpc, grpc_address.clone()));
+    }
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
-    // update the selected/custom base node since it may have been changed by script/command mode
-    let base_node_custom = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet));
-    base_node_config.base_node_custom = base_node_custom.clone();
-    if let Some(peer) = base_node_custom {
+    if let Some(peer) = base_node_config.base_node_custom.clone() {
+        base_node_selected = peer;
+    } else if let Some(peer) = handle.block_on(get_custom_base_node_peer_from_db(&mut wallet)) {
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
@@ -237,6 +261,10 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
     );
 
     info!(target: LOG_TARGET, "Starting app");
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER: &str = "Tari Console Wallet running... (TUI mode started)";
+    println!("{}", CUCUMBER_TEST_MARKER);
 
     {
         let _enter = handle.enter();
@@ -258,8 +286,17 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
         wallet_mode,
         ..
     } = config.clone();
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (Recovery mode started)";
+    println!("{}", CUCUMBER_TEST_MARKER_A);
+
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(&wallet, &base_node_config)) {
+    match handle.block_on(wallet_recovery(
+        &wallet,
+        &base_node_config,
+        config.global_config.wallet_recovery_retry_limit,
+    )) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);
@@ -271,6 +308,10 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
             return Err(e);
         },
     }
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Recovery mode completed)";
+    println!("{}", CUCUMBER_TEST_MARKER_B);
 
     println!("Starting TUI.");
 
@@ -286,15 +327,23 @@ pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), E
         global_config, handle, ..
     } = config;
     info!(target: LOG_TARGET, "Starting grpc server");
-    let grpc = WalletGrpcServer::new(wallet);
-    handle
-        .block_on(run_grpc(grpc, global_config.grpc_console_wallet_address))
-        .map_err(ExitCodes::GrpcError)?;
+    if let Some(grpc_address) = global_config.wallet_config.and_then(|c| c.grpc_address) {
+        let grpc = WalletGrpcServer::new(wallet);
+        handle
+            .block_on(run_grpc(grpc, grpc_address))
+            .map_err(ExitCodes::GrpcError)?;
+    } else {
+        println!("No grpc address specified");
+    }
     info!(target: LOG_TARGET, "Shutting down");
     Ok(())
 }
 
 async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr) -> Result<(), String> {
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (gRPC mode started)";
+    println!("{}", CUCUMBER_TEST_MARKER_A);
+
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_console_wallet_address);
     let socket = multiaddr_to_socketaddr(&grpc_console_wallet_address).map_err(|e| e.to_string())?;
     Server::builder()
@@ -302,6 +351,11 @@ async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr
         .serve(socket)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
+
+    // Do not remove this println!
+    const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (gRPC mode completed)";
+    println!("{}", CUCUMBER_TEST_MARKER_B);
+
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
 }

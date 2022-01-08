@@ -23,6 +23,14 @@
 // Copyright (c) The Libra Core Contributors
 // SPDX-License-Identifier: Apache-2.0
 
+use std::{
+    cmp,
+    collections::{hash_map::Entry, HashMap},
+    num::NonZeroU16,
+    pin::Pin,
+    sync::Mutex,
+};
+
 use bytes::{Buf, Bytes};
 use futures::{
     channel::mpsc::{self, UnboundedReceiver, UnboundedSender},
@@ -31,13 +39,6 @@ use futures::{
     task::{Context, Poll},
 };
 use log::*;
-use std::{
-    cmp,
-    collections::{hash_map::Entry, HashMap},
-    num::NonZeroU16,
-    pin::Pin,
-    sync::Mutex,
-};
 use tokio::{
     io,
     io::{AsyncRead, AsyncWrite, ErrorKind, ReadBuf},
@@ -69,9 +70,10 @@ pub fn acquire_next_memsocket_port() -> NonZeroU16 {
         let port = NonZeroU16::new(switchboard.1).unwrap_or_else(|| unreachable!());
 
         // The switchboard is full and all ports are in use
-        if switchboard.0.len() == (std::u16::MAX - 1) as usize {
-            panic!("All memsocket addresses in use!");
-        }
+        assert!(
+            !(switchboard.0.len() == (std::u16::MAX - 1) as usize),
+            "All memsocket addresses in use!"
+        );
 
         // Instead of overflowing to 0, resume searching at port 1 since port 0 isn't a
         // valid port to bind to.
@@ -118,9 +120,9 @@ pub fn release_memsocket_port(port: NonZeroU16) {
 /// ```rust,no_run
 /// use std::io::Result;
 ///
+/// use futures::prelude::*;
 /// use tari_comms::memsocket::{MemoryListener, MemorySocket};
 /// use tokio::io::*;
-/// use futures::prelude::*;
 ///
 /// async fn write_stormlight(mut stream: MemorySocket) -> Result<()> {
 ///     let msg = b"The most important step a person can take is always the next one.";
@@ -259,7 +261,7 @@ impl MemoryListener {
     ///         Ok(stream) => {
     ///             println!("new connection!");
     ///         },
-    ///         Err(e) => { /* connection failed */ }
+    ///         Err(e) => { /* connection failed */ },
     ///     }
     /// }
     /// # Ok(())}
@@ -308,8 +310,8 @@ impl<'a> Stream for Incoming<'a> {
 ///
 /// ```rust, no_run
 /// use futures::prelude::*;
-/// use tokio::io::*;
 /// use tari_comms::memsocket::MemorySocket;
+/// use tokio::io::*;
 ///
 /// # async fn run() -> ::std::io::Result<()> {
 /// let (mut socket_a, mut socket_b) = MemorySocket::new_pair();
@@ -406,7 +408,7 @@ impl MemorySocket {
 
 impl AsyncRead for MemorySocket {
     /// Attempt to read from the `AsyncRead` into `buf`.
-    fn poll_read(mut self: Pin<&mut Self>, mut context: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
+    fn poll_read(mut self: Pin<&mut Self>, context: &mut Context, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
         if self.incoming.is_terminated() {
             if self.seen_eof {
                 return Poll::Ready(Err(ErrorKind::UnexpectedEof.into()));
@@ -443,7 +445,7 @@ impl AsyncRead for MemorySocket {
                 // Either we've exhausted our current buffer or don't have one
                 _ => {
                     self.current_buffer = {
-                        match Pin::new(&mut self.incoming).poll_next(&mut context) {
+                        match Pin::new(&mut self.incoming).poll_next(context) {
                             Poll::Pending => {
                                 // If we've read anything up to this point return the bytes read
                                 if bytes_read > 0 {
@@ -508,11 +510,12 @@ impl AsyncWrite for MemorySocket {
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use crate::{framing, runtime};
     use futures::SinkExt;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio_stream::StreamExt;
+
+    use super::*;
+    use crate::{framing, runtime};
 
     #[test]
     fn listener_bind() -> io::Result<()> {

@@ -20,17 +20,19 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    luhn::{checksum, is_valid},
-    types::PublicKey,
-};
 use std::{
     collections::HashMap,
     fmt::{Display, Error, Formatter},
 };
+
 use tari_crypto::tari_utilities::{
     hex::{Hex, HexError},
     ByteArray,
+};
+
+use crate::{
+    luhn::{checksum, is_valid},
+    types::PublicKey,
 };
 
 const EMOJI: [char; 256] = [
@@ -172,8 +174,9 @@ pub struct EmojiIdError;
 
 #[cfg(test)]
 mod test {
-    use crate::{emoji::EmojiId, types::PublicKey};
     use tari_crypto::tari_utilities::hex::Hex;
+
+    use crate::{emoji::EmojiId, types::PublicKey};
 
     #[test]
     fn convert_key() {

@@ -20,6 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
+use futures::Future;
+use log::*;
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    message::{InboundMessage, OutboundMessage},
+    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
+    pipeline::PipelineError,
+};
+use tari_shutdown::ShutdownSignal;
+use thiserror::Error;
+use tokio::sync::{broadcast, mpsc};
+use tower::{layer::Layer, Service, ServiceBuilder};
+
 use self::outbound::OutboundMessageRequester;
 use crate::{
     actor::{DhtActor, DhtRequest, DhtRequester},
@@ -43,19 +58,6 @@ use crate::{
     DhtBuilder,
     DhtConfig,
 };
-use futures::Future;
-use log::*;
-use std::sync::Arc;
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    message::{InboundMessage, OutboundMessage},
-    peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
-    pipeline::PipelineError,
-};
-use tari_shutdown::ShutdownSignal;
-use thiserror::Error;
-use tokio::sync::{broadcast, mpsc};
-use tower::{layer::Layer, Service, ServiceBuilder};
 
 const LOG_TARGET: &str = "comms::dht";
 
@@ -85,7 +87,7 @@ pub struct Dht {
     /// Comms peer manager
     peer_manager: Arc<PeerManager>,
     /// Dht configuration
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     /// Used to create a OutboundMessageRequester.
     outbound_tx: mpsc::Sender<DhtOutboundRequest>,
     /// Sender for DHT requests
@@ -125,18 +127,17 @@ impl Dht {
             node_identity,
             peer_manager,
             metrics_collector,
-            config,
+            config: Arc::new(config),
             outbound_tx,
             dht_sender,
             saf_sender,
             saf_response_signal_sender,
             connectivity,
             discovery_sender,
-            event_publisher: event_publisher.clone(),
+            event_publisher,
         };
 
         let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
-            .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
@@ -330,8 +331,9 @@ impl Dht {
                 self.saf_response_signal_sender.clone(),
             ))
             .layer(inbound::DhtHandlerLayer::new(
-                Arc::clone(&self.node_identity),
-                Arc::clone(&self.peer_manager),
+                self.config.clone(),
+                self.node_identity.clone(),
+                self.peer_manager.clone(),
                 self.discovery_service_requester(),
                 self.outbound_requester(),
             ))
@@ -428,6 +430,19 @@ fn filter_messages_to_rebroadcast(msg: &DecryptedDhtMessage) -> bool {
 
 #[cfg(test)]
 mod test {
+    use std::{sync::Arc, time::Duration};
+
+    use tari_comms::{
+        message::{MessageExt, MessageTag},
+        pipeline::SinkService,
+        runtime,
+        test_utils::mocks::create_connectivity_mock,
+        wrap_in_envelope_body,
+    };
+    use tari_shutdown::Shutdown;
+    use tokio::{sync::mpsc, task, time};
+    use tower::{layer::Layer, Service};
+
     use super::*;
     use crate::{
         crypt,
@@ -443,17 +458,6 @@ mod test {
             service_spy,
         },
     };
-    use std::{sync::Arc, time::Duration};
-    use tari_comms::{
-        message::{MessageExt, MessageTag},
-        pipeline::SinkService,
-        runtime,
-        test_utils::mocks::create_connectivity_mock,
-        wrap_in_envelope_body,
-    };
-    use tari_shutdown::Shutdown;
-    use tokio::{sync::mpsc, task, time};
-    use tower::{layer::Layer, Service};
 
     #[runtime::test]
     async fn stack_unencrypted() {

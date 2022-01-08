@@ -13,19 +13,31 @@ members = [
     "comms",
     "comms/dht",
     "comms/rpc_macros",
+    "dan_layer/core",
+    "dan_layer/storage_sqlite",
+    "common_sqlite",
+    "infrastructure/metrics",
     "infrastructure/shutdown",
     "infrastructure/storage",
     "infrastructure/test_utils",
     "applications/deps_only",
-    # "applications/installer",
+    "applications/launchpad/backend",
     "applications/tari_base_node",
     "applications/tari_console_wallet",
+    "applications/tari_collectibles/src-tauri",
     "applications/test_faucet",
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
     "applications/tari_stratum_transcoder",
     "applications/tari_mining_node",
+    "applications/tari_validator_node",
+
 ]
 #
 #[profile.release]
 #debug = true
+
+
+# Shutdown when panicking so we can see the error, specifically for the wallet
+[profile.release]
+panic = 'abort'

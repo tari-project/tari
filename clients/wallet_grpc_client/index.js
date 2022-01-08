@@ -42,6 +42,13 @@ function Client(address) {
     "cancelTransaction",
     "checkForUpdates",
     "revalidateAllTransactions",
+    "SendShaAtomicSwapTransaction",
+    "claimShaAtomicSwapTransaction",
+    "ClaimHtlcRefundTransaction",
+    "registerAsset",
+    "getOwnedAssets",
+    "mintTokens",
+    "getOwnedTokens",
   ];
 
   this.waitForReady = (...args) => {

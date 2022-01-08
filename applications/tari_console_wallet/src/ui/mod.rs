@@ -20,9 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::utils::crossterm_events::CrosstermEvents;
 use log::error;
 use tari_common::exit_codes::ExitCodes;
+
+use crate::utils::crossterm_events::CrosstermEvents;
 
 mod app;
 mod components;
@@ -33,20 +34,21 @@ pub mod state;
 mod ui_contact;
 mod ui_error;
 
-pub use app::*;
-pub use ui_contact::*;
-pub use ui_error::*;
+use std::io::{stdout, Stdout, Write};
 
-use crate::utils::events::{Event, EventStream};
+pub use app::*;
 use crossterm::{
     event::{KeyCode, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use log::*;
-use std::io::{stdout, Stdout, Write};
 use tokio::runtime::Handle;
 use tui::{backend::CrosstermBackend, Terminal};
+pub use ui_contact::*;
+pub use ui_error::*;
+
+use crate::utils::events::{Event, EventStream};
 
 pub const MAX_WIDTH: u16 = 133;
 
@@ -60,8 +62,14 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCodes> {
             app.app_state.refresh_contacts_state().await?;
             trace!(target: LOG_TARGET, "Refreshing connected peers state");
             app.app_state.refresh_connected_peers_state().await?;
+            trace!(target: LOG_TARGET, "Checking connectivity");
+            app.app_state.check_connectivity().await;
             trace!(target: LOG_TARGET, "Starting balance enquiry debouncer");
             app.app_state.start_balance_enquiry_debouncer().await?;
+            trace!(target: LOG_TARGET, "Refreshing assets");
+            app.app_state.refresh_assets_state().await?;
+            trace!(target: LOG_TARGET, "Refreshing tokens");
+            app.app_state.refresh_tokens_state().await?;
             trace!(target: LOG_TARGET, "Starting app state event monitor");
             app.app_state.start_event_monitor(app.notifier.clone()).await;
             Result::<_, UiError>::Ok(())

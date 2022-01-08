@@ -21,16 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(clippy::mutex_atomic)]
 
-use crate::memory_net::DrainBurst;
-use futures::future;
-use lazy_static::lazy_static;
-use rand::{rngs::OsRng, Rng};
 use std::{
     collections::HashMap,
     fmt,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+
+use futures::future;
+use lazy_static::lazy_static;
+use rand::{rngs::OsRng, Rng};
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
@@ -70,6 +70,8 @@ use tokio::{
     time,
 };
 use tower::ServiceBuilder;
+
+use crate::memory_net::DrainBurst;
 
 pub type NodeEventRx = mpsc::UnboundedReceiver<(NodeId, NodeId)>;
 pub type NodeEventTx = mpsc::UnboundedSender<(NodeId, NodeId)>;
@@ -245,7 +247,7 @@ pub async fn network_connectivity_stats(nodes: &[TestNode], wallets: &[TestNode]
     total += t;
     avg += a;
     println!(
-        "{} total connections on the network. ({} per node on average)",
+        "{} total connections on the network. ({} per peer on average)",
         total,
         avg / (wallets.len() + nodes.len())
     );

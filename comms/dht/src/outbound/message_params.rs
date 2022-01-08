@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{fmt, fmt::Display};
+
+use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
+
 use crate::{
     broadcast_strategy::{BroadcastClosestRequest, BroadcastStrategy},
     envelope::{DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::OutboundEncryption,
     proto::envelope::DhtMessageType,
 };
-use std::{fmt, fmt::Display};
-use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKey};
 
 /// Configuration for outbound messages.
 ///
@@ -39,9 +41,9 @@ use tari_comms::{message::MessageTag, peer_manager::NodeId, types::CommsPublicKe
 /// // the peer with the corresponding secret key of `dest_public_key`.
 /// let dest_public_key = CommsPublicKey::default();
 /// let params = SendMessageParams::new()
-///   .random(5)
-///   .with_encryption(OutboundEncryption::encrypt_for(dest_public_key))
-///   .finish();
+///     .random(5)
+///     .with_encryption(OutboundEncryption::encrypt_for(dest_public_key))
+///     .finish();
 /// ```
 #[derive(Debug, Clone)]
 pub struct SendMessageParams {

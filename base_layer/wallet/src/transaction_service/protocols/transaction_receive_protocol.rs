@@ -20,35 +20,43 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::transaction_service::{
-    error::{TransactionServiceError, TransactionServiceProtocolError},
-    handle::TransactionEvent,
-    service::TransactionServiceResources,
-    storage::{
-        database::TransactionBackend,
-        models::{CompletedTransaction, InboundTransaction},
-    },
-    tasks::send_transaction_reply::send_transaction_reply,
-    utc::utc_duration_since,
-};
+use std::sync::Arc;
+
 use chrono::Utc;
 use futures::future::FutureExt;
 use log::*;
-use std::sync::Arc;
-use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_common_types::{
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::HashOutput,
+};
 use tari_comms::types::CommsPublicKey;
-use tokio::sync::{mpsc, oneshot};
-
-use crate::connectivity_service::WalletConnectivityInterface;
 use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
-use tokio::time::sleep;
+use tokio::{
+    sync::{mpsc, oneshot},
+    time::sleep,
+};
+
+use crate::{
+    connectivity_service::WalletConnectivityInterface,
+    transaction_service::{
+        error::{TransactionServiceError, TransactionServiceProtocolError},
+        handle::TransactionEvent,
+        protocols::TxRejection,
+        service::TransactionServiceResources,
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, InboundTransaction},
+        },
+        tasks::send_transaction_reply::send_transaction_reply,
+        utc::utc_duration_since,
+    },
+};
 
 const LOG_TARGET: &str = "wallet::transaction_service::protocols::receive_protocol";
-const LOG_TARGET_STRESS: &str = "stress_test::receive_protocol";
 
 #[derive(Debug, PartialEq)]
 pub enum TransactionReceiveProtocolStage {
@@ -57,13 +65,15 @@ pub enum TransactionReceiveProtocolStage {
 }
 
 pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
-    id: u64,
+    id: TxId,
     source_pubkey: CommsPublicKey,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
     resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
     transaction_finalize_receiver: Option<mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>>,
     cancellation_receiver: Option<oneshot::Receiver<()>>,
+    prev_header: Option<HashOutput>,
+    height: Option<u64>,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionReceiveProtocol<TBackend, TWalletConnectivity>
@@ -72,13 +82,15 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         source_pubkey: CommsPublicKey,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_finalize_receiver: mpsc::Receiver<(CommsPublicKey, TxId, Transaction)>,
         cancellation_receiver: oneshot::Receiver<()>,
+        prev_header: Option<HashOutput>,
+        height: Option<u64>,
     ) -> Self {
         Self {
             id,
@@ -88,10 +100,12 @@ where
             resources,
             transaction_finalize_receiver: Some(transaction_finalize_receiver),
             cancellation_receiver: Some(cancellation_receiver),
+            prev_header,
+            height,
         }
     }
 
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Receive protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -290,6 +304,7 @@ where
 
         #[allow(unused_assignments)]
         let mut incoming_finalized_transaction = None;
+
         loop {
             loop {
                 let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();
@@ -353,15 +368,15 @@ where
                 self.id,
                 self.source_pubkey.clone()
             );
-            debug!(
-                target: LOG_TARGET_STRESS,
-                "Finalized Transaction with TX_ID = {} received from {}",
-                self.id,
-                self.source_pubkey.clone()
-            );
 
             finalized_transaction
-                .validate_internal_consistency(true, &self.resources.factories, None)
+                .validate_internal_consistency(
+                    true,
+                    &self.resources.factories,
+                    None,
+                    self.prev_header.clone(),
+                    self.height,
+                )
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
             // Find your own output in the transaction
@@ -491,7 +506,10 @@ where
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionCancelled(self.id)))
+            .send(Arc::new(TransactionEvent::TransactionCancelled(
+                self.id,
+                TxRejection::Timeout,
+            )))
             .map_err(|e| {
                 trace!(
                     target: LOG_TARGET,

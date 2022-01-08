@@ -20,15 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::cipher_seed::CipherSeed;
-use digest::Digest;
 use std::marker::PhantomData;
+
+use digest::Digest;
+use serde::{Deserialize, Serialize};
 use tari_crypto::{
     keys::SecretKey,
     tari_utilities::{byte_array::ByteArrayError, hex::Hex},
 };
 
-#[derive(Clone, Debug)]
+use crate::cipher_seed::CipherSeed;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DerivedKey<K>
 where K: SecretKey
 {
@@ -36,7 +39,7 @@ where K: SecretKey
     pub key_index: u64,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
     seed: CipherSeed,
     pub branch_seed: String,
@@ -74,7 +77,7 @@ where
 
     /// Derive a new private key from master key: derived_key=SHA256(master_key||branch_seed||index)
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
-        let concatenated = format!("{}{}", self.seed.entropy.to_vec().to_hex(), key_index.to_string());
+        let concatenated = format!("{}{}", self.seed.entropy().to_vec().to_hex(), key_index);
         match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {
             Ok(k) => Ok(DerivedKey { k, key_index }),
             Err(e) => Err(e),
@@ -112,9 +115,10 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::key_manager::*;
     use sha2::Sha256;
     use tari_crypto::ristretto::RistrettoSecretKey;
+
+    use crate::key_manager::*;
 
     #[test]
     fn test_new_keymanager() {

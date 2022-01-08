@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
 
 use std::sync::PoisonError;
-use tari_common::exit_codes::ExitCodes;
+
 use tari_storage::KeyValStoreError;
 use thiserror::Error;
 
@@ -29,18 +29,16 @@ use thiserror::Error;
 pub enum PeerManagerError {
     #[error("The requested peer does not exist")]
     PeerNotFoundError,
+    #[error("DB Data inconsistency: {0}")]
+    DataInconsistency(String),
     #[error("The peer has been banned")]
     BannedPeer,
     #[error("A problem has been encountered with the database: {0}")]
     DatabaseError(#[from] KeyValStoreError),
     #[error("An error occurred while migrating the database: {0}")]
     MigrationError(String),
-}
-
-impl From<PeerManagerError> for ExitCodes {
-    fn from(err: PeerManagerError) -> Self {
-        ExitCodes::NetworkError(err.to_string())
-    }
+    #[error("Identity signature is invalid")]
+    InvalidIdentitySignature,
 }
 
 impl PeerManagerError {

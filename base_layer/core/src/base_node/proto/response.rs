@@ -20,6 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::{TryFrom, TryInto},
+    iter::{FromIterator, Iterator},
+};
+
+use tari_utilities::convert::try_convert_all;
+
 pub use crate::proto::base_node::base_node_service_response::Response as ProtoNodeCommsResponse;
 use crate::{
     base_node::comms_interface as ci,
@@ -35,11 +42,6 @@ use crate::{
         },
         core as core_proto_types,
     },
-    tari_utilities::convert::try_convert_all,
-};
-use std::{
-    convert::{TryFrom, TryInto},
-    iter::{FromIterator, Iterator},
 };
 
 impl TryInto<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
@@ -65,7 +67,13 @@ impl TryFrom<ci::NodeCommsResponse> for ProtoNodeCommsResponse {
         use ci::NodeCommsResponse::*;
         match response {
             HistoricalBlocks(historical_blocks) => {
-                let historical_blocks = historical_blocks.into_iter().map(Into::into).collect();
+                let historical_blocks = historical_blocks
+                    .into_iter()
+                    .map(TryInto::try_into)
+                    .collect::<Result<Vec<core_proto_types::HistoricalBlock>, _>>()?
+                    .into_iter()
+                    .map(Into::into)
+                    .collect();
                 Ok(ProtoNodeCommsResponse::HistoricalBlocks(historical_blocks))
             },
             // This would only occur if a programming error sent out the unsupported response
@@ -96,11 +104,13 @@ impl TryInto<Option<BlockHeader>> for base_node_proto::BlockHeaderResponse {
     }
 }
 
-impl From<Option<HistoricalBlock>> for base_node_proto::HistoricalBlockResponse {
-    fn from(v: Option<HistoricalBlock>) -> Self {
-        Self {
-            block: v.map(Into::into),
-        }
+impl TryFrom<Option<HistoricalBlock>> for base_node_proto::HistoricalBlockResponse {
+    type Error = String;
+
+    fn try_from(v: Option<HistoricalBlock>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            block: v.map(TryInto::try_into).transpose()?,
+        })
     }
 }
 

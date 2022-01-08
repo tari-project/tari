@@ -20,7 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::base_node_service::error::BaseNodeServiceError;
 use diesel::result::Error as DieselError;
 use tari_common::exit_codes::ExitCodes;
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
@@ -33,7 +32,10 @@ use tari_core::transactions::{
 use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_utilities::hex::HexError;
 use thiserror::Error;
+
+use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
@@ -109,6 +111,8 @@ pub enum OutputManagerError {
     MasterSeedMismatch,
     #[error("Private Key is not found in the current Key Chain")]
     KeyNotFoundInKeyChain,
+    #[error("Token with unique id not found")]
+    TokenUniqueIdNotFound,
     #[error("Connectivity error: {source}")]
     ConnectivityError {
         #[from]
@@ -118,7 +122,7 @@ pub enum OutputManagerError {
     InvalidMessageError(String),
 }
 
-#[derive(Debug, Error, PartialEq)]
+#[derive(Debug, Error)]
 pub enum OutputManagerStorageError {
     #[error("Tried to insert an output that already exists in the database")]
     DuplicateOutput,
@@ -136,14 +140,16 @@ pub enum OutputManagerStorageError {
     OperationNotSupported,
     #[error("Could not find all values specified for batch operation")]
     ValuesNotFound,
-    #[error("Error converting a type")]
-    ConversionError,
+    #[error("Error converting a type: {reason}")]
+    ConversionError { reason: String },
     #[error("Output has already been spent")]
     OutputAlreadySpent,
+    #[error("Output is already encumbered")]
+    OutputAlreadyEncumbered,
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("R2d2 error")]
-    R2d2Error,
+    #[error("Diesel R2d2 error: `{0}`")]
+    DieselR2d2Error(#[from] WalletStorageError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Diesel error: `{0}`")]
@@ -162,6 +168,8 @@ pub enum OutputManagerStorageError {
     AeadError(String),
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Binary not stored as valid hex:{0}")]
+    HexError(#[from] HexError),
     #[error("Key Manager Error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
 }

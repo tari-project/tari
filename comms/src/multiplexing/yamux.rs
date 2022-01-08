@@ -20,15 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connection_manager::ConnectionDirection,
-    runtime,
-    stream_id,
-    stream_id::StreamId,
-    utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
-};
-use futures::{task::Context, Stream};
 use std::{future::Future, io, pin::Pin, task::Poll};
+
+use futures::{task::Context, Stream};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
@@ -36,10 +30,17 @@ use tokio::{
 };
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncReadCompatExt};
 use tracing::{self, debug, error, event, Level};
-use yamux::Mode;
-
 // Reexport
 pub use yamux::ConnectionError;
+use yamux::Mode;
+
+use crate::{
+    connection_manager::ConnectionDirection,
+    runtime,
+    stream_id,
+    stream_id::StreamId,
+    utils::atomic_ref_counter::{AtomicRefCounter, AtomicRefCounterGuard},
+};
 
 const LOG_TARGET: &str = "comms::multiplexing::yamux";
 
@@ -54,7 +55,7 @@ const RECEIVE_WINDOW: u32 = 5 * 1024 * 1024; // 5MiB
 
 impl Yamux {
     /// Upgrade the underlying socket to use yamux
-    pub async fn upgrade_connection<TSocket>(socket: TSocket, direction: ConnectionDirection) -> io::Result<Self>
+    pub fn upgrade_connection<TSocket>(socket: TSocket, direction: ConnectionDirection) -> io::Result<Self>
     where TSocket: AsyncRead + AsyncWrite + Send + Unpin + 'static {
         let mode = match direction {
             ConnectionDirection::Inbound => Mode::Server,
@@ -220,12 +221,21 @@ impl StreamId for Substream {
 
 impl tokio::io::AsyncRead for Substream {
     fn poll_read(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &mut ReadBuf<'_>) -> Poll<io::Result<()>> {
-        Pin::new(&mut self.stream).poll_read(cx, buf)
+        match Pin::new(&mut self.stream).poll_read(cx, buf) {
+            Poll::Ready(Ok(())) => {
+                #[cfg(feature = "metrics")]
+                super::metrics::TOTAL_BYTES_READ.inc_by(buf.filled().len() as u64);
+                Poll::Ready(Ok(()))
+            },
+            res => res,
+        }
     }
 }
 
 impl tokio::io::AsyncWrite for Substream {
     fn poll_write(mut self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<io::Result<usize>> {
+        #[cfg(feature = "metrics")]
+        super::metrics::TOTAL_BYTES_WRITTEN.inc_by(buf.len() as u64);
         Pin::new(&mut self.stream).poll_write(cx, buf)
     }
 
@@ -331,6 +341,12 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
 
 #[cfg(test)]
 mod test {
+    use std::{io, time::Duration};
+
+    use tari_test_utils::collect_stream;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio_stream::StreamExt;
+
     use crate::{
         connection_manager::ConnectionDirection,
         memsocket::MemorySocket,
@@ -338,19 +354,13 @@ mod test {
         runtime,
         runtime::task,
     };
-    use std::{io, time::Duration};
-    use tari_test_utils::collect_stream;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio_stream::StreamExt;
 
     #[runtime::test]
     async fn open_substream() -> io::Result<()> {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"The Way of Kings";
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)
-            .await
-            .unwrap();
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
         let mut dialer_control = dialer.get_yamux_control();
 
         task::spawn(async move {
@@ -361,9 +371,7 @@ mod test {
             substream.shutdown().await.unwrap();
         });
 
-        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
-            .await?
-            .into_incoming();
+        let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?.into_incoming();
         let mut substream = listener
             .next()
             .await
@@ -384,9 +392,7 @@ mod test {
         const NUM_SUBSTREAMS: usize = 10;
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)
-            .await
-            .unwrap();
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).unwrap();
         let mut dialer_control = dialer.get_yamux_control();
 
         let substreams_out = task::spawn(async move {
@@ -398,7 +404,6 @@ mod test {
         });
 
         let mut listener = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
-            .await
             .unwrap()
             .into_incoming();
         let substreams_in = collect_stream!(&mut listener, take = NUM_SUBSTREAMS, timeout = Duration::from_secs(10));
@@ -418,7 +423,7 @@ mod test {
         let (dialer, listener) = MemorySocket::new_pair();
         let msg = b"Words of Radiance";
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).await?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
         let mut dialer_control = dialer.get_yamux_control();
 
         task::spawn(async move {
@@ -432,9 +437,7 @@ mod test {
             assert_eq!(buf, b"");
         });
 
-        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
-            .await?
-            .into_incoming();
+        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?.into_incoming();
         let mut substream = incoming.next().await.unwrap();
 
         let mut buf = vec![0; msg.len()];
@@ -461,7 +464,7 @@ mod test {
 
         let (dialer, listener) = MemorySocket::new_pair();
 
-        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound).await?;
+        let dialer = Yamux::upgrade_connection(dialer, ConnectionDirection::Outbound)?;
         let mut dialer_control = dialer.get_yamux_control();
 
         task::spawn(async move {
@@ -480,9 +483,7 @@ mod test {
             assert_eq!(buf, vec![0xAAu8; MSG_LEN]);
         });
 
-        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)
-            .await?
-            .into_incoming();
+        let mut incoming = Yamux::upgrade_connection(listener, ConnectionDirection::Inbound)?.into_incoming();
         assert_eq!(incoming.substream_count(), 0);
         let mut substream = incoming.next().await.unwrap();
         assert_eq!(incoming.substream_count(), 1);

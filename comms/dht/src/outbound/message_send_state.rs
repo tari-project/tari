@@ -20,11 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use futures::{stream::FuturesUnordered, Future, StreamExt};
 use std::{
     ops::Index,
     time::{Duration, Instant},
 };
+
+use futures::{stream::FuturesUnordered, Future, StreamExt};
 use tari_comms::{
     message::{MessageTag, MessagingReplyRx},
     protocol::messaging::SendFailReason,
@@ -249,10 +250,12 @@ impl Index<usize> for MessageSendStates {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use std::iter::repeat_with;
+
     use tari_comms::{message::MessagingReplyTx, runtime};
     use tokio::sync::oneshot;
+
+    use super::*;
 
     fn create_send_state() -> (MessageSendState, MessagingReplyTx) {
         let (reply_tx, reply_rx) = oneshot::channel();

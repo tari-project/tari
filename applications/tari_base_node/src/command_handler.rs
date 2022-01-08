@@ -20,10 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use super::LOG_TARGET;
-use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
-use chrono::{DateTime, Utc};
-use log::*;
 use std::{
     cmp,
     fs::File,
@@ -32,7 +28,10 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use tari_app_utilities::consts;
+
+use chrono::{DateTime, Utc};
+use log::*;
+use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
 use tari_common_types::{
     emoji::EmojiId,
@@ -56,18 +55,21 @@ use tari_core::{
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_p2p::{
     auto_update::SoftwareUpdaterHandle,
     services::liveness::{LivenessEvent, LivenessHandle},
 };
+use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use tokio::{
     runtime,
     sync::{broadcast, watch},
     time,
 };
+
+use super::LOG_TARGET;
+use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
 
 pub enum StatusOutput {
     Log,
@@ -90,6 +92,7 @@ pub struct CommandHandler {
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
     software_updater: SoftwareUpdaterHandle,
+    last_time_full: Instant,
 }
 
 impl CommandHandler {
@@ -110,10 +113,11 @@ impl CommandHandler {
             mempool_service: ctx.local_mempool(),
             state_machine_info: ctx.get_state_machine_info_channel(),
             software_updater: ctx.software_updater(),
+            last_time_full: Instant::now(),
         }
     }
 
-    pub fn status(&self, output: StatusOutput) {
+    pub fn status(&mut self, output: StatusOutput) {
         let state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
@@ -123,12 +127,17 @@ impl CommandHandler {
         let mut rpc_server = self.rpc_server.clone();
         let config = self.config.clone();
         let consensus_rules = self.consensus_rules.clone();
+        let mut full_log = false;
+        if self.last_time_full.elapsed() > Duration::from_secs(120) {
+            self.last_time_full = Instant::now();
+            full_log = true;
+        }
 
         self.executor.spawn(async move {
             let mut status_line = StatusLine::new();
             status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
             status_line.add_field("", config.network);
-            status_line.add_field("State", state_info.borrow().state_info.short_desc());
+            status_line.add_field("State", state_info.borrow().state_info.short_desc(full_log));
 
             let metadata = node.get_metadata().await.unwrap();
             let height = metadata.height_of_longest_chain();
@@ -183,15 +192,16 @@ impl CommandHandler {
                         .unwrap_or_else(|| "∞".to_string()),
                 ),
             );
-
-            status_line.add_field(
-                "RandomX",
-                format!(
-                    "#{} with flags {:?}",
-                    state_info.borrow().randomx_vm_cnt,
-                    state_info.borrow().randomx_vm_flags
-                ),
-            );
+            if full_log {
+                status_line.add_field(
+                    "RandomX",
+                    format!(
+                        "#{} with flags {:?}",
+                        state_info.borrow().randomx_vm_cnt,
+                        state_info.borrow().randomx_vm_flags
+                    ),
+                );
+            }
 
             let target = "base_node::app::status";
             match output {
@@ -325,10 +335,7 @@ impl CommandHandler {
                 },
                 Ok(mut data) => match data.pop() {
                     Some(v) => println!("{}", v.block()),
-                    _ => println!(
-                        "Pruned node: utxo found, but block not found for utxo commitment {}",
-                        commitment.to_hex()
-                    ),
+                    _ => println!("Block not found for utxo commitment {}", commitment.to_hex()),
                 },
             };
         });
@@ -409,36 +416,49 @@ impl CommandHandler {
         let peer_manager = self.peer_manager.clone();
 
         self.executor.spawn(async move {
-            match peer_manager.find_all_starts_with(&partial).await {
+            let peer = match peer_manager.find_all_starts_with(&partial).await {
                 Ok(peers) if peers.is_empty() => {
-                    println!("No peer matching '{}'", original_str);
-                },
-                Ok(peers) => {
-                    let peer = peers.first().unwrap();
-                    let eid = EmojiId::from_pubkey(&peer.public_key);
-                    println!("Emoji ID: {}", eid);
-                    println!("Public Key: {}", peer.public_key);
-                    println!("NodeId: {}", peer.node_id);
-                    println!("Addresses:");
-                    peer.addresses.iter().for_each(|a| {
-                        println!("- {}", a);
-                    });
-                    println!("User agent: {}", peer.user_agent);
-                    println!("Features: {:?}", peer.features);
-                    println!("Supported protocols:");
-                    peer.supported_protocols.iter().for_each(|p| {
-                        println!("- {}", String::from_utf8_lossy(p));
-                    });
-                    if let Some(dt) = peer.banned_until() {
-                        println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-                    }
-                    if let Some(dt) = peer.last_seen() {
-                        println!("Last seen: {}", dt);
+                    if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
+                        if let Ok(Some(peer)) = peer_manager.find_by_public_key(&pk).await {
+                            peer
+                        } else {
+                            println!("No peer matching '{}'", original_str);
+                            return;
+                        }
+                    } else {
+                        println!("No peer matching '{}'", original_str);
+                        return;
                     }
                 },
+                Ok(mut peers) => peers.remove(0),
                 Err(err) => {
                     println!("{}", err);
+                    return;
                 },
+            };
+
+            let eid = EmojiId::from_pubkey(&peer.public_key);
+            println!("Emoji ID: {}", eid);
+            println!("Public Key: {}", peer.public_key);
+            println!("NodeId: {}", peer.node_id);
+            println!("Addresses:");
+            peer.addresses.iter().for_each(|a| {
+                println!("- {}", a);
+            });
+            println!("User agent: {}", peer.user_agent);
+            println!("Features: {:?}", peer.features);
+            println!("Supported protocols:");
+            peer.supported_protocols.iter().for_each(|p| {
+                println!("- {}", String::from_utf8_lossy(p));
+            });
+            if let Some(dt) = peer.banned_until() {
+                println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+            }
+            if let Some(dt) = peer.last_seen() {
+                println!("Last seen: {}", dt);
+            }
+            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                println!("Last updated: {} (UTC)", updated_at);
             }
         });
     }
@@ -462,7 +482,7 @@ impl CommandHandler {
                     let num_peers = peers.len();
                     println!();
                     let mut table = Table::new();
-                    table.set_titles(vec!["NodeId", "Public Key", "Flags", "Role", "User Agent", "Info"]);
+                    table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
 
                     for peer in peers {
                         let info_str = {
@@ -474,8 +494,9 @@ impl CommandHandler {
                                 }
                             } else if let Some(dt) = peer.last_seen() {
                                 s.push(format!(
-                                    "LAST_SEEN = {}",
+                                    "LAST_SEEN: {}",
                                     Utc::now()
+                                        .naive_utc()
                                         .signed_duration_since(dt)
                                         .to_std()
                                         .map(format_duration_basic)
@@ -498,10 +519,11 @@ impl CommandHandler {
                                 .get_metadata(1)
                                 .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                             {
-                                s.push(format!(
-                                    "chain height = {}",
-                                    metadata.metadata.height_of_longest_chain()
-                                ));
+                                s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
+                            }
+
+                            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                                s.push(format!("updated_at: {} (UTC)", updated_at));
                             }
 
                             if s.is_empty() {
@@ -513,7 +535,6 @@ impl CommandHandler {
                         table.add_row(row![
                             peer.node_id,
                             peer.public_key,
-                            format!("{:?}", peer.flags),
                             {
                                 if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
                                     "Wallet"
@@ -706,7 +727,8 @@ impl CommandHandler {
                         let peer = peer_manager
                             .find_by_node_id(conn.peer_node_id())
                             .await
-                            .expect("Unexpected peer database error or peer not found");
+                            .expect("Unexpected peer database error")
+                            .expect("Peer not found");
 
                         let chain_height = peer
                             .get_metadata(1)
@@ -1198,6 +1220,57 @@ impl CommandHandler {
                 },
             }
         });
+    }
+
+    #[cfg(not(feature = "metrics"))]
+    pub fn get_network_stats(&self) {
+        println!(
+            "Metrics are not enabled in this binary. Recompile Tari base node with `--features metrics` to enable \
+             them."
+        );
+    }
+
+    #[cfg(feature = "metrics")]
+    pub fn get_network_stats(&self) {
+        use tari_metrics::proto::MetricType;
+        let metric_families = tari_metrics::get_default_registry().gather();
+        let metric_family_iter = metric_families
+            .into_iter()
+            .filter(|family| family.get_name().starts_with("tari_comms"));
+
+        // TODO: Make this useful
+        let mut table = Table::new();
+        table.set_titles(vec!["name", "type", "value"]);
+        for family in metric_family_iter {
+            let field_type = family.get_field_type();
+            let name = family.get_name();
+            for metric in family.get_metric() {
+                let value = match field_type {
+                    MetricType::COUNTER => metric.get_counter().get_value(),
+                    MetricType::GAUGE => metric.get_gauge().get_value(),
+                    MetricType::SUMMARY => {
+                        let summary = metric.get_summary();
+                        summary.get_sample_sum() / summary.get_sample_count() as f64
+                    },
+                    MetricType::UNTYPED => metric.get_untyped().get_value(),
+                    MetricType::HISTOGRAM => {
+                        let histogram = metric.get_histogram();
+                        histogram.get_sample_sum() / histogram.get_sample_count() as f64
+                    },
+                };
+
+                let field_type = match field_type {
+                    MetricType::COUNTER => "COUNTER",
+                    MetricType::GAUGE => "GAUGE",
+                    MetricType::SUMMARY => "SUMMARY",
+                    MetricType::UNTYPED => "UNTYPED",
+                    MetricType::HISTOGRAM => "HISTOGRAM",
+                };
+
+                table.add_row(row![name, field_type, value]);
+            }
+        }
+        table.print_stdout();
     }
 }
 

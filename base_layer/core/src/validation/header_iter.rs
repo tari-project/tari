@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp;
+
 use crate::{
     blocks::BlockHeader,
     chain_storage::{BlockchainBackend, BlockchainDatabase, ChainStorageError},
 };
-use std::cmp;
 
 // TODO: This is probably generally useful and should be included in the BlockchainDatabase
 /// Iterator that emits BlockHeaders until a given height. This iterator loads headers in chunks of size `chunk_size`

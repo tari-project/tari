@@ -21,17 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #![allow(dead_code)]
 
-use crate::{
-    comms_connector::{InboundDomainConnector, PubsubDomainConnector},
-    peer_seeds::{DnsSeedResolver, SeedPeer},
-    transport::{TorConfig, TransportType},
-    MAJOR_NETWORK_VERSION,
-    MINOR_NETWORK_VERSION,
-};
-use fs2::FileExt;
-use futures::future;
-use log::*;
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::{
     fs::File,
     iter,
@@ -40,6 +29,12 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+
+use fs2::FileExt;
+use futures::future;
+use lmdb_zero::open;
+use log::*;
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tari_common::{configuration::Network, DnsNameServer};
 use tari_comms::{
     backoff::ConstantBackoff,
@@ -71,6 +66,14 @@ use tari_storage::{
 use thiserror::Error;
 use tokio::sync::{broadcast, mpsc};
 use tower::ServiceBuilder;
+
+use crate::{
+    comms_connector::{InboundDomainConnector, PubsubDomainConnector},
+    peer_seeds::{DnsSeedResolver, SeedPeer},
+    transport::{TorConfig, TransportType},
+    MAJOR_NETWORK_VERSION,
+    MINOR_NETWORK_VERSION,
+};
 
 const LOG_TARGET: &str = "p2p::initialization";
 
@@ -174,6 +177,7 @@ pub async fn initialize_local_test_comms(
     std::fs::create_dir_all(data_path).unwrap();
     let datastore = LMDBBuilder::new()
         .set_path(data_path)
+        .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&peer_database_name, lmdb_zero::db::CREATE)
@@ -326,6 +330,7 @@ async fn configure_comms_and_dht(
 
     let datastore = LMDBBuilder::new()
         .set_path(&config.datastore_path)
+        .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
         .add_database(&config.peer_database_name, lmdb_zero::db::CREATE)
@@ -403,7 +408,7 @@ async fn configure_comms_and_dht(
 ///
 /// ## Returns
 /// Returns a File handle that must be retained to keep the file lock active.
-pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
+fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
     let lock_file_path = db_path.join(".p2p_file.lock");
 
     let file = File::create(lock_file_path)?;
@@ -536,7 +541,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let config = self.config.clone();
+        let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
         let mut builder = CommsBuilder::new()
@@ -552,13 +557,13 @@ impl ServiceInitializer for P2pInitializer {
         if config.allow_test_addresses {
             builder = builder.allow_test_addresses();
         }
+        // Ensure this setting always matches
+        config.dht.allow_test_addresses = config.allow_test_addresses;
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
 
-        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         let peers = match Self::try_resolve_dns_seeds(
             config.dns_seeds_name_server,
@@ -573,6 +578,9 @@ impl ServiceInitializer for P2pInitializer {
                 Vec::new()
             },
         };
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
+
+        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());

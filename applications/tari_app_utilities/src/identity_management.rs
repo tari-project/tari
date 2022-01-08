@@ -20,16 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{clone::Clone, fs, path::Path, str::FromStr, string::ToString, sync::Arc};
+
 use log::*;
 use rand::rngs::OsRng;
-use std::{clone::Clone, fs, path::Path, string::ToString, sync::Arc};
-use tari_common::{configuration::bootstrap::prompt, exit_codes::ExitCodes};
-use tari_common_types::types::PrivateKey;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
-use tari_crypto::{
-    keys::SecretKey,
-    tari_utilities::{hex::Hex, message_format::MessageFormat},
+use serde::{de::DeserializeOwned, Serialize};
+use tari_common::{
+    configuration::{bootstrap::prompt, utils::get_local_ip},
+    exit_codes::ExitCodes,
 };
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "tari_application";
 
@@ -44,13 +45,20 @@ pub const LOG_TARGET: &str = "tari_application";
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
 pub fn setup_node_identity<P: AsRef<Path>>(
     identity_file: P,
-    public_address: &Multiaddr,
+    public_address: &Option<Multiaddr>,
     create_id: bool,
     peer_features: PeerFeatures,
 ) -> Result<Arc<NodeIdentity>, ExitCodes> {
     match load_identity(&identity_file) {
-        Ok(id) => Ok(Arc::new(id)),
+        Ok(id) => match public_address {
+            Some(public_address) => {
+                id.set_public_address(public_address.clone());
+                Ok(Arc::new(id))
+            },
+            None => Ok(Arc::new(id)),
+        },
         Err(e) => {
+            debug!(target: LOG_TARGET, "Failed to load node identity: {}", e);
             if !create_id {
                 let prompt = prompt("Node identity does not exist.\nWould you like to to create one (Y/n)?");
                 if !prompt {
@@ -70,7 +78,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                 };
             }
 
-            debug!(target: LOG_TARGET, "Node id not found. {}. Creating new ID", e);
+            debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
             match create_new_identity(&identity_file, public_address.clone(), peer_features) {
                 Ok(id) => {
@@ -110,21 +118,25 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
         ));
     }
 
-    let id_str = std::fs::read_to_string(path.as_ref()).map_err(|e| {
+    let id_str = fs::read_to_string(path.as_ref()).map_err(|e| {
         format!(
             "The node identity file, {}, could not be read. {}",
             path.as_ref().to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     })?;
-    let id = NodeIdentity::from_json(&id_str).map_err(|e| {
+    let id = json5::from_str::<NodeIdentity>(&id_str).map_err(|e| {
         format!(
             "The node identity file, {}, has an error. {}",
             path.as_ref().to_str().unwrap_or("?"),
-            e.to_string()
+            e
         )
     })?;
-    info!(
+    // Check whether the previous version has a signature and sign if necessary
+    if !id.is_signed() {
+        id.sign();
+    }
+    debug!(
         "Node ID loaded with public key {} and Node id {}",
         id.public_key().to_hex(),
         id.node_id().to_hex()
@@ -141,33 +153,21 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
 /// Result containing the node identity, string will indicate reason on error
 pub fn create_new_identity<P: AsRef<Path>>(
     path: P,
-    public_addr: Multiaddr,
+    public_addr: Option<Multiaddr>,
     features: PeerFeatures,
 ) -> Result<NodeIdentity, String> {
-    let private_key = PrivateKey::random(&mut OsRng);
-    let node_identity = NodeIdentity::new(private_key, public_addr, features);
+    let node_identity = NodeIdentity::random(
+        &mut OsRng,
+        match public_addr {
+            Some(public_addr) => public_addr,
+            None => format!("{}/tcp/18141", get_local_ip().ok_or("Can't get local ip address")?)
+                .parse()
+                .map_err(|e: <Multiaddr as FromStr>::Err| e.to_string())?,
+        },
+        features,
+    );
     save_as_json(path, &node_identity)?;
     Ok(node_identity)
-}
-
-/// Recover a node id from a given private key and save it to disk
-/// ## Parameters
-/// `private_key` - The private key
-/// `path` - Reference to path to save the file
-/// `public_addr` - Network address of the base node
-/// `peer_features` - The features enabled for the base node
-///
-/// ## Returns
-/// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
-pub fn recover_node_identity<P: AsRef<Path>>(
-    private_key: PrivateKey,
-    path: P,
-    public_addr: &Multiaddr,
-    features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes> {
-    let node_identity = NodeIdentity::new(private_key, public_addr.clone(), features);
-    save_as_json(path, &node_identity).map_err(ExitCodes::IOError)?;
-    Ok(Arc::new(node_identity))
 }
 
 /// Loads the node identity from json at the given path
@@ -176,7 +176,7 @@ pub fn recover_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, String> {
+pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, String> {
     if !path.as_ref().exists() {
         return Err(format!(
             "Identity file, {}, does not exist.",
@@ -185,7 +185,7 @@ pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, St
     }
 
     let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    let object = T::from_json(&contents).map_err(|err| err.to_string())?;
+    let object = json5::from_str(&contents).map_err(|err| err.to_string())?;
     Ok(object)
 }
 
@@ -196,18 +196,22 @@ pub fn load_from_json<P: AsRef<Path>, T: MessageFormat>(path: P) -> Result<T, St
 ///
 /// ## Returns
 /// Result to check if successful or not, string will indicate reason on error
-pub fn save_as_json<P: AsRef<Path>, T: MessageFormat>(path: P, object: &T) -> Result<(), String> {
-    let json = object.to_json().unwrap();
+pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), String> {
+    let json = json5::to_string(object).map_err(|err| err.to_string())?;
     if let Some(p) = path.as_ref().parent() {
         if !p.exists() {
-            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e.to_string()))?;
+            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e))?;
         }
     }
-    fs::write(path.as_ref(), json.as_bytes()).map_err(|e| {
+    let json_with_comment = format!(
+        "// This file is generated by the Tari base node. Any changes will be overwritten.\n{}",
+        json
+    );
+    fs::write(path.as_ref(), json_with_comment.as_bytes()).map_err(|e| {
         format!(
             "Error writing json file, {}. {}",
             path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
-            e.to_string()
+            e
         )
     })?;
 

@@ -20,6 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{convert::TryInto, time::Duration};
+
+use futures::StreamExt;
+use log::*;
+use tari_comms::{connectivity::ConnectivityEvent, peer_manager::NodeId, PeerConnection};
+use tokio::sync::broadcast;
+
 use crate::{
     event::DhtEvent,
     network_discovery::{
@@ -27,20 +34,11 @@ use crate::{
         DhtNetworkDiscoveryRoundInfo,
         NetworkDiscoveryError,
     },
+    peer_validator::PeerValidator,
     proto::rpc::GetPeersRequest,
     rpc,
     DhtConfig,
 };
-use futures::StreamExt;
-use log::*;
-use std::convert::TryInto;
-use tari_comms::{
-    connectivity::ConnectivityEvent,
-    peer_manager::{NodeId, Peer},
-    validate_peer_addresses,
-    PeerConnection,
-};
-use tokio::sync::broadcast;
 
 const LOG_TARGET: &str = "comms::dht::network_discovery:onconnect";
 
@@ -86,6 +84,21 @@ impl OnConnect {
 
                     match self.sync_peers(conn.clone()).await {
                         Ok(_) => continue,
+                        Err(err @ NetworkDiscoveryError::PeerValidationError(_)) => {
+                            warn!(target: LOG_TARGET, "{}. Banning peer.", err);
+                            if let Err(err) = self
+                                .context
+                                .connectivity
+                                .ban_peer_until(
+                                    conn.peer_node_id().clone(),
+                                    Duration::from_secs(60 * 60),
+                                    err.to_string(),
+                                )
+                                .await
+                            {
+                                return err.into();
+                            }
+                        },
                         Err(err) => debug!(
                             target: LOG_TARGET,
                             "Failed to peer sync from `{}`: {}",
@@ -123,12 +136,12 @@ impl OnConnect {
 
         let sync_peer = conn.peer_node_id();
         let mut num_added = 0;
+        let peer_validator = PeerValidator::new(&self.context.peer_manager, self.config());
         while let Some(resp) = peer_stream.next().await {
             match resp {
                 Ok(resp) => match resp.peer.and_then(|peer| peer.try_into().ok()) {
                     Some(peer) => {
-                        let is_node_added = self.validate_and_add_peer(sync_peer, peer).await?;
-                        if is_node_added {
+                        if peer_validator.validate_and_add_peer(peer).await? {
                             num_added += 1;
                         }
                     },
@@ -159,36 +172,6 @@ impl OnConnect {
         }
 
         Ok(())
-    }
-
-    async fn validate_and_add_peer(&self, sync_peer: &NodeId, peer: Peer) -> Result<bool, NetworkDiscoveryError> {
-        if self.context.node_identity.node_id() == &peer.node_id {
-            return Ok(false);
-        }
-        let peer_manager = &self.context.peer_manager;
-        if peer_manager.exists_node_id(&peer.node_id).await {
-            return Ok(false);
-        }
-
-        let addresses = peer.addresses.iter();
-        match validate_peer_addresses(addresses, self.config().allow_test_addresses) {
-            Ok(_) => {
-                debug!(
-                    target: LOG_TARGET,
-                    "Adding peer `{}` from `{}`", peer.node_id, sync_peer
-                );
-                peer_manager.add_peer(peer).await?;
-                Ok(true)
-            },
-            Err(err) => {
-                // TODO: #banheuristic
-                debug!(
-                    target: LOG_TARGET,
-                    "Failed to validate peer received from `{}`: {}. Peer not added.", sync_peer, err
-                );
-                Ok(false)
-            },
-        }
     }
 
     #[inline]

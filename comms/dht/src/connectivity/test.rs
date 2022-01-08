@@ -20,13 +20,9 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{
-    connectivity::{DhtConnectivity, MetricsCollector},
-    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
-    DhtConfig,
-};
-use rand::{rngs::OsRng, seq::SliceRandom};
 use std::{iter::repeat_with, sync::Arc, time::Duration};
+
+use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_comms::{
     connectivity::ConnectivityEvent,
     peer_manager::{Peer, PeerFeatures},
@@ -42,6 +38,12 @@ use tari_comms::{
 use tari_shutdown::Shutdown;
 use tari_test_utils::async_assert;
 use tokio::sync::broadcast;
+
+use crate::{
+    connectivity::{DhtConnectivity, MetricsCollector},
+    test_utils::{build_peer_manager, create_dht_actor_mock, make_node_identity, DhtMockState},
+    DhtConfig,
+};
 
 async fn setup(
     config: DhtConfig,
@@ -70,7 +72,7 @@ async fn setup(
     let (event_publisher, _) = broadcast::channel(1);
 
     let dht_connectivity = DhtConnectivity::new(
-        config,
+        Arc::new(config),
         peer_manager.clone(),
         node_identity.clone(),
         connectivity,
@@ -165,7 +167,6 @@ async fn added_neighbours() {
 #[runtime::test]
 async fn replace_peer_when_peer_goes_offline() {
     let node_identity = make_node_identity();
-    // let node_identities = repeat_with(|| make_node_identity()).take(5).collect::<Vec<_>>();
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 6, PeerFeatures::COMMUNICATION_NODE);
     // Closest to this node
@@ -193,7 +194,22 @@ async fn replace_peer_when_peer_goes_offline() {
     connectivity.publish_event(ConnectivityEvent::PeerDisconnected(
         node_identities[4].node_id().clone(),
     ));
-    connectivity.publish_event(ConnectivityEvent::ConnectivityStateOffline);
+
+    async_assert!(
+        connectivity.call_count().await >= 1,
+        max_attempts = 20,
+        interval = Duration::from_millis(10),
+    );
+
+    let _ = connectivity.take_calls().await;
+    // Redial
+    let dialed = connectivity.take_dialed_peers().await;
+    assert_eq!(dialed.len(), 1);
+    assert_eq!(dialed[0], *node_identities[4].node_id());
+
+    connectivity.publish_event(ConnectivityEvent::PeerConnectFailed(
+        node_identities[4].node_id().clone(),
+    ));
 
     async_assert!(
         connectivity.call_count().await >= 1,
@@ -203,8 +219,8 @@ async fn replace_peer_when_peer_goes_offline() {
 
     // Check that the next closer neighbour was added to the pool
     let dialed = connectivity.take_dialed_peers().await;
-    assert_eq!(dialed.len(), 2);
-    assert_eq!(dialed[0], *node_identities.last().unwrap().node_id());
+    assert_eq!(dialed.len(), 1);
+    assert_eq!(dialed[0], *node_identities[5].node_id());
 }
 
 #[runtime::test]
@@ -213,8 +229,11 @@ async fn insert_neighbour() {
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 10, PeerFeatures::COMMUNICATION_NODE);
 
-    let (mut dht_connectivity, _, _, _, _, _) = setup(Default::default(), node_identity.clone(), vec![]).await;
-    dht_connectivity.config.num_neighbouring_nodes = 8;
+    let config = DhtConfig {
+        num_neighbouring_nodes: 8,
+        ..Default::default()
+    };
+    let (mut dht_connectivity, _, _, _, _, _) = setup(config, node_identity.clone(), vec![]).await;
 
     let shuffled = {
         let mut v = node_identities.clone();
@@ -248,9 +267,10 @@ async fn insert_neighbour() {
 mod metrics {
     use super::*;
     mod collector {
+        use tari_comms::peer_manager::NodeId;
+
         use super::*;
         use crate::connectivity::MetricsCollector;
-        use tari_comms::peer_manager::NodeId;
 
         #[runtime::test]
         async fn it_adds_message_received() {

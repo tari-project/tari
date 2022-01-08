@@ -63,23 +63,6 @@
 //!  |             END                |
 //! ```
 
-#[cfg(test)]
-mod test;
-
-mod error;
-use error::MempoolProtocolError;
-
-mod initializer;
-pub use initializer::MempoolSyncInitializer;
-
-use crate::{
-    mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
-    proto as shared_proto,
-    transactions::transaction::Transaction,
-};
-use futures::{stream, SinkExt, Stream, StreamExt};
-use log::*;
-use prost::Message;
 use std::{
     convert::TryFrom,
     iter,
@@ -88,6 +71,12 @@ use std::{
         Arc,
     },
 };
+
+use error::MempoolProtocolError;
+use futures::{stream, SinkExt, Stream, StreamExt};
+pub use initializer::MempoolSyncInitializer;
+use log::*;
+use prost::Message;
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityEventRx},
     framing,
@@ -104,6 +93,18 @@ use tokio::{
     sync::Semaphore,
     task,
 };
+
+use crate::{
+    mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
+    proto as shared_proto,
+    transactions::transaction::Transaction,
+};
+
+#[cfg(test)]
+mod test;
+
+mod error;
+mod initializer;
 
 const MAX_FRAME_SIZE: usize = 3 * 1024 * 1024; // 3 MiB
 const LOG_TARGET: &str = "c::mempool::sync_protocol";
@@ -527,9 +528,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
         let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
-            .map(|txn| {
-                proto::TransactionItem {
-                    transaction: Some(Clone::clone(&*txn).into()),
+            .filter_map(|txn| {
+                match shared_proto::types::Transaction::try_from((*txn).clone()) {
+                    Ok(txn) =>   Some(proto::TransactionItem {
+                        transaction: Some(txn),
+                    }),
+                    Err(e) => {
+                        warn!(target: LOG_TARGET, "Could not convert transaction: {}", e);
+                        None
+                    }
                 }
             })
             // Write an empty `TransactionItem` to indicate we're done

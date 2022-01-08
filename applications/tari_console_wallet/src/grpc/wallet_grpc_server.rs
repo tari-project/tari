@@ -1,14 +1,45 @@
+//  Copyright 2021. The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+use std::convert::{TryFrom, TryInto};
+
 use futures::{channel::mpsc, future, SinkExt};
 use log::*;
-use std::convert::TryFrom;
 use tari_app_grpc::{
     conversions::naive_datetime_to_timestamp,
-    tari_rpc,
     tari_rpc::{
+        self,
         payment_recipient::PaymentType,
         wallet_server,
+        ClaimHtlcRefundRequest,
+        ClaimHtlcRefundResponse,
+        ClaimShaAtomicSwapRequest,
+        ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateFollowOnAssetCheckpointRequest,
+        CreateFollowOnAssetCheckpointResponse,
+        CreateInitialAssetCheckpointRequest,
+        CreateInitialAssetCheckpointResponse,
         GetBalanceRequest,
         GetBalanceResponse,
         GetCoinbaseRequest,
@@ -17,14 +48,21 @@ use tari_app_grpc::{
         GetCompletedTransactionsResponse,
         GetIdentityRequest,
         GetIdentityResponse,
+        GetOwnedAssetsResponse,
         GetTransactionInfoRequest,
         GetTransactionInfoResponse,
         GetVersionRequest,
         GetVersionResponse,
         ImportUtxosRequest,
         ImportUtxosResponse,
+        MintTokensRequest,
+        MintTokensResponse,
+        RegisterAssetRequest,
+        RegisterAssetResponse,
         RevalidateRequest,
         RevalidateResponse,
+        SendShaAtomicSwapRequest,
+        SendShaAtomicSwapResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -33,12 +71,14 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::Signature;
+use tari_common_types::types::{BlockHash, PublicKey, Signature};
 use tari_comms::{types::CommsPublicKey, CommsNode};
-use tari_core::{
-    tari_utilities::{hex::Hex, ByteArray},
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction::{OutputFeatures, UnblindedOutput},
 };
+use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
@@ -150,10 +190,171 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         match response {
             Ok(resp) => Ok(Response::new(GetCoinbaseResponse {
-                transaction: Some(resp.into()),
+                transaction: Some(resp.try_into().map_err(Status::internal)?),
             })),
             Err(err) => Err(Status::unknown(err.to_string())),
         }
+    }
+
+    async fn send_sha_atomic_swap_transaction(
+        &self,
+        request: Request<SendShaAtomicSwapRequest>,
+    ) -> Result<Response<SendShaAtomicSwapResponse>, Status> {
+        let message = request
+            .into_inner()
+            .recipient
+            .ok_or_else(|| Status::internal("Request is malformed".to_string()))?;
+        let address = CommsPublicKey::from_hex(&message.address)
+            .map_err(|_| Status::internal("Destination address is malformed".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let response = match transaction_service
+            .send_sha_atomic_swap_transaction(
+                address.clone(),
+                message.amount.into(),
+                message.fee_per_gram.into(),
+                message.message,
+            )
+            .await
+        {
+            Ok((tx_id, pre_image, output)) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction broadcast: {}, preimage_hex: {}, hash {}",
+                    tx_id,
+                    pre_image.to_hex(),
+                    output.hash().to_hex()
+                );
+                SendShaAtomicSwapResponse {
+                    transaction_id: tx_id.as_u64(),
+                    pre_image: pre_image.to_hex(),
+                    output_hash: output.hash().to_hex(),
+                    is_success: true,
+                    failure_message: Default::default(),
+                }
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Failed to send Sha - XTR atomic swap for address `{}`: {}", address, e
+                );
+                SendShaAtomicSwapResponse {
+                    transaction_id: Default::default(),
+                    pre_image: "".to_string(),
+                    output_hash: "".to_string(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(response))
+    }
+
+    async fn claim_sha_atomic_swap_transaction(
+        &self,
+        request: Request<ClaimShaAtomicSwapRequest>,
+    ) -> Result<Response<ClaimShaAtomicSwapResponse>, Status> {
+        let message = request.into_inner();
+        let pre_image = CommsPublicKey::from_hex(&message.pre_image)
+            .map_err(|_| Status::internal("pre_image is malformed".to_string()))?;
+        let output = BlockHash::from_hex(&message.output)
+            .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
+        debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
+        let mut transaction_service = self.get_transaction_service();
+        let mut output_manager_service = self.get_output_manager_service();
+        let response = match output_manager_service
+            .create_claim_sha_atomic_swap_transaction(output, pre_image, message.fee_per_gram.into())
+            .await
+        {
+            Ok((tx_id, _fee, amount, tx)) => {
+                match transaction_service
+                    .submit_transaction(
+                        tx_id,
+                        tx,
+                        amount,
+                        "Claiming HTLC transaction with pre-image".to_string(),
+                    )
+                    .await
+                {
+                    Ok(()) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: tx_id.as_u64(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                    },
+                    Err(e) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to claim SHA - XTR atomic swap: {}", e);
+                TransferResult {
+                    address: Default::default(),
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(ClaimShaAtomicSwapResponse {
+            results: Some(response),
+        }))
+    }
+
+    async fn claim_htlc_refund_transaction(
+        &self,
+        request: Request<ClaimHtlcRefundRequest>,
+    ) -> Result<Response<ClaimHtlcRefundResponse>, Status> {
+        let message = request.into_inner();
+        let output = BlockHash::from_hex(&message.output_hash)
+            .map_err(|_| Status::internal("Output hash is malformed".to_string()))?;
+
+        let mut transaction_service = self.get_transaction_service();
+        let mut output_manager_service = self.get_output_manager_service();
+        debug!(target: LOG_TARGET, "Trying to claim HTLC with hash {}", output.to_hex());
+        let response = match output_manager_service
+            .create_htlc_refund_transaction(output, message.fee_per_gram.into())
+            .await
+        {
+            Ok((tx_id, _fee, amount, tx)) => {
+                match transaction_service
+                    .submit_transaction(tx_id, tx, amount, "Creating HTLC refund transaction".to_string())
+                    .await
+                {
+                    Ok(()) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: tx_id.as_u64(),
+                        is_success: true,
+                        failure_message: Default::default(),
+                    },
+                    Err(e) => TransferResult {
+                        address: Default::default(),
+                        transaction_id: Default::default(),
+                        is_success: false,
+                        failure_message: e.to_string(),
+                    },
+                }
+            },
+            Err(e) => {
+                warn!(target: LOG_TARGET, "Failed to claim HTLC refund transaction: {}", e);
+                TransferResult {
+                    address: Default::default(),
+                    transaction_id: Default::default(),
+                    is_success: false,
+                    failure_message: e.to_string(),
+                }
+            },
+        };
+
+        Ok(Response::new(ClaimHtlcRefundResponse {
+            results: Some(response),
+        }))
     }
 
     async fn transfer(&self, request: Request<TransferRequest>) -> Result<Response<TransferResponse>, Status> {
@@ -211,7 +412,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map(|(address, result)| match result {
                 Ok(tx_id) => TransferResult {
                     address,
-                    transaction_id: tx_id,
+                    transaction_id: tx_id.into(),
                     is_success: true,
                     failure_message: Default::default(),
                 },
@@ -240,6 +441,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let message = request.into_inner();
 
         let queries = message.transaction_ids.into_iter().map(|tx_id| {
+            let tx_id = tx_id.into();
             let mut transaction_service = self.get_transaction_service();
             async move {
                 transaction_service
@@ -285,7 +487,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             for (_, txn) in transactions {
                 let response = GetCompletedTransactionsResponse {
                     transaction: Some(TransactionInfo {
-                        tx_id: txn.tx_id,
+                        tx_id: txn.tx_id.into(),
                         source_pk: txn.source_public_key.to_vec(),
                         dest_pk: txn.destination_public_key.to_vec(),
                         status: TransactionStatus::from(txn.status) as i32,
@@ -345,7 +547,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(format!("{:?}", e)))?;
 
-        Ok(Response::new(CoinSplitResponse { tx_id }))
+        Ok(Response::new(CoinSplitResponse { tx_id: tx_id.into() }))
     }
 
     async fn import_utxos(
@@ -369,11 +571,214 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 wallet
                     .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
                     .await
-                    .map_err(|e| Status::internal(format!("{:?}", e)))?,
+                    .map_err(|e| Status::internal(format!("{:?}", e)))?
+                    .into(),
             );
         }
 
         Ok(Response::new(ImportUtxosResponse { tx_ids }))
+    }
+
+    async fn register_asset(
+        &self,
+        request: Request<RegisterAssetRequest>,
+    ) -> Result<Response<RegisterAssetResponse>, Status> {
+        let mut manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+        let public_key = PublicKey::from_bytes(message.public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key: {}", e)))?;
+        let (tx_id, transaction) = manager
+            .create_registration_transaction(
+                message.name,
+                public_key,
+                message.template_ids_implemented,
+                Some(message.description),
+                Some(message.image),
+                message.template_parameters.into_iter().map(|tp| tp.into()).collect(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let asset_public_key = transaction
+            .body
+            .outputs()
+            .iter()
+            .filter_map(|tx| match tx.features.asset.clone() {
+                Some(asset) => Some(asset.public_key),
+                None => None,
+            })
+            .next()
+            .unwrap();
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), "register asset transaction".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        Ok(Response::new(RegisterAssetResponse {
+            public_key: Vec::from(asset_public_key.as_bytes()),
+        }))
+    }
+
+    async fn get_owned_assets(&self, _: Request<tari_rpc::Empty>) -> Result<Response<GetOwnedAssetsResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let owned = asset_manager
+            .list_owned_assets()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let owned = owned
+            .into_iter()
+            .map(|asset| tari_rpc::Asset {
+                name: asset.name().to_string(),
+                registration_output_status: asset.registration_output_status().to_string(),
+                public_key: Vec::from(asset.public_key().as_bytes()),
+                owner_commitment: Vec::from(asset.owner_commitment().as_bytes()),
+                description: asset.description().to_string(),
+                image: asset.image().to_string(),
+            })
+            .collect();
+        Ok(Response::new(tari_rpc::GetOwnedAssetsResponse { assets: owned }))
+    }
+
+    async fn create_initial_asset_checkpoint(
+        &self,
+        request: Request<CreateInitialAssetCheckpointRequest>,
+    ) -> Result<Response<CreateInitialAssetCheckpointResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let committee_public_keys: Vec<RistrettoPublicKey> = message
+            .committee
+            .iter()
+            .map(|c| PublicKey::from_bytes(c.as_slice()))
+            .collect::<Result<_, _>>()
+            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_initial_asset_checkpoint(
+                &asset_public_key,
+                message.merkle_root.as_slice(),
+                committee_public_keys.as_slice(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), "Asset checkpoint".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateInitialAssetCheckpointResponse {}))
+    }
+
+    async fn create_follow_on_asset_checkpoint(
+        &self,
+        request: Request<CreateFollowOnAssetCheckpointRequest>,
+    ) -> Result<Response<CreateFollowOnAssetCheckpointResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let committee_public_keys: Vec<RistrettoPublicKey> = message
+            .next_committee
+            .iter()
+            .map(|c| PublicKey::from_bytes(c.as_slice()))
+            .collect::<Result<_, _>>()
+            .map_err(|err| {
+                Status::invalid_argument(format!("Next committee did not contain valid pub keys:{}", err))
+            })?;
+
+        let (tx_id, transaction) = asset_manager
+            .create_follow_on_asset_checkpoint(
+                &asset_public_key,
+                message.unique_id.as_slice(),
+                message.merkle_root.as_slice(),
+                committee_public_keys.as_slice(),
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), "Follow on asset checkpoint".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
+    }
+
+    async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        // TODO: Clean up unwrap
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice()).unwrap();
+        let asset = asset_manager
+            .get_owned_asset_by_pub_key(&asset_public_key)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let mut token_features = vec![];
+        for tari_rpc::MintTokenInfo { unique_id, features } in message.tokens {
+            let f: Option<OutputFeatures> = features
+                .map(|f| f.try_into())
+                .transpose()
+                .map_err(Status::invalid_argument)?;
+            token_features.push((unique_id, f));
+        }
+
+        let (tx_id, transaction) = asset_manager
+            .create_minting_transaction(&asset_public_key, asset.owner_commitment(), token_features)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let owner_commitments = transaction
+            .body
+            .outputs()
+            .iter()
+            .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
+            .collect();
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), "test mint transaction".to_string())
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(MintTokensResponse { owner_commitments }))
+    }
+
+    async fn get_owned_tokens(
+        &self,
+        request: Request<tari_rpc::GetOwnedTokensRequest>,
+    ) -> Result<Response<tari_rpc::GetOwnedTokensResponse>, Status> {
+        let request = request.into_inner();
+        let request_public_key = PublicKey::from_bytes(&request.asset_public_key)
+            .map_err(|e| Status::invalid_argument(format!("asset_public key was not a valid public key: {}", e)))?;
+        let mut token_manager = self.wallet.token_manager.clone();
+        let owned = token_manager
+            .list_owned_tokens()
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+        let owned = owned
+            .into_iter()
+            .filter_map(|t| {
+                if t.asset_public_key() == &request_public_key {
+                    Some(tari_rpc::TokenUtxo {
+                        name: t.name().to_string(),
+                        output_status: t.output_status().to_string(),
+                        asset_public_key: Vec::from(t.asset_public_key().as_bytes()),
+                        unique_id: Vec::from(t.unique_id()),
+                        commitment: Vec::from(t.owner_commitment().as_bytes()),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
+        Ok(Response::new(tari_rpc::GetOwnedTokensResponse { tokens: owned }))
     }
 
     async fn get_network_status(
@@ -414,12 +819,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|err| Status::internal(err.to_string()))?;
 
         let mut peers = Vec::with_capacity(connected_peers.len());
-        for peer in connected_peers {
+        for conn in connected_peers {
             peers.push(
                 peer_manager
-                    .find_by_node_id(peer.peer_node_id())
+                    .find_by_node_id(conn.peer_node_id())
                     .await
-                    .map_err(|err| Status::internal(err.to_string()))?,
+                    .map_err(|err| Status::internal(err.to_string()))?
+                    .ok_or_else(|| Status::not_found(format!("Peer '{}' not found", conn.peer_node_id())))?,
             );
         }
 
@@ -441,7 +847,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         );
         let mut transaction_service = self.get_transaction_service();
 
-        match transaction_service.cancel_transaction(message.tx_id).await {
+        match transaction_service.cancel_transaction(message.tx_id.into()).await {
             Ok(_) => {
                 return Ok(Response::new(tari_rpc::CancelTransactionResponse {
                     is_success: true,
@@ -465,7 +871,7 @@ fn convert_wallet_transaction_into_transaction_info(
     use models::WalletTransaction::*;
     match tx {
         PendingInbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: tx.source_public_key.to_vec(),
             dest_pk: wallet_pk.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
@@ -479,7 +885,7 @@ fn convert_wallet_transaction_into_transaction_info(
             valid: true,
         },
         PendingOutbound(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: wallet_pk.to_vec(),
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
@@ -493,7 +899,7 @@ fn convert_wallet_transaction_into_transaction_info(
             valid: true,
         },
         Completed(tx) => TransactionInfo {
-            tx_id: tx.tx_id,
+            tx_id: tx.tx_id.into(),
             source_pk: tx.source_public_key.to_vec(),
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,

@@ -20,20 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::HashMap;
+
+use tokio::sync::mpsc;
+
 use crate::{
     peer_manager::NodeId,
-    protocol::{
-        ProtocolError,
-        ProtocolExtension,
-        ProtocolExtensionContext,
-        ProtocolExtensionError,
-        ProtocolId,
-        IDENTITY_PROTOCOL,
-    },
+    protocol::{ProtocolError, ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolId},
     Substream,
 };
-use std::collections::HashMap;
-use tokio::sync::mpsc;
 
 pub type ProtocolNotificationTx<TSubstream> = mpsc::Sender<ProtocolNotification<TSubstream>>;
 pub type ProtocolNotificationRx<TSubstream> = mpsc::Receiver<ProtocolNotification<TSubstream>>;
@@ -100,10 +95,7 @@ impl<TSubstream> Protocols<TSubstream> {
     }
 
     pub fn get_supported_protocols(&self) -> Vec<ProtocolId> {
-        let mut p = Vec::with_capacity(self.protocols.len() + 1);
-        p.push(IDENTITY_PROTOCOL.clone());
-        p.extend(self.protocols.keys().cloned());
-        p
+        self.protocols.keys().cloned().collect()
     }
 
     pub async fn notify(
@@ -141,15 +133,15 @@ impl ProtocolExtension for Protocols<Substream> {
 
 #[cfg(test)]
 mod test {
+    use tari_test_utils::unpack_enum;
+
     use super::*;
     use crate::runtime;
-    use tari_test_utils::unpack_enum;
 
     #[test]
     fn add() {
         let (tx, _) = mpsc::channel(1);
         let protos = [
-            IDENTITY_PROTOCOL.clone(),
             ProtocolId::from_static(b"/tari/test/1"),
             ProtocolId::from_static(b"/tari/test/2"),
         ];
