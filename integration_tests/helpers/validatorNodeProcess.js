@@ -6,6 +6,7 @@ const ValidatorNodeClient = require("./validatorNodeClient");
 const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const { createEnv } = require("./config");
+const JSON5 = require("json5");
 
 let outputProcess;
 class ValidatorNodeProcess {
@@ -79,7 +80,7 @@ class ValidatorNodeProcess {
       }
     }
 
-    this.nodeInfo = JSON.parse(
+    this.nodeInfo = JSON5.parse(
       fs.readFileSync(this.baseDir + "/" + this.nodeFile, "utf8")
     );
   }

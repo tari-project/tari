@@ -81,7 +81,7 @@ mod state_machine {
         let (event_tx, event_rx) = broadcast::channel(2);
 
         let network_discovery = DhtNetworkDiscovery::new(
-            config,
+            Arc::new(config),
             node_identity.clone(),
             peer_manager.clone(),
             connectivity,
@@ -186,10 +186,10 @@ mod discovery_ready {
         let (connectivity, connectivity_mock) = create_connectivity_mock();
         let (event_tx, _) = broadcast::channel(1);
         let context = NetworkDiscoveryContext {
-            config: DhtConfig {
+            config: Arc::new(DhtConfig {
                 network_discovery: config,
                 ..Default::default()
-            },
+            }),
             peer_manager: peer_manager.clone(),
             connectivity,
             node_identity: node_identity.clone(),

@@ -22,6 +22,8 @@
 
 use tari_comms::{connectivity::ConnectivityError, peer_manager::PeerManagerError, protocol::rpc::RpcError};
 
+use crate::peer_validator::PeerValidatorError;
+
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkDiscoveryError {
     #[error("RPC error: {0}")]
@@ -32,4 +34,6 @@ pub enum NetworkDiscoveryError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("No sync peers available")]
     NoSyncPeers,
+    #[error("Sync peer sent invalid peer")]
+    PeerValidationError(#[from] PeerValidatorError),
 }

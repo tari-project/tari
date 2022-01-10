@@ -63,16 +63,6 @@ impl OutputFeatures {
     /// The version number to use in consensus encoding. In future, this value could be dynamic.
     const CONSENSUS_ENCODING_VERSION: u8 = 0;
 
-    /// Encodes output features using deprecated bincode encoding
-    pub fn to_v1_bytes(&self) -> Vec<u8> {
-        // unreachable panic: serialized_size is infallible because it uses DefaultOptions
-        let encode_size = bincode::serialized_size(self).expect("unreachable");
-        let mut buf = Vec::with_capacity(encode_size as usize);
-        // unreachable panic: Vec's Write impl is infallible
-        bincode::serialize_into(&mut buf, self).expect("unreachable");
-        buf
-    }
-
     /// Encodes output features using consensus encoding
     pub fn to_consensus_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.consensus_encode_exact_size());

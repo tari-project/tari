@@ -1,0 +1,80 @@
+{
+  "package": {
+    "productName": "tari-launchpad",
+    "version": "0.1.0"
+  },
+  "build": {
+    "distDir": "../gui-vue/dist",
+    "devPath": "http://localhost:8080",
+    "beforeDevCommand": "cd ../gui-vue && npm run start",
+    "beforeBuildCommand": "cd ../gui-vue && npm run build"
+  },
+  "tauri": {
+    "cli": {
+      "description": "A simple single-click UI to launch a Tari node, wallet and miner",
+      "args": [
+        {
+          "short": "c",
+          "name": "config-file",
+          "description": "The path to the configuration file to use for the launcher",
+          "takesValue": true
+        }
+      ],
+      "subcommands": {}
+    },
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.tari.launchpad",
+      "icon": [
+        "icons/favicon-32x32.png",
+        "icons/apple-icon-120x120.png",
+        "icons/android-icon-192x192.png"
+      ],
+      "resources": ["assets/*"],
+      "externalBin": [],
+      "copyright": "(c) The Tari Development community 2021",
+      "category": "DeveloperTool",
+      "shortDescription": "",
+      "longDescription": "",
+      "deb": {
+        "depends": [],
+        "useBootstrapper": false
+      },
+      "macOS": {
+        "frameworks": [],
+        "minimumSystemVersion": "",
+        "useBootstrapper": false,
+        "exceptionDomain": "",
+        "signingIdentity": null,
+        "entitlements": null
+      },
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "updater": {
+      "active": false
+    },
+    "allowlist": {
+      "dialog": {
+        "open": true
+      },
+      "all": true
+    },
+    "windows": [
+      {
+        "title": "Tari Launchpad",
+        "width": 1600,
+        "height": 2400,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-eval' 'unsafe-inline' 'self' img-src: 'self'"
+    }
+  }
+}

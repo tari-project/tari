@@ -63,6 +63,7 @@ where
         features: node_identity.features().bits(),
         supported_protocols,
         user_agent: network_info.user_agent,
+        identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
     }
     .to_encoded_bytes();
 

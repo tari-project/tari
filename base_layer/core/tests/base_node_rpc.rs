@@ -22,12 +22,13 @@
 
 use std::{convert::TryFrom, sync::Arc, time::Duration};
 
+use futures::StreamExt;
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
-        comms_interface::Broadcast,
+        comms_interface::{Broadcast, LocalNodeCommsInterface},
         proto::wallet_rpc::{
             TxLocation,
             TxQueryBatchResponse,
@@ -38,12 +39,11 @@ use tari_core::{
         rpc::{BaseNodeWalletRpcService, BaseNodeWalletService},
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
         sync::rpc::BaseNodeSyncRpcService,
-        BaseNodeSyncService,
     },
     blocks::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
     proto::{
-        base_node::{FetchMatchingUtxos, Signatures as SignaturesProto},
+        base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
     test_helpers::blockchain::TempDatabase,
@@ -56,8 +56,11 @@ use tari_core::{
     txn_schema,
 };
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_service_framework::reply_channel;
+use tari_test_utils::streams::convert_mpsc_to_stream;
 use tari_utilities::Hashable;
 use tempfile::{tempdir, TempDir};
+use tokio::sync::broadcast;
 
 use crate::helpers::{
     block_builders::{chain_block, chain_block_with_new_coinbase, create_genesis_block_with_coinbase_value},
@@ -104,7 +107,11 @@ async fn setup() -> (
         base_node.mempool_handle.clone(),
         base_node.state_machine_handle.clone(),
     );
-    let base_node_service = BaseNodeSyncRpcService::new(base_node.blockchain_db.clone().into());
+    let (req_tx, _) = reply_channel::unbounded();
+    let (block_tx, _) = reply_channel::unbounded();
+    let (block_event_tx, _) = broadcast::channel(1);
+    let local_nci = LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx);
+    let base_node_service = BaseNodeSyncRpcService::new(base_node.blockchain_db.clone().into(), local_nci);
     (
         wallet_service,
         base_node_service,
@@ -174,7 +181,7 @@ async fn test_base_node_wallet_rpc() {
         .await
         .unwrap();
 
-    // Check that subitting Tx2 will now be accepted
+    // Check that submiting Tx2 will now be accepted
     let msg = TransactionProto::try_from(tx2).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = service.submit_transaction(req).await.unwrap().into_message();
@@ -278,7 +285,7 @@ async fn test_base_node_wallet_rpc() {
 async fn test_get_height_at_time() {
     let factories = CryptoFactories::default();
 
-    let (_, service, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir) = setup().await;
+    let (service, _, base_node, request_mock, consensus_manager, block0, _utxo0, _temp_dir) = setup().await;
 
     let mut prev_block = block0.clone();
     let mut times: Vec<EpochTime> = vec![prev_block.header().timestamp];
@@ -332,4 +339,109 @@ async fn test_get_height_at_time() {
     let req = request_mock.request_with_context(Default::default(), times[10].as_u64() + 1);
     let resp = service.get_height_at_time(req).await.unwrap().into_message();
     assert_eq!(resp, 10);
+}
+
+#[tokio::test]
+async fn test_sync_utxos_by_block() {
+    let (service, _, mut base_node, request_mock, consensus_manager, block0, utxo0, _temp_dir) = setup().await;
+
+    let (txs1, utxos1) = schema_to_transaction(&[txn_schema!(
+        from: vec![utxo0.clone()],
+        to: vec![10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T, 10 * T]
+    )]);
+    let tx1 = (*txs1[0]).clone();
+
+    let (txs2, utxos2) = schema_to_transaction(&[txn_schema!(
+        from: vec![utxos1[0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T]
+    )]);
+    let tx2 = (*txs2[0]).clone();
+
+    let (txs3, _utxos3) = schema_to_transaction(&[txn_schema!(
+        from: vec![utxos2[0].clone(), utxos2[1].clone()],
+        to: vec![100_000 * uT, 100_000 * uT, 100_000 * uT, 100_000 * uT, 100_000 * uT]
+    )]);
+    let tx3 = (*txs3[0]).clone();
+
+    let block1 = base_node
+        .blockchain_db
+        .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
+        .unwrap();
+
+    base_node
+        .local_nci
+        .submit_block(block1.clone(), Broadcast::from(true))
+        .await
+        .unwrap();
+
+    let block2 = base_node
+        .blockchain_db
+        .prepare_new_block(chain_block(&block1, vec![tx2], &consensus_manager))
+        .unwrap();
+
+    base_node
+        .local_nci
+        .submit_block(block2.clone(), Broadcast::from(true))
+        .await
+        .unwrap();
+
+    let block3 = base_node
+        .blockchain_db
+        .prepare_new_block(chain_block(&block2, vec![tx3], &consensus_manager))
+        .unwrap();
+
+    base_node
+        .local_nci
+        .submit_block(block3.clone(), Broadcast::from(true))
+        .await
+        .unwrap();
+
+    // All blocks
+    let msg = SyncUtxosByBlockRequest {
+        start_header_hash: block0.header().hash(),
+        end_header_hash: block3.header.hash(),
+    };
+
+    let req = request_mock.request_with_context(Default::default(), msg);
+    let mut streaming = service.sync_utxos_by_block(req).await.unwrap().into_inner();
+
+    let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+
+    assert_eq!(
+        vec![
+            (0, block0.header().hash(), 0),
+            (1, block1.header.hash(), 9),
+            (2, block2.header.hash(), 3),
+            (3, block3.header.hash(), 6)
+        ],
+        responses
+            .iter()
+            .map(|r| {
+                let resp = r.clone().unwrap();
+                (resp.height, resp.header_hash, resp.outputs.len())
+            })
+            .collect::<Vec<(u64, Vec<u8>, usize)>>()
+    );
+
+    // Block 1 to 2
+    let msg = SyncUtxosByBlockRequest {
+        start_header_hash: block1.header.hash(),
+        end_header_hash: block2.header.hash(),
+    };
+
+    let req = request_mock.request_with_context(Default::default(), msg);
+    let mut streaming = service.sync_utxos_by_block(req).await.unwrap().into_inner();
+
+    let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
+
+    assert_eq!(
+        vec![(1, block1.header.hash(), 9), (2, block2.header.hash(), 5),],
+        responses
+            .iter()
+            .map(|r| {
+                let resp = r.clone().unwrap();
+                (resp.height, resp.header_hash, resp.outputs.len())
+            })
+            .collect::<Vec<(u64, Vec<u8>, usize)>>()
+    );
 }

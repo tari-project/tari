@@ -249,7 +249,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.sort(block.header.version);
+        block.body.sort();
         block
     }
 }

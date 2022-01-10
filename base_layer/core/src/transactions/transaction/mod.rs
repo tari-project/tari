@@ -84,8 +84,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 /// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 pub fn hash_output(features: &OutputFeatures, commitment: &Commitment, script: &TariScript) -> Vec<u8> {
     HashDigest::new()
-        // TODO: use consensus encoding #testnet_reset
-        .chain(features.to_v1_bytes())
+        .chain(features.to_consensus_bytes())
         .chain(commitment.as_bytes())
         // .chain(range proof) // See docs as to why we exclude this
         .chain(script.as_bytes())

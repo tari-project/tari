@@ -1,5 +1,25 @@
 # Changelog
 
+
+### [0.22.1](https://github.com/tari-project/tari/compare/v0.22.0...v0.22.1) (2022-01-04)
+
+
+### Features
+
+* add GRPC call to search for utxo via commitment hex ([#3666](https://github.com/tari-project/tari/issues/3666)) ([d006b67](https://github.com/tari-project/tari/commit/d006b6701be3216d5c4dcb67e82520305383e831))
+* add search by commitment to explorer ([#3668](https://github.com/tari-project/tari/issues/3668)) ([18f6e29](https://github.com/tari-project/tari/commit/18f6e29ed31e4075f1a102fa138b6b82b088b3d3))
+* base_node switching for console_wallet when status is offline ([#3639](https://github.com/tari-project/tari/issues/3639)) ([ca5f0ee](https://github.com/tari-project/tari/commit/ca5f0ee70569fe78c19ddae77078ef2da9bfc142))
+* custom_base_node in config ([#3651](https://github.com/tari-project/tari/issues/3651)) ([2c677b8](https://github.com/tari-project/tari/commit/2c677b8ec0b27618335b7488d6a0e29f37478adc))
+* improve wallet recovery and scanning handling of reorgs ([#3655](https://github.com/tari-project/tari/issues/3655)) ([fe9033b](https://github.com/tari-project/tari/commit/fe9033b56704602cf22f6d28c03e73de97482f8e))
+* tari launchpad ([#3671](https://github.com/tari-project/tari/issues/3671)) ([5dd9e1c](https://github.com/tari-project/tari/commit/5dd9e1ce3664550dbb682a150ac83eb6d143eafa))
+
+
+### Bug Fixes
+
+* edge cases causing bans during header/block sync ([#3661](https://github.com/tari-project/tari/issues/3661)) ([95af1cf](https://github.com/tari-project/tari/commit/95af1cfa5e56d8fa19f8a5bc1135cef2186b542c))
+* end stale outbound queue immediately on disconnect, retry outbound messages ([#3664](https://github.com/tari-project/tari/issues/3664)) ([576a00c](https://github.com/tari-project/tari/commit/576a00caab30f2da5aea9fab2dcc7373a827ec2d))
+* return correct index for include_pruned_utxos = false ([#3663](https://github.com/tari-project/tari/issues/3663)) ([80854b2](https://github.com/tari-project/tari/commit/80854b2322bd8a321d3e8f0c838f1b92e1e7a34e))
+
 ## [0.22.0](https://github.com/tari-project/tari/compare/v0.21.2...v0.22.0) (2021-12-07)
 
 

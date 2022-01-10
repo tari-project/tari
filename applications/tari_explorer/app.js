@@ -9,6 +9,7 @@ const asciichart = require('asciichart')
 var indexRouter = require("./routes/index")
 var blocksRouter = require("./routes/blocks")
 var mempoolRouter = require("./routes/mempool")
+var searchRouter = require("./routes/search")
 
 var assetsRouter = require('./routes/assets');
 var validatorRouter = require('./routes/validator');
@@ -54,9 +55,13 @@ hbs.registerHelper("percentbar", function (a, b) {
 })
 
 hbs.registerHelper("chart", function (data, height) {
-  return asciichart.plot(data, {
-    height: height,
-  })
+  if (data.length > 0) {
+    return asciichart.plot(data, {
+      height: height,
+    })
+  } else {
+    return "**No data**"
+  }
 })
 
 hbs.registerHelper('json', function(obj) {
@@ -84,6 +89,7 @@ app.use('/blocks', blocksRouter);
 app.use('/assets', assetsRouter);
 app.use('/validator', validatorRouter);
 app.use("/mempool", mempoolRouter)
+app.use("/search", searchRouter)
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {

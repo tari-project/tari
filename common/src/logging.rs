@@ -43,7 +43,7 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path) -> bool {
     };
 
     if let Err(e) = log4rs::init_file(config_file, Default::default()) {
-        println!("We couldn't load a logging configuration file. {}", e.to_string());
+        println!("We couldn't load a logging configuration file. {}", e);
         return false;
     }
 

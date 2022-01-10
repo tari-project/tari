@@ -215,8 +215,7 @@ impl TransactionOutput {
         Challenge::new()
             .chain(public_commitment_nonce.as_bytes())
             .chain(script.as_bytes())
-            // TODO: Use consensus encoded bytes #testnet_reset
-            .chain(features.to_v1_bytes())
+            .chain(features.to_consensus_bytes())
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
             .finalize()
@@ -338,11 +337,7 @@ impl Display for TransactionOutput {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         let proof = self.proof.to_hex();
         let proof = if proof.len() > 32 {
-            format!(
-                "{}..{}",
-                proof[0..16].to_string(),
-                proof[proof.len() - 16..proof.len()].to_string()
-            )
+            format!("{}..{}", &proof[0..16], &proof[proof.len() - 16..proof.len()])
         } else {
             proof
         };

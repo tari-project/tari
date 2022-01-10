@@ -123,6 +123,16 @@ table! {
 }
 
 table! {
+    scanned_blocks (header_hash) {
+        header_hash -> Binary,
+        height -> BigInt,
+        num_outputs -> Nullable<BigInt>,
+        amount -> Nullable<BigInt>,
+        timestamp -> Timestamp,
+    }
+}
+
+table! {
     wallet_settings (key) {
         key -> Text,
         value -> Text,
@@ -138,5 +148,6 @@ allow_tables_to_appear_in_same_query!(
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
+    scanned_blocks,
     wallet_settings,
 );

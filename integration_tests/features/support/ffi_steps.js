@@ -292,12 +292,16 @@ Then(
       120
     );
 
-    if (!(wallet.getCounters().received >= amount)) {
-      console.log("Counter not adequate!");
+    if (wallet.getCounters().received < amount) {
+      console.log(
+        `Expected to receive at least ${amount} transaction(s) but got ${
+          wallet.getCounters().received
+        }`
+      );
     } else {
       console.log(wallet.getCounters());
     }
-    expect(wallet.getCounters().received >= amount).to.equal(true);
+    expect(wallet.getCounters().received).to.be.gte(amount);
   }
 );
 
@@ -427,15 +431,19 @@ Then(
       120
     );
 
-    if (!(wallet.getCounters().saf >= amount)) {
-      console.log("Counter not adequate!");
+    if (wallet.getCounters().saf < amount) {
+      console.log(
+        `Expected to receive ${amount} SAF messages but received ${
+          wallet.getCounters().saf
+        }`
+      );
     } else {
       console.log(wallet.getCounters());
     }
     if (comparison === atLeast) {
-      expect(wallet.getCounters().saf >= amount).to.equal(true);
+      expect(wallet.getCounters().saf).to.be.gte(amount);
     } else {
-      expect(wallet.getCounters().saf === amount).to.equal(true);
+      expect(wallet.getCounters().saf).to.be.equal(amount);
     }
   }
 );
@@ -532,10 +540,11 @@ When("I start ffi wallet {word}", async function (walletName) {
 When(
   "I restart ffi wallet {word} connected to base node {word}",
   async function (walletName, node) {
+    console.log(`Starting ${walletName}`);
     let wallet = this.getWallet(walletName);
     await wallet.restart();
-    let peer = this.nodes[node].peerAddress().split("::");
-    wallet.addBaseNodePeer(peer[0], peer[1]);
+    let [pub_key, address] = this.nodes[node].peerAddress().split("::");
+    wallet.addBaseNodePeer(pub_key, address);
   }
 );
 
@@ -576,6 +585,7 @@ When(
   "I stop ffi wallet {word}",
   { timeout: 20 * 1000 },
   async function (walletName) {
+    console.log(`Stopping ${walletName}`);
     let wallet = this.getWallet(walletName);
     await wallet.stop();
     wallet.resetCounters();
@@ -603,5 +613,28 @@ Then(
     while (!wallet.getTxValidationStatus().tx_validation_complete) {
       await sleep(1000);
     }
+  }
+);
+
+Then(
+  "I wait for ffi wallet {word} to connect to {word}",
+  { timeout: 125 * 1000 },
+  async function (walletName, nodeName) {
+    const wallet = this.getWallet(walletName, true);
+    const client = this.getClient(nodeName);
+    // let client = await node.connectClient();
+    let nodeIdentity = await client.identify();
+
+    await waitForIterate(
+      () => {
+        let publicKeys = wallet.listConnectedPublicKeys();
+        return (
+          publicKeys && publicKeys.some((p) => p === nodeIdentity.public_key)
+        );
+      },
+      true,
+      1000,
+      10
+    );
   }
 );

@@ -64,7 +64,7 @@ impl DiscoveryRequestState {
 }
 
 pub struct DhtDiscoveryService {
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     node_identity: Arc<NodeIdentity>,
     outbound_requester: OutboundMessageRequester,
     peer_manager: Arc<PeerManager>,
@@ -75,7 +75,7 @@ pub struct DhtDiscoveryService {
 
 impl DhtDiscoveryService {
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         outbound_requester: OutboundMessageRequester,
@@ -321,6 +321,7 @@ impl DhtDiscoveryService {
             addresses: vec![self.node_identity.public_address().to_string()],
             peer_features: self.node_identity.features().bits(),
             nonce,
+            identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
         };
         debug!(
             target: LOG_TARGET,
@@ -374,7 +375,7 @@ mod test {
         let shutdown = Shutdown::new();
 
         DhtDiscoveryService::new(
-            DhtConfig::default(),
+            Default::default(),
             node_identity,
             peer_manager,
             outbound_requester,
