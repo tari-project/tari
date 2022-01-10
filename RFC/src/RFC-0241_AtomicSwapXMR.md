@@ -62,6 +62,13 @@ $$
 \newcommand{\hash}[1]{\mathrm{H}\bigl({#1}\bigr)}
 $$
 
+## Comments
+
+Any comments, changes or questions to this PR can be made in one of the following ways:
+
+* Join the discussion on the [Github discussion page](https://github.com/tari-project/tari/discussions/3647).
+* Create a new PR on the Tari project [Github pull requests](https://github.com/tari-project/tari/pulls).
+* Create a new issue on the Tari project [Github issues](https://github.com/tari-project/tari/issues).
 
 ## Description
 
