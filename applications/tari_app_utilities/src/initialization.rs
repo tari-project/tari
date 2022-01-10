@@ -61,6 +61,10 @@ pub fn init_configuration(
         }
     }
 
+    if let Some(str) = bootstrap.custom_base_node.clone() {
+        global_config.wallet_custom_base_node = Some(str);
+    }
+
     check_file_paths(&mut global_config, &bootstrap);
 
     Ok((bootstrap, global_config, cfg))

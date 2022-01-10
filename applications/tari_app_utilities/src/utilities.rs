@@ -164,7 +164,7 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
     builder
         .enable_all()
         .build()
-        .map_err(|e| format!("There was an error while building the node runtime. {}", e.to_string()))
+        .map_err(|e| format!("There was an error while building the node runtime. {}", e))
 }
 
 /// Returns a CommsPublicKey from either a emoji id or a public key

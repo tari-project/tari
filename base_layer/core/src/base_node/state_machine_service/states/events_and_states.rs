@@ -30,7 +30,7 @@ use crate::base_node::{
     state_machine_service::states::{
         BlockSync,
         DecideNextSync,
-        HeaderSync,
+        HeaderSyncState,
         HorizonStateSync,
         Listening,
         ListeningInfo,
@@ -44,7 +44,7 @@ use crate::base_node::{
 #[derive(Debug)]
 pub enum BaseNodeState {
     Starting(Starting),
-    HeaderSync(HeaderSync),
+    HeaderSync(HeaderSyncState),
     DecideNextSync(DecideNextSync),
     HorizonStateSync(HorizonStateSync),
     BlockSync(BlockSync),
@@ -86,7 +86,11 @@ impl<E: std::error::Error> From<E> for StateEvent {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyncStatus {
     // We are behind the chain tip.
-    Lagging(ChainMetadata, Vec<SyncPeer>),
+    Lagging {
+        local: ChainMetadata,
+        network: ChainMetadata,
+        sync_peers: Vec<SyncPeer>,
+    },
     UpToDate,
 }
 
@@ -104,12 +108,14 @@ impl Display for SyncStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         use SyncStatus::*;
         match self {
-            Lagging(m, v) => write!(
+            Lagging {
+                network, sync_peers, ..
+            } => write!(
                 f,
                 "Lagging behind {} peers (#{}, Difficulty: {})",
-                v.len(),
-                m.height_of_longest_chain(),
-                m.accumulated_difficulty(),
+                sync_peers.len(),
+                network.height_of_longest_chain(),
+                network.accumulated_difficulty(),
             ),
             UpToDate => f.write_str("UpToDate"),
         }

@@ -19,6 +19,7 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use std::{
     cmp,
     convert::{TryFrom, TryInto},
@@ -32,7 +33,7 @@ use tari_app_grpc::{
     tari_rpc::{CalcType, Sorting},
 };
 use tari_app_utilities::consts;
-use tari_common_types::types::{PublicKey, Signature};
+use tari_common_types::types::{Commitment, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
     base_node::{
@@ -123,6 +124,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
     type ListAssetRegistrationsStream = mpsc::Receiver<Result<tari_rpc::ListAssetRegistrationsResponse, Status>>;
     type ListHeadersStream = mpsc::Receiver<Result<tari_rpc::BlockHeader, Status>>;
     type SearchKernelsStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
+    type SearchUtxosStream = mpsc::Receiver<Result<tari_rpc::HistoricalBlock, Status>>;
 
     async fn get_network_difficulty(
         &self,
@@ -1038,6 +1040,62 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
+    async fn search_utxos(
+        &self,
+        request: Request<tari_rpc::SearchUtxosRequest>,
+    ) -> Result<Response<Self::SearchUtxosStream>, Status> {
+        debug!(target: LOG_TARGET, "Incoming GRPC request for SearchUtxos");
+        let request = request.into_inner();
+
+        let converted: Result<Vec<_>, _> = request
+            .commitments
+            .into_iter()
+            .map(|s| Commitment::from_bytes(&s))
+            .collect();
+        let outputs = converted.map_err(|_| Status::internal("Failed to convert one or more arguments."))?;
+
+        let mut handler = self.node_service.clone();
+
+        let (mut tx, rx) = mpsc::channel(GET_BLOCKS_PAGE_SIZE);
+        task::spawn(async move {
+            let blocks = match handler.fetch_blocks_with_utxos(outputs).await {
+                Err(err) => {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Error communicating with local base node: {:?}", err,
+                    );
+                    return;
+                },
+                Ok(data) => data,
+            };
+            for block in blocks {
+                match tx
+                    .send(
+                        block
+                            .try_into()
+                            .map_err(|err| Status::internal(format!("Could not provide block:{}", err))),
+                    )
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error sending header via GRPC:  {}", err);
+                        match tx.send(Err(Status::unknown("Error sending data"))).await {
+                            Ok(_) => (),
+                            Err(send_err) => {
+                                warn!(target: LOG_TARGET, "Error sending error to GRPC client: {}", send_err)
+                            },
+                        }
+                        return;
+                    },
+                }
+            }
+        });
+
+        debug!(target: LOG_TARGET, "Sending SearchUtxos response stream to client");
+        Ok(Response::new(rx))
+    }
+
     #[allow(clippy::useless_conversion)]
     async fn fetch_matching_utxos(
         &self,
@@ -1357,7 +1415,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 peer_manager
                     .find_by_node_id(peer.peer_node_id())
                     .await
-                    .map_err(|err| Status::internal(err.to_string()))?,
+                    .map_err(|err| Status::internal(err.to_string()))?
+                    .ok_or_else(|| Status::not_found(format!("Peer {} not found", peer.peer_node_id())))?,
             );
         }
 

@@ -292,6 +292,7 @@ async fn wait_for_comms(connectivity_requester: &ConnectivityRequester) -> Resul
         }
     }
 }
+
 async fn set_base_node_peer(
     mut wallet: WalletSqlite,
     args: &[ParsedArgument],
@@ -309,9 +310,8 @@ async fn set_base_node_peer(
     println!("Setting base node peer...");
     println!("{}::{}", public_key, net_address);
     wallet
-        .set_base_node_peer(public_key.clone(), net_address.to_string())
+        .set_base_node_peer(public_key.clone(), net_address.clone())
         .await?;
-
     Ok((public_key, net_address))
 }
 

@@ -20,8 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, sync::RwLock};
+use std::{
+    fmt,
+    sync::{RwLock, RwLockReadGuard},
+};
 
+use chrono::Utc;
 use multiaddr::Multiaddr;
 use rand::{CryptoRng, Rng};
 use serde::{Deserialize, Serialize};
@@ -32,7 +36,7 @@ use tari_crypto::{
 
 use super::node_id::deserialize_node_id_from_hex;
 use crate::{
-    peer_manager::{node_id::NodeId, Peer, PeerFeatures, PeerFlags},
+    peer_manager::{identity_signature::IdentitySignature, node_id::NodeId, Peer, PeerFeatures, PeerFlags},
     types::{CommsPublicKey, CommsSecretKey},
 };
 
@@ -46,6 +50,12 @@ pub struct NodeIdentity {
     features: PeerFeatures,
     secret_key: CommsSecretKey,
     public_address: RwLock<Multiaddr>,
+    #[serde(default = "rwlock_none")]
+    identity_signature: RwLock<Option<IdentitySignature>>,
+}
+
+fn rwlock_none() -> RwLock<Option<IdentitySignature>> {
+    RwLock::new(None)
 }
 
 impl NodeIdentity {
@@ -54,19 +64,29 @@ impl NodeIdentity {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key);
 
-        NodeIdentity {
+        let node_identity = NodeIdentity {
             node_id,
             public_key,
             features,
             secret_key,
             public_address: RwLock::new(public_address),
-        }
+            identity_signature: RwLock::new(None),
+        };
+        node_identity.sign();
+        node_identity
     }
 
-    /// Generates a new random NodeIdentity for CommsPublicKey
-    pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
-    where R: CryptoRng + Rng {
-        let secret_key = CommsSecretKey::random(rng);
+    /// Create a new NodeIdentity from the provided key pair and control service address.
+    ///
+    /// # Unchecked
+    /// It is up to the caller to ensure that the given signature is valid for the node identity.
+    /// Prefer using NodeIdentity::new over this function.
+    pub fn with_signature_unchecked(
+        secret_key: CommsSecretKey,
+        public_address: Multiaddr,
+        features: PeerFeatures,
+        identity_signature: Option<IdentitySignature>,
+    ) -> Self {
         let public_key = CommsPublicKey::from_secret_key(&secret_key);
         let node_id = NodeId::from_key(&public_key);
 
@@ -76,7 +96,15 @@ impl NodeIdentity {
             features,
             secret_key,
             public_address: RwLock::new(public_address),
+            identity_signature: RwLock::new(identity_signature),
         }
+    }
+
+    /// Generates a new random NodeIdentity for CommsPublicKey
+    pub fn random<R>(rng: &mut R, public_address: Multiaddr, features: PeerFeatures) -> Self
+    where R: CryptoRng + Rng {
+        let secret_key = CommsSecretKey::random(rng);
+        Self::new(secret_key, public_address, features)
     }
 
     /// Retrieve the publicly accessible address that peers must connect to establish a connection
@@ -84,9 +112,10 @@ impl NodeIdentity {
         acquire_read_lock!(self.public_address).clone()
     }
 
-    /// Modify the control_service_address
+    /// Modify the public address. The account signature will be invalid
     pub fn set_public_address(&self, address: Multiaddr) {
         *acquire_write_lock!(self.public_address) = address;
+        self.sign()
     }
 
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If public_address
@@ -102,35 +131,50 @@ impl NodeIdentity {
         )
     }
 
-    #[inline]
     pub fn node_id(&self) -> &NodeId {
         &self.node_id
     }
 
-    #[inline]
     pub fn public_key(&self) -> &CommsPublicKey {
         &self.public_key
     }
 
-    #[inline]
     pub fn secret_key(&self) -> &CommsSecretKey {
         &self.secret_key
     }
 
-    #[inline]
     pub fn features(&self) -> PeerFeatures {
         self.features
     }
 
-    #[inline]
     pub fn has_peer_features(&self, peer_features: PeerFeatures) -> bool {
         self.features().contains(peer_features)
+    }
+
+    pub fn identity_signature_read(&self) -> RwLockReadGuard<'_, Option<IdentitySignature>> {
+        acquire_read_lock!(self.identity_signature)
+    }
+
+    pub fn is_signed(&self) -> bool {
+        self.identity_signature_read().is_some()
+    }
+
+    /// Signs the peer using the peer secret key and replaces the peer account signature.
+    pub fn sign(&self) {
+        let identity_sig = IdentitySignature::sign_new(
+            self.secret_key(),
+            self.features,
+            Some(&*acquire_read_lock!(self.public_address)),
+            Utc::now().naive_utc(),
+        );
+
+        *acquire_write_lock!(self.identity_signature) = Some(identity_sig);
     }
 
     /// Returns a Peer with the same public key, node id, public address and features as represented in this
     /// NodeIdentity. _NOTE: PeerFlags, supported_protocols and user agent are empty._
     pub fn to_peer(&self) -> Peer {
-        Peer::new(
+        let mut peer = Peer::new(
             self.public_key().clone(),
             self.node_id().clone(),
             self.public_address().into(),
@@ -138,7 +182,10 @@ impl NodeIdentity {
             self.features(),
             Default::default(),
             Default::default(),
-        )
+        );
+        peer.identity_signature = acquire_read_lock!(self.identity_signature).clone();
+
+        peer
     }
 }
 
@@ -150,6 +197,7 @@ impl Clone for NodeIdentity {
             features: self.features,
             secret_key: self.secret_key.clone(),
             public_address: RwLock::new(self.public_address()),
+            identity_signature: RwLock::new(self.identity_signature_read().as_ref().cloned()),
         }
     }
 }

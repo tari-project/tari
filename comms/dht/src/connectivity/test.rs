@@ -72,7 +72,7 @@ async fn setup(
     let (event_publisher, _) = broadcast::channel(1);
 
     let dht_connectivity = DhtConnectivity::new(
-        config,
+        Arc::new(config),
         peer_manager.clone(),
         node_identity.clone(),
         connectivity,
@@ -229,8 +229,11 @@ async fn insert_neighbour() {
     let node_identities =
         ordered_node_identities_by_distance(node_identity.node_id(), 10, PeerFeatures::COMMUNICATION_NODE);
 
-    let (mut dht_connectivity, _, _, _, _, _) = setup(Default::default(), node_identity.clone(), vec![]).await;
-    dht_connectivity.config.num_neighbouring_nodes = 8;
+    let config = DhtConfig {
+        num_neighbouring_nodes: 8,
+        ..Default::default()
+    };
+    let (mut dht_connectivity, _, _, _, _, _) = setup(config, node_identity.clone(), vec![]).await;
 
     let shuffled = {
         let mut v = node_identities.clone();

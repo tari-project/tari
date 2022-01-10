@@ -44,7 +44,7 @@ pub use wallet::Wallet;
 use crate::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
-    storage::sqlite_db::WalletSqliteDatabase,
+    storage::sqlite_db::wallet::WalletSqliteDatabase,
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
 };
 

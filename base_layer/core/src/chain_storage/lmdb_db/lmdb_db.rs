@@ -1530,14 +1530,10 @@ pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), Chai
     let _ = fs::create_dir_all(&new_path);
 
     let data_file = path.as_ref().join("data.mdb");
-    let lock_file = path.as_ref().join("lock.mdb");
 
     let new_data_file = new_path.join("data.mdb");
-    let new_lock_file = new_path.join("lock.mdb");
 
     fs::rename(data_file, new_data_file)
-        .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
-    fs::rename(lock_file, new_lock_file)
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not copy LMDB store:{}", err)))?;
     Ok(())
 }

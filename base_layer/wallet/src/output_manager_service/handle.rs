@@ -159,7 +159,7 @@ impl fmt::Display for OutputManagerRequest {
             ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features } => {
-                write!(f, "CreateOutputWithFeatures({}, {})", value, features.to_string(),)
+                write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
             },
             CreatePayToSelfWithOutputs { .. } => write!(f, "CreatePayToSelfWithOutputs"),
             ReinstateCancelledInboundTx(_) => write!(f, "ReinstateCancelledInboundTx"),

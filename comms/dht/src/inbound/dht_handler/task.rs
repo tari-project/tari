@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use log::*;
 use tari_comms::{
     message::MessageExt,
-    peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager},
+    multiaddr::Multiaddr,
+    peer_manager::{IdentitySignature, NodeId, NodeIdentity, Peer, PeerFeatures, PeerFlags, PeerManager},
     pipeline::PipelineError,
     types::CommsPublicKey,
+    OrNotFound,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 use tower::{Service, ServiceExt};
@@ -37,10 +39,12 @@ use crate::{
     envelope::NodeDestination,
     inbound::{error::DhtInboundError, message::DecryptedDhtMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
+    peer_validator::PeerValidator,
     proto::{
         dht::{DiscoveryMessage, DiscoveryResponseMessage, JoinMessage},
         envelope::DhtMessageType,
     },
+    DhtConfig,
 };
 
 const LOG_TARGET: &str = "comms::dht::dht_handler";
@@ -52,6 +56,7 @@ pub struct ProcessDhtMessage<S> {
     node_identity: Arc<NodeIdentity>,
     message: Option<DecryptedDhtMessage>,
     discovery_requester: DhtDiscoveryRequester,
+    config: Arc<DhtConfig>,
 }
 
 impl<S> ProcessDhtMessage<S>
@@ -64,6 +69,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         node_identity: Arc<NodeIdentity>,
         discovery_requester: DhtDiscoveryRequester,
         message: DecryptedDhtMessage,
+        config: Arc<DhtConfig>,
     ) -> Self {
         Self {
             next_service,
@@ -72,6 +78,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             node_identity,
             discovery_requester,
             message: Some(message),
+            config,
         }
     }
 
@@ -131,20 +138,6 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    fn validate_raw_node_id(&self, public_key: &CommsPublicKey, raw_node_id: &[u8]) -> Result<NodeId, DhtInboundError> {
-        // The reason that we check the given node id against what we expect instead of just using the given node id
-        // is in future the NodeId may not necessarily be derived from the public key (i.e. DAN node is registered on
-        // the base layer)
-        let expected_node_id = NodeId::from_key(public_key);
-        let node_id = NodeId::from_bytes(raw_node_id).map_err(|_| DhtInboundError::InvalidNodeId)?;
-        if expected_node_id == node_id {
-            Ok(expected_node_id)
-        } else {
-            // TODO: Misbehaviour?
-            Err(DhtInboundError::InvalidNodeId)
-        }
-    }
-
     async fn handle_join(&mut self, message: DecryptedDhtMessage) -> Result<(), DhtInboundError> {
         let DecryptedDhtMessage {
             decryption_result,
@@ -176,25 +169,33 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let addresses = join_msg
             .addresses
-            .into_iter()
-            .filter_map(|addr| addr.parse().ok())
+            .iter()
+            .filter_map(|addr| Multiaddr::from_str(addr).ok())
             .collect::<Vec<_>>();
 
         if addresses.is_empty() {
             return Err(DhtInboundError::InvalidAddresses);
         }
+        let node_id = NodeId::from_public_key(&authenticated_pk);
+        let features = PeerFeatures::from_bits_truncate(join_msg.peer_features);
+        let mut new_peer = Peer::new(
+            authenticated_pk,
+            node_id.clone(),
+            addresses.into(),
+            PeerFlags::empty(),
+            features,
+            vec![],
+            String::new(),
+        );
+        new_peer.identity_signature = join_msg
+            .identity_signature
+            .map(IdentitySignature::try_from)
+            .transpose()
+            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?;
 
-        let node_id = self.validate_raw_node_id(&authenticated_pk, &join_msg.node_id)?;
-
-        let origin_peer = self
-            .peer_manager
-            .add_or_update_online_peer(
-                &authenticated_pk,
-                node_id,
-                addresses,
-                PeerFeatures::from_bits_truncate(join_msg.peer_features),
-            )
-            .await?;
+        let peer_validator = PeerValidator::new(&self.peer_manager, &self.config);
+        peer_validator.validate_and_add_peer(new_peer).await?;
+        let origin_peer = self.peer_manager.find_by_node_id(&node_id).await.or_not_found()?;
 
         // DO NOT propagate this peer if this node has banned them
         if origin_peer.is_banned() {
@@ -288,30 +289,40 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         let addresses = discover_msg
             .addresses
-            .into_iter()
-            .filter_map(|addr| addr.parse().ok())
+            .iter()
+            .filter_map(|addr| Multiaddr::from_str(addr).ok())
             .collect::<Vec<_>>();
 
         if addresses.is_empty() {
             return Err(DhtInboundError::InvalidAddresses);
         }
 
-        let node_id = self.validate_raw_node_id(&authenticated_pk, &discover_msg.node_id)?;
-        let origin_peer = self
-            .peer_manager
-            .add_or_update_online_peer(
-                &authenticated_pk,
-                node_id,
-                addresses,
-                PeerFeatures::from_bits_truncate(discover_msg.peer_features),
-            )
-            .await?;
+        let node_id = NodeId::from_public_key(&authenticated_pk);
+        let features = PeerFeatures::from_bits_truncate(discover_msg.peer_features);
+        let mut new_peer = Peer::new(
+            authenticated_pk,
+            node_id.clone(),
+            addresses.into(),
+            PeerFlags::empty(),
+            features,
+            vec![],
+            String::new(),
+        );
+        new_peer.identity_signature = discover_msg
+            .identity_signature
+            .map(IdentitySignature::try_from)
+            .transpose()
+            .map_err(|err| DhtInboundError::InvalidPeerIdentitySignature(err.to_string()))?;
+
+        let peer_validator = PeerValidator::new(&self.peer_manager, &self.config);
+        peer_validator.validate_and_add_peer(new_peer).await?;
+        let origin_peer = self.peer_manager.find_by_node_id(&node_id).await.or_not_found()?;
 
         // Don't send a join request to the origin peer if they are banned
         if origin_peer.is_banned() {
             warn!(
                 target: LOG_TARGET,
-                "Received Discovery request for banned peer '{}'. This request will be ignored.", authenticated_pk
+                "Received Discovery request for banned peer '{}'. This request will be ignored.", node_id
             );
             return Ok(());
         }
@@ -335,6 +346,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             addresses: vec![self.node_identity.public_address().to_string()],
             peer_features: self.node_identity.features().bits(),
             nonce,
+            identity_signature: self.node_identity.identity_signature_read().as_ref().map(Into::into),
         };
 
         trace!(target: LOG_TARGET, "Sending discovery response to {}", dest_public_key);

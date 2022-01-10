@@ -40,7 +40,7 @@ use crate::{
             states::{
                 BlockSync,
                 DecideNextSync,
-                HeaderSync,
+                HeaderSyncState,
                 StateEvent,
                 StateEvent::FatalError,
                 StateInfo,
@@ -195,7 +195,7 @@ impl Listening {
                     if self.is_synced &&
                         best_metadata.height_of_longest_chain() == local.height_of_longest_chain() + 1 &&
                         time_since_better_block
-                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(30))
+                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(60))
                             .unwrap_or(true)
                     {
                         if time_since_better_block.is_none() {
@@ -217,7 +217,7 @@ impl Listening {
                         peer_metadata_list
                     };
 
-                    let local = match shared.db.get_chain_metadata().await {
+                    let local_metadata = match shared.db.get_chain_metadata().await {
                         Ok(m) => m,
                         Err(e) => {
                             return FatalError(format!("Could not get local blockchain metadata. {}", e));
@@ -227,7 +227,7 @@ impl Listening {
 
                     let sync_mode = determine_sync_mode(
                         shared.config.blocks_behind_before_considered_lagging,
-                        &local,
+                        &local_metadata,
                         best_metadata,
                         sync_peers,
                     );
@@ -266,8 +266,8 @@ impl From<Waiting> for Listening {
     }
 }
 
-impl From<HeaderSync> for Listening {
-    fn from(sync: HeaderSync) -> Self {
+impl From<HeaderSyncState> for Listening {
+    fn from(sync: HeaderSyncState) -> Self {
         Self {
             is_synced: sync.is_synced(),
         }
@@ -356,12 +356,15 @@ fn determine_sync_mode(
             return UpToDate;
         };
 
-        let sync_peers = sync_peers.into_iter().cloned().collect();
         debug!(
             target: LOG_TARGET,
             "Lagging (local height = {}, network height = {})", local_tip_height, network_tip_height
         );
-        Lagging(network.clone(), sync_peers)
+        Lagging {
+            local: local.clone(),
+            network: network.clone(),
+            sync_peers: sync_peers.into_iter().cloned().collect(),
+        }
     } else {
         info!(
             target: LOG_TARGET,
@@ -497,28 +500,28 @@ mod test {
 
         let network = ChainMetadata::new(0, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(100, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(0, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(100, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
 
         let local = ChainMetadata::new(99, Vec::new(), 50, 50, 500_000);
         let network = ChainMetadata::new(150, Vec::new(), 0, 0, 500_001);
         match determine_sync_mode(0, &local, &network, vec![]) {
-            SyncStatus::Lagging(n, _) => assert_eq!(n, network),
+            SyncStatus::Lagging { network: n, .. } => assert_eq!(n, network),
             _ => panic!(),
         }
     }

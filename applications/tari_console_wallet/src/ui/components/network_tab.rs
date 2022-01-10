@@ -316,8 +316,7 @@ impl NetworkTab {
                             },
                             Err(e) => {
                                 warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
-                                self.error_message =
-                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                                self.error_message = Some(format!("Error setting new Base Node Address:\n{}", e));
                                 self.address_field = self.previous_address_field.clone();
                                 self.public_key_field = self.previous_public_key_field.clone();
                             },
@@ -336,8 +335,7 @@ impl NetworkTab {
                         if let Some(peer) = self.detailed_base_node.clone() {
                             if let Err(e) = Handle::current().block_on(app_state.set_base_node_peer(peer)) {
                                 warn!(target: LOG_TARGET, "Could not set new base node peer: {}", e);
-                                self.error_message =
-                                    Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                                self.error_message = Some(format!("Error setting new Base Node Address:\n{}", e));
                             }
                         }
 
@@ -443,7 +441,7 @@ impl<B: Backend> Component<B> for NetworkTab {
                     },
                     Err(e) => {
                         warn!(target: LOG_TARGET, "Could not set custom base node peer: {}", e);
-                        self.error_message = Some(format!("Error setting new Base Node Address:\n{}", e.to_string()));
+                        self.error_message = Some(format!("Error setting new Base Node Address:\n{}", e));
                         self.address_field = self.previous_address_field.clone();
                         self.public_key_field = self.previous_public_key_field.clone();
                     },
