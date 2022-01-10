@@ -77,12 +77,10 @@ pub struct TransactionServiceSqliteDatabase {
 
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        let mut new_self = Self {
+        Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
-        };
-
-        new_self
+        }
     }
 
     fn insert(&self, kvp: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
