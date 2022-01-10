@@ -263,13 +263,15 @@ impl<C> DefaultConfigLoader for C where C: ConfigPath + Default + serde::ser::Se
 #[derive(Debug)]
 pub struct ConfigurationError {
     field: String,
+    value: Option<String>,
     message: String,
 }
 
 impl ConfigurationError {
-    pub fn new(field: &str, msg: &str) -> Self {
+    pub fn new(field: &str, value: Option<String>, msg: &str) -> Self {
         ConfigurationError {
             field: String::from(field),
+            value,
             message: String::from(msg),
         }
     }
@@ -277,7 +279,10 @@ impl ConfigurationError {
 
 impl Display for ConfigurationError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        write!(f, "Invalid value for {}: {}", self.field, self.message)
+        match &self.value {
+            Some(v) => write!(f, "Invalid value `{}` for {}: {}", v, self.field, self.message),
+            None => write!(f, "Invalid value for {}: {}", self.field, self.message),
+        }
     }
 }
 
@@ -288,17 +293,24 @@ impl From<config::ConfigError> for ConfigurationError {
         match err {
             ConfigError::FileParse { uri, cause } if uri.is_some() => Self {
                 field: uri.unwrap(),
+                value: None,
                 message: cause.to_string(),
             },
-            ConfigError::Type { ref key, .. } => Self {
+            ConfigError::Type {
+                ref unexpected,
+                ref key,
+                ..
+            } => Self {
                 field: format!("{:?}", key),
+                value: Some(unexpected.to_string()),
                 message: err.to_string(),
             },
             ConfigError::NotFound(key) => Self {
                 field: key,
+                value: None,
                 message: "required key not found".to_string(),
             },
-            x => Self::new("", x.to_string().as_str()),
+            x => Self::new("", None, x.to_string().as_str()),
         }
     }
 }
@@ -306,6 +318,7 @@ impl From<serde_json::error::Error> for ConfigurationError {
     fn from(err: serde_json::error::Error) -> Self {
         Self {
             field: "".to_string(),
+            value: None,
             message: err.to_string(),
         }
     }
@@ -317,7 +330,7 @@ mod test {
 
     #[test]
     fn configuration_error() {
-        let e = ConfigurationError::new("test", "is a string");
+        let e = ConfigurationError::new("test", None, "is a string");
         assert_eq!(e.to_string(), "Invalid value for test: is a string");
     }
 

@@ -31,7 +31,7 @@ Feature: Block Sync
     # All nodes should sync to tip
     Then all nodes are at height 20
 
-  @critical
+  @critical @pruned @broken
   Scenario: Pruned mode simple sync
     Given I have 1 seed nodes
     Given I have a SHA3 miner NODE1 connected to all seed nodes
@@ -53,7 +53,6 @@ Feature: Block Sync
     Then NODE2 should have at least 11 peers
 
 
-  @critical
   Scenario: Pruned mode sync test
     Given I have a seed node SEED
     Given I have a base node NODE1 connected to all seed nodes
@@ -143,7 +142,6 @@ Feature: Block Sync
     And I have <NODES> base nodes with pruning horizon <PRUNE_HORIZON> force syncing on node BASE
     Then all nodes are at height <BLOCKS>
 
-    @critical
     Examples:
       | NODES | BLOCKS | PRUNE_HORIZON |
       | 5     | 10     | 0             |

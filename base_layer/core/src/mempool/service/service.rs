@@ -505,8 +505,13 @@ async fn handle_outbound_tx(
         .await;
 
     if let Err(e) = result {
-        error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
-        return Err(MempoolServiceError::OutboundMessageService(e.to_string()));
+        return match e {
+            DhtOutboundError::NoMessagesQueued => Ok(()),
+            _ => {
+                error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
+                Err(MempoolServiceError::OutboundMessageService(e.to_string()))
+            },
+        };
     }
 
     Ok(())
