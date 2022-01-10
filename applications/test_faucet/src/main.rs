@@ -117,6 +117,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
         excess,
         excess_sig: sig,
     };
+    let kernel = serde_json::to_string(&kernel).unwrap();
     let _ = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 
     println!("Done.");
