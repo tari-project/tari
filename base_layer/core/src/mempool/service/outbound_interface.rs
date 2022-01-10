@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use log::*;
 use tari_common_types::types::Signature;
 use tari_comms::peer_manager::NodeId;
@@ -42,14 +44,14 @@ pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 #[derive(Clone)]
 pub struct OutboundMempoolServiceInterface {
     request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-    tx_sender: UnboundedSender<(Transaction, Vec<NodeId>)>,
+    tx_sender: UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>,
 }
 
 impl OutboundMempoolServiceInterface {
     /// Construct a new OutboundMempoolServiceInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-        tx_sender: UnboundedSender<(Transaction, Vec<NodeId>)>,
+        tx_sender: UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>,
     ) -> Self {
         Self {
             request_sender,
@@ -70,7 +72,7 @@ impl OutboundMempoolServiceInterface {
     /// Transmit a transaction to remote base nodes, excluding the provided peers.
     pub async fn propagate_tx(
         &mut self,
-        transaction: Transaction,
+        transaction: Arc<Transaction>,
         exclude_peers: Vec<NodeId>,
     ) -> Result<(), MempoolServiceError> {
         self.tx_sender.send((transaction, exclude_peers)).or_else(|e| {

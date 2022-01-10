@@ -23,6 +23,7 @@
 use std::cmp::max;
 
 use super::{tari_amount::MicroTari, weight::TransactionWeight};
+use crate::transactions::aggregated_body::AggregateBody;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Fee(TransactionWeight);
@@ -35,7 +36,7 @@ impl Fee {
     }
 
     /// Computes the absolute transaction fee given the fee-per-gram, and the size of the transaction
-    /// NB: Each fee calculation should be done independently. No commutative, associative or distributive properties
+    /// NB: Each fee calculation should be done per transaction. No commutative, associative or distributive properties
     /// are guaranteed to hold between calculations. for e.g. fee(1,1,1,4) + fee(1,1,1,12) != fee(1,1,1,16)
     pub fn calculate(
         &self,
@@ -43,17 +44,26 @@ impl Fee {
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
-        total_metadata_byte_size: usize,
+        rounded_metadata_byte_size: usize,
     ) -> MicroTari {
         let weight = self
-            .0
-            .calculate(num_kernels, num_inputs, num_outputs, total_metadata_byte_size);
+            .weighting()
+            .calculate(num_kernels, num_inputs, num_outputs, rounded_metadata_byte_size);
+        MicroTari::from(weight) * fee_per_gram
+    }
+
+    pub fn calculate_body(&self, fee_per_gram: MicroTari, body: &AggregateBody) -> MicroTari {
+        let weight = self.weighting().calculate_body(body);
         MicroTari::from(weight) * fee_per_gram
     }
 
     /// Normalizes the given fee returning a fee that is equal to or above the minimum fee
     pub fn normalize(fee: MicroTari) -> MicroTari {
         max(Self::MINIMUM_TRANSACTION_FEE, fee)
+    }
+
+    pub fn weighting(&self) -> &TransactionWeight {
+        &self.0
     }
 }
 

@@ -22,7 +22,10 @@
 
 //! Impls for transaction proto
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 use tari_crypto::{
@@ -457,5 +460,20 @@ impl TryFrom<Transaction> for proto::types::Transaction {
             body: Some(tx.body.try_into()?),
             script_offset: Some(tx.script_offset.into()),
         })
+    }
+}
+
+impl TryFrom<Arc<Transaction>> for proto::types::Transaction {
+    type Error = String;
+
+    fn try_from(tx: Arc<Transaction>) -> Result<Self, Self::Error> {
+        match Arc::try_unwrap(tx) {
+            Ok(tx) => Ok(tx.try_into()?),
+            Err(tx) => Ok(Self {
+                offset: Some(tx.offset.clone().into()),
+                body: Some(tx.body.clone().try_into()?),
+                script_offset: Some(tx.script_offset.clone().into()),
+            }),
+        }
     }
 }

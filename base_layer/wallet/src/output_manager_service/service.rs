@@ -654,8 +654,14 @@ where
         );
         // TODO: Include asset metadata here if required
         // We assume that default OutputFeatures and Nop TariScript is used
-        let metadata_byte_size = OutputFeatures::default().consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size();
+        let metadata_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight()
+            .round_up_metadata_size(
+                OutputFeatures::default().consensus_encode_exact_size() +
+                    ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size(),
+            );
 
         let utxo_selection = self
             .select_utxos(
@@ -698,8 +704,14 @@ where
             fee_per_gram,
         );
         let output_features = OutputFeatures::default();
-        let metadata_byte_size = output_features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&recipient_script).consensus_encode_exact_size();
+        let metadata_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight()
+            .round_up_metadata_size(
+                output_features.consensus_encode_exact_size() +
+                    ConsensusEncodingWrapper::wrap(&recipient_script).consensus_encode_exact_size(),
+            );
 
         let input_selection = self
             .select_utxos(
@@ -892,11 +904,14 @@ where
     ) -> Result<(TxId, Transaction), OutputManagerError> {
         let total_value = MicroTari(outputs.iter().fold(0u64, |running, out| running + out.value.as_u64()));
         let nop_script = script![Nop];
+        let weighting = self.resources.consensus_constants.transaction_weight();
         let metadata_byte_size = outputs.iter().fold(0usize, |total, output| {
             total +
-                output.features.consensus_encode_exact_size() +
-                ConsensusEncodingWrapper::wrap(output.script.as_ref().unwrap_or(&nop_script))
-                    .consensus_encode_exact_size()
+                weighting.round_up_metadata_size(
+                    output.features.consensus_encode_exact_size() +
+                        ConsensusEncodingWrapper::wrap(output.script.as_ref().unwrap_or(&nop_script))
+                            .consensus_encode_exact_size(),
+                )
         });
         let input_selection = self
             .select_utxos(
@@ -1050,8 +1065,14 @@ where
             unique_id: unique_id.clone(),
             ..Default::default()
         };
-        let metadata_byte_size = output_features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
+        let metadata_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight()
+            .round_up_metadata_size(
+                output_features.consensus_encode_exact_size() +
+                    ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size(),
+            );
 
         let input_selection = self
             .select_utxos(
@@ -1288,8 +1309,10 @@ where
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         // Assumes that default Outputfeatures are used for change utxo
-        let default_metadata_size = OutputFeatures::default().consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size();
+        let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
+            OutputFeatures::default().consensus_encode_exact_size() +
+                ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size(),
+        );
         let mut requires_change_output = false;
         for o in uo {
             utxos_total_value += o.unblinded_output.value;
@@ -1367,8 +1390,14 @@ where
         let output_count = split_count;
         let script = script!(Nop);
         let output_features = OutputFeatures::default();
-        let metadata_byte_size = output_features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size();
+        let metadata_byte_size = self
+            .resources
+            .consensus_constants
+            .transaction_weight()
+            .round_up_metadata_size(
+                output_features.consensus_encode_exact_size() +
+                    ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size(),
+            );
 
         let total_split_amount = amount_per_split * split_count as u64;
         let input_selection = self
