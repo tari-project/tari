@@ -1,17 +1,18 @@
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18 as builder
-
+FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-11-01 as builder
 WORKDIR /tari
 
 # Adding only necessary things up front and copying the entrypoint script last
 # to take advantage of layer caching in docker
-ADD Cargo.lock .
 ADD Cargo.toml .
 ADD applications applications
 ADD base_layer base_layer
+ADD clients clients
 ADD common common
+ADD common_sqlite common_sqlite
 ADD comms comms
 ADD infrastructure infrastructure
 ADD meta meta
+ADD Cargo.lock .
 ADD rust-toolchain.toml .
 
 ARG ARCH=native
@@ -29,6 +30,7 @@ RUN cargo build --bin tari_merge_mining_proxy --release --locked --features "$FE
 # Create a base minimal image for the executables
 FROM quay.io/bitnami/minideb:bullseye as base
 # Disable Prompt During Packages Installation
+ARG VERSION=1.0.1
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt update && apt -y install \
   apt-transport-https \
@@ -42,6 +44,7 @@ FROM base
 RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
 USER tari
 
+ENV dockerfile_version=$VERSION
 ENV APP_NAME=mm_proxy APP_EXEC=tari_merge_mining_proxy
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/

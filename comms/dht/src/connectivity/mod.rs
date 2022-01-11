@@ -65,7 +65,7 @@ pub enum DhtConnectivityError {
 /// The DHT connectivity actor monitors the connectivity state (using `ConnectivityEvent`s) and attempts
 /// to maintain connectivity to the network as peers come and go.
 pub struct DhtConnectivity {
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
@@ -89,7 +89,7 @@ pub struct DhtConnectivity {
 impl DhtConnectivity {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,

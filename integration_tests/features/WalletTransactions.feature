@@ -1,7 +1,7 @@
 @wallet-transact @wallet
 Feature: Wallet Transactions
 
-  @critical @flaky
+  @critical
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes

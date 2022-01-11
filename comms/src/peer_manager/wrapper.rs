@@ -41,9 +41,10 @@ impl<T> KeyValueStore<PeerId, Peer> for KeyValueWrapper<T>
 where T: KeyValueStore<PeerId, Peer>
 {
     fn insert(&self, key: u64, value: Peer) -> Result<(), KeyValStoreError> {
-        if key == MIGRATION_VERSION_KEY {
-            panic!("MIGRATION_VERSION_KEY used in `KeyValueWrapper::insert`. MIGRATION_VERSION_KEY is a reserved key");
-        }
+        assert!(
+            !(key == MIGRATION_VERSION_KEY),
+            "MIGRATION_VERSION_KEY used in `KeyValueWrapper::insert`. MIGRATION_VERSION_KEY is a reserved key"
+        );
         self.inner.insert(key, value)
     }
 
@@ -88,9 +89,10 @@ where T: KeyValueStore<PeerId, Peer>
     }
 
     fn delete(&self, key: &u64) -> Result<(), KeyValStoreError> {
-        if key == &MIGRATION_VERSION_KEY {
-            panic!("MIGRATION_VERSION_KEY used in `KeyValueWrapper::delete`. MIGRATION_VERSION_KEY is a reserved key");
-        }
+        assert!(
+            !(key == &MIGRATION_VERSION_KEY),
+            "MIGRATION_VERSION_KEY used in `KeyValueWrapper::delete`. MIGRATION_VERSION_KEY is a reserved key"
+        );
         self.inner.delete(key)
     }
 }

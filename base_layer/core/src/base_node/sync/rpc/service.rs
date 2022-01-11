@@ -22,6 +22,7 @@
 
 use std::{
     cmp,
+    convert::TryFrom,
     sync::{Arc, Weak},
 };
 
@@ -40,8 +41,12 @@ use tokio::{
 use tracing::{instrument, span, Instrument, Level};
 
 use crate::{
-    base_node::sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    base_node::{
+        comms_interface::BlockEvent,
+        sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
+        LocalNodeCommsInterface,
+    },
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend},
     iterators::NonOverlappingIntegerPairIter,
     proto,
     proto::base_node::{
@@ -60,13 +65,15 @@ const LOG_TARGET: &str = "c::base_node::sync_rpc";
 pub struct BaseNodeSyncRpcService<B> {
     db: AsyncBlockchainDb<B>,
     active_sessions: RwLock<Vec<Weak<NodeId>>>,
+    base_node_service: LocalNodeCommsInterface,
 }
 
 impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
-    pub fn new(db: AsyncBlockchainDb<B>) -> Self {
+    pub fn new(db: AsyncBlockchainDb<B>, base_node_service: LocalNodeCommsInterface) -> Self {
         Self {
             db,
             active_sessions: RwLock::new(Vec::new()),
+            base_node_service,
         }
     }
 
@@ -101,6 +108,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     ) -> Result<Streaming<proto::base_node::BlockBodyResponse>, RpcStatus> {
         let peer_node_id = request.context().peer_node_id().clone();
         let message = request.into_message();
+        let mut block_event_stream = self.base_node_service.get_block_event_stream();
 
         let db = self.db();
         let start_header = db
@@ -114,16 +122,16 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
-        let start = start_header.height + 1;
-        if start < metadata.pruned_height() {
+        let start_height = start_header.height + 1;
+        if start_height < metadata.pruned_height() {
             return Err(RpcStatus::bad_request(format!(
                 "Requested full block body at height {}, however this node has an effective pruned height of {}",
-                start,
+                start_height,
                 metadata.pruned_height()
             )));
         }
 
-        if start > metadata.height_of_longest_chain() {
+        if start_height > metadata.height_of_longest_chain() {
             return Ok(Streaming::empty());
         }
 
@@ -133,17 +141,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Requested end block sync hash was not found"))?;
 
-        let end = end_header.height;
-        if start > end {
+        let end_height = end_header.height;
+        if start_height > end_height {
             return Err(RpcStatus::bad_request(format!(
                 "Start block #{} is higher than end block #{}",
-                start, end
+                start_height, end_height
             )));
         }
 
         debug!(
             target: LOG_TARGET,
-            "Initiating block sync with peer `{}` from height {} to {}", peer_node_id, start, end,
+            "Initiating block sync with peer `{}` from height {} to {}", peer_node_id, start_height, end_height,
         );
 
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
@@ -155,16 +163,41 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         task::spawn(
             async move {
                 // Move token into this task
-                let session_token = session_token;
-                let iter = NonOverlappingIntegerPairIter::new(start, end + 1, BATCH_SIZE);
+                let peer_node_id = session_token;
+                let iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, BATCH_SIZE);
                 for (start, end) in iter {
                     if tx.is_closed() {
                         break;
                     }
 
+                    // Check for reorgs during sync
+                    while let Ok(block_event) = block_event_stream.try_recv() {
+                        if let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { removed, .. }, _) =
+                            &*block_event
+                        {
+                            if let Some(reorg_block) = removed
+                                .iter()
+                                // If the reorg happens before the end height of sync we let the peer know that the chain they are syncing with has changed
+                                .find(|block| block.height() <= end_height)
+                            {
+                                warn!(
+                                    target: LOG_TARGET,
+                                    "Block reorg detected at height {} during sync, letting the sync peer {} know.",
+                                    reorg_block.height(),
+                                    peer_node_id
+                                );
+                                let _ = tx.send(Err(RpcStatus::conflict(format!(
+                                    "Reorg at height {} detected",
+                                    reorg_block.height()
+                                ))));
+                                return;
+                            }
+                        }
+                    }
+
                     debug!(
                         target: LOG_TARGET,
-                        "Sending blocks #{} - #{} to '{}'", start, end, session_token
+                        "Sending blocks #{} - #{} to '{}'", start, end, peer_node_id
                     );
                     let blocks = db
                         .fetch_blocks(start..=end)
@@ -178,9 +211,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(blocks) => {
                             let blocks = blocks
                                 .into_iter()
-                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
+                                .map(|hb| {
+                                    match hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)) {
+                                        Ok(b) => Ok(b.to_compact()),
+                                        Err(e) => Err(e),
+                                    }
+                                })
                                 .map(|block| match block {
-                                    Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
+                                    Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
+                                        log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                        RpcStatus::general_default()
+                                    }),
                                     Err(err) => Err(err),
                                 });
 
@@ -198,7 +239,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                 debug!(
                     target: LOG_TARGET,
-                    "Block sync round complete for peer `{}`.", session_token,
+                    "Block sync round complete for peer `{}`.", peer_node_id,
                 );
             }
             .instrument(span),
@@ -507,60 +548,5 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         task.run(request.into_message(), tx).await?;
 
         Ok(Streaming::new(rx))
-    }
-
-    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus> {
-        let requested_epoch_time: u64 = request.into_message();
-
-        let tip_header = self
-            .db()
-            .fetch_tip_header()
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
-        let mut left_height = 0u64;
-        let mut right_height = tip_header.height();
-
-        while left_height <= right_height {
-            let mut mid_height = (left_height + right_height) / 2;
-
-            if mid_height == 0 {
-                return Ok(Response::new(0u64));
-            }
-            // If the two bounds are adjacent then perform the test between the right and left sides
-            if left_height == mid_height {
-                mid_height = right_height;
-            }
-
-            let mid_header = self
-                .db()
-                .fetch_header(mid_height)
-                .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-                .ok_or_else(|| {
-                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height))
-                })?;
-            let before_mid_header = self
-                .db()
-                .fetch_header(mid_height - 1)
-                .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-                .ok_or_else(|| {
-                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height - 1))
-                })?;
-
-            if requested_epoch_time < mid_header.timestamp.as_u64() &&
-                requested_epoch_time >= before_mid_header.timestamp.as_u64()
-            {
-                return Ok(Response::new(before_mid_header.height));
-            } else if mid_height == right_height {
-                return Ok(Response::new(right_height));
-            } else if requested_epoch_time <= mid_header.timestamp.as_u64() {
-                right_height = mid_height;
-            } else {
-                left_height = mid_height;
-            }
-        }
-
-        Ok(Response::new(0u64))
     }
 }

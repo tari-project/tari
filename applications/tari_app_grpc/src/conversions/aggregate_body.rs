@@ -27,14 +27,16 @@ use tari_utilities::convert::try_convert_all;
 
 use crate::tari_rpc as grpc;
 
-impl From<AggregateBody> for grpc::AggregateBody {
-    fn from(source: AggregateBody) -> Self {
-        Self {
+impl TryFrom<AggregateBody> for grpc::AggregateBody {
+    type Error = String;
+
+    fn try_from(source: AggregateBody) -> Result<Self, Self::Error> {
+        Ok(Self {
             inputs: source
                 .inputs()
                 .iter()
-                .map(|input| grpc::TransactionInput::from(input.clone()))
-                .collect(),
+                .map(|input| grpc::TransactionInput::try_from(input.clone()))
+                .collect::<Result<Vec<grpc::TransactionInput>, _>>()?,
             outputs: source
                 .outputs()
                 .iter()
@@ -45,7 +47,7 @@ impl From<AggregateBody> for grpc::AggregateBody {
                 .iter()
                 .map(|kernel| grpc::TransactionKernel::from(kernel.clone()))
                 .collect(),
-        }
+        })
     }
 }
 

@@ -17,6 +17,7 @@ const {
   u8ArrayPtr,
   byteVectorRef,
   publicKeyRef,
+  publicKeyArrPtr,
   strArray,
   strArrayPtr,
 } = require("./types");
@@ -30,7 +31,9 @@ const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {
     commsConfigRef,
     ["string", transportRef, "string", "string", u64, u64, errPtr],
   ],
+  comms_list_connected_public_keys: [publicKeyArrPtr, [walletRef, errPtr]],
   public_key_create: [publicKeyRef, [byteVectorRef, errPtr]],
+  public_keys_destroy: ["void", [publicKeyArrPtr]],
   public_key_get_bytes: [u8ArrayPtr, [publicKeyRef, errPtr]],
   seed_words_create: [strPtr, []],
   seed_words_get_at: ["string", [strArrayPtr, u32, errPtr]],

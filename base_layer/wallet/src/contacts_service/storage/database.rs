@@ -62,7 +62,7 @@ pub enum DbKeyValuePair {
 }
 
 pub enum WriteOperation {
-    Upsert(DbKeyValuePair),
+    Upsert(Box<DbKeyValuePair>),
     Remove(DbKey),
 }
 
@@ -121,10 +121,10 @@ where T: ContactsBackend + 'static
         let db_clone = self.db.clone();
 
         tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Upsert(DbKeyValuePair::Contact(
+            db_clone.write(WriteOperation::Upsert(Box::new(DbKeyValuePair::Contact(
                 contact.public_key.clone(),
                 contact,
-            )))
+            ))))
         })
         .await
         .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))??;

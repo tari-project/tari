@@ -56,7 +56,14 @@ where B: BlockchainBackend + 'static
             .db
             .fetch_header_containing_utxo_mmr(request.start + 1)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .map_err(|err| {
+                error!(target: LOG_TARGET, "{}", err);
+                if err.is_value_not_found() {
+                    RpcStatus::not_found("start index not found")
+                } else {
+                    RpcStatus::general("DB failure when fetching header containing start index")
+                }
+            })?;
 
         let end_header = self
             .db
@@ -181,20 +188,25 @@ where B: BlockchainBackend + 'static
                 deleted_diff.cardinality(),
             );
             let utxos = utxos
-                    .into_iter()
-                    .enumerate()
-                    .skip(skip_outputs as usize)
+                .into_iter()
+                .skip(skip_outputs as usize)
+                // Only enumerate after skip, because `start` already has the offset in it so `i` can begin from 0
+                .enumerate()
+                .filter_map(|(i, utxo)| {
                     // Only include pruned UTXOs if include_pruned_utxos is true
-                    .filter(|(_, utxo)| include_pruned_utxos || !utxo.is_pruned())
-                    .map(|(i, utxo)| {
-                        SyncUtxosResponse {
+                    // We use filter_map because we still want the pruned utxos to count towards the index
+                    if include_pruned_utxos || !utxo.is_pruned() {
+                        Some(SyncUtxosResponse {
                             utxo_or_deleted: Some(proto::base_node::sync_utxos_response::UtxoOrDeleted::Utxo(
-                                SyncUtxo::from(utxo)
+                                SyncUtxo::from(utxo),
                             )),
-                            mmr_index: start + i  as u64,
-                        }
-                    })
-                    .map(Ok);
+                            mmr_index: start + i as u64,
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .map(Ok);
 
             // Ensure task stops if the peer prematurely stops their RPC session
             if utils::mpsc::send_all(tx, utxos).await.is_err() {

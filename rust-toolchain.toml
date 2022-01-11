@@ -10,4 +10,4 @@
 
 # Hours spent updating the Rust Toolchain = 4
 [toolchain]
-channel = "nightly-2021-09-18"
+channel = "nightly-2021-11-20"
