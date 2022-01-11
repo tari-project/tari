@@ -704,8 +704,8 @@ where
             fee_per_gram,
         );
         let output_features = OutputFeatures::default();
-        let metadata_byte_size =
-            output_features.consensus_encode_exact_size() + recipient_script.consensus_encode_exact_size() +
+        let metadata_byte_size = output_features.consensus_encode_exact_size() +
+            recipient_script.consensus_encode_exact_size() +
             recipient_covenant.consensus_encode_exact_size();
 
         let input_selection = self
