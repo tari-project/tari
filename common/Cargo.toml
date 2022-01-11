@@ -26,7 +26,6 @@ multiaddr = { version = "0.13.0" }
 sha2 = "0.9.5"
 path-clean = "0.1.0"
 tari_storage = { version = "^0.22", path = "../infrastructure/storage"}
-tracing = "0.1.26"
 
 anyhow = { version = "1.0", optional = true }
 git2 = { version = "0.8", optional = true }
