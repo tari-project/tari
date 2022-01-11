@@ -500,6 +500,7 @@ async fn local_get_new_block_template_and_get_new_block() {
 }
 
 #[tokio::test]
+#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
@@ -577,6 +578,7 @@ async fn local_get_new_block_with_zero_conf() {
 }
 
 #[tokio::test]
+#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();

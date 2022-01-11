@@ -54,7 +54,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::ConsensusEncodingSized,
     transactions::{
         tari_amount::MicroTari,
         transaction,
@@ -316,8 +316,7 @@ impl TransactionOutput {
     }
 
     pub fn get_metadata_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
+        self.features.consensus_encode_exact_size() + self.script.consensus_encode_exact_size()
     }
 }
 

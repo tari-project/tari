@@ -34,7 +34,7 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
-    consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized},
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
@@ -93,8 +93,7 @@ use crate::support::{
 
 fn default_metadata_byte_size() -> usize {
     TransactionWeight::latest().round_up_metadata_size(
-        OutputFeatures::default().consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size(),
+        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
     )
 }
 

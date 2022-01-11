@@ -36,7 +36,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
+    consensus::{ConsensusEncodingSized, ConsensusManager},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -179,8 +179,7 @@ impl TestParams {
 
     pub fn get_size_for_default_metadata(&self, num_outputs: usize) -> usize {
         self.fee().weighting().round_up_metadata_size(
-            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size() +
-                OutputFeatures::default().consensus_encode_exact_size(),
+            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
         ) * num_outputs
     }
 }
@@ -352,8 +351,7 @@ pub struct TransactionSchema {
 
 fn default_metadata_byte_size() -> usize {
     TransactionWeight::latest().round_up_metadata_size(
-        OutputFeatures::default().consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size(),
+        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
     )
 }
 

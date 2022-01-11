@@ -33,7 +33,7 @@ use tari_common_types::{
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::{ConsensusConstants, ConsensusEncodingSized},
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
@@ -659,8 +659,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                OutputFeatures::default().consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size(),
+                OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
             );
 
         let utxo_selection = self
@@ -709,8 +708,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&recipient_script).consensus_encode_exact_size(),
+                output_features.consensus_encode_exact_size() + recipient_script.consensus_encode_exact_size(),
             );
 
         let input_selection = self
@@ -909,7 +907,10 @@ where
             total +
                 weighting.round_up_metadata_size(
                     output.features.consensus_encode_exact_size() +
-                        ConsensusEncodingWrapper::wrap(output.script.as_ref().unwrap_or(&nop_script))
+                        output
+                            .script
+                            .as_ref()
+                            .unwrap_or(&nop_script)
                             .consensus_encode_exact_size(),
                 )
         });
@@ -1070,8 +1071,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size(),
+                output_features.consensus_encode_exact_size() + script.consensus_encode_exact_size(),
             );
 
         let input_selection = self
@@ -1310,8 +1310,7 @@ where
 
         // Assumes that default Outputfeatures are used for change utxo
         let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
-            OutputFeatures::default().consensus_encode_exact_size() +
-                ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size(),
+            OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
         );
         let mut requires_change_output = false;
         for o in uo {
@@ -1395,8 +1394,7 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&script).consensus_encode_exact_size(),
+                output_features.consensus_encode_exact_size() + script.consensus_encode_exact_size(),
             );
 
         let total_split_amount = amount_per_split * split_count as u64;

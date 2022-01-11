@@ -36,13 +36,7 @@ use tari_crypto::{
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{
-        emission::Emission,
-        ConsensusConstants,
-        ConsensusEncodingSized,
-        ConsensusEncodingWrapper,
-        ConsensusManager,
-    },
+    consensus::{emission::Emission, ConsensusConstants, ConsensusEncodingSized, ConsensusManager},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -491,7 +485,7 @@ pub fn check_outputs<B: BlockchainBackend>(
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size();
+    let script_size = script.consensus_encode_exact_size();
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,

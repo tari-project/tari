@@ -41,7 +41,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::{ConsensusConstants, ConsensusEncodingSized},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -281,8 +281,7 @@ impl SenderTransactionInitializer {
             .iter()
             .map(|o| {
                 self.fee.weighting().round_up_metadata_size(
-                    o.features.consensus_encode_exact_size() +
-                        ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size(),
+                    o.features.consensus_encode_exact_size() + o.script.consensus_encode_exact_size(),
                 )
             })
             .sum::<usize>();
@@ -296,7 +295,7 @@ impl SenderTransactionInitializer {
             .map(|script| {
                 self.fee.weighting().round_up_metadata_size(
                     self.get_recipient_output_features().consensus_encode_exact_size() +
-                        ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size(),
+                        script.consensus_encode_exact_size(),
                 )
             })
             .sum::<usize>();
@@ -337,7 +336,7 @@ impl SenderTransactionInitializer {
         let change_metadata_size = self
             .change_script
             .as_ref()
-            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .map(|script| script.consensus_encode_exact_size())
             .unwrap_or(0) +
             output_features.consensus_encode_exact_size();
         let change_metadata_size = self.fee().weighting().round_up_metadata_size(change_metadata_size);
