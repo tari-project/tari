@@ -221,7 +221,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 .verify_signature()
                 .map_err(HorizonSyncError::InvalidKernelSignature)?;
 
-            kernel_hashes.push(kernel.hash());
+            kernel_hashes.push(kernel.try_hash().map_err(HorizonSyncError::VersionError)?);
 
             txn.insert_kernel_via_horizon_sync(kernel, current_header.hash().clone(), mmr_position as u32);
             if mmr_position == current_header.header().kernel_mmr_size - 1 {
@@ -409,7 +409,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     helpers::check_tari_script_byte_size(&output.script, constants.get_max_script_byte_size())?;
                     unpruned_outputs.push(output.clone());
 
-                    output_mmr.push(output.hash())?;
+                    output_mmr.push(output.try_hash().map_err(HorizonSyncError::VersionError)?)?;
                     witness_mmr.push(output.witness_hash())?;
 
                     txn.insert_output_via_horizon_sync(
@@ -597,8 +597,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let prover = self.prover.clone();
                 task::spawn_blocking(move || -> Result<(), HorizonSyncError> {
                     for o in chunk {
-                        o.verify_range_proof(&prover)
-                            .map_err(|err| HorizonSyncError::InvalidRangeProof(o.hash().to_hex(), err.to_string()))?;
+                        o.verify_range_proof(&prover).map_err(|err| match o.try_hash() {
+                            Ok(hash) => HorizonSyncError::InvalidRangeProof(hash.to_hex(), err.to_string()),
+                            Err(e) => HorizonSyncError::VersionError(e),
+                        })?;
                     }
                     Ok(())
                 })

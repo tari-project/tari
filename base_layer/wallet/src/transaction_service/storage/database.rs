@@ -752,11 +752,16 @@ where T: TransactionBackend + 'static
         amount: MicroTari,
     ) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
-
-        tokio::task::spawn_blocking(move || db_clone.find_coinbase_transaction_at_block_height(block_height, amount))
-            .await
-            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
-            .and_then(|inner_result| inner_result)
+        println!("Here at height {}", block_height);
+        let x = tokio::task::spawn_blocking(move || {
+            db_clone.find_coinbase_transaction_at_block_height(block_height, amount)
+        })
+        .await
+        .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))
+        .and_then(|inner_result| inner_result);
+        println!("success?");
+        println!("x : {:?}", x);
+        x
     }
 
     pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), TransactionStorageError> {

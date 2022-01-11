@@ -39,34 +39,44 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
-        let unique_id = if features.unique_id.is_empty() {
-            None
-        } else {
-            Some(features.unique_id.clone())
-        };
-        let parent_public_key = if features.parent_public_key.is_empty() {
-            None
-        } else {
-            Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
-        };
+        let version = features.version as u8;
+        match version {
+            0 => {
+                let unique_id = if features.unique_id.is_empty() {
+                    None
+                } else {
+                    Some(features.unique_id.clone())
+                };
+                let parent_public_key = if features.parent_public_key.is_empty() {
+                    None
+                } else {
+                    Some(
+                        PublicKey::from_bytes(features.parent_public_key.as_bytes())
+                            .map_err(|err| format!("{:?}", err))?,
+                    )
+                };
 
-        Ok(Self {
-            flags: OutputFlags::from_bits(features.flags as u8)
-                .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
-            maturity: features.maturity,
-            metadata: features.metadata,
-            unique_id,
-            parent_public_key,
-            asset: features.asset.map(|a| a.try_into()).transpose()?,
-            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
-        })
+                Ok(Self::new(
+                    OutputFlags::from_bits(features.flags as u8)
+                        .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
+                    features.maturity,
+                    features.metadata,
+                    unique_id,
+                    parent_public_key,
+                    features.asset.map(|a| a.try_into()).transpose()?,
+                    features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
+                    features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
+                ))
+            },
+            _ => Err("newer version than expected".to_string()),
+        }
     }
 }
 
 impl From<OutputFeatures> for grpc::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
+            version: features.version as u32,
             flags: features.flags.bits() as u32,
             maturity: features.maturity,
             metadata: features.metadata,

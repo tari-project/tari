@@ -366,7 +366,10 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert kernel {} in block:{} position: {}",
-                kernel.hash().to_hex(),
+                match kernel.try_hash() {
+                    Ok(hash) => hash.to_hex(),
+                    Err(e) => format!("Version Error `{}`", e),
+                },
                 header_hash.to_hex(),
                 mmr_position
             ),
@@ -378,7 +381,10 @@ impl fmt::Display for WriteOperation {
             } => write!(
                 f,
                 "Insert output {} in block:{},#{} position: {}",
-                output.hash().to_hex(),
+                match output.try_hash() {
+                    Ok(hash) => hash.to_hex(),
+                    Err(e) => format!("Version Error `{}`", e),
+                },
                 header_hash.to_hex(),
                 header_height,
                 mmr_position

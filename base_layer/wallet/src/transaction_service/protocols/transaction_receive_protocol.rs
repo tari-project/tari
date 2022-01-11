@@ -34,7 +34,6 @@ use tari_core::transactions::{
     transaction::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
-use tari_crypto::tari_utilities::Hashable;
 use tokio::{
     sync::{mpsc, oneshot},
     time::sleep,
@@ -396,47 +395,53 @@ where
 
             let finalized_outputs = finalized_transaction.body.outputs();
 
-            // Update output metadata signature if not valid
-            match finalized_outputs
-                .iter()
-                .find(|output| output.hash() == rtp_output.hash())
-            {
-                Some(v) => {
-                    if rtp_output.verify_metadata_signature().is_err() {
-                        match self
-                            .resources
-                            .output_manager_service
-                            .update_output_metadata_signature(v.clone())
-                            .await
-                            .map_err(|e| {
-                                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
-                            }) {
-                            Ok(..) => {
-                                debug!(
-                                    target: LOG_TARGET,
-                                    "Updated metadata signature (TxId: {}) for output {}", self.id, v
-                                );
-                            },
-                            Err(e) => {
-                                warn!(
-                                    target: LOG_TARGET,
-                                    "Could not update metadata signature (TxId: {}) for output {} ({}, {})",
-                                    self.id,
-                                    v,
-                                    e.id,
-                                    e.error.to_string()
-                                );
-                            },
-                        }
+            match rtp_output.try_hash() {
+                Ok(hash) =>
+                // Update output metadata signature if not valid
+                {
+                    match finalized_outputs.iter().find(|output| match output.try_hash() {
+                        Ok(hash_output) => hash == hash_output,
+                        _ => false,
+                    }) {
+                        Some(v) => {
+                            if rtp_output.verify_metadata_signature().is_err() {
+                                match self
+                                    .resources
+                                    .output_manager_service
+                                    .update_output_metadata_signature(v.clone())
+                                    .await
+                                    .map_err(|e| {
+                                        TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+                                    }) {
+                                    Ok(..) => {
+                                        debug!(
+                                            target: LOG_TARGET,
+                                            "Updated metadata signature (TxId: {}) for output {}", self.id, v
+                                        );
+                                    },
+                                    Err(e) => {
+                                        warn!(
+                                            target: LOG_TARGET,
+                                            "Could not update metadata signature (TxId: {}) for output {} ({}, {})",
+                                            self.id,
+                                            v,
+                                            e.id,
+                                            e.error.to_string()
+                                        );
+                                    },
+                                }
+                            }
+                        },
+                        None => {
+                            warn!(
+                                target: LOG_TARGET,
+                                "Finalized Transaction does not contain the Receiver's output"
+                            );
+                            continue;
+                        },
                     }
                 },
-                None => {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Finalized Transaction does not contain the Receiver's output"
-                    );
-                    continue;
-                },
+                _ => (),
             }
 
             let completed_transaction = CompletedTransaction::new(

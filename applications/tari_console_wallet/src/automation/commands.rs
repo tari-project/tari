@@ -49,7 +49,7 @@ use tari_core::transactions::{
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitmentFactory,
-    tari_utilities::{ByteArray, Hashable},
+    tari_utilities::ByteArray,
 };
 use tari_utilities::hex::Hex;
 use tari_wallet::{
@@ -777,7 +777,10 @@ pub async fn command_runner(
                 let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
                 println!("pre_image hex: {}", pre_image.to_hex());
                 println!("pre_image hash: {}", hash.to_hex());
-                println!("Output hash: {}", output.hash().to_hex());
+                println!(
+                    "Output hash: {}",
+                    output.try_hash().map_err(CommandError::VersionError)?.to_hex()
+                );
                 tx_ids.push(tx_id);
             },
             FinaliseShaAtomicSwap => {

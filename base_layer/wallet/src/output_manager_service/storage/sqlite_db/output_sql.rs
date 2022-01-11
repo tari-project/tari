@@ -43,7 +43,6 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
-use tari_utilities::hash::Hashable;
 
 use crate::{
     output_manager_service::{
@@ -567,7 +566,10 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
         let hash = match o.hash {
             None => {
                 let factories = CryptoFactories::default();
-                unblinded_output.as_transaction_output(&factories)?.hash()
+                unblinded_output
+                    .as_transaction_output(&factories)?
+                    .try_hash()
+                    .map_err(OutputManagerStorageError::VersionError)?
             },
             Some(v) => v,
         };

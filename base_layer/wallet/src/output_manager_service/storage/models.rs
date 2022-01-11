@@ -25,7 +25,6 @@ use std::cmp::Ordering;
 use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
 use tari_core::transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories};
 use tari_crypto::script::{ExecutionStack, TariScript};
-use tari_utilities::hash::Hashable;
 
 use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 
@@ -51,7 +50,7 @@ impl DbUnblindedOutput {
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_transaction_output(factory)?;
         Ok(DbUnblindedOutput {
-            hash: tx_out.hash(),
+            hash: tx_out.try_hash().map_err(OutputManagerStorageError::VersionError)?,
             commitment: tx_out.commitment,
             unblinded_output: output,
             status: OutputStatus::NotStored,
@@ -72,7 +71,7 @@ impl DbUnblindedOutput {
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
         Ok(DbUnblindedOutput {
-            hash: tx_out.hash(),
+            hash: tx_out.try_hash().map_err(OutputManagerStorageError::VersionError)?,
             commitment: tx_out.commitment,
             unblinded_output: output,
             status: OutputStatus::NotStored,

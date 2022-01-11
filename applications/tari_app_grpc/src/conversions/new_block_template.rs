@@ -58,13 +58,13 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
                     .body
                     .outputs()
                     .iter()
-                    .map(|output| grpc::TransactionOutput::from(output.clone()))
+                    .map(|output| grpc::TransactionOutput::try_from(output.clone()).unwrap())
                     .collect(),
                 kernels: block
                     .body
                     .kernels()
                     .iter()
-                    .map(|kernel| grpc::TransactionKernel::from(kernel.clone()))
+                    .map(|kernel| grpc::TransactionKernel::try_from(kernel.clone()).unwrap())
                     .collect(),
             }),
             header: Some(header),

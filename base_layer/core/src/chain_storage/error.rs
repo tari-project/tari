@@ -129,6 +129,8 @@ pub enum ChainStorageError {
     TransactionError(#[from] TransactionError),
     #[error("Could not convert data:{0}")]
     ConversionError(String),
+    #[error("Version error : {0}")]
+    VersionError(String),
 }
 
 impl ChainStorageError {

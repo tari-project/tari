@@ -365,7 +365,13 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
             Err(ValidationError::UnknownInput) => {
                 // Lazily allocate and hash outputs as needed
                 if output_hashes.is_none() {
-                    output_hashes = Some(body.outputs().iter().map(|output| output.hash()).collect::<Vec<_>>());
+                    output_hashes = Some(
+                        body.outputs()
+                            .iter()
+                            .map(|output| -> Result<_, String> { output.try_hash() })
+                            .collect::<Result<Vec<_>, String>>()
+                            .map_err(ValidationError::VersionError)?,
+                    );
                 }
 
                 let output_hashes = output_hashes.as_ref().unwrap();
@@ -422,7 +428,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
             db.fetch_utxo_by_unique_id(input.features()?.parent_public_key.as_ref(), unique_id, None)?
         {
             // Check that it is the same utxo in which the unique_id was created
-            if utxo_hash.output.hash() == output_hash {
+            if utxo_hash.output.try_hash().map_err(ValidationError::VersionError)? == output_hash {
                 return Ok(());
             }
 
@@ -500,7 +506,10 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
 ) -> Result<(), ValidationError> {
-    if let Some(index) = db.fetch_mmr_leaf_index(MmrTree::Utxo, &output.hash())? {
+    if let Some(index) = db.fetch_mmr_leaf_index(
+        MmrTree::Utxo,
+        &output.try_hash().map_err(ValidationError::VersionError)?,
+    )? {
         warn!(
             target: LOG_TARGET,
             "Validation failed due to previously spent output: {} (MMR index = {})", output, index

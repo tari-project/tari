@@ -1166,11 +1166,11 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     let mut input_mmr = MerkleMountainRange::<HashDigest, _>::new(PrunedHashSet::default());
 
     for kernel in body.kernels().iter() {
-        kernel_mmr.push(kernel.hash())?;
+        kernel_mmr.push(kernel.try_hash().map_err(ChainStorageError::VersionError)?)?;
     }
 
     for output in body.outputs().iter() {
-        output_mmr.push(output.hash())?;
+        output_mmr.push(output.try_hash().map_err(ChainStorageError::VersionError)?)?;
         witness_mmr.push(output.witness_hash())?;
     }
 

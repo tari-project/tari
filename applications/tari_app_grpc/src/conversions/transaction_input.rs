@@ -39,19 +39,22 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
     type Error = String;
 
     fn try_from(input: grpc::TransactionInput) -> Result<Self, Self::Error> {
-        let script_signature = input
-            .script_signature
-            .ok_or_else(|| "script_signature not provided".to_string())?
-            .try_into()
-            .map_err(|_| "script_signature could not be converted".to_string())?;
+        let version = input.version as u8;
+        match version {
+            0 => {
+                let script_signature = input
+                    .script_signature
+                    .ok_or_else(|| "script_signature not provided".to_string())?
+                    .try_into()
+                    .map_err(|_| "script_signature could not be converted".to_string())?;
 
-        // Check if the received Transaction input is in compact form or not
-        if !input.commitment.is_empty() {
-            let commitment = Commitment::from_bytes(&input.commitment).map_err(|e| e.to_string())?;
-            let features = input
-                .features
-                .map(TryInto::try_into)
-                .ok_or_else(|| "transaction output features not provided".to_string())??;
+                // Check if the received Transaction input is in compact form or not
+                if !input.commitment.is_empty() {
+                    let commitment = Commitment::from_bytes(&input.commitment).map_err(|e| e.to_string())?;
+                    let features = input
+                        .features
+                        .map(TryInto::try_into)
+                        .ok_or_else(|| "transaction output features not provided".to_string())??;
 
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
@@ -101,6 +104,7 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 .map_err(|_| "Non-compact Transaction input should contain features".to_string())?;
 
             Ok(Self {
+                version: input.version as u32,
                 features: Some(features.clone().into()),
                 commitment: input
                     .commitment()

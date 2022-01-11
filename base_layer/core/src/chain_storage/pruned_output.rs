@@ -22,7 +22,6 @@
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-use tari_crypto::tari_utilities::Hashable;
 
 use crate::transactions::transaction::TransactionOutput;
 
@@ -43,13 +42,13 @@ impl PrunedOutput {
         matches!(self, PrunedOutput::Pruned { .. })
     }
 
-    pub fn hash(&self) -> Vec<u8> {
+    pub fn try_hash(&self) -> Result<Vec<u8>, String> {
         match self {
             PrunedOutput::Pruned {
                 output_hash,
                 witness_hash: _,
-            } => output_hash.clone(),
-            PrunedOutput::NotPruned { output } => output.hash(),
+            } => Ok(output_hash.clone()),
+            PrunedOutput::NotPruned { output } => output.try_hash(),
         }
     }
 

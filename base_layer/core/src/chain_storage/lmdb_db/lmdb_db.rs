@@ -492,7 +492,7 @@ impl LMDBDatabase {
         output: &TransactionOutput,
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
-        let output_hash = output.hash();
+        let output_hash = output.try_hash().map_err(ChainStorageError::VersionError)?;
         let witness_hash = output.witness_hash();
 
         let key = OutputKey::new(header_hash, mmr_position, &[]);
@@ -598,7 +598,7 @@ impl LMDBDatabase {
         kernel: &TransactionKernel,
         mmr_position: u32,
     ) -> Result<(), ChainStorageError> {
-        let hash = kernel.hash();
+        let hash = kernel.try_hash().map_err(ChainStorageError::VersionError)?;
         let key = KernelKey::new(header_hash, mmr_position, &hash);
 
         lmdb_insert(
@@ -968,7 +968,7 @@ impl LMDBDatabase {
                 "txos_hash_to_index_db",
             )?;
             if let Some(ref output) = utxo.output {
-                let output_hash = output.hash();
+                let output_hash = output.try_hash().map_err(ChainStorageError::VersionError)?;
                 // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
                 // does not exist here
                 if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
@@ -1194,7 +1194,7 @@ impl LMDBDatabase {
 
         for kernel in kernels {
             total_kernel_sum = &total_kernel_sum + &kernel.excess;
-            let pos = kernel_mmr.push(kernel.hash())?;
+            let pos = kernel_mmr.push(kernel.try_hash().map_err(ChainStorageError::VersionError)?)?;
             trace!(
                 target: LOG_TARGET,
                 "Inserting kernel `{}`",
@@ -1212,7 +1212,7 @@ impl LMDBDatabase {
             .into_iter()
             .enumerate()
             .map(|(i, output)| {
-                output_mmr.push(output.hash())?;
+                output_mmr.push(output.try_hash().map_err(ChainStorageError::VersionError)?)?;
                 witness_mmr.push(output.witness_hash())?;
                 Ok((output, leaf_count + i + 1))
             })

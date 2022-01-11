@@ -74,6 +74,8 @@ pub enum HorizonSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Validation error: {0}")]
     ValidationError(#[from] ValidationError),
+    #[error("Version error : {0}")]
+    VersionError(String),
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

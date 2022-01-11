@@ -172,6 +172,8 @@ pub enum OutputManagerStorageError {
     HexError(#[from] HexError),
     #[error("Key Manager Error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
+    #[error("Version Error: `{0}`")]
+    VersionError(String),
 }
 
 impl From<OutputManagerError> for ExitCodes {

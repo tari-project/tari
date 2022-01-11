@@ -637,7 +637,7 @@ pub fn create_utxo(
     )
     .unwrap();
 
-    let utxo = TransactionOutput::new(
+    let utxo = TransactionOutput::new_current_version(
         features,
         commitment,
         proof.into(),

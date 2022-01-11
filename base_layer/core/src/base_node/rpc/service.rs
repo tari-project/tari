@@ -370,18 +370,21 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             responses: res
                 .into_iter()
                 .map(
-                    |(output, mmr_position, mined_height, mined_in_block)| UtxoQueryResponse {
-                        mmr_position: mmr_position.into(),
-                        mined_height,
-                        mined_in_block,
-                        output_hash: output.hash(),
-                        output: match output {
-                            PrunedOutput::Pruned { .. } => None,
-                            PrunedOutput::NotPruned { output } => Some(output.into()),
-                        },
+                    |(output, mmr_position, mined_height, mined_in_block)| -> Result<UtxoQueryResponse, String> {
+                        Ok(UtxoQueryResponse {
+                            mmr_position: mmr_position.into(),
+                            mined_height,
+                            mined_in_block,
+                            output_hash: output.try_hash()?,
+                            output: match output {
+                                PrunedOutput::Pruned { .. } => None,
+                                PrunedOutput::NotPruned { output } => Some(output.into()),
+                            },
+                        })
                     },
                 )
-                .collect(),
+                .collect::<Result<Vec<UtxoQueryResponse>, String>>()
+                .map_err(|e| RpcStatus::not_implemented(e))?,
         }))
     }
 

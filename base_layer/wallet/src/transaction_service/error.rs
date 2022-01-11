@@ -161,6 +161,8 @@ pub enum TransactionServiceError {
     },
     #[error("Base Node is not synced")]
     BaseNodeNotSynced,
+    #[error("Version error: `{0}`")]
+    VersionError(String),
 }
 
 #[derive(Debug, Error)]

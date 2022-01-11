@@ -26,7 +26,6 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
 use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
-use tari_utilities::Hashable;
 use tokio::task;
 
 use super::LOG_TARGET;
@@ -95,9 +94,15 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
 
         // Start all validation tasks concurrently
         let kernels_task = self.start_kernel_validation(&valid_header, kernels);
-
-        let inputs_task =
-            self.start_input_validation(&valid_header, outputs.iter().map(|o| o.hash()).collect(), inputs);
+        let inputs_task = self.start_input_validation(
+            &valid_header,
+            outputs
+                .iter()
+                .map(|o| -> Result<HashOutput, String> { o.try_hash() })
+                .collect::<Result<Vec<HashOutput>, String>>()
+                .map_err(ValidationError::VersionError)?,
+            inputs,
+        );
 
         // Output order cannot be checked concurrently so it is checked here first
         if !helpers::is_all_unique_and_sorted(&outputs) {

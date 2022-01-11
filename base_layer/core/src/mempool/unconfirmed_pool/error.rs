@@ -28,4 +28,6 @@ pub enum UnconfirmedPoolError {
     StorageOutofSync,
     #[error("Transaction has no kernels")]
     TransactionNoKernels,
+    #[error("Version error: `{0}`")]
+    VersionError(String),
 }

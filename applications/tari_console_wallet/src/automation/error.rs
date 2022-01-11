@@ -68,6 +68,8 @@ pub enum CommandError {
     HexError(#[from] HexError),
     #[error("Error `{0}`")]
     ShaError(String),
+    #[error("Version error `{0}`")]
+    VersionError(String),
 }
 
 impl From<CommandError> for ExitCodes {

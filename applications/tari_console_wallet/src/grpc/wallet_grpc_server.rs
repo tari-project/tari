@@ -77,7 +77,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{OutputFeatures, UnblindedOutput},
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
     output_manager_service::handle::OutputManagerHandle,
@@ -222,12 +222,12 @@ impl wallet_server::Wallet for WalletGrpcServer {
                     "Transaction broadcast: {}, preimage_hex: {}, hash {}",
                     tx_id,
                     pre_image.to_hex(),
-                    output.hash().to_hex()
+                    output.try_hash().map_err(|e| Status::unimplemented(e))?.to_hex()
                 );
                 SendShaAtomicSwapResponse {
                     transaction_id: tx_id.as_u64(),
                     pre_image: pre_image.to_hex(),
-                    output_hash: output.hash().to_hex(),
+                    output_hash: output.try_hash().map_err(|e| Status::unimplemented(e))?.to_hex(),
                     is_success: true,
                     failure_message: Default::default(),
                 }

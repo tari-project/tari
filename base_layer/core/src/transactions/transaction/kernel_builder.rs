@@ -80,13 +80,13 @@ impl KernelBuilder {
         if self.excess.is_none() || self.excess_sig.is_none() {
             return Err(TransactionError::NoSignatureError);
         }
-        Ok(TransactionKernel {
-            features: self.features,
-            fee: self.fee,
-            lock_height: self.lock_height,
-            excess: self.excess.unwrap(),
-            excess_sig: self.excess_sig.unwrap(),
-        })
+        Ok(TransactionKernel::new(
+            self.features,
+            self.fee,
+            self.lock_height,
+            self.excess.unwrap(),
+            self.excess_sig.unwrap(),
+        ))
     }
 }
 

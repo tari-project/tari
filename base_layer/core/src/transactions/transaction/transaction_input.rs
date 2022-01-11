@@ -25,11 +25,17 @@
 
 use std::{
     cmp::Ordering,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
 };
 
 use blake2::Digest;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Deserializer, MapAccess, SeqAccess, Visitor},
+    ser::SerializeStruct,
+    Deserialize,
+    Serialize,
+    Serializer,
+};
 use tari_common_types::types::{
     Challenge,
     ComSignature,
@@ -42,7 +48,7 @@ use tari_common_types::types::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, ScriptContext, StackItem, TariScript},
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
+    tari_utilities::{hex::Hex, ByteArray},
 };
 
 use crate::{
@@ -59,8 +65,9 @@ use crate::{
 /// A transaction input.
 ///
 /// Primarily a reference to an output being spent by the transaction.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct TransactionInput {
+    pub version: u8,
     /// Either the hash of TransactionOutput that this Input is spending or its data
     pub spent_output: SpentOutput,
     /// The script input data, if any
@@ -71,17 +78,26 @@ pub struct TransactionInput {
 
 /// An input for a transaction that spends an existing output
 impl TransactionInput {
+    pub fn new(
+        spent_output: SpentOutput,
+        input_data: ExecutionStack,
+        script_signature: ComSignature,
+    ) -> TransactionInput {
+        TransactionInput {
+            version: 0,
+            spent_output,
+            input_data,
+            script_signature,
+        }
+    }
+
     /// Create a new Transaction Input with just a reference hash of the spent output
     pub fn new_with_output_hash(
         output_hash: HashOutput,
         input_data: ExecutionStack,
         script_signature: ComSignature,
     ) -> TransactionInput {
-        TransactionInput {
-            spent_output: SpentOutput::OutputHash(output_hash),
-            input_data,
-            script_signature,
-        }
+        TransactionInput::new(SpentOutput::OutputHash(output_hash), input_data, script_signature)
     }
 
     /// Create a new Transaction Input with just a reference hash of the spent output
@@ -94,8 +110,8 @@ impl TransactionInput {
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
     ) -> TransactionInput {
-        TransactionInput {
-            spent_output: SpentOutput::OutputData {
+        TransactionInput::new(
+            SpentOutput::OutputData {
                 features,
                 commitment,
                 script,
@@ -104,7 +120,7 @@ impl TransactionInput {
             },
             input_data,
             script_signature,
-        }
+        )
     }
 
     /// Populate the spent output data fields
@@ -200,7 +216,10 @@ impl TransactionInput {
     /// This will check if the input and the output is the same transactional output by looking at the commitment and
     /// features and script. This will ignore all other output and input fields
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
-        self.output_hash() == output.hash()
+        match output.try_hash() {
+            Ok(hash) => self.output_hash() == hash,
+            Err(_e) => false,
+        }
     }
 
     /// This will run the script contained in the TransactionInput, returning either a script error or the resulting
@@ -335,14 +354,121 @@ impl TransactionInput {
 
     /// Return a clone of this Input into its compact form
     pub fn to_compact(&self) -> Self {
-        Self {
-            spent_output: match &self.spent_output {
+        Self::new(
+            match &self.spent_output {
                 SpentOutput::OutputHash(h) => SpentOutput::OutputHash(h.clone()),
                 SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()),
             },
-            input_data: self.input_data.clone(),
-            script_signature: self.script_signature.clone(),
+            self.input_data.clone(),
+            self.script_signature.clone(),
+        )
+    }
+}
+
+impl Serialize for TransactionInput {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        let mut state = serializer.serialize_struct("TransactionInput", 4)?;
+        state.serialize_field("version", &self.version)?;
+        state.serialize_field("spent_output", &self.spent_output)?;
+        state.serialize_field("input_data", &self.input_data)?;
+        state.serialize_field("script_signature", &self.script_signature)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for TransactionInput {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Version,
+            SpentOutput,
+            InputData,
+            ScriptSignature,
         }
+
+        struct TransactionInputVisitor;
+
+        impl<'de> Visitor<'de> for TransactionInputVisitor {
+            type Value = TransactionInput;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct TransactionInput")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<TransactionInput, V::Error>
+            where V: SeqAccess<'de> {
+                let version: u8 = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                match version {
+                    0 => {
+                        let spent_output = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                        let input_data = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                        let script_signature =
+                            seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                        Ok(TransactionInput::new(spent_output, input_data, script_signature))
+                    },
+                    _ => Err(de::Error::invalid_value(
+                        de::Unexpected::Str("new version needs implementing!"),
+                        &self,
+                    )),
+                }
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<TransactionInput, V::Error>
+            where V: MapAccess<'de> {
+                let mut version = None;
+                let mut spent_output = None;
+                let mut input_data = None;
+                let mut script_signature = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Version => {
+                            if version.is_some() {
+                                return Err(de::Error::duplicate_field("version"));
+                            }
+                            version = Some(map.next_value()?);
+                        },
+                        Field::SpentOutput => {
+                            if spent_output.is_some() {
+                                return Err(de::Error::duplicate_field("spent_output"));
+                            }
+                            spent_output = Some(map.next_value()?);
+                        },
+                        Field::InputData => {
+                            if input_data.is_some() {
+                                return Err(de::Error::duplicate_field("input_data"));
+                            }
+                            input_data = Some(map.next_value()?);
+                        },
+                        Field::ScriptSignature => {
+                            if script_signature.is_some() {
+                                return Err(de::Error::duplicate_field("script_signature"));
+                            }
+                            script_signature = Some(map.next_value()?);
+                        },
+                    }
+                }
+                let version: u8 = version.ok_or_else(|| de::Error::missing_field("version"))?;
+                match version {
+                    0 => {
+                        let spent_output = spent_output.ok_or_else(|| de::Error::missing_field("spent_output"))?;
+                        let input_data = input_data.ok_or_else(|| de::Error::missing_field("input_data"))?;
+                        let script_signature =
+                            script_signature.ok_or_else(|| de::Error::missing_field("script_signature"))?;
+                        Ok(TransactionInput::new(spent_output, input_data, script_signature))
+                    },
+                    _ => Err(de::Error::invalid_value(
+                        de::Unexpected::Str("new version needs implementing!"),
+                        &self,
+                    )),
+                }
+            }
+        }
+
+        const FIELDS: &'static [&'static str] = &["version", "spent_output", "input_data", "script_signature"];
+        deserializer.deserialize_struct("TransactionInput", FIELDS, TransactionInputVisitor)
     }
 }
 

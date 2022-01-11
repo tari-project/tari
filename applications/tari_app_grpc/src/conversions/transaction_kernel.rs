@@ -27,7 +27,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, TransactionKernel},
 };
-use tari_crypto::tari_utilities::{ByteArray, Hashable};
+use tari_crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -35,31 +35,40 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
     type Error = String;
 
     fn try_from(kernel: grpc::TransactionKernel) -> Result<Self, Self::Error> {
-        let excess =
-            Commitment::from_bytes(&kernel.excess).map_err(|err| format!("Excess could not be converted:{}", err))?;
+        let version = kernel.version as u8;
+        match version {
+            0 => {
+                let excess = Commitment::from_bytes(&kernel.excess)
+                    .map_err(|err| format!("Excess could not be converted:{}", err))?;
 
-        let excess_sig = kernel
-            .excess_sig
-            .ok_or_else(|| "excess_sig not provided".to_string())?
-            .try_into()
-            .map_err(|_| "excess_sig could not be converted".to_string())?;
+                let excess_sig = kernel
+                    .excess_sig
+                    .ok_or_else(|| "excess_sig not provided".to_string())?
+                    .try_into()
+                    .map_err(|_| "excess_sig could not be converted".to_string())?;
 
-        Ok(Self {
-            features: KernelFeatures::from_bits(kernel.features as u8)
-                .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
-            excess,
-            excess_sig,
-            fee: MicroTari::from(kernel.fee),
-            lock_height: kernel.lock_height,
-        })
+                Ok(Self::new(
+                    KernelFeatures::from_bits(kernel.features as u8)
+                        .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
+                    MicroTari::from(kernel.fee),
+                    kernel.lock_height,
+                    excess,
+                    excess_sig,
+                ))
+            },
+            _ => Err("newer version than expected".to_string()),
+        }
     }
 }
 
-impl From<TransactionKernel> for grpc::TransactionKernel {
-    fn from(kernel: TransactionKernel) -> Self {
-        let hash = kernel.hash();
+impl TryFrom<TransactionKernel> for grpc::TransactionKernel {
+    type Error = String;
 
-        grpc::TransactionKernel {
+    fn try_from(kernel: TransactionKernel) -> Result<Self, Self::Error> {
+        let hash = kernel.try_hash()?;
+
+        Ok(grpc::TransactionKernel {
+            version: kernel.version as u32,
             features: kernel.features.bits() as u32,
             fee: kernel.fee.0,
             lock_height: kernel.lock_height,
@@ -69,6 +78,6 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
                 signature: Vec::from(kernel.excess_sig.get_signature().as_bytes()),
             }),
             hash,
-        }
+        })
     }
 }

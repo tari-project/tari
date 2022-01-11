@@ -1120,7 +1120,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             for output in outputs {
                 match tx
                     .send(Ok(tari_rpc::FetchMatchingUtxosResponse {
-                        output: Some(output.into()),
+                        output: Some(output.try_into().unwrap()),
                     }))
                     .await
                 {

@@ -29,7 +29,7 @@ use tari_core::{
     transactions::transaction::TransactionOutput,
 };
 use tari_crypto::script::TariScript;
-use tari_utilities::{ByteArray, Hashable};
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -37,18 +37,21 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     type Error = String;
 
     fn try_from(output: grpc::TransactionOutput) -> Result<Self, Self::Error> {
-        let features = output
-            .features
-            .map(TryInto::try_into)
-            .ok_or_else(|| "Transaction output features not provided".to_string())??;
+        let version = output.version as u8;
+        match version {
+            0 => {
+                let features = output
+                    .features
+                    .map(TryInto::try_into)
+                    .ok_or_else(|| "Transaction output features not provided".to_string())??;
 
-        let commitment =
-            Commitment::from_bytes(&output.commitment).map_err(|err| format!("Invalid output commitment: {}", err))?;
-        let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
-            .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
+                let commitment = Commitment::from_bytes(&output.commitment)
+                    .map_err(|err| format!("Invalid output commitment: {}", err))?;
+                let sender_offset_public_key = PublicKey::from_bytes(output.sender_offset_public_key.as_bytes())
+                    .map_err(|err| format!("Invalid sender_offset_public_key {:?}", err))?;
 
-        let script = TariScript::from_bytes(output.script.as_slice())
-            .map_err(|err| format!("Script deserialization: {:?}", err))?;
+                let script = TariScript::from_bytes(output.script.as_slice())
+                    .map_err(|err| format!("Script deserialization: {:?}", err))?;
 
         let metadata_signature = output
             .metadata_signature
@@ -68,10 +71,13 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
     }
 }
 
-impl From<TransactionOutput> for grpc::TransactionOutput {
-    fn from(output: TransactionOutput) -> Self {
-        let hash = output.hash();
-        grpc::TransactionOutput {
+impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
+    type Error = String;
+
+    fn try_from(output: TransactionOutput) -> Result<Self, Self::Error> {
+        let hash = output.try_hash()?;
+        Ok(grpc::TransactionOutput {
+            version: output.version as u32,
             hash,
             features: Some(output.features.into()),
             commitment: Vec::from(output.commitment.as_bytes()),

@@ -25,13 +25,19 @@
 
 use std::{
     cmp::Ordering,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
 };
 
 use blake2::Digest;
-use serde::{Deserialize, Serialize};
+use serde::{
+    de::{self, Deserializer, MapAccess, SeqAccess, Visitor},
+    ser::SerializeStruct,
+    Deserialize,
+    Serialize,
+    Serializer,
+};
 use tari_common_types::types::{Commitment, HashDigest, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray};
 
 use crate::transactions::{
     tari_amount::MicroTari,
@@ -44,8 +50,9 @@ use crate::transactions::{
 /// [Mimblewimble TLU post](https://tlu.tarilabs.com/protocols/mimblewimble-1/sources/PITCHME.link.html?highlight=mimblewimble#mimblewimble).
 /// The kernel also tracks other transaction metadata, such as the lock height for the transaction (i.e. the earliest
 /// this transaction can be mined) and the transaction fee, in cleartext.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransactionKernel {
+    pub version: u8,
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
     /// Fee originally included in the transaction this proof is for.
@@ -62,6 +69,23 @@ pub struct TransactionKernel {
 }
 
 impl TransactionKernel {
+    pub fn new(
+        features: KernelFeatures,
+        fee: MicroTari,
+        lock_height: u64,
+        excess: Commitment,
+        excess_sig: Signature,
+    ) -> TransactionKernel {
+        TransactionKernel {
+            version: 0,
+            features,
+            fee,
+            lock_height,
+            excess,
+            excess_sig,
+        }
+    }
+
     pub fn is_coinbase(&self) -> bool {
         self.features.contains(KernelFeatures::COINBASE_KERNEL)
     }
@@ -82,21 +106,150 @@ impl TransactionKernel {
             ))
         }
     }
-}
 
-impl Hashable for TransactionKernel {
     /// Produce a canonical hash for a transaction kernel. The hash is given by
     /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
-    fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(&[self.features.bits()])
-            .chain(u64::from(self.fee).to_le_bytes())
-            .chain(self.lock_height.to_le_bytes())
-            .chain(self.excess.as_bytes())
-            .chain(self.excess_sig.get_public_nonce().as_bytes())
-            .chain(self.excess_sig.get_signature().as_bytes())
-            .finalize()
-            .to_vec()
+    pub fn try_hash(&self) -> Result<Vec<u8>, String> {
+        match self.version {
+            0 => Ok(HashDigest::new()
+                .chain(self.version.to_le_bytes())
+                .chain(&[self.features.bits()])
+                .chain(u64::from(self.fee).to_le_bytes())
+                .chain(self.lock_height.to_le_bytes())
+                .chain(self.excess.as_bytes())
+                .chain(self.excess_sig.get_public_nonce().as_bytes())
+                .chain(self.excess_sig.get_signature().as_bytes())
+                .finalize()
+                .to_vec()),
+            _ => Err("new version needs implementing!".to_string()),
+        }
+    }
+}
+
+impl Serialize for TransactionKernel {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where S: Serializer {
+        let mut state = serializer.serialize_struct("TransactionKernel", 6)?;
+        state.serialize_field("version", &self.version)?;
+        state.serialize_field("features", &self.features)?;
+        state.serialize_field("fee", &self.fee)?;
+        state.serialize_field("lock_height", &self.lock_height)?;
+        state.serialize_field("excess", &self.excess)?;
+        state.serialize_field("excess_sig", &self.excess_sig)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for TransactionKernel {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where D: Deserializer<'de> {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Version,
+            Features,
+            Fee,
+            LockHeight,
+            Excess,
+            ExcessSig,
+        }
+
+        struct TransactionKernelVisitor;
+
+        impl<'de> Visitor<'de> for TransactionKernelVisitor {
+            type Value = TransactionKernel;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("struct TransactionKernel")
+            }
+
+            fn visit_seq<V>(self, mut seq: V) -> Result<TransactionKernel, V::Error>
+            where V: SeqAccess<'de> {
+                let version: u8 = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(0, &self))?;
+                match version {
+                    0 => {
+                        let features = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(1, &self))?;
+                        let fee = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(2, &self))?;
+                        let lock_height = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(3, &self))?;
+                        let excess = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(4, &self))?;
+                        let excess_sig = seq.next_element()?.ok_or_else(|| de::Error::invalid_length(5, &self))?;
+                        Ok(TransactionKernel::new(features, fee, lock_height, excess, excess_sig))
+                    },
+                    _ => Err(de::Error::invalid_value(
+                        de::Unexpected::Str("new version needs implementing!"),
+                        &self,
+                    )),
+                }
+            }
+
+            fn visit_map<V>(self, mut map: V) -> Result<TransactionKernel, V::Error>
+            where V: MapAccess<'de> {
+                let mut version = None;
+                let mut features = None;
+                let mut fee = None;
+                let mut lock_height = None;
+                let mut excess = None;
+                let mut excess_sig = None;
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Version => {
+                            if version.is_some() {
+                                return Err(de::Error::duplicate_field("version"));
+                            }
+                            version = Some(map.next_value()?);
+                        },
+                        Field::Features => {
+                            if features.is_some() {
+                                return Err(de::Error::duplicate_field("features"));
+                            }
+                            features = Some(map.next_value()?);
+                        },
+                        Field::Fee => {
+                            if fee.is_some() {
+                                return Err(de::Error::duplicate_field("fee"));
+                            }
+                            fee = Some(map.next_value()?);
+                        },
+                        Field::LockHeight => {
+                            if lock_height.is_some() {
+                                return Err(de::Error::duplicate_field("lock_height"));
+                            }
+                            lock_height = Some(map.next_value()?);
+                        },
+                        Field::Excess => {
+                            if excess.is_some() {
+                                return Err(de::Error::duplicate_field("excess"));
+                            }
+                            excess = Some(map.next_value()?);
+                        },
+                        Field::ExcessSig => {
+                            if excess_sig.is_some() {
+                                return Err(de::Error::duplicate_field("excess_sig"));
+                            }
+                            excess_sig = Some(map.next_value()?);
+                        },
+                    }
+                }
+                let version: u8 = version.ok_or_else(|| de::Error::missing_field("version"))?;
+                match version {
+                    0 => {
+                        let features = features.ok_or_else(|| de::Error::missing_field("features"))?;
+                        let fee = fee.ok_or_else(|| de::Error::missing_field("fee"))?;
+                        let lock_height = lock_height.ok_or_else(|| de::Error::missing_field("lock_height"))?;
+                        let excess = excess.ok_or_else(|| de::Error::missing_field("excess"))?;
+                        let excess_sig = excess_sig.ok_or_else(|| de::Error::missing_field("excess_sig"))?;
+                        Ok(TransactionKernel::new(features, fee, lock_height, excess, excess_sig))
+                    },
+                    _ => Err(de::Error::invalid_value(
+                        de::Unexpected::Str("new version needs implementing!"),
+                        &self,
+                    )),
+                }
+            }
+        }
+
+        const FIELDS: &'static [&'static str] = &["version", "features", "fee", "lock_height", "excess", "excess_sig"];
+        deserializer.deserialize_struct("TransactionKernel", FIELDS, TransactionKernelVisitor)
     }
 }
 
