@@ -186,11 +186,8 @@ pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent
 /// Events that can be published on the Output Manager Service Event Stream
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputManagerEvent {
-    TxoValidationTimedOut(u64),
     TxoValidationSuccess(u64),
     TxoValidationFailure(u64),
-    TxoValidationAborted(u64),
-    TxoValidationDelayed(u64),
     Error(String),
 }
 

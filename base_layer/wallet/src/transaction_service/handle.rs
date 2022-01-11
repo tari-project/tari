@@ -165,6 +165,8 @@ pub enum TransactionEvent {
         is_valid: bool,
     },
     TransactionValidationStateChanged(u64),
+    TransactionValidationCompleted(u64),
+    TransactionValidationFailed(u64),
     Error(String),
 }
 

@@ -69,14 +69,6 @@ use tari_wallet::{
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
-#[derive(Clone, Copy)]
-enum CallbackValidationResults {
-    Success,           // 0
-    Aborted,           // 1
-    Failure,           // 2
-    BaseNodeNotInSync, // 3
-}
-
 pub struct CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
@@ -89,9 +81,9 @@ where TBackend: TransactionBackend + 'static
     callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
-    callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: TransactionEventReceiver,
@@ -124,9 +116,9 @@ where TBackend: TransactionBackend + 'static
         callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-        callback_txo_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_txo_validation_complete: unsafe extern "C" fn(TxId, bool),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
-        callback_transaction_validation_complete: unsafe extern "C" fn(TxId, u8),
+        callback_transaction_validation_complete: unsafe extern "C" fn(TxId, bool),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self {
         info!(
@@ -258,9 +250,14 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionValidationStateChanged(request_key)  => {
-                                    self.transaction_validation_complete_event(request_key);
+                                TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
                                     self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::TransactionValidationCompleted(request_key)  => {
+                                    self.transaction_validation_complete_event(request_key, true);
+                                },
+                                TransactionEvent::TransactionValidationFailed(request_key)  => {
+                                    self.transaction_validation_complete_event(request_key, false);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
                                 TransactionEvent::TransactionImported(_tx_id) |
@@ -281,17 +278,11 @@ where TBackend: TransactionBackend + 'static
                             trace!(target: LOG_TARGET, "Output Manager Service Callback Handler event {:?}", msg);
                             match (*msg).clone() {
                                 OutputManagerEvent::TxoValidationSuccess(request_key) => {
-                                    self.output_validation_complete_event(request_key,  CallbackValidationResults::Success);
+                                    self.output_validation_complete_event(request_key,  true);
                                     self.trigger_balance_refresh().await;
                                 },
                                 OutputManagerEvent::TxoValidationFailure(request_key) => {
-                                    self.output_validation_complete_event(request_key,  CallbackValidationResults::Failure);
-                                },
-                                OutputManagerEvent::TxoValidationAborted(request_key) => {
-                                    self.output_validation_complete_event(request_key,  CallbackValidationResults::Aborted);
-                                },
-                                OutputManagerEvent::TxoValidationDelayed(request_key) => {
-                                    self.output_validation_complete_event(request_key,  CallbackValidationResults::BaseNodeNotInSync);
+                                    self.output_validation_complete_event(request_key,  false);
                                 },
                                 // Only the above variants are mapped to callbacks
                                 _ => (),
@@ -496,40 +487,26 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn transaction_validation_complete_event(&mut self, request_key: u64) {
+    fn transaction_validation_complete_event(&mut self, request_key: u64, success: bool) {
         debug!(
             target: LOG_TARGET,
             "Calling Transaction Validation Complete callback function for Request Key: {}", request_key,
         );
         unsafe {
-            (self.callback_transaction_validation_complete)(request_key, CallbackValidationResults::Success as u8);
+            (self.callback_transaction_validation_complete)(request_key, success);
         }
     }
 
-    fn output_validation_complete_event(&mut self, request_key: u64, result: CallbackValidationResults) {
+    fn output_validation_complete_event(&mut self, request_key: u64, success: bool) {
         debug!(
             target: LOG_TARGET,
-            "Calling Output Validation Complete callback function for Request Key: {} with result {:?}",
+            "Calling Output Validation Complete callback function for Request Key: {} with success = {:?}",
             request_key,
-            result as u8,
+            success,
         );
 
-        match result {
-            CallbackValidationResults::Success => unsafe {
-                (self.callback_txo_validation_complete)(request_key, CallbackValidationResults::Success as u8);
-            },
-            CallbackValidationResults::Aborted => unsafe {
-                (self.callback_txo_validation_complete)(request_key, CallbackValidationResults::Aborted as u8);
-            },
-            CallbackValidationResults::Failure => unsafe {
-                (self.callback_txo_validation_complete)(request_key, CallbackValidationResults::Failure as u8);
-            },
-            CallbackValidationResults::BaseNodeNotInSync => unsafe {
-                (self.callback_txo_validation_complete)(
-                    request_key,
-                    CallbackValidationResults::BaseNodeNotInSync as u8,
-                );
-            },
+        unsafe {
+            (self.callback_txo_validation_complete)(request_key, success);
         }
     }
 
