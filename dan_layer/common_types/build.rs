@@ -23,6 +23,7 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tari_common::build::ProtobufCompiler::new()
         .proto_paths(&["proto/tips"])
+        .include_paths(&["proto/tips"])
         .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();

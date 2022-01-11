@@ -6,6 +6,7 @@ package tari.dan.tips.tip721;
 service Tip721 {
   rpc Init(InitRequest) returns (Empty);
   rpc TransferFrom(TransferFromRequest) returns (TransferFromResponse);
+  rpc OwnerOf(OwnerOfRequest) returns (OwnerOfResponse);
 }
 
 message InitRequest{
@@ -19,9 +20,17 @@ message Empty {
 message TransferFromRequest {
   bytes from =1;
   bytes to=2;
-  uint64 token_id = 3;
+  bytes token_id = 3;
 }
 
 message TransferFromResponse {
 
+}
+
+message OwnerOfRequest {
+  bytes token_id = 1;
+}
+
+message OwnerOfResponse {
+  bytes owner =1;
 }
