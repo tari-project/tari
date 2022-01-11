@@ -234,7 +234,7 @@ The executables will either be inside your `~/tari/target/release` (on Linux) or
 directory, depending on the build choice above, and must be run from the command line. If the former build method was
 used, you can run it from that directory, or you more likely want to copy it somewhere more convenient. Make sure to
 start Tor service `~/tari/applications/tari_base_node/osx/start_tor` (on Mac),
-`~/tari/applications/tari_base_node/ubuntu/start_tor` (on Linux) or
+`~/tari/applications/tari_base_node/linux/start_tor` (on Linux) or
 `%USERPROFILE%\Code\tari\applications\tari_base_node\windows\start_tor.lnk` (on Windows).
 
 To run from any directory of your choice, where the executable is visible in the path (first time use):
