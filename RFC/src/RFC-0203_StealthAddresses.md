@@ -78,7 +78,7 @@ will do the job.
 
 ## Dual-key Stealth Addresses
 
-The Dual-key Stealth Address Protocol (DKSAP) uses two key-pairs for the recipient of a [one-sided transaction], 
+The Dual-key Stealth Address Protocol (DKSAP) uses two key-pairs for the recipient of a [one-sided payment], 
 \\( A = a \cdot G \\) and \\( B = b \cdot G \\). Where \\( a \\) is called the scan key and \\( b \\) is the spend key.
 A recipient will distribute the public keys out of band to receive [one-sided payments].
 
@@ -87,16 +87,15 @@ The protocol that a sender will use to make a payment to the recipient is as fol
 2. Sender calculates a ECDH shared secret \\(c = H( r \cdot a \cdot G ) = H( a \cdot R) = H( r \cdot A) \\), where
 \\( H( \cdot ) \\) is a cryptographic hash function.
 3. The sender will then use \\( K_s = c \cdot G + B \\) as the last public key in the [one-sided payment] script. 
-4. The sender will communicate R to the sender by including it in the script so the recipient can parse it but 
-dropping it during script execution. This changes the script for a [one-sided payment] from 
-`PushPubkey(K_s)` to `PushPubkey(R) Drop PushPubkey(K_s)`.
+4. The sender includes  \\( R \\) for the receiver but dropping it as it is not required during script execution. 
+This changes the script for a [one-sided payment] from `PushPubkey(K_s)` to `PushPubkey(R) Drop PushPubkey(K_s)`.
 
 The recipient will need to scan the blockchain for outputs that contain scripts of the [one-sided payment] form, and when
 one is found they will need to do the following:
 1. Extract the nonce \\( R \\) from the script.
 2. Use the public nonce to calculate the shared secret \\(c = H( a \cdot R) \\)
 3. Calculate \\( K_s \\) and check if it exists in the script.
-4. If it exists, the recipient can produce the script signature required using the private key calcualted by \\( c + b \\). 
+4. If it exists, the recipient can produce the script signature required using the private key calculated by \\( c + b \\). 
 This private key can only be computed by the recipient using \\( b \\).
 
 One of the benefits of the DKSAP is that the key used for scanning the blockchain, \\( a \\), does not enable one to
