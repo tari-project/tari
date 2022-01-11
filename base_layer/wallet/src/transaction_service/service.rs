@@ -726,13 +726,10 @@ where
     }
 
     async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
-        match (*event).clone() {
-            OutputManagerEvent::TxoValidationSuccess(_) => {
-                let db = self.db.clone();
-                let output_manager_handle = self.output_manager_service.clone();
-                tokio::spawn(check_imported_transactions(output_manager_handle, db));
-            },
-            _ => {},
+        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
+            let db = self.db.clone();
+            let output_manager_handle = self.output_manager_service.clone();
+            tokio::spawn(check_imported_transactions(output_manager_handle, db));
         }
     }
 
