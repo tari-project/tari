@@ -38,8 +38,11 @@
 /// assert_eq!(age, 123);
 /// assert_eq!(name, "Hubert etc.");
 ///
-/// let e = AnyEnum::Struct{age: 123, name: "Hubert etc."};
-/// unpack_enum!(AnyEnum::Struct{ age, name } = e);
+/// let e = AnyEnum::Struct {
+///     age: 123,
+///     name: "Hubert etc.",
+/// };
+/// unpack_enum!(AnyEnum::Struct { age, name } = e);
 /// assert_eq!(age, 123);
 /// assert_eq!(name, "Hubert etc.");
 ///

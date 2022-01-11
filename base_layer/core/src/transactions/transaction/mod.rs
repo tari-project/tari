@@ -84,8 +84,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 /// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 pub fn hash_output(features: &OutputFeatures, commitment: &Commitment, script: &TariScript) -> Vec<u8> {
     HashDigest::new()
-        // TODO: use consensus encoding #testnet_reset
-        .chain(features.to_v1_bytes())
+        .chain(features.to_consensus_bytes())
         .chain(commitment.as_bytes())
         // .chain(range proof) // See docs as to why we exclude this
         .chain(script.as_bytes())
@@ -143,8 +142,7 @@ mod test {
         let input = i
             .as_transaction_input(&factory)
             .expect("Should be able to create transaction input");
-        assert_eq!(input.features, OutputFeatures::default());
-        assert!(input.opened_by(&i, &factory));
+        assert!(input.opened_by(&i, &factory).unwrap());
     }
 
     #[test]
@@ -283,8 +281,8 @@ mod test {
         let input_data = ExecutionStack::default();
         let script_signature = ComSignature::default();
         let offset_pub_key = PublicKey::default();
-        let mut input = TransactionInput::new(
-            OutputFeatures::default(),
+        let mut input = TransactionInput::new_with_output_data(
+            OutputFeatures::with_maturity(5),
             c,
             script,
             input_data,
@@ -296,7 +294,7 @@ mod test {
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add time locks
-        input.features.maturity = 5;
+        input.set_maturity(5).unwrap();
         kernel.lock_height = 2;
         tx.body.add_input(input.clone());
         tx.body.add_kernel(kernel.clone());
@@ -307,7 +305,7 @@ mod test {
         assert_eq!(tx.max_kernel_timelock(), 2);
         assert_eq!(tx.min_spendable_height(), 5);
 
-        input.features.maturity = 4;
+        input.set_maturity(4).unwrap();
         kernel.lock_height = 3;
         tx.body.add_input(input.clone());
         tx.body.add_kernel(kernel.clone());
@@ -316,7 +314,7 @@ mod test {
         assert_eq!(tx.max_kernel_timelock(), 3);
         assert_eq!(tx.min_spendable_height(), 5);
 
-        input.features.maturity = 2;
+        input.set_maturity(2).unwrap();
         kernel.lock_height = 10;
         tx.body.add_input(input);
         tx.body.add_kernel(kernel);

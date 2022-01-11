@@ -134,6 +134,14 @@ impl Block {
         let (i, o, k) = self.body.dissolve();
         (self.header, i, o, k)
     }
+
+    /// Return a cloned version of this block with the TransactionInputs in their compact form
+    pub fn to_compact(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            body: self.body.to_compact(),
+        }
+    }
 }
 
 impl Display for Block {
@@ -241,7 +249,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.sort(block.header.version);
+        block.body.sort();
         block
     }
 }

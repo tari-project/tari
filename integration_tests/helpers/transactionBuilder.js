@@ -44,14 +44,10 @@ class TransactionBuilder {
     const context = blake2bInit(OUTPUT_LENGTH, KEY);
     const buff_nonce = Buffer.from(publicNonce, "hex");
     const buff_key = Buffer.from(scriptOffsetPublicKey, "hex");
-    let flags = Buffer.alloc(1);
-    flags[0] = features.flags;
     let features_buffer = Buffer.concat([
-      flags,
-      toLittleEndian(parseInt(features.maturity), 64),
-      toLittleEndian(features.metadata.length, 64),
-      new Uint8Array(features.metadata),
-      new Uint8Array([0, 0, 0, 0, 0]),
+      Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+      Buffer.from([parseInt(features.maturity)]),
+      Buffer.from([features.flags]),
     ]);
     blake2bUpdate(context, buff_nonce);
     blake2bUpdate(context, script);
@@ -87,11 +83,10 @@ class TransactionBuilder {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
-    let flags = Buffer.alloc(1);
-    flags[0] = features.flags;
     let features_buffer = Buffer.concat([
-      flags,
-      toLittleEndian(parseInt(features.maturity), 64),
+      Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+      Buffer.from([parseInt(features.maturity)]),
+      Buffer.from([features.flags]),
     ]);
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, commitment);

@@ -293,24 +293,25 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithUtxos(hashes) => {
-                let mut blocks = Vec::with_capacity(hashes.len());
-                for hash in hashes {
-                    let hash_hex = hash.to_hex();
+            NodeCommsRequest::FetchBlocksWithUtxos(commitments) => {
+                let mut blocks = Vec::with_capacity(commitments.len());
+                for commitment in commitments {
+                    let commitment_hex = commitment.to_hex();
                     debug!(
                         target: LOG_TARGET,
-                        "A peer has requested a block with hash {}", hash_hex,
+                        "A peer has requested a block with commitment {}", commitment_hex,
                     );
-                    match self.blockchain_db.fetch_block_with_utxo(hash).await {
+                    match self.blockchain_db.fetch_block_with_utxo(commitment).await {
                         Ok(Some(block)) => blocks.push(block),
                         Ok(None) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because not stored", hash_hex,
+                            "Could not provide requested block with commitment {} to peer because not stored",
+                            commitment_hex,
                         ),
                         Err(e) => warn!(
                             target: LOG_TARGET,
-                            "Could not provide requested block {} to peer because: {}",
-                            hash_hex,
+                            "Could not provide requested block with commitment {} to peer because: {}",
+                            commitment_hex,
                             e.to_string()
                         ),
                     }
@@ -467,6 +468,15 @@ where T: BlockchainBackend + 'static
         source_peer: NodeId,
     ) -> Result<(), CommsInterfaceError> {
         let NewBlock { block_hash } = new_block;
+
+        if self.blockchain_db.inner().is_add_block_disabled() {
+            info!(
+                target: LOG_TARGET,
+                "Ignoring block message ({}) because add_block is locked",
+                block_hash.to_hex()
+            );
+            return Ok(());
+        }
 
         // Only a single block request can complete at a time.
         // As multiple NewBlock requests arrive from propagation, this semaphore prevents multiple requests to nodes for

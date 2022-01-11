@@ -42,7 +42,7 @@ use crate::{
         tari_amount::MicroTari,
         transaction,
         transaction::{
-            transaction_input::TransactionInput,
+            transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             OutputFeatures,
             TransactionError,
@@ -120,12 +120,28 @@ impl UnblindedOutput {
         .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
         Ok(TransactionInput {
-            features: self.features.clone(),
-            commitment,
-            script: self.script.clone(),
+            spent_output: SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+            },
             input_data: self.input_data.clone(),
             script_signature,
-            sender_offset_public_key: self.sender_offset_public_key.clone(),
+        })
+    }
+
+    /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
+    pub fn as_compact_transaction_input(
+        &self,
+        factory: &CommitmentFactory,
+    ) -> Result<TransactionInput, TransactionError> {
+        let input = self.as_transaction_input(factory)?;
+
+        Ok(TransactionInput {
+            spent_output: SpentOutput::OutputHash(input.output_hash()),
+            input_data: input.input_data,
+            script_signature: input.script_signature,
         })
     }
 

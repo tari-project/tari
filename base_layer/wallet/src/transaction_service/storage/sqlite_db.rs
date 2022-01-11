@@ -66,7 +66,7 @@ use crate::{
     },
 };
 
-const LOG_TARGET: &str = "wallet::transaction_service::database::sqlite_db";
+const LOG_TARGET: &str = "wallet::transaction_service::database::wallet";
 
 /// A Sqlite backend for the Transaction Service. The Backend is accessed via a connection pool to the Sqlite file.
 #[derive(Clone)]
@@ -77,75 +77,10 @@ pub struct TransactionServiceSqliteDatabase {
 
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        let mut new_self = Self {
+        Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
-        };
-
-        // TODO: Remove this call for the next #testnet_reset
-        match new_self.add_transaction_signature_for_legacy_transactions() {
-            Ok(count) => {
-                if count > 0 {
-                    info!(
-                        target: LOG_TARGET,
-                        "Updated transaction signatures for {} legacy transactions", count
-                    );
-                }
-            },
-            Err(e) => warn!(
-                target: LOG_TARGET,
-                "Legacy transaction signatures could not be updated: {:?}", e
-            ),
-        };
-
-        new_self
-    }
-
-    // TODO: Remove this function for the next #testnet_reset
-    fn add_transaction_signature_for_legacy_transactions(&mut self) -> Result<u32, TransactionStorageError> {
-        let conn = self.database_connection.get_pooled_connection()?;
-        let txs_sql = completed_transactions::table
-            .filter(
-                completed_transactions::transaction_signature_nonce
-                    .eq(completed_transactions::transaction_signature_key),
-            )
-            .load::<CompletedTransactionSql>(&*conn)?;
-
-        let mut count = 0u32;
-        if !txs_sql.is_empty() {
-            info!(
-                target: LOG_TARGET,
-                "Updating transaction signatures for {} legacy transactions...",
-                txs_sql.len()
-            );
-            for mut tx_sql in txs_sql {
-                self.decrypt_if_necessary(&mut tx_sql)?;
-                let tx = CompletedTransaction::try_from(tx_sql.clone())?;
-                let (transaction_signature_nonce, transaction_signature_key) =
-                    if let Some(transaction_signature) = tx.transaction.first_kernel_excess_sig() {
-                        (
-                            Some(transaction_signature.get_public_nonce().as_bytes().to_vec()),
-                            Some(transaction_signature.get_signature().as_bytes().to_vec()),
-                        )
-                    } else {
-                        (
-                            Some(Signature::default().get_public_nonce().as_bytes().to_vec()),
-                            Some(Signature::default().get_signature().as_bytes().to_vec()),
-                        )
-                    };
-                tx_sql.update(
-                    UpdateCompletedTransactionSql {
-                        transaction_signature_nonce,
-                        transaction_signature_key,
-                        ..Default::default()
-                    },
-                    &conn,
-                )?;
-                count += 1;
-            }
         }
-
-        Ok(count)
     }
 
     fn insert(&self, kvp: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {

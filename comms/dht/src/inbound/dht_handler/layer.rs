@@ -26,9 +26,10 @@ use tari_comms::peer_manager::{NodeIdentity, PeerManager};
 use tower::layer::Layer;
 
 use super::middleware::DhtHandlerMiddleware;
-use crate::{discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester};
+use crate::{discovery::DhtDiscoveryRequester, outbound::OutboundMessageRequester, DhtConfig};
 
 pub struct DhtHandlerLayer {
+    config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     outbound_service: OutboundMessageRequester,
@@ -37,15 +38,16 @@ pub struct DhtHandlerLayer {
 
 impl DhtHandlerLayer {
     pub fn new(
+        config: Arc<DhtConfig>,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         discovery_requester: DhtDiscoveryRequester,
         outbound_service: OutboundMessageRequester,
     ) -> Self {
         Self {
+            config,
             peer_manager,
             node_identity,
-
             outbound_service,
             discovery_requester,
         }
@@ -62,6 +64,7 @@ impl<S> Layer<S> for DhtHandlerLayer {
             Arc::clone(&self.peer_manager),
             self.outbound_service.clone(),
             self.discovery_requester.clone(),
+            self.config.clone(),
         )
     }
 }

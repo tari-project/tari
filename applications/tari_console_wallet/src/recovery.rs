@@ -29,7 +29,7 @@ use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
 use tari_wallet::{
-    storage::sqlite_db::WalletSqliteDatabase,
+    storage::sqlite_db::wallet::WalletSqliteDatabase,
     utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},
     WalletSqlite,
 };
@@ -126,24 +126,24 @@ pub async fn wallet_recovery(
                 println!("OK (latency = {:.2?})", latency);
             },
             Ok(UtxoScannerEvent::Progress {
-                current_index: current,
-                total_index: total,
+                current_height,
+                tip_height,
             }) => {
-                let percentage_progress = ((current as f32) * 100f32 / (total as f32)).round() as u32;
+                let percentage_progress = ((current_height as f32) * 100f32 / (tip_height as f32)).round() as u32;
                 debug!(
                     target: LOG_TARGET,
-                    "{}: Recovery process {}% complete ({} of {} utxos).",
+                    "{}: Recovery process {}% complete (Block {} of {}).",
                     Local::now(),
                     percentage_progress,
-                    current,
-                    total
+                    current_height,
+                    tip_height
                 );
                 println!(
-                    "{}: Recovery process {}% complete ({} of {} utxos).",
+                    "{}: Recovery process {}% complete (Block {} of {}).",
                     Local::now(),
                     percentage_progress,
-                    current,
-                    total
+                    current_height,
+                    tip_height
                 );
             },
             Ok(UtxoScannerEvent::ScanningRoundFailed {
@@ -172,15 +172,15 @@ pub async fn wallet_recovery(
                 warn!(target: LOG_TARGET, "{}", s);
             },
             Ok(UtxoScannerEvent::Completed {
-                number_scanned: num_scanned,
-                number_received: num_utxos,
-                value_received: total_amount,
-                time_taken: elapsed,
+                final_height,
+                num_recovered,
+                value_recovered,
+                time_taken,
             }) => {
-                let rate = (num_scanned as f32) * 1000f32 / (elapsed.as_millis() as f32);
+                let rate = (final_height as f32) * 1000f32 / (time_taken.as_millis() as f32);
                 let stats = format!(
-                    "Recovery complete! Scanned = {} in {:.2?} ({:.2?} utxos/s), Recovered {} worth {}",
-                    num_scanned, elapsed, rate, num_utxos, total_amount
+                    "Recovery complete! Scanned {} blocks in {:.2?} ({:.2?} blocks/s), Recovered {} outputs worth {}",
+                    final_height, time_taken, rate, num_recovered, value_recovered
                 );
                 info!(target: LOG_TARGET, "{}", stats);
                 println!("{}", stats);

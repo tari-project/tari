@@ -41,9 +41,9 @@ use crate::{
 /// // the peer with the corresponding secret key of `dest_public_key`.
 /// let dest_public_key = CommsPublicKey::default();
 /// let params = SendMessageParams::new()
-///   .random(5)
-///   .with_encryption(OutboundEncryption::encrypt_for(dest_public_key))
-///   .finish();
+///     .random(5)
+///     .with_encryption(OutboundEncryption::encrypt_for(dest_public_key))
+///     .finish();
 /// ```
 #[derive(Debug, Clone)]
 pub struct SendMessageParams {

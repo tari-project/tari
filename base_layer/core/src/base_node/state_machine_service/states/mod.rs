@@ -67,7 +67,7 @@ pub(crate) mod helpers;
 pub use helpers::SyncPeerConfig;
 
 mod header_sync;
-pub use header_sync::HeaderSync;
+pub use header_sync::HeaderSyncState;
 
 mod sync_decide;
 pub use sync_decide::DecideNextSync;

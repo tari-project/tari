@@ -807,7 +807,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         return Err(RpcError::ResponseIdDidNotMatchRequest { actual, expected });
                     }
                     continue;
-                }
+                },
                 Err(err) => return Err(err),
             }
         };

@@ -151,7 +151,7 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false;
+# tor_proxy_bypass_for_outbound_tcp = false
 
 # Wallet configuration options for igor
 [wallet.igor]
@@ -201,7 +201,7 @@ tor_control_auth = "none" # or "password=xxxxxx"
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false;
+# tor_proxy_bypass_for_outbound_tcp = false
 
 
 

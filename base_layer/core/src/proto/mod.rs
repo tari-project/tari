@@ -22,9 +22,10 @@
 
 //! Imports of code generated from protobuf files
 
-mod transaction;
+pub mod transaction;
 mod types_impls;
 
+#[allow(clippy::large_enum_variant)]
 pub mod base_node {
     include!(concat!(env!("OUT_DIR"), "/tari.base_node.rs"));
 }

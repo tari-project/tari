@@ -161,7 +161,7 @@ impl<TSocket> NoiseSocket<TSocket> {
 }
 
 fn poll_write_all<TSocket>(
-    mut context: &mut Context,
+    context: &mut Context,
     mut socket: Pin<&mut TSocket>,
     buf: &[u8],
     offset: &mut usize,
@@ -170,7 +170,7 @@ where
     TSocket: AsyncWrite,
 {
     loop {
-        let n = ready!(socket.as_mut().poll_write(&mut context, &buf[*offset..]))?;
+        let n = ready!(socket.as_mut().poll_write(context, &buf[*offset..]))?;
         trace!(
             target: LOG_TARGET,
             "poll_write_all: wrote {}/{} bytes",
@@ -216,7 +216,7 @@ where
 }
 
 fn poll_read_exact<TSocket>(
-    mut context: &mut Context,
+    context: &mut Context,
     mut socket: Pin<&mut TSocket>,
     buf: &mut [u8],
     offset: &mut usize,
@@ -227,7 +227,7 @@ where
     loop {
         let mut read_buf = ReadBuf::new(&mut buf[*offset..]);
         let prev_rem = read_buf.remaining();
-        ready!(socket.as_mut().poll_read(&mut context, &mut read_buf))?;
+        ready!(socket.as_mut().poll_read(context, &mut read_buf))?;
         let n = prev_rem
             .checked_sub(read_buf.remaining())
             .expect("buffer underflow: prev_rem < read_buf.remaining()");
@@ -252,7 +252,7 @@ where
 impl<TSocket> NoiseSocket<TSocket>
 where TSocket: AsyncRead + Unpin
 {
-    fn poll_read(&mut self, mut context: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    fn poll_read(&mut self, context: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         loop {
             trace!(target: LOG_TARGET, "NoiseSocket ReadState::{:?}", self.read_state);
             match self.read_state {
@@ -263,12 +263,7 @@ where TSocket: AsyncRead + Unpin
                     ref mut buf,
                     ref mut offset,
                 } => {
-                    match ready!(poll_read_u16frame_len(
-                        &mut context,
-                        Pin::new(&mut self.socket),
-                        buf,
-                        offset
-                    )) {
+                    match ready!(poll_read_u16frame_len(context, Pin::new(&mut self.socket), buf, offset)) {
                         Ok(Some(frame_len)) => {
                             // Empty Frame
                             if frame_len == 0 {
@@ -293,7 +288,7 @@ where TSocket: AsyncRead + Unpin
                     ref mut offset,
                 } => {
                     match ready!(poll_read_exact(
-                        &mut context,
+                        context,
                         Pin::new(&mut self.socket),
                         &mut self.buffers.read_encrypted[..(frame_len as usize)],
                         offset
@@ -369,11 +364,7 @@ where TSocket: AsyncRead + Unpin
 impl<TSocket> NoiseSocket<TSocket>
 where TSocket: AsyncWrite + Unpin
 {
-    fn poll_write_or_flush(
-        &mut self,
-        mut context: &mut Context,
-        buf: Option<&[u8]>,
-    ) -> Poll<io::Result<Option<usize>>> {
+    fn poll_write_or_flush(&mut self, context: &mut Context, buf: Option<&[u8]>) -> Poll<io::Result<Option<usize>>> {
         loop {
             trace!(
                 target: LOG_TARGET,
@@ -436,7 +427,7 @@ where TSocket: AsyncWrite + Unpin
                     frame_len,
                     ref buf,
                     ref mut offset,
-                } => match ready!(poll_write_all(&mut context, Pin::new(&mut self.socket), buf, offset)) {
+                } => match ready!(poll_write_all(context, Pin::new(&mut self.socket), buf, offset)) {
                     Ok(()) => {
                         self.write_state = WriteState::WriteEncryptedFrame { frame_len, offset: 0 };
                     },
@@ -452,7 +443,7 @@ where TSocket: AsyncWrite + Unpin
                     ref mut offset,
                 } => {
                     match ready!(poll_write_all(
-                        &mut context,
+                        context,
                         Pin::new(&mut self.socket),
                         &self.buffers.write_encrypted[..(frame_len as usize)],
                         offset
@@ -469,7 +460,7 @@ where TSocket: AsyncWrite + Unpin
                     }
                 },
                 WriteState::Flush => {
-                    ready!(Pin::new(&mut self.socket).poll_flush(&mut context))?;
+                    ready!(Pin::new(&mut self.socket).poll_flush(context))?;
                     self.write_state = WriteState::Init;
                 },
                 WriteState::Eof => return Poll::Ready(Err(io::ErrorKind::WriteZero.into())),
@@ -595,8 +586,8 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
 #[derive(Debug)]
 enum NoiseState {
-    HandshakeState(HandshakeState),
-    TransportState(TransportState),
+    HandshakeState(Box<HandshakeState>),
+    TransportState(Box<TransportState>),
 }
 
 macro_rules! proxy_state_method {
@@ -629,7 +620,7 @@ impl NoiseState {
 
     pub fn into_transport_mode(self) -> Result<Self, snow::Error> {
         match self {
-            NoiseState::HandshakeState(state) => Ok(NoiseState::TransportState(state.into_transport_mode()?)),
+            NoiseState::HandshakeState(state) => Ok(NoiseState::TransportState(Box::new(state.into_transport_mode()?))),
             _ => Err(snow::Error::State(StateProblem::HandshakeAlreadyFinished)),
         }
     }
@@ -637,13 +628,13 @@ impl NoiseState {
 
 impl From<HandshakeState> for NoiseState {
     fn from(state: HandshakeState) -> Self {
-        NoiseState::HandshakeState(state)
+        NoiseState::HandshakeState(Box::new(state))
     }
 }
 
 impl From<TransportState> for NoiseState {
     fn from(state: TransportState) -> Self {
-        NoiseState::TransportState(state)
+        NoiseState::TransportState(Box::new(state))
     }
 }
 

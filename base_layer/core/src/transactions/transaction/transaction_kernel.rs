@@ -82,16 +82,6 @@ impl TransactionKernel {
             ))
         }
     }
-
-    /// This method was used to sort kernels. It has been replaced, and will be removed in future
-    pub fn deprecated_cmp(&self, other: &Self) -> Ordering {
-        self.features
-            .cmp(&other.features)
-            .then(self.fee.cmp(&other.fee))
-            .then(self.lock_height.cmp(&other.lock_height))
-            .then(self.excess.cmp(&other.excess))
-            .then(self.excess_sig.cmp(&other.excess_sig))
-    }
 }
 
 impl Hashable for TransactionKernel {

@@ -23,11 +23,12 @@
 use std::{cmp::Ordering, time::Instant};
 
 use log::*;
+use tari_common_types::chain_metadata::ChainMetadata;
 
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
-        state_machine_service::states::{BlockSyncInfo, Listening, StateEvent, StateInfo, StatusInfo},
+        state_machine_service::states::{BlockSyncInfo, StateEvent, StateInfo, StatusInfo},
         sync::{BlockHeaderSyncError, HeaderSynchronizer, SyncPeer},
         BaseNodeStateMachine,
     },
@@ -36,14 +37,15 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::header_sync";
 
-#[derive(Clone, Debug, Default)]
-pub struct HeaderSync {
+#[derive(Clone, Debug)]
+pub struct HeaderSyncState {
     sync_peers: Vec<SyncPeer>,
     is_synced: bool,
+    local_metadata: ChainMetadata,
 }
 
-impl HeaderSync {
-    pub fn new(mut sync_peers: Vec<SyncPeer>) -> Self {
+impl HeaderSyncState {
+    pub fn new(mut sync_peers: Vec<SyncPeer>, local_metadata: ChainMetadata) -> Self {
         // Sort by latency lowest to highest
         sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
             (None, None) => Ordering::Equal,
@@ -55,6 +57,7 @@ impl HeaderSync {
         Self {
             sync_peers,
             is_synced: false,
+            local_metadata,
         }
     }
 
@@ -77,6 +80,7 @@ impl HeaderSync {
             shared.connectivity.clone(),
             &self.sync_peers,
             shared.randomx_factory.clone(),
+            &self.local_metadata,
         );
 
         let status_event_sender = shared.status_event_sender.clone();
@@ -139,16 +143,5 @@ impl HeaderSync {
                 StateEvent::HeaderSyncFailed
             },
         }
-    }
-}
-
-impl From<Listening> for HeaderSync {
-    fn from(_: Listening) -> Self {
-        Default::default()
-    }
-}
-impl From<Vec<SyncPeer>> for HeaderSync {
-    fn from(peers: Vec<SyncPeer>) -> Self {
-        Self::new(peers)
     }
 }

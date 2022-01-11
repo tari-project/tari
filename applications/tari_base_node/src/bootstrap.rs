@@ -36,6 +36,7 @@ use tari_core::{
         state_machine_service::{initializer::BaseNodeStateMachineInitializer, states::HorizonSyncConfig},
         BaseNodeStateMachineConfig,
         BlockSyncConfig,
+        LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
@@ -211,6 +212,7 @@ where B: BlockchainBackend + 'static
         config: &GlobalConfig,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
+        let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let builder = RpcServer::builder();
         let builder = match config.rpc_max_simultaneous_sessions {
             Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
@@ -228,7 +230,10 @@ where B: BlockchainBackend + 'static
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
         let rpc_server = rpc_server
             .add_service(dht.rpc_service())
-            .add_service(base_node::create_base_node_sync_rpc_service(db.clone()))
+            .add_service(base_node::create_base_node_sync_rpc_service(
+                db.clone(),
+                base_node_service,
+            ))
             .add_service(mempool::create_mempool_rpc_service(
                 handles.expect_handle::<MempoolHandle>(),
             ))

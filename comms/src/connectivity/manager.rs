@@ -312,6 +312,9 @@ impl ConnectivityManagerActor {
         let mut node_ids = Vec::with_capacity(self.pool.count_connected());
         for mut state in self.pool.filter_drain(|_| true) {
             if let Some(conn) = state.connection_mut() {
+                if !conn.is_connected() {
+                    continue;
+                }
                 match conn.disconnect_silent().await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());
@@ -456,7 +459,7 @@ impl ConnectivityManagerActor {
                 self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
             }
 
-            if let Ok(peer) = self.peer_manager.find_by_node_id(node_id).await {
+            if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
                 if !peer.is_banned() &&
                     peer.last_seen_since()
                         // Haven't seen them in expire_peer_last_seen_duration

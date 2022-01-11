@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tari.dht;
 
+import "common.proto";
+
 // JoinMessage contains the information required for a network join request.
 //
 // Message containing contact information for a node wishing to join the network.
@@ -13,6 +15,7 @@ message JoinMessage {
     repeated string addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
+    tari.dht.common.IdentitySignature identity_signature = 5;
 }
 
 // The DiscoverMessage stores the information required for a network discover request.
@@ -25,6 +28,7 @@ message DiscoveryMessage {
     repeated string addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
+    tari.dht.common.IdentitySignature identity_signature = 5;
 }
 
 message DiscoveryResponseMessage {
@@ -32,4 +36,5 @@ message DiscoveryResponseMessage {
     repeated string addresses = 2;
     uint64 peer_features = 3;
     uint64 nonce = 4;
+    tari.dht.common.IdentitySignature identity_signature = 5;
 }
