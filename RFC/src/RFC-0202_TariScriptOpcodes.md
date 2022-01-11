@@ -325,6 +325,13 @@ push 0.
 Identical to [`CheckSig`](#checksigmsg), except that nothing is pushed to the stack if the signature is valid, and the
 operation fails with `VERIFY_FAILED` if the signature is invalid.
 
+##### ToRistrettoPoint,
+
+Pops the top element which must be a valid Ristretto scalar, calculates the corresponding Ristretto point, and pushes this to the stack.
+
+* Fails with `EMPTY_STACK` if the stack is empty.
+* Fails with `INVALID_INPUT` if the top stack element is not a scalar.
+
 ### Miscellaneous
 
 ##### Return
@@ -360,13 +367,14 @@ be operated on _first_!
 
 The types of input parameters that are accepted are:
 
-| Type      | Range / Value                                                          |
-|:----------|:-----------------------------------------------------------------------|
-| Integer   | 64-bit signed integer                                                  |
-| Hash      | 32-byte hash value                                                     |
-| PublicKey | 32-byte public key                                                     |
-| Signature | 32-byte nonce +  32-byte signature                                     |
-| Data      | single byte, n, indicating length of data, followed by n bytes of data |
+| Type            | Range / Value                                                          |
+|:----------------|:-----------------------------------------------------------------------|
+| Integer         | 64-bit signed integer                                                  |
+| Hash            | 32-byte hash value                                                     |
+| PublicKey       | 32-byte Ristretto public key                                           |
+| Signature       | 32-byte nonce + 32-byte signature                                     |
+| Data            | single byte, n, indicating length of data, followed by n bytes of data |
+| RistrettoScalar | 32-byte Ristretto secret key                                           |
 
 ## Example scripts
 
