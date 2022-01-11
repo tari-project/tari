@@ -59,7 +59,7 @@ table! {
     tip721_tokens (id) {
         id -> Binary,
         address_id -> Binary,
-        token_id -> BigInt,
+        token_id -> Binary,
         is_deleted -> Bool,
         token -> Text,
     }
