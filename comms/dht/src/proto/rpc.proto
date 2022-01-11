@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package tari.dht.rpc;
 
+import "common.proto";
+
 // `get_closer_peers` request
 message GetCloserPeersRequest {
   // The number of peers to return
@@ -28,6 +30,5 @@ message Peer {
   bytes public_key = 1;
   repeated string addresses = 2;
   uint64 peer_features = 3;
+  tari.dht.common.IdentitySignature identity_signature = 4;
 }
-
-

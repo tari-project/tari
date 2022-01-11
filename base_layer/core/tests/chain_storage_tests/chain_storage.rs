@@ -1204,7 +1204,6 @@ fn store_and_retrieve_blocks_from_contents() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 fn restore_metadata_and_pruning_horizon_update() {
     // Perform test
     let validators = Validators::new(
@@ -1217,11 +1216,11 @@ fn restore_metadata_and_pruning_horizon_update() {
     let rules = ConsensusManagerBuilder::new(network).with_block(block0.clone()).build();
     let mut config = BlockchainDatabaseConfig::default();
     let block_hash: BlockHash;
-    let pruning_horizon1: u64 = 1000;
-    let pruning_horizon2: u64 = 900;
+    let temp_path = create_temporary_data_path();
     {
-        let db = TempDatabase::new();
-        config.pruning_horizon = pruning_horizon1;
+        let mut db = TempDatabase::from_path(&temp_path);
+        db.disable_delete_on_drop();
+        config.pruning_horizon = 1000;
         let db = BlockchainDatabase::new(
             db,
             rules.clone(),
@@ -1238,12 +1237,14 @@ fn restore_metadata_and_pruning_horizon_update() {
         let metadata = db.get_chain_metadata().unwrap();
         assert_eq!(metadata.height_of_longest_chain(), 1);
         assert_eq!(metadata.best_block(), &block_hash);
-        assert_eq!(metadata.pruning_horizon(), pruning_horizon1);
+        assert_eq!(metadata.pruning_horizon(), 1000);
     }
     // Restore blockchain db with larger pruning horizon
+
     {
         config.pruning_horizon = 2000;
-        let db = TempDatabase::new();
+        let mut db = TempDatabase::from_path(&temp_path);
+        db.disable_delete_on_drop();
         let db = BlockchainDatabase::new(
             db,
             rules.clone(),
@@ -1262,7 +1263,7 @@ fn restore_metadata_and_pruning_horizon_update() {
     // Restore blockchain db with smaller pruning horizon update
     {
         config.pruning_horizon = 900;
-        let db = TempDatabase::new();
+        let db = TempDatabase::from_path(&temp_path);
         let db = BlockchainDatabase::new(
             db,
             rules.clone(),
@@ -1276,7 +1277,7 @@ fn restore_metadata_and_pruning_horizon_update() {
         let metadata = db.get_chain_metadata().unwrap();
         assert_eq!(metadata.height_of_longest_chain(), 1);
         assert_eq!(metadata.best_block(), &block_hash);
-        assert_eq!(metadata.pruning_horizon(), pruning_horizon2);
+        assert_eq!(metadata.pruning_horizon(), 900);
     }
 }
 static EMISSION: [u64; 2] = [10, 10];
@@ -1449,7 +1450,7 @@ fn orphan_cleanup_on_block_add() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
+#[ignore = "take a look at orphan cleanup, seems not to be implemented anymore in add block"]
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_dibbler_genesis_block();

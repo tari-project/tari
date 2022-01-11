@@ -106,6 +106,7 @@ mod impls {
         script::{ExecutionStack, TariScript},
     };
     use tari_utilities::ByteArray;
+    use tari_utilities::ByteArray;
 
     use super::*;
     use crate::common::byte_counter::ByteCounter;
@@ -234,17 +235,17 @@ mod impls {
 
     impl ConsensusEncodingSized for Signature {
         fn consensus_encode_exact_size(&self) -> usize {
-            96
+            self.get_signature().consensus_encode_exact_size() + self.get_public_nonce().consensus_encode_exact_size()
         }
     }
 
     impl ConsensusDecoding for Signature {
         fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-            let mut buf = [0u8; 32];
+            let mut buf = [0u8; PublicKey::key_length()];
             reader.read_exact(&mut buf)?;
             let pub_nonce =
                 PublicKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            let mut buf = [0u8; 64];
+            let mut buf = [0u8; PrivateKey::key_length()];
             reader.read_exact(&mut buf)?;
             let sig =
                 PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;

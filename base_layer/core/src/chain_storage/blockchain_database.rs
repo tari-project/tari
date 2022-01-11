@@ -27,7 +27,7 @@ use std::{
     convert::TryFrom,
     mem,
     ops::{Bound, Range, RangeBounds},
-    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{atomic, atomic::AtomicBool, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
 
@@ -78,7 +78,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction::TransactionKernel,
+    transactions::transaction::{TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -185,6 +185,7 @@ pub struct BlockchainDatabase<B> {
     config: BlockchainDatabaseConfig,
     consensus_manager: ConsensusManager,
     difficulty_calculator: Arc<DifficultyCalculator>,
+    disable_add_block_flag: Arc<AtomicBool>,
 }
 
 #[allow(clippy::ptr_arg)]
@@ -208,6 +209,7 @@ where B: BlockchainBackend
             config,
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
+            disable_add_block_flag: Arc::new(AtomicBool::new(false)),
         };
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
@@ -289,6 +291,18 @@ where B: BlockchainBackend
             );
             ChainStorageError::AccessError("Write lock on blockchain backend failed".into())
         })
+    }
+
+    pub(crate) fn is_add_block_disabled(&self) -> bool {
+        self.disable_add_block_flag.load(atomic::Ordering::Acquire)
+    }
+
+    pub(crate) fn set_disable_add_block_flag(&self) {
+        self.disable_add_block_flag.store(true, atomic::Ordering::Release);
+    }
+
+    pub(crate) fn clear_disable_add_block_flag(&self) {
+        self.disable_add_block_flag.store(false, atomic::Ordering::Release);
     }
 
     pub fn write(&self, transaction: DbTransaction) -> Result<(), ChainStorageError> {
@@ -716,7 +730,7 @@ where B: BlockchainBackend
             });
         }
 
-        body.sort(header.version);
+        body.sort();
         let mut header = BlockHeader::from(header);
         // If someone advanced the median timestamp such that the local time is less than the median timestamp, we need
         // to increase the timestamp to be greater than the median timestamp
@@ -830,6 +844,16 @@ where B: BlockchainBackend
     ///
     /// If an error does occur while writing the new block parts, all changes are reverted before returning.
     pub fn add_block(&self, block: Arc<Block>) -> Result<BlockAddResult, ChainStorageError> {
+        if self.is_add_block_disabled() {
+            warn!(
+                target: LOG_TARGET,
+                "add_block is disabled. Ignoring candidate block #{} ({})",
+                block.header.height,
+                block.hash().to_hex()
+            );
+            return Err(ChainStorageError::AddBlockOperationLocked);
+        }
+
         let new_height = block.header.height;
         // Perform orphan block validation.
         if let Err(e) = self.validators.orphan.validate(&block) {
@@ -860,7 +884,7 @@ where B: BlockchainBackend
 
         if block_add_result.was_chain_modified() {
             // If blocks were added and the node is in pruned mode, perform pruning
-            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?
+            prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
         }
 
         info!(
@@ -1146,7 +1170,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
     }
 
     for input in body.inputs().iter() {
-        input_mmr.push(input.hash())?;
+        input_mmr.push(input.canonical_hash()?)?;
 
         // Search the DB for the output leaf index so that it can be marked as spent/deleted.
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
@@ -1191,12 +1215,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
     output_mmr.compress();
 
-    // TODO: #testnet_reset clean up this code
-    let input_mr = if header.version == 1 {
-        MutableMmr::<HashDigest, _>::new(input_mmr.get_pruned_hash_set()?, Bitmap::create())?.get_merkle_root()?
-    } else {
-        input_mmr.get_merkle_root()?
-    };
+    let input_mr = input_mmr.get_merkle_root()?;
 
     let mmr_roots = MmrRoots {
         kernel_mr: kernel_mmr.get_merkle_root()?,
@@ -1366,7 +1385,36 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
     let (header, accumulated_data) = chain_header.into_parts();
     let kernels = db.fetch_kernels_in_block(&accumulated_data.hash)?;
     let outputs = db.fetch_outputs_in_block(&accumulated_data.hash)?;
-    let inputs = db.fetch_inputs_in_block(&accumulated_data.hash)?;
+    // Fetch inputs from the backend and populate their spent_output data if available
+    let inputs = db
+        .fetch_inputs_in_block(&accumulated_data.hash)?
+        .into_iter()
+        .map(|mut compact_input| {
+            let utxo_mined_info = match db.fetch_output(&compact_input.output_hash()) {
+                Ok(Some(o)) => o,
+                Ok(None) => {
+                    return Err(ChainStorageError::InvalidBlock(
+                        "An Input in a block doesn't contain a matching spending output".to_string(),
+                    ))
+                },
+                Err(e) => return Err(e),
+            };
+
+            match utxo_mined_info.output {
+                PrunedOutput::Pruned { .. } => Ok(compact_input),
+                PrunedOutput::NotPruned { output } => {
+                    compact_input.add_output_data(
+                        output.features,
+                        output.commitment,
+                        output.script,
+                        output.sender_offset_public_key,
+                    );
+                    Ok(compact_input)
+                },
+            }
+        })
+        .collect::<Result<Vec<TransactionInput>, _>>()?;
+
     let mut unpruned = vec![];
     let mut pruned = vec![];
     for output in outputs {
@@ -2199,6 +2247,7 @@ impl<T> Clone for BlockchainDatabase<T> {
             config: self.config,
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
+            disable_add_block_flag: self.disable_add_block_flag.clone(),
         }
     }
 }

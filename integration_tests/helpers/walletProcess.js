@@ -177,12 +177,13 @@ class WalletProcess {
 
   stop() {
     return new Promise((resolve) => {
+      let name = this.name;
       if (!this.ps) {
         return resolve();
       }
       this.ps.on("close", (code) => {
         if (code) {
-          console.log(`child process exited with code ${code}`);
+          console.log(`child process (${name}) exited with code ${code}`);
         }
         resolve();
       });

@@ -209,6 +209,9 @@ const getTransactionOutputHash = function (output) {
   const buffer = Buffer.concat([
     flags,
     toLittleEndian(parseInt(output.features.maturity), 64),
+    toLittleEndian(output.features.metadata.length, 64),
+    new Uint8Array(output.features.metadata),
+    new Uint8Array([0, 0, 0, 0, 0]),
   ]);
   let nopScriptBytes = Buffer.from([0x73]);
 

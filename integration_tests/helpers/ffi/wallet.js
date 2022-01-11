@@ -441,6 +441,10 @@ class Wallet {
     return InterfaceFFI.walletStartTransactionValidation(this.ptr);
   }
 
+  listConnectedPublicKeys() {
+    return InterfaceFFI.commsListConnectedPublicKeys(this.ptr);
+  }
+
   destroy() {
     if (this.ptr) {
       InterfaceFFI.walletDestroy(this.ptr);

@@ -169,8 +169,10 @@ message TransactionInput {
     ComSignature script_signature = 7;
     // The offset public key, K_O
     bytes sender_offset_public_key = 8;
+    // The hash of the output this input is spending
+    bytes output_hash = 9;
     // Covenant
-    bytes covenant = 9;
+    bytes covenant = 10;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a

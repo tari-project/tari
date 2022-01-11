@@ -105,7 +105,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
                     println!("{} outputs written", written);
                 }
             },
-            Err(e) => println!("{}", e.to_string()),
+            Err(e) => println!("{}", e),
         }
     }
     let (pk, sig) = test_helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
@@ -117,6 +117,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
         excess,
         excess_sig: sig,
     };
+    let kernel = serde_json::to_string(&kernel).unwrap();
     let _ = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 
     println!("Done.");

@@ -38,25 +38,6 @@ table! {
 }
 
 table! {
-    dedup_cache (id) {
-        id -> Integer,
-        body_hash -> Text,
-        sender_public_key -> Text,
-        number_of_hits -> Integer,
-        stored_at -> Timestamp,
-        last_hit_at -> Timestamp,
-    }
-}
-
-table! {
-    dht_metadata (id) {
-        id -> Integer,
-        key -> Text,
-        value -> Binary,
-    }
-}
-
-table! {
     inbound_transactions (tx_id) {
         tx_id -> BigInt,
         source_public_key -> Binary,
@@ -138,24 +119,16 @@ table! {
         script_lock_height -> BigInt,
         spending_priority -> Integer,
         features_json -> Text,
-        covenant -> Binary,
     }
 }
 
 table! {
-    stored_messages (id) {
-        id -> Integer,
-        version -> Integer,
-        origin_pubkey -> Nullable<Text>,
-        message_type -> Integer,
-        destination_pubkey -> Nullable<Text>,
-        destination_node_id -> Nullable<Text>,
-        header -> Binary,
-        body -> Binary,
-        is_encrypted -> Bool,
-        priority -> Integer,
-        stored_at -> Timestamp,
-        body_hash -> Nullable<Text>,
+    scanned_blocks (header_hash) {
+        header_hash -> Binary,
+        height -> BigInt,
+        num_outputs -> Nullable<BigInt>,
+        amount -> Nullable<BigInt>,
+        timestamp -> Timestamp,
     }
 }
 
@@ -170,13 +143,11 @@ allow_tables_to_appear_in_same_query!(
     client_key_values,
     completed_transactions,
     contacts,
-    dedup_cache,
-    dht_metadata,
     inbound_transactions,
     key_manager_states,
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,
-    stored_messages,
+    scanned_blocks,
     wallet_settings,
 );

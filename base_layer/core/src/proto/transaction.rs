@@ -103,48 +103,87 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
     type Error = String;
 
     fn try_from(input: proto::types::TransactionInput) -> Result<Self, Self::Error> {
-        let features = input
-            .features
-            .map(TryInto::try_into)
-            .ok_or_else(|| "transaction output features not provided".to_string())??;
-
-        let commitment = input
-            .commitment
-            .map(|commit| Commitment::from_bytes(&commit.data))
-            .ok_or_else(|| "Transaction output commitment not provided".to_string())?
-            .map_err(|err| err.to_string())?;
-
         let script_signature = input
             .script_signature
             .ok_or_else(|| "script_signature not provided".to_string())?
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
 
-        let sender_offset_public_key =
-            PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+        // Check if the received Transaction input is in compact form or not
+        if let Some(commitment) = input.commitment {
+            let commitment = Commitment::from_bytes(&commitment.data).map_err(|e| e.to_string())?;
+            let features = input
+                .features
+                .map(TryInto::try_into)
+                .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-        Ok(Self {
-            features,
-            commitment,
-            script: TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
-            input_data: ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
-            script_signature,
-            sender_offset_public_key,
-            covenant: Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
-        })
+            let sender_offset_public_key =
+                PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+            Ok(TransactionInput::new_with_output_data(
+                features,
+                commitment,
+                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                script_signature,
+                sender_offset_public_key,
+                covenant: Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
+            ))
+        } else {
+            if input.output_hash.is_empty() {
+                return Err("Compact Transaction Input does not contain `output_hash`".to_string());
+            }
+            Ok(TransactionInput::new_with_output_hash(
+                input.output_hash,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                script_signature,
+            ))
+        }
     }
 }
 
-impl From<TransactionInput> for proto::types::TransactionInput {
-    fn from(input: TransactionInput) -> Self {
-        Self {
-            features: Some(input.features.into()),
-            commitment: Some(input.commitment.into()),
-            script: input.script.as_bytes(),
-            input_data: input.input_data.as_bytes(),
-            script_signature: Some(input.script_signature.into()),
-            sender_offset_public_key: input.sender_offset_public_key.as_bytes().to_vec(),
-            covenant: input.covenant.to_consensus_bytes(),
+impl TryFrom<TransactionInput> for proto::types::TransactionInput {
+    type Error = String;
+
+    fn try_from(input: TransactionInput) -> Result<Self, Self::Error> {
+        if input.is_compact() {
+            let output_hash = input.output_hash();
+            Ok(Self {
+                input_data: input.input_data.as_bytes(),
+                script_signature: Some(input.script_signature.into()),
+                output_hash,
+                ..Default::default()
+            })
+        } else {
+            Ok(Self {
+                features: Some(
+                    input
+                        .features()
+                        .map_err(|_| "Non-compact Transaction input should contain features".to_string())?
+                        .clone()
+                        .into(),
+                ),
+                commitment: Some(
+                    input
+                        .commitment()
+                        .map_err(|_| "Non-compact Transaction input should contain commitment".to_string())?
+                        .clone()
+                        .into(),
+                ),
+                script: input
+                    .script()
+                    .map_err(|_| "Non-compact Transaction input should contain script".to_string())?
+                    .as_bytes(),
+                input_data: input.input_data.as_bytes(),
+                script_signature: Some(input.script_signature.clone().into()),
+                sender_offset_public_key: input
+                    .sender_offset_public_key()
+                    .map_err(|_| "Non-compact Transaction input should contain sender_offset_public_key".to_string())?
+                    .as_bytes()
+                    .to_vec(),
+                output_hash: Vec::new(),
+                covenant: input.covenant.to_consensus_bytes(),
+            })
         }
     }
 }
@@ -369,14 +408,19 @@ impl TryFrom<proto::types::AggregateBody> for AggregateBody {
     }
 }
 
-impl From<AggregateBody> for proto::types::AggregateBody {
-    fn from(body: AggregateBody) -> Self {
+impl TryFrom<AggregateBody> for proto::types::AggregateBody {
+    type Error = String;
+
+    fn try_from(body: AggregateBody) -> Result<Self, Self::Error> {
         let (i, o, k) = body.dissolve();
-        Self {
-            inputs: i.into_iter().map(Into::into).collect(),
+        Ok(Self {
+            inputs: i
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<proto::types::TransactionInput>, _>>()?,
             outputs: o.into_iter().map(Into::into).collect(),
             kernels: k.into_iter().map(Into::into).collect(),
-        }
+        })
     }
 }
 
@@ -409,12 +453,14 @@ impl TryFrom<proto::types::Transaction> for Transaction {
     }
 }
 
-impl From<Transaction> for proto::types::Transaction {
-    fn from(tx: Transaction) -> Self {
-        Self {
+impl TryFrom<Transaction> for proto::types::Transaction {
+    type Error = String;
+
+    fn try_from(tx: Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
             offset: Some(tx.offset.into()),
-            body: Some(tx.body.into()),
+            body: Some(tx.body.try_into()?),
             script_offset: Some(tx.script_offset.into()),
-        }
+        })
     }
 }

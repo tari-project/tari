@@ -350,6 +350,10 @@ pub struct TransactionSchema {
     pub covenant: Covenant,
 }
 
+fn default_metadata_byte_size() -> usize {
+    OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size()
+}
+
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub fn create_tx(

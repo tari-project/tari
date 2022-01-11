@@ -79,7 +79,7 @@ impl Display for MoneroPowData {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
         writeln!(fmt, "MoneroBlockHeader: {} ", self.header)?;
         writeln!(fmt, "RandomX vm key: {}", self.randomx_key.to_hex())?;
-        writeln!(fmt, "Monero tx count: {}", self.transaction_count.to_string())?;
+        writeln!(fmt, "Monero tx count: {}", self.transaction_count)?;
         writeln!(fmt, "Monero tx root: {}", to_hex(self.merkle_root.as_bytes()))?;
         writeln!(fmt, "Monero coinbase tx: {}", self.coinbase_tx)
     }

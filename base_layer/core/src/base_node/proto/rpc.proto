@@ -76,3 +76,14 @@ message PrunedOutput {
   bytes hash = 1;
   bytes witness_hash = 2;
 }
+
+message SyncUtxosByBlockRequest  {
+  bytes start_header_hash = 1;
+  bytes end_header_hash = 2;
+}
+
+message SyncUtxosByBlockResponse  {
+  repeated tari.types.TransactionOutput outputs = 1;
+  uint64 height = 2;
+  bytes header_hash = 3;
+}

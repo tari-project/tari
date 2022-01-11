@@ -48,16 +48,14 @@ impl Covenant {
     }
 
     pub fn from_bytes(mut bytes: &[u8]) -> Result<Self, CovenantDecodeError> {
+        if bytes.is_empty() {
+            return Ok(Self::new());
+        }
         CovenantTokenDecoder::new(&mut bytes).collect()
     }
 
     pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         CovenantTokenEncoder::new(self.tokens.as_slice()).write_to(writer)
-    }
-
-    pub fn validate(&self) -> Result<(), CovenantError> {
-        // TODO
-        Ok(())
     }
 
     pub fn execute<'a>(
@@ -128,6 +126,7 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
+    use crate::{
     use super::*;
     use crate::{
         consensus::ToConsensusBytes,
@@ -151,7 +150,7 @@ mod test {
         outputs[5].features.maturity = 42;
         outputs[7].features.maturity = 42;
         let mut input = create_input();
-        input.features.maturity = 42;
+        input.set_maturity(42).unwrap();
         let covenant = covenant!(fields_preserved(@fields(@field::features)));
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);

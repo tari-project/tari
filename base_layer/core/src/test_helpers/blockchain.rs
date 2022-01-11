@@ -150,6 +150,7 @@ pub fn create_test_db() -> TempDatabase {
 pub struct TempDatabase {
     path: PathBuf,
     db: Option<LMDBDatabase>,
+    delete_on_drop: bool,
 }
 
 impl TempDatabase {
@@ -159,7 +160,21 @@ impl TempDatabase {
         Self {
             db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
             path: temp_path,
+            delete_on_drop: true,
         }
+    }
+
+    pub fn from_path<P: AsRef<Path>>(temp_path: P) -> Self {
+        Self {
+            db: Some(create_lmdb_database(&temp_path, LMDBConfig::default()).unwrap()),
+            path: temp_path.as_ref().to_path_buf(),
+            delete_on_drop: true,
+        }
+    }
+
+    pub fn disable_delete_on_drop(&mut self) -> &mut Self {
+        self.delete_on_drop = false;
+        self
     }
 }
 
@@ -181,7 +196,7 @@ impl Drop for TempDatabase {
     fn drop(&mut self) {
         // force a drop on the LMDB db
         self.db = None;
-        if Path::new(&self.path).exists() {
+        if self.delete_on_drop && Path::new(&self.path).exists() {
             fs::remove_dir_all(&self.path).expect("Could not delete temporary file");
         }
     }

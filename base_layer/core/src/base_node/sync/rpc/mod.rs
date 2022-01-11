@@ -36,7 +36,10 @@ use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 
 #[cfg(feature = "base_node")]
-use crate::chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend};
+use crate::{
+    base_node::LocalNodeCommsInterface,
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+};
 use crate::{
     proto,
     proto::base_node::{
@@ -90,14 +93,12 @@ pub trait BaseNodeSyncService: Send + Sync + 'static {
 
     #[rpc(method = 8)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus>;
-
-    #[rpc(method = 9)]
-    async fn get_height_at_time(&self, request: Request<u64>) -> Result<Response<u64>, RpcStatus>;
 }
 
 #[cfg(feature = "base_node")]
 pub fn create_base_node_sync_rpc_service<B: BlockchainBackend + 'static>(
     db: AsyncBlockchainDb<B>,
+    base_node_service: LocalNodeCommsInterface,
 ) -> BaseNodeSyncRpcServer<BaseNodeSyncRpcService<B>> {
-    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db))
+    BaseNodeSyncRpcServer::new(BaseNodeSyncRpcService::new(db, base_node_service))
 }

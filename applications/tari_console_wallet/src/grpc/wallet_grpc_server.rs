@@ -190,7 +190,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         match response {
             Ok(resp) => Ok(Response::new(GetCoinbaseResponse {
-                transaction: Some(resp.into()),
+                transaction: Some(resp.try_into().map_err(Status::internal)?),
             })),
             Err(err) => Err(Status::unknown(err.to_string())),
         }
@@ -819,12 +819,13 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|err| Status::internal(err.to_string()))?;
 
         let mut peers = Vec::with_capacity(connected_peers.len());
-        for peer in connected_peers {
+        for conn in connected_peers {
             peers.push(
                 peer_manager
-                    .find_by_node_id(peer.peer_node_id())
+                    .find_by_node_id(conn.peer_node_id())
                     .await
-                    .map_err(|err| Status::internal(err.to_string()))?,
+                    .map_err(|err| Status::internal(err.to_string()))?
+                    .ok_or_else(|| Status::not_found(format!("Peer '{}' not found", conn.peer_node_id())))?,
             );
         }
 

@@ -62,6 +62,8 @@ pub enum TransactionError {
     ScriptOffset,
     #[error("Error executing script: {0}")]
     ScriptExecutionError(String),
+    #[error("TransactionInput is missing the data from the output being spent")]
+    MissingTransactionInputData,
     #[error("Error executing covenant: {0}")]
     CovenantError(String),
 }

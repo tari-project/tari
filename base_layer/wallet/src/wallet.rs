@@ -129,26 +129,13 @@ where
         output_manager_backend: V,
         contacts_backend: W,
         shutdown_signal: ShutdownSignal,
-        recovery_seed: Option<CipherSeed>,
+        master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
-        let master_seed = read_or_create_master_seed(recovery_seed, &mut wallet_database.clone()).await?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)?;
-
-        let node_identity = Arc::new(NodeIdentity::new(
-            comms_secret_key,
-            config.comms_config.node_identity.public_address(),
-            config.comms_config.node_identity.features(),
-        ));
-
-        let mut comms_config = config.comms_config.clone();
-        comms_config.node_identity = node_identity.clone();
-
-        let bn_service_db = wallet_database.clone();
-
         let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
         let transport_type = config.comms_config.transport_type.clone();
+        let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
@@ -170,7 +157,7 @@ where
             config.rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(comms_config, publisher))
+            .add_initializer(P2pInitializer::new(config.comms_config.clone(), publisher))
             .add_initializer(OutputManagerServiceInitializer::new(
                 config.output_manager_service_config.unwrap_or_default(),
                 output_manager_backend.clone(),
@@ -190,7 +177,7 @@ where
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config.clone(),
-                bn_service_db,
+                wallet_database.clone(),
             ))
             .add_initializer(WalletConnectivityInitializer::new(config.base_node_service_config))
             .add_initializer(UtxoScannerServiceInitializer::new(
@@ -288,33 +275,55 @@ where
     pub async fn set_base_node_peer(
         &mut self,
         public_key: CommsPublicKey,
-        net_address: String,
+        address: Multiaddr,
     ) -> Result<(), WalletError> {
         info!(
             "Wallet setting base node peer, public key: {}, net address: {}.",
-            public_key, net_address
+            public_key, address
         );
 
-        let address = net_address.parse::<Multiaddr>()?;
-        let peer = Peer::new(
-            public_key.clone(),
-            NodeId::from_key(&public_key),
-            vec![address].into(),
-            PeerFlags::empty(),
-            PeerFeatures::COMMUNICATION_NODE,
-            Default::default(),
-            String::new(),
-        );
-
-        self.comms.peer_manager().add_peer(peer.clone()).await?;
         if let Some(current_node) = self.wallet_connectivity.get_current_base_node_id() {
             self.comms
                 .connectivity()
                 .remove_peer_from_allow_list(current_node)
                 .await?;
         }
-        self.wallet_connectivity.set_base_node(peer.clone());
-        self.comms.connectivity().add_peer_to_allow_list(peer.node_id).await?;
+
+        let addresses = vec![address].into();
+        let peer_manager = self.comms.peer_manager();
+        let mut connectivity = self.comms.connectivity();
+        if let Some(mut current_peer) = peer_manager.find_by_public_key(&public_key).await? {
+            // Only invalidate the identity signature if addresses are different
+            if current_peer.addresses != addresses {
+                info!(
+                    target: LOG_TARGET,
+                    "Address for base node differs from storage. Was {}, setting to {}",
+                    current_peer.addresses,
+                    addresses
+                );
+                current_peer.update(Some(addresses.into_vec()), None, None, None, None, None, None);
+                peer_manager.add_peer(current_peer.clone()).await?;
+            }
+            connectivity
+                .add_peer_to_allow_list(current_peer.node_id.clone())
+                .await?;
+            self.wallet_connectivity.set_base_node(current_peer);
+        } else {
+            let node_id = NodeId::from_key(&public_key);
+            let peer = Peer::new(
+                public_key,
+                node_id,
+                addresses,
+                PeerFlags::empty(),
+                PeerFeatures::COMMUNICATION_NODE,
+                Default::default(),
+                String::new(),
+            );
+            peer_manager.add_peer(peer.clone()).await?;
+            connectivity.add_peer_to_allow_list(peer.node_id.clone()).await?;
+            self.wallet_connectivity.set_base_node(peer);
+        }
+
         Ok(())
     }
 
@@ -404,7 +413,8 @@ where
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 
@@ -439,7 +449,8 @@ where
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 
@@ -523,9 +534,9 @@ where
     }
 }
 
-async fn read_or_create_master_seed<T: WalletBackend + 'static>(
+pub async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     recovery_seed: Option<CipherSeed>,
-    db: &mut WalletDatabase<T>,
+    db: &WalletDatabase<T>,
 ) -> Result<CipherSeed, WalletError> {
     let db_master_seed = db.get_master_seed().await?;
 
@@ -556,7 +567,7 @@ async fn read_or_create_master_seed<T: WalletBackend + 'static>(
     Ok(master_seed)
 }
 
-fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
+pub fn derive_comms_secret_key(master_seed: &CipherSeed) -> Result<CommsSecretKey, WalletError> {
     let comms_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
         master_seed.clone(),
         KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY.to_string(),

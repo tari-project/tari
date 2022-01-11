@@ -23,6 +23,7 @@
 use std::sync::Arc;
 
 use rand::rngs::OsRng;
+use tari_common_types::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_test_utils::unpack_enum;
 use tari_utilities::Hashable;
@@ -39,7 +40,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction::{OutputFeatures, Transaction, UnblindedOutput},
+        transaction::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
     },
     txn_schema,
 };
@@ -375,13 +376,11 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-    use tari_common_types::types::PublicKey;
+    use tari_utilities::hex::Hex;
 
     use super::*;
-    use crate::{transactions::transaction::OutputFlags, validation::ValidationError};
 
     #[test]
-    #[ignore = "broken after validator node merge"]
     fn it_rejects_duplicate_commitments_in_the_utxo_set() {
         let db = setup();
         let (blocks, outputs) = add_many_chained_blocks(5, &db);
@@ -408,14 +407,12 @@ mod add_block {
             covenant: Default::default(),
             input_data: None,
         }]);
+        let commitment_hex = txns[0].body.outputs()[0].commitment.to_hex();
 
         let (block, _) = create_next_block(&db, &prev_block, txns);
         let err = db.add_block(block.clone()).unwrap_err();
-        unpack_enum!(
-            ChainStorageError::ValidationError {
-                source: ValidationError::ContainsTxO
-            } = err
-        );
+        unpack_enum!(ChainStorageError::KeyExists { key, .. } = err);
+        assert_eq!(key, commitment_hex);
         // Check rollback
         let header = db.fetch_header(block.header.height).unwrap();
         assert!(header.is_none());
@@ -483,91 +480,6 @@ mod add_block {
         let (block, _) = create_next_block(&db, prev_block, transactions);
         db.add_block(block).unwrap().assert_added();
     }
-
-    #[test]
-    #[ignore = "broken after validator node merge"]
-    fn it_rejects_duplicate_mint_or_burn_transactions_per_unique_id() {
-        let db = setup();
-        let (blocks, outputs) = add_many_chained_blocks(1, &db);
-
-        let prev_block = blocks.last().unwrap();
-
-        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
-        let unique_id = vec![1u8; 3];
-        let features = OutputFeatures::for_minting(asset_pk.clone(), Default::default(), unique_id.clone(), None);
-        let (txns, _) = schema_to_transaction(&[txn_schema!(
-            from: vec![outputs[0].clone()],
-            to: vec![10 * T, 10 * T],
-            features: features
-        )]);
-
-        let (block, _) = create_next_block(&db, prev_block, txns);
-        let err = db.add_block(block).unwrap_err();
-
-        unpack_enum!(
-            ChainStorageError::ValidationError {
-                source: ValidationError::ContainsDuplicateUtxoUniqueID
-            } = err
-        );
-
-        let features = OutputFeatures {
-            flags: OutputFlags::BURN_NON_FUNGIBLE,
-            parent_public_key: Some(asset_pk),
-            unique_id: Some(unique_id),
-            ..Default::default()
-        };
-        let (txns, _) = schema_to_transaction(&[txn_schema!(
-            from: vec![outputs[0].clone()],
-            to: vec![10 * T, 10 * T],
-            features: features
-        )]);
-
-        let (block, _) = create_next_block(&db, prev_block, txns);
-        let err = db.add_block(block).unwrap_err();
-
-        unpack_enum!(
-            ChainStorageError::ValidationError {
-                source: ValidationError::ContainsDuplicateUtxoUniqueID
-            } = err
-        );
-    }
-
-    #[test]
-    #[ignore = "broken after validator node merge"]
-    fn it_rejects_duplicate_mint_or_burn_transactions_in_blockchain() {
-        let db = setup();
-        let (blocks, outputs) = add_many_chained_blocks(1, &db);
-
-        let prev_block = blocks.last().unwrap();
-
-        let (_, asset_pk) = PublicKey::random_keypair(&mut OsRng);
-        let unique_id = vec![1u8; 3];
-        let features = OutputFeatures::for_minting(asset_pk.clone(), Default::default(), unique_id.clone(), None);
-        let (txns, outputs) = schema_to_transaction(&[txn_schema!(
-            from: vec![outputs[0].clone()],
-            to: vec![10 * T],
-            features: features
-        )]);
-
-        let (block, _) = create_next_block(&db, prev_block, txns);
-        db.add_block(block.clone()).unwrap().assert_added();
-
-        let features = OutputFeatures::for_minting(asset_pk, Default::default(), unique_id, None);
-        let (txns, _) = schema_to_transaction(&[txn_schema!(
-            from: vec![outputs[0].clone()],
-            to: vec![T],
-            features: features
-        )]);
-
-        let (block, _) = create_next_block(&db, &block, txns);
-        let err = db.add_block(block).unwrap_err();
-
-        unpack_enum!(
-            ChainStorageError::ValidationError {
-                source: ValidationError::ContainsDuplicateUtxoUniqueID
-            } = err
-        );
-    }
 }
 
 mod get_stats {
@@ -585,14 +497,13 @@ mod fetch_total_size_stats {
     use super::*;
 
     #[test]
-    #[ignore = "broken after validator node merge"]
     fn it_measures_the_number_of_entries() {
         let db = setup();
         let _ = add_many_chained_blocks(2, &db);
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
             stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
-            2
+            3
         );
     }
 }
@@ -736,18 +647,19 @@ mod clear_all_pending_headers {
     }
 
     #[test]
-    #[ignore = "broken after validator node merge"]
     fn it_clears_headers_after_tip() {
         let db = setup();
         let _ = add_many_chained_blocks(2, &db);
         let prev_block = db.fetch_block(2).unwrap();
         let mut prev_accum = prev_block.accumulated_data.clone();
-        let mut prev_block = Arc::new(prev_block.try_into_block().unwrap());
+        let mut prev_header = prev_block.try_into_chain_block().unwrap().to_chain_header();
         let headers = (0..5)
             .map(|_| {
-                let (block, _) = create_next_block(&db, &prev_block, vec![]);
+                let mut header = BlockHeader::from_previous(prev_header.header());
+                header.kernel_mmr_size += 1;
+                header.output_mmr_size += 1;
                 let accum = BlockHeaderAccumulatedData::builder(&prev_accum)
-                    .with_hash(block.hash())
+                    .with_hash(header.hash())
                     .with_achieved_target_difficulty(
                         AchievedTargetDifficulty::try_construct(PowAlgorithm::Sha3, 0.into(), 0.into()).unwrap(),
                     )
@@ -755,9 +667,9 @@ mod clear_all_pending_headers {
                     .build()
                     .unwrap();
 
-                let header = ChainHeader::try_construct(block.header.clone(), accum.clone()).unwrap();
+                let header = ChainHeader::try_construct(header, accum.clone()).unwrap();
 
-                prev_block = block;
+                prev_header = header.clone();
                 prev_accum = accum;
                 header
             })
@@ -788,7 +700,6 @@ mod fetch_utxo_by_unique_id {
     }
 
     #[test]
-    #[ignore = "broken after validator node merge"]
     fn it_finds_the_utxo_by_unique_id_at_deleted_height() {
         let db = setup();
         let unique_id = vec![1u8; 3];

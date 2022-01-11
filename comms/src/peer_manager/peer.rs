@@ -41,6 +41,7 @@ use super::{
 };
 use crate::{
     net_address::MultiaddressesWithStats,
+    peer_manager::identity_signature::IdentitySignature,
     protocol::ProtocolId,
     types::CommsPublicKey,
     utils::datetime::safe_future_datetime_from_duration,
@@ -94,6 +95,9 @@ pub struct Peer {
     /// Metadata field. This field is for use by upstream clients to record extra info about a peer.
     /// We use a hashmap here so that we can use more than one "info set"
     pub metadata: HashMap<u8, Vec<u8>>,
+    /// Signs the peer information with a timestamp to prevent malleability. This is optional for backward
+    /// compatibility, but without this, the identity (addresses etc) cannot be updated.
+    pub identity_signature: Option<IdentitySignature>,
 }
 
 impl Peer {
@@ -115,7 +119,7 @@ impl Peer {
             flags,
             features,
             banned_until: None,
-            banned_reason: "".to_string(),
+            banned_reason: String::new(),
             offline_at: None,
             last_seen: None,
             connection_stats: Default::default(),
@@ -123,6 +127,7 @@ impl Peer {
             supported_protocols,
             user_agent,
             metadata: HashMap::new(),
+            identity_signature: None,
         }
     }
 
@@ -185,7 +190,8 @@ impl Peer {
         supported_protocols: Option<Vec<ProtocolId>>,
     ) {
         if let Some(new_net_addresses) = net_addresses {
-            self.addresses.update_net_addresses(new_net_addresses)
+            self.addresses.update_addresses(new_net_addresses);
+            self.identity_signature = None;
         }
         if let Some(new_flags) = flags {
             self.flags = new_flags
@@ -203,10 +209,18 @@ impl Peer {
         }
         if let Some(new_features) = features {
             self.features = new_features;
+            self.identity_signature = None;
         }
         if let Some(supported_protocols) = supported_protocols {
             self.supported_protocols = supported_protocols;
         }
+    }
+
+    /// Returns `Some(true)` if the identity signature is valid, otherwise `Some(false)`. If no signature is present,
+    /// None is returned.
+    pub fn is_valid_identity_signature(&self) -> Option<bool> {
+        let identity_signature = self.identity_signature.as_ref()?;
+        Some(identity_signature.is_valid_for_peer(self))
     }
 
     /// Provides that date time of the last successful interaction with the peer
@@ -350,6 +364,7 @@ impl Hash for Peer {
 
 #[cfg(test)]
 mod test {
+    use bytes::Bytes;
     use serde_json::Value;
     use tari_crypto::{
         keys::PublicKey,
@@ -361,7 +376,6 @@ mod test {
     use crate::{
         net_address::MultiaddressesWithStats,
         peer_manager::NodeId,
-        protocol,
         test_utils::node_identity::build_node_identity,
         types::CommsPublicKey,
     };
@@ -424,6 +438,7 @@ mod test {
         let net_address2 = "/ip4/125.0.0.125/tcp/8000".parse::<Multiaddr>().unwrap();
         let net_address3 = "/ip4/126.0.0.126/tcp/9000".parse::<Multiaddr>().unwrap();
 
+        static DUMMY_PROTOCOL: Bytes = Bytes::from_static(b"dummy");
         peer.update(
             Some(vec![net_address2.clone(), net_address3.clone()]),
             None,
@@ -431,7 +446,7 @@ mod test {
             Some("".to_string()),
             None,
             Some(PeerFeatures::MESSAGE_PROPAGATION),
-            Some(vec![protocol::IDENTITY_PROTOCOL.clone()]),
+            Some(vec![DUMMY_PROTOCOL.clone()]),
         );
 
         assert_eq!(peer.public_key, public_key1);
@@ -453,7 +468,7 @@ mod test {
             .any(|net_address_with_stats| net_address_with_stats.address == net_address3));
         assert!(peer.is_banned());
         assert!(peer.has_features(PeerFeatures::MESSAGE_PROPAGATION));
-        assert_eq!(peer.supported_protocols, vec![protocol::IDENTITY_PROTOCOL.clone()]);
+        assert_eq!(peer.supported_protocols, vec![DUMMY_PROTOCOL.clone()]);
     }
 
     #[test]
