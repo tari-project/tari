@@ -88,6 +88,7 @@ pub struct TransactionOutput {
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
     /// The script that will be executed when spending this output
+    #[serde(default)]
     pub covenant: Covenant,
 }
 
