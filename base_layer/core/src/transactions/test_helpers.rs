@@ -36,7 +36,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper, ConsensusManager},
+    consensus::{ConsensusEncodingSized, ConsensusManager},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -344,8 +344,7 @@ pub struct TransactionSchema {
 }
 
 fn default_metadata_byte_size() -> usize {
-    OutputFeatures::default().consensus_encode_exact_size() +
-        ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size()
+    OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size()
 }
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
