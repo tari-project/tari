@@ -35,7 +35,7 @@ impl BaseNodeClient {
     let client = grpc::base_node_client::BaseNodeClient::connect(endpoint.clone())
       .await
       .map_err(|err| CollectiblesError::ClientConnectionError {
-        client: "wallet",
+        client: "base node",
         address: endpoint,
         error: err.to_string(),
       })?;

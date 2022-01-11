@@ -2,7 +2,7 @@ syntax = "proto3";
 package tari.dan.tips.tip004;
 
 // Template for mintable NFTs (721) that are not created when the contract is created later
-service Tip003 {
+service Tip004 {
   rpc Init(InitRequest) returns (Empty);
   rpc Mint(MintRequest) returns (MintResponse);
   rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);

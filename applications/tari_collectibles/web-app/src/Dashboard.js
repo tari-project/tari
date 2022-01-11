@@ -61,7 +61,7 @@ class DashboardContent extends React.Component {
     } catch (err) {
       console.error(err);
       this.setState({
-        error: "Could not load assets:" + err,
+        error: "Could not load assets: " + err.message,
         isLoading: false,
       });
     }
