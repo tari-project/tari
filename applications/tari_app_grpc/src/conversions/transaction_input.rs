@@ -55,7 +55,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
-        let covenant = Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
+            let covenant = Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
 
             Ok(TransactionInput::new_with_output_data(
                 features,
@@ -64,7 +64,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
-                covenant
+                covenant,
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -91,14 +91,9 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
         if input.is_compact() {
             let output_hash = input.output_hash();
             Ok(Self {
-                features: None,
-                commitment: Vec::new(),
-                hash: Vec::new(),
-                script: Vec::new(),
-                input_data: Vec::new(),
                 script_signature,
-                sender_offset_public_key: Vec::new(),
                 output_hash,
+                ..Default::default()
             })
         } else {
             let features = input
@@ -106,7 +101,7 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 .map_err(|_| "Non-compact Transaction input should contain features".to_string())?;
 
             Ok(Self {
-                features: Some(features.into()),
+                features: Some(features.clone().into()),
                 commitment: input
                     .commitment()
                     .map_err(|_| "Non-compact Transaction input should contain commitment".to_string())?
@@ -128,7 +123,10 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .as_bytes()
                     .to_vec(),
                 output_hash: Vec::new(),
-                covenant: input.covenant.to_consensus_bytes(),
+                covenant: input
+                    .covenant()
+                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
+                    .to_consensus_bytes(),
             })
         }
     }

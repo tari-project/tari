@@ -230,8 +230,6 @@ impl TransactionOutput {
             .chain(sender_offset_public_key.as_bytes())
             .chain(commitment.as_bytes())
             .chain(covenant.to_consensus_bytes())
-            .finalize()
-            .to_vec()
     }
 
     // Create commitment signature for the metadata

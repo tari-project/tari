@@ -129,6 +129,7 @@ impl UnblindedOutput {
                 commitment,
                 script: self.script.clone(),
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
             },
             input_data: self.input_data.clone(),
             script_signature,
@@ -146,7 +147,6 @@ impl UnblindedOutput {
             spent_output: SpentOutput::OutputHash(input.output_hash()),
             input_data: input.input_data,
             script_signature: input.script_signature,
-            covenant: self.covenant.clone(),
         })
     }
 
@@ -214,7 +214,8 @@ impl UnblindedOutput {
     }
 
     pub fn metadata_byte_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() + self.script.consensus_encode_exact_size() +
+        self.features.consensus_encode_exact_size() +
+            self.script.consensus_encode_exact_size() +
             self.covenant.consensus_encode_exact_size()
     }
 

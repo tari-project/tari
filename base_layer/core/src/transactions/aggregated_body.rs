@@ -465,7 +465,7 @@ impl AggregateBody {
 
     fn validate_covenants(&self, height: u64) -> Result<(), TransactionError> {
         for input in self.inputs.iter() {
-            input.covenant.execute(height, input, &self.outputs)?;
+            input.covenant()?.execute(height, input, &self.outputs)?;
         }
         Ok(())
     }

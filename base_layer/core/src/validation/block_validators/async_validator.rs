@@ -278,6 +278,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                                 output.commitment,
                                 output.script,
                                 output.sender_offset_public_key,
+                                output.covenant,
                             );
                         },
                     }

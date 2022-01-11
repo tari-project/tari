@@ -126,7 +126,6 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
-    use crate::{
     use super::*;
     use crate::{
         consensus::ToConsensusBytes,

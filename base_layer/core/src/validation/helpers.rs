@@ -619,7 +619,7 @@ pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<
 pub fn validate_covenants(block: &Block) -> Result<(), ValidationError> {
     for input in block.body.inputs() {
         let output_set_size = input
-            .covenant
+            .covenant()?
             .execute(block.header.height, input, block.body.outputs())?;
         trace!(target: LOG_TARGET, "{} output(s) passed covenant", output_set_size);
     }

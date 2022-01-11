@@ -127,7 +127,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
-                covenant: Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
+                Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -182,7 +182,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .as_bytes()
                     .to_vec(),
                 output_hash: Vec::new(),
-                covenant: input.covenant.to_consensus_bytes(),
+                covenant: input
+                    .covenant()
+                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
+                    .to_consensus_bytes(),
             })
         }
     }
