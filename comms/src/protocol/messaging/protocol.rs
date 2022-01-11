@@ -39,13 +39,13 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 use super::error::MessagingProtocolError;
 use crate::{
-    connectivity::{ConnectivityEvent, ConnectivityRequester},
+    connectivity::ConnectivityRequester,
     framing,
     message::{InboundMessage, MessageTag, OutboundMessage},
     multiplexing::Substream,
     peer_manager::NodeId,
     protocol::{
-        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging, MessagingConfig},
+        messaging::{inbound::InboundMessaging, outbound::OutboundMessaging},
         ProtocolEvent,
         ProtocolNotification,
     },
@@ -90,7 +90,6 @@ pub enum SendFailReason {
 pub enum MessagingEvent {
     MessageReceived(NodeId, MessageTag),
     InvalidMessageReceived(NodeId),
-    SendMessageFailed(OutboundMessage, SendFailReason),
     OutboundProtocolExited(NodeId),
 }
 
@@ -100,14 +99,12 @@ impl fmt::Display for MessagingEvent {
         match self {
             MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
             InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
-            SendMessageFailed(out_msg, reason) => write!(f, "SendMessageFailed({}, Reason = {})", out_msg, reason),
             OutboundProtocolExited(node_id) => write!(f, "OutboundProtocolExited({})", node_id),
         }
     }
 }
 
 pub struct MessagingProtocol {
-    config: MessagingConfig,
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
     active_queues: HashMap<NodeId, mpsc::UnboundedSender<OutboundMessage>>,
@@ -125,7 +122,6 @@ pub struct MessagingProtocol {
 impl MessagingProtocol {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: MessagingConfig,
         connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,
@@ -138,7 +134,6 @@ impl MessagingProtocol {
         let (retry_queue_tx, retry_queue_rx) = mpsc::unbounded_channel();
 
         Self {
-            config,
             connectivity,
             proto_notification,
             request_rx,
@@ -160,7 +155,6 @@ impl MessagingProtocol {
 
     pub async fn run(mut self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
-        let mut connectivity_events = self.connectivity.get_event_subscription();
 
         loop {
             tokio::select! {
@@ -188,12 +182,6 @@ impl MessagingProtocol {
                     }
                 },
 
-                event = connectivity_events.recv() => {
-                    if let Ok(event) = event {
-                        self.handle_connectivity_event(&event);
-                    }
-                }
-
                 Some(notification) = self.proto_notification.recv() => {
                     self.handle_protocol_notification(notification).await;
                 },
@@ -210,19 +198,6 @@ impl MessagingProtocol {
     pub fn framed<TSubstream>(socket: TSubstream) -> Framed<TSubstream, LengthDelimitedCodec>
     where TSubstream: AsyncRead + AsyncWrite + Unpin {
         framing::canonical(socket, MAX_FRAME_LENGTH)
-    }
-
-    fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) {
-        use ConnectivityEvent::*;
-        #[allow(clippy::single_match)]
-        match event {
-            PeerConnectionWillClose(node_id, _) => {
-                // If the peer connection will close, cut off the pipe to send further messages by dropping the sender.
-                // Any messages in the channel may be sent before the connection is disconnected.
-                let _ = self.active_queues.remove(node_id);
-            },
-            _ => {},
-        }
     }
 
     async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
@@ -287,7 +262,6 @@ impl MessagingProtocol {
                         self.connectivity.clone(),
                         self.internal_messaging_event_tx.clone(),
                         peer_node_id,
-                        self.config.inactivity_timeout,
                         self.retry_queue_tx.clone(),
                     );
                     break entry.insert(sender);
@@ -316,18 +290,10 @@ impl MessagingProtocol {
         connectivity: ConnectivityRequester,
         events_tx: mpsc::Sender<MessagingEvent>,
         peer_node_id: NodeId,
-        inactivity_timeout: Option<Duration>,
         retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
     ) -> mpsc::UnboundedSender<OutboundMessage> {
         let (msg_tx, msg_rx) = mpsc::unbounded_channel();
-        let outbound_messaging = OutboundMessaging::new(
-            connectivity,
-            events_tx,
-            msg_rx,
-            retry_queue_tx,
-            peer_node_id,
-            inactivity_timeout,
-        );
+        let outbound_messaging = OutboundMessaging::new(connectivity, events_tx, msg_rx, retry_queue_tx, peer_node_id);
         task::spawn(outbound_messaging.run());
         msg_tx
     }
@@ -341,7 +307,6 @@ impl MessagingProtocol {
             messaging_events_tx,
             RATE_LIMIT_CAPACITY,
             RATE_LIMIT_RESTOCK_INTERVAL,
-            self.config.inactivity_timeout,
         );
         task::spawn(inbound_messaging.run(substream));
     }
