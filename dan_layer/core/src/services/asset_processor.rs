@@ -97,6 +97,7 @@ impl AssetProcessor for ConcreteAssetProcessor {
         match template_id {
             TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),
             TemplateId::Tip004 => tip004_template::invoke_read_method(method, args, state_db),
+            TemplateId::Tip721 => tip721_template::invoke_read_method(method, args, state_db),
             _ => {
                 todo!()
             },
