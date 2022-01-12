@@ -86,15 +86,15 @@ impl ReorgPool {
     }
 
     /// Check if a transaction is stored in the ReorgPool
-    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<bool, ReorgPoolError> {
-        Ok(self.pool_storage.has_tx_with_excess_sig(excess_sig))
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
+        self.pool_storage.has_tx_with_excess_sig(excess_sig)
     }
 
     /// Remove the transactions from the ReorgPool that were used in provided removed blocks. The transactions can be
     /// resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &mut self,
-        removed_blocks: Vec<Arc<Block>>,
+        removed_blocks: &[Arc<Block>],
         new_blocks: &[Arc<Block>],
     ) -> Result<Vec<Arc<Transaction>>, ReorgPoolError> {
         Ok(self
@@ -144,41 +144,21 @@ mod test {
             .insert_txs(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()])
             .unwrap();
         // Check that oldest utx was removed to make room for new incoming transactions
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-            .unwrap(),);
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
 
         // Check that transactions that have been in the pool for longer than their Time-to-live have been removed
         thread::sleep(Duration::from_millis(51));
         reorg_pool.insert_txs(vec![tx5.clone(), tx6.clone()]).unwrap();
         assert_eq!(reorg_pool.len().unwrap(), 2);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-            .unwrap(),);
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
     }
 
     #[test]
@@ -208,26 +188,14 @@ mod test {
             .unwrap();
         // Oldest transaction tx1 is removed to make space for new incoming transactions
         assert_eq!(reorg_pool.len().unwrap(), 5);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-            .unwrap(),);
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
 
-        let reorg_blocks = vec![
+        let reorg_blocks = &[
             create_orphan_block(3000, vec![(*tx3).clone(), (*tx4).clone()], &consensus).into(),
             create_orphan_block(4000, vec![(*tx1).clone(), (*tx2).clone()], &consensus).into(),
         ];
@@ -241,23 +209,11 @@ mod test {
         assert!(removed_txs.contains(&tx4));
 
         assert_eq!(reorg_pool.len().unwrap(), 2);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(!reorg_pool
-            .has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-            .unwrap(),);
-        assert!(reorg_pool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-            .unwrap(),);
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx1.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig));
+        assert!(!reorg_pool.has_tx_with_excess_sig(&tx4.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
+        assert!(reorg_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
     }
 }

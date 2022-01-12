@@ -24,13 +24,14 @@ use std::{collections::HashMap, ops::Add};
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_crypto::{script, tari_utilities::epoch_time::EpochTime};
 
 use crate::{
-    consensus::network::NetworkConsensus,
+    consensus::{network::NetworkConsensus, ConsensusEncodingSized},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
+        transaction::OutputFeatures,
         weight::TransactionWeight,
     },
 };
@@ -140,7 +141,11 @@ impl ConsensusConstants {
     }
 
     pub fn coinbase_weight(&self) -> u64 {
-        self.transaction_weight.calculate(1, 0, 1, 0)
+        // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+        let metadata_size = self.transaction_weight.round_up_metadata_size(
+            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+        );
+        self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -234,7 +239,7 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
-            transaction_weight: TransactionWeight::v2(),
+            transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
         }]
     }
