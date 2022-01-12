@@ -55,6 +55,4 @@ pub enum MessagingProtocolError {
     Io(#[from] io::Error),
     #[error("Sender error: {0}")]
     SenderError(#[from] mpsc::error::SendError<OutboundMessage>),
-    #[error("Stream closed due to inactivity")]
-    Inactivity,
 }

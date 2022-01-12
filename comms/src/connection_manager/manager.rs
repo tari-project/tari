@@ -43,7 +43,7 @@ use super::{
 };
 use crate::{
     backoff::Backoff,
-    connection_manager::{metrics, ConnectionDirection},
+    connection_manager::{metrics, ConnectionDirection, ConnectionId},
     multiplexing::Substream,
     noise::NoiseConfig,
     peer_manager::{NodeId, NodeIdentity, PeerManagerError},
@@ -61,7 +61,7 @@ const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 pub enum ConnectionManagerEvent {
     // Peer connection
     PeerConnected(PeerConnection),
-    PeerDisconnected(NodeId),
+    PeerDisconnected(ConnectionId, NodeId),
     PeerConnectFailed(NodeId, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
@@ -74,7 +74,7 @@ impl fmt::Display for ConnectionManagerEvent {
         use ConnectionManagerEvent::*;
         match self {
             PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
-            PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id.short_str()),
+            PeerDisconnected(id, node_id) => write!(f, "PeerDisconnected({}, {})", id, node_id.short_str()),
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
             PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
             NewInboundSubstream(node_id, protocol, _) => write!(
