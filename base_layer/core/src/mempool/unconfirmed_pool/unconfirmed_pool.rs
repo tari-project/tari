@@ -698,7 +698,7 @@ mod test {
         let consensus = create_consensus_rules();
         let tx1 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1).0);
         let tx2 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(4), inputs:3, outputs:1).0);
-        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(20), inputs:2, outputs:1).0);
+        let tx3 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(5), inputs:2, outputs:1).0);
         let tx4 = Arc::new(tx!(MicroTari(5_000), fee: MicroTari(6), inputs:2, outputs:1).0);
         let mut tx5 = tx!(MicroTari(5_000), fee:MicroTari(5), inputs:3, outputs:1).0;
         let mut tx6 = tx!(MicroTari(5_000), fee:MicroTari(13), inputs: 2, outputs: 1).0;

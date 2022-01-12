@@ -391,17 +391,13 @@ pub fn create_unblinded_txos(
     output_script: TariScript,
     output_covenant: Covenant,
 ) -> (Vec<UnblindedOutput>, Vec<(UnblindedOutput, PrivateKey)>) {
-    let output_metadata_size = (output_features.consensus_encode_exact_size() +
-        output_script.consensus_encode_exact_size() +
-        output_covenant.consensus_encode_exact_size()) *
-        output_count;
-    let estimated_fee = Fee::new(TransactionWeight::latest()).calculate(
-        fee_per_gram,
-        1,
-        input_count,
-        output_count,
-        output_metadata_size,
-    );
+    let weighting = TransactionWeight::latest();
+    let output_metadata_size = weighting.round_up_metadata_size(
+        output_features.consensus_encode_exact_size() +
+            output_script.consensus_encode_exact_size() +
+            output_covenant.consensus_encode_exact_size(),
+    ) * output_count;
+    let estimated_fee = Fee::new(weighting).calculate(fee_per_gram, 1, input_count, output_count, output_metadata_size);
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
 
