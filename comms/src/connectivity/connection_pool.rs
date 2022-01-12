@@ -160,9 +160,7 @@ impl ConnectionPool {
     }
 
     pub fn get_inactive_connections_mut(&mut self, min_age: Duration) -> Vec<&mut PeerConnection> {
-        self.filter_connections_mut(|conn| {
-            conn.age() > min_age && conn.substream_count() == 0 && conn.handle_count() <= 1
-        })
+        self.filter_connections_mut(|conn| conn.age() > min_age && conn.handle_count() <= 1)
     }
 
     pub(in crate::connectivity) fn filter_drain<P>(&mut self, mut predicate: P) -> Vec<PeerConnectionState>

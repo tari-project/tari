@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
-
 use helpers::block_builders::append_block;
 use tari_common::configuration::Network;
 use tari_common_types::types::PublicKey;
@@ -65,7 +63,7 @@ mod helpers;
 fn new_mempool() -> Mempool {
     let rules = create_consensus_rules();
     let mempool_validator = MockValidator::new(true);
-    Mempool::new(MempoolConfig::default(), rules, Arc::new(mempool_validator))
+    Mempool::new(MempoolConfig::default(), rules, Box::new(mempool_validator))
 }
 
 #[tokio::test]
@@ -329,7 +327,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let mempool = Mempool::new(
         MempoolConfig::default(),
         consensus_manager.clone(),
-        Arc::new(mempool_validator),
+        Box::new(mempool_validator),
     );
     let (block_event_sender, _) = broadcast::channel(50);
     let (request_sender, _) = reply_channel::unbounded();

@@ -182,18 +182,17 @@ impl wallet_server::Wallet for WalletGrpcServer {
         request: Request<GetCoinbaseRequest>,
     ) -> Result<Response<GetCoinbaseResponse>, Status> {
         let request = request.into_inner();
-
         let mut tx_service = self.get_transaction_service();
-        let response = tx_service
-            .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height)
-            .await;
 
-        match response {
-            Ok(resp) => Ok(Response::new(GetCoinbaseResponse {
-                transaction: Some(resp.try_into().map_err(Status::internal)?),
-            })),
-            Err(err) => Err(Status::unknown(err.to_string())),
-        }
+        let coinbase = tx_service
+            .generate_coinbase_transaction(request.reward.into(), request.fee.into(), request.height)
+            .await
+            .map_err(|err| Status::unknown(err.to_string()))?;
+
+        let coinbase = coinbase.try_into().map_err(Status::internal)?;
+        Ok(Response::new(GetCoinbaseResponse {
+            transaction: Some(coinbase),
+        }))
     }
 
     async fn send_sha_atomic_swap_transaction(

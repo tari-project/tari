@@ -44,23 +44,20 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 
-use crate::{
-    consensus::ConsensusEncodingSized,
-    transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            KernelSum,
-            OutputFlags,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        weight::TransactionWeight,
+use crate::transactions::{
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroTari,
+    transaction::{
+        KernelFeatures,
+        KernelSum,
+        OutputFlags,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
     },
+    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -488,20 +485,11 @@ impl AggregateBody {
 
     /// Returns the weight in grams of a body
     pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
-        let metadata_byte_size = self.sum_metadata_size();
-        transaction_weight.calculate(
-            self.kernels().len(),
-            self.inputs().len(),
-            self.outputs().len(),
-            metadata_byte_size,
-        )
+        transaction_weight.calculate_body(self)
     }
 
     pub fn sum_metadata_size(&self) -> usize {
-        self.outputs
-            .iter()
-            .map(|o| o.features.consensus_encode_exact_size() + o.script.consensus_encode_exact_size())
-            .sum()
+        self.outputs.iter().map(|o| o.get_metadata_size()).sum()
     }
 
     pub fn is_sorted(&self) -> bool {

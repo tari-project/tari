@@ -581,20 +581,24 @@ impl SenderTransactionProtocol {
                 let result = self
                     .validate()
                     .and_then(|_| Self::build_transaction(info, features, factories));
-                if let Err(e) = result {
-                    self.state = SenderState::Failed(e.clone());
-                    return Err(e);
+                match result {
+                    Ok(mut transaction) => {
+                        transaction.body.sort();
+                        let result = transaction
+                            .validate_internal_consistency(true, factories, None, prev_header, height)
+                            .map_err(TPE::TransactionBuildError);
+                        if let Err(e) = result {
+                            self.state = SenderState::Failed(e.clone());
+                            return Err(e);
+                        }
+                        self.state = SenderState::FinalizedTransaction(transaction);
+                        Ok(())
+                    },
+                    Err(e) => {
+                        self.state = SenderState::Failed(e.clone());
+                        Err(e)
+                    },
                 }
-                let transaction = result.unwrap();
-                let result = transaction
-                    .validate_internal_consistency(true, factories, None, prev_header, height)
-                    .map_err(TPE::TransactionBuildError);
-                if let Err(e) = result {
-                    self.state = SenderState::Failed(e.clone());
-                    return Err(e);
-                }
-                self.state = SenderState::FinalizedTransaction(transaction);
-                Ok(())
             },
             _ => Err(TPE::InvalidStateError),
         }
@@ -949,7 +953,9 @@ mod test {
         let (utxo, input) = create_test_input(MicroTari(25000), 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let fee = builder.fee().calculate(MicroTari(20), 1, 1, 2, 0);
+        let expected_fee = builder
+            .fee()
+            .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_metadata(2));
         let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
@@ -1010,7 +1016,7 @@ mod test {
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.offset, a.offset);
-        assert_eq!(tx.body.kernels()[0].fee, fee);
+        assert_eq!(tx.body.kernels()[0].fee, expected_fee);
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);

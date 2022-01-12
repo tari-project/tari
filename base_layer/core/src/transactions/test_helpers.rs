@@ -181,6 +181,12 @@ impl TestParams {
         let input = unblinded.as_transaction_input(&self.commitment_factory).unwrap();
         (input, unblinded)
     }
+
+    pub fn get_size_for_default_metadata(&self, num_outputs: usize) -> usize {
+        self.fee().weighting().round_up_metadata_size(
+            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+        ) * num_outputs
+    }
 }
 
 impl Default for TestParams {
@@ -573,11 +579,11 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
     let script = script!(Nop);
     let covenant = Covenant::default();
-    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+    let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
         &change,
         &test_params_change_and_txn.change_spend_key,
         &script,
-        &schema.features,
+        &OutputFeatures::default(),
         &test_params_change_and_txn.sender_offset_private_key,
         &covenant,
     )
@@ -593,7 +599,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         )),
         test_params_change_and_txn.script_private_key,
         change_sender_offset_public_key,
-        metadata_sig,
+        change_metadata_sig,
         0,
         covenant,
     );

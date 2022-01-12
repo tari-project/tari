@@ -43,6 +43,7 @@ use tari_core::{
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
         transaction::OutputFeatures,
         transaction_protocol::sender::TransactionSenderMessage,
+        weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
     },
@@ -92,7 +93,9 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
-    OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size()
+    TransactionWeight::latest().round_up_metadata_size(
+        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+    )
 }
 
 #[allow(clippy::type_complexity)]
@@ -653,8 +656,9 @@ async fn send_no_change() {
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
-    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
-    let value1 = 500;
+    let fee_without_change =
+        Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, default_metadata_byte_size());
+    let value1 = 5000;
     oms.add_output(
         create_unblinded_output(
             script!(Nop),
@@ -666,7 +670,7 @@ async fn send_no_change() {
     )
     .await
     .unwrap();
-    let value2 = 800;
+    let value2 = 8000;
     oms.add_output(
         create_unblinded_output(
             script!(Nop),
@@ -1253,7 +1257,7 @@ async fn test_txo_validation() {
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) -
             MicroTari::from(900_000) -
-            MicroTari::from(1240) + //Output4 = output 1 -900_000 and 1240 for fees
+            MicroTari::from(1260) + //Output4 = output 1 -900_000 and 1260 for fees
             MicroTari::from(8_000_000) +
             MicroTari::from(16_000_000)
     );
@@ -1391,7 +1395,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
             MicroTari::from(900_000) -
-            MicroTari::from(1240) + //spent 900_000 and 1240 for fees
+            MicroTari::from(1260) + //spent 900_000 and 1260 for fees
             MicroTari::from(8_000_000) +    //output 5
             MicroTari::from(16_000_000) // output 6
     );
@@ -1518,7 +1522,7 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
-        MicroTari::from(output1_value) - MicroTari::from(901_240)
+        MicroTari::from(output1_value) - MicroTari::from(901_260)
     );
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
@@ -1576,7 +1580,7 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
-            MicroTari::from(901_240)
+            MicroTari::from(901_260)
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));

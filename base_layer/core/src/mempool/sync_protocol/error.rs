@@ -41,4 +41,8 @@ pub enum MempoolProtocolError {
     DecodeFailed { peer: NodeId, source: prost::DecodeError },
     #[error("Wire message from `{peer}` failed to convert to local type: {message}")]
     MessageConversionFailed { peer: NodeId, message: String },
+    #[error("Send timeout occurred")]
+    SendTimeout,
+    #[error("Receive timeout occurred")]
+    RecvTimeout,
 }

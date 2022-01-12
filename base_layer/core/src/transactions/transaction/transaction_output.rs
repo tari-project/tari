@@ -54,7 +54,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::ToConsensusBytes,
+    consensus::{ConsensusEncodingSized, ToConsensusBytes},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -328,6 +328,12 @@ impl TransactionOutput {
             .chain(self.metadata_signature.public_nonce().as_bytes())
             .finalize()
             .to_vec()
+    }
+
+    pub fn get_metadata_size(&self) -> usize {
+        self.features.consensus_encode_exact_size() +
+            self.script.consensus_encode_exact_size() +
+            self.covenant.consensus_encode_exact_size()
     }
 }
 

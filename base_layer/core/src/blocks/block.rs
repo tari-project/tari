@@ -63,8 +63,8 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block weight is above the maximum")]
-    BlockTooLarge,
+    #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
+    BlockTooLarge { actual_weight: u64, max_weight: u64 },
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
