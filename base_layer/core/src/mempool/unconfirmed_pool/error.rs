@@ -22,14 +22,10 @@
 
 use thiserror::Error;
 
-use crate::mempool::priority::PriorityError;
-
 #[derive(Debug, Error)]
 pub enum UnconfirmedPoolError {
     #[error("The HashMap and BTreeMap are out of sync")]
     StorageOutofSync,
-    #[error("Priority error: `{0}`")]
-    PriorityError(#[from] PriorityError),
     #[error("Transaction has no kernels")]
     TransactionNoKernels,
 }

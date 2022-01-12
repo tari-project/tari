@@ -47,10 +47,6 @@ pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolServ
 #[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 
-// public modules
-#[cfg(feature = "base_node")]
-pub mod async_mempool;
-
 // Public re-exports
 #[cfg(feature = "base_node")]
 pub use error::MempoolError;
@@ -159,10 +155,4 @@ impl Display for TxStorageResponse {
         };
         fmt.write_str(storage)
     }
-}
-
-/// Events that can be published on state changes of the Mempool
-#[derive(Debug, Clone)]
-pub enum MempoolStateEvent {
-    Updated,
 }

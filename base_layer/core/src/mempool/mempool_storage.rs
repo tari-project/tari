@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::Signature;
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::{
     blocks::Block,
@@ -50,7 +50,7 @@ pub const LOG_TARGET: &str = "c::mp::mempool_storage";
 pub struct MempoolStorage {
     unconfirmed_pool: UnconfirmedPool,
     reorg_pool: ReorgPool,
-    validator: Arc<dyn MempoolTransactionValidation>,
+    validator: Box<dyn MempoolTransactionValidation>,
     rules: ConsensusManager,
 }
 
@@ -59,7 +59,7 @@ impl MempoolStorage {
     pub fn new(
         config: MempoolConfig,
         rules: ConsensusManager,
-        validator: Arc<dyn MempoolTransactionValidation>,
+        validator: Box<dyn MempoolTransactionValidation>,
     ) -> Self {
         Self {
             unconfirmed_pool: UnconfirmedPool::new(config.unconfirmed_pool),
@@ -79,17 +79,17 @@ impl MempoolStorage {
                 .kernels()
                 .first()
                 .map(|k| k.excess_sig.get_signature().to_hex())
-                .unwrap_or_else(|| "None".into())
+                .unwrap_or_else(|| "None?!".into())
         );
         match self.validator.validate(&tx) {
             Ok(()) => {
-                let weight = *self.get_transaction_weight(0);
+                let weight = self.get_transaction_weight(0);
                 self.unconfirmed_pool.insert(tx, None, &weight)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
-                if self.unconfirmed_pool.verify_outputs_exist(&dependent_outputs) {
-                    let weight = *self.get_transaction_weight(0);
+                if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
+                    let weight = self.get_transaction_weight(0);
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
@@ -116,8 +116,8 @@ impl MempoolStorage {
         }
     }
 
-    fn get_transaction_weight(&self, height: u64) -> &TransactionWeight {
-        self.rules.consensus_constants(height).transaction_weight()
+    fn get_transaction_weight(&self, height: u64) -> TransactionWeight {
+        *self.rules.consensus_constants(height).transaction_weight()
     }
 
     // Insert a set of new transactions into the UTxPool.
@@ -129,13 +129,13 @@ impl MempoolStorage {
     }
 
     /// Update the Mempool based on the received published block.
-    pub fn process_published_block(&mut self, published_block: Arc<Block>) -> Result<(), MempoolError> {
+    pub fn process_published_block(&mut self, published_block: &Block) -> Result<(), MempoolError> {
         trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
         // Move published txs to ReOrgPool and discard double spends
-        self.reorg_pool.insert_txs(
-            self.unconfirmed_pool
-                .remove_published_and_discard_deprecated_transactions(&published_block),
-        )?;
+        let removed_transactions = self
+            .unconfirmed_pool
+            .remove_published_and_discard_deprecated_transactions(published_block);
+        self.reorg_pool.insert_txs(removed_transactions)?;
 
         Ok(())
     }
@@ -144,27 +144,10 @@ impl MempoolStorage {
     /// block from the latest longest chain.
     pub fn process_reorg(
         &mut self,
-        removed_blocks: Vec<Arc<Block>>,
-        new_blocks: Vec<Arc<Block>>,
+        removed_blocks: &[Arc<Block>],
+        new_blocks: &[Arc<Block>],
     ) -> Result<(), MempoolError> {
         debug!(target: LOG_TARGET, "Mempool processing reorg");
-        for block in &removed_blocks {
-            debug!(
-                target: LOG_TARGET,
-                "Mempool processing reorg removed block {} ({})",
-                block.header.height,
-                block.header.hash().to_hex(),
-            );
-        }
-        for block in &new_blocks {
-            debug!(
-                target: LOG_TARGET,
-                "Mempool processing reorg added new block {} ({})",
-                block.header.height,
-                block.header.hash().to_hex(),
-            );
-        }
-
         let previous_tip = removed_blocks.last().map(|block| block.header.height);
         let new_tip = new_blocks.last().map(|block| block.header.height);
 
@@ -176,7 +159,7 @@ impl MempoolStorage {
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         let removed_txs = self
             .reorg_pool
-            .remove_reorged_txs_and_discard_double_spends(removed_blocks, &new_blocks)?;
+            .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks)?;
         self.insert_txs(removed_txs)?;
         // Update the Mempool based on the received set of new blocks.
         for block in new_blocks {
@@ -215,22 +198,54 @@ impl MempoolStorage {
     }
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
-    /// Will only return transactions that will fit into a block
+    /// Will only return transactions that will fit into the given weight
     pub fn retrieve(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         let results = self.unconfirmed_pool.highest_priority_txs(total_weight)?;
         self.insert_txs(results.transactions_to_insert)?;
         Ok(results.retrieved_transactions)
     }
 
-    /// Check if the specified transaction is stored in the Mempool.
-    pub fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
-        if self.unconfirmed_pool.has_tx_with_excess_sig(&excess_sig) {
-            Ok(TxStorageResponse::UnconfirmedPool)
-        } else if self.reorg_pool.has_tx_with_excess_sig(&excess_sig)? {
-            Ok(TxStorageResponse::ReorgPool)
+    /// Check if the specified excess signature is found in the Mempool.
+    pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
+        if self.unconfirmed_pool.has_tx_with_excess_sig(excess_sig) {
+            TxStorageResponse::UnconfirmedPool
+        } else if self.reorg_pool.has_tx_with_excess_sig(excess_sig) {
+            TxStorageResponse::ReorgPool
         } else {
-            Ok(TxStorageResponse::NotStored)
+            TxStorageResponse::NotStored
         }
+    }
+
+    /// Check if the specified transaction is stored in the Mempool.
+    pub fn has_transaction(&self, tx: &Transaction) -> Result<TxStorageResponse, MempoolError> {
+        tx.body
+            .kernels()
+            .iter()
+            .fold(None, |stored, kernel| {
+                if stored.is_none() {
+                    return Some(self.has_tx_with_excess_sig(&kernel.excess_sig));
+                }
+                let stored = stored.unwrap();
+                match (self.has_tx_with_excess_sig(&kernel.excess_sig), stored) {
+                    // All (so far) in unconfirmed pool
+                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::UnconfirmedPool) => {
+                        Some(TxStorageResponse::UnconfirmedPool)
+                    },
+                    // Some kernels from the transaction have already been processed, and others exist in the
+                    // unconfirmed pool, therefore this specific transaction has not been stored (already spent)
+                    (TxStorageResponse::UnconfirmedPool, TxStorageResponse::ReorgPool) |
+                    (TxStorageResponse::ReorgPool, TxStorageResponse::UnconfirmedPool) => {
+                        Some(TxStorageResponse::NotStoredAlreadySpent)
+                    },
+                    // All (so far) in reorg pool
+                    (TxStorageResponse::ReorgPool, TxStorageResponse::ReorgPool) => Some(TxStorageResponse::ReorgPool),
+                    // Not stored
+                    (TxStorageResponse::UnconfirmedPool, other) |
+                    (TxStorageResponse::ReorgPool, other) |
+                    (other, _) => Some(other),
+                }
+            })
+            .ok_or(MempoolError::TransactionNoKernels)
     }
 
     // Returns the total number of transactions in the Mempool.
@@ -240,7 +255,7 @@ impl MempoolStorage {
 
     /// Gathers and returns the stats of the Mempool.
     pub fn stats(&mut self) -> Result<StatsResponse, MempoolError> {
-        let weight = *self.get_transaction_weight(0);
+        let weight = self.get_transaction_weight(0);
         Ok(StatsResponse {
             total_txs: self.len()?,
             unconfirmed_txs: self.unconfirmed_pool.len(),
