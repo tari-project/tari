@@ -48,8 +48,8 @@ impl WeightParams {
 
     pub const fn v2() -> Self {
         Self {
-            kernel_weight: 10, // ajd. +2
-            input_weight: 8,   // ajd. -3
+            kernel_weight: 10, // adj. +2
+            input_weight: 8,   // adj. -3
             output_weight: 53,
             // SAFETY: the value isn't 0. NonZeroU64::new(x).expect(...) is not const so cannot be used in const fn
             metadata_bytes_per_gram: Some(unsafe { NonZeroU64::new_unchecked(16) }),
@@ -76,13 +76,15 @@ impl TransactionWeight {
         Self(WeightParams::v2())
     }
 
-    /// Calculate the weight of a transaction based on the number of inputs and outputs
+    /// Calculate the weight in grams of a transaction based on the number of kernels, inputs, outputs and rounded up
+    /// metadata size. A warning to ensure that the _per output_ rounded up metadata size must be used or the
+    /// calculation will be incorrect. If possible, use calculate_body instead to ensure correctness.
     pub fn calculate(
         &self,
         num_kernels: usize,
         num_inputs: usize,
         num_outputs: usize,
-        metadata_byte_size: usize,
+        rounded_up_metadata_byte_size: usize,
     ) -> u64 {
         let params = self.params();
         params.kernel_weight * num_kernels as u64 +
@@ -90,17 +92,50 @@ impl TransactionWeight {
             params.output_weight * num_outputs as u64 +
             params
                 .metadata_bytes_per_gram
-                .map(|per_gram| metadata_byte_size as u64 / per_gram.get())
+                .map(|per_gram| rounded_up_metadata_byte_size as u64 / per_gram.get())
                 .unwrap_or(0)
     }
 
     pub fn calculate_body(&self, body: &AggregateBody) -> u64 {
+        let rounded_up_metadata_size = self.calculate_normalised_total_metadata_size(body);
         self.calculate(
             body.kernels().len(),
             body.inputs().len(),
             body.outputs().len(),
-            body.sum_metadata_size(),
+            rounded_up_metadata_size,
         )
+    }
+
+    fn calculate_normalised_total_metadata_size(&self, body: &AggregateBody) -> usize {
+        // When calculating the total block size vs each individual transaction the div operator in `calculate` above
+        // will yield a different result due to integer rounding.
+        // Where s_n is the metadata size for the nth output, p is per_gram
+        // (∑s_i) / p != (s_1/p) + (s_2/p) +....(s_n / p)
+        // We round up each output to the nearest p here to account for this
+
+        body.outputs()
+            .iter()
+            .map(|o| {
+                let actual_size = o.get_metadata_size();
+                // round up each output to nearest multiple of metadata_byte_per_gram
+                self.round_up_metadata_size(actual_size)
+            })
+            .sum()
+    }
+
+    pub fn round_up_metadata_size(&self, metadata_size: usize) -> usize {
+        self.params()
+            .metadata_bytes_per_gram
+            .and_then(|per_gram| {
+                let per_gram = per_gram.get() as usize;
+                let rem = metadata_size % per_gram;
+                if rem == 0 {
+                    Some(metadata_size)
+                } else {
+                    metadata_size.checked_add(per_gram - rem)
+                }
+            })
+            .unwrap_or(metadata_size)
     }
 
     pub fn params(&self) -> &WeightParams {
@@ -111,5 +146,20 @@ impl TransactionWeight {
 impl From<WeightParams> for TransactionWeight {
     fn from(params: WeightParams) -> Self {
         Self(params)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn round_up_metadata_size() {
+        let weighting = TransactionWeight::latest();
+        assert_eq!(weighting.round_up_metadata_size(0), 0);
+        assert_eq!(weighting.round_up_metadata_size(1), 16);
+        assert_eq!(weighting.round_up_metadata_size(16), 16);
+        assert_eq!(weighting.round_up_metadata_size(17), 32);
+        assert_eq!(weighting.round_up_metadata_size(usize::MAX), usize::MAX);
     }
 }

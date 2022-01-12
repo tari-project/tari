@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
 use tari_core::transactions::transaction::Transaction;
@@ -38,6 +41,21 @@ impl TryFrom<Transaction> for grpc::Transaction {
             body: Some(source.body.try_into()?),
             script_offset: Vec::from(source.script_offset.as_bytes()),
         })
+    }
+}
+
+impl TryFrom<Arc<Transaction>> for grpc::Transaction {
+    type Error = String;
+
+    fn try_from(source: Arc<Transaction>) -> Result<Self, Self::Error> {
+        match Arc::try_unwrap(source) {
+            Ok(tx) => tx.try_into(),
+            Err(tx) => Ok(Self {
+                offset: Vec::from(tx.offset.as_bytes()),
+                body: Some(tx.body.clone().try_into()?),
+                script_offset: Vec::from(tx.script_offset.as_bytes()),
+            }),
+        }
     }
 }
 

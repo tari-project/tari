@@ -172,7 +172,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                     // Check for reorgs during sync
                     while let Ok(block_event) = block_event_stream.try_recv() {
-                        if let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { removed, .. }, _) =
+                        if let BlockEvent::ValidBlockAdded(_, BlockAddResult::ChainReorg { removed, .. }) =
                             &*block_event
                         {
                             if let Some(reorg_block) = removed

@@ -56,15 +56,17 @@ impl NewBlockTemplate {
 }
 
 impl Display for NewBlockTemplate {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str("----------------- Block template-----------------\n")?;
-        fmt.write_str("--- Header ---\n")?;
-        fmt.write_str(&format!("{}\n", self.header))?;
-        fmt.write_str("---  Body  ---\n")?;
-        fmt.write_str(&format!("{}\n", self.body))?;
-        fmt.write_str(&format!(
-            "Target difficulty: {}\nReward: {}\nTotal fees: {}\n",
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        writeln!(f, "----------------- Block template-----------------")?;
+        writeln!(f, "--- Header ---")?;
+        writeln!(f, "{}", self.header)?;
+        writeln!(f, "---  Body ---")?;
+        writeln!(f, "{}", self.body)?;
+        writeln!(
+            f,
+            "Target difficulty: {}\nReward: {}\nTotal fees: {}",
             self.target_difficulty, self.reward, self.total_fees
-        ))
+        )?;
+        Ok(())
     }
 }

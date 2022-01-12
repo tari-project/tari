@@ -70,6 +70,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         Arc,
     },
+    time::Duration,
 };
 
 use error::MempoolProtocolError;
@@ -87,15 +88,17 @@ use tari_comms::{
     Bytes,
     PeerConnection,
 };
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::ByteArray;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::Semaphore,
     task,
+    time,
 };
 
 use crate::{
-    mempool::{async_mempool, proto, Mempool, MempoolServiceConfig},
+    mempool::{proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
     transactions::transaction::Transaction,
 };
@@ -303,12 +306,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let transactions = async_mempool::snapshot(self.mempool.clone()).await?;
+        let transactions = self.mempool.snapshot().await?;
         let items = transactions
             .iter()
             .take(self.config.initial_sync_max_transactions)
-            .map(|txn| txn.body.kernels()[0].excess_sig.get_signature().to_vec())
-            .map(|sig| sig.to_vec())
+            .filter_map(|txn| txn.first_kernel_excess_sig())
+            .map(|excess| excess.get_signature().to_vec())
             .collect();
         let inventory = proto::TransactionInventory { items };
 
@@ -389,7 +392,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             inventory.items.len()
         );
 
-        let transactions = async_mempool::snapshot(self.mempool.clone()).await?;
+        let transactions = self.mempool.snapshot().await?;
 
         let mut duplicate_inventory_items = Vec::new();
         let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
@@ -503,12 +506,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let store_state = async_mempool::has_tx_with_excess_sig(self.mempool.clone(), excess_sig.clone()).await?;
+        let store_state = self.mempool.has_transaction(&txn).await?;
         if store_state.is_stored() {
             return Ok(());
         }
 
-        let stored_result = async_mempool::insert(self.mempool.clone(), Arc::new(txn)).await?;
+        let stored_result = self.mempool.insert(Arc::new(txn)).await?;
         if stored_result.is_stored() {
             debug!(
                 target: LOG_TARGET,
@@ -529,7 +532,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     async fn write_transactions(&mut self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolProtocolError> {
         let txns = transactions.into_iter().take(self.config.initial_sync_max_transactions)
             .filter_map(|txn| {
-                match shared_proto::types::Transaction::try_from((*txn).clone()) {
+                match shared_proto::types::Transaction::try_from(txn) {
                     Ok(txn) =>   Some(proto::TransactionItem {
                         transaction: Some(txn),
                     }),
@@ -548,10 +551,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn read_message<T: prost::Message + Default>(&mut self) -> Result<T, MempoolProtocolError> {
-        let msg = self
-            .framed
-            .next()
+        let msg = time::timeout(Duration::from_secs(10), self.framed.next())
             .await
+            .map_err(|_| MempoolProtocolError::RecvTimeout)?
             .ok_or_else(|| MempoolProtocolError::SubstreamClosed(self.peer_node_id.clone()))??;
 
         T::decode(&mut msg.freeze()).map_err(|err| MempoolProtocolError::DecodeFailed {
@@ -571,7 +573,12 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
     }
 
     async fn write_message<T: prost::Message>(&mut self, message: T) -> Result<(), MempoolProtocolError> {
-        self.framed.send(message.to_encoded_bytes().into()).await?;
+        time::timeout(
+            Duration::from_secs(10),
+            self.framed.send(message.to_encoded_bytes().into()),
+        )
+        .await
+        .map_err(|_| MempoolProtocolError::SendTimeout)??;
         Ok(())
     }
 }

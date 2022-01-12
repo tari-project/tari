@@ -50,4 +50,6 @@ pub enum MempoolServiceError {
     BroadcastFailed,
     #[error("Conversion error: '{0}'")]
     ConversionError(String),
+    #[error("Transaction has no kernels")]
+    TransactionNoKernels,
 }

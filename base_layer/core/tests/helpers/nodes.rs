@@ -199,7 +199,7 @@ impl BaseNodeBuilder {
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or_default(),
             consensus_manager.clone(),
-            Arc::new(mempool_validator),
+            Box::new(mempool_validator),
         );
         let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
         let node_interfaces = setup_base_node_services(
