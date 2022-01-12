@@ -345,8 +345,10 @@ mod test {
 
     #[test]
     fn get_field_value_ref() {
-        let mut features = OutputFeatures::default();
-        features.maturity = 42;
+        let features = OutputFeatures {
+            maturity: 42,
+            ..Default::default()
+        };
         let output = create_outputs(1, UtxoTestParams {
             features: features.clone(),
             ..Default::default()

@@ -545,11 +545,11 @@ mod validate_internal_consistency {
 
         test_case(
             &UtxoTestParams {
-                covenant: covenant.clone(),
+                covenant,
                 ..Default::default()
             },
             &UtxoTestParams {
-                features: features.clone(),
+                features,
                 ..Default::default()
             },
             0,
@@ -594,7 +594,7 @@ mod validate_internal_consistency {
         // Pass because height == 100
         test_case(
             &UtxoTestParams {
-                covenant: covenant.clone(),
+                covenant,
                 ..Default::default()
             },
             &UtxoTestParams::default(),

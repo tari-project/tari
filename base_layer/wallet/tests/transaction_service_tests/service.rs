@@ -62,6 +62,7 @@ use tari_core::{
     },
     blocks::BlockHeader,
     consensus::ConsensusConstantsBuilder,
+    covenants::Covenant,
     proto::{
         base_node as base_node_proto,
         base_node::{
@@ -1551,6 +1552,7 @@ fn finalize_tx_with_incorrect_pubkey() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
@@ -1576,7 +1578,7 @@ fn finalize_tx_with_incorrect_pubkey() {
 
     stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
         .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+    stp.finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
         .unwrap();
     let tx = stp.get_transaction().unwrap();
 
@@ -1684,6 +1686,7 @@ fn finalize_tx_with_missing_output() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         ))
         .unwrap();
     let msg = stp.build_single_round_message().unwrap();
@@ -1709,7 +1712,7 @@ fn finalize_tx_with_missing_output() {
 
     stp.add_single_recipient_info(recipient_reply.clone(), &factories.range_proof)
         .unwrap();
-    stp.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
+    stp.finalize(KernelFeatures::empty(), &factories, None, u64::MAX)
         .unwrap();
 
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
@@ -2255,10 +2258,11 @@ fn test_transaction_cancellation() {
             PrivateKey::random(&mut OsRng),
             Default::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id2 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
@@ -2327,10 +2331,11 @@ fn test_transaction_cancellation() {
             PrivateKey::random(&mut OsRng),
             Default::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
     let tx_sender_msg = stp.build_single_round_message().unwrap();
     let tx_id3 = tx_sender_msg.tx_id;
     let proto_message = proto::TransactionSenderMessage::single(tx_sender_msg.into());
@@ -2943,13 +2948,14 @@ fn test_restarting_transaction_protocols() {
             PrivateKey::random(&mut OsRng),
             Default::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
             script_private_key,
         );
-    let mut bob_stp = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut bob_stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let msg = bob_stp.build_single_round_message().unwrap();
     let bob_pre_finalize = bob_stp.clone();
 
@@ -2970,7 +2976,7 @@ fn test_restarting_transaction_protocols() {
         .add_single_recipient_info(alice_reply.clone(), &factories.range_proof)
         .unwrap();
 
-    match bob_stp.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
+    match bob_stp.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
         Ok(_) => (),
         Err(e) => panic!("Should be able to finalize tx: {}", e),
     };
@@ -4119,10 +4125,11 @@ fn test_resend_on_startup() {
             PrivateKey::random(&mut OsRng),
             Default::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
     let stp_msg = stp.build_single_round_message().unwrap();
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 
@@ -4626,10 +4633,11 @@ fn test_transaction_timeout_cancellation() {
             PrivateKey::random(&mut OsRng),
             Default::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
     let stp_msg = stp.build_single_round_message().unwrap();
     let tx_sender_msg = TransactionSenderMessage::Single(Box::new(stp_msg));
 

@@ -35,6 +35,7 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized},
+    covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
@@ -304,6 +305,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
             PrivateKey::random(&mut OsRng),
             OutputFeatures::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(
             script!(Nop),
@@ -311,7 +313,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
             script_private_key,
         );
 
-    let mut stp = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
     (
         tx_id,
@@ -396,6 +398,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap_err();
@@ -423,6 +426,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -502,6 +506,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap_err();
@@ -558,6 +563,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -584,6 +590,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -628,6 +635,7 @@ async fn send_not_enough_funds() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
     {
@@ -681,6 +689,7 @@ async fn send_no_change() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -736,6 +745,7 @@ async fn send_not_enough_for_change() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
     {
@@ -772,6 +782,7 @@ async fn cancel_transaction() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -850,6 +861,7 @@ async fn test_get_balance() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -896,6 +908,7 @@ async fn sending_transaction_with_short_term_clear() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -923,6 +936,7 @@ async fn sending_transaction_with_short_term_clear() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -1030,13 +1044,22 @@ async fn handle_coinbase() {
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
 
-    let _ = oms.get_coinbase_transaction(1.into(), reward1, fees1, 1).await.unwrap();
+    let _ = oms
+        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value1);
-    let _tx2 = oms.get_coinbase_transaction(2.into(), reward2, fees2, 1).await.unwrap();
+    let _tx2 = oms
+        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1)
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value2);
-    let tx3 = oms.get_coinbase_transaction(3.into(), reward3, fees3, 2).await.unwrap();
+    let tx3 = oms
+        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2)
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(
         oms.get_balance().await.unwrap().pending_incoming_balance,
@@ -1185,6 +1208,7 @@ async fn test_txo_validation() {
         None,
         "".to_string(),
         script!(Nop),
+        Covenant::default(),
     )
     .await
     .unwrap();
@@ -1194,7 +1218,7 @@ async fn test_txo_validation() {
 
     let _ = oms.get_recipient_transaction(sender_message).await.unwrap();
 
-    oms.get_coinbase_transaction(6.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+    oms.get_coinbase_transaction(6u64.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
         .await
         .unwrap();
 
