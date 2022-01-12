@@ -57,22 +57,24 @@ impl TransactionsTab {
             .constraints([pending_constraint, completed_constraint].as_ref())
             .split(area);
 
-        let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
-            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("(P)ending Transactions", style));
-        f.render_widget(block, list_areas[0]);
-
         self.draw_pending_transactions(f, list_areas[0], app_state);
         self.draw_completed_transactions(f, list_areas[1], app_state);
     }
 
     fn draw_pending_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
+        let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        };
+
+        let title = Block::default().borders(Borders::ALL).title(Span::styled(
+            format!("(P)ending Transactions ({}) ", app_state.get_pending_txs().len()),
+            style,
+        ));
+        f.render_widget(title, area);
+
         // Pending Transactions
         self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
         let mut pending_list_state = self
@@ -155,9 +157,10 @@ impl TransactionsTab {
         } else {
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Completed (T)ransactions", style));
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            format!("Completed (T)ransactions ({}) ", app_state.get_completed_txs().len()),
+            style,
+        ));
         f.render_widget(block, area);
 
         let completed_txs = app_state.get_completed_txs();

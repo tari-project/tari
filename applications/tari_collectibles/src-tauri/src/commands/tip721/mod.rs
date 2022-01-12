@@ -34,7 +34,7 @@ use uuid::Uuid;
 #[tauri::command]
 pub(crate) async fn tip721_transfer_from(
   asset_public_key: String,
-  token_id: u64,
+  token_id: String,
   send_to_address: String,
   from_address_id: Uuid,
   state: tauri::State<'_, ConcurrentAppState>,
@@ -60,7 +60,7 @@ pub(crate) async fn tip721_transfer_from(
   let transfer_request = tip721::TransferFromRequest {
     from: Vec::from(from_address.public_key.as_bytes()),
     to: Vec::from(send_to_address.as_bytes()),
-    token_id,
+    token_id: Vec::from_hex(&token_id)?,
   };
   let transfer_request = transfer_request.encode_to_vec();
 

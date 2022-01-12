@@ -626,7 +626,7 @@ fn connection_manager_logger(
                     println!("'{}' connected to '{}'", node_name, get_name(conn.peer_node_id()),);
                 },
             },
-            PeerDisconnected(node_id) => {
+            PeerDisconnected(_, node_id) => {
                 println!("'{}' disconnected from '{}'", get_name(node_id), node_name);
             },
             PeerConnectFailed(node_id, err) => {

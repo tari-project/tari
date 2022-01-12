@@ -68,7 +68,7 @@ const LOG_TARGET: &str = "c::mempool::service::service";
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     pub outbound_request_stream: SOutReq,
-    pub outbound_tx_stream: mpsc::UnboundedReceiver<(Transaction, Vec<NodeId>)>,
+    pub outbound_tx_stream: mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>,
     pub inbound_request_stream: SInReq,
     pub inbound_response_stream: SInRes,
     pub inbound_transaction_stream: STxIn,
@@ -167,7 +167,7 @@ impl MempoolService {
 
                 // Incoming transaction messages from the Comms layer
                 Some(transaction_msg) = inbound_transaction_stream.next() => {
-                    self.spawn_handle_incoming_tx(transaction_msg).await;
+                    self.spawn_handle_incoming_tx(transaction_msg);
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -228,7 +228,7 @@ impl MempoolService {
         });
     }
 
-    fn spawn_handle_outbound_tx(&self, tx: Transaction, excluded_peers: Vec<NodeId>) {
+    fn spawn_handle_outbound_tx(&self, tx: Arc<Transaction>, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
             let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
@@ -264,7 +264,7 @@ impl MempoolService {
         });
     }
 
-    async fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
+    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine.get_status_info_watch();
 
@@ -489,7 +489,7 @@ async fn handle_request_timeout(
 
 async fn handle_outbound_tx(
     mut outbound_message_service: OutboundMessageRequester,
-    tx: Transaction,
+    tx: Arc<Transaction>,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError> {
     let result = outbound_message_service

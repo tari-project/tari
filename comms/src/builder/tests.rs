@@ -280,7 +280,7 @@ async fn peer_to_peer_messaging() {
 
 #[runtime::test]
 async fn peer_to_peer_messaging_simultaneous() {
-    const NUM_MSGS: usize = 10;
+    const NUM_MSGS: usize = 100;
     let shutdown = Shutdown::new();
 
     let (comms_node1, mut inbound_rx1, outbound_tx1, _) = spawn_node(Protocols::new(), shutdown.to_signal()).await;
@@ -324,6 +324,11 @@ async fn peer_to_peer_messaging_simultaneous() {
         .await
         .unwrap();
 
+    comms_node1
+        .connectivity()
+        .dial_peer(comms_node2.node_identity().node_id().clone())
+        .await
+        .unwrap();
     // Simultaneously send messages between the two nodes
     let handle1 = task::spawn(async move {
         for i in 0..NUM_MSGS {

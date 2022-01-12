@@ -49,13 +49,7 @@ use tokio::{
 
 use crate::{
     base_node::{
-        comms_interface::{
-            Broadcast,
-            CommsInterfaceError,
-            InboundNodeCommsHandlers,
-            NodeCommsRequest,
-            NodeCommsResponse,
-        },
+        comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         service::error::BaseNodeServiceError,
         state_machine_service::states::StateInfo,
         StateMachineHandle,
@@ -158,7 +152,7 @@ where B: BlockchainBackend + 'static
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
-        SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>>,
+        SLocalBlock: Stream<Item = RequestContext<Block, Result<BlockHash, CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
@@ -208,7 +202,7 @@ where B: BlockchainBackend + 'static
 
                 // Incoming block messages from the Comms layer
                 Some(block_msg) = inbound_block_stream.next() => {
-                    self.spawn_handle_incoming_block(block_msg).await;
+                    self.spawn_handle_incoming_block(block_msg);
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -310,7 +304,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    async fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
+    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -357,14 +351,11 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_local_block(
-        &self,
-        block_context: RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
-    ) {
+    fn spawn_handle_local_block(&self, block_context: RequestContext<Block, Result<BlockHash, CommsInterfaceError>>) {
         let inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
-            let ((block, broadcast), reply_tx) = block_context.split();
-            let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), broadcast, None).await);
+            let (block, reply_tx) = block_context.split();
+            let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), None).await);
 
             if let Err(e) = result {
                 error!(

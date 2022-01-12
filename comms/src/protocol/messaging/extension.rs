@@ -81,7 +81,6 @@ where
         let (inbound_message_tx, inbound_message_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);
 
         let messaging = MessagingProtocol::new(
-            Default::default(),
             context.connectivity(),
             proto_rx,
             messaging_request_rx,
