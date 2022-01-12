@@ -28,7 +28,6 @@ Feature: Block Propagation
     Then node MINER is at height 5
     Then all nodes are at height 5
 
-  @critical
   Scenario: Duplicate block is rejected
     Given I have 1 seed nodes
     And I have a base node MINER connected to all seed nodes
@@ -89,7 +88,7 @@ Feature: Block Propagation
     Then node MINER is at height 7
     Then all nodes are at height 7
 
-  @critical
+  @critical @pruned
   Scenario: Pruned node should prune outputs
     Given I have 1 seed nodes
     And I have a base node SENDER connected to all seed nodes

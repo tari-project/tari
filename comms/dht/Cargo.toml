@@ -35,11 +35,9 @@ prost-types = "=0.9.0"
 rand = "0.8"
 serde = "1.0.90"
 serde_derive = "1.0.90"
-serde_repr = "0.1.5"
 thiserror = "1.0.26"
 tokio = { version = "1.14", features = ["rt", "macros"] }
 tower = { version = "0.4", features = ["full"] }
-ttl_cache = "0.5.1"
 
 # tower-filter dependencies
 pin-project = "0.4"
@@ -56,9 +54,6 @@ tempfile = "3.1.0"
 tokio-stream = { version = "0.1.7", features = ["sync"] }
 petgraph = "0.5.1"
 clap = "2.33.0"
-
-# tower-filter dependencies
-tower-test = { version = "^0.4" }
 
 [build-dependencies]
 tari_common = { version = "^0.22", path = "../../common" }

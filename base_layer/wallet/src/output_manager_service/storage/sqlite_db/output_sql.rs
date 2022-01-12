@@ -148,7 +148,7 @@ impl OutputSql {
             .filter(outputs::maturity.le(tip_height))
             .filter(outputs::features_unique_id.is_null())
             .filter(outputs::features_parent_public_key.is_null())
-            .order_by(outputs::spending_priority.asc());
+            .order_by(outputs::spending_priority.desc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {
                 query = query.then_order_by(outputs::value.asc());

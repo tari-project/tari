@@ -1,6 +1,20 @@
 @wallet-transfer @wallet
 Feature: Wallet Transfer
 
+  # This is probably the most important base layer test
+  @critical
+  Scenario: As a wallet send to a wallet connected to a different base node
+    Given I have a seed node SEED_A
+    And I have a seed node SEED_B
+    And I have a base node NODE_A connected to all seed nodes
+    And I have a base node NODE_B connected to all seed nodes
+    And I have wallet WALLET_A with 10T connected to base node NODE_A
+    And I have wallet WALLET_B connected to base node NODE_B
+    When I transfer 5T from WALLET_A to WALLET_B
+    And I mine 4 blocks on SEED_A
+    Then wallet WALLET_A has 5T
+    And wallet WALLET_B has 5T
+
   Scenario: As a wallet I want to submit multiple transfers
     Given I have a seed node NODE
     # Add a 2nd node otherwise initial sync will not succeed

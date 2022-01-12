@@ -883,11 +883,16 @@ where B: BlockchainBackend
         )?;
 
         if block_add_result.was_chain_modified() {
+            info!(
+                target: LOG_TARGET,
+                "Best chain is now at height: {}",
+                db.fetch_chain_metadata()?.height_of_longest_chain()
+            );
             // If blocks were added and the node is in pruned mode, perform pruning
             prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
         }
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Candidate block `add_block` result: {}", block_add_result
         );
@@ -1941,7 +1946,7 @@ fn insert_orphan_and_find_new_tips<T: BlockchainBackend>(
             .optional()?
         {
             Some(curr_parent) => {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "New orphan #{} ({}) does not have a parent in the current tip set. Parent is {}",
                     block.header.height,
