@@ -207,11 +207,9 @@ const getTransactionOutputHash = function (output) {
   const flags = Buffer.alloc(1);
   flags[0] = output.features.flags;
   const buffer = Buffer.concat([
-    flags,
-    toLittleEndian(parseInt(output.features.maturity), 64),
-    toLittleEndian(output.features.metadata.length, 64),
-    new Uint8Array(output.features.metadata),
-    new Uint8Array([0, 0, 0, 0, 0]),
+    Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+    Buffer.from([parseInt(output.features.maturity)]),
+    Buffer.from([output.features.flags]),
   ]);
   let nopScriptBytes = Buffer.from([0x73]);
 

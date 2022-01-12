@@ -37,7 +37,7 @@ impl Tip721TokensTableGateway<SqliteTransaction> for SqliteTip721TokensTableGate
   fn insert(&self, row: &Tip721TokenRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
     let existing: Option<models::Tip721Token> = tip721_tokens::table
       .filter(tip721_tokens::address_id.eq(Vec::from(row.address_id.as_bytes().as_slice())))
-      .filter(tip721_tokens::token_id.eq(row.token_id as i64))
+      .filter(tip721_tokens::token_id.eq(&row.token_id))
       .first(tx.connection())
       .optional()?;
     match existing {
@@ -51,7 +51,7 @@ impl Tip721TokensTableGateway<SqliteTransaction> for SqliteTip721TokensTableGate
           .values(models::Tip721Token {
             id: Vec::from(row.id.as_bytes().as_slice()),
             address_id: Vec::from(row.address_id.as_bytes().as_slice()),
-            token_id: row.token_id as i64,
+            token_id: row.token_id.clone(),
             is_deleted: false,
             token: row.token.clone(),
           })

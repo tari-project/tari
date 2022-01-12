@@ -26,7 +26,7 @@ use crate::schema::*;
 pub struct Tip721Token {
   pub id: Vec<u8>,
   pub address_id: Vec<u8>,
-  pub token_id: i64,
+  pub token_id: Vec<u8>,
   pub is_deleted: bool,
   pub token: String,
 }
