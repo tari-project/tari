@@ -326,7 +326,7 @@ pub fn setup_transaction_service_no_comms(
     let (sender, receiver_bns) = reply_channel::unbounded();
     let (base_node_service_event_publisher, _) = broadcast::channel(100);
 
-    let base_node_service_handle = BaseNodeServiceHandle::new(sender, base_node_service_event_publisher.clone());
+    let base_node_service_handle = BaseNodeServiceHandle::new(sender, base_node_service_event_publisher);
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
     mock_base_node_service.set_default_base_node_state();
     runtime.spawn(mock_base_node_service.run());
