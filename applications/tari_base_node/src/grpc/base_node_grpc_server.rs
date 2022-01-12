@@ -36,11 +36,7 @@ use tari_app_utilities::consts;
 use tari_common_types::types::{Commitment, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
-    base_node::{
-        comms_interface::{Broadcast, CommsInterfaceError},
-        LocalNodeCommsInterface,
-        StateMachineHandle,
-    },
+    base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface, StateMachineHandle},
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, PrunedOutput},
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
@@ -722,7 +718,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         let block_hash = handler
-            .submit_block(block, Broadcast::from(true))
+            .submit_block(block)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

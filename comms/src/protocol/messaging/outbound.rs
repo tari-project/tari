@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use futures::{future::Either, SinkExt, StreamExt, TryStreamExt};
-use tokio::sync::mpsc;
+use futures::{future, SinkExt, StreamExt};
+use tokio::{pin, sync::mpsc};
 use tracing::{debug, error, event, span, Instrument, Level};
 
 use super::{error::MessagingProtocolError, metrics, MessagingEvent, MessagingProtocol, SendFailReason};
@@ -34,6 +34,7 @@ use crate::{
     multiplexing::Substream,
     peer_manager::NodeId,
     protocol::messaging::protocol::MESSAGING_PROTOCOL,
+    stream_id::StreamId,
 };
 
 const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
@@ -48,7 +49,6 @@ pub struct OutboundMessaging {
     messaging_events_tx: mpsc::Sender<MessagingEvent>,
     retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
     peer_node_id: NodeId,
-    inactivity_timeout: Option<Duration>,
 }
 
 impl OutboundMessaging {
@@ -58,7 +58,6 @@ impl OutboundMessaging {
         messages_rx: mpsc::UnboundedReceiver<OutboundMessage>,
         retry_queue_tx: mpsc::UnboundedSender<OutboundMessage>,
         peer_node_id: NodeId,
-        inactivity_timeout: Option<Duration>,
     ) -> Self {
         Self {
             connectivity,
@@ -66,7 +65,6 @@ impl OutboundMessaging {
             messaging_events_tx,
             retry_queue_tx,
             peer_node_id,
-            inactivity_timeout,
         }
     }
 
@@ -95,17 +93,6 @@ impl OutboundMessaging {
                     debug!(
                         target: LOG_TARGET,
                         "Outbound messaging for peer '{}' has stopped because the stream was closed", peer_node_id
-                    );
-                },
-                Err(MessagingProtocolError::Inactivity) => {
-                    event!(
-                        Level::DEBUG,
-                        "Outbound messaging for peer  '{}' has stopped because it was inactive",
-                        peer_node_id
-                    );
-                    debug!(
-                        target: LOG_TARGET,
-                        "Outbound messaging for peer '{}' has stopped because it was inactive", peer_node_id
                     );
                 },
                 Err(MessagingProtocolError::PeerDialFailed(err)) => {
@@ -263,7 +250,6 @@ impl OutboundMessaging {
     ) -> Result<(), MessagingProtocolError> {
         let Self {
             mut messages_rx,
-            inactivity_timeout,
             peer_node_id,
             ..
         } = self;
@@ -273,34 +259,31 @@ impl OutboundMessaging {
             node_id = peer_node_id.to_string().as_str()
         );
         let _enter = span.enter();
+        let stream_id = substream.stream.stream_id();
         debug!(
             target: LOG_TARGET,
-            "Starting direct message forwarding for peer `{}`", peer_node_id
+            "Starting direct message forwarding for peer `{}` (stream: {})", peer_node_id, stream_id
         );
 
-        let framed = MessagingProtocol::framed(substream.stream);
+        let (sink, mut remote_stream) = MessagingProtocol::framed(substream.stream).split();
 
         // Convert unbounded channel to a stream
-        let stream = futures::stream::unfold(&mut messages_rx, |rx| async move {
+        let outbound_stream = futures::stream::unfold(&mut messages_rx, |rx| async move {
             let v = rx.recv().await;
             v.map(|v| (v, rx))
         });
 
-        let outbound_stream = match inactivity_timeout {
-            Some(timeout) => Either::Left(
-                tokio_stream::StreamExt::timeout(stream, timeout).map_err(|_| MessagingProtocolError::Inactivity),
-            ),
-            None => Either::Right(stream.map(Ok)),
-        };
-
         let outbound_count = metrics::outbound_message_count(&peer_node_id);
-        let stream = outbound_stream.map(|msg| {
+        let stream = outbound_stream.map(|mut out_msg| {
             outbound_count.inc();
-            msg.map(|mut out_msg| {
-                event!(Level::DEBUG, "Message buffered for sending {}", out_msg);
-                out_msg.reply_success();
-                out_msg.body
-            })
+            event!(
+                Level::DEBUG,
+                "Message buffered for sending {} on stream {}",
+                out_msg,
+                stream_id
+            );
+            out_msg.reply_success();
+            Result::<_, MessagingProtocolError>::Ok(out_msg.body)
         });
 
         // Stop the stream as soon as the disconnection occurs, this allows the outbound stream to terminate as soon as
@@ -311,14 +294,18 @@ impl OutboundMessaging {
             // We drop the conn handle here BEFORE awaiting a disconnect to ensure that the outbound messaging isn't
             // holding onto the handle keeping the connection alive
             drop(conn);
-            on_disconnect.await;
+            // Read from the yamux socket to determine if it is closed.
+            let close_detect = remote_stream.next();
+            pin!(on_disconnect);
+            pin!(close_detect);
+            future::select(on_disconnect, close_detect).await;
             debug!(
                 target: LOG_TARGET,
-                "Peer connection closed. Ending outbound messaging stream for peer {}.", peer_node_id
+                "Outbound messaging stream {} ended for peer {}.", stream_id, peer_node_id
             )
         });
 
-        super::forward::Forward::new(stream, framed.sink_map_err(Into::into)).await?;
+        super::forward::Forward::new(stream, sink.sink_map_err(Into::into)).await?;
 
         // Close so that the protocol handler does not resend to this session
         messages_rx.close();
@@ -343,7 +330,7 @@ impl OutboundMessaging {
 
         debug!(
             target: LOG_TARGET,
-            "Direct message forwarding successfully completed for peer `{}`.", peer_node_id
+            "Direct message forwarding successfully completed for peer `{}` (stream: {}).", peer_node_id, stream_id
         );
         Ok(())
     }
@@ -354,10 +341,6 @@ impl OutboundMessaging {
         self.messages_rx.close();
         while let Some(mut out_msg) = self.messages_rx.recv().await {
             out_msg.reply_fail(reason);
-            let _ = self
-                .messaging_events_tx
-                .send(MessagingEvent::SendMessageFailed(out_msg, reason))
-                .await;
         }
     }
 }

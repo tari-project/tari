@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,22 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use crate::covenants::decoder::CovenantDecodeError;
 
-#[derive(Debug, Clone)]
-pub struct MessagingConfig {
-    /// The length of time that inactivity is allowed before closing the inbound/outbound substreams, or None for no
-    /// timeout
-    ///
-    /// Inbound/outbound substreams are closed independently, and they may be reopened in the future once closed.
-    /// (default: 8 mins)
-    pub inactivity_timeout: Option<Duration>,
-}
-
-impl Default for MessagingConfig {
-    fn default() -> Self {
-        Self {
-            inactivity_timeout: Some(Duration::from_secs(8 * 60)),
-        }
-    }
+#[derive(Debug, thiserror::Error)]
+pub enum CovenantError {
+    #[error("Reached the end of tokens but another token was expected")]
+    UnexpectedEndOfTokens,
+    #[error("Covenant decode error: {0}")]
+    CovenantDecodeError(#[from] CovenantDecodeError),
+    #[error("Expected an argument but got a filter")]
+    ExpectedArgButGotFilter,
+    #[error("Expected a filter but got an argument")]
+    ExpectedFilterButGotArg,
+    #[error("Encountered an unexpected argument. Expected {expected} but got {got}")]
+    UnexpectedArgument { expected: &'static str, got: String },
+    #[error("Covenant failed: no matching outputs found")]
+    NoMatchingOutputs,
+    #[error("Covenant failed: unused tokens remain after execution")]
+    RemainingTokens,
+    #[error("Invalid argument for filter {filter}: {details}")]
+    InvalidArgument { filter: &'static str, details: String },
+    #[error("Unsupported argument {arg}: {details}")]
+    UnsupportedArgument { arg: &'static str, details: String },
 }

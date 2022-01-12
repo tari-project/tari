@@ -31,22 +31,14 @@ impl TryFrom<AggregateBody> for grpc::AggregateBody {
     type Error = String;
 
     fn try_from(source: AggregateBody) -> Result<Self, Self::Error> {
+        let (inputs, outputs, kernels) = source.dissolve();
         Ok(Self {
-            inputs: source
-                .inputs()
-                .iter()
-                .map(|input| grpc::TransactionInput::try_from(input.clone()))
-                .collect::<Result<Vec<grpc::TransactionInput>, _>>()?,
-            outputs: source
-                .outputs()
-                .iter()
-                .map(|output| grpc::TransactionOutput::from(output.clone()))
-                .collect(),
-            kernels: source
-                .kernels()
-                .iter()
-                .map(|kernel| grpc::TransactionKernel::from(kernel.clone()))
-                .collect(),
+            inputs: inputs
+                .into_iter()
+                .map(grpc::TransactionInput::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            outputs: outputs.into_iter().map(grpc::TransactionOutput::from).collect(),
+            kernels: kernels.into_iter().map(grpc::TransactionKernel::from).collect(),
         })
     }
 }

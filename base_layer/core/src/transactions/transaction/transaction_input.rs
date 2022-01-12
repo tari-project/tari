@@ -148,6 +148,13 @@ impl TransactionInput {
         }
     }
 
+    pub fn features_mut(&mut self) -> Result<&mut OutputFeatures, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref mut features, .. } => Ok(features),
+        }
+    }
+
     pub fn script(&self) -> Result<&TariScript, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),

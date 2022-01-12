@@ -30,7 +30,7 @@ mod consensus_manager;
 pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
 
 mod consensus_encoding;
-pub use consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusEncodingWrapper};
+pub use consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ToConsensusBytes};
 
 mod network;
 pub use network::NetworkConsensus;
