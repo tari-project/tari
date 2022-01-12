@@ -245,10 +245,20 @@ pub fn chain_block(
     let mut header = BlockHeader::from_previous(&prev_block.header);
     header.version = consensus.consensus_constants(header.height).blockchain_version();
     let height = header.height;
+    let reward = consensus.get_block_reward_at(height);
+    let (coinbase_utxo, coinbase_kernel, _) = create_coinbase(
+        &Default::default(),
+        reward,
+        consensus.consensus_constants(height).coinbase_lock_height(),
+    );
     NewBlockTemplate::from_block(
-        header.into_builder().with_transactions(transactions).build(),
+        header
+            .into_builder()
+            .with_coinbase_utxo(coinbase_utxo, coinbase_kernel)
+            .with_transactions(transactions)
+            .build(),
         1.into(),
-        consensus.get_block_reward_at(height),
+        reward,
     )
 }
 

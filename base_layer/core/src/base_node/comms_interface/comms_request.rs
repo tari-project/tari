@@ -26,7 +26,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashOutput, PublicKey, Signature};
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
@@ -44,14 +44,14 @@ pub struct MmrStateRequest {
 pub enum NodeCommsRequest {
     GetChainMetadata,
     FetchHeaders(RangeInclusive<u64>),
-    FetchHeadersWithHashes(Vec<HashOutput>),
+    FetchHeadersByHashes(Vec<HashOutput>),
     FetchHeadersAfter(Vec<HashOutput>, HashOutput),
     FetchMatchingUtxos(Vec<HashOutput>),
     FetchMatchingTxos(Vec<HashOutput>),
     FetchMatchingBlocks(RangeInclusive<u64>),
     FetchBlocksByHash(Vec<HashOutput>),
-    FetchBlocksWithKernels(Vec<Signature>),
-    FetchBlocksWithUtxos(Vec<Commitment>),
+    FetchBlocksByKernelExcessSigs(Vec<Signature>),
+    FetchBlocksByUtxos(Vec<Commitment>),
     GetHeaderByHash(HashOutput),
     GetBlockByHash(HashOutput),
     GetNewBlockTemplate(GetNewBlockTemplateRequest),
@@ -66,6 +66,9 @@ pub enum NodeCommsRequest {
     },
     FetchAssetMetadata {
         asset_public_key: PublicKey,
+    },
+    FetchMempoolTransactionsByExcessSigs {
+        excess_sigs: Vec<PrivateKey>,
     },
 }
 
@@ -83,7 +86,7 @@ impl Display for NodeCommsRequest {
             FetchHeaders(range) => {
                 write!(f, "FetchHeaders ({:?})", range)
             },
-            FetchHeadersWithHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
+            FetchHeadersByHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
             FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingTxos(v) => write!(f, "FetchMatchingTxos (n={})", v.len()),
@@ -91,8 +94,8 @@ impl Display for NodeCommsRequest {
                 write!(f, "FetchMatchingBlocks ({:?})", range)
             },
             FetchBlocksByHash(v) => write!(f, "FetchBlocksByHash (n={})", v.len()),
-            FetchBlocksWithKernels(v) => write!(f, "FetchBlocksWithKernels (n={})", v.len()),
-            FetchBlocksWithUtxos(v) => write!(f, "FetchBlocksWithUtxos (n={})", v.len()),
+            FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksWithKernels (n={})", v.len()),
+            FetchBlocksByUtxos(v) => write!(f, "FetchBlocksWithUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),
             GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v.to_hex()),
             GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),
@@ -111,6 +114,9 @@ impl Display for NodeCommsRequest {
             },
             FetchAssetMetadata { .. } => {
                 write!(f, "FetchAssetMetadata")
+            },
+            FetchMempoolTransactionsByExcessSigs { .. } => {
+                write!(f, "FetchMempoolTransactionsByExcessSigs")
             },
         }
     }

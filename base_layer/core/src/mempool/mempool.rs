@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_common_types::types::Signature;
+use tari_common_types::types::{PrivateKey, Signature};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -60,10 +60,19 @@ impl Mempool {
         }
     }
 
-    /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
-    /// pipeline already and will thus always be internally consistent by this stage
+    /// Insert an unconfirmed transaction into the Mempool.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
         self.pool_storage.write().await.insert(tx)
+    }
+
+    /// Inserts all transactions into the mempool.
+    pub async fn insert_all(&self, transactions: &[Arc<Transaction>]) -> Result<(), MempoolError> {
+        let mut mempool = self.pool_storage.write().await;
+        for tx in transactions {
+            mempool.insert(tx.clone())?;
+        }
+
+        Ok(())
     }
 
     /// Update the Mempool based on the received published block.
@@ -86,7 +95,7 @@ impl Mempool {
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
     // TODO: Investigate returning an iterator rather than a large vector of transactions
-    pub async fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+    pub async fn snapshot(&self) -> Vec<Arc<Transaction>> {
         self.pool_storage.read().await.snapshot()
     }
 
@@ -96,9 +105,16 @@ impl Mempool {
         self.pool_storage.write().await.retrieve(total_weight)
     }
 
+    pub async fn retrieve_by_excess_sigs(
+        &self,
+        excess_sigs: &[PrivateKey],
+    ) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+        self.pool_storage.read().await.retrieve_by_excess_sigs(excess_sigs)
+    }
+
     /// Check if the specified excess signature is found in the Mempool.
-    pub async fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> Result<TxStorageResponse, MempoolError> {
-        Ok(self.pool_storage.read().await.has_tx_with_excess_sig(excess_sig))
+    pub async fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
+        self.pool_storage.read().await.has_tx_with_excess_sig(excess_sig)
     }
 
     /// Check if the specified transaction is stored in the Mempool.
@@ -107,12 +123,12 @@ impl Mempool {
     }
 
     /// Gathers and returns the stats of the Mempool.
-    pub async fn stats(&self) -> Result<StatsResponse, MempoolError> {
-        self.pool_storage.write().await.stats()
+    pub async fn stats(&self) -> StatsResponse {
+        self.pool_storage.read().await.stats()
     }
 
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
-    pub async fn state(&self) -> Result<StateResponse, MempoolError> {
-        self.pool_storage.write().await.state()
+    pub async fn state(&self) -> StateResponse {
+        self.pool_storage.read().await.state()
     }
 }

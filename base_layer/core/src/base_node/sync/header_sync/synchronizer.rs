@@ -693,9 +693,9 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 split_info.chain_split_hash.to_hex()
             );
             let blocks = self.rewind_blockchain(split_info.chain_split_hash.clone()).await?;
-            // NOTE: `blocks` only contains full blocks that were reorged out, and not the headers.
-            //       This may be unexpected for implementers of the rewind hook.
-            self.hooks.call_on_rewind_hooks(blocks);
+            if !blocks.is_empty() {
+                self.hooks.call_on_rewind_hooks(blocks);
+            }
         }
 
         // Commit the forked chain. At this point

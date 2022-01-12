@@ -35,9 +35,9 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{
     sync::{
         mpsc,
@@ -312,7 +312,7 @@ where B: BlockchainBackend + 'static
             debug!(
                 target: LOG_TARGET,
                 "Propagated block `{}` from peer `{}` not processed while busy with initial sync.",
-                new_block.inner.block_hash.to_hex(),
+                new_block.inner().header.hash().to_hex(),
                 new_block.source_peer.node_id.short_str(),
             );
             return;
@@ -637,7 +637,7 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     debug!(
         target: LOG_TARGET,
         "New candidate block with hash `{}` received from `{}`.",
-        new_block.block_hash.to_hex(),
+        new_block.header.hash().to_hex(),
         source_peer.node_id.short_str()
     );
 

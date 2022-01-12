@@ -58,10 +58,10 @@ impl MempoolInboundHandlers {
         debug!(target: LOG_TARGET, "Handling remote request: {}", request);
         use MempoolRequest::*;
         match request {
-            GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
-            GetState => Ok(MempoolResponse::State(self.mempool.state().await?)),
+            GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await)),
+            GetState => Ok(MempoolResponse::State(self.mempool.state().await)),
             GetTxStateByExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
-                self.mempool.has_tx_with_excess_sig(&excess_sig).await?,
+                self.mempool.has_tx_with_excess_sig(&excess_sig).await,
             )),
             SubmitTransaction(tx) => {
                 debug!(
@@ -150,7 +150,8 @@ impl MempoolInboundHandlers {
                     )
                     .await?;
             },
-            BlockSyncRewind(removed_blocks) if !removed_blocks.is_empty() => {
+            ValidBlockAdded(_, _) => {},
+            BlockSyncRewind(removed_blocks) => {
                 self.mempool
                     .process_reorg(removed_blocks.iter().map(|b| b.to_arc_block()).collect(), vec![])
                     .await?;
@@ -158,7 +159,7 @@ impl MempoolInboundHandlers {
             BlockSyncComplete(tip_block) => {
                 self.mempool.process_published_block(tip_block.block()).await?;
             },
-            _ => {},
+            AddBlockFailed(_) => {},
         }
 
         Ok(())

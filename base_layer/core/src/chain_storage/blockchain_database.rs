@@ -260,6 +260,14 @@ where B: BlockchainBackend
         &self.consensus_manager
     }
 
+    pub fn validate_header(&self, header: &BlockHeader) -> Result<(), ChainStorageError> {
+        let db = self.db_read_access()?;
+        self.validators
+            .header
+            .validate(&*db, header, &self.difficulty_calculator)?;
+        Ok(())
+    }
+
     // Be careful about making this method public. Rather use `db_and_metadata_read_access`
     // so that metadata and db are read in the correct order so that deadlocks don't occur
     pub fn db_read_access(&self) -> Result<RwLockReadGuard<B>, ChainStorageError> {

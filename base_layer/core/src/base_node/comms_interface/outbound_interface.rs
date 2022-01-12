@@ -20,13 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::{BlockHash, PrivateKey};
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
-    base_node::comms_interface::{error::CommsInterfaceError, NodeCommsRequest, NodeCommsResponse},
+    base_node::comms_interface::{
+        error::CommsInterfaceError,
+        FetchMempoolTransactionsResponse,
+        NodeCommsRequest,
+        NodeCommsResponse,
+    },
     blocks::{HistoricalBlock, NewBlock},
 };
 
@@ -54,7 +59,7 @@ impl OutboundNodeCommsInterface {
 
     /// Fetch the Blocks corresponding to the provided block hashes from a specific base node. The requested blocks
     /// could be chain blocks or orphan blocks.
-    pub async fn request_blocks_with_hashes_from_peer(
+    pub async fn request_blocks_by_hashes_from_peer(
         &mut self,
         block_hashes: Vec<BlockHash>,
         node_id: Option<NodeId>,
@@ -65,6 +70,27 @@ impl OutboundNodeCommsInterface {
             .await??
         {
             Ok(blocks)
+        } else {
+            Err(CommsInterfaceError::UnexpectedApiResponse)
+        }
+    }
+
+    /// Fetch the Blocks corresponding to the provided block hashes from a specific base node. The requested blocks
+    /// could be chain blocks or orphan blocks.
+    pub async fn request_transactions_by_excess_sig(
+        &mut self,
+        node_id: NodeId,
+        excess_sigs: Vec<PrivateKey>,
+    ) -> Result<FetchMempoolTransactionsResponse, CommsInterfaceError> {
+        if let NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(resp) = self
+            .request_sender
+            .call((
+                NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs },
+                Some(node_id),
+            ))
+            .await??
+        {
+            Ok(resp)
         } else {
             Err(CommsInterfaceError::UnexpectedApiResponse)
         }

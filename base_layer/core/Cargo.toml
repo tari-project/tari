@@ -65,7 +65,6 @@ thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"
 tracing-attributes = "*"
-ttl_cache = "0.5.1"
 uint = { version = "0.9", default-features = false }
 
 [dev-dependencies]
