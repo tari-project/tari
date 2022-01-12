@@ -40,7 +40,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::OutputFeatures,
+        transaction::{OutputFeatures, OutputFlags},
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         SenderTransactionProtocol,
@@ -72,6 +72,7 @@ use tari_wallet::{
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
+            models::SpendingPriority,
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
@@ -598,6 +599,65 @@ async fn test_utxo_selection_with_chain_metadata() {
         assert_ne!(utxo.features.maturity, 5);
         assert_ne!(utxo.value, 5 * amount);
     }
+}
+
+#[tokio::test]
+async fn test_utxo_selection_with_tx_priority() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    // setup with chain metadata at a height of 6
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+        server_node_identity,
+    )
+    .await;
+
+    let amount = MicroTari::from(2000);
+    let fee_per_gram = MicroTari::from(2);
+
+    // we create two outputs, one as coinbase-high priority one as normal so we can track them
+    let (_, uo) = make_input_with_features(
+        &mut OsRng.clone(),
+        amount,
+        &factories.commitment,
+        Some(OutputFeatures::create_coinbase(1)),
+    );
+    oms.add_output(uo, Some(SpendingPriority::HtlcSpendAsap)).await.unwrap();
+    let (_, uo) = make_input_with_features(
+        &mut OsRng.clone(),
+        amount,
+        &factories.commitment,
+        Some(OutputFeatures::with_maturity(1)),
+    );
+    oms.add_output(uo, None).await.unwrap();
+
+    let utxos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(utxos.len(), 2);
+
+    // test transactions
+    let stp = oms
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            MicroTari::from(1000),
+            None,
+            None,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+        )
+        .await
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that the utxo with the lowest priority was left
+    let utxos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(utxos.len(), 1);
+
+    assert!(!utxos[0].features.flags.contains(OutputFlags::COINBASE_OUTPUT));
 }
 
 #[tokio::test]
