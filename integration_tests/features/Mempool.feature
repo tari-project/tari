@@ -1,7 +1,7 @@
 @mempool @base-node
 Feature: Mempool
 
-  @critical @flaky
+  @flaky
   Scenario: Transactions are propagated through a network
     #
     # The randomness of the TX1 propagation can result in this test not passing.
@@ -19,7 +19,7 @@ Feature: Mempool
     Then TX1 is in the MEMPOOL of all nodes, where 1% can fail
 
 
-  @critical @flaky
+  @flaky
   Scenario: Transactions are synced
     Given I have 2 seed nodes
     And I have a base node SENDER connected to all seed nodes
@@ -85,7 +85,7 @@ Feature: Mempool
     Then SENDER has TX1 in NOT_STORED state
     Then SENDER has TX2 in MINED state
 
-  @critical @flaky
+  @flaky
   Scenario: Mempool clearing out invalid transactions after a reorg
     Given I have a seed node SEED_A
     And I have a base node NODE_A connected to seed SEED_A

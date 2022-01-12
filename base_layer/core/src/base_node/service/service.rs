@@ -33,7 +33,7 @@ use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
+    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
@@ -574,7 +574,7 @@ async fn handle_outbound_block(
     new_block: NewBlock,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), CommsInterfaceError> {
-    outbound_message_service
+    let result = outbound_message_service
         .flood(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
@@ -584,7 +584,13 @@ async fn handle_outbound_block(
                 shared_protos::core::NewBlock::from(new_block),
             ),
         )
-        .await?;
+        .await;
+    if let Err(e) = result {
+        return match e {
+            DhtOutboundError::NoMessagesQueued => Ok(()),
+            _ => Err(e.into()),
+        };
+    }
     Ok(())
 }
 
