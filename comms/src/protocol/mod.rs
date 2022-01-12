@@ -27,7 +27,7 @@ mod extensions;
 pub use extensions::{ProtocolExtension, ProtocolExtensionContext, ProtocolExtensionError, ProtocolExtensions};
 
 mod identity;
-pub use identity::{identity_exchange, IdentityProtocolError, IDENTITY_PROTOCOL};
+pub use identity::{identity_exchange, IdentityProtocolError};
 
 mod negotiation;
 pub use negotiation::ProtocolNegotiation;

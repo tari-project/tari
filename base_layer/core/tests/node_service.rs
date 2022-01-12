@@ -500,6 +500,7 @@ async fn local_get_new_block_template_and_get_new_block() {
 }
 
 #[tokio::test]
+#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
@@ -565,9 +566,7 @@ async fn local_get_new_block_with_zero_conf() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template
-        .body
-        .sort(rules.consensus_constants(0).blockchain_version());
+    block_template.body.sort();
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -579,6 +578,7 @@ async fn local_get_new_block_with_zero_conf() {
 }
 
 #[tokio::test]
+#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
@@ -639,9 +639,7 @@ async fn local_get_new_block_with_combined_transaction() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template
-        .body
-        .sort(rules.consensus_constants(0).blockchain_version());
+    block_template.body.sort();
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);

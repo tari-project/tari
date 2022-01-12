@@ -29,14 +29,12 @@ use tari_core::{
     blocks::{Block, BlockHeaderAccumulatedData, BlockHeaderValidationError, BlockValidationError, ChainBlock},
     chain_storage::{BlockchainDatabase, BlockchainDatabaseConfig, ChainStorageError, Validators},
     consensus::{consensus_constants::PowAlgorithmConstants, ConsensusConstantsBuilder, ConsensusManager},
-    crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         monero_rx,
         monero_rx::{FixedByteArray, MoneroPowData},
         randomx_factory::RandomXFactory,
         PowAlgorithm,
     },
-    tari_utilities::Hashable,
     test_helpers::blockchain::{create_store_with_consensus_and_validators, create_test_db},
     transactions::{
         aggregated_body::AggregateBody,
@@ -59,6 +57,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{inputs, script};
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::helpers::{
     block_builders::{
@@ -76,7 +75,7 @@ mod helpers;
 #[test]
 fn test_genesis_block() {
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Dibbler;
     let rules = ConsensusManager::builder(network).build();
     let backend = create_test_db();
     let validators = Validators::new(
@@ -110,7 +109,7 @@ fn test_monero_blocks() {
     let seed2 = "9f02e032f9b15d2aded991e0f68cc3c3427270b568b782e55fbd269ead0bad98";
 
     let factories = CryptoFactories::default();
-    let network = Network::Weatherwax;
+    let network = Network::Dibbler;
     let cc = ConsensusConstantsBuilder::new(network)
         .with_max_randomx_seed_height(1)
         .clear_proof_of_work()
@@ -194,6 +193,7 @@ fn add_monero_data(tblock: &mut Block, seed_key: &str) {
 
 #[tokio::test]
 async fn inputs_are_not_malleable() {
+    let _ = env_logger::try_init();
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
 

@@ -31,14 +31,12 @@ use std::{
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashDigest, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
-use crate::{
-    crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable},
-    transactions::{
-        tari_amount::MicroTari,
-        transaction::{KernelFeatures, TransactionError},
-        transaction_protocol::{build_challenge, TransactionMetadata},
-    },
+use crate::transactions::{
+    tari_amount::MicroTari,
+    transaction::{KernelFeatures, TransactionError},
+    transaction_protocol::{build_challenge, TransactionMetadata},
 };
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -83,16 +81,6 @@ impl TransactionKernel {
                 "Verifying kernel signature".to_string(),
             ))
         }
-    }
-
-    /// This method was used to sort kernels. It has been replaced, and will be removed in future
-    pub fn deprecated_cmp(&self, other: &Self) -> Ordering {
-        self.features
-            .cmp(&other.features)
-            .then(self.fee.cmp(&other.fee))
-            .then(self.lock_height.cmp(&other.lock_height))
-            .then(self.excess.cmp(&other.excess))
-            .then(self.excess_sig.cmp(&other.excess_sig))
     }
 }
 

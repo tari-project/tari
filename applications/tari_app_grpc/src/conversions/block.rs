@@ -26,12 +26,14 @@ use tari_core::blocks::Block;
 
 use crate::tari_rpc as grpc;
 
-impl From<tari_core::blocks::Block> for grpc::Block {
-    fn from(block: Block) -> Self {
-        Self {
-            body: Some(block.body.into()),
+impl TryFrom<tari_core::blocks::Block> for grpc::Block {
+    type Error = String;
+
+    fn try_from(block: Block) -> Result<Self, Self::Error> {
+        Ok(Self {
+            body: Some(block.body.try_into()?),
             header: Some(block.header.into()),
-        }
+        })
     }
 }
 

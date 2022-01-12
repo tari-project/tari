@@ -53,7 +53,13 @@ use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 async fn main() -> Result<(), anyhow::Error> {
     let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
-    let config = MergeMiningProxyConfig::try_from(config)?;
+    let config = match MergeMiningProxyConfig::try_from(config) {
+        Ok(c) => c,
+        Err(msg) => {
+            eprintln!("Invalid config: {}", msg);
+            return Ok(());
+        },
+    };
     let addr = config.proxy_host_address;
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))

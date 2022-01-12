@@ -1,14 +1,18 @@
-const createError = require("http-errors")
-const express = require("express")
-const path = require("path")
-const cookieParser = require("cookie-parser")
-const logger = require("morgan")
-const asciichart = require("asciichart")
+const createError = require('http-errors')
+const express = require('express')
+const path = require('path')
+const cookieParser = require('cookie-parser')
+const logger = require('morgan')
+const asciichart = require('asciichart')
+
 
 var indexRouter = require("./routes/index")
 var blocksRouter = require("./routes/blocks")
 var mempoolRouter = require("./routes/mempool")
 var searchRouter = require("./routes/search")
+
+var assetsRouter = require('./routes/assets');
+var validatorRouter = require('./routes/validator');
 
 var hbs = require("hbs")
 hbs.registerHelper("hex", function (buffer) {
@@ -60,6 +64,10 @@ hbs.registerHelper("chart", function (data, height) {
   }
 })
 
+hbs.registerHelper('json', function(obj) {
+  return JSON.stringify(obj);
+})
+
 var app = express()
 
 // view engine setup
@@ -76,8 +84,10 @@ app.use(
 app.use(cookieParser())
 app.use(express.static(path.join(__dirname, "public")))
 
-app.use("/", indexRouter)
-app.use("/blocks", blocksRouter)
+app.use('/', indexRouter);
+app.use('/blocks', blocksRouter);
+app.use('/assets', assetsRouter);
+app.use('/validator', validatorRouter);
 app.use("/mempool", mempoolRouter)
 app.use("/search", searchRouter)
 

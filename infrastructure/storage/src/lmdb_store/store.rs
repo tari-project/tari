@@ -40,7 +40,7 @@ const LOG_TARGET: &str = "lmdb";
 const BYTES_PER_MB: usize = 1024 * 1024;
 
 /// An atomic pointer to an LMDB database instance
-type DatabaseRef = Arc<Database<'static>>;
+pub type DatabaseRef = Arc<Database<'static>>;
 
 #[derive(Debug, Clone)]
 pub struct LMDBConfig {
@@ -185,7 +185,7 @@ impl LMDBBuilder {
             Arc::new(env)
         };
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "({}) LMDB environment created with a capacity of {} MB, {} MB remaining.",
             path,

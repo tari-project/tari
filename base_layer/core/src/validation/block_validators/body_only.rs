@@ -22,6 +22,7 @@
 
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_utilities::hex::Hex;
 
 use super::LOG_TARGET;
 use crate::{
@@ -29,7 +30,6 @@ use crate::{
     chain_storage,
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    crypto::tari_utilities::hex::Hex,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
 

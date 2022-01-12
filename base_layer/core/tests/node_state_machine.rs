@@ -132,7 +132,7 @@ async fn test_listening_lagging() {
 #[tokio::test]
 async fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
-    let (node, consensus_manager) = BaseNodeBuilder::new(Network::Weatherwax.into())
+    let (node, consensus_manager) = BaseNodeBuilder::new(Network::Dibbler.into())
         .start(temp_dir.path().to_str().unwrap())
         .await;
     // let shutdown = Shutdown::new();

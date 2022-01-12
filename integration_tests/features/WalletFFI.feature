@@ -44,17 +44,11 @@ Feature: Wallet FFI
 
     Scenario: As a client I want to set the base node
         Given I have a base node BASE1
-        Given I have a base node BASE2
-        And I have a ffi wallet FFI_WALLET connected to base node BASE1
-        And I set base node BASE2 for ffi wallet FFI_WALLET
-        And I stop ffi wallet FFI_WALLET
-        And I stop node BASE2
-        And I restart ffi wallet FFI_WALLET connected to base node BASE2
-        And I wait 5 seconds
-        Then I wait for ffi wallet FFI_WALLET to receive EXACTLY 0 SAF message
-        And I start base node BASE2
-        Then I wait for ffi wallet FFI_WALLET to receive AT_LEAST 1 SAF message
-        And I stop ffi wallet FFI_WALLET
+        And I have a base node BASE2
+        Given I have a ffi wallet FFI_WALLET connected to base node BASE1
+        Then I wait for ffi wallet FFI_WALLET to connect to BASE1
+        Given I set base node BASE2 for ffi wallet FFI_WALLET
+        Then I wait for ffi wallet FFI_WALLET to connect to BASE2
 
     Scenario: As a client I want to cancel a transaction
         Given I have a base node BASE

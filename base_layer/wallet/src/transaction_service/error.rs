@@ -225,13 +225,14 @@ pub enum TransactionStorageError {
 /// include the ID of the protocol
 #[derive(Debug)]
 pub struct TransactionServiceProtocolError {
+    // TODO: Replace with T or something to account for OperationId or TxId
     pub id: u64,
     pub error: TransactionServiceError,
 }
 
 impl TransactionServiceProtocolError {
-    pub fn new(id: u64, error: TransactionServiceError) -> Self {
-        Self { id, error }
+    pub fn new<T: Into<u64>>(id: T, error: TransactionServiceError) -> Self {
+        Self { id: id.into(), error }
     }
 }
 
@@ -242,14 +243,14 @@ impl From<TransactionServiceProtocolError> for TransactionServiceError {
 }
 
 pub trait TransactionServiceProtocolErrorExt<TRes> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError>;
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError>;
 }
 
 impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
-    fn for_protocol(self, id: u64) -> Result<TRes, TransactionServiceProtocolError> {
+    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError> {
         match self {
             Ok(r) => Ok(r),
-            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
+            Err(e) => Err(TransactionServiceProtocolError::new(id.into(), e.into())),
         }
     }
 }

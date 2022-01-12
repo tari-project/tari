@@ -31,7 +31,6 @@ use chacha20::{
     Key,
     Nonce,
 };
-use chrono::Utc;
 use crc32fast::Hasher as CrcHasher;
 use digest::Update;
 use rand::{rngs::OsRng, RngCore};
@@ -49,41 +48,43 @@ pub const CIPHER_SEED_SALT_BYTES: usize = 5;
 pub const CIPHER_SEED_MAC_BYTES: usize = 5;
 
 /// This is an implementation of a Cipher Seed based on the `aezeed` encoding scheme (https://github.com/lightningnetwork/lnd/tree/master/aezeed)
-/// The goal of the scheme is produce a wallet seed that is versioned, contains the birthday of the wallet, starting
-/// entropy of the wallet to seed key generation, can be enciphered with a passphrase and has a checksum.
+/// The goal of the scheme is produce a wallet seed that is versioned, contains the birthday of the wallet,
+/// starting entropy of the wallet to seed key generation, can be enciphered with a passphrase and has a checksum.
 /// The `aezeed` scheme uses a new AEZ AEAD scheme which allows for enciphering arbitrary length texts and choosing
-/// custom MAC sizes. AEZ is unfortunately not available in the RustCrypto implementations yet so we use a similar AEAD
-/// scheme using the primitives available in RustCrypto.
-/// Our scheme must be able to be represented with the 24 word seed phrase using the BIP-39 word lists. The world lists
-/// contain 2048 words which are 11 bits of information giving us a total of 33 bytes to work with for the final
-/// encoding.
+/// custom MAC sizes. AEZ is unfortunately not available in the RustCrypto implementations yet so we use a similar
+/// AEAD scheme using the primitives available in RustCrypto.
+/// Our scheme must be able to be represented with the 24 word seed phrase using the BIP-39 word lists. The world
+/// lists contain 2048 words which are 11 bits of information giving us a total of 33 bytes to work with for the
+/// final encoding.
 /// In our scheme we will have the following data:
 /// version     1 byte
-/// birthday    2 bytes     Days after Unix Epoch
-/// entropy     16 bytes   
+/// birthday    2 bytes     Days since Unix Epoch
+/// entropy     16 bytes
 /// MAC         5 bytes     Hash(birthday||entropy||version||salt||passphrase)
 /// salt        5 bytes
 /// checksum    4 bytes
 ///
-/// In it's enciphered form we will use the MAC-the-Encrypt pattern of AE so that the birthday and entropy will be
+/// In its enciphered form we will use the MAC-the-Encrypt pattern of AE so that the birthday and entropy will be
 /// encrypted. The version and salt are associated data that are included in the MAC but not encrypted.
 /// The enciphered data will look as follows:
 /// version     1 byte
-/// ciphertext  23 bytes     
+/// ciphertext  23 bytes
 /// salt        5 bytes
 /// checksum    4 bytes
 ///
-/// The final 33 byte enciphered data is what will be encoded using the Mnemonic Word lists to create a 24 word seed
-/// phrase.
+/// The final 33 byte enciphered data is what will be encoded using the Mnemonic Word lists to create a 24 word
+/// seed phrase.
 ///
 /// The checksum allows us to confirm that a given seed phrase decodes into an intact enciphered CipherSeed.
-/// The MAC allows us to confirm that a given passphrase correctly decrypts the CipherSeed and that the version and salt
-/// are not tampered with. If no passphrase is provided a default string will be used
+/// The MAC allows us to confirm that a given passphrase correctly decrypts the CipherSeed and that the version and
+/// salt are not tampered with. If no passphrase is provided a default string will be used
 ///
-/// The Birthday is included to enable more efficient recoveries. Knowing the birthday of the seed phrase means we only
-/// have to scan the blocks in the chain since that day to fully recover rather than scan the entire blockchain
+/// The Birthday is included to enable more efficient recoveries. Knowing the birthday of the seed phrase means we
+/// only have to scan the blocks in the chain since that day for full recovery, rather than scanning the entire
+/// blockchain.
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CipherSeed {
     version: u8,
     birthday: u16,
@@ -92,13 +93,28 @@ pub struct CipherSeed {
 }
 
 impl CipherSeed {
+    #[cfg(not(feature = "js"))]
     pub fn new() -> Self {
+        const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
+        let days = chrono::Utc::now().timestamp() as u64 / SECONDS_PER_DAY;
+        let birthday = u16::try_from(days).unwrap_or(0u16);
+        CipherSeed::new_with_birthday(birthday)
+    }
+
+    #[cfg(feature = "js")]
+    pub fn new() -> Self {
+        const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
+        let millis = js_sys::Date::now() as u64;
+        let days = millis / MILLISECONDS_PER_DAY;
+        let birthday = u16::try_from(days).unwrap_or(0u16);
+        CipherSeed::new_with_birthday(birthday)
+    }
+
+    fn new_with_birthday(birthday: u16) -> Self {
         let mut entropy = [0u8; CIPHER_SEED_ENTROPY_BYTES];
         OsRng.fill_bytes(&mut entropy);
         let mut salt = [0u8; CIPHER_SEED_SALT_BYTES];
         OsRng.fill_bytes(&mut salt);
-
-        let birthday = u16::try_from(Utc::now().timestamp() as u64 / (24 * 60 * 60)).unwrap_or(0u16);
 
         Self {
             version: CIPHER_SEED_VERSION,

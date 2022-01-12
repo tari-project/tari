@@ -49,7 +49,7 @@
 /// ```
 /// tor --allow-missing-torrc --ignore-missing-torrc \
 ///  --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 \
-///  --log "notice stdout" --clientuseipv6 1
+///  --log "warn stdout" --clientuseipv6 1
 /// ```
 ///
 /// For the first run
@@ -254,12 +254,13 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         ExitCodes::UnknownError(err.to_string())
     })?;
 
-    if node_config.grpc_enabled {
-        // Go, GRPC, go go
-        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-        let socket_addr = multiaddr_to_socketaddr(&node_config.grpc_base_node_address)
-            .map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
-        task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
+    if let Some(ref base_node_config) = node_config.base_node_config {
+        if let Some(ref address) = base_node_config.grpc_address {
+            // Go, GRPC, go go
+            let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+            task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
+        }
     }
 
     // Run, node, run!

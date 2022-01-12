@@ -24,6 +24,7 @@ use std::sync::Arc;
 
 use futures::StreamExt;
 use log::*;
+use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::transaction_service::{
@@ -96,7 +97,7 @@ impl TransactionServiceMock {
         match request {
             TransactionServiceRequest::ImportUtxo(_, _, _, _) => {
                 let _ = reply_tx
-                    .send(Ok(TransactionServiceResponse::UtxoImported(42)))
+                    .send(Ok(TransactionServiceResponse::UtxoImported(TxId::from(42))))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e

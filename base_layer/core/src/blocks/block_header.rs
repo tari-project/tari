@@ -337,7 +337,7 @@ pub(crate) mod hash_serializer {
 mod test {
     use tari_crypto::tari_utilities::Hashable;
 
-    use crate::{blocks::BlockHeader, tari_utilities::epoch_time::EpochTime};
+    use crate::blocks::BlockHeader;
     #[test]
     fn from_previous() {
         let mut h1 = crate::proof_of_work::sha3_test::get_header();
@@ -355,7 +355,7 @@ mod test {
         let headers = vec![500, 350, 300, 210, 100u64]
             .into_iter()
             .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
+                timestamp: t.into(),
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
@@ -371,7 +371,7 @@ mod test {
         let headers = vec![150, 90, 100u64]
             .into_iter()
             .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
+                timestamp: t.into(),
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
@@ -394,7 +394,7 @@ mod test {
     #[test]
     fn timing_one_block() {
         let header = BlockHeader {
-            timestamp: EpochTime::from(0),
+            timestamp: 0.into(),
             ..BlockHeader::default()
         };
 
@@ -408,7 +408,7 @@ mod test {
         let headers = vec![150, 90]
             .into_iter()
             .map(|t| BlockHeader {
-                timestamp: EpochTime::from(t),
+                timestamp: t.into(),
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();

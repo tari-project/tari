@@ -231,8 +231,14 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         notify_script,
         ..
     } = config;
-    let grpc = WalletGrpcServer::new(wallet.clone());
-    handle.spawn(run_grpc(grpc, global_config.grpc_console_wallet_address.clone()));
+    if let Some(grpc_address) = global_config
+        .wallet_config
+        .as_ref()
+        .and_then(|c| c.grpc_address.as_ref())
+    {
+        let grpc = WalletGrpcServer::new(wallet.clone());
+        handle.spawn(run_grpc(grpc, grpc_address.clone()));
+    }
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
 
@@ -321,11 +327,14 @@ pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), E
         global_config, handle, ..
     } = config;
     info!(target: LOG_TARGET, "Starting grpc server");
-    let grpc = WalletGrpcServer::new(wallet);
-
-    handle
-        .block_on(run_grpc(grpc, global_config.grpc_console_wallet_address))
-        .map_err(ExitCodes::GrpcError)?;
+    if let Some(grpc_address) = global_config.wallet_config.and_then(|c| c.grpc_address) {
+        let grpc = WalletGrpcServer::new(wallet);
+        handle
+            .block_on(run_grpc(grpc, grpc_address))
+            .map_err(ExitCodes::GrpcError)?;
+    } else {
+        println!("No grpc address specified");
+    }
     info!(target: LOG_TARGET, "Shutting down");
     Ok(())
 }

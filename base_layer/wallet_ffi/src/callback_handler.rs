@@ -78,8 +78,8 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-    callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
-    callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
+    callback_direct_send_result: unsafe extern "C" fn(u64, bool),
+    callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
@@ -113,12 +113,12 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-        callback_direct_send_result: unsafe extern "C" fn(TxId, bool),
-        callback_store_and_forward_send_result: unsafe extern "C" fn(TxId, bool),
+        callback_direct_send_result: unsafe extern "C" fn(u64, bool),
+        callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-        callback_txo_validation_complete: unsafe extern "C" fn(TxId, bool),
+        callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
-        callback_transaction_validation_complete: unsafe extern "C" fn(TxId, bool),
+        callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
         callback_saf_messages_received: unsafe extern "C" fn(),
     ) -> Self {
         info!(
@@ -315,7 +315,7 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction callback function for TxId: {}", tx_id
+                    "Calling Received Transaction callback function for u64: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -334,7 +334,7 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Reply callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Reply callback function for u64: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
@@ -393,7 +393,7 @@ where TBackend: TransactionBackend + 'static
             "Calling Direct Send Result callback function for TxId: {} with result {}", tx_id, result
         );
         unsafe {
-            (self.callback_direct_send_result)(tx_id, result);
+            (self.callback_direct_send_result)(tx_id.as_u64(), result);
         }
     }
 
@@ -403,7 +403,7 @@ where TBackend: TransactionBackend + 'static
             "Calling Store and Forward Send Result callback function for TxId: {} with result {}", tx_id, result
         );
         unsafe {
-            (self.callback_store_and_forward_send_result)(tx_id, result);
+            (self.callback_store_and_forward_send_result)(tx_id.as_u64(), result);
         }
     }
 

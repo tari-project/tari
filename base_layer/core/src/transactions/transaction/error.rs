@@ -24,9 +24,8 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 use serde::{Deserialize, Serialize};
+use tari_crypto::{range_proof::RangeProofError, script::ScriptError, signatures::CommitmentSignatureError};
 use thiserror::Error;
-
-use crate::crypto::{range_proof::RangeProofError, script::ScriptError, signatures::CommitmentSignatureError};
 
 //----------------------------------------     TransactionError   ----------------------------------------------------//
 #[derive(Clone, Debug, PartialEq, Error, Deserialize, Serialize)]
@@ -61,4 +60,6 @@ pub enum TransactionError {
     ScriptOffset,
     #[error("Error executing script: {0}")]
     ScriptExecutionError(String),
+    #[error("TransactionInput is missing the data from the output being spent")]
+    MissingTransactionInputData,
 }

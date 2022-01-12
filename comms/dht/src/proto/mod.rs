@@ -20,24 +20,33 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, fmt};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt,
+};
 
+use chrono::NaiveDateTime;
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerFlags},
-    types::CommsPublicKey,
+    peer_manager::{IdentitySignature, NodeId, Peer, PeerFeatures, PeerFlags},
+    types::{CommsPublicKey, CommsSecretKey, Signature},
     NodeIdentity,
 };
 use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::proto::dht::JoinMessage;
 
+pub mod common {
+    tari_comms::outdir_include!("tari.dht.common.rs");
+}
+
 pub mod envelope {
     tari_comms::outdir_include!("tari.dht.envelope.rs");
 }
 
 pub mod dht {
+    use super::common;
     tari_comms::outdir_include!("tari.dht.rs");
 }
 
@@ -63,6 +72,7 @@ impl<T: AsRef<NodeIdentity>> From<T> for JoinMessage {
             addresses: vec![node_identity.public_address().to_string()],
             peer_features: node_identity.features().bits(),
             nonce: OsRng.next_u64(),
+            identity_signature: node_identity.identity_signature_read().as_ref().map(Into::into),
         }
     }
 }
@@ -92,6 +102,7 @@ impl From<Peer> for rpc::Peer {
                 .map(|addr| addr.address.to_string())
                 .collect(),
             peer_features: peer.features.bits(),
+            identity_signature: peer.identity_signature.as_ref().map(Into::into),
         }
     }
 }
@@ -107,15 +118,44 @@ impl TryInto<Peer> for rpc::Peer {
             .iter()
             .filter_map(|addr| addr.parse::<Multiaddr>().ok())
             .collect::<Vec<_>>();
-
-        Ok(Peer::new(
+        let mut peer = Peer::new(
             pk,
             node_id,
             addresses.into(),
             PeerFlags::NONE,
             PeerFeatures::from_bits_truncate(self.peer_features),
             Default::default(),
-            "".to_string(),
-        ))
+            String::new(),
+        );
+
+        peer.identity_signature = self.identity_signature.map(TryInto::try_into).transpose()?;
+
+        Ok(peer)
+    }
+}
+
+impl TryFrom<common::IdentitySignature> for IdentitySignature {
+    type Error = anyhow::Error;
+
+    fn try_from(value: common::IdentitySignature) -> Result<Self, Self::Error> {
+        let version = u8::try_from(value.version)
+            .map_err(|_| anyhow::anyhow!("Invalid peer identity signature version {}", value.version))?;
+        let public_nonce = CommsPublicKey::from_bytes(&value.public_nonce)?;
+        let signature = CommsSecretKey::from_bytes(&value.signature)?;
+        let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
+            .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
+
+        Ok(Self::new(version, Signature::new(public_nonce, signature), updated_at))
+    }
+}
+
+impl From<&IdentitySignature> for common::IdentitySignature {
+    fn from(identity_sig: &IdentitySignature) -> Self {
+        common::IdentitySignature {
+            version: identity_sig.version() as u32,
+            signature: identity_sig.signature().get_signature().to_vec(),
+            public_nonce: identity_sig.signature().get_public_nonce().to_vec(),
+            updated_at: identity_sig.updated_at().timestamp(),
+        }
     }
 }

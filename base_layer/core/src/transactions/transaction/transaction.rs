@@ -31,16 +31,14 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, HashOutput, Signature};
+use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::{
-    crypto::tari_utilities::hex::Hex,
-    transactions::{
-        aggregated_body::AggregateBody,
-        tari_amount::{uT, MicroTari},
-        transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
-        weight::TransactionWeight,
-        CryptoFactories,
-    },
+use crate::transactions::{
+    aggregated_body::AggregateBody,
+    tari_amount::{uT, MicroTari},
+    transaction::{OutputFeatures, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    weight::TransactionWeight,
+    CryptoFactories,
 };
 
 /// A transaction which consists of a kernel offset and an aggregate body made up of inputs, outputs and kernels.
@@ -115,16 +113,24 @@ impl Transaction {
     /// Returns the minimum maturity of the input UTXOs
     pub fn min_input_maturity(&self) -> u64 {
         self.body.inputs().iter().fold(u64::MAX, |min_maturity, input| {
-            min(min_maturity, input.features.maturity)
+            min(
+                min_maturity,
+                input
+                    .features()
+                    .unwrap_or(&OutputFeatures::with_maturity(std::u64::MAX))
+                    .maturity,
+            )
         })
     }
 
     /// Returns the maximum maturity of the input UTXOs
     pub fn max_input_maturity(&self) -> u64 {
-        self.body
-            .inputs()
-            .iter()
-            .fold(0, |max_maturity, input| max(max_maturity, input.features.maturity))
+        self.body.inputs().iter().fold(0, |max_maturity, input| {
+            max(
+                max_maturity,
+                input.features().unwrap_or(&OutputFeatures::with_maturity(0)).maturity,
+            )
+        })
     }
 
     /// Returns the maximum time lock of the kernels inside of the transaction

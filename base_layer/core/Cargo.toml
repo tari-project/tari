@@ -24,12 +24,13 @@ tari_comms = { version = "^0.22", path = "../../comms" }
 tari_comms_dht = { version = "^0.22", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.22", path = "../../comms/rpc_macros" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_mmr = { version = "^0.22", path = "../../base_layer/mmr", optional = true }
+tari_mmr = { version = "^0.22", path = "../../base_layer/mmr", optional = true, features=["native_bitmap"] }
 tari_p2p = { version = "^0.22", path = "../../base_layer/p2p" }
 tari_service_framework = { version = "^0.22", path = "../service_framework" }
 tari_shutdown = { version = "^0.22", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.22", path = "../../infrastructure/storage" }
 tari_test_utils = { version = "^0.22", path = "../../infrastructure/test_utils" }
+tari_utilities = "0.3.0"
 
 async-trait = "0.1.50"
 bincode = "1.1.4"
@@ -53,14 +54,14 @@ monero = { version = "^0.13.0", features = ["serde_support"], optional = true }
 newtype-ops = "0.1.4"
 num = "0.3"
 num-format = "0.4.0"
-prost = "0.8.0"
-prost-types = "0.8.0"
+prost = "0.9"
+prost-types = "0.9"
 rand = "0.8"
 randomx-rs = { version = "1.1.9", optional = true }
 serde = { version = "1.0.106", features = ["derive"] }
 serde_json = "1.0"
 sha3 = "0.9"
-strum_macros = "0.17.1"
+strum_macros = "^0.22"
 thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["time", "sync", "macros"] }
 tracing = "0.1.26"

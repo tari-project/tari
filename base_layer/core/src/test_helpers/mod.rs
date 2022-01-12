@@ -30,11 +30,11 @@ use rand::{distributions::Alphanumeric, Rng};
 use tari_common::configuration::Network;
 use tari_comms::PeerManager;
 use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+use tari_utilities::Hashable;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader},
     consensus::{ConsensusConstants, ConsensusManager},
-    crypto::tari_utilities::Hashable,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
         transaction::{Transaction, UnblindedOutput},
@@ -64,10 +64,10 @@ pub fn create_orphan_block(block_height: u64, transactions: Vec<Transaction>, co
 }
 
 pub fn create_block(rules: &ConsensusManager, prev_block: &Block, spec: BlockSpec) -> (Block, UnblindedOutput) {
-    let mut header = BlockHeader::new(spec.version);
+    let mut header = BlockHeader::from_previous(&prev_block.header);
     let block_height = spec.height_override.unwrap_or(prev_block.header.height + 1);
     header.height = block_height;
-    header.prev_hash = prev_block.hash();
+    // header.prev_hash = prev_block.hash();
     let reward = spec.reward_override.unwrap_or_else(|| {
         rules.calculate_coinbase_and_fees(
             header.height,

@@ -48,4 +48,6 @@ pub enum MempoolServiceError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("Failed to send broadcast message")]
     BroadcastFailed,
+    #[error("Conversion error: '{0}'")]
+    ConversionError(String),
 }

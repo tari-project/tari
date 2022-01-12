@@ -259,7 +259,7 @@ where
             });
     }
 
-    #[tracing::instrument(skip(self, pending_dials, reply_tx))]
+    #[tracing::instrument(level = "trace", skip(self, pending_dials, reply_tx))]
     fn handle_dial_peer_request(
         &mut self,
         pending_dials: &mut DialFuturesUnordered,
@@ -345,11 +345,14 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    #[tracing::instrument(skip(peer_manager, socket, conn_man_notifier, config, cancel_signal))]
+    #[tracing::instrument(
+        level = "trace",
+        skip(peer_manager, socket, conn_man_notifier, config, cancel_signal)
+    )]
     async fn perform_socket_upgrade_procedure(
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
-        socket: NoiseSocket<TTransport::Output>,
+        mut socket: NoiseSocket<TTransport::Output>,
         dialed_addr: Multiaddr,
         authenticated_public_key: CommsPublicKey,
         conn_man_notifier: mpsc::Sender<ConnectionManagerEvent>,
@@ -358,42 +361,35 @@ where
         cancel_signal: ShutdownSignal,
     ) -> Result<PeerConnection, ConnectionManagerError> {
         static CONNECTION_DIRECTION: ConnectionDirection = ConnectionDirection::Outbound;
-        let mut muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
-            .await
-            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
-
         debug!(
             target: LOG_TARGET,
             "Starting peer identity exchange for peer with public key '{}'", authenticated_public_key
         );
-        if cancel_signal.is_terminated() {
-            return Err(ConnectionManagerError::DialCancelled);
-        }
+
+        // Check if we know the peer and if it is banned
+        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
 
         let peer_identity = common::perform_identity_exchange(
-            &mut muxer,
+            &mut socket,
             &node_identity,
             CONNECTION_DIRECTION,
             &our_supported_protocols,
             config.network_info.clone(),
         )
         .await?;
+
         if cancel_signal.is_terminated() {
-            muxer.get_yamux_control().close().await?;
             return Err(ConnectionManagerError::DialCancelled);
         }
 
         let features = PeerFeatures::from_bits_truncate(peer_identity.features);
-        trace!(
+        debug!(
             target: LOG_TARGET,
             "Peer identity exchange succeeded on Outbound connection for peer '{}' (Features = {:?})",
             authenticated_public_key,
             features
         );
         trace!(target: LOG_TARGET, "{:?}", peer_identity);
-
-        // Check if we know the peer and if it is banned
-        let known_peer = common::find_unbanned_peer(&peer_manager, &authenticated_public_key).await?;
 
         let (peer_node_id, their_supported_protocols) = common::validate_and_add_peer_from_peer_identity(
             &peer_manager,
@@ -406,7 +402,6 @@ where
         .await?;
 
         if cancel_signal.is_terminated() {
-            muxer.get_yamux_control().close().await?;
             return Err(ConnectionManagerError::DialCancelled);
         }
 
@@ -416,6 +411,14 @@ where
             node_identity.node_id().short_str(),
             peer_node_id.short_str()
         );
+
+        let muxer = Yamux::upgrade_connection(socket, CONNECTION_DIRECTION)
+            .map_err(|err| ConnectionManagerError::YamuxUpgradeFailure(err.to_string()))?;
+
+        if cancel_signal.is_terminated() {
+            muxer.get_yamux_control().close().await?;
+            return Err(ConnectionManagerError::DialCancelled);
+        }
 
         peer_connection::create(
             muxer,
@@ -429,7 +432,7 @@ where
         )
     }
 
-    #[tracing::instrument(skip(dial_state, noise_config, transport, backoff, config))]
+    #[tracing::instrument(level = "trace", skip(dial_state, noise_config, transport, backoff, config))]
     async fn dial_peer_with_retry(
         dial_state: DialState,
         noise_config: NoiseConfig,
@@ -437,7 +440,7 @@ where
         backoff: Arc<TBackoff>,
         config: &ConnectionManagerConfig,
     ) -> (DialState, DialResult<TTransport::Output>) {
-        // Container for dial state
+        // Container for dial
         let mut dial_state = Some(dial_state);
         let mut transport = Some(transport);
 

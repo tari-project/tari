@@ -23,25 +23,24 @@
 use std::cmp::Ordering;
 
 use tari_common_types::types::{BlockHash, Commitment, HashOutput, PrivateKey};
-use tari_core::{
-    tari_utilities::hash::Hashable,
-    transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories},
-};
+use tari_core::transactions::{transaction::UnblindedOutput, transaction_protocol::RewindData, CryptoFactories};
 use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_utilities::hash::Hashable;
 
-use crate::output_manager_service::error::OutputManagerStorageError;
+use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
 
 #[derive(Debug, Clone)]
 pub struct DbUnblindedOutput {
     pub commitment: Commitment,
     pub unblinded_output: UnblindedOutput,
     pub hash: HashOutput,
+    pub status: OutputStatus,
     pub mined_height: Option<u64>,
     pub mined_in_block: Option<BlockHash>,
     pub mined_mmr_position: Option<u64>,
     pub marked_deleted_at_height: Option<u64>,
     pub marked_deleted_in_block: Option<BlockHash>,
-    pub spend_priority: SpendingPriority,
+    pub spending_priority: SpendingPriority,
 }
 
 impl DbUnblindedOutput {
@@ -55,12 +54,13 @@ impl DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            status: OutputStatus::NotStored,
             mined_height: None,
             mined_in_block: None,
             mined_mmr_position: None,
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
-            spend_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            spending_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
         })
     }
 
@@ -68,19 +68,20 @@ impl DbUnblindedOutput {
         output: UnblindedOutput,
         factory: &CryptoFactories,
         rewind_data: &RewindData,
-        spend_priority: Option<SpendingPriority>,
+        spending_priority: Option<SpendingPriority>,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
         let tx_out = output.as_rewindable_transaction_output(factory, rewind_data)?;
         Ok(DbUnblindedOutput {
             hash: tx_out.hash(),
             commitment: tx_out.commitment,
             unblinded_output: output,
+            status: OutputStatus::NotStored,
             mined_height: None,
             mined_in_block: None,
             mined_mmr_position: None,
             marked_deleted_at_height: None,
             marked_deleted_in_block: None,
-            spend_priority: spend_priority.unwrap_or(SpendingPriority::Normal),
+            spending_priority: spending_priority.unwrap_or(SpendingPriority::Normal),
         })
     }
 }
@@ -150,20 +151,4 @@ impl PartialEq for KnownOneSidedPaymentScript {
     fn eq(&self, other: &KnownOneSidedPaymentScript) -> bool {
         self.script_hash == other.script_hash
     }
-}
-
-/// The status of a given output
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum OutputStatus {
-    Unspent,
-    Spent,
-    EncumberedToBeReceived,
-    EncumberedToBeSpent,
-    Invalid,
-    CancelledInbound,
-    UnspentMinedUnconfirmed,
-    ShortTermEncumberedToBeReceived,
-    ShortTermEncumberedToBeSpent,
-    SpentMinedUnconfirmed,
-    AbandonedCoinbase,
 }

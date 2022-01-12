@@ -174,11 +174,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         &mut self,
         message: DecryptedDhtMessage,
     ) -> Result<(), StoreAndForwardError> {
-        trace!(
+        debug!(
             target: LOG_TARGET,
             "Received request for stored message {} from {} (Trace: {})",
             message.tag,
-            message.source_peer.public_key,
+            message.source_peer.node_id,
             message.dht_header.message_tag
         );
         let msg = message
@@ -195,7 +195,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         // Compile a set of stored messages for the requesting peer
         let mut query = FetchStoredMessageQuery::new(source_pubkey, source_node_id.clone());
 
-        let since: Option<DateTime<Utc>> = match retrieve_msgs.since.map(timestamp_to_datetime) {
+        let since = match retrieve_msgs.since.and_then(timestamp_to_datetime) {
             Some(since) => {
                 debug!(
                     target: LOG_TARGET,
@@ -433,11 +433,13 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let stored_at = message
             .stored_at
             .map(|t| {
-                DateTime::from_utc(
-                    NaiveDateTime::from_timestamp(t.seconds, t.nanos.try_into().unwrap_or(u32::MAX)),
+                Result::<_, StoreAndForwardError>::Ok(DateTime::from_utc(
+                    NaiveDateTime::from_timestamp_opt(t.seconds, t.nanos.try_into().unwrap_or(u32::MAX))
+                        .ok_or(StoreAndForwardError::InvalidStoreMessage)?,
                     Utc,
-                )
+                ))
             })
+            .transpose()?
             .unwrap_or(chrono::MIN_DATETIME);
 
         if stored_at > Utc::now() {
@@ -595,7 +597,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     async fn check_saf_messages_were_requested(&mut self, peer: &NodeId) -> Result<(), StoreAndForwardError> {
         match self.saf_requester.mark_saf_response_received(peer.clone()).await? {
             Some(age) if age <= self.config.max_inflight_request_age => Ok(()),
-            Some(age) => Err(StoreAndForwardError::SafMessagesRecievedAfterDeadline {
+            Some(age) => Err(StoreAndForwardError::SafMessagesReceivedAfterDeadline {
                 peer: peer.clone(),
                 message_age: age,
             }),

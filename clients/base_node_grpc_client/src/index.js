@@ -37,7 +37,8 @@ function Client(address = "127.0.0.1:18142") {
     "getBlocks",
     "getMempoolTransactions",
     "getTipInfo",
-    "searchUtxos"
+    "searchUtxos",
+    "getTokens"
   ];
   methods.forEach((method) => {
     this[method] = (arg) => this.inner[method]().sendMessage(arg);

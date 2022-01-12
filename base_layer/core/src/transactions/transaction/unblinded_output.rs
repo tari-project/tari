@@ -29,22 +29,20 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::{RangeProofError, RangeProofService},
+    script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
-    crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        range_proof::{RangeProofError, RangeProofService},
-        script::{ExecutionStack, TariScript},
-    },
+    consensus::ConsensusEncodingSized,
     transactions::{
         tari_amount::MicroTari,
         transaction,
         transaction::{
-            transaction_input::TransactionInput,
+            transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             OutputFeatures,
             TransactionError,
@@ -122,12 +120,28 @@ impl UnblindedOutput {
         .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
         Ok(TransactionInput {
-            features: self.features.clone(),
-            commitment,
-            script: self.script.clone(),
+            spent_output: SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+            },
             input_data: self.input_data.clone(),
             script_signature,
-            sender_offset_public_key: self.sender_offset_public_key.clone(),
+        })
+    }
+
+    /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
+    pub fn as_compact_transaction_input(
+        &self,
+        factory: &CommitmentFactory,
+    ) -> Result<TransactionInput, TransactionError> {
+        let input = self.as_transaction_input(factory)?;
+
+        Ok(TransactionInput {
+            spent_output: SpentOutput::OutputHash(input.output_hash()),
+            input_data: input.input_data,
+            script_signature: input.script_signature,
         })
     }
 
@@ -193,8 +207,7 @@ impl UnblindedOutput {
     }
 
     pub fn metadata_byte_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
+        self.features.consensus_encode_exact_size() + self.script.consensus_encode_exact_size()
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not

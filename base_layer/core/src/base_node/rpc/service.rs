@@ -1,11 +1,3 @@
-use std::convert::TryFrom;
-
-use log::*;
-use tari_common_types::types::Signature;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
-use tari_crypto::tari_utilities::hex::Hex;
-use tokio::sync::mpsc;
-
 //  Copyright 2020, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
@@ -28,6 +20,15 @@ use tokio::sync::mpsc;
 // CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
+
+use std::convert::TryFrom;
+
+use log::*;
+use tari_common_types::types::Signature;
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_crypto::tari_utilities::hex::Hex;
+use tokio::sync::mpsc;
+
 use crate::{
     base_node::{
         rpc::{sync_utxos_by_block_task::SyncUtxosByBlockTask, BaseNodeWalletService},
@@ -61,6 +62,7 @@ use crate::{
     },
     transactions::transaction::Transaction,
 };
+
 const LOG_TARGET: &str = "c::base_node::rpc";
 
 pub struct BaseNodeWalletRpcService<B> {
@@ -145,6 +147,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
             TxStorageResponse::NotStoredOrphan |
             TxStorageResponse::NotStoredTimeLocked |
             TxStorageResponse::NotStoredAlreadySpent |
+            TxStorageResponse::NotStoredConsensus |
             TxStorageResponse::NotStored => TxQueryResponse {
                 location: TxLocation::NotStored as i32,
                 block_hash: None,
@@ -197,8 +200,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 rejection_reason: TxSubmissionRejectionReason::TimeLocked.into(),
                 is_synced,
             },
-
-            TxStorageResponse::NotStored => TxSubmissionResponse {
+            TxStorageResponse::NotStoredConsensus | TxStorageResponse::NotStored => TxSubmissionResponse {
                 accepted: false,
                 rejection_reason: TxSubmissionRejectionReason::ValidationFailed.into(),
                 is_synced,

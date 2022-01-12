@@ -20,27 +20,23 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::cmp::Ordering;
-
 use log::*;
 use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     script::TariScript,
-    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
+    tari_utilities::{
+        epoch_time::EpochTime,
+        hash::Hashable,
+        hex::{to_hex, Hex},
+    },
 };
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
     chain_storage::{BlockchainBackend, MmrRoots, MmrTree},
-    consensus::{
-        emission::Emission,
-        ConsensusConstants,
-        ConsensusEncodingSized,
-        ConsensusEncodingWrapper,
-        ConsensusManager,
-    },
-    crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::hex::to_hex},
+    consensus::{emission::Emission, ConsensusConstants, ConsensusEncodingSized, ConsensusManager},
     proof_of_work::{
         monero_difficulty,
         monero_rx::MoneroPowData,
@@ -54,7 +50,14 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{KernelSum, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{
+            KernelSum,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
     validation::ValidationError,
@@ -249,7 +252,7 @@ pub fn check_accounting_balance(
         .map_err(|err| {
             warn!(
                 target: LOG_TARGET,
-                "Validation failed on block:{}:{}",
+                "Validation failed on block:{}:{:?}",
                 block.hash().to_hex(),
                 err
             );
@@ -295,51 +298,64 @@ pub fn check_sorting_and_duplicates(block: &Block) -> Result<(), ValidationError
     if !is_all_unique_and_sorted(body.inputs()) {
         return Err(ValidationError::UnsortedOrDuplicateInput);
     }
+
     if !is_all_unique_and_sorted(body.outputs()) {
         return Err(ValidationError::UnsortedOrDuplicateOutput);
     }
 
-    if block.version() == 1 {
-        let wrapped = body
-            .kernels()
-            .iter()
-            .map(KernelDeprecatedOrdWrapper::new)
-            .collect::<Vec<_>>();
-        if !is_all_unique_and_sorted(&wrapped) {
-            return Err(ValidationError::UnsortedOrDuplicateKernel);
-        }
-    } else if !is_all_unique_and_sorted(body.kernels()) {
+    if !is_all_unique_and_sorted(body.kernels()) {
         return Err(ValidationError::UnsortedOrDuplicateKernel);
     }
 
     Ok(())
 }
 
-#[derive(PartialEq, Eq)]
-struct KernelDeprecatedOrdWrapper<'a> {
-    kernel: &'a TransactionKernel,
-}
-impl<'a> KernelDeprecatedOrdWrapper<'a> {
-    pub fn new(kernel: &'a TransactionKernel) -> Self {
-        Self { kernel }
-    }
-}
-impl PartialOrd for KernelDeprecatedOrdWrapper<'_> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.kernel.deprecated_cmp(other.kernel))
-    }
-}
-impl Ord for KernelDeprecatedOrdWrapper<'_> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.kernel.deprecated_cmp(other.kernel)
-    }
-}
-
 /// This function checks that all inputs in the blocks are valid UTXO's to be spent
 pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody) -> Result<(), ValidationError> {
     let mut not_found_inputs = Vec::new();
     let mut output_hashes = None;
+    let output_unique_ids = body
+        .outputs()
+        .iter()
+        .filter_map(|output| {
+            output
+                .features
+                .unique_id
+                .as_ref()
+                .map(|ui| (output.features.parent_public_key.as_ref(), ui))
+        })
+        .collect::<Vec<_>>();
     for input in body.inputs() {
+        // If spending a unique_id, a new output must contain the unique id
+        if let Some(ref unique_id) = input.features()?.unique_id {
+            let exactly_one = output_unique_ids
+                .iter()
+                .filter_map(|(parent_public_key, output_unique_id)| match input.features() {
+                    Ok(features) => {
+                        if features.parent_public_key.as_ref() == *parent_public_key && unique_id == *output_unique_id {
+                            Some(Ok((parent_public_key, output_unique_id)))
+                        } else {
+                            None
+                        }
+                    },
+                    Err(e) => Some(Err(e)),
+                })
+                .take(2)
+                .collect::<Result<Vec<_>, TransactionError>>()?;
+            // Unless a burn flag is present
+            if input.features()?.flags.contains(OutputFlags::BURN_NON_FUNGIBLE) {
+                if !exactly_one.is_empty() {
+                    return Err(ValidationError::UniqueIdBurnedButPresentInOutputs);
+                }
+            } else {
+                if exactly_one.is_empty() {
+                    return Err(ValidationError::UniqueIdInInputNotPresentInOutputs);
+                }
+                if exactly_one.len() > 1 {
+                    return Err(ValidationError::DuplicateUniqueIdInOutputs);
+                }
+            }
+        }
         match check_input_is_utxo(db, input) {
             Ok(_) => continue,
             Err(ValidationError::UnknownInput) => {
@@ -347,9 +363,10 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 if output_hashes.is_none() {
                     output_hashes = Some(body.outputs().iter().map(|output| output.hash()).collect::<Vec<_>>());
                 }
+
                 let output_hashes = output_hashes.as_ref().unwrap();
                 let output_hash = input.output_hash();
-                if output_hashes.iter().any(|output| *output == output_hash) {
+                if output_hashes.iter().any(|output| output == &output_hash) {
                     continue;
                 }
 
@@ -357,7 +374,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                     target: LOG_TARGET,
                     "Validation failed due to input: {} which does not exist yet", input
                 );
-                not_found_inputs.push(output_hash);
+                not_found_inputs.push(output_hash.clone());
             },
             Err(err) => {
                 return Err(err);
@@ -375,20 +392,44 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
 /// This function checks that an input is a valid spendable UTXO
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
     let output_hash = input.output_hash();
-    if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(&input.commitment)? {
+    if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(input.commitment()?)? {
         // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
         // like output features match)
         if utxo_hash == output_hash {
             return Ok(());
         }
 
+        let output = db.fetch_output(&utxo_hash)?;
         warn!(
             target: LOG_TARGET,
-            "Input spends a UTXO but does not produce the same hash as the output it spends:
-            {}",
-            input
+            "Input spends a UTXO but does not produce the same hash as the output it spends: Expected hash: {}, \
+             provided hash:{}
+            input: {:?}. output in db: {:?}",
+            utxo_hash.to_hex(),
+            output_hash.to_hex(),
+            input,
+            output
         );
         return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+    }
+
+    if let Some(unique_id) = &input.features()?.unique_id {
+        if let Some(utxo_hash) =
+            db.fetch_utxo_by_unique_id(input.features()?.parent_public_key.as_ref(), unique_id, None)?
+        {
+            // Check that it is the same utxo in which the unique_id was created
+            if utxo_hash.output.hash() == output_hash {
+                return Ok(());
+            }
+
+            warn!(
+                target: LOG_TARGET,
+                "Input spends a UTXO but has a duplicate unique_id:
+            {}",
+                input
+            );
+            return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+        }
     }
 
     // Wallet needs to know if a transaction has already been mined and uses this error variant to do so.
@@ -417,9 +458,22 @@ pub fn check_outputs<B: BlockchainBackend>(
     constants: &ConsensusConstants,
     body: &AggregateBody,
 ) -> Result<(), ValidationError> {
+    let mut unique_ids = Vec::new();
     let max_script_size = constants.get_max_script_byte_size();
     for output in body.outputs() {
         check_tari_script_byte_size(&output.script, max_script_size)?;
+        // Check outputs for duplicate asset ids
+        if output.features.is_non_fungible_mint() || output.features.is_non_fungible_burn() {
+            if let Some(unique_id) = output.features.unique_asset_id() {
+                let parent_pk = output.features.parent_public_key.as_ref();
+
+                let asset_tuple = (parent_pk, unique_id);
+                if unique_ids.contains(&asset_tuple) {
+                    return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+                }
+                unique_ids.push(asset_tuple)
+            }
+        }
         check_not_duplicate_txo(db, output)?;
     }
     Ok(())
@@ -427,7 +481,7 @@ pub fn check_outputs<B: BlockchainBackend>(
 
 /// Checks the byte size of TariScript is less than or equal to the given size, otherwise returns an error.
 pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) -> Result<(), ValidationError> {
-    let script_size = ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size();
+    let script_size = script.consensus_encode_exact_size();
     if script_size > max_script_size {
         return Err(ValidationError::TariScriptExceedsMaxSize {
             max_script_size,
@@ -437,7 +491,7 @@ pub fn check_tari_script_byte_size(script: &TariScript, max_script_size: usize) 
     Ok(())
 }
 
-/// This function checks that the outputs do not already exist in the UTxO set.
+/// This function checks that the outputs do not already exist in the TxO set.
 pub fn check_not_duplicate_txo<B: BlockchainBackend>(
     db: &B,
     output: &TransactionOutput,
@@ -458,6 +512,28 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
             "Duplicate UTXO set commitment found for output: {}", output
         );
         return Err(ValidationError::ContainsDuplicateUtxoCommitment);
+    }
+
+    if let Some(unique_id) = &output.features.unique_id {
+        // Needs to have a mint flag
+        if output.features.is_non_fungible_mint() &&
+            db.fetch_utxo_by_unique_id(output.features.parent_public_key.as_ref(), unique_id, None)?
+                .is_some()
+        {
+            warn!(
+                target: LOG_TARGET,
+                "A UTXO with unique_id {} and parent public key {} already exists for output: {}",
+                unique_id.to_hex(),
+                output
+                    .features
+                    .parent_public_key
+                    .as_ref()
+                    .map(|pk| pk.to_hex())
+                    .unwrap_or_else(|| "<None>".to_string()),
+                output
+            );
+            return Err(ValidationError::ContainsDuplicateUtxoUniqueID);
+        }
     }
 
     Ok(())
@@ -601,12 +677,25 @@ pub fn check_kernel_lock_height(height: u64, kernels: &[TransactionKernel]) -> R
 
 /// Checks that all inputs have matured at the given height
 pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), TransactionError> {
-    if let Some(input) = inputs.iter().find(|input| !input.is_mature_at(height)) {
-        warn!(
-            target: LOG_TARGET,
-            "Input found that has not yet matured to spending height: {}", input
-        );
-        return Err(TransactionError::InputMaturity);
+    if let Err(e) = inputs
+        .iter()
+        .map(|input| match input.is_mature_at(height) {
+            Ok(mature) => {
+                if !mature {
+                    warn!(
+                        target: LOG_TARGET,
+                        "Input found that has not yet matured to spending height: {}", input
+                    );
+                    Err(TransactionError::InputMaturity)
+                } else {
+                    Ok(0)
+                }
+            },
+            Err(e) => Err(e),
+        })
+        .sum::<Result<usize, TransactionError>>()
+    {
+        return Err(e);
     }
     Ok(())
 }
@@ -700,19 +789,18 @@ mod test {
 
     mod check_maturity {
         use super::*;
+        use crate::transactions::transaction::OutputFeatures;
 
         #[test]
         fn it_checks_the_input_maturity() {
-            let mut input = TransactionInput::new(
-                Default::default(),
+            let input = TransactionInput::new_with_output_data(
+                OutputFeatures::with_maturity(5),
                 Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
                 Default::default(),
             );
-
-            input.features.maturity = 5;
 
             assert_eq!(
                 check_maturity(1, &[input.clone()]),

@@ -165,9 +165,9 @@ impl ConnectivityManagerActor {
         })
     }
 
-    #[tracing::instrument(name = "connectivity_manager_actor::run", skip(self))]
+    #[tracing::instrument(level = "trace", name = "connectivity_manager_actor::run", skip(self))]
     pub async fn run(mut self) {
-        info!(target: LOG_TARGET, "ConnectivityManager started");
+        debug!(target: LOG_TARGET, "ConnectivityManager started");
 
         let mut connection_manager_events = self.connection_manager.get_event_subscription();
 
@@ -312,6 +312,9 @@ impl ConnectivityManagerActor {
         let mut node_ids = Vec::with_capacity(self.pool.count_connected());
         for mut state in self.pool.filter_drain(|_| true) {
             if let Some(conn) = state.connection_mut() {
+                if !conn.is_connected() {
+                    continue;
+                }
                 match conn.disconnect_silent().await {
                     Ok(_) => {
                         node_ids.push(conn.peer_node_id().clone());
@@ -456,7 +459,7 @@ impl ConnectivityManagerActor {
                 self.publish_event(ConnectivityEvent::PeerOffline(node_id.clone()));
             }
 
-            if let Ok(peer) = self.peer_manager.find_by_node_id(node_id).await {
+            if let Some(peer) = self.peer_manager.find_by_node_id(node_id).await? {
                 if !peer.is_banned() &&
                     peer.last_seen_since()
                         // Haven't seen them in expire_peer_last_seen_duration
@@ -490,9 +493,9 @@ impl ConnectivityManagerActor {
         #[allow(clippy::single_match)]
         match event {
             PeerConnected(new_conn) => {
-                self.connection_manager
-                    .cancel_dial(new_conn.peer_node_id().clone())
-                    .await?;
+                // self.connection_manager
+                //     .cancel_dial(new_conn.peer_node_id().clone())
+                //     .await?;
 
                 match self.pool.get_connection(new_conn.peer_node_id()) {
                     Some(existing_conn) if !existing_conn.is_connected() => {

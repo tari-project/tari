@@ -38,6 +38,7 @@ impl NetworkConsensus {
             Weatherwax => ConsensusConstants::weatherwax(),
             LocalNet => ConsensusConstants::localnet(),
             Igor => ConsensusConstants::igor(),
+            Dibbler => ConsensusConstants::dibbler(),
         }
     }
 

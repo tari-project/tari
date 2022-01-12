@@ -26,8 +26,8 @@ use chrono::Utc;
 use futures::FutureExt;
 use log::*;
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus},
-    types::HashOutput,
+    transaction::{TransactionDirection, TransactionStatus, TxId},
+    types::{HashOutput, PublicKey},
 };
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_comms_dht::{
@@ -37,7 +37,11 @@ use tari_comms_dht::{
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction::KernelFeatures,
-    transaction_protocol::{proto, recipient::RecipientSignedMessage, sender::SingleRoundSenderData},
+    transaction_protocol::{
+        proto::protocol as proto,
+        recipient::RecipientSignedMessage,
+        sender::SingleRoundSenderData,
+    },
     SenderTransactionProtocol,
 };
 use tari_crypto::script;
@@ -77,9 +81,11 @@ pub enum TransactionSendProtocolStage {
 }
 
 pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
-    id: u64,
+    id: TxId,
     dest_pubkey: CommsPublicKey,
     amount: MicroTari,
+    unique_id: Option<Vec<u8>>,
+    parent_public_key: Option<PublicKey>,
     fee_per_gram: MicroTari,
     message: String,
     service_request_reply_channel: Option<oneshot::Sender<Result<TransactionServiceResponse, TransactionServiceError>>>,
@@ -98,12 +104,14 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         resources: TransactionServiceResources<TBackend, TWalletConnectivity>,
         transaction_reply_receiver: Receiver<(CommsPublicKey, RecipientSignedMessage)>,
         cancellation_receiver: oneshot::Receiver<()>,
         dest_pubkey: CommsPublicKey,
         amount: MicroTari,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
         service_request_reply_channel: Option<
@@ -120,6 +128,8 @@ where
             cancellation_receiver: Some(cancellation_receiver),
             dest_pubkey,
             amount,
+            unique_id,
+            parent_public_key,
             fee_per_gram,
             message,
             service_request_reply_channel,
@@ -130,7 +140,7 @@ where
     }
 
     /// Execute the Transaction Send Protocol as an async task.
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -171,6 +181,8 @@ where
             .prepare_transaction_to_send(
                 self.id,
                 self.amount,
+                self.unique_id.clone(),
+                self.parent_public_key.clone(),
                 self.fee_per_gram,
                 None,
                 self.message.clone(),
@@ -246,6 +258,7 @@ where
                 tx_id,
                 self.dest_pubkey.clone(),
                 self.amount,
+                // TODO: put value in here
                 fee,
                 sender_protocol.clone(),
                 TransactionStatus::Pending,
@@ -645,16 +658,17 @@ where
                             )
                             .await;
                         },
+                        Ok(SendMessageResponse::Failed(e)) => warn!(
+                            target: LOG_TARGET,
+                            "Failed to send message ({}) for TxId: {}", e, self.id
+                        ),
+                        Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                         Err(e) => {
                             warn!(
                                 target: LOG_TARGET,
                                 "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
                             );
                         },
-                        _ => warn!(
-                            target: LOG_TARGET,
-                            "Empty message received waiting for Discovery to complete TxId: {}", self.id,
-                        ),
                     }
                 },
             },

@@ -22,6 +22,7 @@
 
 use std::{
     cmp,
+    convert::TryFrom,
     sync::{Arc, Weak},
 };
 
@@ -32,6 +33,7 @@ use tari_comms::{
     utils,
 };
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::Hashable;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
@@ -56,7 +58,6 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    tari_utilities::Hashable,
 };
 
 const LOG_TARGET: &str = "c::base_node::sync_rpc";
@@ -100,7 +101,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
 #[tari_comms::async_trait]
 impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcService<B> {
-    #[instrument(name = "sync_rpc::sync_blocks", skip(self), err)]
+    #[instrument(level = "trace", name = "sync_rpc::sync_blocks", skip(self), err)]
     async fn sync_blocks(
         &self,
         request: Request<SyncBlocksRequest>,
@@ -210,9 +211,17 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         Ok(blocks) => {
                             let blocks = blocks
                                 .into_iter()
-                                .map(|hb| hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)))
+                                .map(|hb| {
+                                    match hb.try_into_block().map_err(RpcStatus::log_internal_error(LOG_TARGET)) {
+                                        Ok(b) => Ok(b.to_compact()),
+                                        Err(e) => Err(e),
+                                    }
+                                })
                                 .map(|block| match block {
-                                    Ok(b) => Ok(proto::base_node::BlockBodyResponse::from(b)),
+                                    Ok(b) => proto::base_node::BlockBodyResponse::try_from(b).map_err(|e| {
+                                        log::error!(target: LOG_TARGET, "Internal error: {}", e);
+                                        RpcStatus::general_default()
+                                    }),
                                     Err(err) => Err(err),
                                 });
 
@@ -239,7 +248,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Streaming::new(rx))
     }
 
-    #[instrument(name = "sync_rpc::sync_headers", skip(self), err)]
+    #[instrument(level = "trace", name = "sync_rpc::sync_headers", skip(self), err)]
     async fn sync_headers(
         &self,
         request: Request<SyncHeadersRequest>,

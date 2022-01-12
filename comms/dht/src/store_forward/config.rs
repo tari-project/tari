@@ -24,8 +24,7 @@ use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct SafConfig {
-    /// The amount of seconds added to the current time (Utc) which will then be used to check if the message has
-    /// expired or not when processing the message
+    /// The amount of time added to the current time will be used to check if the message has expired or not
     /// Default: 3 hours
     pub msg_validity: Duration,
     /// The maximum number of messages that can be stored using the Store-and-forward middleware.

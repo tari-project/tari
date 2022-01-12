@@ -23,32 +23,41 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+pub use asset_output_features::AssetOutputFeatures;
 use blake2::Digest;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
 pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
+pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
+pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
 use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
 pub use transaction_input::TransactionInput;
 pub use transaction_kernel::TransactionKernel;
 pub use transaction_output::TransactionOutput;
 pub use unblinded_output::UnblindedOutput;
+pub use unblinded_output_builder::UnblindedOutputBuilder;
 
+mod asset_output_features;
 mod error;
 mod full_rewind_result;
 mod kernel_builder;
 mod kernel_features;
 mod kernel_sum;
+mod mint_non_fungible_features;
 mod output_features;
 mod output_flags;
 mod rewind_result;
+mod side_chain_checkpoint_features;
+mod template_parameter;
 // TODO: in future, this module can be renamed
 #[allow(clippy::module_inception)]
 mod transaction;
@@ -57,6 +66,7 @@ mod transaction_input;
 mod transaction_kernel;
 mod transaction_output;
 mod unblinded_output;
+mod unblinded_output_builder;
 
 // Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 126,510 still well enough below block weight of 127,795
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
@@ -74,8 +84,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 /// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 pub fn hash_output(features: &OutputFeatures, commitment: &Commitment, script: &TariScript) -> Vec<u8> {
     HashDigest::new()
-        // TODO: use consensus encoding #testnet_reset
-        .chain(features.to_v1_bytes())
+        .chain(features.to_consensus_bytes())
         .chain(commitment.as_bytes())
         // .chain(range proof) // See docs as to why we exclude this
         .chain(script.as_bytes())
@@ -133,8 +142,7 @@ mod test {
         let input = i
             .as_transaction_input(&factory)
             .expect("Should be able to create transaction input");
-        assert_eq!(input.features, OutputFeatures::default());
-        assert!(input.opened_by(&i, &factory));
+        assert!(input.opened_by(&i, &factory).unwrap());
     }
 
     #[test]
@@ -273,8 +281,8 @@ mod test {
         let input_data = ExecutionStack::default();
         let script_signature = ComSignature::default();
         let offset_pub_key = PublicKey::default();
-        let mut input = TransactionInput::new(
-            OutputFeatures::default(),
+        let mut input = TransactionInput::new_with_output_data(
+            OutputFeatures::with_maturity(5),
             c,
             script,
             input_data,
@@ -286,7 +294,7 @@ mod test {
         let mut tx = Transaction::new(Vec::new(), Vec::new(), Vec::new(), 0.into(), 0.into());
 
         // lets add time locks
-        input.features.maturity = 5;
+        input.set_maturity(5).unwrap();
         kernel.lock_height = 2;
         tx.body.add_input(input.clone());
         tx.body.add_kernel(kernel.clone());
@@ -297,7 +305,7 @@ mod test {
         assert_eq!(tx.max_kernel_timelock(), 2);
         assert_eq!(tx.min_spendable_height(), 5);
 
-        input.features.maturity = 4;
+        input.set_maturity(4).unwrap();
         kernel.lock_height = 3;
         tx.body.add_input(input.clone());
         tx.body.add_kernel(kernel.clone());
@@ -306,7 +314,7 @@ mod test {
         assert_eq!(tx.max_kernel_timelock(), 3);
         assert_eq!(tx.min_spendable_height(), 5);
 
-        input.features.maturity = 2;
+        input.set_maturity(2).unwrap();
         kernel.lock_height = 10;
         tx.body.add_input(input);
         tx.body.add_kernel(kernel);
@@ -322,7 +330,7 @@ mod test {
 
         let factories = CryptoFactories::default();
         assert!(tx
-            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .validate_internal_consistency(false, &factories, None, None, None)
             .is_ok());
     }
 
@@ -337,7 +345,7 @@ mod test {
 
         let factories = CryptoFactories::default();
         assert!(tx
-            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .validate_internal_consistency(false, &factories, None, None, None)
             .is_ok());
 
         let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);

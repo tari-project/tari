@@ -26,7 +26,13 @@ use tari_storage::lmdb_store::LMDBError;
 use thiserror::Error;
 use tokio::task;
 
-use crate::{blocks::BlockError, chain_storage::MmrTree, proof_of_work::PowError, validation::ValidationError};
+use crate::{
+    blocks::BlockError,
+    chain_storage::MmrTree,
+    proof_of_work::PowError,
+    transactions::transaction::TransactionError,
+    validation::ValidationError,
+};
 
 #[derive(Debug, Error)]
 pub enum ChainStorageError {
@@ -119,6 +125,10 @@ pub enum ChainStorageError {
     BlockError(#[from] BlockError),
     #[error("Add block is currently locked. No blocks may be added using add_block until the flag is cleared.")]
     AddBlockOperationLocked,
+    #[error("Transaction Error: {0}")]
+    TransactionError(#[from] TransactionError),
+    #[error("Could not convert data:{0}")]
+    ConversionError(String),
 }
 
 impl ChainStorageError {

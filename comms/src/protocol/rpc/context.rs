@@ -27,7 +27,7 @@ use async_trait::async_trait;
 use super::RpcError;
 use crate::{
     connectivity::{ConnectivityRequester, ConnectivitySelection},
-    peer_manager::{NodeId, Peer},
+    peer_manager::{NodeId, OrNotFound, Peer},
     PeerConnection,
     PeerManager,
 };
@@ -63,7 +63,11 @@ impl RpcCommsBackend {
 #[async_trait]
 impl RpcCommsProvider for RpcCommsBackend {
     async fn fetch_peer(&self, node_id: &NodeId) -> Result<Peer, RpcError> {
-        self.peer_manager.find_by_node_id(node_id).await.map_err(Into::into)
+        self.peer_manager
+            .find_by_node_id(node_id)
+            .await
+            .or_not_found()
+            .map_err(Into::into)
     }
 
     async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {

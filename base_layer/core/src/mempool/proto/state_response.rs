@@ -25,9 +25,12 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
 
-use crate::mempool::{
-    proto::mempool::{Signature as ProtoSignature, StateResponse as ProtoStateResponse},
-    StateResponse,
+use crate::{
+    mempool::{
+        proto::mempool::{Signature as ProtoSignature, StateResponse as ProtoStateResponse},
+        StateResponse,
+    },
+    proto::{mempool::Signature as SignatureProto, types::Transaction},
 };
 
 //---------------------------------- Signature --------------------------------------------//
@@ -74,11 +77,21 @@ impl TryFrom<ProtoStateResponse> for StateResponse {
     }
 }
 
-impl From<StateResponse> for ProtoStateResponse {
-    fn from(state: StateResponse) -> Self {
-        Self {
-            unconfirmed_pool: state.unconfirmed_pool.into_iter().map(Into::into).collect(),
-            reorg_pool: state.reorg_pool.into_iter().map(Into::into).collect(),
-        }
+impl TryFrom<StateResponse> for ProtoStateResponse {
+    type Error = String;
+
+    fn try_from(state: StateResponse) -> Result<Self, Self::Error> {
+        Ok(Self {
+            unconfirmed_pool: state
+                .unconfirmed_pool
+                .into_iter()
+                .map(TryInto::try_into)
+                .collect::<Result<Vec<Transaction>, _>>()?,
+            reorg_pool: state
+                .reorg_pool
+                .into_iter()
+                .map(Into::into)
+                .collect::<Vec<SignatureProto>>(),
+        })
     }
 }

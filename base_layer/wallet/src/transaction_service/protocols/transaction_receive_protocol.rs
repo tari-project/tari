@@ -65,7 +65,7 @@ pub enum TransactionReceiveProtocolStage {
 }
 
 pub struct TransactionReceiveProtocol<TBackend, TWalletConnectivity> {
-    id: u64,
+    id: TxId,
     source_pubkey: CommsPublicKey,
     sender_message: TransactionSenderMessage,
     stage: TransactionReceiveProtocolStage,
@@ -82,7 +82,7 @@ where
     TWalletConnectivity: WalletConnectivityInterface,
 {
     pub fn new(
-        id: u64,
+        id: TxId,
         source_pubkey: CommsPublicKey,
         sender_message: TransactionSenderMessage,
         stage: TransactionReceiveProtocolStage,
@@ -105,7 +105,7 @@ where
         }
     }
 
-    pub async fn execute(mut self) -> Result<u64, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Receive protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -304,6 +304,7 @@ where
 
         #[allow(unused_assignments)]
         let mut incoming_finalized_transaction = None;
+
         loop {
             loop {
                 let resend_timeout = sleep(self.resources.config.transaction_resend_period).fuse();

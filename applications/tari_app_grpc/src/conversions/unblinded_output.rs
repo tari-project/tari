@@ -23,13 +23,9 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_core::{
-    crypto::{
-        script::{ExecutionStack, TariScript},
-        tari_utilities::ByteArray,
-    },
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput},
-};
+use tari_core::transactions::{tari_amount::MicroTari, transaction::UnblindedOutput};
+use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -38,10 +34,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
         grpc::UnblindedOutput {
             value: u64::from(output.value),
             spending_key: output.spending_key.as_bytes().to_vec(),
-            features: Some(grpc::OutputFeatures {
-                flags: output.features.flags.bits() as u32,
-                maturity: output.features.maturity,
-            }),
+            features: Some(output.features.into()),
             script: output.script.as_bytes(),
             input_data: output.input_data.as_bytes(),
             script_private_key: output.script_private_key.as_bytes().to_vec(),

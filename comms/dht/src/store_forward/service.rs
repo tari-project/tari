@@ -222,7 +222,7 @@ impl StoreAndForwardService {
     }
 
     pub fn spawn(self) {
-        info!(target: LOG_TARGET, "Store and forward service started");
+        debug!(target: LOG_TARGET, "Store and forward service started");
         task::spawn(self.run());
     }
 

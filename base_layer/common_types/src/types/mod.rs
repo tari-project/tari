@@ -20,6 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod bullet_rangeproofs;
+
+pub use bullet_rangeproofs::BulletRangeProof;
 use tari_crypto::{
     common::Blake256,
     ristretto::{
@@ -31,10 +34,6 @@ use tari_crypto::{
         RistrettoSecretKey,
     },
 };
-
-mod bullet_rangeproofs;
-
-pub use bullet_rangeproofs::BulletRangeProof;
 
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;

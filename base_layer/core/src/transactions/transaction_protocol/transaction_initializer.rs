@@ -28,7 +28,10 @@ use std::{
 use digest::Digest;
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::types::{BlindingFactor, HashOutput, PrivateKey, PublicKey};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, HashOutput, PrivateKey, PublicKey},
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -38,7 +41,7 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::{ConsensusConstants, ConsensusEncodingSized},
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -62,14 +65,14 @@ use crate::{
 
 pub const LOG_TARGET: &str = "c::tx::tx_protocol::tx_initializer";
 
-/// The SenderTransactionInitializer is a Builder that helps set up the initial state for the Sender party of a new
+/// The SenderTransactionProtocolBuilder is a Builder that helps set up the initial state for the Sender party of a new
 /// transaction Typically you don't instantiate this object directly. Rather use
 /// ```ignore
 /// # use crate::SenderTransactionProtocol;
 /// SenderTransactionProtocol::new(1);
 /// ```
 /// which returns an instance of this builder. Once all the sender's information has been added via the builder
-/// methods, you can call `build()` which will return a [SenderTransactionProtocol]
+/// methods, you can call `build()` which will return a
 #[derive(Debug, Clone)]
 pub struct SenderTransactionInitializer {
     num_recipients: usize,
@@ -95,7 +98,7 @@ pub struct SenderTransactionInitializer {
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
     private_commitment_nonces: FixedSet<PrivateKey>,
-    tx_id: Option<u64>,
+    tx_id: Option<TxId>,
     fee: Fee,
 }
 
@@ -277,10 +280,7 @@ impl SenderTransactionInitializer {
         size += self
             .sender_custom_outputs
             .iter()
-            .map(|o| {
-                o.features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size()
-            })
+            .map(|o| o.features.consensus_encode_exact_size() + o.script.consensus_encode_exact_size())
             .sum::<usize>();
         // TODO: implement iter for FixedSet to avoid the clone
         size += self
@@ -288,7 +288,7 @@ impl SenderTransactionInitializer {
             .clone()
             .into_vec()
             .iter()
-            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .map(|script| script.consensus_encode_exact_size())
             .sum::<usize>();
 
         size
@@ -319,7 +319,7 @@ impl SenderTransactionInitializer {
         let change_metadata_size = self
             .change_script
             .as_ref()
-            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .map(|script| script.consensus_encode_exact_size())
             .unwrap_or(0) +
             output_features.consensus_encode_exact_size();
 
@@ -344,7 +344,7 @@ impl SenderTransactionInitializer {
                 let change_amount = v.checked_sub(extra_fee);
                 let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
                 self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
-
+                // TODO: Add unique id if needed
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -393,7 +393,7 @@ impl SenderTransactionInitializer {
     }
 
     /// Specify the tx_id of this transaction, if not provided it will be calculated on build
-    pub fn with_tx_id(&mut self, tx_id: u64) -> &mut Self {
+    pub fn with_tx_id(&mut self, tx_id: TxId) -> &mut Self {
         self.tx_id = Some(tx_id);
         self
     }
@@ -478,7 +478,9 @@ impl SenderTransactionInitializer {
         if total_fee < Fee::MINIMUM_TRANSACTION_FEE {
             return self.build_err("Fee is less than the minimum");
         }
+
         // Create transaction outputs
+
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
@@ -507,6 +509,7 @@ impl SenderTransactionInitializer {
 
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
+                // TODO: Should proof be verified?
                 match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data) {
                     Ok(o) => o,
                     Err(e) => {
@@ -514,6 +517,7 @@ impl SenderTransactionInitializer {
                     },
                 }
             } else {
+                // TODO: Should proof be verified?
                 match change_unblinded_output.as_transaction_output(factories) {
                     Ok(o) => o,
                     Err(e) => {
@@ -570,10 +574,15 @@ impl SenderTransactionInitializer {
             None => calculate_tx_id::<D>(&public_nonce, 0),
         };
 
+        let recipient_output_features = self.recipient_output_features.clone().into_vec();
         // The fee should be less than the amount being sent. This isn't a protocol requirement, but it's what you want
         // 99.999% of the time, however, always preventing this will also prevent spending dust in some edge
         // cases.
-        if self.amounts.size() > 0 && total_fee > self.calculate_amount_to_others() {
+        // Don't care about the fees when we are sending token.
+        if self.amounts.size() > 0 &&
+            total_fee > self.calculate_amount_to_others() &&
+            recipient_output_features[0].unique_id.is_none()
+        {
             warn!(
                 target: LOG_TARGET,
                 "Fee ({}) is greater than amount ({}) being sent for Transaction (TxId: {}).",
@@ -597,7 +606,7 @@ impl SenderTransactionInitializer {
             amount_to_self,
             tx_id,
             amounts: self.amounts.into_vec(),
-            recipient_output_features: self.recipient_output_features.into_vec(),
+            recipient_output_features,
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_sender_offset_private_keys: self.recipient_sender_offset_private_keys.into_vec(),
             private_commitment_nonces: self.private_commitment_nonces.into_vec(),

@@ -28,7 +28,11 @@ use std::{
 use aes_gcm::Aes256Gcm;
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::{IdentitySignature, PeerFeatures},
+    tor::TorIdentity,
+};
 use tari_key_manager::cipher_seed::CipherSeed;
 
 use crate::{error::WalletStorageError, utxo_scanner_service::service::ScannedBlock};
@@ -64,6 +68,7 @@ pub trait WalletBackend: Send + Sync + Clone {
 pub enum DbKey {
     CommsAddress,
     CommsFeatures,
+    CommsIdentitySignature,
     TorId,
     BaseNodeChainMetadata,
     ClientKey(String),
@@ -76,6 +81,7 @@ pub enum DbKey {
 pub enum DbValue {
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
+    CommsIdentitySignature(Box<IdentitySignature>),
     TorId(TorIdentity),
     ClientValue(String),
     ValueCleared,
@@ -94,6 +100,7 @@ pub enum DbKeyValuePair {
     MasterSeed(CipherSeed),
     CommsAddress(Multiaddr),
     CommsFeatures(PeerFeatures),
+    CommsIdentitySignature(Box<IdentitySignature>),
 }
 
 pub enum WriteOperation {
@@ -211,6 +218,33 @@ where T: WalletBackend + 'static
 
         tokio::task::spawn_blocking(move || {
             db_clone.write(WriteOperation::Insert(DbKeyValuePair::CommsFeatures(features)))
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
+    }
+
+    pub async fn get_comms_identity_signature(&self) -> Result<Option<IdentitySignature>, WalletStorageError> {
+        let db = self.db.clone();
+
+        let sig = tokio::task::spawn_blocking(move || match db.fetch(&DbKey::CommsIdentitySignature) {
+            Ok(None) => Ok(None),
+            Ok(Some(DbValue::CommsIdentitySignature(k))) => Ok(Some(*k)),
+            Ok(Some(other)) => unexpected_result(DbKey::CommsIdentitySignature, other),
+            Err(e) => log_error(DbKey::CommsIdentitySignature, e),
+        })
+        .await
+        .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(sig)
+    }
+
+    pub async fn set_comms_identity_signature(&self, sig: IdentitySignature) -> Result<(), WalletStorageError> {
+        let db = self.db.clone();
+
+        tokio::task::spawn_blocking(move || {
+            db.write(WriteOperation::Insert(DbKeyValuePair::CommsIdentitySignature(
+                Box::new(sig),
+            )))
         })
         .await
         .map_err(|err| WalletStorageError::BlockingTaskSpawnError(err.to_string()))??;
@@ -398,15 +432,16 @@ where T: WalletBackend + 'static
 impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            DbKey::MasterSeed => f.write_str(&"MasterSeed".to_string()),
-            DbKey::CommsAddress => f.write_str(&"CommsAddress".to_string()),
-            DbKey::CommsFeatures => f.write_str(&"Node features".to_string()),
-            DbKey::TorId => f.write_str(&"TorId".to_string()),
+            DbKey::MasterSeed => f.write_str("MasterSeed"),
+            DbKey::CommsAddress => f.write_str("CommsAddress"),
+            DbKey::CommsFeatures => f.write_str("Nod features"),
+            DbKey::TorId => f.write_str("TorId"),
             DbKey::ClientKey(k) => f.write_str(&format!("ClientKey: {:?}", k)),
-            DbKey::BaseNodeChainMetadata => f.write_str(&"Last seen Chain metadata from base node".to_string()),
-            DbKey::PassphraseHash => f.write_str(&"PassphraseHash".to_string()),
-            DbKey::EncryptionSalt => f.write_str(&"EncryptionSalt".to_string()),
-            DbKey::WalletBirthday => f.write_str(&"WalletBirthday".to_string()),
+            DbKey::BaseNodeChainMetadata => f.write_str("Last seen Chain metadata from basw node"),
+            DbKey::PassphraseHash => f.write_str("PassphraseHash"),
+            DbKey::EncryptionSalt => f.write_str("EncryptionSalt"),
+            DbKey::WalletBirthday => f.write_str("WalletBirthday"),
+            DbKey::CommsIdentitySignature => f.write_str("CommsIdentitySignature"),
         }
     }
 }
@@ -416,14 +451,15 @@ impl Display for DbValue {
         match self {
             DbValue::MasterSeed(k) => f.write_str(&format!("MasterSeed: {:?}", k)),
             DbValue::ClientValue(v) => f.write_str(&format!("ClientValue: {:?}", v)),
-            DbValue::ValueCleared => f.write_str(&"ValueCleared".to_string()),
-            DbValue::CommsFeatures(_) => f.write_str(&"Node features".to_string()),
-            DbValue::CommsAddress(_) => f.write_str(&"Comms Address".to_string()),
+            DbValue::ValueCleared => f.write_str("ValueCleared"),
+            DbValue::CommsFeatures(_) => f.write_str("Node features"),
+            DbValue::CommsAddress(_) => f.write_str("Comms Address"),
             DbValue::TorId(v) => f.write_str(&format!("Tor ID: {}", v)),
             DbValue::BaseNodeChainMetadata(v) => f.write_str(&format!("Last seen Chain metadata from base node:{}", v)),
             DbValue::PassphraseHash(h) => f.write_str(&format!("PassphraseHash: {}", h)),
             DbValue::EncryptionSalt(s) => f.write_str(&format!("EncryptionSalt: {}", s)),
             DbValue::WalletBirthday(b) => f.write_str(&format!("WalletBirthday: {}", b)),
+            DbValue::CommsIdentitySignature(_) => f.write_str("CommsIdentitySignature"),
         }
     }
 }

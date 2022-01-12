@@ -20,14 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{blocks::Block, chain_storage::PrunedOutput, proto::base_node as proto, tari_utilities::Hashable};
+use std::convert::{TryFrom, TryInto};
 
-impl From<Block> for proto::BlockBodyResponse {
-    fn from(block: Block) -> Self {
-        Self {
+use tari_utilities::Hashable;
+
+use crate::{blocks::Block, chain_storage::PrunedOutput, proto::base_node as proto};
+
+impl TryFrom<Block> for proto::BlockBodyResponse {
+    type Error = String;
+
+    fn try_from(block: Block) -> Result<Self, Self::Error> {
+        Ok(Self {
             hash: block.hash(),
-            body: Some(block.body.into()),
-        }
+            body: Some(block.body.try_into()?),
+        })
     }
 }
 
