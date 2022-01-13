@@ -1834,7 +1834,9 @@ where
                 );
                 let _ = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(id)));
+                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(
+                        OperationId::from(id),
+                    )));
             },
         }
     }

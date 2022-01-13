@@ -254,10 +254,10 @@ where TBackend: TransactionBackend + 'static
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionValidationCompleted(request_key)  => {
-                                    self.transaction_validation_complete_event(request_key, true);
+                                    self.transaction_validation_complete_event(request_key.as_u64(), true);
                                 },
                                 TransactionEvent::TransactionValidationFailed(request_key)  => {
-                                    self.transaction_validation_complete_event(request_key, false);
+                                    self.transaction_validation_complete_event(request_key.as_u64(), false);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
                                 TransactionEvent::TransactionImported(_tx_id) |
