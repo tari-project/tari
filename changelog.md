@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.23.0](https://github.com/tari-project/tari/compare/v0.22.1...v0.23.0) (2022-01-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **mempool:** optimisations,excess sig index,fix weight calc (#3691)
+* **comms:** add signature to peer identity to allow third party identity updates (#3629)
+* provide a compact form of TransactionInput (#3460)
+* **comms:** optimise connection establishment (#3658)
+
+### Features
+
+* add 721 template stub ([#3643](https://github.com/tari-project/tari/issues/3643)) ([5c276ee](https://github.com/tari-project/tari/commit/5c276ee600cf4ab4c02720045dfaf2324f74ed9d))
+* add chain storage and mempool validation for unique asset ids ([#3416](https://github.com/tari-project/tari/issues/3416)) ([7331b0c](https://github.com/tari-project/tari/commit/7331b0c94bccbc71d292fdd452468d09765ebd50))
+* add connect per site into the web extension ([#3626](https://github.com/tari-project/tari/issues/3626)) ([75aa0a3](https://github.com/tari-project/tari/commit/75aa0a36983e4c307846b16b469bcef7b364af16))
+* add dibbler testnet and genesis block ([6f355f7](https://github.com/tari-project/tari/commit/6f355f7f9fa546fc8660767c66ef00574a6938a1))
+* add file uploading to ipfs for asset create ([#3524](https://github.com/tari-project/tari/issues/3524)) ([b1ee1df](https://github.com/tari-project/tari/commit/b1ee1df0ab4c044b62e48f44a2e4a69c91904a63))
+* add onboarding flow for web extension ([#3582](https://github.com/tari-project/tari/issues/3582)) ([0c47bc8](https://github.com/tari-project/tari/commit/0c47bc897a4fa7c0711f505972333ba46bcd34c5))
+* add tari collectibles app ([#3480](https://github.com/tari-project/tari/issues/3480)) ([eb46127](https://github.com/tari-project/tari/commit/eb46127b84d3411955c378c8bab080c14127340d))
+* add wallet stub to collectibles app ([#3589](https://github.com/tari-project/tari/issues/3589)) ([dfc3b92](https://github.com/tari-project/tari/commit/dfc3b92563e582b337f02f8fdcde64a6f8b9b7f2))
+* **collectibles:** load asset registrations from base node on dash ([#3532](https://github.com/tari-project/tari/issues/3532)) ([1fd5d03](https://github.com/tari-project/tari/commit/1fd5d034559b22edbd727513cff304c7b3c14b15))
+* **comms:** add signature to peer identity to allow third party identity updates ([#3629](https://github.com/tari-project/tari/issues/3629)) ([c672d48](https://github.com/tari-project/tari/commit/c672d48fd4bc2708cef3e7929a76c55df9f63b01))
+* compile key manager to wasm and add javascript interface ([#3565](https://github.com/tari-project/tari/issues/3565)) ([35790d6](https://github.com/tari-project/tari/commit/35790d6c5fa12e59b05a12c776300ca388bf6205))
+* covenants implementation ([#3656](https://github.com/tari-project/tari/issues/3656)) ([8dfcf3a](https://github.com/tari-project/tari/commit/8dfcf3a1f5a303ff2a47bb47eb1d8a3bf30a5b23))
+* create tari web extension application stub ([#3535](https://github.com/tari-project/tari/issues/3535)) ([4a61c04](https://github.com/tari-project/tari/commit/4a61c04208a9302fe156f59f3cc9512e17444247))
+* example to generate vanity node_ids ([#3654](https://github.com/tari-project/tari/issues/3654)) ([40fd1f0](https://github.com/tari-project/tari/commit/40fd1f0cdb456486baaca9baf639bc16d77a7d36))
+* provide a compact form of TransactionInput ([#3460](https://github.com/tari-project/tari/issues/3460)) ([834eff9](https://github.com/tari-project/tari/commit/834eff946c7419ca3c4c927cbe7899ff5dcb0a8f))
+
+### Bug Fixes
+
+* allow 0-conf in blockchain db ([#3680](https://github.com/tari-project/tari/issues/3680)) ([246709a](https://github.com/tari-project/tari/commit/246709aba756d6805b8e7705b7f3fbd1188987a3))
+* **comms:** improve simultaneous connection handling ([#3697](https://github.com/tari-project/tari/issues/3697)) ([99ba6a3](https://github.com/tari-project/tari/commit/99ba6a379dabb48992a7c5a205544522d007c7ca))
+* prefer configured seeds over dns seeds ([#3662](https://github.com/tari-project/tari/issues/3662)) ([0f438aa](https://github.com/tari-project/tari/commit/0f438aaa9cbe64a88b9c1af343fafe4ac161a977))
+* remove noise negotiation for debugging on bad wire mode ([#3657](https://github.com/tari-project/tari/issues/3657)) ([eee73f7](https://github.com/tari-project/tari/commit/eee73f7f922dc35a43508dbf37db01874aed9249))
 
 ### [0.22.1](https://github.com/tari-project/tari/compare/v0.22.0...v0.22.1) (2022-01-04)
 
