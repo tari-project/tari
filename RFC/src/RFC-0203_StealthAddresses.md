@@ -86,15 +86,15 @@ The protocol that a sender will use to make a payment to the recipient is as fol
 1. Sender generates a random nonce key-pair \\( R = r \cdot G \\).
 2. Sender calculates a ECDH shared secret \\(c = H( r \cdot a \cdot G ) = H( a \cdot R) = H( r \cdot A) \\), where
 \\( H( \cdot ) \\) is a cryptographic hash function.
-3. The sender will then use \\( K_s = c \cdot G + B \\) as the last public key in the [one-sided payment] script. 
+3. The sender will then use \\( K_S = c \cdot G + B \\) as the last public key in the [one-sided payment] script. 
 4. The sender includes  \\( R \\) for the receiver but dropping it as it is not required during script execution. 
-This changes the script for a [one-sided payment] from `PushPubkey(K_s)` to `PushPubkey(R) Drop PushPubkey(K_s)`.
+This changes the script for a [one-sided payment] from `PushPubkey(K_S)` to `PushPubkey(R) Drop PushPubkey(K_S)`.
 
 The recipient will need to scan the blockchain for outputs that contain scripts of the [one-sided payment] form, and when
 one is found they will need to do the following:
 1. Extract the nonce \\( R \\) from the script.
 2. Use the public nonce to calculate the shared secret \\(c = H( a \cdot R) \\)
-3. Calculate \\( K_s \\) and check if it exists in the script.
+3. Calculate \\( K_S \\) and check if it exists in the script.
 4. If it exists, the recipient can produce the script signature required using the private key calculated by \\( c + b \\). 
 This private key can only be computed by the recipient using \\( b \\).
 

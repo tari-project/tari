@@ -71,7 +71,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistenc
             &self.factories,
             None,
             Some(tip.best_block().clone()),
-            Some(tip.height_of_longest_chain()),
+            tip.height_of_longest_chain(),
         )
         .map_err(ValidationError::TransactionError)?;
         Ok(())

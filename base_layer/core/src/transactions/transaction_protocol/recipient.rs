@@ -217,18 +217,21 @@ mod test {
         script::TariScript,
     };
 
-    use crate::transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::*,
-        test_helpers::TestParams,
-        transaction::OutputFeatures,
-        transaction_protocol::{
-            build_challenge,
-            sender::{SingleRoundSenderData, TransactionSenderMessage},
-            RewindData,
-            TransactionMetadata,
+    use crate::{
+        covenants::Covenant,
+        transactions::{
+            crypto_factories::CryptoFactories,
+            tari_amount::*,
+            test_helpers::TestParams,
+            transaction::OutputFeatures,
+            transaction_protocol::{
+                build_challenge,
+                sender::{SingleRoundSenderData, TransactionSenderMessage},
+                RewindData,
+                TransactionMetadata,
+            },
+            ReceiverTransactionProtocol,
         },
-        ReceiverTransactionProtocol,
     };
 
     #[test]
@@ -253,6 +256,7 @@ mod test {
             script,
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
+            covenant: Covenant::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
@@ -300,6 +304,7 @@ mod test {
             script,
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
+            covenant: Covenant::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
         let rewind_data = RewindData {

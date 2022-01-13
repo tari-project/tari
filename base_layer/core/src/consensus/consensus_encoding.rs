@@ -101,7 +101,10 @@ mod impls {
     use std::io::Read;
 
     use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-    use tari_crypto::script::TariScript;
+    use tari_crypto::{
+        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
+        script::{ExecutionStack, TariScript},
+    };
     use tari_utilities::ByteArray;
 
     use super::*;
@@ -125,6 +128,22 @@ mod impls {
         }
     }
 
+    impl ConsensusEncoding for ExecutionStack {
+        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+            self.as_bytes().consensus_encode(writer)
+        }
+    }
+
+    impl ConsensusEncodingSized for ExecutionStack {
+        fn consensus_encode_exact_size(&self) -> usize {
+            let mut counter = ByteCounter::new();
+            // TODO: consensus_encode_exact_size must be cheap to run
+            // unreachable panic: ByteCounter is infallible
+            self.consensus_encode(&mut counter).expect("unreachable");
+            counter.get()
+        }
+    }
+
     //---------------------------------- PublicKey --------------------------------------------//
 
     impl ConsensusEncoding for PublicKey {
@@ -135,11 +154,7 @@ mod impls {
 
     impl ConsensusEncodingSized for PublicKey {
         fn consensus_encode_exact_size(&self) -> usize {
-            let mut counter = ByteCounter::new();
-            // TODO: consensus_encode_exact_size must be cheap to run
-            // unreachable panic: ByteCounter is infallible
-            self.consensus_encode(&mut counter).expect("unreachable");
-            counter.get()
+            PublicKey::key_length()
         }
     }
 
@@ -149,6 +164,30 @@ mod impls {
             reader.read_exact(&mut buf)?;
             let pk = PublicKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
             Ok(pk)
+        }
+    }
+
+    //---------------------------------- PrivateKey --------------------------------------------//
+
+    impl ConsensusEncoding for PrivateKey {
+        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+            writer.write(self.as_bytes())
+        }
+    }
+
+    impl ConsensusEncodingSized for PrivateKey {
+        fn consensus_encode_exact_size(&self) -> usize {
+            PrivateKey::key_length()
+        }
+    }
+
+    impl ConsensusDecoding for PrivateKey {
+        fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+            let mut buf = [0u8; 32];
+            reader.read_exact(&mut buf)?;
+            let sk =
+                PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+            Ok(sk)
         }
     }
 
@@ -195,7 +234,7 @@ mod impls {
 
     impl ConsensusEncodingSized for Signature {
         fn consensus_encode_exact_size(&self) -> usize {
-            96
+            self.get_signature().consensus_encode_exact_size() + self.get_public_nonce().consensus_encode_exact_size()
         }
     }
 
@@ -205,7 +244,7 @@ mod impls {
             reader.read_exact(&mut buf)?;
             let pub_nonce =
                 PublicKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            let mut buf = [0u8; 64];
+            let mut buf = [0u8; 32];
             reader.read_exact(&mut buf)?;
             let sig =
                 PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;

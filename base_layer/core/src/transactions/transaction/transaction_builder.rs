@@ -98,7 +98,7 @@ impl TransactionBuilder {
         self,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<Transaction, TransactionError> {
         if let (Some(script_offset), Some(offset)) = (self.script_offset, self.offset) {
             let (i, o, k) = self.body.dissolve();

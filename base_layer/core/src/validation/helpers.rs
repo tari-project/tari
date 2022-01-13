@@ -252,7 +252,7 @@ pub fn check_accounting_balance(
             total_coinbase,
             factories,
             Some(block.header.prev_hash.clone()),
-            Some(block.header.height),
+            block.header.height,
         )
         .map_err(|err| {
             warn!(
@@ -620,6 +620,16 @@ pub fn check_not_bad_block<B: BlockchainBackend>(db: &B, hash: &[u8]) -> Result<
     Ok(())
 }
 
+pub fn validate_covenants(block: &Block) -> Result<(), ValidationError> {
+    for input in block.body.inputs() {
+        let output_set_size = input
+            .covenant()?
+            .execute(block.header.height, input, block.body.outputs())?;
+        trace!(target: LOG_TARGET, "{} output(s) passed covenant", output_set_size);
+    }
+    Ok(())
+}
+
 pub fn check_coinbase_reward(
     factory: &CommitmentFactory,
     rules: &ConsensusManager,
@@ -781,13 +791,13 @@ mod test {
         fn it_checks_the_kernel_timelock() {
             let mut kernel = test_helpers::create_test_kernel(0.into(), 0);
             kernel.lock_height = 2;
-            assert_eq!(
+            assert!(matches!(
                 check_kernel_lock_height(1, &[kernel.clone()]),
                 Err(BlockValidationError::MaturityError)
-            );
+            ));
 
-            assert_eq!(check_kernel_lock_height(2, &[kernel.clone()]), Ok(()));
-            assert_eq!(check_kernel_lock_height(3, &[kernel]), Ok(()));
+            check_kernel_lock_height(2, &[kernel.clone()]).unwrap();
+            check_kernel_lock_height(3, &[kernel]).unwrap();
         }
     }
 
@@ -804,20 +814,21 @@ mod test {
                 Default::default(),
                 Default::default(),
                 Default::default(),
+                Default::default(),
             );
 
-            assert_eq!(
+            assert!(matches!(
                 check_maturity(1, &[input.clone()]),
                 Err(TransactionError::InputMaturity)
-            );
+            ));
 
-            assert_eq!(
+            assert!(matches!(
                 check_maturity(4, &[input.clone()]),
                 Err(TransactionError::InputMaturity)
-            );
+            ));
 
-            assert_eq!(check_maturity(5, &[input.clone()]), Ok(()));
-            assert_eq!(check_maturity(6, &[input]), Ok(()));
+            check_maturity(5, &[input.clone()]).unwrap();
+            check_maturity(6, &[input]).unwrap();
         }
     }
 }

@@ -408,6 +408,7 @@ mod add_block {
             lock_height: 0,
             features,
             script: tari_crypto::script![Nop],
+            covenant: Default::default(),
             input_data: None,
         }]);
         let commitment_hex = txns[0]
@@ -446,6 +447,7 @@ mod add_block {
             lock_height: 0,
             features: Default::default(),
             script: tari_crypto::script![Nop],
+            covenant: Default::default(),
             input_data: None,
         }]);
 

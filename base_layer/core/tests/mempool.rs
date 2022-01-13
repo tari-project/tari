@@ -400,28 +400,28 @@ async fn test_zero_conf() {
     // tx31   tx32   tx33   tx34    Zero-conf level 3 transactions (highest fees, increases left to right)
 
     // Create 4 original transactions, only submit 3 (hold back tx02)
-    let (tx01, tx01_out, _) = spend_utxos(txn_schema!(
+    let (tx01, tx01_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][0].clone()],
         to: vec![15 * T, 5 * T],
         fee: 10*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx02, tx02_out, _) = spend_utxos(txn_schema!(
+    let (tx02, tx02_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][1].clone()],
         to: vec![5 * T, 5 * T],
         fee: 20*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx03, tx03_out, _) = spend_utxos(txn_schema!(
+    let (tx03, tx03_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][2].clone()],
         to: vec![5 * T, 5 * T],
         fee: 30*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx04, tx04_out, _) = spend_utxos(txn_schema!(
+    let (tx04, tx04_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][3].clone()],
         to: vec![5 * T, 5 * T],
         fee: 40*uT,
@@ -442,27 +442,27 @@ async fn test_zero_conf() {
     );
 
     // Create 4 zero-conf level 1 transactions, try to submit all
-    let (tx11, tx11_out, _) = spend_utxos(txn_schema!(
+    let (tx11, tx11_out) = spend_utxos(txn_schema!(
         from: vec![tx01_out[0].clone()],
         to: vec![7 * T, 4 * T],
         fee: 50*uT, lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx12, tx12_out, _) = spend_utxos(txn_schema!(
+    let (tx12, tx12_out) = spend_utxos(txn_schema!(
         from: vec![tx01_out[1].clone(), tx02_out[0].clone(), tx02_out[1].clone()],
         to: vec![7 * T, 4 * T],
         fee: 60*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx13, tx13_out, _) = spend_utxos(txn_schema!(
+    let (tx13, tx13_out) = spend_utxos(txn_schema!(
         from: tx03_out,
         to: vec![4 * T, 4 * T],
         fee: 70*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx14, tx14_out, _) = spend_utxos(txn_schema!(
+    let (tx14, tx14_out) = spend_utxos(txn_schema!(
         from: tx04_out,
         to: vec![10 * T, 4 * T],
         fee: 80*uT, lock: 0,
@@ -486,28 +486,28 @@ async fn test_zero_conf() {
     );
 
     // Create 4 zero-conf level 2 transactions, try to submit all
-    let (tx21, tx21_out, _) = spend_utxos(txn_schema!(
+    let (tx21, tx21_out) = spend_utxos(txn_schema!(
         from: vec![tx11_out[0].clone()],
         to: vec![3 * T, 3 * T],
         fee: 90*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx22, tx22_out, _) = spend_utxos(txn_schema!(
+    let (tx22, tx22_out) = spend_utxos(txn_schema!(
         from: vec![tx12_out[0].clone()],
         to: vec![3 * T, 3 * T],
         fee: 100*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx23, tx23_out, _) = spend_utxos(txn_schema!(
+    let (tx23, tx23_out) = spend_utxos(txn_schema!(
         from: vec![tx12_out[1].clone(), tx13_out[0].clone(), tx13_out[1].clone()],
         to: vec![3 * T, 3 * T],
         fee: 110*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx24, tx24_out, _) = spend_utxos(txn_schema!(
+    let (tx24, tx24_out) = spend_utxos(txn_schema!(
         from: vec![tx14_out[0].clone()],
         to: vec![3 * T, 3 * T],
         fee: 120*uT, lock: 0,
@@ -531,28 +531,28 @@ async fn test_zero_conf() {
     );
 
     // Create 4 zero-conf level 3 transactions, try to submit all
-    let (tx31, _, _) = spend_utxos(txn_schema!(
+    let (tx31, _) = spend_utxos(txn_schema!(
         from: tx21_out,
         to: vec![2 * T, 2 * T],
         fee: 130*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx32, _, _) = spend_utxos(txn_schema!(
+    let (tx32, _) = spend_utxos(txn_schema!(
         from: vec![tx11_out[1].clone(), tx22_out[0].clone(), tx22_out[1].clone()],
         to: vec![2 * T, 2 * T],
         fee: 140*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx33, _, _) = spend_utxos(txn_schema!(
+    let (tx33, _) = spend_utxos(txn_schema!(
         from: vec![tx14_out[1].clone(), tx23_out[0].clone(), tx23_out[1].clone()],
         to: vec![2 * T, 2 * T],
         fee: 150*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx34, _, _) = spend_utxos(txn_schema!(
+    let (tx34, _) = spend_utxos(txn_schema!(
         from: tx24_out,
         to: vec![2 * T, 2 * T],
         fee: 160*uT,
@@ -787,7 +787,7 @@ async fn request_response_get_stats() {
     .await;
 
     // Create a tx spending the genesis output. Then create 2 orphan txs
-    let (tx1, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
+    let (tx1, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let tx1 = Arc::new(tx1);
     let (orphan1, _, _) = tx!(1*T, fee: 100*uT);
     let orphan1 = Arc::new(orphan1);
@@ -838,8 +838,8 @@ async fn request_response_get_tx_state_by_excess_sig() {
     )
     .await;
 
-    let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]));
-    let (unpublished_tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![3 * T]));
+    let (tx, _) = spend_utxos(txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]));
+    let (unpublished_tx, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![3 * T]));
     let (orphan_tx, _, _) = tx!(1*T, fee: 100*uT);
     let tx = Arc::new(tx);
     let orphan_tx = Arc::new(orphan_tx);
@@ -924,7 +924,7 @@ async fn receive_and_propagate_transaction() {
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
-    let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
+    let (tx, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
     let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
     let orphan_excess_sig = orphan.body.kernels()[0].excess_sig.clone();
@@ -1092,7 +1092,7 @@ async fn consensus_validation_large_tx() {
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
     assert!(tx
-        .validate_internal_consistency(true, &factories, None, None, Some(u64::MAX))
+        .validate_internal_consistency(true, &factories, None, None, u64::MAX)
         .is_ok());
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
@@ -1147,7 +1147,7 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][1].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
@@ -1175,7 +1175,7 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][1].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
@@ -1192,7 +1192,7 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][2].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
@@ -1209,7 +1209,7 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][3].clone(), outputs[1][4].clone()],
         to: vec![0 * T, 0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     dbg!(&response);

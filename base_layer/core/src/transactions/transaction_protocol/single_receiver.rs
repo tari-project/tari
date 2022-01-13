@@ -118,6 +118,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.features,
             &sender_info.sender_offset_public_key,
             &sender_info.public_commitment_nonce,
+            &sender_info.covenant,
         )?;
 
         let output = TransactionOutput::new(
@@ -128,6 +129,7 @@ impl SingleReceiverTransactionProtocol {
             sender_info.script.clone(),
             sender_info.sender_offset_public_key.clone(),
             partial_metadata_signature,
+            sender_info.covenant.clone(),
         );
         Ok(output)
     }
@@ -203,6 +205,7 @@ mod test {
             script,
             sender_offset_public_key,
             public_commitment_nonce,
+            covenant: Default::default(),
         };
         let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
