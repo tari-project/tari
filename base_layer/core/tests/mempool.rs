@@ -1107,6 +1107,7 @@ async fn consensus_validation_large_tx() {
 
 #[tokio::test]
 #[allow(clippy::erasing_op)]
+#[allow(clippy::identity_op)]
 async fn consensus_validation_unique_id() {
     let mut rng = rand::thread_rng();
     let network = Network::LocalNet;
