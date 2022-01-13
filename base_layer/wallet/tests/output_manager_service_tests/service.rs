@@ -658,6 +658,7 @@ async fn test_utxo_selection_with_tx_priority() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
