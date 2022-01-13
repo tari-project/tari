@@ -37,7 +37,6 @@ members = [
 #[profile.release]
 #debug = true
 
-
 # Shutdown when panicking so we can see the error, specifically for the wallet
 [profile.release]
 panic = 'abort'

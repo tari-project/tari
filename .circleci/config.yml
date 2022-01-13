@@ -1,7 +1,7 @@
 version: 2.1
 
 defaults:
-  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-11-20
 
 commands:
   cucumber-js:
@@ -127,7 +127,6 @@ jobs:
     steps:
       - checkout
       - cucumber-js-ffi
-
 
 workflows:
   version: 2
