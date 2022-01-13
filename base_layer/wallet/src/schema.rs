@@ -119,6 +119,7 @@ table! {
         script_lock_height -> BigInt,
         spending_priority -> Integer,
         features_json -> Text,
+        covenant -> Binary,
     }
 }
 

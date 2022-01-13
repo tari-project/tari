@@ -87,7 +87,7 @@ impl Transaction {
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
         self.body.validate_internal_consistency(

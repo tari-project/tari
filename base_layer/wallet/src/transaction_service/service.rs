@@ -40,6 +40,7 @@ use tari_common_types::{
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
+    covenants::Covenant,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
@@ -855,11 +856,14 @@ where
         let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
-        // lets make the unlock height a day from now, 2 min blocks * 30 blocks per hour * 24 hours
+        // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
         let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
 
         // lets create the HTLC script
         let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pubkey.clone())) Else CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone())) EndIf);
+
+        // Empty covenant
+        let covenant = Covenant::default();
 
         // Prepare sender part of the transaction
         let mut stp = self
@@ -873,6 +877,7 @@ where
                 None,
                 message.clone(),
                 script.clone(),
+                covenant.clone(),
             )
             .await?;
 
@@ -932,6 +937,7 @@ where
             output.sender_offset_public_key.clone(),
             output.metadata_signature.clone(),
             height,
+            covenant,
         );
 
         // Start finalizing
@@ -945,7 +951,7 @@ where
             KernelFeatures::empty(),
             &self.resources.factories,
             None,
-            self.last_seen_tip_height,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
         )
         .map_err(|e| {
             error!(
@@ -1032,6 +1038,7 @@ where
                 None,
                 message.clone(),
                 script!(PushPubKey(Box::new(dest_pubkey.clone()))),
+                Covenant::default(),
             )
             .await?;
 
@@ -1091,7 +1098,7 @@ where
             KernelFeatures::empty(),
             &self.resources.factories,
             None,
-            self.last_seen_tip_height,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
         )
         .map_err(|e| {
             error!(

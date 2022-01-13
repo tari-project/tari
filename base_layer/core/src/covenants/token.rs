@@ -95,97 +95,97 @@ impl CovenantToken {
     //---------------------------------- Macro helper functions --------------------------------------------//
 
     #[allow(dead_code)]
-    pub(super) fn identity() -> Self {
+    pub fn identity() -> Self {
         CovenantToken::Filter(CovenantFilter::Identity(IdentityFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn and() -> Self {
+    pub fn and() -> Self {
         CovenantToken::Filter(CovenantFilter::And(AndFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn or() -> Self {
+    pub fn or() -> Self {
         CovenantToken::Filter(CovenantFilter::Or(OrFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn xor() -> Self {
+    pub fn xor() -> Self {
         CovenantToken::Filter(CovenantFilter::Xor(XorFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn not() -> Self {
+    pub fn not() -> Self {
         CovenantToken::Filter(CovenantFilter::Not(NotFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn output_hash_eq() -> Self {
+    pub fn output_hash_eq() -> Self {
         CovenantToken::Filter(CovenantFilter::OutputHashEq(OutputHashEqFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn fields_preserved() -> Self {
+    pub fn fields_preserved() -> Self {
         CovenantToken::Filter(CovenantFilter::FieldsPreserved(FieldsPreservedFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn field_eq() -> Self {
+    pub fn field_eq() -> Self {
         CovenantToken::Filter(CovenantFilter::FieldEq(FieldEqFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn fields_hashed_eq() -> Self {
+    pub fn fields_hashed_eq() -> Self {
         CovenantToken::Filter(CovenantFilter::FieldsHashedEq(FieldsHashedEqFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn absolute_height() -> Self {
+    pub fn absolute_height() -> Self {
         CovenantToken::Filter(CovenantFilter::AbsoluteHeight(AbsoluteHeightFilter))
     }
 
     #[allow(dead_code)]
-    pub(super) fn hash(hash: Hash) -> Self {
+    pub fn hash(hash: Hash) -> Self {
         CovenantToken::Arg(CovenantArg::Hash(hash))
     }
 
     #[allow(dead_code)]
-    pub(super) fn public_key(public_key: PublicKey) -> Self {
+    pub fn public_key(public_key: PublicKey) -> Self {
         CovenantToken::Arg(CovenantArg::PublicKey(public_key))
     }
 
     #[allow(dead_code)]
-    pub(super) fn commitment(commitment: Commitment) -> Self {
+    pub fn commitment(commitment: Commitment) -> Self {
         CovenantToken::Arg(CovenantArg::Commitment(commitment))
     }
 
     #[allow(dead_code)]
-    pub(super) fn script(script: TariScript) -> Self {
+    pub fn script(script: TariScript) -> Self {
         CovenantToken::Arg(CovenantArg::TariScript(script))
     }
 
     #[allow(dead_code)]
-    pub(super) fn covenant(covenant: Covenant) -> Self {
+    pub fn covenant(covenant: Covenant) -> Self {
         CovenantToken::Arg(CovenantArg::Covenant(covenant))
     }
 
     #[allow(dead_code)]
-    pub(super) fn uint(val: u64) -> Self {
+    pub fn uint(val: u64) -> Self {
         CovenantToken::Arg(CovenantArg::Uint(val))
     }
 
     #[allow(dead_code)]
-    pub(super) fn field(field: OutputField) -> Self {
+    pub fn field(field: OutputField) -> Self {
         CovenantToken::Arg(CovenantArg::OutputField(field))
     }
 
     #[allow(dead_code)]
-    pub(super) fn fields(fields: Vec<OutputField>) -> Self {
+    pub fn fields(fields: Vec<OutputField>) -> Self {
         CovenantToken::Arg(CovenantArg::OutputFields(fields.into()))
     }
 
     #[allow(dead_code)]
-    pub(super) fn bytes(bytes: Vec<u8>) -> Self {
+    pub fn bytes(bytes: Vec<u8>) -> Self {
         CovenantToken::Arg(CovenantArg::Bytes(bytes))
     }
 }

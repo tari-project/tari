@@ -85,33 +85,26 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| {
-                        (
-                            v,
-                            output.features,
-                            output.script,
-                            output.sender_offset_public_key,
-                            output.metadata_signature,
-                        )
-                    })
+                    .map(|v| ( v, output ) )
             })
             //Todo this needs some investigation. We assume Nop script here and recovery here might create an unspendable output if the script does not equal Nop.
             .map(
-                |(output, features, script, sender_offset_public_key, metadata_signature)| {
+                |(rewind_result, output)| {
                     // Todo we need to look here that we might want to fail a specific output and not recover it as this
                     // will only work if the script is a Nop script. If this is not a Nop script the recovered input
                     // will not be spendable.
                     let script_key = PrivateKey::random(&mut OsRng);
                     UnblindedOutput::new(
-                        output.committed_value,
-                        output.blinding_factor,
-                        features,
-                        script,
+                        rewind_result.committed_value,
+                        rewind_result.blinding_factor,
+                        output.features,
+                        output.script,
                         inputs!(PublicKey::from_secret_key(&script_key)),
                         script_key,
-                        sender_offset_public_key,
-                        metadata_signature,
+                        output.sender_offset_public_key,
+                        output.metadata_signature,
                         0,
+                        output.covenant
                     )
                 },
             )

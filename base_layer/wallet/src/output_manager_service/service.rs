@@ -34,6 +34,7 @@ use tari_common_types::{
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
+    covenants::Covenant,
     proto::base_node::FetchMatchingUtxos,
     transactions::{
         fee::Fee,
@@ -238,6 +239,7 @@ where
                 lock_height,
                 message,
                 script,
+                covenant,
             } => self
                 .prepare_transaction_to_send(
                     tx_id,
@@ -248,6 +250,7 @@ where
                     lock_height,
                     message,
                     script,
+                    covenant,
                 )
                 .await
                 .map(OutputManagerResponse::TransactionToSend),
@@ -604,13 +607,15 @@ where
                 // Note: The commitment signature at this time is only partially built
                 TransactionOutput::create_partial_metadata_signature(
                     &single_round_sender_data.amount,
-                    &spending_key.clone(),
-                    &single_round_sender_data.script.clone(),
-                    &single_round_sender_data.features.clone(),
-                    &single_round_sender_data.sender_offset_public_key.clone(),
-                    &single_round_sender_data.public_commitment_nonce.clone(),
+                    &spending_key,
+                    &single_round_sender_data.script,
+                    &single_round_sender_data.features,
+                    &single_round_sender_data.sender_offset_public_key,
+                    &single_round_sender_data.public_commitment_nonce,
+                    &single_round_sender_data.covenant,
                 )?,
                 0,
+                single_round_sender_data.covenant.clone(),
             ),
             &self.resources.factories,
             None,
@@ -694,6 +699,7 @@ where
         lock_height: Option<u64>,
         message: String,
         recipient_script: TariScript,
+        recipient_covenant: Covenant,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         debug!(
             target: LOG_TARGET,
@@ -708,7 +714,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() + recipient_script.consensus_encode_exact_size(),
+                output_features.consensus_encode_exact_size() +
+                    recipient_script.consensus_encode_exact_size() +
+                    recipient_covenant.consensus_encode_exact_size(),
             );
 
         let input_selection = self
@@ -752,6 +760,7 @@ where
                 PrivateKey::random(&mut OsRng),
                 output_features,
                 PrivateKey::random(&mut OsRng),
+                recipient_covenant,
             )
             .with_message(message)
             .with_prevent_fee_gt_amount(self.resources.config.prevent_fee_gt_amount)
@@ -787,7 +796,11 @@ where
         }
 
         let stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         // If a change output was created add it to the pending_outputs list.
@@ -1003,7 +1016,7 @@ where
         // }
 
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, None)
+            .build::<HashDigest>(&self.resources.factories, None, u64::MAX)
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // if let Some((spending_key, script_private_key)) = change_keys {
         //     // let change_script_offset_public_key = stp.get_change_sender_offset_public_key()?.ok_or_else(|| {
@@ -1046,7 +1059,7 @@ where
             .db
             .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)
             .await?;
-        stp.finalize(KernelFeatures::empty(), &self.resources.factories, None, None)?;
+        stp.finalize(KernelFeatures::empty(), &self.resources.factories, None, u64::MAX)?;
 
         Ok((tx_id, stp.take_transaction()?))
     }
@@ -1062,6 +1075,7 @@ where
         message: String,
     ) -> Result<(MicroTari, Transaction), OutputManagerError> {
         let script = script!(Nop);
+        let covenant = Covenant::default();
         let output_features = OutputFeatures {
             unique_id: unique_id.clone(),
             ..Default::default()
@@ -1071,7 +1085,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() + script.consensus_encode_exact_size(),
+                output_features.consensus_encode_exact_size() +
+                    script.consensus_encode_exact_size() +
+                    covenant.consensus_encode_exact_size(),
             );
 
         let input_selection = self
@@ -1120,6 +1136,7 @@ where
             &script,
             &output_features,
             &sender_offset_private_key,
+            &covenant,
         )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
             UnblindedOutput::new(
@@ -1132,6 +1149,7 @@ where
                 PublicKey::from_secret_key(&sender_offset_private_key),
                 metadata_signature,
                 0,
+                covenant,
             ),
             &self.resources.factories,
             None,
@@ -1159,7 +1177,11 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         if input_selection.requires_change_output() {
@@ -1185,7 +1207,12 @@ where
         self.confirm_encumberance(tx_id).await?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
         let tx = stp.take_transaction()?;
 
         Ok((fee, tx))
@@ -1388,13 +1415,16 @@ where
         );
         let output_count = split_count;
         let script = script!(Nop);
+        let covenant = Covenant::default();
         let output_features = OutputFeatures::default();
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() + script.consensus_encode_exact_size(),
+                output_features.consensus_encode_exact_size() +
+                    script.consensus_encode_exact_size() +
+                    covenant.consensus_encode_exact_size(),
             );
 
         let total_split_amount = amount_per_split * split_count as u64;
@@ -1451,6 +1481,7 @@ where
                 &script,
                 &output_features,
                 &sender_offset_private_key,
+                &covenant,
             )?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
                 UnblindedOutput::new(
@@ -1463,6 +1494,7 @@ where
                     sender_offset_public_key,
                     metadata_signature,
                     0,
+                    covenant.clone(),
                 ),
                 &self.resources.factories,
                 None,
@@ -1490,7 +1522,11 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
         // The Transaction Protocol built successfully so we will pull the unspent outputs out of the unspent list and
         // store them until the transaction times out OR is confirmed
@@ -1520,7 +1556,12 @@ where
             .await?;
         self.confirm_encumberance(tx_id).await?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
         let tx = stp.take_transaction()?;
         Ok((tx_id, tx, utxos_total_value))
     }
@@ -1581,6 +1622,7 @@ where
             // Although the technically the script does have a script lock higher than 0, this does not apply to to us
             // as we are claiming the Hashed part which has a 0 time lock
             0,
+            output.covenant,
         );
         let amount = rewound.committed_value;
 
@@ -1619,7 +1661,11 @@ where
 
         let factories = CryptoFactories::default();
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let tx_id = stp.get_tx_id()?;
@@ -1636,7 +1682,12 @@ where
         self.confirm_encumberance(tx_id).await?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
-        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
         let tx = stp.take_transaction()?;
 
         Ok((tx_id, fee, amount - fee, tx))
@@ -1692,7 +1743,11 @@ where
         let factories = CryptoFactories::default();
         println!("he`");
         let mut stp = builder
-            .build::<HashDigest>(&self.resources.factories, None, self.last_seen_tip_height)
+            .build::<HashDigest>(
+                &self.resources.factories,
+                None,
+                self.last_seen_tip_height.unwrap_or(u64::MAX),
+            )
             .map_err(|e| OutputManagerError::BuildError(e.message))?;
 
         let tx_id = stp.get_tx_id()?;
@@ -1709,7 +1764,12 @@ where
 
         let fee = stp.get_fee_amount()?;
 
-        stp.finalize(KernelFeatures::empty(), &factories, None, self.last_seen_tip_height)?;
+        stp.finalize(
+            KernelFeatures::empty(),
+            &factories,
+            None,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
+        )?;
 
         let tx = stp.take_transaction()?;
 
@@ -1772,6 +1832,7 @@ where
                         output.sender_offset_public_key,
                         output.metadata_signature,
                         known_one_sided_payment_scripts[i].script_lock_height,
+                        output.covenant,
                     );
                     let db_output = DbUnblindedOutput::from_unblinded_output(
                         rewound_output.clone(),

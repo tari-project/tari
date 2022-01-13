@@ -34,7 +34,7 @@ pub enum CovenantError {
     ExpectedFilterButGotArg,
     #[error("Encountered an unexpected argument. Expected {expected} but got {got}")]
     UnexpectedArgument { expected: &'static str, got: String },
-    #[error("Covenant failed: no matching outputs found")]
+    #[error("Covenant did not match any outputs")]
     NoMatchingOutputs,
     #[error("Covenant failed: unused tokens remain after execution")]
     RemainingTokens,

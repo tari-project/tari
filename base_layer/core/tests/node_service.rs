@@ -521,10 +521,10 @@ async fn local_get_new_block_with_zero_conf() {
         .start(temp_dir.path().to_str().unwrap())
         .await;
 
-    let (tx01, tx01_out, _) = spend_utxos(
+    let (tx01, tx01_out) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx02, tx02_out, _) = spend_utxos(
+    let (tx02, tx02_out) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
     );
     assert_eq!(
@@ -536,10 +536,10 @@ async fn local_get_new_block_with_zero_conf() {
         TxStorageResponse::UnconfirmedPool
     );
 
-    let (tx11, _, _) = spend_utxos(
+    let (tx11, _) = spend_utxos(
         txn_schema!(from: tx01_out, to: vec![10_000 * uT], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx12, _, _) = spend_utxos(
+    let (tx12, _) = spend_utxos(
         txn_schema!(from: tx02_out, to: vec![20_000 * uT], fee: 60*uT, lock: 0, features: OutputFeatures::default()),
     );
     assert_eq!(
@@ -599,16 +599,16 @@ async fn local_get_new_block_with_combined_transaction() {
         .start(temp_dir.path().to_str().unwrap())
         .await;
 
-    let (tx01, tx01_out, _) = spend_utxos(
+    let (tx01, tx01_out) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx02, tx02_out, _) = spend_utxos(
+    let (tx02, tx02_out) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx11, _, _) = spend_utxos(
+    let (tx11, _) = spend_utxos(
         txn_schema!(from: tx01_out, to: vec![10_000 * uT], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx12, _, _) = spend_utxos(
+    let (tx12, _) = spend_utxos(
         txn_schema!(from: tx02_out, to: vec![20_000 * uT], fee: 60*uT, lock: 0, features: OutputFeatures::default()),
     );
 

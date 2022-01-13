@@ -87,7 +87,7 @@ impl OutputField {
             Commitment => &output.commitment as &dyn Any,
             Script => &output.script as &dyn Any,
             SenderOffsetPublicKey => &output.sender_offset_public_key as &dyn Any,
-            Covenant => unimplemented!(),
+            Covenant => &output.covenant as &dyn Any,
             Features => &output.features as &dyn Any,
             FeaturesFlags => &output.features.flags as &dyn Any,
             FeaturesMaturity => &output.features.maturity as &dyn Any,
@@ -104,7 +104,7 @@ impl OutputField {
             Commitment => output.commitment.to_consensus_bytes(),
             Script => output.script.to_consensus_bytes(),
             SenderOffsetPublicKey => output.sender_offset_public_key.to_consensus_bytes(),
-            Covenant => unimplemented!(),
+            Covenant => output.covenant.to_consensus_bytes(),
             Features => output.features.to_consensus_bytes(),
             FeaturesFlags => output.features.flags.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
@@ -136,7 +136,10 @@ impl OutputField {
                 .sender_offset_public_key()
                 .map(|sender_offset_public_key| *sender_offset_public_key == output.sender_offset_public_key)
                 .unwrap_or(false),
-            Covenant => unimplemented!(),
+            Covenant => input
+                .covenant()
+                .map(|covenant| *covenant == output.covenant)
+                .unwrap_or(false),
             Features => input
                 .features()
                 .map(|features| *features == output.features)
@@ -188,52 +191,52 @@ impl OutputField {
 
     //---------------------------------- Macro helpers --------------------------------------------//
     #[allow(dead_code)]
-    pub(super) fn commitment() -> Self {
+    pub fn commitment() -> Self {
         OutputField::Commitment
     }
 
     #[allow(dead_code)]
-    pub(super) fn script() -> Self {
+    pub fn script() -> Self {
         OutputField::Script
     }
 
     #[allow(dead_code)]
-    pub(super) fn sender_offset_public_key() -> Self {
+    pub fn sender_offset_public_key() -> Self {
         OutputField::SenderOffsetPublicKey
     }
 
     #[allow(dead_code)]
-    pub(super) fn covenant() -> Self {
+    pub fn covenant() -> Self {
         OutputField::Covenant
     }
 
     #[allow(dead_code)]
-    pub(super) fn features() -> Self {
+    pub fn features() -> Self {
         OutputField::Features
     }
 
     #[allow(dead_code)]
-    pub(super) fn features_flags() -> Self {
+    pub fn features_flags() -> Self {
         OutputField::FeaturesFlags
     }
 
     #[allow(dead_code)]
-    pub(super) fn features_maturity() -> Self {
+    pub fn features_maturity() -> Self {
         OutputField::FeaturesMaturity
     }
 
     #[allow(dead_code)]
-    pub(super) fn features_unique_id() -> Self {
+    pub fn features_unique_id() -> Self {
         OutputField::FeaturesUniqueId
     }
 
     #[allow(dead_code)]
-    pub(super) fn features_parent_public_key() -> Self {
+    pub fn features_parent_public_key() -> Self {
         OutputField::FeaturesParentPublicKey
     }
 
     #[allow(dead_code)]
-    pub(super) fn features_metadata() -> Self {
+    pub fn features_metadata() -> Self {
         OutputField::FeaturesMetadata
     }
 }
@@ -335,19 +338,24 @@ impl FromIterator<OutputField> for OutputFields {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::transactions::transaction::OutputFeatures;
+    use crate::{
+        covenants::test::create_outputs,
+        transactions::{test_helpers::UtxoTestParams, transaction::OutputFeatures},
+    };
 
     #[test]
     fn get_field_value_ref() {
-        let output = TransactionOutput::new(
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-            Default::default(),
-        );
+        let features = OutputFeatures {
+            maturity: 42,
+            ..Default::default()
+        };
+        let output = create_outputs(1, UtxoTestParams {
+            features: features.clone(),
+            ..Default::default()
+        })
+        .pop()
+        .unwrap();
         let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
-        assert_eq!(*r.unwrap(), OutputFeatures::default());
+        assert_eq!(*r.unwrap(), features);
     }
 }
