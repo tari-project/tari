@@ -1159,7 +1159,7 @@ async fn consensus_validation_unique_id() {
         from: vec![nft],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
