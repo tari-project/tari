@@ -36,9 +36,9 @@ impl NetworkConsensus {
             LocalNet => ConsensusConstants::localnet(),
             Dibbler => ConsensusConstants::dibbler(),
             Igor => ConsensusConstants::igor(),
+            Weatherwax => ConsensusConstants::weatherwax(),
             Ridcully => unimplemented!("Ridcully network is no longer supported"),
             Stibbons => unimplemented!("Stibbons network is no longer supported"),
-            Weatherwax => unimplemented!("Weatherwax network is no longer supported"),
         }
     }
 

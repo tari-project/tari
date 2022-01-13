@@ -244,6 +244,40 @@ impl ConsensusConstants {
         }]
     }
 
+    pub fn weatherwax() -> Vec<Self> {
+        let mut algos = HashMap::new();
+        // setting sha3/monero to 40/60 split
+        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
+            max_target_time: 180,
+            min_difficulty: 60_00.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 30,
+        });
+        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
+            max_target_time: 1200,
+            min_difficulty: 60_000.into(),
+            max_difficulty: u64::MAX.into(),
+            target_time: 200,
+        });
+        vec![ConsensusConstants {
+            effective_from_height: 0,
+            coinbase_lock_height: 6,
+            blockchain_version: 1,
+            future_time_limit: 540,
+            difficulty_block_window: 90,
+            max_block_transaction_weight: 19500,
+            median_timestamp_count: 11,
+            emission_initial: 5_538_846_115 * uT,
+            emission_decay: &EMISSION_DECAY,
+            emission_tail: 100.into(),
+            max_randomx_seed_height: std::u64::MAX,
+            proof_of_work: algos,
+            faucet_value: (5000 * 4000) * T,
+            transaction_weight: TransactionWeight::v1(),
+            max_script_byte_size: 2048,
+        }]
+    }
+
     pub fn igor() -> Vec<Self> {
         let mut algos = HashMap::new();
         // sha3/monero to 40/60 split
