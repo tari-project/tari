@@ -348,7 +348,7 @@ impl AggregateBody {
         total_reward: MicroTari,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TransactionError> {
         self.verify_kernel_signatures()?;
 
@@ -361,7 +361,9 @@ impl AggregateBody {
         self.verify_metadata_signatures()?;
 
         let script_offset_g = PublicKey::from_secret_key(script_offset);
-        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)
+        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)?;
+        self.validate_covenants(height)?;
+        Ok(())
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -432,13 +434,12 @@ impl AggregateBody {
         script_offset: PublicKey,
         factory: &CommitmentFactory,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
         let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
-        let height = height.unwrap_or_default();
         for input in &self.inputs {
             let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
             input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
@@ -455,6 +456,13 @@ impl AggregateBody {
         let lhs = input_keys - output_keys;
         if lhs != script_offset {
             return Err(TransactionError::ScriptOffset);
+        }
+        Ok(())
+    }
+
+    fn validate_covenants(&self, height: u64) -> Result<(), TransactionError> {
+        for input in self.inputs.iter() {
+            input.covenant()?.execute(height, input, &self.outputs)?;
         }
         Ok(())
     }

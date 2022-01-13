@@ -40,6 +40,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
     consensus::NetworkConsensus,
+    covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, UnblindedOutput},
@@ -383,6 +384,7 @@ where
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
+        covenant: Covenant,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -394,6 +396,7 @@ where
             sender_offset_public_key.clone(),
             metadata_signature,
             script_lock_height,
+            covenant,
         );
 
         let tx_id = self

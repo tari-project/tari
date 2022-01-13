@@ -126,7 +126,9 @@ impl FromIterator<CovenantToken> for Covenant {
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use crate::{
+        consensus::ToConsensusBytes,
         covenant,
         covenants::test::{create_input, create_outputs},
     };
@@ -151,5 +153,30 @@ mod test {
         let covenant = covenant!(fields_preserved(@fields(@field::features)));
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
+    }
+
+    mod consensus_encoding {
+        use super::*;
+
+        #[test]
+        fn it_encodes_to_empty_bytes() {
+            let bytes = Covenant::new().to_consensus_bytes();
+            assert_eq!(bytes.len(), 0);
+        }
+    }
+
+    mod consensus_decoding {
+        use super::*;
+
+        #[test]
+        fn it_is_identity_if_empty_bytes() {
+            let empty_buf = &[] as &[u8; 0];
+            let covenant = Covenant::consensus_decode(&mut &empty_buf[..]).unwrap();
+
+            let outputs = create_outputs(10, Default::default());
+            let input = create_input();
+            let num_selected = covenant.execute(0, &input, &outputs).unwrap();
+            assert_eq!(num_selected, 10);
+        }
     }
 }

@@ -37,6 +37,7 @@ use tari_crypto::{
 
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusManager},
+    covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -51,7 +52,7 @@ use crate::{
             TransactionOutput,
             UnblindedOutput,
         },
-        transaction_protocol::{build_challenge, TransactionMetadata},
+        transaction_protocol::{build_challenge, TransactionMetadata, TransactionProtocolError},
         weight::TransactionWeight,
         SenderTransactionProtocol,
     },
@@ -66,7 +67,7 @@ pub fn create_test_input(
     params.commitment_factory = factory.clone();
     params.create_input(UtxoTestParams {
         value: amount,
-        output_features: OutputFeatures::with_maturity(maturity),
+        features: OutputFeatures::with_maturity(maturity),
         ..Default::default()
     })
 }
@@ -93,8 +94,9 @@ pub struct TestParams {
 pub struct UtxoTestParams {
     pub value: MicroTari,
     pub script: TariScript,
-    pub output_features: OutputFeatures,
+    pub features: OutputFeatures,
     pub input_data: Option<ExecutionStack>,
+    pub covenant: Covenant,
 }
 
 impl Default for UtxoTestParams {
@@ -102,8 +104,9 @@ impl Default for UtxoTestParams {
         Self {
             value: 10.into(),
             script: script![Nop],
-            output_features: Default::default(),
+            features: Default::default(),
             input_data: None,
+            covenant: Covenant::default(),
         }
     }
 }
@@ -141,15 +144,16 @@ impl TestParams {
             &params.value,
             &self.spend_key,
             &params.script,
-            &params.output_features,
+            &params.features,
             &self.sender_offset_private_key,
+            &params.covenant,
         )
         .unwrap();
 
         UnblindedOutput::new(
             params.value,
             self.spend_key.clone(),
-            params.output_features,
+            params.features,
             params.script.clone(),
             params
                 .input_data
@@ -158,6 +162,7 @@ impl TestParams {
             self.sender_offset_public_key.clone(),
             metadata_signature,
             0,
+            params.covenant,
         )
     }
 
@@ -244,7 +249,7 @@ pub fn create_unblinded_output(
     test_params.create_unblinded_output(UtxoTestParams {
         value,
         script,
-        output_features,
+        features: output_features,
         ..Default::default()
     })
 }
@@ -293,6 +298,7 @@ macro_rules! txn_schema {
             lock_height: $lock,
             features: $features.clone(),
             script: tari_crypto::script![Nop],
+            covenant: Default::default(),
             input_data: None,
         }
     }};
@@ -347,12 +353,7 @@ pub struct TransactionSchema {
     pub features: OutputFeatures,
     pub script: TariScript,
     pub input_data: Option<ExecutionStack>,
-}
-
-fn default_metadata_byte_size() -> usize {
-    TransactionWeight::latest().round_up_metadata_size(
-        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
-    )
+    pub covenant: Covenant,
 }
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
@@ -365,26 +366,38 @@ pub fn create_tx(
     input_maturity: u64,
     output_count: usize,
 ) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>) {
-    let (inputs, outputs) = create_unblinded_txos(amount, input_count, input_maturity, output_count, fee_per_gram);
+    let (inputs, outputs) = create_unblinded_txos(
+        amount,
+        input_count,
+        input_maturity,
+        output_count,
+        fee_per_gram,
+        Default::default(),
+        script![Nop],
+        Default::default(),
+    );
     let tx = create_transaction_with(lock_height, fee_per_gram, inputs.clone(), outputs.clone());
     (tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn create_unblinded_txos(
     amount: MicroTari,
     input_count: usize,
     input_maturity: u64,
     output_count: usize,
     fee_per_gram: MicroTari,
+    output_features: OutputFeatures,
+    output_script: TariScript,
+    output_covenant: Covenant,
 ) -> (Vec<UnblindedOutput>, Vec<(UnblindedOutput, PrivateKey)>) {
-    let output_metadata_size = default_metadata_byte_size() * output_count;
-    let estimated_fee = Fee::new(TransactionWeight::latest()).calculate(
-        fee_per_gram,
-        1,
-        input_count,
-        output_count,
-        output_metadata_size,
-    );
+    let weighting = TransactionWeight::latest();
+    let output_metadata_size = weighting.round_up_metadata_size(
+        output_features.consensus_encode_exact_size() +
+            output_script.consensus_encode_exact_size() +
+            output_covenant.consensus_encode_exact_size(),
+    ) * output_count;
+    let estimated_fee = Fee::new(weighting).calculate(fee_per_gram, 1, input_count, output_count, output_metadata_size);
     let amount_per_output = (amount - estimated_fee) / output_count as u64;
     let amount_for_last_output = (amount - estimated_fee) - amount_per_output * (output_count as u64 - 1);
 
@@ -401,6 +414,9 @@ pub fn create_unblinded_txos(
             (
                 test_params.create_unblinded_output(UtxoTestParams {
                     value: output_amount,
+                    covenant: output_covenant.clone(),
+                    script: output_script.clone(),
+                    features: output_features.clone(),
                     ..Default::default()
                 }),
                 script_offset_pvt_key,
@@ -412,7 +428,7 @@ pub fn create_unblinded_txos(
     let inputs = (0..input_count)
         .map(|i| {
             let mut params = UtxoTestParams {
-                output_features: OutputFeatures::with_maturity(input_maturity),
+                features: OutputFeatures::with_maturity(input_maturity),
                 ..Default::default()
             };
             if i == input_count - 1 {
@@ -428,7 +444,6 @@ pub fn create_unblinded_txos(
 
     (inputs, outputs)
 }
-
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub fn create_transaction_with(
@@ -437,6 +452,16 @@ pub fn create_transaction_with(
     inputs: Vec<UnblindedOutput>,
     outputs: Vec<(UnblindedOutput, PrivateKey)>,
 ) -> Transaction {
+    let stx_protocol = create_sender_transaction_protocol_with(lock_height, fee_per_gram, inputs, outputs).unwrap();
+    stx_protocol.take_transaction().unwrap()
+}
+
+pub fn create_sender_transaction_protocol_with(
+    lock_height: u64,
+    fee_per_gram: MicroTari,
+    inputs: Vec<UnblindedOutput>,
+    outputs: Vec<(UnblindedOutput, PrivateKey)>,
+) -> Result<SenderTransactionProtocol, TransactionProtocolError> {
     let factories = CryptoFactories::default();
     let test_params = TestParams::new();
     let constants = ConsensusManager::builder(Network::LocalNet)
@@ -462,18 +487,26 @@ pub fn create_transaction_with(
         stx_builder.with_output(utxo, script_offset_pvt_key).unwrap();
     });
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
-    stx_protocol
-        .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
-        .unwrap();
-    stx_protocol.take_transaction().unwrap()
+    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
+    stx_protocol.finalize(KernelFeatures::empty(), &factories, None, u64::MAX)?;
+
+    Ok(stx_protocol)
 }
 
 /// Spend the provided UTXOs by to the given amounts. Change will be created with any outstanding amount.
 /// You only need to provide the unblinded outputs to spend. This function will calculate the commitment for you.
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
-pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>, TestParams) {
+pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutput>) {
+    let (mut stx_protocol, outputs) = create_stx_protocol(schema);
+    stx_protocol
+        .finalize(KernelFeatures::empty(), &CryptoFactories::default(), None, u64::MAX)
+        .unwrap();
+    let txn = stx_protocol.get_transaction().unwrap().clone();
+    (txn, outputs)
+}
+
+pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProtocol, Vec<UnblindedOutput>) {
     let factories = CryptoFactories::default();
     let test_params_change_and_txn = TestParams::new();
     let constants = ConsensusManager::builder(Network::LocalNet)
@@ -507,9 +540,10 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         let test_params = TestParams::new();
         let utxo = test_params.create_unblinded_output(UtxoTestParams {
             value: val,
-            output_features: schema.features.clone(),
+            features: schema.features.clone(),
             script: schema.script.clone(),
             input_data: schema.input_data.clone(),
+            covenant: schema.covenant.clone(),
         });
         outputs.push(utxo.clone());
         stx_builder
@@ -524,6 +558,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             &utxo.script,
             &utxo.features,
             &test_params.sender_offset_private_key,
+            &utxo.covenant,
         )
         .unwrap();
         utxo.sender_offset_public_key = test_params.sender_offset_public_key;
@@ -533,18 +568,20 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
             .unwrap();
     }
 
-    let mut stx_protocol = stx_builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+    let stx_protocol = stx_builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let change = stx_protocol.get_change_amount().unwrap();
     // The change output is assigned its own random script offset private key
     let change_sender_offset_public_key = stx_protocol.get_change_sender_offset_public_key().unwrap().unwrap();
 
     let script = script!(Nop);
+    let covenant = Covenant::default();
     let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
         &change,
         &test_params_change_and_txn.change_spend_key,
         &script,
         &OutputFeatures::default(),
         &test_params_change_and_txn.sender_offset_private_key,
+        &covenant,
     )
     .unwrap();
 
@@ -556,17 +593,14 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
         inputs!(PublicKey::from_secret_key(
             &test_params_change_and_txn.script_private_key
         )),
-        test_params_change_and_txn.script_private_key.clone(),
+        test_params_change_and_txn.script_private_key,
         change_sender_offset_public_key,
         change_metadata_sig,
         0,
+        covenant,
     );
     outputs.push(change_output);
-    stx_protocol
-        .finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX))
-        .unwrap();
-    let txn = stx_protocol.get_transaction().unwrap().clone();
-    (txn, outputs, test_params_change_and_txn)
+    (stx_protocol, outputs)
 }
 
 /// Create a transaction kernel with the given fee, using random keys to generate the signature
@@ -587,13 +621,21 @@ pub fn create_utxo(
     factories: &CryptoFactories,
     features: OutputFeatures,
     script: &TariScript,
+    covenant: &Covenant,
 ) -> (TransactionOutput, PrivateKey, PrivateKey) {
     let keys = generate_keys();
     let offset_keys = generate_keys();
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
-    let metadata_sig =
-        TransactionOutput::create_final_metadata_signature(&value, &keys.k, script, &features, &offset_keys.k).unwrap();
+    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+        &value,
+        &keys.k,
+        script,
+        &features,
+        &offset_keys.k,
+        covenant,
+    )
+    .unwrap();
 
     let utxo = TransactionOutput::new(
         features,
@@ -602,6 +644,7 @@ pub fn create_utxo(
         script.clone(),
         offset_keys.pk,
         metadata_sig,
+        covenant.clone(),
     );
     (utxo, keys.k, offset_keys.k)
 }
@@ -610,7 +653,7 @@ pub fn schema_to_transaction(txns: &[TransactionSchema]) -> (Vec<Arc<Transaction
     let mut tx = Vec::new();
     let mut utxos = Vec::new();
     txns.iter().for_each(|schema| {
-        let (txn, mut output, _) = spend_utxos(schema.clone());
+        let (txn, mut output) = spend_utxos(schema.clone());
         tx.push(Arc::new(txn));
         utxos.append(&mut output);
     });

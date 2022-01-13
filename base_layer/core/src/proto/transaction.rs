@@ -35,6 +35,8 @@ use tari_crypto::{
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
+    consensus::{ConsensusDecoding, ToConsensusBytes},
+    covenants::Covenant,
     proto,
     transactions::{
         aggregated_body::AggregateBody,
@@ -128,6 +130,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
+                Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -149,13 +152,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
         if input.is_compact() {
             let output_hash = input.output_hash();
             Ok(Self {
-                features: None,
-                commitment: None,
-                script: Vec::new(),
                 input_data: input.input_data.as_bytes(),
                 script_signature: Some(input.script_signature.into()),
-                sender_offset_public_key: Vec::new(),
                 output_hash,
+                ..Default::default()
             })
         } else {
             Ok(Self {
@@ -185,6 +185,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .as_bytes()
                     .to_vec(),
                 output_hash: Vec::new(),
+                covenant: input
+                    .covenant()
+                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
+                    .to_consensus_bytes(),
             })
         }
     }
@@ -218,6 +222,8 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
+        let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
+
         Ok(Self {
             features,
             commitment,
@@ -225,6 +231,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             script,
             sender_offset_public_key,
             metadata_signature,
+            covenant,
         })
     }
 }
@@ -238,6 +245,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             script: output.script.as_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
+            covenant: output.covenant.to_consensus_bytes(),
         }
     }
 }
