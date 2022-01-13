@@ -22,7 +22,7 @@
 
 use log::*;
 use prost::Message;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip721;
 
 use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
@@ -40,6 +40,39 @@ pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
     }
 }
 
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: String,
+    args: &[u8],
+    state_db: &mut TUnitOfWork,
+) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    match method.to_lowercase().replace("_", "").as_str() {
+        "ownerof" => {
+            let request =
+                tip721::OwnerOfRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
+                    source: e,
+                    message_type: "tip721::OwnerOfRequest".to_string(),
+                })?;
+            let response = tip721::OwnerOfResponse {
+                owner: owner_of(request.token_id, state_db)?,
+            };
+            Ok(Some(response.encode_to_vec()))
+        },
+        _ => todo!(),
+    }
+}
+
+fn owner_of<TUnitOfWork: StateDbUnitOfWork>(
+    token_id: Vec<u8>,
+    state_db: &mut TUnitOfWork,
+) -> Result<Vec<u8>, DigitalAssetError> {
+    state_db
+        .get_value("owners", &token_id)?
+        .ok_or_else(|| DigitalAssetError::NotFound {
+            entity: "owner",
+            id: token_id.to_hex(),
+        })
+}
+
 fn transfer_from<TUnitOfWork: StateDbUnitOfWork>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
@@ -55,10 +88,10 @@ fn transfer_from<TUnitOfWork: StateDbUnitOfWork>(
     let token_id = request.token_id;
 
     let owner = state_db
-        .get_value("owners", &token_id.to_le_bytes())?
+        .get_value("owners", &token_id)?
         .ok_or_else(|| DigitalAssetError::NotFound {
             entity: "owner",
-            id: token_id.to_string(),
+            id: token_id.to_hex(),
         })?;
     if owner != from {
         return Err(DigitalAssetError::NotAuthorised(
@@ -67,6 +100,6 @@ fn transfer_from<TUnitOfWork: StateDbUnitOfWork>(
     }
     // TODO: check signature
 
-    state_db.set_value("owners".to_string(), Vec::from(token_id.to_le_bytes()), to.to_vec())?;
+    state_db.set_value("owners".to_string(), token_id, to.to_vec())?;
     Ok(())
 }

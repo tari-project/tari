@@ -44,23 +44,20 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 
-use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
-    transactions::{
-        crypto_factories::CryptoFactories,
-        tari_amount::MicroTari,
-        transaction::{
-            KernelFeatures,
-            KernelSum,
-            OutputFlags,
-            Transaction,
-            TransactionError,
-            TransactionInput,
-            TransactionKernel,
-            TransactionOutput,
-        },
-        weight::TransactionWeight,
+use crate::transactions::{
+    crypto_factories::CryptoFactories,
+    tari_amount::MicroTari,
+    transaction::{
+        KernelFeatures,
+        KernelSum,
+        OutputFlags,
+        Transaction,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
     },
+    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -351,7 +348,7 @@ impl AggregateBody {
         total_reward: MicroTari,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TransactionError> {
         self.verify_kernel_signatures()?;
 
@@ -364,7 +361,9 @@ impl AggregateBody {
         self.verify_metadata_signatures()?;
 
         let script_offset_g = PublicKey::from_secret_key(script_offset);
-        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)
+        self.validate_script_offset(script_offset_g, &factories.commitment, prev_header, height)?;
+        self.validate_covenants(height)?;
+        Ok(())
     }
 
     pub fn dissolve(self) -> (Vec<TransactionInput>, Vec<TransactionOutput>, Vec<TransactionKernel>) {
@@ -435,13 +434,12 @@ impl AggregateBody {
         script_offset: PublicKey,
         factory: &CommitmentFactory,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking script offset");
         // lets count up the input script public keys
         let mut input_keys = PublicKey::default();
         let prev_hash: [u8; 32] = prev_header.unwrap_or_default().as_slice().try_into().unwrap_or([0; 32]);
-        let height = height.unwrap_or_default();
         for input in &self.inputs {
             let context = ScriptContext::new(height, &prev_hash, input.commitment()?);
             input_keys = input_keys + input.run_and_verify_script(factory, Some(context))?;
@@ -458,6 +456,13 @@ impl AggregateBody {
         let lhs = input_keys - output_keys;
         if lhs != script_offset {
             return Err(TransactionError::ScriptOffset);
+        }
+        Ok(())
+    }
+
+    fn validate_covenants(&self, height: u64) -> Result<(), TransactionError> {
+        for input in self.inputs.iter() {
+            input.covenant()?.execute(height, input, &self.outputs)?;
         }
         Ok(())
     }
@@ -480,23 +485,11 @@ impl AggregateBody {
 
     /// Returns the weight in grams of a body
     pub fn calculate_weight(&self, transaction_weight: &TransactionWeight) -> u64 {
-        let metadata_byte_size = self.sum_metadata_size();
-        transaction_weight.calculate(
-            self.kernels().len(),
-            self.inputs().len(),
-            self.outputs().len(),
-            metadata_byte_size,
-        )
+        transaction_weight.calculate_body(self)
     }
 
     pub fn sum_metadata_size(&self) -> usize {
-        self.outputs
-            .iter()
-            .map(|o| {
-                o.features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size()
-            })
-            .sum()
+        self.outputs.iter().map(|o| o.get_metadata_size()).sum()
     }
 
     pub fn is_sorted(&self) -> bool {

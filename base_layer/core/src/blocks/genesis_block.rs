@@ -32,6 +32,7 @@ use tari_crypto::{
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
+    covenants::Covenant,
     proof_of_work::{PowAlgorithm, ProofOfWork},
     transactions::{
         aggregated_body::AggregateBody,
@@ -100,6 +101,7 @@ fn get_igor_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
+            covenant: Covenant::default(),
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,
@@ -231,6 +233,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
             sender_offset_public_key: Default::default(),
             // For genesis block: Metadata signature will never be checked
             metadata_signature: Default::default(),
+            covenant: Default::default()
         }],
         vec![TransactionKernel {
             features: KernelFeatures::COINBASE_KERNEL,

@@ -38,7 +38,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
@@ -153,17 +153,11 @@ impl ServiceInitializer for MempoolServiceInitializer {
         let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded_channel();
         let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
-        let (mempool_state_event_publisher, _) = broadcast::channel(100);
         let outbound_mp_interface =
             OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender);
-        let local_mp_interface =
-            LocalMempoolService::new(local_request_sender_service, mempool_state_event_publisher.clone());
+        let local_mp_interface = LocalMempoolService::new(local_request_sender_service);
         let config = self.config;
-        let inbound_handlers = MempoolInboundHandlers::new(
-            mempool_state_event_publisher,
-            self.mempool.clone(),
-            outbound_mp_interface.clone(),
-        );
+        let inbound_handlers = MempoolInboundHandlers::new(self.mempool.clone(), outbound_mp_interface.clone());
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         context.register_handle(outbound_mp_interface);

@@ -1999,14 +1999,17 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{HashDigest, PrivateKey, PublicKey, Signature},
     };
-    use tari_core::transactions::{
-        tari_amount::MicroTari,
-        test_helpers::{create_unblinded_output, TestParams},
-        transaction::{OutputFeatures, Transaction},
-        transaction_protocol::sender::TransactionSenderMessage,
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+    use tari_core::{
+        covenants::Covenant,
+        transactions::{
+            tari_amount::MicroTari,
+            test_helpers::{create_unblinded_output, TestParams},
+            transaction::{OutputFeatures, Transaction},
+            transaction_protocol::sender::TransactionSenderMessage,
+            CryptoFactories,
+            ReceiverTransactionProtocol,
+            SenderTransactionProtocol,
+        },
     };
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -2078,13 +2081,14 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
-            tx_id: 1.into(),
+            tx_id: 1u64.into(),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: stp.get_fee_amount().unwrap(),
@@ -2099,7 +2103,7 @@ mod test {
         };
 
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: stp.get_fee_amount().unwrap(),
@@ -2140,7 +2144,7 @@ mod test {
         );
 
         let inbound_tx1 = InboundTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp.clone(),
@@ -2153,7 +2157,7 @@ mod test {
             last_send_timestamp: None,
         };
         let inbound_tx2 = InboundTransaction {
-            tx_id: 3.into(),
+            tx_id: 3u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp,
@@ -2195,7 +2199,7 @@ mod test {
         );
 
         let completed_tx1 = CompletedTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2216,7 +2220,7 @@ mod test {
             mined_in_block: None,
         };
         let completed_tx2 = CompletedTransaction {
-            tx_id: 3.into(),
+            tx_id: 3u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2346,7 +2350,7 @@ mod test {
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_ok());
 
         let coinbase_tx1 = CompletedTransaction {
-            tx_id: 101.into(),
+            tx_id: 101u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2368,7 +2372,7 @@ mod test {
         };
 
         let coinbase_tx2 = CompletedTransaction {
-            tx_id: 102.into(),
+            tx_id: 102u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2390,7 +2394,7 @@ mod test {
         };
 
         let coinbase_tx3 = CompletedTransaction {
-            tx_id: 103.into(),
+            tx_id: 103u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2450,7 +2454,7 @@ mod test {
         let cipher = Aes256Gcm::new(key);
 
         let inbound_tx = InboundTransaction {
-            tx_id: 1.into(),
+            tx_id: 1u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
@@ -2472,7 +2476,7 @@ mod test {
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
         let outbound_tx = OutboundTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             fee: MicroTari::from(10),
@@ -2496,7 +2500,7 @@ mod test {
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
         let completed_tx = CompletedTransaction {
-            tx_id: 3.into(),
+            tx_id: 3u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
@@ -2554,7 +2558,7 @@ mod test {
             embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
             let inbound_tx = InboundTransaction {
-                tx_id: 1.into(),
+                tx_id: 1u64.into(),
                 source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
@@ -2570,7 +2574,7 @@ mod test {
             inbound_tx_sql.commit(&conn).unwrap();
 
             let outbound_tx = OutboundTransaction {
-                tx_id: 2.into(),
+                tx_id: 2u64.into(),
                 destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(10),
@@ -2587,7 +2591,7 @@ mod test {
             outbound_tx_sql.commit(&conn).unwrap();
 
             let completed_tx = CompletedTransaction {
-                tx_id: 3.into(),
+                tx_id: 3u64.into(),
                 source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),

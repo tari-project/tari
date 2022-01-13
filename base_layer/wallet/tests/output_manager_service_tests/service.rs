@@ -34,14 +34,16 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
-    consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::{ConsensusConstantsBuilder, ConsensusEncodingSized},
+    covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::OutputFeatures,
+        transaction::{OutputFeatures, OutputFlags},
         transaction_protocol::sender::TransactionSenderMessage,
+        weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
     },
@@ -72,6 +74,7 @@ use tari_wallet::{
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
+            models::SpendingPriority,
             sqlite_db::OutputManagerSqliteDatabase,
         },
     },
@@ -91,8 +94,9 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
-    OutputFeatures::default().consensus_encode_exact_size() +
-        ConsensusEncodingWrapper::wrap(&script![Nop]).consensus_encode_exact_size()
+    TransactionWeight::latest().round_up_metadata_size(
+        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+    )
 }
 
 #[allow(clippy::type_complexity)]
@@ -305,6 +309,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
             PrivateKey::random(&mut OsRng),
             OutputFeatures::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(
             script!(Nop),
@@ -312,7 +317,7 @@ fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionS
             script_private_key,
         );
 
-    let mut stp = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+    let mut stp = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
     let tx_id = stp.get_tx_id().unwrap();
     (
         tx_id,
@@ -397,6 +402,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap_err();
@@ -424,6 +430,7 @@ async fn test_utxo_selection_no_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -503,6 +510,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap_err();
@@ -559,6 +567,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -585,6 +594,7 @@ async fn test_utxo_selection_with_chain_metadata() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -599,6 +609,66 @@ async fn test_utxo_selection_with_chain_metadata() {
         assert_ne!(utxo.features.maturity, 5);
         assert_ne!(utxo.value, 5 * amount);
     }
+}
+
+#[tokio::test]
+async fn test_utxo_selection_with_tx_priority() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+
+    let server_node_identity = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
+    // setup with chain metadata at a height of 6
+    let (mut oms, _shutdown, _, _, _) = setup_oms_with_bn_state(
+        OutputManagerSqliteDatabase::new(connection, None),
+        Some(6),
+        server_node_identity,
+    )
+    .await;
+
+    let amount = MicroTari::from(2000);
+    let fee_per_gram = MicroTari::from(2);
+
+    // we create two outputs, one as coinbase-high priority one as normal so we can track them
+    let (_, uo) = make_input_with_features(
+        &mut OsRng.clone(),
+        amount,
+        &factories.commitment,
+        Some(OutputFeatures::create_coinbase(1)),
+    );
+    oms.add_output(uo, Some(SpendingPriority::HtlcSpendAsap)).await.unwrap();
+    let (_, uo) = make_input_with_features(
+        &mut OsRng.clone(),
+        amount,
+        &factories.commitment,
+        Some(OutputFeatures::with_maturity(1)),
+    );
+    oms.add_output(uo, None).await.unwrap();
+
+    let utxos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(utxos.len(), 2);
+
+    // test transactions
+    let stp = oms
+        .prepare_transaction_to_send(
+            TxId::new_random(),
+            MicroTari::from(1000),
+            None,
+            None,
+            fee_per_gram,
+            None,
+            "".to_string(),
+            script!(Nop),
+            Covenant::default(),
+        )
+        .await
+        .unwrap();
+    assert!(stp.get_tx_id().is_ok());
+
+    // test that the utxo with the lowest priority was left
+    let utxos = oms.get_unspent_outputs().await.unwrap();
+    assert_eq!(utxos.len(), 1);
+
+    assert!(!utxos[0].features.flags.contains(OutputFlags::COINBASE_OUTPUT));
 }
 
 #[tokio::test]
@@ -629,6 +699,7 @@ async fn send_not_enough_funds() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
     {
@@ -646,8 +717,9 @@ async fn send_no_change() {
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
-    let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
-    let value1 = 500;
+    let fee_without_change =
+        Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, default_metadata_byte_size());
+    let value1 = 5000;
     oms.add_output(
         create_unblinded_output(
             script!(Nop),
@@ -659,7 +731,7 @@ async fn send_no_change() {
     )
     .await
     .unwrap();
-    let value2 = 800;
+    let value2 = 8000;
     oms.add_output(
         create_unblinded_output(
             script!(Nop),
@@ -682,6 +754,7 @@ async fn send_no_change() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -737,6 +810,7 @@ async fn send_not_enough_for_change() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
     {
@@ -773,6 +847,7 @@ async fn cancel_transaction() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -851,6 +926,7 @@ async fn test_get_balance() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -897,6 +973,7 @@ async fn sending_transaction_with_short_term_clear() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -924,6 +1001,7 @@ async fn sending_transaction_with_short_term_clear() {
             None,
             "".to_string(),
             script!(Nop),
+            Covenant::default(),
         )
         .await
         .unwrap();
@@ -1031,13 +1109,22 @@ async fn handle_coinbase() {
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
 
-    let _ = oms.get_coinbase_transaction(1.into(), reward1, fees1, 1).await.unwrap();
+    let _ = oms
+        .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value1);
-    let _tx2 = oms.get_coinbase_transaction(2.into(), reward2, fees2, 1).await.unwrap();
+    let _tx2 = oms
+        .get_coinbase_transaction(2u64.into(), reward2, fees2, 1)
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(oms.get_balance().await.unwrap().pending_incoming_balance, value2);
-    let tx3 = oms.get_coinbase_transaction(3.into(), reward3, fees3, 2).await.unwrap();
+    let tx3 = oms
+        .get_coinbase_transaction(3u64.into(), reward3, fees3, 2)
+        .await
+        .unwrap();
     assert_eq!(oms.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(
         oms.get_balance().await.unwrap().pending_incoming_balance,
@@ -1186,6 +1273,7 @@ async fn test_txo_validation() {
         None,
         "".to_string(),
         script!(Nop),
+        Covenant::default(),
     )
     .await
     .unwrap();
@@ -1195,7 +1283,7 @@ async fn test_txo_validation() {
 
     let _ = oms.get_recipient_transaction(sender_message).await.unwrap();
 
-    oms.get_coinbase_transaction(6.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+    oms.get_coinbase_transaction(6u64.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
         .await
         .unwrap();
 
@@ -1230,7 +1318,7 @@ async fn test_txo_validation() {
         balance.pending_incoming_balance,
         MicroTari::from(output1_value) -
             MicroTari::from(900_000) -
-            MicroTari::from(1240) + //Output4 = output 1 -900_000 and 1240 for fees
+            MicroTari::from(1260) + //Output4 = output 1 -900_000 and 1260 for fees
             MicroTari::from(8_000_000) +
             MicroTari::from(16_000_000)
     );
@@ -1368,7 +1456,7 @@ async fn test_txo_validation() {
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
             MicroTari::from(900_000) -
-            MicroTari::from(1240) + //spent 900_000 and 1240 for fees
+            MicroTari::from(1260) + //spent 900_000 and 1260 for fees
             MicroTari::from(8_000_000) +    //output 5
             MicroTari::from(16_000_000) // output 6
     );
@@ -1495,7 +1583,7 @@ async fn test_txo_validation() {
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(output1_value));
     assert_eq!(
         balance.pending_incoming_balance,
-        MicroTari::from(output1_value) - MicroTari::from(901_240)
+        MicroTari::from(output1_value) - MicroTari::from(901_260)
     );
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
@@ -1553,7 +1641,7 @@ async fn test_txo_validation() {
     assert_eq!(
         balance.available_balance,
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
-            MicroTari::from(901_240)
+            MicroTari::from(901_260)
     );
     assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));

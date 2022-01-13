@@ -25,6 +25,7 @@
   - [Tari-specific extensions to Mimblewimble](BaseLayerExtensions.md)
     - [RFC-0201: TariScript](RFC-0201_TariScript.md)
     - [RFC-0202: TariScript Opcodes](RFC-0202_TariScriptOpcodes.md)
+    - [RFC-0203: Stealth Addresses](RFC-0203_StealthAddresses.md)
     - [RFC-0230: Hash time locked contracts](RFC-0230_HTLC.md)
     - [RFC-0240: Atomic swap](RFC-0240_AtomicSwap.md)
     - [RFC-0241: XMR Atomic swap](RFC-0241_AtomicSwapXMR.md)

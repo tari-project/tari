@@ -16,6 +16,10 @@ const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
 const archiver = require("archiver");
+const { waitFor, sleep, consoleLogBalance } = require("../../helpers/util");
+const { PaymentType } = require("../../helpers/types");
+const { expect } = require("chai");
+const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
 // const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
 
 class CustomWorld {
@@ -48,6 +52,7 @@ class CustomWorld {
       parameters.logFilePathMiningNode || "./log4rs/mining_node.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
+    this.lastResult = {};
   }
 
   async createSeedNode(name) {
@@ -69,6 +74,12 @@ class CustomWorld {
       res.push(this.seeds[property].peerAddress());
     }
     return res;
+  }
+
+  getRandomSeedName() {
+    let keys = Object.keys(this.seeds);
+    let r = Math.random() * keys.length;
+    return keys[r];
   }
 
   currentBaseNodeName() {
@@ -225,6 +236,12 @@ class CustomWorld {
       weight,
       onError
     );
+  }
+
+  async mineBlocks(name, num) {
+    for (let i = 0; i < num; i++) {
+      await this.mineBlock(name, 0);
+    }
   }
 
   async baseNodeMineBlocksUntilHeightIncreasedBy(baseNode, wallet, numBlocks) {
@@ -418,6 +435,164 @@ class CustomWorld {
     }
     this.transactionsMap.get(pubKey).push(txId);
   }
+
+  async send_tari(
+    sourceWallet,
+    destWalletName,
+    destWalletPubkey,
+    tariAmount,
+    feePerGram,
+    oneSided = false,
+    message = "",
+    printMessage = true
+  ) {
+    const sourceWalletClient = await sourceWallet.connectClient();
+    console.log(
+      sourceWallet.name +
+        " sending " +
+        tariAmount +
+        "uT one-sided(" +
+        oneSided +
+        ") to " +
+        destWalletName +
+        " `" +
+        destWalletPubkey +
+        "`"
+    );
+    if (printMessage) {
+      console.log(message);
+    }
+    let success = false;
+    let retries = 1;
+    const retries_limit = 25;
+    let lastResult;
+    while (!success && retries <= retries_limit) {
+      await waitFor(
+        async () => {
+          try {
+            if (!oneSided) {
+              lastResult = await sourceWalletClient.transfer({
+                recipients: [
+                  {
+                    address: destWalletPubkey,
+                    amount: tariAmount,
+                    fee_per_gram: feePerGram,
+                    message: message,
+                  },
+                ],
+              });
+            } else {
+              lastResult = await sourceWalletClient.transfer({
+                recipients: [
+                  {
+                    address: destWalletPubkey,
+                    amount: tariAmount,
+                    fee_per_gram: feePerGram,
+                    message: message,
+                    payment_type: PaymentType.ONE_SIDED,
+                  },
+                ],
+              });
+            }
+          } catch (error) {
+            console.log(error);
+            return false;
+          }
+          return true;
+        },
+        true,
+        20 * 1000,
+        5 * 1000,
+        5
+      );
+      success = lastResult.results[0].is_success;
+      if (!success) {
+        const wait_seconds = 5;
+        console.log(
+          "  " +
+            lastResult.results[0].failure_message +
+            ", trying again after " +
+            wait_seconds +
+            "s (" +
+            retries +
+            " of " +
+            retries_limit +
+            ")"
+        );
+        await sleep(wait_seconds * 1000);
+        retries++;
+      }
+    }
+    return lastResult;
+  }
+
+  async transfer(tariAmount, source, dest, feePerGram) {
+    const sourceWallet = this.getWallet(source);
+    const sourceClient = await sourceWallet.connectClient();
+    const sourceInfo = await sourceClient.identify();
+
+    const destPublicKey = this.getWalletPubkey(dest);
+
+    this.lastResult = await this.send_tari(
+      sourceWallet,
+      dest,
+      destPublicKey,
+      tariAmount,
+      feePerGram
+    );
+    expect(this.lastResult.results[0]["is_success"]).to.equal(true);
+    this.addTransaction(
+      sourceInfo.public_key,
+      this.lastResult.results[0]["transaction_id"]
+    );
+    this.addTransaction(
+      destPublicKey,
+      this.lastResult.results[0]["transaction_id"]
+    );
+    console.log(
+      "  Transaction '" +
+        this.lastResult.results[0]["transaction_id"] +
+        "' is_success(" +
+        this.lastResult.results[0]["is_success"] +
+        ")"
+    );
+    //lets now wait for this transaction to be at least broadcast before we continue.
+    await waitFor(
+      async () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.results[0]["transaction_id"]
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
+    );
+    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
+      this.lastResult.results[0]["transaction_id"]
+    );
+    expect(transactionPending).to.equal(true);
+  }
+
+  async waitForWalletToHaveBalance(wallet, amount) {
+    const walletClient = await this.getWallet(wallet).connectClient();
+    console.log("\n");
+    console.log(
+      "Waiting for " + wallet + " balance to be at least " + amount + " uT"
+    );
+
+    await waitFor(
+      async () => walletClient.isBalanceAtLeast(amount),
+      true,
+      115 * 1000,
+      5 * 1000,
+      5
+    );
+    consoleLogBalance(await walletClient.getBalance());
+    if (!(await walletClient.isBalanceAtLeast(amount))) {
+      console.log("Balance not adequate!");
+    }
+    expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
+  }
 }
 
 setWorldConstructor(CustomWorld);
@@ -475,12 +650,12 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
-  // console.log("Compiling wallet FFI...");
-  // await InterfaceFFI.compile();
-  // console.log("Finished compilation.");
-  // console.log("Loading FFI interface..");
-  // await InterfaceFFI.init();
-  // console.log("FFI interface loaded.");
+  console.log("Compiling wallet FFI...");
+  await InterfaceFFI.compile();
+  console.log("Finished compilation.");
+  console.log("Loading FFI interface..");
+  await InterfaceFFI.init();
+  console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");
 });
@@ -516,7 +691,7 @@ async function stopAndHandleLogs(objects, testCase, context) {
 
 function attachLogs(path, context) {
   return new Promise((outerRes) => {
-    let zipFile = fs.createWriteStream("./temp/logzip.zip");
+    let zipFile = fs.createWriteStream(path + "/logzip.zip");
     const archive = archiver("zip", {
       zlib: { level: 9 },
     });
@@ -532,10 +707,10 @@ function attachLogs(path, context) {
       }
       archive.finalize().then(function () {
         context.attach(
-          fs.createReadStream("./temp/logzip.zip"),
+          fs.createReadStream(path + "/logzip.zip"),
           "application/zip",
           function () {
-            fs.rmSync && fs.rmSync("./temp/logzip.zip");
+            fs.rmSync && fs.rmSync(path + "/logzip.zip");
             outerRes();
           }
         );

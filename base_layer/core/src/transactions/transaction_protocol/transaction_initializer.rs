@@ -25,7 +25,7 @@ use std::{
     fmt::{Debug, Error, Formatter},
 };
 
-use digest::Digest;
+use digest::{Digest, FixedOutput};
 use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
@@ -41,7 +41,8 @@ use tari_crypto::{
 };
 
 use crate::{
-    consensus::{ConsensusConstants, ConsensusEncodingSized, ConsensusEncodingWrapper},
+    consensus::{ConsensusConstants, ConsensusEncodingSized},
+    covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -88,6 +89,7 @@ pub struct SenderTransactionInitializer {
     change_input_data: Option<ExecutionStack>,
     change_script_private_key: Option<PrivateKey>,
     change_sender_offset_private_key: Option<PrivateKey>,
+    change_covenant: Covenant,
     rewind_data: Option<RewindData>,
     offset: Option<BlindingFactor>,
     excess_blinding_factor: BlindingFactor,
@@ -97,6 +99,7 @@ pub struct SenderTransactionInitializer {
     recipient_output_features: FixedSet<OutputFeatures>,
     recipient_scripts: FixedSet<TariScript>,
     recipient_sender_offset_private_keys: FixedSet<PrivateKey>,
+    recipient_covenants: FixedSet<Covenant>,
     private_commitment_nonces: FixedSet<PrivateKey>,
     tx_id: Option<TxId>,
     fee: Fee,
@@ -130,6 +133,7 @@ impl SenderTransactionInitializer {
             change_input_data: None,
             change_script_private_key: None,
             change_sender_offset_private_key: None,
+            change_covenant: Covenant::default(),
             rewind_data: None,
             offset: None,
             private_nonce: None,
@@ -139,6 +143,7 @@ impl SenderTransactionInitializer {
             recipient_output_features: FixedSet::new(num_recipients),
             recipient_scripts: FixedSet::new(num_recipients),
             recipient_sender_offset_private_keys: FixedSet::new(num_recipients),
+            recipient_covenants: FixedSet::new(num_recipients),
             private_commitment_nonces: FixedSet::new(num_recipients),
             tx_id: None,
         }
@@ -166,6 +171,7 @@ impl SenderTransactionInitializer {
         recipient_sender_offset_private_key: PrivateKey,
         recipient_output_features: OutputFeatures,
         private_commitment_nonce: PrivateKey,
+        covenant: Covenant,
     ) -> &mut Self {
         self.recipient_output_features
             .set_item(receiver_index, recipient_output_features);
@@ -174,6 +180,7 @@ impl SenderTransactionInitializer {
             .set_item(receiver_index, recipient_sender_offset_private_key);
         self.private_commitment_nonces
             .set_item(receiver_index, private_commitment_nonce);
+        self.recipient_covenants.set_item(receiver_index, covenant);
         self
     }
 
@@ -213,10 +220,11 @@ impl SenderTransactionInitializer {
             &output.sender_offset_public_key,
             output.metadata_signature.public_nonce(),
             &commitment,
+            &output.covenant,
         );
         if !output.metadata_signature.verify_challenge(
             &(&commitment + &output.sender_offset_public_key),
-            &e,
+            &e.finalize_fixed(),
             &commitment_factory,
         ) {
             self.clone().build_err(&*format!(
@@ -276,28 +284,30 @@ impl SenderTransactionInitializer {
 
     fn get_total_metadata_size_for_outputs(&self) -> usize {
         let mut size = 0;
-        size += self.get_output_features().consensus_encode_exact_size() * self.num_recipients;
         size += self
             .sender_custom_outputs
             .iter()
-            .map(|o| {
-                o.features.consensus_encode_exact_size() +
-                    ConsensusEncodingWrapper::wrap(&o.script).consensus_encode_exact_size()
-            })
+            .map(|o| self.fee.weighting().round_up_metadata_size(o.metadata_byte_size()))
             .sum::<usize>();
+
         // TODO: implement iter for FixedSet to avoid the clone
         size += self
             .recipient_scripts
             .clone()
             .into_vec()
             .iter()
-            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .map(|script| {
+                self.fee.weighting().round_up_metadata_size(
+                    self.get_recipient_output_features().consensus_encode_exact_size() +
+                        script.consensus_encode_exact_size(),
+                )
+            })
             .sum::<usize>();
 
         size
     }
 
-    fn get_output_features(&self) -> OutputFeatures {
+    fn get_recipient_output_features(&self) -> OutputFeatures {
         Default::default()
     }
 
@@ -313,27 +323,29 @@ impl SenderTransactionInitializer {
         let total_amount = self.amounts.sum().ok_or("Not all amounts have been provided")?;
         let fee_per_gram = self.fee_per_gram.ok_or("Fee per gram was not provided")?;
 
+        // We require scripts for each recipient to be set to calculate the fee
+        if !self.recipient_scripts.is_full() {
+            return Err(format!(
+                "{} recipient script(s) are required",
+                self.recipient_scripts.size()
+            ));
+        }
+
         let metadata_size_without_change = self.get_total_metadata_size_for_outputs();
         let fee_without_change =
             self.fee()
                 .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
 
-        let output_features = self.get_output_features();
+        let output_features = self.get_recipient_output_features();
         let change_metadata_size = self
             .change_script
             .as_ref()
-            .map(|script| ConsensusEncodingWrapper::wrap(script).consensus_encode_exact_size())
+            .map(|script| script.consensus_encode_exact_size())
             .unwrap_or(0) +
             output_features.consensus_encode_exact_size();
+        let change_metadata_size = self.fee().weighting().round_up_metadata_size(change_metadata_size);
 
-        let fee_with_change = self.fee().calculate(
-            fee_per_gram,
-            1,
-            num_inputs,
-            num_outputs + 1,
-            metadata_size_without_change + change_metadata_size,
-        );
-        let extra_fee = fee_with_change - fee_without_change;
+        let change_fee = self.fee().calculate(fee_per_gram, 0, 0, 1, change_metadata_size);
         // Subtract with a check on going negative
         let total_input_value = total_to_self + total_amount + fee_without_change;
         let change_amount = total_being_spent.checked_sub(total_input_value);
@@ -344,7 +356,7 @@ impl SenderTransactionInitializer {
             )),
             Some(MicroTari(0)) => Ok((fee_without_change, MicroTari(0), None)),
             Some(v) => {
-                let change_amount = v.checked_sub(extra_fee);
+                let change_amount = v.checked_sub(change_fee);
                 let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
                 self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
                 // TODO: Add unique id if needed
@@ -354,7 +366,7 @@ impl SenderTransactionInitializer {
                     None => Ok((fee_without_change + v, MicroTari(0), None)),
                     Some(MicroTari(0)) => Ok((fee_without_change + v, MicroTari(0), None)),
                     Some(v) => {
-                        let script = self
+                        let change_script = self
                             .change_script
                             .as_ref()
                             .ok_or("Change script was not provided")?
@@ -366,16 +378,17 @@ impl SenderTransactionInitializer {
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             &v,
                             &change_key.clone(),
-                            &script,
+                            &change_script,
                             &output_features,
                             &change_sender_offset_private_key,
+                            &self.change_covenant,
                         )
                         .map_err(|e| e.to_string())?;
                         let change_unblinded_output = UnblindedOutput::new(
                             v,
                             change_key.clone(),
                             output_features,
-                            script,
+                            change_script,
                             self.change_input_data
                                 .as_ref()
                                 .ok_or("Change script was not provided")?
@@ -387,8 +400,9 @@ impl SenderTransactionInitializer {
                             PublicKey::from_secret_key(&change_sender_offset_private_key),
                             metadata_signature,
                             0,
+                            self.change_covenant.clone(),
                         );
-                        Ok((fee_with_change, v, Some(change_unblinded_output)))
+                        Ok((fee_without_change + change_fee, v, Some(change_unblinded_output)))
                     },
                 }
             },
@@ -431,7 +445,7 @@ impl SenderTransactionInitializer {
         mut self,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<SenderTransactionProtocol, BuildError> {
         // Compile a list of all data that is missing
         let mut message = Vec::new();
@@ -598,10 +612,7 @@ impl SenderTransactionInitializer {
             }
         }
 
-        let change_output_metadata_signature = match change_output.clone() {
-            None => None,
-            Some(v) => Some(v.metadata_signature),
-        };
+        let change_output_metadata_signature = change_output.as_ref().map(|v| v.metadata_signature.clone());
 
         // Everything is here. Let's send some Tari!
         let sender_info = RawTransactionInfo {
@@ -612,6 +623,7 @@ impl SenderTransactionInitializer {
             recipient_output_features,
             recipient_scripts: self.recipient_scripts.into_vec(),
             recipient_sender_offset_private_keys: self.recipient_sender_offset_private_keys.into_vec(),
+            recipient_covenants: self.recipient_covenants.into_vec(),
             private_commitment_nonces: self.private_commitment_nonces.into_vec(),
             change,
             unblinded_change_output: change_output,
@@ -634,7 +646,7 @@ impl SenderTransactionInitializer {
             public_nonce_sum: public_nonce,
             recipient_info,
             signatures: Vec::new(),
-            message: self.message.unwrap_or_else(|| "".to_string()),
+            message: self.message.unwrap_or_default(),
             prev_header,
             height,
         };
@@ -661,6 +673,7 @@ mod test {
     };
 
     use crate::{
+        covenants::Covenant,
         test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
@@ -684,7 +697,7 @@ mod test {
         let p = TestParams::new();
         // Start the builder
         let builder = SenderTransactionInitializer::new(0, create_consensus_constants(0));
-        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
         assert_eq!(
@@ -717,16 +730,19 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let expected_fee = builder.fee().calculate(MicroTari(20), 1, 1, 2, 0);
+        let expected_fee = builder
+            .fee()
+            .calculate(MicroTari(20), 1, 1, 2, p.get_size_for_default_metadata(2));
         // We needed a change input, so this should fail
-        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
         assert_eq!(err.message, "Change spending key was not provided");
         // Ok, give them a change output
         let mut builder = err.builder;
         builder.with_change_secret(p.change_spend_key);
-        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -747,15 +763,21 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let (utxo, input) = create_test_input(MicroTari(500), 0, &factories.commitment);
+        let (utxo, input) = create_test_input(MicroTari(5000), 0, &factories.commitment);
         let constants = create_consensus_constants(0);
-        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(MicroTari(4), 1, 1, 1, 0);
+        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(
+            MicroTari(4),
+            1,
+            1,
+            1,
+            p.get_size_for_default_metadata(1),
+        );
 
         let output = create_unblinded_output(
             TariScript::default(),
             OutputFeatures::default(),
             p.clone(),
-            MicroTari(500) - expected_fee,
+            MicroTari(5000) - expected_fee,
         );
         // Start the builder
         let mut builder = SenderTransactionInitializer::new(0, constants);
@@ -768,7 +790,7 @@ mod test {
             .with_input(utxo, input)
             .with_fee_per_gram(MicroTari(4))
             .with_prevent_fee_gt_amount(false);
-        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -819,7 +841,7 @@ mod test {
             .with_input(utxo, input)
             .with_fee_per_gram(MicroTari(1))
             .with_prevent_fee_gt_amount(false);
-        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         // Peek inside and check the results
         if let SenderState::Finalizing(info) = result.into_state() {
             assert_eq!(info.num_recipients, 0, "Number of receivers");
@@ -861,7 +883,7 @@ mod test {
             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
             builder.with_input(utxo, input);
         }
-        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
         assert_eq!(err.message, "Too many inputs in transaction");
     }
 
@@ -870,7 +892,9 @@ mod test {
         // Create some inputs
         let factories = CryptoFactories::default();
         let p = TestParams::new();
-        let tx_fee = p.fee().calculate(MicroTari(1), 1, 1, 1, 0);
+        let tx_fee = p
+            .fee()
+            .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_metadata(1));
         let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
         let script = script!(Nop);
         let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(500));
@@ -892,9 +916,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             );
         // .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
         assert_eq!(err.message, "Fee is less than the minimum");
     }
 
@@ -924,12 +949,13 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let err = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap_err();
+        let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
         assert_eq!(
             err.message,
-            "You are spending (471 µT) more than you're providing (400 µT)."
+            "You are spending (472 µT) more than you're providing (400 µT)."
         );
     }
 
@@ -961,6 +987,7 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_recipient_data(
                 1,
@@ -968,9 +995,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         // Peek inside and check the results
         if let SenderState::Failed(TransactionProtocolError::UnsupportedError(s)) = result.into_state() {
             assert_eq!(s, "Multiple recipients are not supported yet")
@@ -990,7 +1018,13 @@ mod test {
 
         let script = script!(Nop);
         let constants = create_consensus_constants(0);
-        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 3, 0);
+        let expected_fee = Fee::from(*constants.transaction_weight()).calculate(
+            fee_per_gram,
+            1,
+            2,
+            3,
+            p.get_size_for_default_metadata(3),
+        );
         let output = create_unblinded_output(
             script.clone(),
             OutputFeatures::default(),
@@ -1016,9 +1050,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let result = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         // Peek inside and check the results
         if let SenderState::SingleRoundMessageReady(info) = result.into_state() {
             assert_eq!(info.num_recipients, 1, "Number of receivers");
@@ -1067,9 +1102,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let result = builder.build::<Blake256>(&factories, None, Some(u64::MAX));
+        let result = builder.build::<Blake256>(&factories, None, u64::MAX);
 
         match result {
             Ok(_) => panic!("Range proof should have failed to verify"),

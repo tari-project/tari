@@ -45,11 +45,15 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
-use crate::transactions::transaction::{
-    transaction_output::TransactionOutput,
-    OutputFeatures,
-    TransactionError,
-    UnblindedOutput,
+use crate::{
+    consensus::ToConsensusBytes,
+    covenants::Covenant,
+    transactions::transaction::{
+        transaction_output::TransactionOutput,
+        OutputFeatures,
+        TransactionError,
+        UnblindedOutput,
+    },
 };
 
 /// A transaction input.
@@ -88,6 +92,7 @@ impl TransactionInput {
         input_data: ExecutionStack,
         script_signature: ComSignature,
         sender_offset_public_key: PublicKey,
+        covenant: Covenant,
     ) -> TransactionInput {
         TransactionInput {
             spent_output: SpentOutput::OutputData {
@@ -95,6 +100,7 @@ impl TransactionInput {
                 commitment,
                 script,
                 sender_offset_public_key,
+                covenant,
             },
             input_data,
             script_signature,
@@ -108,16 +114,18 @@ impl TransactionInput {
         commitment: Commitment,
         script: TariScript,
         sender_offset_public_key: PublicKey,
+        covenant: Covenant,
     ) {
         self.spent_output = SpentOutput::OutputData {
             features,
             commitment,
             script,
             sender_offset_public_key,
+            covenant,
         };
     }
 
-    pub fn build_script_challenge(
+    pub(super) fn build_script_challenge(
         nonce_commitment: &Commitment,
         script: &TariScript,
         input_data: &ExecutionStack,
@@ -148,6 +156,13 @@ impl TransactionInput {
         }
     }
 
+    pub fn features_mut(&mut self) -> Result<&mut OutputFeatures, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref mut features, .. } => Ok(features),
+        }
+    }
+
     pub fn script(&self) -> Result<&TariScript, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -162,6 +177,13 @@ impl TransactionInput {
                 ref sender_offset_public_key,
                 ..
             } => Ok(sender_offset_public_key),
+        }
+    }
+
+    pub fn covenant(&self) -> Result<&Covenant, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref covenant, .. } => Ok(covenant),
         }
     }
 
@@ -261,11 +283,13 @@ impl TransactionInput {
                 ref commitment,
                 ref script,
                 ref features,
+                ref covenant,
                 ..
             } => HashDigest::new()
                 .chain(features.to_consensus_bytes())
                 .chain(commitment.as_bytes())
                 .chain(script.as_bytes())
+                .chain(covenant.to_consensus_bytes())
                 .finalize()
                 .to_vec(),
         }
@@ -284,15 +308,17 @@ impl TransactionInput {
                 ref commitment,
                 ref script,
                 ref sender_offset_public_key,
+                ref covenant,
             } => Ok(HashDigest::new()
                 .chain(features.to_consensus_bytes())
-                .chain(commitment.as_bytes())
+                .chain(commitment.to_consensus_bytes())
                 .chain(script.as_bytes())
-                .chain(sender_offset_public_key.as_bytes())
-                .chain(self.script_signature.u().as_bytes())
-                .chain(self.script_signature.v().as_bytes())
-                .chain(self.script_signature.public_nonce().as_bytes())
+                .chain(sender_offset_public_key.to_consensus_bytes())
+                .chain(self.script_signature.u().to_consensus_bytes())
+                .chain(self.script_signature.v().to_consensus_bytes())
+                .chain(self.script_signature.public_nonce().to_consensus_bytes())
                 .chain(self.input_data.as_bytes())
+                .chain(covenant.to_consensus_bytes())
                 .finalize()
                 .to_vec()),
         }
@@ -329,9 +355,10 @@ impl Display for TransactionInput {
                 ref script,
                 ref features,
                 ref sender_offset_public_key,
+                ..
             } => write!(
                 fmt,
-                "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
+                "{} [{:?}], Script: ({}), Offset_Pubkey: ({})",
                 commitment.to_hex(),
                 features,
                 script,
@@ -372,5 +399,7 @@ pub enum SpentOutput {
         commitment: Commitment,
         script: TariScript,
         sender_offset_public_key: PublicKey,
+        /// The transaction covenant
+        covenant: Covenant,
     },
 }
