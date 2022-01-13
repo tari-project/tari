@@ -132,6 +132,15 @@ class BaseNodeProcess {
         );
       }
 
+      // clear the .env file
+      fs.writeFileSync(`${this.baseDir}/.env`, "");
+      Object.keys(envs).forEach((key) => {
+        fs.appendFileSync(`${this.baseDir}/.env`, `${key}=${envs[key]}\n`);
+      });
+      fs.writeFileSync(
+        `${this.baseDir}/start_node.sh`,
+        "export $(grep -v '^#' .env | xargs)\ncargo run --release --bin tari_base_node -- -b ."
+      );
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,

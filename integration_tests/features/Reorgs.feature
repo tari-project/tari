@@ -63,7 +63,7 @@ Feature: Reorgs
     When I start base node NODE1
     Then all nodes are at height 20
 
-  @critical @reorg @flaky
+  @reorg @flaky
   Scenario: Pruned mode reorg past horizon
     Given I have a base node NODE1 connected to all seed nodes
     And I have wallet WALLET1 connected to base node NODE1
@@ -94,7 +94,7 @@ Feature: Reorgs
     When I submit transaction TX2 to PNODE1
     Then PNODE1 has TX2 in MEMPOOL state
 
-  @critical @reorg
+  @reorg
   Scenario: Zero-conf reorg with spending
     Given I have a base node NODE1 connected to all seed nodes
     Given I have a base node NODE2 connected to node NODE1

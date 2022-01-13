@@ -22,7 +22,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use futures::{future::Either, StreamExt};
+use futures::StreamExt;
 use log::*;
 use tokio::{
     io::{AsyncRead, AsyncWrite},
@@ -40,7 +40,6 @@ pub struct InboundMessaging {
     messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
     rate_limit_capacity: usize,
     rate_limit_restock_interval: Duration,
-    inactivity_timeout: Option<Duration>,
 }
 
 impl InboundMessaging {
@@ -50,7 +49,6 @@ impl InboundMessaging {
         messaging_events_tx: broadcast::Sender<Arc<MessagingEvent>>,
         rate_limit_capacity: usize,
         rate_limit_restock_interval: Duration,
-        inactivity_timeout: Option<Duration>,
     ) -> Self {
         Self {
             peer,
@@ -58,7 +56,6 @@ impl InboundMessaging {
             messaging_events_tx,
             rate_limit_capacity,
             rate_limit_restock_interval,
-            inactivity_timeout,
         }
     }
 
@@ -75,16 +72,12 @@ impl InboundMessaging {
         let stream =
             MessagingProtocol::framed(socket).rate_limit(self.rate_limit_capacity, self.rate_limit_restock_interval);
 
-        let stream = match self.inactivity_timeout {
-            Some(timeout) => Either::Left(tokio_stream::StreamExt::timeout(stream, timeout)),
-            None => Either::Right(stream.map(Ok)),
-        };
         tokio::pin!(stream);
 
         let inbound_count = metrics::inbound_message_count(&self.peer);
         while let Some(result) = stream.next().await {
             match result {
-                Ok(Ok(raw_msg)) => {
+                Ok(raw_msg) => {
                     inbound_count.inc();
                     let msg_len = raw_msg.len();
                     let inbound_msg = InboundMessage::new(peer.clone(), raw_msg.freeze());
@@ -112,25 +105,13 @@ impl InboundMessaging {
 
                     let _ = self.messaging_events_tx.send(Arc::new(event));
                 },
-                Ok(Err(err)) => {
+                Err(err) => {
                     metrics::error_count(peer).inc();
                     error!(
                         target: LOG_TARGET,
                         "Failed to receive from peer '{}' because '{}'",
                         peer.short_str(),
                         err
-                    );
-                    break;
-                },
-
-                Err(_) => {
-                    metrics::error_count(peer).inc();
-                    debug!(
-                        target: LOG_TARGET,
-                        "Inbound messaging for peer '{}' has stopped because it was inactive for {:.0?}",
-                        peer.short_str(),
-                        self.inactivity_timeout
-                            .expect("Inactivity timeout reached but it was not enabled"),
                     );
                     break;
                 },

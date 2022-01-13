@@ -210,7 +210,8 @@ pub fn check_target_difficulty(
 pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstants) -> Result<(), ValidationError> {
     // The genesis block has a larger weight than other blocks may have so we have to exclude it here
     let block_weight = block.body.calculate_weight(consensus_constants.transaction_weight());
-    if block_weight <= consensus_constants.get_max_block_transaction_weight() || block.header.height == 0 {
+    let max_weight = consensus_constants.get_max_block_transaction_weight();
+    if block_weight <= max_weight || block.header.height == 0 {
         trace!(
             target: LOG_TARGET,
             "SV - Block contents for block #{} : {}; weight {}.",
@@ -221,7 +222,11 @@ pub fn check_block_weight(block: &Block, consensus_constants: &ConsensusConstant
 
         Ok(())
     } else {
-        Err(BlockValidationError::BlockTooLarge.into())
+        Err(BlockValidationError::BlockTooLarge {
+            actual_weight: block_weight,
+            max_weight,
+        }
+        .into())
     }
 }
 
@@ -293,8 +298,7 @@ pub fn is_all_unique_and_sorted<'a, I: IntoIterator<Item = &'a T>, T: PartialOrd
 }
 
 // This function checks for duplicate inputs and outputs. There should be no duplicate inputs or outputs in a block
-pub fn check_sorting_and_duplicates(block: &Block) -> Result<(), ValidationError> {
-    let body = &block.body;
+pub fn check_sorting_and_duplicates(body: &AggregateBody) -> Result<(), ValidationError> {
     if !is_all_unique_and_sorted(body.inputs()) {
         return Err(ValidationError::UnsortedOrDuplicateInput);
     }

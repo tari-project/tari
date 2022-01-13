@@ -47,4 +47,6 @@ pub enum MempoolError {
     BackendError(String),
     #[error("Internal reply channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
+    #[error("The transaction did not contain any kernels")]
+    TransactionNoKernels,
 }

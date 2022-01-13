@@ -194,6 +194,11 @@ class WalletClient {
   async isBalanceAtLeast(amount) {
     try {
       const balance = await this.getBalance();
+      console.log(
+        "Waiting for available balance > amount",
+        balance.available_balance,
+        amount
+      );
       if (parseInt(balance.available_balance) >= parseInt(amount)) {
         return true;
       } else {

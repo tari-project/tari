@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,11 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_crypto::tari_utilities::message_format::MessageFormatError;
-use thiserror::Error;
+const AUTOUPDATE_HASHES_TXT_URL =
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt";
+const AUTOUPDATE_HASHES_TXT_SIG_URL =
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig";
+const AUTOUPDATE_HASHES_TXT_BAD_SIG_URL =
+  "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.bad.sig";
 
-#[derive(Debug, Error)]
-pub enum PriorityError {
-    #[error("Message format error: `{0}`")]
-    MessageFormatError(#[from] MessageFormatError),
-}
+const BLOCK_REWARD = 5000;
+const CONFIRMATION_PERIOD = 4;
+
+module.exports = {
+  AUTOUPDATE_HASHES_TXT_URL,
+  AUTOUPDATE_HASHES_TXT_BAD_SIG_URL,
+  AUTOUPDATE_HASHES_TXT_SIG_URL,
+  BLOCK_REWARD,
+  CONFIRMATION_PERIOD,
+};

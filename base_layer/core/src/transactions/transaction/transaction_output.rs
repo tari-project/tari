@@ -53,16 +53,19 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
-use crate::transactions::{
-    tari_amount::MicroTari,
-    transaction,
-    transaction::{
-        full_rewind_result::FullRewindResult,
-        rewind_result::RewindResult,
-        OutputFeatures,
-        OutputFlags,
-        TransactionError,
-        TransactionInput,
+use crate::{
+    consensus::ConsensusEncodingSized,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction,
+        transaction::{
+            full_rewind_result::FullRewindResult,
+            rewind_result::RewindResult,
+            OutputFeatures,
+            OutputFlags,
+            TransactionError,
+            TransactionInput,
+        },
     },
 };
 
@@ -310,6 +313,10 @@ impl TransactionOutput {
             .chain(self.metadata_signature.public_nonce().as_bytes())
             .finalize()
             .to_vec()
+    }
+
+    pub fn get_metadata_size(&self) -> usize {
+        self.features.consensus_encode_exact_size() + self.script.consensus_encode_exact_size()
     }
 }
 

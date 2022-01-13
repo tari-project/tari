@@ -157,7 +157,7 @@ impl GlobalConfig {
         // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
         let env = Environment::with_prefix("tari").separator("__");
         cfg.merge(env)
-            .map_err(|e| ConfigurationError::new("environment variable", &e.to_string()))?;
+            .map_err(|e| ConfigurationError::new("environment variable", None, &e.to_string()))?;
 
         // network override from command line
         let network = match network {
@@ -196,6 +196,7 @@ fn convert_node_config(
         "lmdb" => Ok(DatabaseType::LMDB(data_dir.join("db"))),
         invalid_opt => Err(ConfigurationError::new(
             "base_node.db_type",
+            Some(invalid_opt.to_string()),
             &format!("Invalid option: {}", invalid_opt),
         )),
     }?;
@@ -205,13 +206,14 @@ fn convert_node_config(
         Ok(mb) if mb < DB_INIT_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
+                Some(mb.to_string()),
                 &format!("DB initial size must be at least {} MB.", DB_INIT_MIN_MB),
             ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
             ConfigError::NotFound(_) => DB_INIT_DEFAULT_MB, // default
-            other => return Err(ConfigurationError::new(&key, &other.to_string())),
+            other => return Err(ConfigurationError::new(&key, None, &other.to_string())),
         },
     };
 
@@ -220,13 +222,14 @@ fn convert_node_config(
         Ok(mb) if mb < DB_GROW_SIZE_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
+                Some(mb.to_string()),
                 &format!("DB grow size must be at least {} MB.", DB_GROW_SIZE_MIN_MB),
             ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
             ConfigError::NotFound(_) => DB_GROW_SIZE_DEFAULT_MB, // default
-            other => return Err(ConfigurationError::new(&key, &other.to_string())),
+            other => return Err(ConfigurationError::new(&key, None, &other.to_string())),
         },
     };
 
@@ -235,6 +238,7 @@ fn convert_node_config(
         Ok(mb) if mb < DB_RESIZE_THRESHOLD_MIN_MB => {
             return Err(ConfigurationError::new(
                 &key,
+                Some(mb.to_string()),
                 &format!(
                     "DB resize threshold must be at least {} MB.",
                     DB_RESIZE_THRESHOLD_MIN_MB
@@ -244,19 +248,21 @@ fn convert_node_config(
         Ok(mb) if mb as usize >= grow_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
+                Some(mb.to_string()),
                 "DB resize threshold must be less than grow size.",
             ));
         },
         Ok(mb) if mb as usize >= init_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
+                Some(mb.to_string()),
                 "DB resize threshold must be less than init size.",
             ));
         },
         Ok(mb) => mb as usize,
         Err(e) => match e {
             ConfigError::NotFound(_) => DB_RESIZE_THRESHOLD_DEFAULT_MB, // default
-            other => return Err(ConfigurationError::new(&key, &other.to_string())),
+            other => return Err(ConfigurationError::new(&key, None, &other.to_string())),
         },
     };
 
@@ -276,13 +282,13 @@ fn convert_node_config(
 
     // Thread counts
     let key = config_string("base_node", net_str, "core_threads");
-    let core_threads =
-        optional(cfg.get_int(&key).map(|n| n as usize)).map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+    let core_threads = optional(cfg.get_int(&key).map(|n| n as usize))
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?;
 
     // Max RandomX VMs
     let key = config_string("base_node", net_str, "max_randomx_vms");
     let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n as usize))
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .unwrap_or(2) as usize;
 
     // Base node identity path
@@ -306,7 +312,7 @@ fn convert_node_config(
     let auxilary_tcp_listener_address = optional(cfg.get_str(&key))?
         .map(|addr| {
             addr.parse::<Multiaddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })
         .transpose()?;
 
@@ -318,7 +324,7 @@ fn convert_node_config(
     let public_address = optional(cfg.get_str(&key))?
         .map(|addr| {
             addr.parse::<Multiaddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })
         .transpose()?;
 
@@ -338,7 +344,7 @@ fn convert_node_config(
 
             let grpc_address = addr
                 .parse::<Multiaddr>()
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
 
             Some(grpc_address)
         } else {
@@ -363,7 +369,7 @@ fn convert_node_config(
 
             let grpc_address = addr
                 .parse::<Multiaddr>()
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
 
             Some(grpc_address)
         } else {
@@ -386,14 +392,14 @@ fn convert_node_config(
     //       add support for multiple addresses
     let key = config_string("common", net_str, "dns_seeds_name_server");
     let dns_seeds_name_server = optional(cfg.get_str(&key))
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .unwrap_or_else(|| "1.1.1.1:853/cloudfare-dns.com".to_string())
         .parse::<DnsNameServer>()
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?;
 
     let key = config_string("common", net_str, "dns_seeds_use_dnssec");
     let dns_seeds_use_dnssec = optional(cfg.get_bool(&key))
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .unwrap_or(true);
 
     let key = config_string("common", net_str, "dns_seeds");
@@ -419,7 +425,7 @@ fn convert_node_config(
 
     let key = config_string("base_node", net_str, "flood_ban_max_msg_count");
     let flood_ban_max_msg_count = optional(cfg.get_int(&key))
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .unwrap_or(1000) as usize;
 
     // block sync
@@ -437,7 +443,7 @@ fn convert_node_config(
     let auto_ping_interval = match cfg.get_int(&key) {
         Ok(seconds) => seconds as u64,
         Err(ConfigError::NotFound(_)) => 30,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+        Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
     // blocks_behind_before_considered_lagging when a node should switch over from listening to lagging
@@ -448,20 +454,20 @@ fn convert_node_config(
     let key = "wallet.wallet_db_file".to_string();
     let wallet_db_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .into();
 
     // set console_wallet_db_file
     let key = "wallet.console_wallet_db_file".to_string();
     let console_wallet_db_file = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .into();
 
     let key = "wallet.base_node_query_timeout";
     let base_node_query_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "wallet.saf_expiry_duration";
@@ -470,25 +476,25 @@ fn convert_node_config(
     let key = "wallet.transaction_broadcast_monitoring_timeout";
     let transaction_broadcast_monitoring_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "wallet.transaction_chain_monitoring_timeout";
     let transaction_chain_monitoring_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "wallet.transaction_direct_send_timeout";
     let transaction_direct_send_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "wallet.transaction_broadcast_send_timeout";
     let transaction_broadcast_send_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "wallet.transaction_num_confirmations_required";
@@ -512,7 +518,7 @@ fn convert_node_config(
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
         .get_bool(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "wallet.transaction_routing_mechanism";
     let transaction_routing_mechanism =
@@ -530,7 +536,7 @@ fn convert_node_config(
         Ok(peers) => peers.into_iter().map(|v| v.into_str().unwrap()).collect(),
         Err(..) => match cfg.get_str(key) {
             Ok(s) => s.split(',').map(|v| v.to_string()).collect(),
-            Err(err) => return Err(ConfigurationError::new(key, &err.to_string())),
+            Err(err) => return Err(ConfigurationError::new(key, None, &err.to_string())),
         },
     };
 
@@ -538,7 +544,7 @@ fn convert_node_config(
     let custom_peer: Option<String> = match cfg.get_int(&key) {
         Ok(peer) => Some(peer.to_string()),
         Err(ConfigError::NotFound(_)) => None,
-        Err(e) => return Err(ConfigurationError::new(&key, &e.to_string())),
+        Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
     let key = "wallet.password";
@@ -551,13 +557,13 @@ fn convert_node_config(
     let wallet_base_node_service_refresh_interval = cfg
         .get_int(key)
         .map(|seconds| seconds as u64)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "wallet.base_node_service_request_max_age";
     let wallet_base_node_service_request_max_age = cfg
         .get_int(key)
         .map(|seconds| seconds as u64)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     // The cooldown period between balance enquiry checks in seconds; requests faster than this will be ignored.
     // For specialized wallets processing many batch transactions this setting could be increased to 60 s to retain
@@ -566,14 +572,14 @@ fn convert_node_config(
     let wallet_balance_enquiry_cooldown_period = cfg
         .get_int(key)
         .map(|seconds| seconds as u64)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_max_sessions";
     let liveness_max_sessions = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))?
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
         .try_into()
-        .map_err(|e: TryFromIntError| ConfigurationError::new(key, &e.to_string()))?;
+        .map_err(|e: TryFromIntError| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_allowlist_cidrs";
     let liveness_allowlist_cidrs = cfg
@@ -584,12 +590,13 @@ fn convert_node_config(
     let key = "common.rpc_max_simultaneous_sessions";
     let rpc_max_simultaneous_sessions = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
         .and_then(|v| match v {
             -1 => Ok(None),
             n if n.is_positive() => Ok(Some(n as usize)),
             v => Err(ConfigurationError::new(
                 key,
+                Some(v.to_string()),
                 &format!("invalid value {} for rpc_max_simultaneous_sessions", v),
             )),
         })?;
@@ -597,44 +604,44 @@ fn convert_node_config(
     let key = "common.buffer_size_base_node";
     let buffer_size_base_node = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as usize;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.buffer_size_console_wallet";
     let buffer_size_console_wallet = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as usize;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.buffer_rate_limit_base_node";
-    let buffer_rate_limit_base_node = cfg
-        .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as usize;
+    let buffer_rate_limit_base_node =
+        cfg.get_int(key)
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.buffer_rate_limit_console_wallet";
-    let buffer_rate_limit_console_wallet = cfg
-        .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as usize;
+    let buffer_rate_limit_console_wallet =
+        cfg.get_int(key)
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.dedup_cache_capacity";
     let dedup_cache_capacity = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as usize;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.fetch_blocks_timeout";
     let fetch_blocks_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "common.fetch_utxos_timeout";
     let fetch_utxos_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let key = "common.service_request_timeout";
     let service_request_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
     let merge_mining_config = match application {
@@ -646,7 +653,7 @@ fn convert_node_config(
                 .into_iter()
                 .map(|v| {
                     v.into_str()
-                        .map_err(|err| ConfigurationError::new(key, &err.to_string()))
+                        .map_err(|err| ConfigurationError::new(key, None, &err.to_string()))
                 })
                 .collect::<Result<_, _>>()?;
 
@@ -663,43 +670,43 @@ fn convert_node_config(
             let key = "merge_mining_proxy.monerod_use_auth";
             let monerod_use_auth = cfg
                 .get_bool(key)
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
             let key = "merge_mining_proxy.monerod_username";
             let monerod_username = cfg
                 .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
             let key = "merge_mining_proxy.monerod_password";
             let monerod_password = cfg
                 .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))?;
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
             let key = "merge_mining_proxy.proxy_host_address";
             let proxy_host_address = cfg
                 .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
                 .and_then(|addr| {
                     addr.parse::<SocketAddr>()
-                        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
                 })?;
 
             let key = "merge_mining_proxy.base_node_grpc_address";
             let base_node_grpc_address = cfg
                 .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
                 .and_then(|addr| {
                     addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
                 })?;
 
             let key = "merge_mining_proxy.wallet_grpc_address";
             let wallet_grpc_address = cfg
                 .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
                 .and_then(|addr| {
                     addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, &e.to_string()))
+                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
                 })?;
 
             Some(MergeMiningConfig {
@@ -718,16 +725,16 @@ fn convert_node_config(
     let key = config_string("stratum_transcoder", net_str, "transcoder_host_address");
     let transcoder_host_address = cfg
         .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))
         .and_then(|addr| {
             addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, &e.to_string()))
+                .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })?;
 
     let key = config_string("merge_mining_proxy", net_str, "wait_for_initial_sync_at_startup");
     let wait_for_initial_sync_at_startup = cfg
         .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, &e.to_string()))?;
+        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?;
 
     let key = config_string("merge_mining_proxy", net_str, "proxy_submit_to_origin");
     let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
@@ -908,14 +915,14 @@ fn network_transport_config(
 
     let get_conf_str = |key| {
         cfg.get_str(key)
-            .map_err(|err| ConfigurationError::new(key, &err.to_string()))
+            .map_err(|err| ConfigurationError::new(key, None, &err.to_string()))
     };
 
     let get_conf_multiaddr = |key| {
         let path_str = get_conf_str(key)?;
         path_str
             .parse::<Multiaddr>()
-            .map_err(|err| ConfigurationError::new(key, &err.to_string()))
+            .map_err(|err| ConfigurationError::new(key, Some(path_str), &err.to_string()))
     };
 
     let app_str = application.as_config_str();
@@ -945,14 +952,14 @@ fn network_transport_config(
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
-                .map_err(|err: String| ConfigurationError::new(&key, &err))?;
+                .map_err(|err: String| ConfigurationError::new(&key, Some(auth_str), &err))?;
 
             let key = config_string(app_str, network, "tor_forward_address");
             let forward_address = get_conf_multiaddr(&key)?;
             let key = config_string(app_str, network, "tor_onion_port");
             let onion_port = cfg
                 .get::<NonZeroU16>(&key)
-                .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?;
+                .map_err(|err| ConfigurationError::new(&key, None, &err.to_string()))?;
 
             // TODO
             let key = config_string(app_str, network, "tor_proxy_bypass_addresses");
@@ -961,9 +968,10 @@ fn network_transport_config(
                 .into_iter()
                 .map(|v| {
                     v.into_str()
-                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                        .map_err(|err| ConfigurationError::new(&key, None, &err.to_string()))
                         .and_then(|s| {
-                            Multiaddr::from_str(&s).map_err(|err| ConfigurationError::new(&key, &err.to_string()))
+                            Multiaddr::from_str(&s)
+                                .map_err(|err| ConfigurationError::new(&key, Some(s), &err.to_string()))
                         })
                 })
                 .collect::<Result<_, _>>()?;
@@ -972,7 +980,7 @@ fn network_transport_config(
             let socks_address_override = match get_conf_str(&key).ok() {
                 Some(addr) => Some(
                     addr.parse::<Multiaddr>()
-                        .map_err(|err| ConfigurationError::new(&key, &err.to_string()))?,
+                        .map_err(|err| ConfigurationError::new(&key, Some(addr), &err.to_string()))?,
                 ),
                 None => None,
             };
@@ -998,7 +1006,7 @@ fn network_transport_config(
             let auth_str = get_conf_str(&key)?;
             let auth = auth_str
                 .parse()
-                .map_err(|err: String| ConfigurationError::new(&key, &err))?;
+                .map_err(|err: String| ConfigurationError::new(&key, Some(auth_str), &err))?;
 
             let key = config_string(app_str, network, "socks5_listener_address");
             let listener_address = get_conf_multiaddr(&key)?;
@@ -1011,6 +1019,7 @@ fn network_transport_config(
         },
         t => Err(ConfigurationError::new(
             &transport_key,
+            Some(t.to_string()),
             &format!("Invalid transport type '{}'", t),
         )),
     }
@@ -1162,7 +1171,7 @@ impl MetricsConfig {
         let prometheus_scraper_bind_addr = optional(cfg.get_str(key))?
             .map(|s| {
                 s.parse()
-                    .map_err(|_| ConfigurationError::new(key, "Invalid metrics server socket address"))
+                    .map_err(|_| ConfigurationError::new(key, Some(s), "Invalid metrics server socket address"))
             })
             .transpose()?;
 

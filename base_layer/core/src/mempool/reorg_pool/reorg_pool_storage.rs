@@ -23,8 +23,9 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::Hashable;
 use ttl_cache::TtlCache;
 
 use crate::{blocks::Block, mempool::reorg_pool::reorg_pool::ReorgPoolConfig, transactions::transaction::Transaction};
@@ -39,7 +40,7 @@ pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 /// oldest transactions will be removed to make space for incoming transactions.
 pub struct ReorgPoolStorage {
     config: ReorgPoolConfig,
-    txs_by_signature: TtlCache<Signature, Arc<Transaction>>,
+    txs_by_signature: TtlCache<PrivateKey, Arc<Transaction>>,
 }
 
 impl ReorgPoolStorage {
@@ -54,16 +55,21 @@ impl ReorgPoolStorage {
     /// Insert a new transaction into the ReorgPoolStorage. Published transactions will have a limited Time-to-live in
     /// the ReorgPoolStorage and will be discarded once the Time-to-live threshold has been reached.
     pub fn insert(&mut self, tx: Arc<Transaction>) {
-        let tx_key = tx.body.kernels()[0].excess_sig.clone();
-        let _ = self
-            .txs_by_signature
-            .insert(tx_key.clone(), tx.clone(), self.config.tx_ttl);
-        debug!(
-            target: LOG_TARGET,
-            "Inserted transaction with signature {} into reorg pool:",
-            tx_key.get_signature().to_hex()
-        );
-        trace!(target: LOG_TARGET, "{}", tx);
+        match tx.first_kernel_excess_sig() {
+            Some(excess_sig) => {
+                let tx_key = excess_sig.get_signature();
+                let tx_key_hex = tx_key.to_hex();
+                trace!(target: LOG_TARGET, "{}", tx);
+                self.txs_by_signature.insert(tx_key.clone(), tx, self.config.tx_ttl);
+                debug!(
+                    target: LOG_TARGET,
+                    "Inserted transaction with signature {} into reorg pool:", tx_key_hex
+                );
+            },
+            None => {
+                warn!(target: LOG_TARGET, "Inserted transaction without kernels!");
+            },
+        }
     }
 
     /// Insert a set of new transactions into the ReorgPoolStorage
@@ -75,14 +81,14 @@ impl ReorgPoolStorage {
 
     /// Check if a transaction is stored in the ReorgPoolStorage
     pub fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> bool {
-        self.txs_by_signature.contains_key(excess_sig)
+        self.txs_by_signature.contains_key(excess_sig.get_signature())
     }
 
     /// Remove double-spends from the ReorgPool. These transactions were orphaned by the provided published
     /// block. Check if any of the transactions in the ReorgPool has inputs that was spent by the provided
     /// published block.
     fn discard_double_spends(&mut self, published_block: &Block) {
-        let mut removed_tx_keys: Vec<Signature> = Vec::new();
+        let mut removed_tx_keys = Vec::new();
         for (tx_key, ptx) in self.txs_by_signature.iter() {
             for input in ptx.body.inputs() {
                 if published_block.body.inputs().contains(input) {
@@ -96,7 +102,7 @@ impl ReorgPoolStorage {
             trace!(
                 target: LOG_TARGET,
                 "Removed double spend tx from reorg pool: {}",
-                tx_key.get_signature().to_hex()
+                tx_key.to_hex()
             );
         }
     }
@@ -105,17 +111,29 @@ impl ReorgPoolStorage {
     /// can be resubmitted to the Unconfirmed Pool.
     pub fn remove_reorged_txs_and_discard_double_spends(
         &mut self,
-        removed_blocks: Vec<Arc<Block>>,
+        removed_blocks: &[Arc<Block>],
         new_blocks: &[Arc<Block>],
     ) -> Vec<Arc<Transaction>> {
         for block in new_blocks {
+            debug!(
+                target: LOG_TARGET,
+                "Mempool processing reorg added new block {} ({})",
+                block.header.height,
+                block.header.hash().to_hex(),
+            );
             self.discard_double_spends(block);
         }
 
-        let mut removed_txs: Vec<Arc<Transaction>> = Vec::new();
-        for block in &removed_blocks {
+        let mut removed_txs = Vec::new();
+        for block in removed_blocks {
+            debug!(
+                target: LOG_TARGET,
+                "Mempool processing reorg removed block {} ({})",
+                block.header.height,
+                block.header.hash().to_hex(),
+            );
             for kernel in block.body.kernels() {
-                if let Some(removed_tx) = self.txs_by_signature.remove(&kernel.excess_sig) {
+                if let Some(removed_tx) = self.txs_by_signature.remove(kernel.excess_sig.get_signature()) {
                     trace!(target: LOG_TARGET, "Removed tx from reorg pool: {:?}", removed_tx);
                     removed_txs.push(removed_tx);
                 }
