@@ -171,7 +171,7 @@ pub fn mining_task(
     let mut hasher = BlockHeaderSha3::new(header).unwrap();
     hasher.random_nonce();
     // We're mining over here!
-    info!(target: LOG_TARGET, "Mining thread {} started", miner);
+    trace!(target: LOG_TARGET, "Mining thread {} started", miner);
     // Mining work
     loop {
         let difficulty = hasher.difficulty();
@@ -193,7 +193,7 @@ pub fn mining_task(
                 error!(target: LOG_TARGET, "Miner {} failed to send report: {}", miner, err);
             }
             waker.wake();
-            info!(target: LOG_TARGET, "Mining thread {} stopped", miner);
+            trace!(target: LOG_TARGET, "Mining thread {} stopped", miner);
             return;
         }
         if hasher.nonce % REPORTING_FREQUENCY == 0 {

@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc, time::Duration};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+    time::Duration,
+};
 
 use futures::{pin_mut, stream::StreamExt, Stream};
 use log::*;
@@ -64,7 +68,7 @@ const LOG_TARGET: &str = "c::mempool::service::service";
 /// A convenience struct to hold all the Mempool service streams
 pub struct MempoolStreams<SOutReq, SInReq, SInRes, STxIn, SLocalReq> {
     pub outbound_request_stream: SOutReq,
-    pub outbound_tx_stream: mpsc::UnboundedReceiver<(Transaction, Vec<NodeId>)>,
+    pub outbound_tx_stream: mpsc::UnboundedReceiver<(Arc<Transaction>, Vec<NodeId>)>,
     pub inbound_request_stream: SInReq,
     pub inbound_response_stream: SInRes,
     pub inbound_transaction_stream: STxIn,
@@ -163,7 +167,7 @@ impl MempoolService {
 
                 // Incoming transaction messages from the Comms layer
                 Some(transaction_msg) = inbound_transaction_stream.next() => {
-                    self.spawn_handle_incoming_tx(transaction_msg).await;
+                    self.spawn_handle_incoming_tx(transaction_msg);
                 }
 
                 // Incoming local request messages from the LocalMempoolServiceInterface and other local services
@@ -224,7 +228,7 @@ impl MempoolService {
         });
     }
 
-    fn spawn_handle_outbound_tx(&self, tx: Transaction, excluded_peers: Vec<NodeId>) {
+    fn spawn_handle_outbound_tx(&self, tx: Arc<Transaction>, excluded_peers: Vec<NodeId>) {
         let outbound_message_service = self.outbound_message_service.clone();
         task::spawn(async move {
             let result = handle_outbound_tx(outbound_message_service, tx, excluded_peers).await;
@@ -260,7 +264,7 @@ impl MempoolService {
         });
     }
 
-    async fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
+    fn spawn_handle_incoming_tx(&self, tx_msg: DomainMessage<Transaction>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine.get_status_info_watch();
 
@@ -343,7 +347,7 @@ async fn handle_incoming_request(
 
     let message = mempool_proto::MempoolServiceResponse {
         request_key: inner_msg.request_key,
-        response: Some(response.into()),
+        response: Some(response.try_into().map_err(MempoolServiceError::ConversionError)?),
     };
 
     outbound_message_service
@@ -396,7 +400,7 @@ async fn handle_outbound_request(
     let request_key = generate_request_key(&mut OsRng);
     let service_request = mempool_proto::MempoolServiceRequest {
         request_key,
-        request: Some(request.into()),
+        request: Some(request.try_into().map_err(MempoolServiceError::ConversionError)?),
     };
 
     let send_result = outbound_message_service
@@ -485,7 +489,7 @@ async fn handle_request_timeout(
 
 async fn handle_outbound_tx(
     mut outbound_message_service: OutboundMessageRequester,
-    tx: Transaction,
+    tx: Arc<Transaction>,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), MempoolServiceError> {
     let result = outbound_message_service
@@ -493,13 +497,21 @@ async fn handle_outbound_tx(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             exclude_peers,
-            OutboundDomainMessage::new(TariMessageType::NewTransaction, proto::types::Transaction::from(tx)),
+            OutboundDomainMessage::new(
+                TariMessageType::NewTransaction,
+                proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
+            ),
         )
         .await;
 
     if let Err(e) = result {
-        error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
-        return Err(MempoolServiceError::OutboundMessageService(e.to_string()));
+        return match e {
+            DhtOutboundError::NoMessagesQueued => Ok(()),
+            _ => {
+                error!(target: LOG_TARGET, "Handle outbound tx failure. {:?}", e);
+                Err(MempoolServiceError::OutboundMessageService(e.to_string()))
+            },
+        };
     }
 
     Ok(())

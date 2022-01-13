@@ -584,7 +584,7 @@ $$
 $$
 
 Alice sends the usual first round data to Bob, but now because of TariScript also includes \\( K_{Ob} \\) and 
-\\( R_{MSi} )\\. Bob can then complete his side of the transaction as per the [standard Mimblewimble protocol] 
+\\( R_{MSi} \\). Bob can then complete his side of the transaction as per the [standard Mimblewimble protocol] 
 providing the commitment \\(C\_b\\), its public blinding factor, its rangeproof and the partial transaction signature.
 In addition, Bob also needs to provide a partial metadata signature as per (5) where he commits to all the transaction 
 output metadata with a commitment signature. Because Alice is creating the transaction, she can suggest the script 

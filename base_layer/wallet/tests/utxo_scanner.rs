@@ -36,13 +36,13 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
-    tari_utilities::{epoch_time::EpochTime, Hashable},
     transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, CryptoFactories},
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_test_utils::random;
+use tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},

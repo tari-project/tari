@@ -44,11 +44,10 @@ class TransactionBuilder {
     const context = blake2bInit(OUTPUT_LENGTH, KEY);
     const buff_nonce = Buffer.from(publicNonce, "hex");
     const buff_key = Buffer.from(scriptOffsetPublicKey, "hex");
-    let flags = Buffer.alloc(1);
-    flags[0] = features.flags;
     let features_buffer = Buffer.concat([
-      flags,
-      toLittleEndian(parseInt(features.maturity), 64),
+      Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+      Buffer.from([parseInt(features.maturity)]),
+      Buffer.from([features.flags]),
     ]);
     blake2bUpdate(context, buff_nonce);
     blake2bUpdate(context, script);
@@ -84,11 +83,10 @@ class TransactionBuilder {
     var KEY = null; // optional key
     var OUTPUT_LENGTH = 32; // bytes
     var context = blake2bInit(OUTPUT_LENGTH, KEY);
-    let flags = Buffer.alloc(1);
-    flags[0] = features.flags;
     let features_buffer = Buffer.concat([
-      flags,
-      toLittleEndian(parseInt(features.maturity), 64),
+      Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+      Buffer.from([parseInt(features.maturity)]),
+      Buffer.from([features.flags]),
     ]);
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, commitment);
@@ -166,6 +164,13 @@ class TransactionBuilder {
     const outputFeatures = {
       flags: 0,
       maturity: 0,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
     };
     let key = Math.floor(Math.random() * 500000000000 + 1);
     let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
@@ -340,6 +345,13 @@ class TransactionBuilder {
     let outputFeatures = {
       flags: 1,
       maturity: lockHeight,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
     };
     let scriptOffsetPrivateKeyNum = Math.floor(
       Math.random() * 500000000000 + 1

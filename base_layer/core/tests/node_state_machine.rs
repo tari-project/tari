@@ -30,7 +30,6 @@ use helpers::{
 use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
-        comms_interface::Broadcast,
         service::BaseNodeServiceConfig,
         state_machine_service::{
             states::{Listening, StateEvent, StatusInfo},
@@ -115,10 +114,7 @@ async fn test_listening_lagging() {
         .unwrap();
     prev_block.header.output_mmr_size += 1;
     prev_block.header.kernel_mmr_size += 1;
-    bob_local_nci
-        .submit_block(prev_block, Broadcast::from(true))
-        .await
-        .unwrap();
+    bob_local_nci.submit_block(prev_block).await.unwrap();
     assert_eq!(bob_db.get_height().unwrap(), 2);
 
     let next_event = time::timeout(Duration::from_secs(10), await_event_task)
@@ -132,7 +128,7 @@ async fn test_listening_lagging() {
 #[tokio::test]
 async fn test_event_channel() {
     let temp_dir = tempdir().unwrap();
-    let (node, consensus_manager) = BaseNodeBuilder::new(Network::Weatherwax.into())
+    let (node, consensus_manager) = BaseNodeBuilder::new(Network::Dibbler.into())
         .start(temp_dir.path().to_str().unwrap())
         .await;
     // let shutdown = Shutdown::new();

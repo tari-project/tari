@@ -1,0 +1,49 @@
+.seed-words-wrapper {
+  max-width: 30%;
+  .seed-words {
+    position: relative;
+    font-family: "Courier New", Courier, monospace;
+    font-size: large;
+    border: 1px solid grey;
+    padding: 10px;
+    margin: 10px;
+    z-index: 1;
+  }
+
+  @keyframes showseedwords {
+    0% {
+      opacity: 1;
+    }
+    99% {
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+    }
+    100% {
+      opacity: 0;
+      width: 0px;
+      height: 0px;
+    }
+  }
+  .protection {
+    position: absolute;
+    top: 0px;
+    left: 0px;
+    background-color: #aaaaaa88;
+    backdrop-filter: blur(5px);
+    width: 100%;
+    height: 100%;
+    border: 1px solid grey;
+    z-index: 2;
+    div {
+      display: flex;
+      height: 100%;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+    }
+  }
+  .hide {
+    animation: showseedwords 0.3s forwards;
+  }
+}

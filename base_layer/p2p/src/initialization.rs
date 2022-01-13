@@ -105,7 +105,7 @@ impl CommsInitializationError {
                  => r#"Unable to connect to the Tor control port.
     Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
     If you are unsure of what to do, use the following command to start the Tor proxy:
-    tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "notice stdout" --clientuseipv6 1"#
+    tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1"#
                     .to_string(),
             err => format!("Failed to initialize comms: {:?}", err),
         }
@@ -408,7 +408,7 @@ async fn configure_comms_and_dht(
 ///
 /// ## Returns
 /// Returns a File handle that must be retained to keep the file lock active.
-pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
+fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
     let lock_file_path = db_path.join(".p2p_file.lock");
 
     let file = File::create(lock_file_path)?;
@@ -541,7 +541,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let config = self.config.clone();
+        let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
         let mut builder = CommsBuilder::new()
@@ -557,13 +557,13 @@ impl ServiceInitializer for P2pInitializer {
         if config.allow_test_addresses {
             builder = builder.allow_test_addresses();
         }
+        // Ensure this setting always matches
+        config.dht.allow_test_addresses = config.allow_test_addresses;
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
 
-        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
-        add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         let peers = match Self::try_resolve_dns_seeds(
             config.dns_seeds_name_server,
@@ -578,6 +578,9 @@ impl ServiceInitializer for P2pInitializer {
                 Vec::new()
             },
         };
+        add_all_peers(&peer_manager, &node_identity, peers).await?;
+
+        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());

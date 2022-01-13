@@ -130,6 +130,10 @@ class WalletFFIClient {
     this.wallet.startTxValidation();
   }
 
+  listConnectedPublicKeys() {
+    this.wallet.listConnectedPublicKeys();
+  }
+
   getCounters() {
     return this.wallet.getCounters();
   }

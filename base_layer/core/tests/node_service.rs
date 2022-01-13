@@ -32,7 +32,7 @@ use tari_common::configuration::Network;
 use tari_comms::protocol::messaging::MessagingEvent;
 use tari_core::{
     base_node::{
-        comms_interface::{BlockEvent, Broadcast, CommsInterfaceError},
+        comms_interface::{BlockEvent, CommsInterfaceError},
         service::BaseNodeServiceConfig,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
@@ -159,17 +159,17 @@ async fn propagate_and_forward_many_valid_blocks() {
             tokio::join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
         let block_hash = block.hash();
 
-        if let BlockEvent::ValidBlockAdded(received_block, _, _) = &*bob_block_event.unwrap() {
+        if let BlockEvent::ValidBlockAdded(received_block, _) = &*bob_block_event.unwrap() {
             assert_eq!(&received_block.hash(), block_hash);
         } else {
             panic!("Bob's node did not receive and validate the expected block");
         }
-        if let BlockEvent::ValidBlockAdded(received_block, _block_add_result, _) = &*carol_block_event.unwrap() {
+        if let BlockEvent::ValidBlockAdded(received_block, _block_add_result) = &*carol_block_event.unwrap() {
             assert_eq!(&received_block.hash(), block_hash);
         } else {
             panic!("Carol's node did not receive and validate the expected block");
         }
-        if let BlockEvent::ValidBlockAdded(received_block, _block_add_result, _) = &*dan_block_event.unwrap() {
+        if let BlockEvent::ValidBlockAdded(received_block, _block_add_result) = &*dan_block_event.unwrap() {
             assert_eq!(&received_block.hash(), block_hash);
         } else {
             panic!("Dan's node did not receive and validate the expected block");
@@ -388,12 +388,12 @@ async fn propagate_and_forward_invalid_block() {
     let (bob_block_event, carol_block_event, dan_block_event) =
         tokio::join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
 
-    if let BlockEvent::AddBlockFailed(received_block, _) = &*bob_block_event.unwrap() {
+    if let BlockEvent::AddBlockFailed(received_block) = &*bob_block_event.unwrap() {
         assert_eq!(&received_block.hash(), block1_hash);
     } else {
         panic!("Bob's node should have detected an invalid block");
     }
-    if let BlockEvent::AddBlockFailed(received_block, _) = &*carol_block_event.unwrap() {
+    if let BlockEvent::AddBlockFailed(received_block) = &*carol_block_event.unwrap() {
         assert_eq!(&received_block.hash(), block1_hash);
     } else {
         panic!("Carol's node should have detected an invalid block");
@@ -479,8 +479,8 @@ async fn local_get_new_block_template_and_get_new_block() {
         txn_schema!(from: vec![outputs[2].clone()], to: vec![30_000 * uT, 40_000 * uT]),
     ];
     let (txs, _) = schema_to_transaction(&schema);
-    assert!(node.mempool.insert(txs[0].clone()).is_ok());
-    assert!(node.mempool.insert(txs[1].clone()).is_ok());
+    node.mempool.insert(txs[0].clone()).await.unwrap();
+    node.mempool.insert(txs[1].clone()).await.unwrap();
 
     let block_template = node
         .local_nci
@@ -500,6 +500,7 @@ async fn local_get_new_block_template_and_get_new_block() {
 }
 
 #[tokio::test]
+#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
@@ -520,33 +521,33 @@ async fn local_get_new_block_with_zero_conf() {
         .start(temp_dir.path().to_str().unwrap())
         .await;
 
-    let (tx01, tx01_out, _) = spend_utxos(
+    let (tx01, tx01_out) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx02, tx02_out, _) = spend_utxos(
+    let (tx02, tx02_out) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
     );
     assert_eq!(
-        node.mempool.insert(Arc::new(tx01)).unwrap(),
+        node.mempool.insert(Arc::new(tx01)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
-        node.mempool.insert(Arc::new(tx02)).unwrap(),
+        node.mempool.insert(Arc::new(tx02)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
 
-    let (tx11, _, _) = spend_utxos(
+    let (tx11, _) = spend_utxos(
         txn_schema!(from: tx01_out, to: vec![10_000 * uT], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx12, _, _) = spend_utxos(
+    let (tx12, _) = spend_utxos(
         txn_schema!(from: tx02_out, to: vec![20_000 * uT], fee: 60*uT, lock: 0, features: OutputFeatures::default()),
     );
     assert_eq!(
-        node.mempool.insert(Arc::new(tx11)).unwrap(),
+        node.mempool.insert(Arc::new(tx11)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
-        node.mempool.insert(Arc::new(tx12)).unwrap(),
+        node.mempool.insert(Arc::new(tx12)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
 
@@ -565,9 +566,7 @@ async fn local_get_new_block_with_zero_conf() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template
-        .body
-        .sort(rules.consensus_constants(0).blockchain_version());
+    block_template.body.sort();
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -579,6 +578,7 @@ async fn local_get_new_block_with_zero_conf() {
 }
 
 #[tokio::test]
+#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
@@ -599,16 +599,16 @@ async fn local_get_new_block_with_combined_transaction() {
         .start(temp_dir.path().to_str().unwrap())
         .await;
 
-    let (tx01, tx01_out, _) = spend_utxos(
+    let (tx01, tx01_out) = spend_utxos(
         txn_schema!(from: vec![outputs[1].clone()], to: vec![20_000 * uT], fee: 10*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx02, tx02_out, _) = spend_utxos(
+    let (tx02, tx02_out) = spend_utxos(
         txn_schema!(from: vec![outputs[2].clone()], to: vec![40_000 * uT], fee: 20*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx11, _, _) = spend_utxos(
+    let (tx11, _) = spend_utxos(
         txn_schema!(from: tx01_out, to: vec![10_000 * uT], fee: 50*uT, lock: 0, features: OutputFeatures::default()),
     );
-    let (tx12, _, _) = spend_utxos(
+    let (tx12, _) = spend_utxos(
         txn_schema!(from: tx02_out, to: vec![20_000 * uT], fee: 60*uT, lock: 0, features: OutputFeatures::default()),
     );
 
@@ -616,11 +616,11 @@ async fn local_get_new_block_with_combined_transaction() {
     let tx1 = tx01 + tx11;
     let tx2 = tx02 + tx12;
     assert_eq!(
-        node.mempool.insert(Arc::new(tx1)).unwrap(),
+        node.mempool.insert(Arc::new(tx1)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
-        node.mempool.insert(Arc::new(tx2)).unwrap(),
+        node.mempool.insert(Arc::new(tx2)).await.unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
 
@@ -639,9 +639,7 @@ async fn local_get_new_block_with_combined_transaction() {
     );
     block_template.body.add_kernel(kernel);
     block_template.body.add_output(output);
-    block_template
-        .body
-        .sort(rules.consensus_constants(0).blockchain_version());
+    block_template.body.sort();
     let block = node.local_nci.get_new_block(block_template.clone()).await.unwrap();
     assert_eq!(block.header.height, 1);
     assert_eq!(block.body, block_template.body);
@@ -668,13 +666,10 @@ async fn local_submit_block() {
         .unwrap();
     block1.header.kernel_mmr_size += 1;
     block1.header.output_mmr_size += 1;
-    node.local_nci
-        .submit_block(block1.clone(), Broadcast::from(true))
-        .await
-        .unwrap();
+    node.local_nci.submit_block(block1.clone()).await.unwrap();
 
     let event = event_stream_next(&mut event_stream, Duration::from_millis(20000)).await;
-    if let BlockEvent::ValidBlockAdded(received_block, result, _) = &*event.unwrap() {
+    if let BlockEvent::ValidBlockAdded(received_block, result) = &*event.unwrap() {
         assert_eq!(received_block.hash(), block1.hash());
         result.assert_added();
     } else {

@@ -30,15 +30,15 @@
 //!
 //! ## Introduction
 //!
-//! The Merkle mountain range was invented by Peter Todd more about them can be read at
+//! The Merkle mountain range was invented by Peter Todd. More detalis can be read at
 //! [Open Timestamps](https://github.com/opentimestamps/opentimestamps-server/blob/master/doc/merkle-mountain-range.md)
 //! and the [Grin project](https://github.com/mimblewimble/grin/blob/master/doc/mmr.md).
 //!
-//! A Merkle mountain range(MMR) is a binary tree where each parent is the concatenated hash of its two
-//! children. The leaves at the bottom of the MMR is the hashes of the data. The MMR allows easy to add and proof
-//! of existence inside of the tree. MMR always tries to have the largest possible single binary tree, so in effect
+//! A Merkle mountain range (MMR) is a binary tree where each parent is the concatenated hash of its two
+//! children. The leaves at the bottom of the MMR are the hashes of the data. The MMR makes it easy to add to, and prove
+//! existence inside of the tree. MMR always tries to have the largest possible single binary tree, so in effect
 //! it is possible to have more than one binary tree. Every time you have to get the merkle root (the single merkle
-//! proof of the whole MMR) you have the bag the peaks of the individual trees, or mountain peaks.
+//! proof of the whole MMR) you have to bag the peaks of the individual trees, or mountain peaks.
 //!
 //! Lets take an example of how to construct one. Say you have the following MMR already made:
 //! ```plaintext
@@ -47,7 +47,7 @@
 //!     /\  /\   /\
 //!    /\/\/\/\ /\/\ /\
 //! ```
-//! From this we can see we have 3 trees or mountains. We have constructed the largest possible tree's we can.
+//! From this we can see we have 3 trees or mountains. We have constructed the largest possible trees we can.
 //! If we want to calculate the merkle root we simply concatenate and then hash the three peaks.
 //!
 //! Lets continue the example, by adding a single object. Our MMR now looks as follows
@@ -88,7 +88,7 @@
 //!     /\  /\  /\ \    /\  /\  /\
 //!    /\/\/\/\/\/\/\  /\/\/\/\/\/\
 //! ```
-//! Due to the unique way the MMR is constructed we can easily represent the MMR as a linear list of the nodes. Lets
+//! Due to the unique way the MMR is constructed we can easily represent the MMR as a linear list of the nodes. Let's
 //! take the following MMR and number the nodes in the order we create them.
 //! ```plaintext
 //!         6
@@ -130,7 +130,7 @@
 //!        6        13          21          <-- MMR indices
 //!      /  \      /  \        /  \
 //!     /    \    /    \      /    \
-//!     2    5    9    12    17    21
+//!     2    5    9    12    17    20
 //!    / \  / \  / \  / \   / \   / \
 //!    0 1  3 4  7 8 10 11 15 16 18 19 22
 //!    ----------------------------------

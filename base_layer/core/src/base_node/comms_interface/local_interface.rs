@@ -24,7 +24,7 @@ use std::{ops::RangeInclusive, sync::Arc};
 
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    types::{BlockHash, Commitment, HashOutput, Signature},
+    types::{BlockHash, Commitment, HashOutput, PublicKey, Signature},
 };
 use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::broadcast;
@@ -34,11 +34,11 @@ use crate::{
         comms_request::GetNewBlockTemplateRequest,
         error::CommsInterfaceError,
         BlockEvent,
-        Broadcast,
         NodeCommsRequest,
         NodeCommsResponse,
     },
     blocks::{Block, ChainHeader, HistoricalBlock, NewBlockTemplate},
+    chain_storage::UtxoMinedInfo,
     proof_of_work::PowAlgorithm,
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
@@ -51,7 +51,7 @@ pub type BlockEventReceiver = broadcast::Receiver<Arc<BlockEvent>>;
 #[derive(Clone)]
 pub struct LocalNodeCommsInterface {
     request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-    block_sender: SenderService<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
+    block_sender: SenderService<Block, Result<BlockHash, CommsInterfaceError>>,
     block_event_sender: BlockEventSender,
 }
 
@@ -59,7 +59,7 @@ impl LocalNodeCommsInterface {
     /// Construct a new LocalNodeCommsInterface with the specified SenderService.
     pub fn new(
         request_sender: SenderService<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>,
-        block_sender: SenderService<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
+        block_sender: SenderService<Block, Result<BlockHash, CommsInterfaceError>>,
         block_event_sender: BlockEventSender,
     ) -> Self {
         Self {
@@ -177,9 +177,9 @@ impl LocalNodeCommsInterface {
         }
     }
 
-    /// Submit a block to the base node service. Internal_only flag will prevent propagation.
-    pub async fn submit_block(&mut self, block: Block, propagate: Broadcast) -> Result<BlockHash, CommsInterfaceError> {
-        self.block_sender.call((block, propagate)).await?
+    /// Submit a block to the base node service.
+    pub async fn submit_block(&mut self, block: Block) -> Result<BlockHash, CommsInterfaceError> {
+        self.block_sender.call(block).await?
     }
 
     pub fn publish_block_event(&self, event: BlockEvent) -> usize {
@@ -269,6 +269,52 @@ impl LocalNodeCommsInterface {
             .await??
         {
             NodeCommsResponse::TransactionKernels(kernels) => Ok(kernels),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_tokens(
+        &mut self,
+        asset_public_key: PublicKey,
+        unique_ids: Vec<Vec<u8>>,
+    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            })
+            .await??
+        {
+            NodeCommsResponse::FetchTokensResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_asset_registrations(
+        &mut self,
+        range: RangeInclusive<usize>,
+    ) -> Result<Vec<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchAssetRegistrations { range })
+            .await??
+        {
+            NodeCommsResponse::FetchAssetRegistrationsResponse { outputs } => Ok(outputs),
+            _ => Err(CommsInterfaceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_asset_metadata(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<UtxoMinedInfo>, CommsInterfaceError> {
+        match self
+            .request_sender
+            .call(NodeCommsRequest::FetchAssetMetadata { asset_public_key })
+            .await??
+        {
+            NodeCommsResponse::FetchAssetMetadataResponse { output } => Ok(*output),
             _ => Err(CommsInterfaceError::UnexpectedApiResponse),
         }
     }

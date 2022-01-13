@@ -32,13 +32,13 @@ use log::*;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::BlockHash;
 use tari_crypto::tari_utilities::Hashable;
+use tari_utilities::hex::Hex;
 use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
     consensus::ConsensusConstants,
     proof_of_work::ProofOfWork,
-    tari_utilities::hex::Hex,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
@@ -47,7 +47,7 @@ use crate::{
     },
 };
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum BlockValidationError {
     #[error("A transaction in the block failed to validate: `{0}`")]
     TransactionError(#[from] TransactionError),
@@ -63,8 +63,8 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block weight is above the maximum")]
-    BlockTooLarge,
+    #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
+    BlockTooLarge { actual_weight: u64, max_weight: u64 },
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -133,6 +133,14 @@ impl Block {
     ) {
         let (i, o, k) = self.body.dissolve();
         (self.header, i, o, k)
+    }
+
+    /// Return a cloned version of this block with the TransactionInputs in their compact form
+    pub fn to_compact(&self) -> Self {
+        Self {
+            header: self.header.clone(),
+            body: self.body.to_compact(),
+        }
     }
 }
 
@@ -241,7 +249,7 @@ impl BlockBuilder {
             header: self.header,
             body: AggregateBody::new(self.inputs, self.outputs, self.kernels),
         };
-        block.body.sort(block.header.version);
+        block.body.sort();
         block
     }
 }

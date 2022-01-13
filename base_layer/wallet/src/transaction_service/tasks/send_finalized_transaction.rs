@@ -21,7 +21,7 @@
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
 
-use std::time::Duration;
+use std::{convert::TryInto, time::Duration};
 
 use log::*;
 use tari_common_types::transaction::TxId;
@@ -63,8 +63,13 @@ pub async fn send_finalized_transaction_message(
         },
         TransactionRoutingMechanism::StoreAndForwardOnly => {
             let finalized_transaction_message = proto::TransactionFinalizedMessage {
-                tx_id,
-                transaction: Some(transaction.clone().into()),
+                tx_id: tx_id.into(),
+                transaction: Some(
+                    transaction
+                        .clone()
+                        .try_into()
+                        .map_err(TransactionServiceError::InvalidMessageError)?,
+                ),
             };
             let store_and_forward_send_result = send_transaction_finalized_message_store_and_forward(
                 tx_id,
@@ -91,8 +96,13 @@ pub async fn send_finalized_transaction_message_direct(
     transaction_routing_mechanism: TransactionRoutingMechanism,
 ) -> Result<(), TransactionServiceError> {
     let finalized_transaction_message = proto::TransactionFinalizedMessage {
-        tx_id,
-        transaction: Some(transaction.clone().into()),
+        tx_id: tx_id.into(),
+        transaction: Some(
+            transaction
+                .clone()
+                .try_into()
+                .map_err(TransactionServiceError::InvalidMessageError)?,
+        ),
     };
     let mut store_and_forward_send_result = false;
     let mut direct_send_result = false;
@@ -178,16 +188,18 @@ pub async fn send_finalized_transaction_message_direct(
                         )
                         .await;
                     },
+
+                    Ok(SendMessageResponse::Failed(e)) => warn!(
+                        target: LOG_TARGET,
+                        "Failed to send message ({}) Discovery failed for TxId: {}", e, tx_id
+                    ),
+                    Ok(SendMessageResponse::PendingDiscovery(_)) => unreachable!(),
                     Err(e) => {
                         warn!(
                             target: LOG_TARGET,
                             "Error waiting for Discovery while sending message to TxId: {} {:?}", tx_id, e
                         );
                     },
-                    _ => warn!(
-                        target: LOG_TARGET,
-                        "Empty response received waiting for Discovery to complete TxId: {}", tx_id
-                    ),
                 }
             },
         },

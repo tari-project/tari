@@ -65,7 +65,7 @@ pub enum DhtConnectivityError {
 /// The DHT connectivity actor monitors the connectivity state (using `ConnectivityEvent`s) and attempts
 /// to maintain connectivity to the network as peers come and go.
 pub struct DhtConnectivity {
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
     connectivity: ConnectivityRequester,
@@ -89,7 +89,7 @@ pub struct DhtConnectivity {
 impl DhtConnectivity {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         peer_manager: Arc<PeerManager>,
         node_identity: Arc<NodeIdentity>,
         connectivity: ConnectivityRequester,
@@ -320,7 +320,7 @@ impl DhtConnectivity {
         new_neighbours.retain(|n| !intersection.contains(n));
         self.neighbours.retain(|n| intersection.contains(n));
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Adding {} neighbouring peer(s), removing {} peers",
             new_neighbours.len(),
@@ -328,7 +328,7 @@ impl DhtConnectivity {
         );
         debug!(
             target: LOG_TARGET,
-            "Adding {} peer(s) to connectivity manager: {}",
+            "Adding {} peer(s) to DHT connectivity manager: {}",
             new_neighbours.len(),
             new_neighbours
                 .iter()
@@ -348,6 +348,33 @@ impl DhtConnectivity {
 
         if !new_neighbours.is_empty() {
             self.connectivity.request_many_dials(new_neighbours).await?;
+        }
+
+        self.redial_neighbours_as_required().await?;
+
+        Ok(())
+    }
+
+    async fn redial_neighbours_as_required(&mut self) -> Result<(), DhtConnectivityError> {
+        let disconnected = self
+            .connection_handles
+            .iter()
+            .filter(|c| !c.is_connected())
+            .collect::<Vec<_>>();
+        let to_redial = self
+            .neighbours
+            .iter()
+            .filter(|n| disconnected.iter().any(|c| c.peer_node_id() == *n))
+            .cloned()
+            .collect::<Vec<_>>();
+
+        if !to_redial.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "Redialling {} disconnected peer(s)",
+                to_redial.len()
+            );
+            self.connectivity.request_many_dials(to_redial).await?;
         }
 
         Ok(())
@@ -478,6 +505,7 @@ impl DhtConnectivity {
                 self.handle_new_peer_connected(conn).await?;
             },
             PeerConnectFailed(node_id) => {
+                self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
                     debug!(
                         target: LOG_TARGET,
@@ -518,6 +546,7 @@ impl DhtConnectivity {
                 self.log_status();
             },
             PeerDisconnected(node_id) => {
+                self.connection_handles.retain(|c| *c.peer_node_id() != node_id);
                 if self.metrics_collector.clear_metrics(node_id.clone()).await.is_err() {
                     debug!(
                         target: LOG_TARGET,

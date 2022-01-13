@@ -47,10 +47,6 @@ pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolServ
 #[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 
-// public modules
-#[cfg(feature = "base_node")]
-pub mod async_mempool;
-
 // Public re-exports
 #[cfg(feature = "base_node")]
 pub use error::MempoolError;
@@ -136,6 +132,7 @@ pub enum TxStorageResponse {
     NotStoredOrphan,
     NotStoredTimeLocked,
     NotStoredAlreadySpent,
+    NotStoredConsensus,
     NotStored,
 }
 
@@ -153,14 +150,9 @@ impl Display for TxStorageResponse {
             TxStorageResponse::NotStoredOrphan => "Not stored orphan transaction",
             TxStorageResponse::NotStoredTimeLocked => "Not stored time locked transaction",
             TxStorageResponse::NotStoredAlreadySpent => "Not stored output already spent",
+            TxStorageResponse::NotStoredConsensus => "Not stored due to consensus rule",
             TxStorageResponse::NotStored => "Not stored",
         };
         fmt.write_str(storage)
     }
-}
-
-/// Events that can be published on state changes of the Mempool
-#[derive(Debug, Clone)]
-pub enum MempoolStateEvent {
-    Updated,
 }

@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Duration};
+use std::{fmt, fmt::Formatter, sync::Arc, time::Duration};
 
 use tari_common_types::chain_metadata::ChainMetadata;
 use tari_service_framework::reply_channel::SenderService;
@@ -47,6 +47,19 @@ pub enum BaseNodeServiceResponse {
 pub enum BaseNodeEvent {
     BaseNodeStateChanged(BaseNodeState),
     NewBlockDetected(u64),
+}
+
+impl fmt::Display for BaseNodeEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BaseNodeEvent::BaseNodeStateChanged(state) => {
+                write!(f, "BaseNodeStateChanged: Synced:{:?}", state.is_synced)
+            },
+            BaseNodeEvent::NewBlockDetected(s) => {
+                write!(f, "NewBlockDetected: {}", s)
+            },
+        }
+    }
 }
 
 /// The Base Node Service Handle is a struct that contains the interfaces used to communicate with a running

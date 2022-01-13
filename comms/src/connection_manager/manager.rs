@@ -43,10 +43,10 @@ use super::{
 };
 use crate::{
     backoff::Backoff,
-    connection_manager::{metrics, ConnectionDirection},
+    connection_manager::{metrics, ConnectionDirection, ConnectionId},
     multiplexing::Substream,
     noise::NoiseConfig,
-    peer_manager::{NodeId, NodeIdentity},
+    peer_manager::{NodeId, NodeIdentity, PeerManagerError},
     protocol::{NodeNetworkInfo, ProtocolEvent, ProtocolId, Protocols},
     transports::{TcpTransport, Transport},
     PeerManager,
@@ -61,7 +61,7 @@ const DIALER_REQUEST_CHANNEL_SIZE: usize = 32;
 pub enum ConnectionManagerEvent {
     // Peer connection
     PeerConnected(PeerConnection),
-    PeerDisconnected(NodeId),
+    PeerDisconnected(ConnectionId, NodeId),
     PeerConnectFailed(NodeId, ConnectionManagerError),
     PeerInboundConnectFailed(ConnectionManagerError),
 
@@ -74,7 +74,7 @@ impl fmt::Display for ConnectionManagerEvent {
         use ConnectionManagerEvent::*;
         match self {
             PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
-            PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id.short_str()),
+            PeerDisconnected(id, node_id) => write!(f, "PeerDisconnected({}, {})", id, node_id.short_str()),
             PeerConnectFailed(node_id, err) => write!(f, "PeerConnectFailed({}, {:?})", node_id.short_str(), err),
             PeerInboundConnectFailed(err) => write!(f, "PeerInboundConnectFailed({:?})", err),
             NewInboundSubstream(node_id, protocol, _) => write!(
@@ -453,16 +453,24 @@ where
         let _ = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
-    #[tracing::instrument(skip(self, reply))]
+    #[tracing::instrument(level = "trace", skip(self, reply))]
     async fn dial_peer(
         &mut self,
         node_id: NodeId,
         reply: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         match self.peer_manager.find_by_node_id(&node_id).await {
-            Ok(peer) => {
+            Ok(Some(peer)) => {
                 self.send_dialer_request(DialerRequest::Dial(Box::new(peer), reply))
                     .await;
+            },
+            Ok(None) => {
+                warn!(target: LOG_TARGET, "Peer not found for dial");
+                if let Some(reply) = reply {
+                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(
+                        PeerManagerError::PeerNotFoundError,
+                    )));
+                }
             },
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);

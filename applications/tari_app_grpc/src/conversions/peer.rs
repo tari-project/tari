@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_comms::{connectivity::ConnectivityStatus, net_address::MutliaddrWithStats, peer_manager::Peer};
-use tari_core::crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use crate::{conversions::datetime_to_timestamp, tari_rpc as grpc};
 

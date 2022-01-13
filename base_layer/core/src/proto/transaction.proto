@@ -42,6 +42,10 @@ message TransactionInput {
     ComSignature script_signature = 6;
     // The offset pubkey, K_O
     bytes sender_offset_public_key = 7;
+    // The hash of the output this input is spending
+    bytes output_hash = 8;
+    // The serialised covenant
+    bytes covenant = 9;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -60,6 +64,8 @@ message TransactionOutput {
     bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 6;
+    // The serialised covenant
+    bytes covenant = 7;
 }
 
 // Options for UTXO's
@@ -69,8 +75,41 @@ message OutputFeatures {
     // The maturity of the specific UTXO. This is the min lock height at which an UTXO can be spend. Coinbase UTXO
     // require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     uint64 maturity = 2;
+
+    bytes metadata = 3;
+
+    AssetOutputFeatures asset = 4;
+
+    bytes unique_id = 5;
+
+    bytes parent_public_key = 6;
+
+    MintNonFungibleFeatures mint_non_fungible = 7;
+
+    SideChainCheckpointFeatures sidechain_checkpoint = 8;
 }
 
+message AssetOutputFeatures {
+    bytes public_key = 1;
+    repeated uint32 template_ids_implemented = 2;
+    repeated TemplateParameter template_parameters = 3;
+}
+
+message TemplateParameter {
+    uint32 template_id = 1;
+    uint32 template_data_version = 2;
+    bytes template_data = 3;
+}
+
+message MintNonFungibleFeatures {
+    bytes asset_public_key = 1;
+    Commitment asset_owner_commitment  = 2;
+}
+
+message SideChainCheckpointFeatures {
+    bytes merkle_root = 1;
+    repeated bytes committee = 2;
+}
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
 // be sorted by their Blake2b-256bit digest hash

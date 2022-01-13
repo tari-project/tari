@@ -1,0 +1,45 @@
+syntax = "proto3";
+package tari.dan.tips.tip004;
+
+// Template for mintable NFTs (721) that are not created when the contract is created later
+service Tip003 {
+  rpc Init(InitRequest) returns (Empty);
+  rpc Mint(MintRequest) returns (MintResponse);
+  rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);
+  rpc TokenOfOwnerByIndex(TokenOfOwnerByIndexRequest) returns (TokenOfOwnerByIndexResponse);
+}
+
+message InitRequest {
+
+}
+
+message Empty {
+
+}
+
+message MintRequest {
+  string token =1;
+  bytes owner = 2;
+}
+
+message MintResponse {
+
+}
+
+message BalanceOfRequest {
+  bytes owner = 1;
+}
+
+message BalanceOfResponse {
+  uint64 num_tokens = 1;
+}
+
+message TokenOfOwnerByIndexRequest {
+  bytes owner = 1;
+  uint64 index = 2;
+}
+
+message TokenOfOwnerByIndexResponse {
+  bytes token_id = 1;
+  string token = 2;
+}

@@ -63,9 +63,9 @@ use tari_core::{
             TransactionOutput as TransactionOutputProto,
         },
     },
-    tari_utilities::Hashable,
     transactions::transaction::{Transaction, TransactionOutput},
 };
+use tari_utilities::Hashable;
 use tokio::{sync::mpsc, time::sleep};
 
 pub async fn connect_rpc_client<T>(connection: &mut PeerConnection) -> T
@@ -827,7 +827,7 @@ pub struct UtxosByBlock {
 
 #[cfg(test)]
 mod test {
-    use std::convert::TryFrom;
+    use std::convert::{TryFrom, TryInto};
 
     use tari_common_types::types::BlindingFactor;
     use tari_comms::{
@@ -890,7 +890,8 @@ mod test {
             BlindingFactor::default(),
         );
 
-        let resp = TxSubmissionResponse::try_from(client.submit_transaction(tx.into()).await.unwrap()).unwrap();
+        let resp =
+            TxSubmissionResponse::try_from(client.submit_transaction(tx.try_into().unwrap()).await.unwrap()).unwrap();
         assert_eq!(resp.rejection_reason, TxSubmissionRejectionReason::TimeLocked);
 
         let calls = service_state

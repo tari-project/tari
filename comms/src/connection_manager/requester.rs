@@ -75,7 +75,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Attempt to connect to a remote peer
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn dial_peer(&mut self, node_id: NodeId) -> Result<PeerConnection, ConnectionManagerError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.send_dial_peer(node_id, Some(reply_tx)).await?;
@@ -94,7 +94,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer and return the result on the given oneshot
-    #[tracing::instrument(skip(self, reply_tx))]
+    #[tracing::instrument(level = "trace", skip(self, reply_tx))]
     pub(crate) async fn send_dial_peer(
         &mut self,
         node_id: NodeId,
@@ -108,7 +108,7 @@ impl ConnectionManagerRequester {
     }
 
     /// Send instruction to ConnectionManager to dial a peer without waiting for a result.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub(crate) async fn send_dial_peer_no_reply(&mut self, node_id: NodeId) -> Result<(), ConnectionManagerError> {
         self.send_dial_peer(node_id, None).await?;
         Ok(())

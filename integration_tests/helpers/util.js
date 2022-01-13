@@ -207,8 +207,9 @@ const getTransactionOutputHash = function (output) {
   const flags = Buffer.alloc(1);
   flags[0] = output.features.flags;
   const buffer = Buffer.concat([
-    flags,
-    toLittleEndian(parseInt(output.features.maturity), 64),
+    Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+    Buffer.from([parseInt(output.features.maturity)]),
+    Buffer.from([output.features.flags]),
   ]);
   let nopScriptBytes = Buffer.from([0x73]);
 
@@ -281,6 +282,14 @@ function combineTwoTariKeys(key1, key2) {
 const byteArrayToHex = (bytes) =>
   bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
 
+const convertHexStringToVec = (string) =>
+  string.match(/.{2}/g).map((x) => parseInt(x, 16));
+
+const convertStringToVec = (string) =>
+  Array(string.length)
+    .fill()
+    .map((_, i) => string.charCodeAt(i));
+
 module.exports = {
   getRandomInt,
   sleep,
@@ -297,6 +306,8 @@ module.exports = {
   withTimeout,
   combineTwoTariKeys,
   byteArrayToHex,
+  convertHexStringToVec,
+  convertStringToVec,
   waitForPredicate,
   waitForIterate,
   NO_CONNECTION,

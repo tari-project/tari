@@ -269,6 +269,12 @@ impl ConfigBootstrap {
                         Some(&self.base_path),
                     ))
                 },
+                ApplicationType::ValidatorNode => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_BASE_NODE_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
             }
         }
 
@@ -349,6 +355,7 @@ pub enum ApplicationType {
     MergeMiningProxy,
     MiningNode,
     StratumTranscoder,
+    ValidatorNode,
 }
 
 impl ApplicationType {
@@ -359,6 +366,7 @@ impl ApplicationType {
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
             MiningNode => "Tari Mining Node",
+            ValidatorNode => "Digital Assets Network Validator Node",
             StratumTranscoder => "Tari Stratum Transcoder",
         }
     }
@@ -371,6 +379,7 @@ impl ApplicationType {
             MergeMiningProxy => "merge_mining_proxy",
             MiningNode => "miner",
             StratumTranscoder => "stratum-transcoder",
+            ValidatorNode => "validator-node",
         }
     }
 }
@@ -385,6 +394,7 @@ impl FromStr for ApplicationType {
             "console-wallet" | "console_wallet" => Ok(ConsoleWallet),
             "mm-proxy" | "mm_proxy" => Ok(MergeMiningProxy),
             "miner" => Ok(MiningNode),
+            "validator-node" => Ok(ValidatorNode),
             "stratum-proxy" => Ok(StratumTranscoder),
             _ => Err(ConfigError::new("Invalid ApplicationType", None)),
         }

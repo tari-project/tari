@@ -29,22 +29,21 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::{RangeProofError, RangeProofService},
+    script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
 
 use crate::{
-    consensus::{ConsensusEncodingSized, ConsensusEncodingWrapper},
-    crypto::{
-        commitment::HomomorphicCommitmentFactory,
-        range_proof::{RangeProofError, RangeProofService},
-        script::{ExecutionStack, TariScript},
-    },
+    consensus::ConsensusEncodingSized,
+    covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction,
         transaction::{
-            transaction_input::TransactionInput,
+            transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             OutputFeatures,
             TransactionError,
@@ -63,6 +62,7 @@ pub struct UnblindedOutput {
     pub spending_key: BlindingFactor,
     pub features: OutputFeatures,
     pub script: TariScript,
+    pub covenant: Covenant,
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: PublicKey,
@@ -83,8 +83,9 @@ impl UnblindedOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         script_lock_height: u64,
-    ) -> UnblindedOutput {
-        UnblindedOutput {
+        covenant: Covenant,
+    ) -> Self {
+        Self {
             value,
             spending_key,
             features,
@@ -94,6 +95,7 @@ impl UnblindedOutput {
             sender_offset_public_key,
             metadata_signature,
             script_lock_height,
+            covenant,
         }
     }
 
@@ -122,12 +124,29 @@ impl UnblindedOutput {
         .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
         Ok(TransactionInput {
-            features: self.features.clone(),
-            commitment,
-            script: self.script.clone(),
+            spent_output: SpentOutput::OutputData {
+                features: self.features.clone(),
+                commitment,
+                script: self.script.clone(),
+                sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
+            },
             input_data: self.input_data.clone(),
             script_signature,
-            sender_offset_public_key: self.sender_offset_public_key.clone(),
+        })
+    }
+
+    /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
+    pub fn as_compact_transaction_input(
+        &self,
+        factory: &CommitmentFactory,
+    ) -> Result<TransactionInput, TransactionError> {
+        let input = self.as_transaction_input(factory)?;
+
+        Ok(TransactionInput {
+            spent_output: SpentOutput::OutputHash(input.output_hash()),
+            input_data: input.input_data,
+            script_signature: input.script_signature,
         })
     }
 
@@ -151,6 +170,7 @@ impl UnblindedOutput {
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
+            covenant: self.covenant.clone(),
         };
 
         Ok(output)
@@ -187,6 +207,7 @@ impl UnblindedOutput {
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
+            covenant: self.covenant.clone(),
         };
 
         Ok(output)
@@ -194,14 +215,15 @@ impl UnblindedOutput {
 
     pub fn metadata_byte_size(&self) -> usize {
         self.features.consensus_encode_exact_size() +
-            ConsensusEncodingWrapper::wrap(&self.script).consensus_encode_exact_size()
+            self.script.consensus_encode_exact_size() +
+            self.covenant.consensus_encode_exact_size()
     }
 
     // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not
     // Note: added to the struct to ensure the atomic nature between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
-        transaction::hash_output(&self.features, &commitment, &self.script)
+        transaction::hash_output(&self.features, &commitment, &self.script, &self.covenant)
     }
 }
 

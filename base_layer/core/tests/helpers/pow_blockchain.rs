@@ -30,7 +30,6 @@ use tari_core::{
     blocks::Block,
     chain_storage::{BlockchainBackend, BlockchainDatabase},
     consensus::{ConsensusConstants, ConsensusManager},
-    crypto::tari_utilities::hex::Hex,
     proof_of_work::{
         lwma_diff::LinearWeightedMovingAverage,
         monero_rx,
@@ -41,6 +40,7 @@ use tari_core::{
     },
     test_helpers::blockchain::TempDatabase,
 };
+use tari_utilities::hex::Hex;
 
 use super::block_builders::chain_block;
 

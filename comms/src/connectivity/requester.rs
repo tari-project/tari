@@ -39,11 +39,7 @@ use super::{
     manager::ConnectivityStatus,
     ConnectivitySelection,
 };
-use crate::{
-    connection_manager::{ConnectionDirection, ConnectionManagerError},
-    peer_manager::NodeId,
-    PeerConnection,
-};
+use crate::{connection_manager::ConnectionManagerError, peer_manager::NodeId, PeerConnection};
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
@@ -57,7 +53,6 @@ pub enum ConnectivityEvent {
     PeerConnectFailed(NodeId),
     PeerBanned(NodeId),
     PeerOffline(NodeId),
-    PeerConnectionWillClose(NodeId, ConnectionDirection),
 
     ConnectivityStateInitialized,
     ConnectivityStateOnline(usize),
@@ -74,9 +69,6 @@ impl fmt::Display for ConnectivityEvent {
             PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
             PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
-            PeerConnectionWillClose(node_id, direction) => {
-                write!(f, "PeerConnectionWillClose({}, {})", node_id, direction)
-            },
             ConnectivityStateInitialized => write!(f, "ConnectivityStateInitialized"),
             ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({})", n),
             ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({})", n),
@@ -125,7 +117,7 @@ impl ConnectivityRequester {
     }
 
     /// Dial a single peer
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(level = "trace", skip(self))]
     pub async fn dial_peer(&self, peer: NodeId) -> Result<PeerConnection, ConnectivityError> {
         let mut num_cancels = 0;
         loop {
@@ -155,7 +147,7 @@ impl ConnectivityRequester {
     }
 
     /// Dial many peers, returning a Stream that emits the dial Result as each dial completes.
-    #[tracing::instrument(skip(self, peers))]
+    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub fn dial_many_peers<I: IntoIterator<Item = NodeId>>(
         &self,
         peers: I,
@@ -167,7 +159,7 @@ impl ConnectivityRequester {
     }
 
     /// Send a request to dial many peers without waiting for the response.
-    #[tracing::instrument(skip(self, peers))]
+    #[tracing::instrument(level = "trace", skip(self, peers))]
     pub async fn request_many_dials<I: IntoIterator<Item = NodeId>>(&self, peers: I) -> Result<(), ConnectivityError> {
         future::join_all(peers.into_iter().map(|peer| {
             self.sender.send(ConnectivityRequest::DialPeer {

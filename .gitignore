@@ -44,3 +44,4 @@ node_modules
 
 # ignore output files from windows ISS
 buildtools/Output/
+/applications/tari_collectibles/src-tauri/data

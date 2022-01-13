@@ -13,7 +13,7 @@ use tui::{
 };
 
 use crate::ui::{
-    components::{balance::Balance, Component},
+    components::{balance::Balance, styles, Component},
     state::{AppState, CompletedTransactionInfo},
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
@@ -57,22 +57,24 @@ impl TransactionsTab {
             .constraints([pending_constraint, completed_constraint].as_ref())
             .split(area);
 
-        let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
-            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
-        };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("(P)ending Transactions", style));
-        f.render_widget(block, list_areas[0]);
-
         self.draw_pending_transactions(f, list_areas[0], app_state);
         self.draw_completed_transactions(f, list_areas[1], app_state);
     }
 
     fn draw_pending_transactions<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
+        let style = if self.selected_tx_list == SelectedTransactionList::PendingTxs {
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
+        };
+
+        let title = Block::default().borders(Borders::ALL).title(Span::styled(
+            format!("(P)ending Transactions ({}) ", app_state.get_pending_txs().len()),
+            style,
+        ));
+        f.render_widget(title, area);
+
         // Pending Transactions
         self.pending_list_state.set_num_items(app_state.get_pending_txs().len());
         let mut pending_list_state = self
@@ -102,7 +104,12 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.source_public_key),
@@ -113,7 +120,12 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Green)
                 };
-                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
             let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
@@ -127,11 +139,11 @@ impl TransactionsTab {
         }
 
         let column_list = MultiColumnList::new()
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
-            .heading_style(Style::default().fg(Color::Magenta))
+            .highlight_style(styles::highlight())
+            .heading_style(styles::header_row())
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
-            .add_column(Some("Amount"), Some(18), column1_items)
+            .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Message"), None, column3_items);
         column_list.render(f, area, &mut pending_list_state);
@@ -145,9 +157,10 @@ impl TransactionsTab {
         } else {
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD)
         };
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Completed (T)ransactions", style));
+        let block = Block::default().borders(Borders::ALL).title(Span::styled(
+            format!("Completed (T)ransactions ({}) ", app_state.get_completed_txs().len()),
+            style,
+        ));
         f.render_widget(block, area);
 
         let completed_txs = app_state.get_completed_txs();
@@ -187,7 +200,12 @@ impl TransactionsTab {
                 } else {
                     Style::default().fg(Color::Red)
                 };
-                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             } else {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.source_public_key),
@@ -202,7 +220,12 @@ impl TransactionsTab {
                     _ => Color::Green,
                 };
                 let amount_style = Style::default().fg(color);
-                column1_items.push(ListItem::new(Span::styled(format!("{}", t.amount), amount_style)));
+                let amount = if t.unique_id.is_empty() {
+                    format!("{}", t.amount)
+                } else {
+                    format!("Token: {}", t.unique_id)
+                };
+                column1_items.push(ListItem::new(Span::styled(amount, amount_style)));
             }
             let local_time = DateTime::<Local>::from_utc(t.timestamp, Local::now().offset().to_owned());
             column2_items.push(ListItem::new(Span::styled(
@@ -228,7 +251,7 @@ impl TransactionsTab {
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
             .add_column(Some("Source/Destination Public Key"), Some(67), column0_items)
-            .add_column(Some("Amount"), Some(18), column1_items)
+            .add_column(Some("Amount/Token"), Some(18), column1_items)
             .add_column(Some("Local Date/Time"), Some(20), column2_items)
             .add_column(Some("Status"), None, column3_items);
 
@@ -257,7 +280,19 @@ impl TransactionsTab {
         let source_public_key = Span::styled("Source Public Key:", Style::default().fg(Color::Magenta));
         let destination_public_key = Span::styled("Destination Public Key:", Style::default().fg(Color::Magenta));
         let direction = Span::styled("Direction:", Style::default().fg(Color::Magenta));
-        let amount = Span::styled("Amount:", Style::default().fg(Color::Magenta));
+        let amount = Span::styled(
+            match self.detailed_transaction.as_ref() {
+                Some(tx) => {
+                    if tx.unique_id.is_empty() {
+                        "Amount:"
+                    } else {
+                        "Token:"
+                    }
+                },
+                None => "Amount/Token:",
+            },
+            Style::default().fg(Color::Magenta),
+        );
         let fee = Span::styled("Fee:", Style::default().fg(Color::Magenta));
         let status = Span::styled("Status:", Style::default().fg(Color::Magenta));
         let message = Span::styled("Message:", Style::default().fg(Color::Magenta));
@@ -318,7 +353,13 @@ impl TransactionsTab {
                     )
                 };
             let direction = Span::styled(format!("{}", tx.direction), Style::default().fg(Color::White));
-            let amount = Span::styled(format!("{}", tx.amount), Style::default().fg(Color::White));
+            let amount = tx.amount.to_string();
+            let content = if tx.unique_id.is_empty() {
+                &amount
+            } else {
+                &tx.unique_id
+            };
+            let amount = Span::styled(content, Style::default().fg(Color::White));
             let fee_details = if tx.is_coinbase {
                 Span::raw("")
             } else {
@@ -442,7 +483,7 @@ impl<B: Backend> Component<B> for TransactionsTab {
         span_vec.push(Span::styled("A", Style::default().add_modifier(Modifier::BOLD)));
         span_vec.push(Span::raw(" shows abandoned coinbase Txs, "));
         span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" exits the list."));
+        span_vec.push(Span::raw(" exits the list. R: Rebroadcast all in Broadcast"));
 
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: true });
         f.render_widget(instructions, areas[1]);
@@ -527,6 +568,11 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 if self.selected_tx_list == SelectedTransactionList::PendingTxs {
                     self.confirmation_dialog = true;
                 }
+            },
+            // Rebroadcast
+            'r' => {
+                // TODO: use this result
+                let _res = Handle::current().block_on(app_state.rebroadcast_all());
             },
             'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {

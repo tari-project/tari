@@ -9,7 +9,6 @@ use tari_common::{
     DatabaseType,
     GlobalConfig,
 };
-use tari_comms::multiaddr::Multiaddr;
 
 use crate::consts;
 
@@ -62,19 +61,6 @@ pub fn init_configuration(
         }
     }
 
-    if let Some(str) = bootstrap.wallet_grpc_address.clone() {
-        log::info!(
-            target: LOG_TARGET,
-            "{}",
-            format!("GRPC address specified in command parameters: {}", str)
-        );
-
-        let grpc_address = str
-            .parse::<Multiaddr>()
-            .map_err(|_| ExitCodes::InputError("GRPC address is not valid".to_string()))?;
-        global_config.grpc_console_wallet_address = grpc_address;
-    }
-
     if let Some(str) = bootstrap.custom_base_node.clone() {
         global_config.wallet_custom_base_node = Some(str);
     }
@@ -111,14 +97,7 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
         config.console_wallet_peer_db_path =
             concatenate_paths_normalized(prepend.clone(), config.console_wallet_peer_db_path.clone());
     }
-    if !config.console_wallet_identity_file.is_absolute() {
-        config.console_wallet_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_identity_file.clone());
-    }
-    if !config.console_wallet_tor_identity_file.is_absolute() {
-        config.console_wallet_tor_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_tor_identity_file.clone());
-    }
+
     if !config.wallet_db_file.is_absolute() {
         config.wallet_db_file = concatenate_paths_normalized(prepend.clone(), config.wallet_db_file.clone());
     }

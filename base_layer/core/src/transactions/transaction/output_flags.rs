@@ -34,6 +34,11 @@ bitflags! {
     pub struct OutputFlags: u8 {
         /// Output is a coinbase output, must not be spent until maturity
         const COINBASE_OUTPUT = 0b0000_0001;
+        const NON_FUNGIBLE = 0b0000_1000;
+        const ASSET_REGISTRATION = 0b0000_0010 | Self::NON_FUNGIBLE.bits;
+        const MINT_NON_FUNGIBLE = 0b0000_0100 | Self::NON_FUNGIBLE.bits;
+        const BURN_NON_FUNGIBLE = 0b1000_0000 | Self::NON_FUNGIBLE.bits;
+        const SIDECHAIN_CHECKPOINT = 0b0001_0000 | Self::NON_FUNGIBLE.bits;
     }
 }
 

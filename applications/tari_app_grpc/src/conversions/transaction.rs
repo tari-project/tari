@@ -20,22 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
-
-use tari_common_types::transaction::{self as tx, TxId};
-use tari_core::{
-    crypto::{ristretto::RistrettoSecretKey, tari_utilities::ByteArray},
-    transactions::transaction::Transaction,
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
 };
+
+use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
+use tari_core::transactions::transaction::Transaction;
+use tari_crypto::ristretto::RistrettoSecretKey;
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
-impl From<Transaction> for grpc::Transaction {
-    fn from(source: Transaction) -> Self {
-        Self {
+impl TryFrom<Transaction> for grpc::Transaction {
+    type Error = String;
+
+    fn try_from(source: Transaction) -> Result<Self, Self::Error> {
+        Ok(Self {
             offset: Vec::from(source.offset.as_bytes()),
-            body: Some(source.body.into()),
+            body: Some(source.body.try_into()?),
             script_offset: Vec::from(source.script_offset.as_bytes()),
+        })
+    }
+}
+
+impl TryFrom<Arc<Transaction>> for grpc::Transaction {
+    type Error = String;
+
+    fn try_from(source: Arc<Transaction>) -> Result<Self, Self::Error> {
+        match Arc::try_unwrap(source) {
+            Ok(tx) => tx.try_into(),
+            Err(tx) => Ok(Self {
+                offset: Vec::from(tx.offset.as_bytes()),
+                body: Some(tx.body.clone().try_into()?),
+                script_offset: Vec::from(tx.script_offset.as_bytes()),
+            }),
         }
     }
 }
@@ -56,9 +75,9 @@ impl TryFrom<grpc::Transaction> for Transaction {
     }
 }
 
-impl From<tx::TransactionDirection> for grpc::TransactionDirection {
-    fn from(status: tx::TransactionDirection) -> Self {
-        use tx::TransactionDirection::*;
+impl From<TransactionDirection> for grpc::TransactionDirection {
+    fn from(status: TransactionDirection) -> Self {
+        use TransactionDirection::*;
         match status {
             Unknown => grpc::TransactionDirection::Unknown,
             Inbound => grpc::TransactionDirection::Inbound,
@@ -67,9 +86,9 @@ impl From<tx::TransactionDirection> for grpc::TransactionDirection {
     }
 }
 
-impl From<tx::TransactionStatus> for grpc::TransactionStatus {
-    fn from(status: tx::TransactionStatus) -> Self {
-        use tx::TransactionStatus::*;
+impl From<TransactionStatus> for grpc::TransactionStatus {
+    fn from(status: TransactionStatus) -> Self {
+        use TransactionStatus::*;
         match status {
             Completed => grpc::TransactionStatus::Completed,
             Broadcast => grpc::TransactionStatus::Broadcast,
@@ -86,7 +105,7 @@ impl From<tx::TransactionStatus> for grpc::TransactionStatus {
 impl grpc::TransactionInfo {
     pub fn not_found(tx_id: TxId) -> Self {
         Self {
-            tx_id,
+            tx_id: tx_id.into(),
             status: grpc::TransactionStatus::NotFound as i32,
             ..Default::default()
         }

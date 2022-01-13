@@ -27,17 +27,20 @@ use aes_gcm::{
 use chrono::Utc;
 use rand::rngs::OsRng;
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{HashDigest, PrivateKey, PublicKey, Signature},
 };
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    test_helpers::{create_unblinded_output, TestParams},
-    transaction::{OutputFeatures, Transaction},
-    transaction_protocol::sender::TransactionSenderMessage,
-    CryptoFactories,
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        test_helpers::{create_unblinded_output, TestParams},
+        transaction::{OutputFeatures, Transaction},
+        transaction_protocol::sender::TransactionSenderMessage,
+        CryptoFactories,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -90,10 +93,11 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             PrivateKey::random(&mut OsRng),
             Default::default(),
             PrivateKey::random(&mut OsRng),
+            Covenant::default(),
         )
         .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-    let stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+    let stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
 
     let messages = vec!["Hey!".to_string(), "Yo!".to_string(), "Sup!".to_string()];
     let amounts = vec![MicroTari::from(10_000), MicroTari::from(23_000), MicroTari::from(5_000)];
@@ -101,8 +105,9 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut outbound_txs = Vec::new();
 
     for i in 0..messages.len() {
+        let tx_id = TxId::from(i + 10);
         outbound_txs.push(OutboundTransaction {
-            tx_id: (i + 10) as u64,
+            tx_id,
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: amounts[i],
             fee: stp.clone().get_fee_amount().unwrap(),
@@ -116,15 +121,16 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             last_send_timestamp: None,
         });
         assert!(
-            !runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
+            !runtime.block_on(db.transaction_exists(tx_id)).unwrap(),
             "TxId should not exist"
         );
 
         runtime
             .block_on(db.add_pending_outbound_transaction(outbound_txs[i].tx_id, outbound_txs[i].clone()))
             .unwrap();
+
         assert!(
-            runtime.block_on(db.transaction_exists((i + 10) as u64)).unwrap(),
+            runtime.block_on(db.transaction_exists(tx_id)).unwrap(),
             "TxId should exist"
         );
     }
@@ -170,8 +176,9 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let mut inbound_txs = Vec::new();
 
     for i in 0..messages.len() {
+        let tx_id = TxId::from(i);
         inbound_txs.push(InboundTransaction {
-            tx_id: i as u64,
+            tx_id,
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: amounts[i],
             receiver_protocol: rtp.clone(),
@@ -184,14 +191,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             last_send_timestamp: None,
         });
         assert!(
-            !runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
+            !runtime.block_on(db.transaction_exists(tx_id)).unwrap(),
             "TxId should not exist"
         );
         runtime
-            .block_on(db.add_pending_inbound_transaction(i as u64, inbound_txs[i].clone()))
+            .block_on(db.add_pending_inbound_transaction(tx_id, inbound_txs[i].clone()))
             .unwrap();
         assert!(
-            runtime.block_on(db.transaction_exists(i as u64)).unwrap(),
+            runtime.block_on(db.transaction_exists(tx_id)).unwrap(),
             "TxId should exist"
         );
     }
@@ -228,7 +235,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(inbound_pub_key, inbound_txs[0].source_public_key);
 
     assert!(runtime
-        .block_on(db.get_pending_transaction_counterparty_pub_key_by_tx_id(100))
+        .block_on(db.get_pending_transaction_counterparty_pub_key_by_tx_id(100u64.into()))
         .is_err());
 
     let outbound_pub_key = runtime
@@ -354,7 +361,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0
     );
 
-    let cancelled_tx_id = completed_txs_map[&1].tx_id;
+    let cancelled_tx_id = completed_txs_map[&1u64.into()].tx_id;
     assert!(runtime
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
@@ -384,9 +391,9 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     runtime
         .block_on(db.add_pending_inbound_transaction(
-            999,
+            999u64.into(),
             InboundTransaction::new(
-                999u64,
+                999u64.into(),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 22 * uT,
                 rtp,
@@ -411,23 +418,23 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
     assert!(
         !runtime
-            .block_on(db.get_pending_inbound_transaction(999))
+            .block_on(db.get_pending_inbound_transaction(999u64.into()))
             .unwrap()
             .direct_send_success
     );
-    runtime.block_on(db.mark_direct_send_success(999)).unwrap();
+    runtime.block_on(db.mark_direct_send_success(999u64.into())).unwrap();
     assert!(
         runtime
-            .block_on(db.get_pending_inbound_transaction(999))
+            .block_on(db.get_pending_inbound_transaction(999u64.into()))
             .unwrap()
             .direct_send_success
     );
     assert!(runtime
-        .block_on(db.get_cancelled_pending_inbound_transaction(999))
+        .block_on(db.get_cancelled_pending_inbound_transaction(999u64.into()))
         .is_err());
-    runtime.block_on(db.cancel_pending_transaction(999)).unwrap();
+    runtime.block_on(db.cancel_pending_transaction(999u64.into())).unwrap();
     runtime
-        .block_on(db.get_cancelled_pending_inbound_transaction(999))
+        .block_on(db.get_cancelled_pending_inbound_transaction(999u64.into()))
         .expect("Should find cancelled inbound tx");
 
     assert_eq!(
@@ -443,9 +450,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         0
     );
 
-    let any_cancelled_inbound_tx = runtime.block_on(db.get_any_transaction(999)).unwrap().unwrap();
+    let any_cancelled_inbound_tx = runtime
+        .block_on(db.get_any_transaction(999u64.into()))
+        .unwrap()
+        .unwrap();
     if let WalletTransaction::PendingInbound(tx) = any_cancelled_inbound_tx {
-        assert_eq!(tx.tx_id, 999);
+        assert_eq!(tx.tx_id, TxId::from(999u64));
     } else {
         panic!("Should have found cancelled inbound tx");
     }
@@ -454,13 +464,13 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.get_cancelled_pending_inbound_transactions())
         .unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&999).is_some());
+    assert!(cancelled_txs.remove(&999u64.into()).is_some());
 
     runtime
         .block_on(db.add_pending_outbound_transaction(
-            998,
+            998u64.into(),
             OutboundTransaction::new(
-                998u64,
+                998u64.into(),
                 PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 22 * uT,
                 stp.get_fee_amount().unwrap(),
@@ -475,14 +485,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
 
     assert!(
         !runtime
-            .block_on(db.get_pending_outbound_transaction(998))
+            .block_on(db.get_pending_outbound_transaction(998u64.into()))
             .unwrap()
             .direct_send_success
     );
-    runtime.block_on(db.mark_direct_send_success(998)).unwrap();
+    runtime.block_on(db.mark_direct_send_success(998u64.into())).unwrap();
     assert!(
         runtime
-            .block_on(db.get_pending_outbound_transaction(998))
+            .block_on(db.get_pending_outbound_transaction(998u64.into()))
             .unwrap()
             .direct_send_success
     );
@@ -501,12 +511,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     );
 
     assert!(runtime
-        .block_on(db.get_cancelled_pending_outbound_transaction(998))
+        .block_on(db.get_cancelled_pending_outbound_transaction(998u64.into()))
         .is_err());
 
-    runtime.block_on(db.cancel_pending_transaction(998)).unwrap();
+    runtime.block_on(db.cancel_pending_transaction(998u64.into())).unwrap();
     runtime
-        .block_on(db.get_cancelled_pending_outbound_transaction(998))
+        .block_on(db.get_cancelled_pending_outbound_transaction(998u64.into()))
         .expect("Should find cancelled outbound tx");
     assert_eq!(
         runtime
@@ -525,11 +535,14 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.get_cancelled_pending_outbound_transactions())
         .unwrap();
     assert_eq!(cancelled_txs.len(), 1);
-    assert!(cancelled_txs.remove(&998).is_some());
+    assert!(cancelled_txs.remove(&998u64.into()).is_some());
 
-    let any_cancelled_outbound_tx = runtime.block_on(db.get_any_transaction(998)).unwrap().unwrap();
+    let any_cancelled_outbound_tx = runtime
+        .block_on(db.get_any_transaction(998u64.into()))
+        .unwrap()
+        .unwrap();
     if let WalletTransaction::PendingOutbound(tx) = any_cancelled_outbound_tx {
-        assert_eq!(tx.tx_id, 998);
+        assert_eq!(tx.tx_id, TxId::from(998u64));
     } else {
         panic!("Should have found cancelled outbound tx");
     }

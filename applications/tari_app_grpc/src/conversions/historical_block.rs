@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use tari_core::{blocks::HistoricalBlock, chain_storage::ChainStorageError};
 
@@ -32,7 +32,11 @@ impl TryFrom<HistoricalBlock> for grpc::HistoricalBlock {
     fn try_from(hb: HistoricalBlock) -> Result<Self, Self::Error> {
         Ok(Self {
             confirmations: hb.confirmations,
-            block: Some(hb.try_into_block()?.into()),
+            block: Some(
+                hb.try_into_block()?
+                    .try_into()
+                    .map_err(ChainStorageError::ConversionError)?,
+            ),
         })
     }
 }

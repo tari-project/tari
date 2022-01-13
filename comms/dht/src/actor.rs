@@ -207,7 +207,7 @@ pub struct DhtActor {
     database: DhtDatabase,
     outbound_requester: OutboundMessageRequester,
     connectivity: ConnectivityRequester,
-    config: DhtConfig,
+    config: Arc<DhtConfig>,
     shutdown_signal: ShutdownSignal,
     request_rx: mpsc::Receiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
@@ -216,7 +216,7 @@ pub struct DhtActor {
 impl DhtActor {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        config: DhtConfig,
+        config: Arc<DhtConfig>,
         conn: DbConnection,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
@@ -258,7 +258,7 @@ impl DhtActor {
             .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
             .ok()
             .flatten();
-        info!(
+        debug!(
             target: LOG_TARGET,
             "DhtActor started. {}",
             offline_ts
@@ -352,7 +352,7 @@ impl DhtActor {
                 let connectivity = self.connectivity.clone();
                 let config = self.config.clone();
                 Box::pin(async move {
-                    match Self::select_peers(config, node_identity, peer_manager, connectivity, broadcast_strategy)
+                    match Self::select_peers(&config, node_identity, peer_manager, connectivity, broadcast_strategy)
                         .await
                     {
                         Ok(peers) => reply_tx.send(peers).map_err(|_| DhtActorError::ReplyCanceled),
@@ -414,7 +414,7 @@ impl DhtActor {
     }
 
     async fn select_peers(
-        config: DhtConfig,
+        config: &DhtConfig,
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,
         mut connectivity: ConnectivityRequester,
@@ -667,7 +667,7 @@ impl DhtActor {
 
     async fn select_closest_node_connected(
         closest_request: Box<BroadcastClosestRequest>,
-        config: DhtConfig,
+        config: &DhtConfig,
         mut connectivity: ConnectivityRequester,
         peer_manager: Arc<PeerManager>,
     ) -> Result<Vec<NodeId>, DhtActorError> {
@@ -818,10 +818,10 @@ mod test {
         // Note: This must be equal or larger than the minimum dedup cache capacity for DedupCacheDatabase
         let capacity = 10;
         let actor = DhtActor::new(
-            DhtConfig {
+            Arc::new(DhtConfig {
                 dedup_cache_capacity: capacity,
                 ..Default::default()
-            },
+            }),
             db_connection().await,
             node_identity,
             peer_manager,

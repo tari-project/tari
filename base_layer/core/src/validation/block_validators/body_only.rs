@@ -22,6 +22,7 @@
 
 use log::*;
 use tari_common_types::chain_metadata::ChainMetadata;
+use tari_utilities::hex::Hex;
 
 use super::LOG_TARGET;
 use crate::{
@@ -29,7 +30,6 @@ use crate::{
     chain_storage,
     chain_storage::BlockchainBackend,
     consensus::ConsensusManager,
-    crypto::tari_utilities::hex::Hex,
     validation::{helpers, PostOrphanBodyValidation, ValidationError},
 };
 
@@ -88,6 +88,7 @@ impl<B: BlockchainBackend> PostOrphanBodyValidation<B> for BodyOnlyValidator {
         let mmr_roots = chain_storage::calculate_mmr_roots(backend, block.block())?;
         helpers::check_mmr_roots(block.header(), &mmr_roots)?;
         helpers::check_not_bad_block(backend, block.hash())?;
+        helpers::validate_covenants(block.block())?;
         trace!(
             target: LOG_TARGET,
             "Block validation: MMR roots are valid for {}",

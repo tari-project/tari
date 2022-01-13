@@ -19,11 +19,11 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::cmp::Ordering;
 
 use log::*;
 use tari_common_types::types::HashOutput;
+use tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex};
 
 use crate::{
     base_node::sync::BlockHeaderSyncError,
@@ -32,7 +32,6 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
-    tari_utilities::{epoch_time::EpochTime, hash::Hashable, hex::Hex},
     validation::helpers::{
         check_header_timestamp_greater_than_median,
         check_not_bad_block,
@@ -237,7 +236,6 @@ mod test {
         blocks::{BlockHeader, BlockHeaderAccumulatedData},
         chain_storage::async_db::AsyncBlockchainDb,
         consensus::ConsensusManager,
-        crypto::tari_utilities::{hex::Hex, Hashable},
         proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
         test_helpers::blockchain::{create_new_blockchain, TempDatabase},
     };

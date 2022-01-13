@@ -24,6 +24,11 @@
 
 [base_node]
 # network = "weatherwax"
+# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
+grpc_enabled = true
+# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
+grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
 
 # Configuration options for testnet Weatherwax
 [base_node.weatherwax]
@@ -82,11 +87,6 @@ force_sync_peers = [
 # do we allow test addresses to be accpted like 127.0.0.1
 allow_test_addresses = false
 
-# Enable the gRPC server for the base node. Set this to true if you want to enable third-party wallet software
-grpc_enabled = true
-# The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
-# Valid values here are IPv4 and IPv6 TCP sockets, local unix sockets (e.g. "ipc://base-node-gprc.sock.100")
-grpc_base_node_address = "127.0.0.1:18142"
 
 # A path to the file that stores your node identity and secret key
 base_node_identity_file = "config/base_node_id.json"
@@ -146,7 +146,7 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false;
+# tor_proxy_bypass_for_outbound_tcp = false
 
 ########################################################################################################################
 #                                                                                                                      #
@@ -321,7 +321,7 @@ console_wallet_tor_identity_file = "config/console_wallet_tor.json"
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false;
+# tor_proxy_bypass_for_outbound_tcp = false
 
 ########################################################################################################################
 #                                                                                                                      #

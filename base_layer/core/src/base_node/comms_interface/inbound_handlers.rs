@@ -20,16 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fmt::{Display, Error, Formatter},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use log::*;
 use strum_macros::Display;
-use tari_common_types::types::{BlockHash, HashOutput};
+use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
 use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 use crate::{
@@ -43,7 +41,7 @@ use crate::{
     blocks::{Block, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
-    mempool::{async_mempool, Mempool},
+    mempool::Mempool,
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::transaction::TransactionKernel,
 };
@@ -55,40 +53,10 @@ const MAX_HEADERS_PER_RESPONSE: u32 = 100;
 /// Broadcast is to notify subscribers if this is a valid propagated block event
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
-    ValidBlockAdded(Arc<Block>, BlockAddResult, Broadcast),
-    AddBlockFailed(Arc<Block>, Broadcast),
+    ValidBlockAdded(Arc<Block>, BlockAddResult),
+    AddBlockFailed(Arc<Block>),
     BlockSyncComplete(Arc<ChainBlock>),
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
-}
-
-/// Used to notify if the block event is for a propagated block.
-#[derive(Debug, Clone, Copy)]
-pub struct Broadcast(bool);
-
-impl Broadcast {
-    #[inline]
-    pub fn is_true(&self) -> bool {
-        self.0
-    }
-}
-
-#[allow(clippy::identity_op)]
-impl Display for Broadcast {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "Broadcast[{}]", self.0)
-    }
-}
-
-impl From<Broadcast> for bool {
-    fn from(v: Broadcast) -> Self {
-        v.0
-    }
-}
-
-impl From<bool> for Broadcast {
-    fn from(v: bool) -> Self {
-        Broadcast(v)
-    }
 }
 
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
@@ -340,7 +308,13 @@ where T: BlockchainBackend + 'static
                     request.max_weight
                 };
 
-                let transactions = async_mempool::retrieve(self.mempool.clone(), asking_weight)
+                debug!(
+                    target: LOG_TARGET,
+                    "Fetching transactions with a maximum weight of {} for the template", asking_weight
+                );
+                let transactions = self
+                    .mempool
+                    .retrieve(asking_weight)
                     .await?
                     .into_iter()
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
@@ -349,7 +323,7 @@ where T: BlockchainBackend + 'static
                 debug!(
                     target: LOG_TARGET,
                     "Adding {} transaction(s) to new block template",
-                    transactions.len()
+                    transactions.len(),
                 );
 
                 let prev_hash = header.prev_hash.clone();
@@ -363,13 +337,23 @@ where T: BlockchainBackend + 'static
                 );
                 debug!(
                     target: LOG_TARGET,
-                    "New block template requested at height {}", block_template.header.height,
+                    "New block template requested at height {}, weight: {}",
+                    block_template.header.height,
+                    block_template.body.calculate_weight(constants.transaction_weight())
                 );
                 trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
                 let block = self.blockchain_db.prepare_new_block(block_template).await?;
+                let constants = self.consensus_manager.consensus_constants(block.header.height);
+                debug!(
+                    target: LOG_TARGET,
+                    "Prepared new block from template (hash: {}, weight: {}, {})",
+                    block.hash().to_hex(),
+                    block.body.calculate_weight(constants.transaction_weight()),
+                    block.body.to_counts_string()
+                );
                 Ok(NodeCommsResponse::NewBlock {
                     success: true,
                     error: None,
@@ -393,6 +377,66 @@ where T: BlockchainBackend + 'static
                 }
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
+            },
+            NodeCommsRequest::FetchTokens {
+                asset_public_key,
+                unique_ids,
+            } => {
+                debug!(target: LOG_TARGET, "Starting fetch tokens");
+                let mut outputs = vec![];
+                if unique_ids.is_empty() {
+                    // TODO: replace [0..1000] with parameters to allow paging
+                    for output in self
+                        .blockchain_db
+                        .fetch_all_unspent_by_parent_public_key(asset_public_key.clone(), 0..1000)
+                        .await?
+                    {
+                        match output.output {
+                            PrunedOutput::Pruned { .. } => {
+                                // TODO: should we return this?
+                            },
+                            PrunedOutput::NotPruned { output } => outputs.push(output),
+                        }
+                    }
+                } else {
+                    for id in unique_ids {
+                        let output = self
+                            .blockchain_db
+                            .fetch_utxo_by_unique_id(Some(asset_public_key.clone()), id, None)
+                            .await?;
+                        if let Some(out) = output {
+                            match out.output {
+                                PrunedOutput::Pruned { .. } => {
+                                    // TODO: should we return this?
+                                },
+                                PrunedOutput::NotPruned { output } => outputs.push(output),
+                            }
+                        }
+                    }
+                }
+                Ok(NodeCommsResponse::FetchTokensResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetRegistrations { range } => {
+                let top_level_pubkey = PublicKey::default();
+                let exclusive_range = (*range.start())..(*range.end() + 1);
+                let outputs = self
+                    .blockchain_db
+                    .fetch_all_unspent_by_parent_public_key(top_level_pubkey, exclusive_range)
+                    .await?
+                    .into_iter()
+                    // TODO: should we return this?
+                    .filter(|o|!o.output.is_pruned())
+                    .collect();
+                Ok(NodeCommsResponse::FetchAssetRegistrationsResponse { outputs })
+            },
+            NodeCommsRequest::FetchAssetMetadata { asset_public_key } => {
+                let output = self
+                    .blockchain_db
+                    .fetch_utxo_by_unique_id(None, Vec::from(asset_public_key.as_bytes()), None)
+                    .await?;
+                Ok(NodeCommsResponse::FetchAssetMetadataResponse {
+                    output: Box::new(output),
+                })
             },
         }
     }
@@ -445,7 +489,7 @@ where T: BlockchainBackend + 'static
 
         match block.pop() {
             Some(block) => {
-                self.handle_block(Arc::new(block.try_into_block()?), true.into(), Some(source_peer))
+                self.handle_block(Arc::new(block.try_into_block()?), Some(source_peer))
                     .await?;
                 Ok(())
             },
@@ -468,7 +512,6 @@ where T: BlockchainBackend + 'static
     pub async fn handle_block(
         &self,
         block: Arc<Block>,
-        broadcast: Broadcast,
         source_peer: Option<NodeId>,
     ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
@@ -499,10 +542,10 @@ where T: BlockchainBackend + 'static
 
                 self.blockchain_db.cleanup_orphans().await?;
 
-                self.publish_block_event(BlockEvent::ValidBlockAdded(block, block_add_result, broadcast));
+                self.publish_block_event(BlockEvent::ValidBlockAdded(block, block_add_result));
 
-                if should_propagate && broadcast.is_true() {
-                    info!(
+                if should_propagate {
+                    debug!(
                         target: LOG_TARGET,
                         "Propagate block ({}) to network.",
                         block_hash.to_hex()
@@ -521,7 +564,7 @@ where T: BlockchainBackend + 'static
                     block_hash.to_hex(),
                     e
                 );
-                self.publish_block_event(BlockEvent::AddBlockFailed(block, broadcast));
+                self.publish_block_event(BlockEvent::AddBlockFailed(block));
                 Err(CommsInterfaceError::ChainStorageError(e))
             },
         }

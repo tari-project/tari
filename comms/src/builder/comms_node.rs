@@ -195,7 +195,7 @@ impl UnspawnedCommsNode {
         connectivity_manager.spawn();
         connection_manager.spawn();
 
-        info!(target: LOG_TARGET, "Hello from comms!");
+        debug!(target: LOG_TARGET, "Hello from comms!");
         info!(
             target: LOG_TARGET,
             "Your node's public key is '{}'",
@@ -212,7 +212,10 @@ impl UnspawnedCommsNode {
         if let Some(mut ctl) = hidden_service_ctl {
             ctl.set_proxied_addr(listening_info.bind_address().clone());
             let hs = ctl.create_hidden_service().await?;
-            node_identity.set_public_address(hs.get_onion_address());
+            let onion_addr = hs.get_onion_address();
+            if node_identity.public_address() != onion_addr {
+                node_identity.set_public_address(onion_addr);
+            }
             hidden_service = Some(hs);
         }
         info!(

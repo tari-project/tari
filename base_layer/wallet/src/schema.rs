@@ -113,8 +113,13 @@ table! {
         received_in_tx_id -> Nullable<BigInt>,
         spent_in_tx_id -> Nullable<BigInt>,
         coinbase_block_height -> Nullable<BigInt>,
+        metadata -> Nullable<Binary>,
+        features_parent_public_key -> Nullable<Binary>,
+        features_unique_id -> Nullable<Binary>,
         script_lock_height -> BigInt,
         spending_priority -> Integer,
+        features_json -> Text,
+        covenant -> Binary,
     }
 }
 

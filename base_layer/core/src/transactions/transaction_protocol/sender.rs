@@ -22,16 +22,11 @@
 
 use std::fmt;
 
-use digest::Digest;
+use digest::{Digest, FixedOutput};
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    BlindingFactor,
-    ComSignature,
-    HashOutput,
-    PrivateKey,
-    PublicKey,
-    RangeProofService,
-    Signature,
+use tari_common_types::{
+    transaction::TxId,
+    types::{BlindingFactor, ComSignature, HashOutput, PrivateKey, PublicKey, RangeProofService, Signature},
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
@@ -42,6 +37,7 @@ use tari_crypto::{
 
 use crate::{
     consensus::ConsensusConstants,
+    covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
         fee::Fee,
@@ -79,11 +75,12 @@ pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
     pub amount_to_self: MicroTari,
-    pub tx_id: u64,
+    pub tx_id: TxId,
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_output_features: Vec<OutputFeatures>,
     pub recipient_sender_offset_private_keys: Vec<PrivateKey>,
+    pub recipient_covenants: Vec<Covenant>,
     // The sender's portion of the public commitment nonce
     pub private_commitment_nonces: Vec<PrivateKey>,
     pub change: MicroTari,
@@ -108,14 +105,14 @@ pub(super) struct RawTransactionInfo {
     pub recipient_info: RecipientInfo,
     pub signatures: Vec<Signature>,
     pub message: String,
-    pub height: Option<u64>,
+    pub height: u64,
     pub prev_header: Option<HashOutput>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct SingleRoundSenderData {
     /// The transaction id for the recipient
-    pub tx_id: u64,
+    pub tx_id: TxId,
     /// The amount, in µT, being sent to the recipient
     pub amount: MicroTari,
     /// The offset public excess for this transaction
@@ -128,12 +125,14 @@ pub struct SingleRoundSenderData {
     pub message: String,
     /// The output's features
     pub features: OutputFeatures,
-    /// Script Hash
+    /// Script
     pub script: TariScript,
     /// Script offset public key
     pub sender_offset_public_key: PublicKey,
     /// The sender's portion of the public commitment nonce
     pub public_commitment_nonce: PublicKey,
+    /// Covenant
+    pub covenant: Covenant,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -164,8 +163,8 @@ pub struct SenderTransactionProtocol {
 }
 
 impl SenderTransactionProtocol {
-    /// Begin constructing a new transaction. All the up-front data is collected via the `SenderTransactionInitializer`
-    /// builder function
+    /// Begin constructing a new transaction. All the up-front data is collected via the
+    /// `SenderTransactionInitializer` builder function
     pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionInitializer {
         SenderTransactionInitializer::new(num_recipients, consensus_constants)
     }
@@ -221,7 +220,7 @@ impl SenderTransactionProtocol {
     }
 
     /// Method to check if the provided tx_id matches this transaction
-    pub fn check_tx_id(&self, tx_id: u64) -> bool {
+    pub fn check_tx_id(&self, tx_id: TxId) -> bool {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
@@ -230,7 +229,7 @@ impl SenderTransactionProtocol {
         }
     }
 
-    pub fn get_tx_id(&self) -> Result<u64, TPE> {
+    pub fn get_tx_id(&self) -> Result<TxId, TPE> {
         match &self.state {
             SenderState::Finalizing(info) |
             SenderState::SingleRoundMessageReady(info) |
@@ -371,6 +370,9 @@ impl SenderTransactionProtocol {
                 let private_commitment_nonce = info.private_commitment_nonces.first().ok_or_else(|| {
                     TPE::IncompleteStateError("The sender's private commitment nonce should be available".to_string())
                 })?;
+                let recipient_covenant = info.recipient_covenants.first().cloned().ok_or_else(|| {
+                    TPE::IncompleteStateError("The recipient covenant should be available".to_string())
+                })?;
 
                 Ok(SingleRoundSenderData {
                     tx_id: info.tx_id,
@@ -383,6 +385,7 @@ impl SenderTransactionProtocol {
                     script: recipient_script,
                     sender_offset_public_key: PublicKey::from_secret_key(recipient_script_offset_secret_key),
                     public_commitment_nonce: PublicKey::from_secret_key(private_commitment_nonce),
+                    covenant: recipient_covenant,
                 })
             },
             _ => Err(TPE::InvalidStateError),
@@ -443,7 +446,9 @@ impl SenderTransactionProtocol {
     ) -> Result<ComSignature, TPE> {
         // Create sender signature
         let public_commitment_nonce = PublicKey::from_secret_key(private_commitment_nonce);
-        let e = output.get_metadata_signature_challenge(Some(&public_commitment_nonce));
+        let e = output
+            .get_metadata_signature_challenge(Some(&public_commitment_nonce))
+            .finalize_fixed();
         let sender_signature =
             Signature::sign(sender_offset_private_key.clone(), private_commitment_nonce.clone(), &e)?;
         let sender_signature = sender_signature.get_signature();
@@ -558,7 +563,7 @@ impl SenderTransactionProtocol {
         features: KernelFeatures,
         factories: &CryptoFactories,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TPE> {
         // Create the final aggregated signature, moving to the Failed state if anything goes wrong
         match &mut self.state {
@@ -576,20 +581,24 @@ impl SenderTransactionProtocol {
                 let result = self
                     .validate()
                     .and_then(|_| Self::build_transaction(info, features, factories));
-                if let Err(e) = result {
-                    self.state = SenderState::Failed(e.clone());
-                    return Err(e);
+                match result {
+                    Ok(mut transaction) => {
+                        transaction.body.sort();
+                        let result = transaction
+                            .validate_internal_consistency(true, factories, None, prev_header, height)
+                            .map_err(TPE::TransactionBuildError);
+                        if let Err(e) = result {
+                            self.state = SenderState::Failed(e.clone());
+                            return Err(e);
+                        }
+                        self.state = SenderState::FinalizedTransaction(transaction);
+                        Ok(())
+                    },
+                    Err(e) => {
+                        self.state = SenderState::Failed(e.clone());
+                        Err(e)
+                    },
                 }
-                let transaction = result.unwrap();
-                let result = transaction
-                    .validate_internal_consistency(true, factories, None, prev_header, height)
-                    .map_err(TPE::TransactionBuildError);
-                if let Err(e) = result {
-                    self.state = SenderState::Failed(e.clone());
-                    return Err(e);
-                }
-                self.state = SenderState::FinalizedTransaction(transaction);
-                Ok(())
             },
             _ => Err(TPE::InvalidStateError),
         }
@@ -646,14 +655,14 @@ impl fmt::Display for SenderTransactionProtocol {
     }
 }
 
-pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> u64 {
+pub fn calculate_tx_id<D: Digest>(pub_nonce: &PublicKey, index: usize) -> TxId {
     let hash = D::new()
         .chain(pub_nonce.as_bytes())
         .chain(index.to_le_bytes())
         .finalize();
     let mut bytes: [u8; 8] = [0u8; 8];
     bytes.copy_from_slice(&hash[..8]);
-    u64::from_le_bytes(bytes)
+    u64::from_le_bytes(bytes).into()
 }
 
 //----------------------------------------      Sender State      ----------------------------------------------------//
@@ -736,6 +745,7 @@ impl fmt::Display for SenderState {
 
 #[cfg(test)]
 mod test {
+    use digest::Digest;
     use rand::rngs::OsRng;
     use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
     use tari_crypto::{
@@ -750,6 +760,7 @@ mod test {
     };
 
     use crate::{
+        covenants::Covenant,
         test_helpers::create_consensus_constants,
         transactions::{
             crypto_factories::CryptoFactories,
@@ -792,6 +803,7 @@ mod test {
                 .unwrap(),
         )
         .unwrap();
+        let covenant = Covenant::default();
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             &value.into(),
@@ -800,6 +812,7 @@ mod test {
             &output_features,
             &sender_offset_public_key,
             &sender_public_commitment_nonce,
+            &covenant,
         )
         .unwrap();
 
@@ -810,11 +823,14 @@ mod test {
             script,
             sender_offset_public_key,
             partial_metadata_signature.clone(),
+            covenant,
         );
         assert!(!output.verify_metadata_signature().is_ok());
         assert!(partial_metadata_signature.verify_challenge(
             &commitment,
-            &output.get_metadata_signature_challenge(Some(&sender_public_commitment_nonce)),
+            &output
+                .get_metadata_signature_challenge(Some(&sender_public_commitment_nonce))
+                .finalize(),
             &commitment_factory
         ));
 
@@ -856,10 +872,10 @@ mod test {
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
-        let mut sender = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut sender = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         assert!(!sender.is_failed());
         assert!(sender.is_finalizing());
-        match sender.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
+        match sender.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         }
@@ -886,11 +902,11 @@ mod test {
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features.clone(), PrivateKey::random(&mut OsRng))
+            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features.clone(), PrivateKey::random(&mut OsRng), Covenant::default())
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
-        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
@@ -908,7 +924,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
+        match alice.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -937,7 +953,9 @@ mod test {
         let (utxo, input) = create_test_input(MicroTari(25000), 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let fee = builder.fee().calculate(MicroTari(20), 1, 1, 2, 0);
+        let expected_fee = builder
+            .fee()
+            .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_metadata(2));
         let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
@@ -952,10 +970,11 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 features.clone(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, MicroTari(5000));
-        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         println!(
@@ -989,7 +1008,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
+        match alice.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };
@@ -997,13 +1016,13 @@ mod test {
         assert!(alice.is_finalized());
         let tx = alice.get_transaction().unwrap();
         assert_eq!(tx.offset, a.offset);
-        assert_eq!(tx.body.kernels()[0].fee, fee);
+        assert_eq!(tx.body.kernels()[0].fee, expected_fee);
         assert_eq!(tx.body.inputs().len(), 1);
         assert_eq!(tx.body.inputs()[0], utxo);
         assert_eq!(tx.body.outputs().len(), 2);
         assert!(tx
             .clone()
-            .validate_internal_consistency(false, &factories, None, None, Some(u64::MAX))
+            .validate_internal_consistency(false, &factories, None, None, u64::MAX)
             .is_ok());
     }
 
@@ -1032,10 +1051,11 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 features.clone(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             .with_amount(0, (2u64.pow(32) + 1).into());
-        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
         // Send message down the wire....and wait for response
@@ -1077,10 +1097,11 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Verify that the initial 'fee greater than amount' check rejects the transaction when it is constructed
-        match builder.build::<Blake256>(&factories, None, Some(u64::MAX)) {
+        match builder.build::<Blake256>(&factories, None, u64::MAX) {
             Ok(_) => panic!("'BuildError(\"Fee is greater than amount\")' not caught"),
             Err(e) => assert_eq!(e.message, "Fee is greater than amount".to_string()),
         };
@@ -1110,10 +1131,11 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
         // Test if the transaction passes the initial 'fee greater than amount' check when it is constructed
-        match builder.build::<Blake256>(&factories, None, Some(u64::MAX)) {
+        match builder.build::<Blake256>(&factories, None, u64::MAX) {
             Ok(_) => {},
             Err(e) => panic!("Unexpected error: {:?}", e),
         };
@@ -1161,9 +1183,10 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 features.clone(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default());
-        let mut alice = builder.build::<Blake256>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut alice = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap();
         assert!(alice.is_single_round_message_ready());
         let msg = alice.build_single_round_message().unwrap();
 
@@ -1191,7 +1214,7 @@ mod test {
             .unwrap();
         // Transaction should be complete
         assert!(alice.is_finalizing());
-        match alice.finalize(KernelFeatures::empty(), &factories, None, Some(u64::MAX)) {
+        match alice.finalize(KernelFeatures::empty(), &factories, None, u64::MAX) {
             Ok(_) => (),
             Err(e) => panic!("{:?}", e),
         };

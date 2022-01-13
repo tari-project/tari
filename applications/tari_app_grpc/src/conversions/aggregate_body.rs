@@ -22,29 +22,24 @@
 
 use std::convert::TryFrom;
 
-use tari_core::{tari_utilities::convert::try_convert_all, transactions::aggregated_body::AggregateBody};
+use tari_core::transactions::aggregated_body::AggregateBody;
+use tari_utilities::convert::try_convert_all;
 
 use crate::tari_rpc as grpc;
 
-impl From<AggregateBody> for grpc::AggregateBody {
-    fn from(source: AggregateBody) -> Self {
-        Self {
-            inputs: source
-                .inputs()
-                .iter()
-                .map(|input| grpc::TransactionInput::from(input.clone()))
-                .collect(),
-            outputs: source
-                .outputs()
-                .iter()
-                .map(|output| grpc::TransactionOutput::from(output.clone()))
-                .collect(),
-            kernels: source
-                .kernels()
-                .iter()
-                .map(|kernel| grpc::TransactionKernel::from(kernel.clone()))
-                .collect(),
-        }
+impl TryFrom<AggregateBody> for grpc::AggregateBody {
+    type Error = String;
+
+    fn try_from(source: AggregateBody) -> Result<Self, Self::Error> {
+        let (inputs, outputs, kernels) = source.dissolve();
+        Ok(Self {
+            inputs: inputs
+                .into_iter()
+                .map(grpc::TransactionInput::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            outputs: outputs.into_iter().map(grpc::TransactionOutput::from).collect(),
+            kernels: kernels.into_iter().map(grpc::TransactionKernel::from).collect(),
+        })
     }
 }
 

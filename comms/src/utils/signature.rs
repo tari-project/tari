@@ -28,13 +28,13 @@ use tari_crypto::{
     tari_utilities::message_format::MessageFormat,
 };
 
-use crate::types::{Challenge, CommsPublicKey};
+use crate::types::{Challenge, CommsPublicKey, CommsSecretKey, Signature};
 
 pub fn sign_challenge<R>(
     rng: &mut R,
-    secret_key: <CommsPublicKey as PublicKey>::K,
+    secret_key: CommsSecretKey,
     challenge: Challenge,
-) -> Result<SchnorrSignature<CommsPublicKey, <CommsPublicKey as PublicKey>::K>, SchnorrSignatureError>
+) -> Result<Signature, SchnorrSignatureError>
 where
     R: CryptoRng + Rng,
 {
@@ -44,7 +44,7 @@ where
 
 /// Verify that the signature is valid for the challenge
 pub fn verify_challenge(public_key: &CommsPublicKey, signature: &[u8], challenge: Challenge) -> bool {
-    match SchnorrSignature::<CommsPublicKey, <CommsPublicKey as PublicKey>::K>::from_binary(signature) {
+    match Signature::from_binary(signature) {
         Ok(signature) => signature.verify_challenge(public_key, &challenge.finalize()),
         Err(_) => false,
     }

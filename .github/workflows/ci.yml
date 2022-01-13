@@ -5,7 +5,10 @@ on:
       - main
       - ci-*
   pull_request:
-    types: [opened, synchronize, reopened]
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 name: CI
 
@@ -57,7 +60,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+          key: clippy-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
@@ -86,7 +89,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+          key: release-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -113,14 +116,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-          components: clippy, rustfmt
-          override: true
-
-      - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          # args: --release
+      - run: cargo test --release
   build:
     name: build
     runs-on: ubuntu-18.04
@@ -134,7 +130,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+          key: release-${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \

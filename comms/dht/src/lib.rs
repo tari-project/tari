@@ -143,7 +143,7 @@ mod dht;
 pub use dht::{Dht, DhtInitializationError};
 
 mod discovery;
-pub use discovery::DhtDiscoveryRequester;
+pub use discovery::{DhtDiscoveryError, DhtDiscoveryRequester};
 
 mod network_discovery;
 pub use network_discovery::NetworkDiscoveryConfig;
@@ -156,6 +156,7 @@ pub use dedup::DedupLayer;
 
 mod filter;
 mod logging_middleware;
+mod peer_validator;
 mod proto;
 mod rpc;
 mod schema;

@@ -28,7 +28,7 @@ use std::{
 
 use log::*;
 use tari_common_types::transaction::TxId;
-use tari_core::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     transaction_service::storage::models::{
         CompletedTransaction,

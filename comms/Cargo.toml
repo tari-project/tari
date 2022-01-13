@@ -32,9 +32,10 @@ log-mdc = "0.1.0"
 multiaddr = { version = "0.13.0" }
 nom = { version = "5.1.0", features = ["std"], default-features = false }
 once_cell = "1.8.0"
-openssl-sys = { version = "0.9.66", features = ["vendored"], optional = true }
+openssl-sys = { version = "=0.9.66", features = ["vendored"], optional = true }
 pin-project = "1.0.8"
-prost = "=0.8.0"
+prost = "=0.9.0"
+prost-types = "0.9.0"
 rand = "0.8"
 serde = "1.0.119"
 serde_derive = "1.0.119"
@@ -45,7 +46,6 @@ tokio-stream = { version = "0.1.7", features = ["sync"] }
 tokio-util = { version = "0.6.7", features = ["codec", "compat"] }
 tower = {version = "0.4", features = ["util"]}
 tracing = "0.1.26"
-tracing-futures = "0.2.5"
 yamux = "=0.9.0"
 
 # Metrics

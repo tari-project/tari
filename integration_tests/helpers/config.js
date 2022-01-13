@@ -64,7 +64,7 @@ function mapEnvs(options) {
   return res;
 }
 
-function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
+function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
   const envs = {
     RUST_BACKTRACE: 1,
     TARI_BASE_NODE__NETWORK: "localnet",
@@ -85,7 +85,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_BASE_NODE__LOCALNET__WALLET_TOR_IDENTITY_FILE: "wallettorid.json",
     TARI_BASE_NODE__LOCALNET__CONSOLE_WALLET_TOR_IDENTITY_FILE: "none.json",
     TARI_BASE_NODE__LOCALNET__ALLOW_TEST_ADDRESSES: true,
-    TARI_BASE_NODE__LOCALNET__GRPC_ENABLED: true,
+    TARI_BASE_NODE__GRPC_ENABLED: true,
     TARI_BASE_NODE__LOCALNET__ENABLE_WALLET: false,
     TARI_COMMON__LOCALNET__DNS_SEEDS_USE_DNSSEC: "false",
     TARI_COMMON__LOCALNET__DNS_SEEDS: "",
@@ -94,7 +94,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_BASE_NODE__LOCALNET__MAX_RANDOMX_VMS: "1",
     TARI_BASE_NODE__LOCALNET__AUTO_PING_INTERVAL: "15",
     TARI_BASE_NODE__LOCALNET__FLOOD_BAN_MAX_MSG_COUNT: "100000",
-    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: [
+    TARI_MERGE_MINING_PROXY__MONEROD_URL: [
       "http://stagenet.xmr-tw.org:38081",
       "http://stagenet.community.xmr.to:38081",
       "http://monero-stagenet.exan.tech:38081",
@@ -111,12 +111,17 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = []) {
     TARI_MINING_NODE__NUM_MINING_THREADS: "1",
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 1,
+    TARI_WALLET__GRPC_ENABLED: true,
+    TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };
   if (forceSyncPeers.length > 0) {
     envs.TARI_BASE_NODE__LOCALNET__FORCE_SYNC_PEERS = forceSyncPeers.join(",");
   }
   if (peerSeeds.length > 0) {
     envs.TARI_COMMON__LOCALNET__PEER_SEEDS = peerSeeds.join(",");
+  }
+  if (committee.length != 0) {
+    envs.TARI_DAN_NODE__LOCALNET__COMMITTEE = committee;
   }
 
   return envs;
@@ -137,16 +142,19 @@ function createEnv(
   options,
   peerSeeds = [],
   _txnSendingMechanism = "DirectAndStoreAndForward",
-  forceSyncPeers = []
+  forceSyncPeers = [],
+  committee = []
 ) {
-  const envs = baseEnvs(peerSeeds, forceSyncPeers);
+  const envs = baseEnvs(peerSeeds, forceSyncPeers, committee);
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
-
   const configEnvs = {
-    [`TARI_BASE_NODE__${network}__GRPC_BASE_NODE_ADDRESS`]: `${baseNodeGrpcAddress}:${baseNodeGrpcPort}`,
-    [`TARI_WALLET__GRPC_ADDRESS`]: `${walletGrpcAddress}:${walletGrpcPort}`,
+    [`TARI_BASE_NODE__GRPC_ENABLED`]: `true`,
+    [`TARI_BASE_NODE__GRPC_ADDRESS`]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
+    [`TARI_WALLET__GRPC_ADDRESS`]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
 
+    ["TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_ADDRESS"]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
+    ["TARI_MERGE_MINING_PROXY__WALLET_GRPC_ADDRESS"]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
     [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,
 
     [`TARI_BASE_NODE__${network}__TRANSPORT`]: "tcp",
@@ -159,7 +167,7 @@ function createEnv(
     [`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
     [`TARI_WALLET__${network}__PUBLIC_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
 
-    [`TARI_MERGE_MINING_PROXY__${network}__PROXY_HOST_ADDRESS`]: `${proxyFullAddress}`,
+    [`TARI_MERGE_MINING_PROXY__PROXY_HOST_ADDRESS`]: `${proxyFullAddress}`,
     [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderFullAddress}`,
   };
 

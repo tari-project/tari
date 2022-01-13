@@ -22,13 +22,16 @@
 
 use std::convert::{TryFrom, TryInto};
 
-// The generated _oneof_ enum
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::types::PublicKey;
 use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
-use crate::transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage};
+use crate::{
+    consensus::{ConsensusDecoding, ToConsensusBytes},
+    covenants::Covenant,
+    transactions::transaction_protocol::sender::{SingleRoundSenderData, TransactionSenderMessage},
+};
 
 impl proto::TransactionSenderMessage {
     pub fn none() -> Self {
@@ -103,9 +106,10 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             .features
             .map(TryInto::try_into)
             .ok_or_else(|| "Transaction output features not provided".to_string())??;
+        let covenant = Covenant::consensus_decode(&mut data.covenant.as_slice()).map_err(|err| err.to_string())?;
 
         Ok(Self {
-            tx_id: data.tx_id,
+            tx_id: data.tx_id.into(),
             amount: data.amount.into(),
             public_excess,
             public_nonce,
@@ -115,6 +119,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
             script: TariScript::from_bytes(&data.script).map_err(|err| err.to_string())?,
             sender_offset_public_key,
             public_commitment_nonce,
+            covenant,
         })
     }
 }
@@ -122,7 +127,7 @@ impl TryFrom<proto::SingleRoundSenderData> for SingleRoundSenderData {
 impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
     fn from(sender_data: SingleRoundSenderData) -> Self {
         Self {
-            tx_id: sender_data.tx_id,
+            tx_id: sender_data.tx_id.into(),
             // The amount, in µT, being sent to the recipient
             amount: sender_data.amount.into(),
             // The offset public excess for this transaction
@@ -134,6 +139,7 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             script: sender_data.script.as_bytes(),
             sender_offset_public_key: sender_data.sender_offset_public_key.to_vec(),
             public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
+            covenant: sender_data.covenant.to_consensus_bytes(),
         }
     }
 }

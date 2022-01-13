@@ -23,6 +23,7 @@ use std::iter;
 
 use log::*;
 use monero::{blockdata::transaction::SubField, consensus, cryptonote::hash::Hashable, VarInt};
+use tari_utilities::hex::HexError;
 
 use super::{
     error::MergeMineError,
@@ -37,7 +38,6 @@ use crate::{
         randomx_factory::{RandomXFactory, RandomXVMInstance},
         Difficulty,
     },
-    tari_utilities::hex::HexError,
 };
 
 pub const LOG_TARGET: &str = "c::pow::monero_rx";
@@ -189,15 +189,13 @@ mod test {
         TxOut,
     };
     use tari_test_utils::unpack_enum;
+    use tari_utilities::{
+        hex::{from_hex, Hex},
+        ByteArray,
+    };
 
     use super::*;
-    use crate::{
-        proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork},
-        tari_utilities::{
-            hex::{from_hex, Hex},
-            ByteArray,
-        },
-    };
+    use crate::proof_of_work::{monero_rx::fixed_array::FixedByteArray, PowAlgorithm, ProofOfWork};
 
     // This tests checks the hash of monero-rs
     #[test]

@@ -200,7 +200,10 @@ async fn online_then_offline() {
     ));
 
     for conn in connections.iter().skip(1) {
-        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(conn.peer_node_id().clone()));
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+            conn.id(),
+            conn.peer_node_id().clone(),
+        ));
     }
 
     streams::assert_in_broadcast(
@@ -218,7 +221,10 @@ async fn online_then_offline() {
 
     // Disconnect client connections
     for conn in &client_connections {
-        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(conn.peer_node_id().clone()));
+        cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+            conn.id(),
+            conn.peer_node_id().clone(),
+        ));
     }
 
     streams::assert_in_broadcast(
@@ -271,7 +277,7 @@ async fn ban_peer() {
     unpack_enum!(ConnectivityEvent::PeerBanned(node_id) = event);
     assert_eq!(node_id, peer.node_id);
 
-    let peer = peer_manager.find_by_node_id(&peer.node_id).await.unwrap();
+    let peer = peer_manager.find_by_node_id(&peer.node_id).await.unwrap().unwrap();
     assert!(peer.is_banned());
 
     let conn = connectivity.get_connection(peer.node_id.clone()).await.unwrap();
@@ -389,7 +395,10 @@ async fn pool_management() {
             assert_eq!(conn.handle_count(), 2);
             // The peer connection mock does not "automatically" publish event to connectivity manager
             conn.disconnect().await.unwrap();
-            cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(conn.peer_node_id().clone()));
+            cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+                conn.id(),
+                conn.peer_node_id().clone(),
+            ));
         }
     }
 
@@ -407,6 +416,7 @@ async fn pool_management() {
     assert_eq!(conns.len(), 1);
     important_connection.disconnect().await.unwrap();
     cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
+        important_connection.id(),
         important_connection.peer_node_id().clone(),
     ));
     drop(important_connection);

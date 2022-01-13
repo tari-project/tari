@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 syntax = "proto3";
 
-
 import "types.proto";
 
 package tari.rpc;
@@ -84,6 +83,55 @@ service BaseNode {
     rpc ListConnectedPeers(Empty) returns (ListConnectedPeersResponse);
     // Get mempool stats
     rpc GetMempoolStats(Empty) returns (MempoolStatsResponse);
+
+    rpc GetTokens(GetTokensRequest) returns (stream GetTokensResponse);
+    rpc ListAssetRegistrations(ListAssetRegistrationsRequest) returns (stream ListAssetRegistrationsResponse);
+    rpc GetAssetMetadata(GetAssetMetadataRequest) returns (GetAssetMetadataResponse);
+}
+
+message GetAssetMetadataRequest {
+    bytes asset_public_key = 1;
+}
+
+message GetAssetMetadataResponse {
+    string name = 2;
+    string description =3;
+    string image = 4;
+    bytes owner_commitment = 5;
+    OutputFeatures features = 6;
+    uint64 mined_height = 7;
+    bytes mined_in_block = 8;
+}
+
+message ListAssetRegistrationsRequest {
+    uint64 offset = 2;
+    uint64 count = 3;
+}
+
+message ListAssetRegistrationsResponse {
+    bytes asset_public_key = 1;
+    bytes unique_id = 2;
+    bytes owner_commitment = 3;
+    uint64 mined_height = 4;
+    bytes mined_in_block = 5;
+    OutputFeatures features = 6;
+    bytes script = 7;
+}
+
+message GetTokensRequest {
+    bytes asset_public_key = 1;
+    // Optionally get a set of specific unique_ids
+    repeated bytes unique_ids = 2;
+}
+
+message GetTokensResponse {
+    bytes unique_id = 1;
+    bytes asset_public_key = 2;
+    bytes owner_commitment = 3;
+    bytes mined_in_block = 4;
+    uint64 mined_height = 5;
+    OutputFeatures features = 6;
+    bytes script = 7;
 }
 
 message SubmitBlockResponse {

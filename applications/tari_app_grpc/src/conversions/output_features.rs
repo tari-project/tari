@@ -20,9 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_core::transactions::transaction::{
+    AssetOutputFeatures,
+    MintNonFungibleFeatures,
+    OutputFeatures,
+    OutputFlags,
+    SideChainCheckpointFeatures,
+    TemplateParameter,
+};
+use tari_crypto::tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 
@@ -30,10 +39,142 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
     type Error = String;
 
     fn try_from(features: grpc::OutputFeatures) -> Result<Self, Self::Error> {
+        let unique_id = if features.unique_id.is_empty() {
+            None
+        } else {
+            Some(features.unique_id.clone())
+        };
+        let parent_public_key = if features.parent_public_key.is_empty() {
+            None
+        } else {
+            Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
+        };
+
         Ok(Self {
             flags: OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             maturity: features.maturity,
+            metadata: features.metadata,
+            unique_id,
+            parent_public_key,
+            asset: features.asset.map(|a| a.try_into()).transpose()?,
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
+        })
+    }
+}
+
+impl From<OutputFeatures> for grpc::OutputFeatures {
+    fn from(features: OutputFeatures) -> Self {
+        Self {
+            flags: features.flags.bits() as u32,
+            maturity: features.maturity,
+            metadata: features.metadata,
+            unique_id: features.unique_id.unwrap_or_default(),
+            parent_public_key: features
+                .parent_public_key
+                .map(|a| a.as_bytes().to_vec())
+                .unwrap_or_default(),
+            asset: features.asset.map(|a| a.into()),
+            mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+        }
+    }
+}
+
+impl TryFrom<grpc::AssetOutputFeatures> for AssetOutputFeatures {
+    type Error = String;
+
+    fn try_from(features: grpc::AssetOutputFeatures) -> Result<Self, Self::Error> {
+        let public_key = PublicKey::from_bytes(features.public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        Ok(Self {
+            public_key,
+            template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|tp| tp.into()).collect(),
+        })
+    }
+}
+
+impl From<AssetOutputFeatures> for grpc::AssetOutputFeatures {
+    fn from(features: AssetOutputFeatures) -> Self {
+        Self {
+            public_key: features.public_key.as_bytes().to_vec(),
+            template_ids_implemented: features.template_ids_implemented,
+            template_parameters: features.template_parameters.into_iter().map(|tp| tp.into()).collect(),
+        }
+    }
+}
+
+impl From<grpc::TemplateParameter> for TemplateParameter {
+    fn from(source: grpc::TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
+
+impl From<TemplateParameter> for grpc::TemplateParameter {
+    fn from(source: TemplateParameter) -> Self {
+        Self {
+            template_id: source.template_id,
+            template_data_version: source.template_data_version,
+            template_data: source.template_data,
+        }
+    }
+}
+impl TryFrom<grpc::MintNonFungibleFeatures> for MintNonFungibleFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::MintNonFungibleFeatures) -> Result<Self, Self::Error> {
+        let asset_public_key =
+            PublicKey::from_bytes(value.asset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
+
+        let asset_owner_commitment =
+            Commitment::from_bytes(&value.asset_owner_commitment).map_err(|err| err.to_string())?;
+
+        Ok(Self {
+            asset_public_key,
+            asset_owner_commitment,
+        })
+    }
+}
+
+impl From<MintNonFungibleFeatures> for grpc::MintNonFungibleFeatures {
+    fn from(value: MintNonFungibleFeatures) -> Self {
+        Self {
+            asset_public_key: value.asset_public_key.as_bytes().to_vec(),
+            asset_owner_commitment: value.asset_owner_commitment.to_vec(),
+        }
+    }
+}
+
+impl From<SideChainCheckpointFeatures> for grpc::SideChainCheckpointFeatures {
+    fn from(value: SideChainCheckpointFeatures) -> Self {
+        Self {
+            merkle_root: value.merkle_root.as_bytes().to_vec(),
+            committee: value.committee.iter().map(|c| c.as_bytes().to_vec()).collect(),
+        }
+    }
+}
+
+impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
+        let committee = value
+            .committee
+            .iter()
+            .map(|c| {
+                PublicKey::from_bytes(c).map_err(|err| format!("committee member was not a valid public key: {}", err))
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            merkle_root: value.merkle_root.as_bytes().to_vec(),
+            committee,
         })
     }
 }

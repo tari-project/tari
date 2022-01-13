@@ -108,7 +108,7 @@ use log4rs::{
 use rand::rngs::OsRng;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
-    transaction::{TransactionDirection, TransactionStatus},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{ComSignature, PublicKey},
 };
 use tari_comms::{
@@ -117,10 +117,13 @@ use tari_comms::{
     socks,
     tor,
     transports::MemoryTransport,
-    types::CommsSecretKey,
+    types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories};
+use tari_core::{
+    covenants::Covenant,
+    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories},
+};
 use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -152,6 +155,7 @@ use tari_wallet::{
         },
     },
     utxo_scanner_service::{service::UtxoScannerService, RECOVERY_KEY},
+    wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
     WalletSqlite,
@@ -206,6 +210,9 @@ pub struct EmojiSet(Vec<ByteVector>);
 
 #[derive(Debug, PartialEq)]
 pub struct TariSeedWords(Vec<String>);
+
+#[derive(Debug, PartialEq)]
+pub struct TariPublicKeys(Vec<TariPublicKey>);
 
 pub struct TariWallet {
     wallet: WalletSqlite,
@@ -527,6 +534,23 @@ pub unsafe extern "C" fn public_key_create(bytes: *mut ByteVector, error_out: *m
 pub unsafe extern "C" fn public_key_destroy(pk: *mut TariPublicKey) {
     if !pk.is_null() {
         Box::from_raw(pk);
+    }
+}
+
+/// Frees memory for TariPublicKeys
+///
+/// ## Arguments
+/// `pks` - The pointer to TariPublicKeys
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn public_keys_destroy(pks: *mut TariPublicKeys) {
+    if !pks.is_null() {
+        Box::from_raw(pks);
     }
 }
 
@@ -1667,7 +1691,7 @@ pub unsafe extern "C" fn completed_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariCompletedTransaction
@@ -2076,7 +2100,7 @@ pub unsafe extern "C" fn pending_outbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the destination TariPublicKey of a TariPendingOutboundTransaction
@@ -2310,7 +2334,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_get_transaction_id(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
-    (*transaction).tx_id as c_ulonglong
+    (*transaction).tx_id.as_u64() as c_ulonglong
 }
 
 /// Gets the source TariPublicKey of a TariPendingInboundTransaction
@@ -2867,7 +2891,7 @@ pub unsafe extern "C" fn comms_config_create(
         Ok(selected_network) => {
             match public_address {
                 Ok(public_address) => {
-                    let ni = NodeIdentity::new(
+                    let node_identity = NodeIdentity::new(
                         CommsSecretKey::default(),
                         public_address,
                         PeerFeatures::COMMUNICATION_CLIENT,
@@ -2875,7 +2899,7 @@ pub unsafe extern "C" fn comms_config_create(
 
                     let config = TariCommsConfig {
                         network: selected_network,
-                        node_identity: Arc::new(ni),
+                        node_identity: Arc::new(node_identity),
                         transport_type: (*transport_type).clone(),
                         auxilary_tcp_listener_address: None,
                         datastore_path,
@@ -2937,6 +2961,53 @@ pub unsafe extern "C" fn comms_config_create(
 pub unsafe extern "C" fn comms_config_destroy(wc: *mut TariCommsConfig) {
     if !wc.is_null() {
         Box::from_raw(wc);
+    }
+}
+
+/// This function lists the public keys of all connected peers
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariPublicKeys` -  Returns a list of connected public keys. Note the result will be null if there was an error
+///
+/// # Safety
+/// The caller is responsible for null checking and deallocating the returned object using public_keys_destroy.
+#[no_mangle]
+pub unsafe extern "C" fn comms_list_connected_public_keys(
+    wallet: *mut TariWallet,
+    error_out: *mut c_int,
+) -> *mut TariPublicKeys {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let mut connectivity = (*wallet).wallet.comms.connectivity();
+    let peer_manager = (*wallet).wallet.comms.peer_manager();
+
+    match (*wallet).runtime.block_on(async move {
+        let connections = connectivity.get_active_connections().await?;
+        let mut public_keys = Vec::with_capacity(connections.len());
+        for conn in connections {
+            if let Some(peer) = peer_manager.find_by_node_id(conn.peer_node_id()).await? {
+                public_keys.push(peer.public_key);
+            }
+        }
+        Result::<_, WalletError>::Ok(public_keys)
+    }) {
+        Ok(public_keys) => Box::into_raw(Box::new(TariPublicKeys(public_keys))),
+        Err(e) => {
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            ptr::null_mut()
+        },
     }
 }
 
@@ -3202,6 +3273,58 @@ pub unsafe extern "C" fn wallet_create(
         _ => comms_config.transport_type,
     };
 
+    let result = runtime.block_on(async {
+        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
+            .await
+            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
+        let comms_secret_key = derive_comms_secret_key(&master_seed)
+            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
+        let node_features = comms_config.node_identity.features();
+        let node_address = comms_config.node_identity.public_address();
+        let identity_sig = wallet_database.get_comms_identity_signature().await?;
+
+        // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
+        // to None
+        let identity_sig = identity_sig.filter(|sig| {
+            let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+            sig.is_valid(&comms_public_key, node_features, [&node_address])
+        });
+
+        // SAFETY: we are manually checking the validity of this signature before adding Some(..)
+        let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
+            comms_secret_key,
+            node_address,
+            node_features,
+            identity_sig,
+        ));
+        if !node_identity.is_signed() {
+            node_identity.sign();
+            // unreachable panic: signed above
+            wallet_database
+                .set_comms_identity_signature(
+                    node_identity
+                        .identity_signature_read()
+                        .as_ref()
+                        .expect("unreachable panic")
+                        .clone(),
+                )
+                .await?;
+        }
+        Ok((master_seed, node_identity))
+    });
+    let master_seed;
+    match result {
+        Ok((seed, node_identity)) => {
+            master_seed = seed;
+            comms_config.node_identity = node_identity;
+        },
+        Err(e) => {
+            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    }
+
     let shutdown = Shutdown::new();
     let wallet_config = WalletConfig::new(
         comms_config,
@@ -3233,7 +3356,7 @@ pub unsafe extern "C" fn wallet_create(
         output_manager_backend,
         contacts_backend,
         shutdown.to_signal(),
-        recovery_seed,
+        master_seed,
     ));
 
     match w {
@@ -3532,11 +3655,19 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    let address_string;
+    let parsed_addr;
     if !address.is_null() {
         match CStr::from_ptr(address).to_str() {
             Ok(v) => {
-                address_string = v.to_owned();
+                parsed_addr = match Multiaddr::from_str(v) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        error = LibWalletError::from(InterfaceError::InvalidArgument("address is invalid".to_string()))
+                            .code;
+                        ptr::swap(error_out, &mut error as *mut c_int);
+                        return false;
+                    },
+                }
             },
             _ => {
                 error = LibWalletError::from(InterfaceError::PointerError("address".to_string())).code;
@@ -3550,11 +3681,10 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
         return false;
     }
 
-    if let Err(e) = (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .set_base_node_peer((*public_key).clone(), address_string),
-    ) {
+    if let Err(e) = (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.set_base_node_peer((*public_key).clone(), parsed_addr))
+    {
         error = LibWalletError::from(e).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return false;
@@ -3853,7 +3983,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     MicroTari::from(fee_per_gram),
                     message_string,
                 )) {
-                Ok(tx_id) => tx_id,
+                Ok(tx_id) => tx_id.as_u64(),
                 Err(e) => {
                     error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -3870,7 +4000,7 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     MicroTari::from(fee_per_gram),
                     message_string,
                 )) {
-                Ok(tx_id) => tx_id,
+                Ok(tx_id) => tx_id.as_u64(),
                 Err(e) => {
                     error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
                     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4359,7 +4489,7 @@ pub unsafe extern "C" fn wallet_get_completed_transaction_by_id(
 
     match completed_transactions {
         Ok(completed_transactions) => {
-            if let Some(tx) = completed_transactions.get(&transaction_id) {
+            if let Some(tx) = completed_transactions.get(&TxId::from(transaction_id)) {
                 if tx.status != TransactionStatus::Completed && tx.status != TransactionStatus::Broadcast {
                     let completed = tx.clone();
                     return Box::into_raw(Box::new(completed));
@@ -4399,6 +4529,7 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariPendingInboundTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4472,6 +4603,7 @@ pub unsafe extern "C" fn wallet_get_pending_outbound_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariPendingOutboundTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4546,6 +4678,7 @@ pub unsafe extern "C" fn wallet_get_cancelled_transaction_by_id(
     error_out: *mut c_int,
 ) -> *mut TariCompletedTransaction {
     let mut error = 0;
+    let transaction_id = TxId::from(transaction_id);
     ptr::swap(error_out, &mut error as *mut c_int);
     if wallet.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
@@ -4743,6 +4876,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*spending_key).clone(),
         &Default::default(),
         0,
+        Covenant::default(),
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
@@ -4761,7 +4895,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
                 ptr::swap(error_out, &mut error as *mut c_int);
                 return 0;
             }
-            tx_id
+            tx_id.as_u64()
         },
         Err(e) => {
             error = LibWalletError::from(e).code;
@@ -4798,10 +4932,12 @@ pub unsafe extern "C" fn wallet_cancel_pending_transaction(
         return false;
     }
 
-    match (*wallet)
-        .runtime
-        .block_on((*wallet).wallet.transaction_service.cancel_transaction(transaction_id))
-    {
+    match (*wallet).runtime.block_on(
+        (*wallet)
+            .wallet
+            .transaction_service
+            .cancel_transaction(TxId::from(transaction_id)),
+    ) {
         Ok(_) => true,
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
@@ -4900,7 +5036,7 @@ pub unsafe extern "C" fn wallet_start_transaction_validation(
         .runtime
         .block_on((*wallet).wallet.transaction_service.validate_transactions())
     {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -5012,7 +5148,7 @@ pub unsafe extern "C" fn wallet_coin_split(
         message,
         Some(lock_height),
     )) {
-        Ok(request_key) => request_key,
+        Ok(request_key) => request_key.as_u64(),
         Err(e) => {
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);

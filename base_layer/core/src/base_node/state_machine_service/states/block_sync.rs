@@ -79,7 +79,6 @@ impl BlockSync {
             local_nci.publish_block_event(BlockEvent::ValidBlockAdded(
                 block.block().clone().into(),
                 BlockAddResult::Ok(block),
-                false.into(),
             ));
 
             let _ = status_event_sender.send(StatusInfo {

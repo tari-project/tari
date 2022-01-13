@@ -28,7 +28,7 @@ use tari_common::configuration::Network;
 use tari_comms::protocol::rpc::mock::RpcRequestMock;
 use tari_core::{
     base_node::{
-        comms_interface::{Broadcast, LocalNodeCommsInterface},
+        comms_interface::LocalNodeCommsInterface,
         proto::wallet_rpc::{
             TxLocation,
             TxQueryBatchResponse,
@@ -42,7 +42,6 @@ use tari_core::{
     },
     blocks::ChainBlock,
     consensus::{ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
-    crypto::tari_utilities::Hashable,
     proto::{
         base_node::{FetchMatchingUtxos, Signatures as SignaturesProto, SyncUtxosByBlockRequest},
         types::{Signature as SignatureProto, Transaction as TransactionProto},
@@ -59,6 +58,7 @@ use tari_core::{
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tari_service_framework::reply_channel;
 use tari_test_utils::streams::convert_mpsc_to_stream;
+use tari_utilities::Hashable;
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 
@@ -152,7 +152,7 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(resp.location, TxLocation::NotStored);
 
     // First lets try submit tx2 which will be an orphan tx
-    let msg = TransactionProto::from(tx2.clone());
+    let msg = TransactionProto::try_from(tx2.clone()).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
 
     let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
@@ -175,14 +175,10 @@ async fn test_base_node_wallet_rpc() {
         .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
-    base_node
-        .local_nci
-        .submit_block(block1.clone(), Broadcast::from(true))
-        .await
-        .unwrap();
+    base_node.local_nci.submit_block(block1.clone()).await.unwrap();
 
     // Check that submiting Tx2 will now be accepted
-    let msg = TransactionProto::from(tx2);
+    let msg = TransactionProto::try_from(tx2).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = service.submit_transaction(req).await.unwrap().into_message();
     assert!(resp.accepted);
@@ -197,7 +193,7 @@ async fn test_base_node_wallet_rpc() {
     assert_eq!(resp.location, TxLocation::InMempool);
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined as Tx1's kernel is present
-    let msg = TransactionProto::from(tx1);
+    let msg = TransactionProto::try_from(tx1).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 
@@ -209,7 +205,7 @@ async fn test_base_node_wallet_rpc() {
     let tx1b = (*txs1b[0]).clone();
 
     // Now if we submit Tx1 is should return as rejected as AlreadyMined
-    let msg = TransactionProto::from(tx1b);
+    let msg = TransactionProto::try_from(tx1b).unwrap();
     let req = request_mock.request_with_context(Default::default(), msg);
     let resp = TxSubmissionResponse::try_from(service.submit_transaction(req).await.unwrap().into_message()).unwrap();
 
@@ -225,11 +221,7 @@ async fn test_base_node_wallet_rpc() {
     block2.header.output_mmr_size += 1;
     block2.header.kernel_mmr_size += 1;
 
-    base_node
-        .local_nci
-        .submit_block(block2, Broadcast::from(true))
-        .await
-        .unwrap();
+    base_node.local_nci.submit_block(block2).await.unwrap();
 
     // Query Tx1 which should be in block 1 with 1 confirmation
     let msg = SignatureProto::from(tx1_sig.clone());
@@ -368,33 +360,21 @@ async fn test_sync_utxos_by_block() {
         .prepare_new_block(chain_block(block0.block(), vec![tx1.clone()], &consensus_manager))
         .unwrap();
 
-    base_node
-        .local_nci
-        .submit_block(block1.clone(), Broadcast::from(true))
-        .await
-        .unwrap();
+    base_node.local_nci.submit_block(block1.clone()).await.unwrap();
 
     let block2 = base_node
         .blockchain_db
         .prepare_new_block(chain_block(&block1, vec![tx2], &consensus_manager))
         .unwrap();
 
-    base_node
-        .local_nci
-        .submit_block(block2.clone(), Broadcast::from(true))
-        .await
-        .unwrap();
+    base_node.local_nci.submit_block(block2.clone()).await.unwrap();
 
     let block3 = base_node
         .blockchain_db
         .prepare_new_block(chain_block(&block2, vec![tx3], &consensus_manager))
         .unwrap();
 
-    base_node
-        .local_nci
-        .submit_block(block3.clone(), Broadcast::from(true))
-        .await
-        .unwrap();
+    base_node.local_nci.submit_block(block3.clone()).await.unwrap();
 
     // All blocks
     let msg = SyncUtxosByBlockRequest {

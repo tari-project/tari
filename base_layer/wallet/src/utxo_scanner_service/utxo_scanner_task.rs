@@ -33,15 +33,14 @@ use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
     blocks::BlockHeader,
-    crypto::tari_utilities::hex::Hex,
     proto::base_node::SyncUtxosByBlockRequest,
-    tari_utilities::Hashable,
     transactions::{
         tari_amount::MicroTari,
         transaction::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::sync::broadcast;
 
 use crate::{
@@ -590,7 +589,8 @@ where TBackend: WalletBackend + 'static
             "UTXO (Commitment: {}) imported into wallet",
             unblinded_output
                 .as_transaction_input(&self.resources.factories.commitment)?
-                .commitment
+                .commitment()
+                .map_err(WalletError::TransactionError)?
                 .to_hex()
         );
 

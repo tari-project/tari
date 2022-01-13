@@ -1,0 +1,22 @@
+[package]
+name = "tari_dan_storage_sqlite"
+version = "0.1.0"
+edition = "2018"
+
+
+[dependencies]
+tari_dan_core = {path="../core"}
+tari_common = { path = "../../common"}
+tari_common_types = {path = "../../base_layer/common_types"}
+tari_utilities = "0.3.0"
+
+
+diesel = { version = "1.4.8", features = ["sqlite"] }
+diesel_migrations = "1.4.0"
+thiserror = "1.0.30"
+async-trait = "0.1.50"
+tokio = { version="1.10", features = ["macros", "time"]}
+tokio-stream = { version = "0.1.7", features = ["sync"] }
+log = { version = "0.4.8", features = ["std"] }
+patricia_tree = { version = "0.3.0", features = ["binary-format"] }
+bytecodec = { version = "0.4.14", features = ["bincode_codec"] }

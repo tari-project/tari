@@ -23,7 +23,7 @@
 use log::*;
 
 use crate::{
-    output_manager_service::{handle::OutputManagerHandle, storage::models::OutputStatus},
+    output_manager_service::{handle::OutputManagerHandle, storage::OutputStatus},
     transaction_service::{
         config::TransactionServiceConfig,
         storage::database::{TransactionBackend, TransactionDatabase},

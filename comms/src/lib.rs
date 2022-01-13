@@ -28,7 +28,7 @@ pub use connection_manager::{validate_peer_addresses, PeerConnection, PeerConnec
 pub mod connectivity;
 
 pub mod peer_manager;
-pub use peer_manager::{NodeIdentity, PeerManager};
+pub use peer_manager::{NodeIdentity, OrNotFound, PeerManager};
 
 pub mod framing;
 
@@ -62,7 +62,7 @@ pub mod utils;
 pub mod test_utils;
 
 //---------------------------------- Re-exports --------------------------------------------//
-// Rather than requiring dependant crates to import dependencies for use with `tari_comms` we re-export them here.
+// Rather than requiring dependent crates to import dependencies for use with `tari_comms` we re-export them here.
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency

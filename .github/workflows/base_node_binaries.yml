@@ -94,7 +94,6 @@ jobs:
             libappindicator3-dev \
             patchelf \
             librsvg2-dev
-      #        sudo apt-get -y upgrade
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
         run: brew install cmake zip coreutils
@@ -111,13 +110,14 @@ jobs:
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
           echo "TBN_EXT=" >> $GITHUB_ENV
-          echo "S3DESTDIR=linux" >> $GITHUB_ENV
+          echo "SHELL_EXT=.sh" >> $GITHUB_ENV
+          echo "PLATFORM_SPECIFIC_DIR=linux" >> $GITHUB_ENV
           echo "TBN_DIST=/dist" >> $GITHUB_ENV
 
       - name: Set environment variables - macOS
         if: startsWith(runner.os,'macOS')
         run: |
-          echo "S3DESTDIR=osx" >> $GITHUB_ENV
+          echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
 
       - name: Set environment variables - Windows
         if: startsWith(runner.os,'Windows')
@@ -125,14 +125,15 @@ jobs:
         run: |
           echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
           echo "TBN_EXT=.exe" >> $GITHUB_ENV
+          echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TBN_DIST=\dist" >> $GITHUB_ENV
-          echo "S3DESTDIR=windows" >> $GITHUB_ENV
+          echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
           echo "SQLITE3_LIB_DIR=C:\vcpkg\installed\x64-windows\lib" >> $GITHUB_ENV
           echo "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" >> $GITHUB_ENV
           echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $GITHUB_ENV
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
-      - name: Caching
+      - name: Cache cargo files and outputs
         uses: actions/cache@v2
         with:
           path: |
@@ -141,31 +142,27 @@ jobs:
             target
           key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Compile NPM
+      - name: Compile launchpad GUI
         run: |
             cd applications/launchpad/gui-vue
             npm install
             npm run build
 
-      - name: Build binaries
+      - name: Compile collectibles GUI
+        run: |
+          cd applications/tari_collectibles/web-app
+          npm install
+          npm run build
+
+      - name: Build rust binaries
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
           ROARING_ARCH: "${{ matrix.target_cpu }}"
         run: |
           echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
-          #cd applications/tari_base_node
-          #cargo build --release --bin tari_base_node --features ${{ matrix.features}}
           cargo build --release
 
-        #  - name: Prepare Archives
-        #    shell: bash
-        #    run: |
-        #      ls -la "$GITHUB_WORKSPACE"
-        #      mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}/archives"
-        #      export distDir="$GITHUB_WORKSPACE${TBN_DIST}/archives"
-        #      "$GITHUB_WORKSPACE/scripts/build_dists_tarball.sh" noBuild
-
-      - name: Prepare binaries
+      - name: Copy binaries to folder for zipping
         shell: bash
         run: |
           mkdir -p "$GITHUB_WORKSPACE${TBN_DIST}"
@@ -175,16 +172,18 @@ jobs:
           echo "Sha: ${VSHA_SHORT}"
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
           echo "VSHA_SHORT=${VSHA_SHORT}" >> $GITHUB_ENV
-          #BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}${TBN_EXT}"
           BINFILE="${TBN_FILENAME}-${VERSION}-${VSHA_SHORT}-${{ matrix.os }}-${{ matrix.target_cpu }}${TBN_EXT}"
           echo "BINFILE=${BINFILE}" >> $GITHUB_ENV
           echo "Copying files for ${BINFILE} to $(pwd)"
-          #cp -v "$GITHUB_WORKSPACE/target/release/${TBN_FILENAME}${TBN_EXT}" "./${BINFILE}"
           ls -la "$GITHUB_WORKSPACE/target/release/"
           cp -v "$GITHUB_WORKSPACE/target/release/tari_base_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_console_wallet${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_validator_node${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_collectibles${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_launchpad${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
 
       - name: Build the macos pkg
         if: startsWith(runner.os,'macOS')
@@ -288,7 +287,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.S3DESTDIR }}/"
+          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/"
           S3CMD: "cp"
           S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
           # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
@@ -324,7 +323,7 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
-          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.S3DESTDIR }}/"
+          DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/"
           S3CMD: "cp"
           S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
           # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'

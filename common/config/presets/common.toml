@@ -8,7 +8,7 @@
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
 #   weatherwax - the Tari testnet
-network = "weatherwax"
+network = "dibbler"
 
 # Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
 # Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the
@@ -115,3 +115,22 @@ dns_seeds_use_dnssec = false
 # "auto_update.dns_hosts" = ["updates.igor.taripulse.com"]
 # "auto_update.hashes_url" = "https://<address>/hashes.txt"
 # "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
+
+[common.dibbler]
+dns_seeds =["seeds.dibbler.tari.com"]
+peer_seeds = [
+    "d426f9d8af3257753ab6bfd5e6dd6a22003f5dd29283a13028dcdee4f2b0c00d::/onion3/sn2wi53oxgls7nwji5tfdn5px2raiz3h6qvfoa4zyaqtyag4smc5p6id:18141",
+    "721e9da488302e69523bca1a9cdcbd2419dddda11698a1e8c6c7bd619659ff21::/onion3/qw4ymrzbanbcr3wwlesxbot72iayd7xdjcrtnacbwgk637vfon47hqad:18141",
+    # 333388d1cbe3e2bd17453d052f
+    "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
+    # 555575715a49fc242d756e52ca
+    "42fcde82b44af1de95a505d858cb31a422c56c4ac4747fbf3da47d648d4fc346::/onion3/2l3e7ysmihc23zybapdrsbcfg6omtjtfkvwj65dstnfxkwtai2fawtyd:18141",
+    # 77771f53be07fab4be5f1e1ff7
+    "50e6aa8f6c50f1b9d9b3d438dfd2a29cfe1f3e3a650bd9e6b1e10f96b6c38f4d::/onion3/7s6y3cz5bnewlj5ypm7sekhgvqjyrq4bpaj5dyvvo7vxydj7hsmyf5ad:18141",
+    # 9999016f1f3a6162dddf5a45aa
+    "36a9df45e1423b5315ffa7a91521924210c8e1d1537ad0968450f20f21e5200d::/onion3/v24qfheti2rztlwzgk6v4kdbes3ra7mo3i2fobacqkbfrk656e3uvnid:18141",
+    # bbbb8358387d81c388fadb4649
+    "be128d570e8ec7b15c101ee1a56d6c56dd7d109199f0bd02f182b71142b8675f::/onion3/ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
+    # eeeeb0a943ed143e613a135392
+    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
+]

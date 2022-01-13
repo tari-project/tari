@@ -28,12 +28,19 @@ use std::{
     io::{Read, Write},
 };
 
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
 use serde::{Deserialize, Serialize};
+use tari_common_types::types::{Commitment, PublicKey};
+use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
-    transactions::transaction::OutputFlags,
+    transactions::transaction::{
+        AssetOutputFeatures,
+        MintNonFungibleFeatures,
+        OutputFlags,
+        SideChainCheckpointFeatures,
+        TemplateParameter,
+    },
 };
 
 /// Options for UTXO's
@@ -44,21 +51,17 @@ pub struct OutputFeatures {
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
     /// require a min maturity of the Coinbase_lock_height, this should be checked on receiving new blocks.
     pub maturity: u64,
+    pub metadata: Vec<u8>,
+    pub unique_id: Option<Vec<u8>>,
+    pub parent_public_key: Option<PublicKey>,
+    pub asset: Option<AssetOutputFeatures>,
+    pub mint_non_fungible: Option<MintNonFungibleFeatures>,
+    pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
 }
 
 impl OutputFeatures {
     /// The version number to use in consensus encoding. In future, this value could be dynamic.
     const CONSENSUS_ENCODING_VERSION: u8 = 0;
-
-    /// Encodes output features using deprecated bincode encoding
-    pub fn to_v1_bytes(&self) -> Vec<u8> {
-        // unreachable panic: serialized_size is infallible because it uses DefaultOptions
-        let encode_size = bincode::serialized_size(self).expect("unreachable");
-        let mut buf = Vec::with_capacity(encode_size as usize);
-        // unreachable panic: Vec's Write impl is infallible
-        bincode::serialize_into(&mut buf, self).expect("unreachable");
-        buf
-    }
 
     /// Encodes output features using consensus encoding
     pub fn to_consensus_bytes(&self) -> Vec<u8> {
@@ -72,6 +75,7 @@ impl OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::COINBASE_OUTPUT,
             maturity: maturity_height,
+            ..Default::default()
         }
     }
 
@@ -79,15 +83,98 @@ impl OutputFeatures {
     pub fn with_maturity(maturity: u64) -> OutputFeatures {
         OutputFeatures {
             maturity,
-            ..OutputFeatures::default()
+            ..Default::default()
         }
+    }
+
+    pub fn custom(flags: OutputFlags, metadata: Vec<u8>) -> OutputFeatures {
+        Self {
+            flags,
+            metadata,
+            ..Default::default()
+        }
+    }
+
+    pub fn for_asset_registration(
+        metadata: Vec<u8>,
+        public_key: PublicKey,
+        template_ids_implemented: Vec<u32>,
+        template_parameters: Vec<TemplateParameter>,
+    ) -> OutputFeatures {
+        let unique_id = Some(public_key.as_bytes().to_vec());
+        Self {
+            flags: OutputFlags::ASSET_REGISTRATION,
+            maturity: 0,
+            metadata,
+            asset: Some(AssetOutputFeatures {
+                public_key,
+                template_ids_implemented,
+                template_parameters,
+            }),
+            unique_id,
+            ..Default::default()
+        }
+    }
+
+    pub fn for_minting(
+        asset_public_key: PublicKey,
+        asset_owner_commitment: Commitment,
+        unique_id: Vec<u8>,
+        other_features: Option<OutputFeatures>,
+    ) -> OutputFeatures {
+        Self {
+            flags: OutputFlags::MINT_NON_FUNGIBLE |
+                other_features
+                    .as_ref()
+                    .map(|of| of.flags)
+                    .unwrap_or_else(OutputFlags::empty),
+            mint_non_fungible: Some(MintNonFungibleFeatures {
+                asset_public_key: asset_public_key.clone(),
+                asset_owner_commitment,
+            }),
+            parent_public_key: Some(asset_public_key),
+            unique_id: Some(unique_id),
+            ..other_features.unwrap_or_default()
+        }
+    }
+
+    pub fn for_checkpoint(
+        parent_public_key: PublicKey,
+        unique_id: Vec<u8>,
+        merkle_root: Vec<u8>,
+        committee: Vec<PublicKey>,
+        is_initial: bool,
+    ) -> OutputFeatures {
+        Self {
+            flags: if is_initial {
+                OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::MINT_NON_FUNGIBLE
+            } else {
+                OutputFlags::SIDECHAIN_CHECKPOINT
+            },
+            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
+            parent_public_key: Some(parent_public_key),
+            unique_id: Some(unique_id),
+            ..Default::default()
+        }
+    }
+
+    pub fn unique_asset_id(&self) -> Option<&[u8]> {
+        self.unique_id.as_deref()
+    }
+
+    pub fn is_non_fungible_mint(&self) -> bool {
+        self.flags.contains(OutputFlags::MINT_NON_FUNGIBLE)
+    }
+
+    pub fn is_non_fungible_burn(&self) -> bool {
+        self.flags.contains(OutputFlags::BURN_NON_FUNGIBLE)
     }
 }
 
 impl ConsensusEncoding for OutputFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = writer.write_varint(Self::CONSENSUS_ENCODING_VERSION)?;
-        written += writer.write_varint(self.maturity)?;
+        let mut written = Self::CONSENSUS_ENCODING_VERSION.consensus_encode(writer)?;
+        written += self.maturity.consensus_encode(writer)?;
         written += self.flags.consensus_encode(writer)?;
         Ok(written)
     }
@@ -95,16 +182,16 @@ impl ConsensusEncoding for OutputFeatures {
 
 impl ConsensusEncodingSized for OutputFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
-        Self::CONSENSUS_ENCODING_VERSION.required_space() +
+        Self::CONSENSUS_ENCODING_VERSION.consensus_encode_exact_size() +
             self.flags.consensus_encode_exact_size() +
-            self.maturity.required_space()
+            self.maturity.consensus_encode_exact_size()
     }
 }
 
 impl ConsensusDecoding for OutputFeatures {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         // Changing the order of these operations is consensus breaking
-        let version = reader.read_varint::<u8>()?;
+        let version = u8::consensus_decode(reader)?;
         if version != Self::CONSENSUS_ENCODING_VERSION {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -115,10 +202,14 @@ impl ConsensusDecoding for OutputFeatures {
                 ),
             ));
         }
-        // Decode safety: read_varint will stop reading the varint after 10 bytes
-        let maturity = reader.read_varint()?;
+        // Decode safety: consensus_decode will stop reading the varint after 10 bytes
+        let maturity = u64::consensus_decode(reader)?;
         let flags = OutputFlags::consensus_decode(reader)?;
-        Ok(Self { flags, maturity })
+        Ok(Self {
+            flags,
+            maturity,
+            ..Default::default()
+        })
     }
 }
 
@@ -127,6 +218,12 @@ impl Default for OutputFeatures {
         OutputFeatures {
             flags: OutputFlags::empty(),
             maturity: 0,
+            metadata: vec![],
+            unique_id: None,
+            parent_public_key: None,
+            asset: None,
+            mint_non_fungible: None,
+            sidechain_checkpoint: None,
         }
     }
 }
