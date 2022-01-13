@@ -13,7 +13,6 @@ tari_utilities = "0.3.0"
 
 diesel = { version = "1.4.8", features = ["sqlite"] }
 diesel_migrations = "1.4.0"
-dotenv = "0.15.0"
 thiserror = "1.0.30"
 async-trait = "0.1.50"
 tokio = { version="1.10", features = ["macros", "time"]}

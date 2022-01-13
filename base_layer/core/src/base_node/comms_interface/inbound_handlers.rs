@@ -545,7 +545,7 @@ where T: BlockchainBackend + 'static
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block, block_add_result));
 
                 if should_propagate {
-                    info!(
+                    debug!(
                         target: LOG_TARGET,
                         "Propagate block ({}) to network.",
                         block_hash.to_hex()
