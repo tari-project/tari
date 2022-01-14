@@ -20,20 +20,25 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::{self, Display, Formatter};
+use std::{
+    fmt::{self, Display, Formatter},
+    sync::Arc,
+};
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::{chain_metadata::ChainMetadata, types::HashOutput};
+use tari_common_types::{
+    chain_metadata::ChainMetadata,
+    types::{HashOutput, PrivateKey},
+};
 
 use crate::{
     blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::UtxoMinedInfo,
     proof_of_work::Difficulty,
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction::{Transaction, TransactionKernel, TransactionOutput},
 };
 
 /// API Response enum
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone)]
 pub enum NodeCommsResponse {
     ChainMetadata(ChainMetadata),
     TransactionKernels(Vec<TransactionKernel>),
@@ -60,6 +65,7 @@ pub enum NodeCommsResponse {
     FetchAssetMetadataResponse {
         output: Box<Option<UtxoMinedInfo>>,
     },
+    FetchMempoolTransactionsByExcessSigsResponse(FetchMempoolTransactionsResponse),
 }
 
 impl Display for NodeCommsResponse {
@@ -90,6 +96,19 @@ impl Display for NodeCommsResponse {
             FetchTokensResponse { .. } => write!(f, "FetchTokensResponse"),
             FetchAssetRegistrationsResponse { .. } => write!(f, "FetchAssetRegistrationsResponse"),
             FetchAssetMetadataResponse { .. } => write!(f, "FetchAssetMetadataResponse"),
+            FetchMempoolTransactionsByExcessSigsResponse(resp) => write!(
+                f,
+                "FetchMempoolTransactionsByExcessSigsResponse({} transaction(s), {} not found)",
+                resp.transactions.len(),
+                resp.not_found.len()
+            ),
         }
     }
+}
+
+/// Container struct for mempool transaction responses
+#[derive(Debug, Clone)]
+pub struct FetchMempoolTransactionsResponse {
+    pub transactions: Vec<Arc<Transaction>>,
+    pub not_found: Vec<PrivateKey>,
 }

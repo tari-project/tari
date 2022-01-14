@@ -54,7 +54,7 @@ use crate::{
 
 pub fn create_transactions(n: usize) -> Vec<Transaction> {
     repeat_with(|| {
-        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 4);
+        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3);
         transaction
     })
     .take(n)
@@ -122,10 +122,10 @@ async fn empty_set() {
         .await
         .unwrap();
 
-    let transactions = mempool2.snapshot().await.unwrap();
+    let transactions = mempool2.snapshot().await;
     assert_eq!(transactions.len(), 0);
 
-    let transactions = mempool1.snapshot().await.unwrap();
+    let transactions = mempool1.snapshot().await;
     assert_eq!(transactions.len(), 0);
 }
 
@@ -319,14 +319,7 @@ async fn responder_messages() {
 }
 
 async fn get_snapshot(mempool: &Mempool) -> Vec<Transaction> {
-    mempool
-        .snapshot()
-        .await
-        .unwrap()
-        .iter()
-        .map(|t| &**t)
-        .cloned()
-        .collect()
+    mempool.snapshot().await.iter().map(|t| &**t).cloned().collect()
 }
 
 async fn read_message<S, T>(reader: &mut S) -> T

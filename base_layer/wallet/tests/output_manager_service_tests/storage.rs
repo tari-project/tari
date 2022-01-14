@@ -429,7 +429,6 @@ pub async fn test_short_term_encumberance() {
 }
 
 #[tokio::test]
-#[ignore = "broken after validator node merge"]
 pub async fn test_no_duplicate_outputs() {
     let factories = CryptoFactories::default();
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -442,6 +441,10 @@ pub async fn test_no_duplicate_outputs() {
 
     // add it to the database
     let result = db.add_unspent_output(uo.clone()).await;
+    assert!(result.is_ok());
+    let result = db
+        .set_received_output_mined_height(uo.hash.clone(), 1, Vec::new(), 1, true)
+        .await;
     assert!(result.is_ok());
     let outputs = db.fetch_mined_unspent_outputs().await.unwrap();
     assert_eq!(outputs.len(), 1);

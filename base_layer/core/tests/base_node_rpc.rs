@@ -390,9 +390,9 @@ async fn test_sync_utxos_by_block() {
     assert_eq!(
         vec![
             (0, block0.header().hash(), 0),
-            (1, block1.header.hash(), 9),
-            (2, block2.header.hash(), 3),
-            (3, block3.header.hash(), 6)
+            (1, block1.header.hash(), 10),
+            (2, block2.header.hash(), 4),
+            (3, block3.header.hash(), 7)
         ],
         responses
             .iter()
@@ -415,7 +415,7 @@ async fn test_sync_utxos_by_block() {
     let responses = convert_mpsc_to_stream(&mut streaming).collect::<Vec<_>>().await;
 
     assert_eq!(
-        vec![(1, block1.header.hash(), 9), (2, block2.header.hash(), 5),],
+        vec![(1, block1.header.hash(), 10), (2, block2.header.hash(), 6),],
         responses
             .iter()
             .map(|r| {

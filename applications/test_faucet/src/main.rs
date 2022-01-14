@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
                 let script = script!(Nop);
-                let (utxo, key, _) = test_helpers::create_utxo(value, &fc, feature, &script);
+                let (utxo, key, _) = test_helpers::create_utxo(value, &fc, feature, &script, &Default::default());
                 print!(".");
                 (utxo, key, value)
             })

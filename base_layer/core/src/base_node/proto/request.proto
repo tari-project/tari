@@ -12,7 +12,13 @@ message BaseNodeServiceRequest {
     oneof request {
         // Indicates a FetchBlocksByHash request.
         HashOutputs fetch_blocks_by_hash = 8;
+        ExcessSigs fetch_mempool_transactions_by_excess_sigs = 9;
     }
+}
+
+// Excess signature container message. `repeated` label is not permitted in oneof.
+message ExcessSigs {
+    repeated bytes excess_sigs = 1;
 }
 
 message BlockHeights {

@@ -40,6 +40,7 @@ use tari_common_types::{
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
 use tari_comms_dht::outbound::OutboundMessageRequester;
 use tari_core::{
+    covenants::Covenant,
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
@@ -71,7 +72,10 @@ use tokio::{
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
-    output_manager_service::{handle::OutputManagerHandle, storage::models::SpendingPriority},
+    output_manager_service::{
+        handle::{OutputManagerEvent, OutputManagerHandle},
+        storage::models::SpendingPriority,
+    },
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
@@ -89,6 +93,7 @@ use crate::{
             models::CompletedTransaction,
         },
         tasks::{
+            check_imported_transaction_status::check_imported_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
@@ -310,10 +315,17 @@ where
         > = FuturesUnordered::new();
 
         let mut base_node_service_event_stream = self.base_node_service.get_event_stream();
+        let mut output_manager_event_stream = self.output_manager_service.get_event_stream();
 
         debug!(target: LOG_TARGET, "Transaction Service started");
         loop {
             tokio::select! {
+                event = output_manager_event_stream.recv() => {
+                    match event {
+                        Ok(msg) => self.handle_output_manager_service_event(msg).await,
+                        Err(e) => debug!(target: LOG_TARGET, "Lagging read on base node event broadcast channel: {}", e),
+                    };
+                },
                 // Base Node Monitoring Service event
                 event = base_node_service_event_stream.recv() => {
                     match event {
@@ -732,6 +744,14 @@ where
         }
     }
 
+    async fn handle_output_manager_service_event(&mut self, event: Arc<OutputManagerEvent>) {
+        if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
+            let db = self.db.clone();
+            let output_manager_handle = self.output_manager_service.clone();
+            tokio::spawn(check_imported_transactions(output_manager_handle, db));
+        }
+    }
+
     /// Sends a new transaction to a recipient
     /// # Arguments
     /// 'dest_pubkey': The Comms pubkey of the recipient node
@@ -855,11 +875,14 @@ where
         let pre_image = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
         let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
 
-        // lets make the unlock height a day from now, 2 min blocks * 30 blocks per hour * 24 hours
+        // lets make the unlock height a day from now, 2 min blocks which gives us 30 blocks per hour * 24 hours
         let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
 
         // lets create the HTLC script
         let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pubkey.clone())) Else CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone())) EndIf);
+
+        // Empty covenant
+        let covenant = Covenant::default();
 
         // Prepare sender part of the transaction
         let mut stp = self
@@ -873,6 +896,7 @@ where
                 None,
                 message.clone(),
                 script.clone(),
+                covenant.clone(),
             )
             .await?;
 
@@ -932,6 +956,7 @@ where
             output.sender_offset_public_key.clone(),
             output.metadata_signature.clone(),
             height,
+            covenant,
         );
 
         // Start finalizing
@@ -945,7 +970,7 @@ where
             KernelFeatures::empty(),
             &self.resources.factories,
             None,
-            self.last_seen_tip_height,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
         )
         .map_err(|e| {
             error!(
@@ -1032,6 +1057,7 @@ where
                 None,
                 message.clone(),
                 script!(PushPubKey(Box::new(dest_pubkey.clone()))),
+                Covenant::default(),
             )
             .await?;
 
@@ -1091,7 +1117,7 @@ where
             KernelFeatures::empty(),
             &self.resources.factories,
             None,
-            self.last_seen_tip_height,
+            self.last_seen_tip_height.unwrap_or(u64::MAX),
         )
         .map_err(|e| {
             error!(

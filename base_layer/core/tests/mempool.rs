@@ -44,7 +44,7 @@ use tari_core::{
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
-    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, MempoolServiceError, TxStorageResponse},
+    mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
     proto,
     transactions::{
@@ -120,45 +120,32 @@ async fn test_insert_and_process_published_block() {
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+            .await,
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig).await,
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig).await,
         TxStorageResponse::NotStored
     );
 
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig).await,
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig).await,
         TxStorageResponse::NotStored
     );
 
-    let snapshot_txs = mempool.snapshot().await.unwrap();
+    let snapshot_txs = mempool.snapshot().await;
     assert_eq!(snapshot_txs.len(), 1);
     assert!(snapshot_txs.contains(&tx2));
 
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
     assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
@@ -177,44 +164,31 @@ async fn test_insert_and_process_published_block() {
     assert_eq!(
         mempool
             .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+            .await,
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig).await,
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig).await,
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig).await,
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool
-            .has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig)
-            .await
-            .unwrap(),
+        mempool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig).await,
         TxStorageResponse::NotStored
     );
 
-    let snapshot_txs = mempool.snapshot().await.unwrap();
+    let snapshot_txs = mempool.snapshot().await;
     assert_eq!(snapshot_txs.len(), 0);
 
-    let stats = mempool.stats().await.unwrap();
-    assert_eq!(stats.total_txs, 0);
+    let stats = mempool.stats().await;
+    assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 1);
     assert_eq!(stats.total_weight, 0);
@@ -317,7 +291,7 @@ async fn test_retrieve() {
     assert!(retrieved_txs.contains(&tx[6]));
     assert!(retrieved_txs.contains(&tx[2]));
     assert!(retrieved_txs.contains(&tx[3]));
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
     assert_eq!(stats.unconfirmed_txs, 7);
     // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
@@ -334,7 +308,7 @@ async fn test_retrieve() {
     outputs.push(utxos);
     mempool.process_published_block(blocks[2].block()).await.unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
     assert_eq!(stats.unconfirmed_txs, 2);
     // assert_eq!(stats.timelocked_txs, 0);
     assert_eq!(stats.reorg_txs, 5);
@@ -353,7 +327,7 @@ async fn test_retrieve() {
     // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
     let weight = tx[3].calculate_weight(weighting) + tx2[1].calculate_weight(weighting);
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
 
     assert_eq!(stats.unconfirmed_txs, 3);
     // assert_eq!(stats.timelocked_txs, 1);
@@ -400,28 +374,28 @@ async fn test_zero_conf() {
     // tx31   tx32   tx33   tx34    Zero-conf level 3 transactions (highest fees, increases left to right)
 
     // Create 4 original transactions, only submit 3 (hold back tx02)
-    let (tx01, tx01_out, _) = spend_utxos(txn_schema!(
+    let (tx01, tx01_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][0].clone()],
         to: vec![15 * T, 5 * T],
         fee: 10*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx02, tx02_out, _) = spend_utxos(txn_schema!(
+    let (tx02, tx02_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][1].clone()],
         to: vec![5 * T, 5 * T],
         fee: 20*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx03, tx03_out, _) = spend_utxos(txn_schema!(
+    let (tx03, tx03_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][2].clone()],
         to: vec![5 * T, 5 * T],
         fee: 30*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx04, tx04_out, _) = spend_utxos(txn_schema!(
+    let (tx04, tx04_out) = spend_utxos(txn_schema!(
         from: vec![outputs[1][3].clone()],
         to: vec![5 * T, 5 * T],
         fee: 40*uT,
@@ -442,27 +416,27 @@ async fn test_zero_conf() {
     );
 
     // Create 4 zero-conf level 1 transactions, try to submit all
-    let (tx11, tx11_out, _) = spend_utxos(txn_schema!(
+    let (tx11, tx11_out) = spend_utxos(txn_schema!(
         from: vec![tx01_out[0].clone()],
         to: vec![7 * T, 4 * T],
         fee: 50*uT, lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx12, tx12_out, _) = spend_utxos(txn_schema!(
+    let (tx12, tx12_out) = spend_utxos(txn_schema!(
         from: vec![tx01_out[1].clone(), tx02_out[0].clone(), tx02_out[1].clone()],
         to: vec![7 * T, 4 * T],
         fee: 60*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx13, tx13_out, _) = spend_utxos(txn_schema!(
+    let (tx13, tx13_out) = spend_utxos(txn_schema!(
         from: tx03_out,
         to: vec![4 * T, 4 * T],
         fee: 70*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx14, tx14_out, _) = spend_utxos(txn_schema!(
+    let (tx14, tx14_out) = spend_utxos(txn_schema!(
         from: tx04_out,
         to: vec![10 * T, 4 * T],
         fee: 80*uT, lock: 0,
@@ -486,28 +460,28 @@ async fn test_zero_conf() {
     );
 
     // Create 4 zero-conf level 2 transactions, try to submit all
-    let (tx21, tx21_out, _) = spend_utxos(txn_schema!(
+    let (tx21, tx21_out) = spend_utxos(txn_schema!(
         from: vec![tx11_out[0].clone()],
         to: vec![3 * T, 3 * T],
         fee: 90*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx22, tx22_out, _) = spend_utxos(txn_schema!(
+    let (tx22, tx22_out) = spend_utxos(txn_schema!(
         from: vec![tx12_out[0].clone()],
         to: vec![3 * T, 3 * T],
         fee: 100*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx23, tx23_out, _) = spend_utxos(txn_schema!(
+    let (tx23, tx23_out) = spend_utxos(txn_schema!(
         from: vec![tx12_out[1].clone(), tx13_out[0].clone(), tx13_out[1].clone()],
         to: vec![3 * T, 3 * T],
         fee: 110*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx24, tx24_out, _) = spend_utxos(txn_schema!(
+    let (tx24, tx24_out) = spend_utxos(txn_schema!(
         from: vec![tx14_out[0].clone()],
         to: vec![3 * T, 3 * T],
         fee: 120*uT, lock: 0,
@@ -531,28 +505,28 @@ async fn test_zero_conf() {
     );
 
     // Create 4 zero-conf level 3 transactions, try to submit all
-    let (tx31, _, _) = spend_utxos(txn_schema!(
+    let (tx31, _) = spend_utxos(txn_schema!(
         from: tx21_out,
         to: vec![2 * T, 2 * T],
         fee: 130*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx32, _, _) = spend_utxos(txn_schema!(
+    let (tx32, _) = spend_utxos(txn_schema!(
         from: vec![tx11_out[1].clone(), tx22_out[0].clone(), tx22_out[1].clone()],
         to: vec![2 * T, 2 * T],
         fee: 140*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx33, _, _) = spend_utxos(txn_schema!(
+    let (tx33, _) = spend_utxos(txn_schema!(
         from: vec![tx14_out[1].clone(), tx23_out[0].clone(), tx23_out[1].clone()],
         to: vec![2 * T, 2 * T],
         fee: 150*uT,
         lock: 0,
         features: OutputFeatures::default()
     ));
-    let (tx34, _, _) = spend_utxos(txn_schema!(
+    let (tx34, _) = spend_utxos(txn_schema!(
         from: tx24_out,
         to: vec![2 * T, 2 * T],
         fee: 160*uT,
@@ -577,10 +551,7 @@ async fn test_zero_conf() {
     );
 
     // Try to retrieve all transactions in the mempool (a couple of our transactions should be missing from retrieved)
-    let retrieved_txs = mempool
-        .retrieve(mempool.stats().await.unwrap().total_weight)
-        .await
-        .unwrap();
+    let retrieved_txs = mempool.retrieve(mempool.stats().await.total_weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 10);
     assert!(retrieved_txs.contains(&Arc::new(tx01.clone())));
     assert!(!retrieved_txs.contains(&Arc::new(tx02.clone()))); // Missing
@@ -629,10 +600,7 @@ async fn test_zero_conf() {
     );
 
     // Try to retrieve all transactions in the mempool (all transactions should be retrieved)
-    let retrieved_txs = mempool
-        .retrieve(mempool.stats().await.unwrap().total_weight)
-        .await
-        .unwrap();
+    let retrieved_txs = mempool.retrieve(mempool.stats().await.total_weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 16);
     assert!(retrieved_txs.contains(&Arc::new(tx01.clone())));
     assert!(retrieved_txs.contains(&Arc::new(tx02.clone())));
@@ -653,7 +621,7 @@ async fn test_zero_conf() {
 
     // Verify that a higher priority transaction is not retrieved due to its zero-conf dependency instead of the lowest
     // priority transaction
-    let weight = mempool.stats().await.unwrap().total_weight - 1;
+    let weight = mempool.stats().await.total_weight - 1;
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 15);
     assert!(retrieved_txs.contains(&Arc::new(tx01)));
@@ -704,7 +672,7 @@ async fn test_reorg() {
     for tx in &txns2 {
         mempool.insert(tx.clone()).await.unwrap();
     }
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
     generate_block(&db, &mut blocks, txns2, &consensus_manager).unwrap();
@@ -732,7 +700,7 @@ async fn test_reorg() {
     .unwrap();
     mempool.process_published_block(blocks[3].block()).await.unwrap();
 
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
     assert_eq!(stats.unconfirmed_txs, 0);
     // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 5);
@@ -746,7 +714,7 @@ async fn test_reorg() {
         .process_reorg(vec![blocks[3].to_arc_block()], vec![reorg_block3.into()])
         .await
         .unwrap();
-    let stats = mempool.stats().await.unwrap();
+    let stats = mempool.stats().await;
     assert_eq!(stats.unconfirmed_txs, 2);
     // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 3);
@@ -758,126 +726,6 @@ async fn test_reorg() {
     // test that process_reorg can handle the case when removed_blocks is empty
     // see https://github.com/tari-project/tari/issues/2101#issuecomment-680726940
     mempool.process_reorg(vec![], vec![reorg_block4.into()]).await.unwrap();
-}
-
-// TODO: This test returns 0 in the unconfirmed pool, so might not catch errors. It should be updated to return better
-// data
-#[allow(clippy::identity_op)]
-#[tokio::test]
-async fn request_response_get_stats() {
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
-    let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(block0)
-        .build();
-    let (mut alice, bob, _consensus_manager) = create_network_with_2_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path(),
-    )
-    .await;
-
-    // Create a tx spending the genesis output. Then create 2 orphan txs
-    let (tx1, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
-    let tx1 = Arc::new(tx1);
-    let (orphan1, _, _) = tx!(1*T, fee: 100*uT);
-    let orphan1 = Arc::new(orphan1);
-    let (orphan2, _, _) = tx!(2*T, fee: 200*uT);
-    let orphan2 = Arc::new(orphan2);
-
-    bob.mempool.insert(tx1).await.unwrap();
-    bob.mempool.insert(orphan1).await.unwrap();
-    bob.mempool.insert(orphan2).await.unwrap();
-
-    // The coinbase tx cannot be spent until maturity, so txn1 will be in the timelocked pool. The other 2 txns are
-    // orphans.
-    let stats = bob.mempool.stats().await.unwrap();
-    assert_eq!(stats.total_txs, 0);
-    assert_eq!(stats.unconfirmed_txs, 0);
-    assert_eq!(stats.reorg_txs, 0);
-    assert_eq!(stats.total_weight, 0);
-
-    // Alice will request mempool stats from Bob, and thus should be identical
-    let received_stats = alice.outbound_mp_interface.get_stats().await.unwrap();
-    assert_eq!(received_stats.total_txs, 0);
-    assert_eq!(received_stats.unconfirmed_txs, 0);
-    assert_eq!(received_stats.reorg_txs, 0);
-    assert_eq!(received_stats.total_weight, 0);
-}
-
-#[tokio::test]
-#[allow(clippy::identity_op)]
-async fn request_response_get_tx_state_by_excess_sig() {
-    let factories = CryptoFactories::default();
-    let temp_dir = tempdir().unwrap();
-    let network = Network::LocalNet;
-    let consensus_constants = ConsensusConstantsBuilder::new(network)
-        .with_coinbase_lockheight(100)
-        .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
-        .build();
-    let (block0, utxo) = create_genesis_block(&factories, &consensus_constants);
-    let consensus_manager = ConsensusManager::builder(network)
-        .add_consensus_constants(consensus_constants)
-        .with_block(block0)
-        .build();
-    let (mut alice_node, bob_node, carol_node, _consensus_manager) = create_network_with_3_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-
-    let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo.clone()], to: vec![2 * T, 2 * T, 2 * T]));
-    let (unpublished_tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![3 * T]));
-    let (orphan_tx, _, _) = tx!(1*T, fee: 100*uT);
-    let tx = Arc::new(tx);
-    let orphan_tx = Arc::new(orphan_tx);
-    bob_node.mempool.insert(tx.clone()).await.unwrap();
-    carol_node.mempool.insert(tx.clone()).await.unwrap();
-    bob_node.mempool.insert(orphan_tx.clone()).await.unwrap();
-    carol_node.mempool.insert(orphan_tx.clone()).await.unwrap();
-
-    // Check that the transactions are in the expected pools.
-    // Spending the coinbase utxo will be in the pending pool, because cb utxos have a maturity.
-    // The orphan tx will be in the orphan pool, while the unadded tx won't be found
-    let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
-    let unpublished_tx_excess_sig = unpublished_tx.body.kernels()[0].excess_sig.clone();
-    let orphan_tx_excess_sig = orphan_tx.body.kernels()[0].excess_sig.clone();
-    assert_eq!(
-        alice_node
-            .outbound_mp_interface
-            .get_tx_state_by_excess_sig(tx_excess_sig)
-            .await
-            .unwrap(),
-        TxStorageResponse::NotStored
-    );
-    assert_eq!(
-        alice_node
-            .outbound_mp_interface
-            .get_tx_state_by_excess_sig(unpublished_tx_excess_sig)
-            .await
-            .unwrap(),
-        TxStorageResponse::NotStored
-    );
-    assert_eq!(
-        alice_node
-            .outbound_mp_interface
-            .get_tx_state_by_excess_sig(orphan_tx_excess_sig)
-            .await
-            .unwrap(),
-        TxStorageResponse::NotStored
-    );
 }
 
 static EMISSION: [u64; 2] = [10, 10];
@@ -924,7 +772,7 @@ async fn receive_and_propagate_transaction() {
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
-    let (tx, _, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
+    let (tx, _) = spend_utxos(txn_schema!(from: vec![utxo], to: vec![2 * T, 2 * T, 2 * T]));
     let (orphan, _, _) = tx!(1*T, fee: 100*uT);
     let tx_excess_sig = tx.body.kernels()[0].excess_sig.clone();
     let orphan_excess_sig = orphan.body.kernels()[0].excess_sig.clone();
@@ -955,24 +803,20 @@ async fn receive_and_propagate_transaction() {
         .unwrap();
 
     async_assert_eventually!(
-        bob_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).await.unwrap(),
+        bob_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).await,
         expect = TxStorageResponse::NotStored,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
     async_assert_eventually!(
-        carol_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).await.unwrap(),
+        carol_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).await,
         expect = TxStorageResponse::NotStored,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
     );
     // Carol got sent the orphan tx directly, so it will be in her mempool
     async_assert_eventually!(
-        carol_node
-            .mempool
-            .has_tx_with_excess_sig(&orphan_excess_sig)
-            .await
-            .unwrap(),
+        carol_node.mempool.has_tx_with_excess_sig(&orphan_excess_sig).await,
         expect = TxStorageResponse::NotStored,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
@@ -980,11 +824,7 @@ async fn receive_and_propagate_transaction() {
     // It's difficult to test a negative here, but let's at least make sure that the orphan TX was not propagated
     // by the time we check it
     async_assert_eventually!(
-        bob_node
-            .mempool
-            .has_tx_with_excess_sig(&orphan_excess_sig)
-            .await
-            .unwrap(),
+        bob_node.mempool.has_tx_with_excess_sig(&orphan_excess_sig).await,
         expect = TxStorageResponse::NotStored,
     );
 }
@@ -1092,7 +932,7 @@ async fn consensus_validation_large_tx() {
     // make sure the tx was correctly made and is valid
     let factories = CryptoFactories::default();
     assert!(tx
-        .validate_internal_consistency(true, &factories, None, None, Some(u64::MAX))
+        .validate_internal_consistency(true, &factories, None, None, u64::MAX)
         .is_ok());
     let weighting = constants.transaction_weight();
     let weight = tx.calculate_weight(weighting);
@@ -1107,7 +947,7 @@ async fn consensus_validation_large_tx() {
 
 #[tokio::test]
 #[allow(clippy::erasing_op)]
-#[ignore = "broken after validator node merge"]
+#[allow(clippy::identity_op)]
 async fn consensus_validation_unique_id() {
     let mut rng = rand::thread_rng();
     let network = Network::LocalNet;
@@ -1138,7 +978,7 @@ async fn consensus_validation_unique_id() {
     };
     let txs = vec![txn_schema!(
         from: vec![outputs[1][0].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+        to: vec![1 * T], fee: 100.into(), lock: 0, features: features
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
 
@@ -1147,10 +987,22 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][1].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // publishing a transaction that spends a unique id to a new output should succeed
+    let nft = outputs[2][0].clone();
+    let features = nft.features.clone();
+    let tx = txn_schema!(
+        from: vec![nft],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+    );
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
 
     // a different unique_id should be fine
     let features = OutputFeatures {
@@ -1163,7 +1015,7 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][1].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
@@ -1180,7 +1032,7 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][2].clone()],
         to: vec![0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
@@ -1197,37 +1049,11 @@ async fn consensus_validation_unique_id() {
         from: vec![outputs[1][3].clone(), outputs[1][4].clone()],
         to: vec![0 * T, 0 * T], fee: 100.into(), lock: 0, features: features
     );
-    let (tx, _, _) = spend_utxos(tx);
+    let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     dbg!(&response);
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
-}
-
-#[tokio::test]
-async fn service_request_timeout() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
-    let mempool_service_config = MempoolServiceConfig {
-        request_timeout: Duration::from_millis(1),
-        ..Default::default()
-    };
-    let temp_dir = tempdir().unwrap();
-    let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
-        mempool_service_config,
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-
-    bob_node.shutdown().await;
-
-    match alice_node.outbound_mp_interface.get_stats().await {
-        Err(MempoolServiceError::RequestTimedOut) => {},
-        _ => panic!(),
-    }
 }
 
 #[tokio::test]
@@ -1308,7 +1134,7 @@ async fn block_event_and_reorg_event_handling() {
     // Add Block1 - tx1 will be moved to the ReorgPool.
     assert!(bob.local_nci.submit_block(block1.clone(),).await.is_ok());
     async_assert_eventually!(
-        alice.mempool.has_tx_with_excess_sig(&tx1_excess_sig).await.unwrap(),
+        alice.mempool.has_tx_with_excess_sig(&tx1_excess_sig).await,
         expect = TxStorageResponse::ReorgPool,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
@@ -1338,27 +1164,27 @@ async fn block_event_and_reorg_event_handling() {
     assert!(bob.local_nci.submit_block(block2a.clone(),).await.is_ok());
 
     async_assert_eventually!(
-        bob.mempool.has_tx_with_excess_sig(&tx2a_excess_sig).await.unwrap(),
+        bob.mempool.has_tx_with_excess_sig(&tx2a_excess_sig).await,
         expect = TxStorageResponse::ReorgPool,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
     async_assert_eventually!(
-        alice.mempool.has_tx_with_excess_sig(&tx2a_excess_sig).await.unwrap(),
+        alice.mempool.has_tx_with_excess_sig(&tx2a_excess_sig).await,
         expect = TxStorageResponse::ReorgPool,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
     assert_eq!(
-        alice.mempool.has_tx_with_excess_sig(&tx3a_excess_sig).await.unwrap(),
+        alice.mempool.has_tx_with_excess_sig(&tx3a_excess_sig).await,
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
-        alice.mempool.has_tx_with_excess_sig(&tx2b_excess_sig).await.unwrap(),
+        alice.mempool.has_tx_with_excess_sig(&tx2b_excess_sig).await,
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
-        alice.mempool.has_tx_with_excess_sig(&tx3b_excess_sig).await.unwrap(),
+        alice.mempool.has_tx_with_excess_sig(&tx3b_excess_sig).await,
         TxStorageResponse::ReorgPool
     );
 }

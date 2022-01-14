@@ -38,6 +38,7 @@ use tari_crypto::{
 
 use crate::{
     consensus::ConsensusEncodingSized,
+    covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction,
@@ -61,6 +62,7 @@ pub struct UnblindedOutput {
     pub spending_key: BlindingFactor,
     pub features: OutputFeatures,
     pub script: TariScript,
+    pub covenant: Covenant,
     pub input_data: ExecutionStack,
     pub script_private_key: PrivateKey,
     pub sender_offset_public_key: PublicKey,
@@ -81,8 +83,9 @@ impl UnblindedOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         script_lock_height: u64,
-    ) -> UnblindedOutput {
-        UnblindedOutput {
+        covenant: Covenant,
+    ) -> Self {
+        Self {
             value,
             spending_key,
             features,
@@ -92,6 +95,7 @@ impl UnblindedOutput {
             sender_offset_public_key,
             metadata_signature,
             script_lock_height,
+            covenant,
         }
     }
 
@@ -125,6 +129,7 @@ impl UnblindedOutput {
                 commitment,
                 script: self.script.clone(),
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
+                covenant: self.covenant.clone(),
             },
             input_data: self.input_data.clone(),
             script_signature,
@@ -165,6 +170,7 @@ impl UnblindedOutput {
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
+            covenant: self.covenant.clone(),
         };
 
         Ok(output)
@@ -201,20 +207,23 @@ impl UnblindedOutput {
             script: self.script.clone(),
             sender_offset_public_key: self.sender_offset_public_key.clone(),
             metadata_signature: self.metadata_signature.clone(),
+            covenant: self.covenant.clone(),
         };
 
         Ok(output)
     }
 
     pub fn metadata_byte_size(&self) -> usize {
-        self.features.consensus_encode_exact_size() + self.script.consensus_encode_exact_size()
+        self.features.consensus_encode_exact_size() +
+            self.script.consensus_encode_exact_size() +
+            self.covenant.consensus_encode_exact_size()
     }
 
-    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not
-    // Note: added to the struct to ensure the atomic nature between `commitment`, `spending_key` and `value`.
+    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
+    // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
-        transaction::hash_output(&self.features, &commitment, &self.script)
+        transaction::hash_output(&self.features, &commitment, &self.script, &self.covenant)
     }
 }
 

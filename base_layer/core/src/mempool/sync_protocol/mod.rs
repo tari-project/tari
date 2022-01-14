@@ -306,7 +306,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let transactions = self.mempool.snapshot().await?;
+        let transactions = self.mempool.snapshot().await;
         let items = transactions
             .iter()
             .take(self.config.initial_sync_max_transactions)
@@ -392,7 +392,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             inventory.items.len()
         );
 
-        let transactions = self.mempool.snapshot().await?;
+        let transactions = self.mempool.snapshot().await;
 
         let mut duplicate_inventory_items = Vec::new();
         let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {

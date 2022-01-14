@@ -27,12 +27,15 @@ use tari_common_types::{
     transaction::TxId,
     types::{HashOutput, PublicKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
-    transaction_protocol::sender::TransactionSenderMessage,
-    ReceiverTransactionProtocol,
-    SenderTransactionProtocol,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
+        transaction_protocol::sender::TransactionSenderMessage,
+        ReceiverTransactionProtocol,
+        SenderTransactionProtocol,
+    },
 };
 use tari_crypto::{script::TariScript, tari_utilities::hex::Hex};
 use tari_service_framework::reply_channel::SenderService;
@@ -42,7 +45,10 @@ use tower::Service;
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::Balance,
-    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
+    storage::{
+        models::{KnownOneSidedPaymentScript, SpendingPriority},
+        OutputStatus,
+    },
 };
 
 /// API Request enum
@@ -65,6 +71,7 @@ pub enum OutputManagerRequest {
         lock_height: Option<u64>,
         message: String,
         script: TariScript,
+        covenant: Covenant,
     },
     CreatePayToSelfTransaction {
         tx_id: TxId,
@@ -110,6 +117,7 @@ pub enum OutputManagerRequest {
     SetCoinbaseAbandoned(TxId, bool),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
+    GetOutputStatusesByTxId(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -177,6 +185,8 @@ impl fmt::Display for OutputManagerRequest {
                 output.to_hex(),
                 fee_per_gram,
             ),
+
+            GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
         }
     }
 }
@@ -213,6 +223,7 @@ pub enum OutputManagerResponse {
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
+    OutputStatusesByTxId(Vec<OutputStatus>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -416,6 +427,7 @@ impl OutputManagerHandle {
         lock_height: Option<u64>,
         message: String,
         script: TariScript,
+        covenant: Covenant,
     ) -> Result<SenderTransactionProtocol, OutputManagerError> {
         match self
             .handle
@@ -428,6 +440,7 @@ impl OutputManagerHandle {
                 lock_height,
                 message,
                 script,
+                covenant,
             })
             .await??
         {
@@ -708,6 +721,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_output_statuses_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
+            .await??
+        {
+            OutputManagerResponse::OutputStatusesByTxId(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

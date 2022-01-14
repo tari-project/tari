@@ -390,7 +390,7 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
 // Creates a TariCommsConfig
-// Valid values for network are: ridcully, stibbons, weatherwax, localnet, mainnet
+// Valid values for network are: dibbler, igor, localnet, mainnet
 struct TariCommsConfig *comms_config_create(const char *public_address,
                                             struct TariTransportType *transport,
                                             const char *database_name,

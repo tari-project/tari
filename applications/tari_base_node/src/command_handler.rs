@@ -158,7 +158,7 @@ impl CommandHandler {
                 "Mempool",
                 format!(
                     "{}tx ({}g, +/- {}blks)",
-                    mempool_stats.total_txs,
+                    mempool_stats.unconfirmed_txs,
                     mempool_stats.total_weight,
                     if mempool_stats.total_weight == 0 {
                         0
@@ -1118,7 +1118,9 @@ impl CommandHandler {
         let local_node_comms_interface = self.node_service.clone();
         self.executor.spawn(async move {
             let blocks = try_or_print!(db.rewind_to_height(new_height).await);
-            local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+            if !blocks.is_empty() {
+                local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+            }
         });
     }
 

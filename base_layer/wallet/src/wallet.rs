@@ -40,6 +40,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::StoreAndForwardRequester, Dht};
 use tari_core::{
     consensus::NetworkConsensus,
+    covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, UnblindedOutput},
@@ -367,8 +368,8 @@ where
     }
 
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
-    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
-    /// generated transaction is returned.
+    /// EncumberedToBeReceived. A faux incoming transaction will be created to provide a record of the event. The TxId
+    /// of the generated transaction is returned.
     #[allow(clippy::too_many_arguments)]
     pub async fn import_utxo(
         &mut self,
@@ -383,6 +384,7 @@ where
         script_private_key: &PrivateKey,
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
+        covenant: Covenant,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new(
             amount,
@@ -394,6 +396,7 @@ where
             sender_offset_public_key.clone(),
             metadata_signature,
             script_lock_height,
+            covenant,
         );
 
         let tx_id = self

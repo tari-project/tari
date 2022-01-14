@@ -33,12 +33,12 @@ impl NetworkConsensus {
         use Network::*;
         match self.as_network() {
             MainNet => ConsensusConstants::mainnet(),
-            Ridcully => ConsensusConstants::ridcully(),
-            Stibbons => ConsensusConstants::stibbons(),
-            Weatherwax => ConsensusConstants::weatherwax(),
             LocalNet => ConsensusConstants::localnet(),
-            Igor => ConsensusConstants::igor(),
             Dibbler => ConsensusConstants::dibbler(),
+            Igor => ConsensusConstants::igor(),
+            Weatherwax => ConsensusConstants::weatherwax(),
+            Ridcully => unimplemented!("Ridcully network is no longer supported"),
+            Stibbons => unimplemented!("Stibbons network is no longer supported"),
         }
     }
 
