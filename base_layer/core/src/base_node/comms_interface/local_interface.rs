@@ -208,7 +208,7 @@ impl LocalNodeCommsInterface {
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchBlocksWithUtxos(commitments))
+            .call(NodeCommsRequest::FetchBlocksByUtxos(commitments))
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),
@@ -223,7 +223,7 @@ impl LocalNodeCommsInterface {
     ) -> Result<Vec<HistoricalBlock>, CommsInterfaceError> {
         match self
             .request_sender
-            .call(NodeCommsRequest::FetchBlocksWithKernels(kernels))
+            .call(NodeCommsRequest::FetchBlocksByKernelExcessSigs(kernels))
             .await??
         {
             NodeCommsResponse::HistoricalBlocks(blocks) => Ok(blocks),

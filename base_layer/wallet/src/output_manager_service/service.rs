@@ -71,7 +71,7 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
-        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
@@ -474,7 +474,7 @@ where
         );
 
         let shutdown = self.resources.shutdown_signal.clone();
-
+        let event_publisher = self.resources.event_publisher.clone();
         tokio::spawn(async move {
             match utxo_validation.execute(shutdown).await {
                 Ok(id) => {
@@ -488,6 +488,12 @@ where
                         target: LOG_TARGET,
                         "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                     );
+                    if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationFailure(id))) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Error sending event because there are no subscribers: {:?}", e
+                        );
+                    }
                 },
             }
         });

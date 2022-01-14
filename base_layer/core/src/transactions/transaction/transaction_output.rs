@@ -28,8 +28,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use blake2::Digest;
-use digest::FixedOutput;
+use digest::{Digest, FixedOutput};
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{

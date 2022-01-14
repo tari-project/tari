@@ -6621,7 +6621,6 @@ dependencies = [
  "tokio 1.14.0",
  "tracing",
  "tracing-attributes",
- "ttl_cache",
  "uint",
 ]
 
@@ -7901,15 +7900,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "283d3b89e1368717881a9d51dad843cc435380d8109c9e47d38780a324698d8b"
 dependencies = [
  "cfg-if 0.1.10",
-]
-
-[[package]]
-name = "ttl_cache"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4189890526f0168710b6ee65ceaedf1460c48a14318ceec933cb26baa492096a"
-dependencies = [
- "linked-hash-map 0.5.4",
 ]
 
 [[package]]

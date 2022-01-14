@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{BlindingFactor, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{BlindingFactor, PrivateKey};
 use tari_crypto::tari_utilities::ByteArray;
 
 use super::core as proto;
@@ -231,23 +231,33 @@ impl TryFrom<proto::NewBlock> for NewBlock {
     type Error = String;
 
     fn try_from(new_block: proto::NewBlock) -> Result<Self, Self::Error> {
-        let block_hash = new_block.block_hash;
-        if block_hash.len() != BLOCK_HASH_LENGTH {
-            return Err(format!(
-                "Block hash has an incorrect length. (len={}, expected={})",
-                block_hash.len(),
-                BLOCK_HASH_LENGTH
-            ));
-        }
-
-        Ok(Self { block_hash })
+        Ok(Self {
+            header: new_block.header.ok_or("No new block header provided")?.try_into()?,
+            coinbase_kernel: new_block
+                .coinbase_kernel
+                .ok_or("No coinbase kernel given")?
+                .try_into()?,
+            coinbase_output: new_block
+                .coinbase_output
+                .ok_or("No coinbase kernel given")?
+                .try_into()?,
+            kernel_excess_sigs: new_block
+                .kernel_excess_sigs
+                .iter()
+                .map(|bytes| PrivateKey::from_bytes(bytes))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|_| "Invalid excess signature scalar")?,
+        })
     }
 }
 
 impl From<NewBlock> for proto::NewBlock {
     fn from(new_block: NewBlock) -> Self {
         Self {
-            block_hash: new_block.block_hash,
+            header: Some(new_block.header.into()),
+            coinbase_kernel: Some(new_block.coinbase_kernel.into()),
+            coinbase_output: Some(new_block.coinbase_output.into()),
+            kernel_excess_sigs: new_block.kernel_excess_sigs.into_iter().map(|s| s.to_vec()).collect(),
         }
     }
 }

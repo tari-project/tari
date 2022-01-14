@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
+    hash::Hash,
     sync::Arc,
 };
 
@@ -227,6 +228,31 @@ impl UnconfirmedPool {
                 .collect(),
         };
         Ok(results)
+    }
+
+    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+        // Hashset used to prevent duplicates
+        let mut found = HashSet::new();
+        let mut remaining = Vec::new();
+
+        for sig in excess_sigs {
+            match self.txs_by_signature.get(sig).cloned() {
+                Some(ids) => found.extend(ids),
+                None => remaining.push(sig.clone()),
+            }
+        }
+
+        let found = found
+            .into_iter()
+            .map(|id| {
+                self.tx_by_key
+                    .get(&id)
+                    .map(|tx| tx.transaction.clone())
+                    .expect("mempool indexes out of sync: transaction exists in txs_by_signature but not in tx_by_key")
+            })
+            .collect();
+
+        (found, remaining)
     }
 
     fn get_all_dependent_transactions(
@@ -475,7 +501,7 @@ impl UnconfirmedPool {
 
     /// Returns false if there are any inconsistencies in the internal mempool state, otherwise true
     #[cfg(test)]
-    fn check_data_contistency(&self) -> bool {
+    fn check_data_consistency(&self) -> bool {
         self.tx_by_priority.len() == self.tx_by_key.len() &&
             self.tx_by_priority
                 .values()
@@ -492,6 +518,32 @@ impl UnconfirmedPool {
         let key = self.key_counter;
         self.key_counter = (self.key_counter + 1) % usize::MAX;
         key
+    }
+
+    pub fn compact(&mut self) {
+        fn shrink_hashmap<K: Eq + Hash, V>(map: &mut HashMap<K, V>) -> (usize, usize) {
+            let cap = map.capacity();
+            let extra_cap = cap - map.len();
+            if extra_cap > 100 {
+                map.shrink_to(map.len() + (extra_cap / 2));
+            }
+
+            (cap, map.capacity())
+        }
+
+        let (old, new) = shrink_hashmap(&mut self.tx_by_key);
+        shrink_hashmap(&mut self.txs_by_signature);
+        shrink_hashmap(&mut self.txs_by_output);
+
+        if old - new > 0 {
+            debug!(
+                target: LOG_TARGET,
+                "Shrunk reorg mempool memory usage ({}/{}) ~{}%",
+                new,
+                old,
+                (((old - new) as f32 / old as f32) * 100.0).round() as usize
+            );
+        }
     }
 }
 
@@ -573,7 +625,7 @@ mod test {
         // Note that transaction tx5 could not be included as its weight was to big to fit into the remaining allocated
         // space, the second best transaction was then included
 
-        assert!(unconfirmed_pool.check_data_contistency());
+        assert!(unconfirmed_pool.check_data_consistency());
     }
 
     #[test]
@@ -690,7 +742,7 @@ mod test {
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig),);
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig),);
 
-        assert!(unconfirmed_pool.check_data_contistency());
+        assert!(unconfirmed_pool.check_data_consistency());
     }
 
     #[test]
@@ -739,7 +791,7 @@ mod test {
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig));
         assert!(!unconfirmed_pool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig));
 
-        assert!(unconfirmed_pool.check_data_contistency());
+        assert!(unconfirmed_pool.check_data_consistency());
     }
 
     #[test]

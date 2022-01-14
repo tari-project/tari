@@ -23,19 +23,10 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::types::Signature;
 use tari_comms::peer_manager::NodeId;
-use tari_service_framework::{reply_channel::SenderService, Service};
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{
-    mempool::{
-        service::{MempoolRequest, MempoolResponse, MempoolServiceError},
-        StatsResponse,
-        TxStorageResponse,
-    },
-    transactions::transaction::Transaction,
-};
+use crate::{mempool::service::MempoolServiceError, transactions::transaction::Transaction};
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 
@@ -43,30 +34,13 @@ pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 /// nodes.
 #[derive(Clone)]
 pub struct OutboundMempoolServiceInterface {
-    request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
     tx_sender: UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>,
 }
 
 impl OutboundMempoolServiceInterface {
     /// Construct a new OutboundMempoolServiceInterface with the specified SenderService.
-    pub fn new(
-        request_sender: SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>,
-        tx_sender: UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>,
-    ) -> Self {
-        Self {
-            request_sender,
-            tx_sender,
-        }
-    }
-
-    /// Request the stats from the mempool of a remote base node.
-    pub async fn get_stats(&mut self) -> Result<StatsResponse, MempoolServiceError> {
-        if let MempoolResponse::Stats(stats) = self.request_sender.call(MempoolRequest::GetStats).await?? {
-            trace!(target: LOG_TARGET, "Mempool stats requested: {:?}", stats,);
-            Ok(stats)
-        } else {
-            Err(MempoolServiceError::UnexpectedApiResponse)
-        }
+    pub fn new(tx_sender: UnboundedSender<(Arc<Transaction>, Vec<NodeId>)>) -> Self {
+        Self { tx_sender }
     }
 
     /// Transmit a transaction to remote base nodes, excluding the provided peers.
@@ -82,21 +56,5 @@ impl OutboundMempoolServiceInterface {
             }
             .map_err(|_| MempoolServiceError::BroadcastFailed)
         })
-    }
-
-    /// Check if the specified transaction is stored in the mempool of a remote base node.
-    pub async fn get_tx_state_by_excess_sig(
-        &mut self,
-        excess_sig: Signature,
-    ) -> Result<TxStorageResponse, MempoolServiceError> {
-        if let MempoolResponse::TxStorage(tx_storage_response) = self
-            .request_sender
-            .call(MempoolRequest::GetTxStateByExcessSig(excess_sig))
-            .await??
-        {
-            Ok(tx_storage_response)
-        } else {
-            Err(MempoolServiceError::UnexpectedApiResponse)
-        }
     }
 }
