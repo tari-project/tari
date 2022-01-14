@@ -765,7 +765,6 @@ mod test {
     }
 
     #[runtime::test]
-    #[ignore = "TODO fix on validator-node branch and check on development"]
     async fn larger_writes() -> io::Result<()> {
         let ((_dialer_keypair, dialer), (_listener_keypair, listener)) = build_test_connection().await.unwrap();
 
