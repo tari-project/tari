@@ -191,6 +191,7 @@ where
         if state_changed {
             self.publish_event(TransactionEvent::TransactionValidationStateChanged(self.operation_id));
         }
+        self.publish_event(TransactionEvent::TransactionValidationCompleted(self.operation_id));
         Ok(self.operation_id)
     }
 
