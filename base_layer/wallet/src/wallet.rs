@@ -368,8 +368,8 @@ where
     }
 
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
-    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
-    /// generated transaction is returned.
+    /// EncumberedToBeReceived. A faux incoming transaction will be created to provide a record of the event. The TxId
+    /// of the generated transaction is returned.
     #[allow(clippy::too_many_arguments)]
     pub async fn import_utxo(
         &mut self,

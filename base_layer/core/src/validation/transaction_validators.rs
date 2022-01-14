@@ -21,10 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_utilities::hex::Hex;
 
 use crate::{
-    chain_storage::{BlockchainBackend, BlockchainDatabase},
-    transactions::{transaction::Transaction, CryptoFactories},
+    chain_storage::{BlockchainBackend, BlockchainDatabase, PrunedOutput},
+    transactions::{
+        transaction::{SpentOutput, Transaction},
+        CryptoFactories,
+    },
     validation::{
         helpers::{check_inputs_are_utxos, check_outputs},
         MempoolTransactionValidation,
@@ -78,7 +82,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistenc
 ///
 /// 1. The transaction weight should not exceed the maximum weight for 1 block
 /// 1. All of the outputs should have a unique asset id in the transaction
-/// 1. All of the outputs should have a unique asset id not already on chain
+/// 1. All of the outputs should have a unique asset id not already on chain (unless spent to a new output)
 #[derive(Clone)]
 pub struct TxConsensusValidator<B> {
     db: BlockchainDatabase<B>,
@@ -87,6 +91,63 @@ pub struct TxConsensusValidator<B> {
 impl<B: BlockchainBackend> TxConsensusValidator<B> {
     pub fn new(db: BlockchainDatabase<B>) -> Self {
         Self { db }
+    }
+
+    fn validate_unique_asset_rules(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let outputs = tx.body.outputs();
+
+        // outputs in transaction should have unique asset ids
+        let mut unique_asset_ids: Vec<_> = outputs.iter().filter_map(|o| o.features.unique_asset_id()).collect();
+
+        unique_asset_ids.sort();
+        let num_ids = unique_asset_ids.len();
+
+        unique_asset_ids.dedup();
+        let num_unique = unique_asset_ids.len();
+
+        if num_unique < num_ids {
+            return Err(ValidationError::ConsensusError(
+                "Transaction contains outputs with duplicate unique_asset_ids".into(),
+            ));
+        }
+
+        // the output's unique asset id should not already be in the chain
+        // unless it's being spent as an input as well
+        for output in outputs {
+            if let Some(ref unique_id) = output.features.unique_id {
+                let parent_public_key = output.features.parent_public_key.clone();
+                let parent_hash = parent_public_key.as_ref().map(|p| p.to_hex());
+                let unique_id_hex = unique_id.to_hex();
+                if let Some(info) = self
+                    .db
+                    .fetch_utxo_by_unique_id(parent_public_key, unique_id.clone(), None)?
+                {
+                    // if it's already on chain then check it's being spent as an input
+                    let output_hex = info.output.hash().to_hex();
+                    if let PrunedOutput::NotPruned { output } = info.output {
+                        let unique_asset_id = output.features.unique_asset_id();
+                        let spent_in_tx = tx.body.inputs().iter().any(|i| {
+                            if let SpentOutput::OutputData { ref features, .. } = i.spent_output {
+                                features.unique_asset_id() == unique_asset_id
+                            } else {
+                                false
+                            }
+                        });
+
+                        if !spent_in_tx {
+                            let msg = format!(
+                                "Output already exists in blockchain database. Output hash: {}. Parent public key: \
+                                 {:?}. Unique ID: {}",
+                                output_hex, parent_hash, unique_id_hex,
+                            );
+                            return Err(ValidationError::ConsensusError(msg));
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -100,7 +161,7 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
 
-        Ok(())
+        self.validate_unique_asset_rules(tx)
     }
 }
 
