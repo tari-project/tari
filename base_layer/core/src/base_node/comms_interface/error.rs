@@ -65,4 +65,6 @@ pub enum CommsInterfaceError {
     BlockHeaderNotFound(u64),
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
+    #[error("Invalid request for {request}: {details}")]
+    InvalidRequest { request: &'static str, details: String },
 }

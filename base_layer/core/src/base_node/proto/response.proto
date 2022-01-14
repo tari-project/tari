@@ -12,6 +12,7 @@ message BaseNodeServiceResponse {
     oneof response {
         // Indicates a HistoricalBlocks response.
         HistoricalBlocks historical_blocks = 6;
+        FetchMempoolTransactionsResponse fetch_mempool_transactions_by_excess_sigs_response = 7;
     }
     bool is_synced = 13;
 }
@@ -49,5 +50,10 @@ message NewBlockResponse {
  message MmrNodes {
     repeated bytes added = 1;
     bytes deleted = 2;
+}
+
+message FetchMempoolTransactionsResponse {
+  repeated tari.types.Transaction transactions = 1;
+  repeated bytes not_found = 2;
 }
 

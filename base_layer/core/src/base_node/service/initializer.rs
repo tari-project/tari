@@ -24,6 +24,7 @@ use std::{convert::TryFrom, sync::Arc};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
@@ -164,24 +165,31 @@ where T: BlockchainBackend + 'static
             local_block_sender_service,
             block_event_sender.clone(),
         );
-        let inbound_nch = InboundNodeCommsHandlers::new(
-            block_event_sender,
-            self.blockchain_db.clone(),
-            self.mempool.clone(),
-            self.consensus_manager.clone(),
-            outbound_nci.clone(),
-        );
-        let config = self.config;
 
         // Register handle to OutboundNodeCommsInterface before waiting for handles to be ready
-        context.register_handle(outbound_nci);
+        context.register_handle(outbound_nci.clone());
         context.register_handle(local_nci);
+
+        let config = self.config;
+        let blockchain_db = self.blockchain_db.clone();
+        let mempool = self.mempool.clone();
+        let consensus_manager = self.consensus_manager.clone();
 
         context.spawn_when_ready(move |handles| async move {
             let dht = handles.expect_handle::<Dht>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
             let outbound_message_service = dht.outbound_requester();
 
             let state_machine = handles.expect_handle::<StateMachineHandle>();
+
+            let inbound_nch = InboundNodeCommsHandlers::new(
+                block_event_sender,
+                blockchain_db,
+                mempool,
+                consensus_manager,
+                outbound_nci.clone(),
+                connectivity,
+            );
 
             let streams = BaseNodeStreams {
                 outbound_request_stream,

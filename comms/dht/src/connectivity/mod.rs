@@ -277,7 +277,7 @@ impl DhtConnectivity {
     async fn refresh_peer_pools(&mut self) -> Result<(), DhtConnectivityError> {
         info!(
             target: LOG_TARGET,
-            "Reinitializing neighbour pool. Draining neighbour list (len={})",
+            "Reinitializing neighbour pool. (size={})",
             self.neighbours.len(),
         );
 
@@ -310,6 +310,15 @@ impl DhtConnectivity {
         let mut new_neighbours = self
             .fetch_neighbouring_peers(self.config.num_neighbouring_nodes, &[])
             .await?;
+
+        if new_neighbours.is_empty() {
+            info!(
+                target: LOG_TARGET,
+                "Unable to refresh neighbouring peer pool because there are insufficient known/online peers",
+            );
+            self.redial_neighbours_as_required().await?;
+            return Ok(());
+        }
 
         let (intersection, difference) = self
             .neighbours
@@ -465,13 +474,15 @@ impl DhtConnectivity {
                 conn.peer_node_id().short_str()
             );
 
-            if let Some(node_id) = self.insert_neighbour(conn.peer_node_id().clone()) {
+            let peer_to_insert = conn.peer_node_id().clone();
+            self.insert_connection_handle(conn);
+            if let Some(node_id) = self.insert_neighbour(peer_to_insert.clone()) {
                 // If we kicked a neighbour out of our neighbour pool but the random pool is not full.
                 // Add the neighbour to the random pool, otherwise remove the handle from the connection pool
                 if self.random_pool.len() < self.config.num_random_nodes {
                     debug!(
                         target: LOG_TARGET,
-                        "Moving peer '{}' from neighbouring pool to random pool", conn
+                        "Moving peer '{}' from neighbouring pool to random pool", peer_to_insert
                     );
                     self.random_pool.push(node_id);
                 } else {

@@ -3144,12 +3144,12 @@ unsafe fn init_logging(
 /// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the ClassbackValidationResults enum.
+/// callback references and the second parameter is a bool that returns if the validation was successful or not.
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
@@ -3181,9 +3181,9 @@ pub unsafe extern "C" fn wallet_create(
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
-    callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
+    callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
@@ -6044,7 +6044,7 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+    unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -6052,7 +6052,7 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
-    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: c_ulonglong, _result: u8) {
+    unsafe extern "C" fn transaction_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
         // assert!(true); //optimized out by compiler
     }
 

@@ -1860,7 +1860,9 @@ where
                 );
                 let _ = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
+                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(
+                        OperationId::from(id),
+                    )));
             },
         }
     }
