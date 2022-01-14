@@ -232,6 +232,16 @@ impl OutputSql {
             .first::<OutputSql>(conn)?)
     }
 
+    pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(
+                outputs::received_in_tx_id
+                    .eq(i64::from(tx_id))
+                    .or(outputs::spent_in_tx_id.eq(i64::from(tx_id))),
+            )
+            .load(conn)?)
+    }
+
     /// Return the available, time locked, pending incoming and pending outgoing balance
     pub fn get_balance(
         current_tip_for_time_lock_calculation: Option<u64>,
