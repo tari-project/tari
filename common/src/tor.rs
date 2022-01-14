@@ -63,9 +63,8 @@ impl Default for Tor {
 impl Tor {
     /// Returns a new Tor instance with random options.
     /// The data directory, passphrase, and log destination are temporary and randomized.
-    /// Two available adjacent TCP ports will be selected in the given
-    /// port range. These are scanned sequentially from start to end.
-    /// These ports are only for the control and socks ports, the onion address and port info are still loaded from the
+    /// Two TCP ports will be provided by the operating system.
+    /// These ports are used for the control and socks ports, the onion address and port info are still loaded from the
     /// node identity file.
     pub fn initialize() -> Result<Tor, ExitCodes> {
         let mut instance = Tor::default();
