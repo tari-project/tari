@@ -352,7 +352,7 @@ where B: BlockchainBackend + 'static
     }
 
     fn spawn_handle_local_block(&self, block_context: RequestContext<Block, Result<BlockHash, CommsInterfaceError>>) {
-        let inbound_nch = self.inbound_nch.clone();
+        let mut inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
             let (block, reply_tx) = block_context.split();
             let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), None).await);
