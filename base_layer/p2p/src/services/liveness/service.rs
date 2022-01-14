@@ -376,7 +376,7 @@ mod test {
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
 
         // Setup liveness service
-        let (sender_service, receiver) = reply_channel::unbounded();
+        let (sender_service, receiver) = reply_channel::channel();
         let (publisher, _) = broadcast::channel(200);
 
         let mut liveness_handle = LivenessHandle::new(sender_service, publisher.clone());
@@ -412,7 +412,7 @@ mod test {
         let outbound_messaging = OutboundMessageRequester::new(outbound_tx);
 
         // Setup liveness service
-        let (sender_service, receiver) = reply_channel::unbounded();
+        let (sender_service, receiver) = reply_channel::channel();
         let (publisher, _) = broadcast::channel(200);
         let mut liveness_handle = LivenessHandle::new(sender_service, publisher.clone());
 

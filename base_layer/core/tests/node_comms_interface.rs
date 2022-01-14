@@ -74,7 +74,7 @@ async fn inbound_get_metadata() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let inbound_nch = InboundNodeCommsHandlers::new(
@@ -105,7 +105,7 @@ async fn inbound_fetch_kernel_by_excess_sig() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender.clone());
     let inbound_nch = InboundNodeCommsHandlers::new(
@@ -136,7 +136,7 @@ async fn inbound_fetch_headers() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
@@ -167,7 +167,7 @@ async fn inbound_fetch_utxos() {
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
     let (block_event_sender, _) = broadcast::channel(50);
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
@@ -210,7 +210,7 @@ async fn inbound_fetch_txos() {
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
@@ -282,7 +282,7 @@ async fn inbound_fetch_blocks() {
     let (block_event_sender, _) = broadcast::channel(50);
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManager::builder(network).build();
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(
@@ -330,7 +330,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         Box::new(mempool_validator),
     );
     let (block_event_sender, _) = broadcast::channel(50);
-    let (request_sender, _) = reply_channel::unbounded();
+    let (request_sender, _) = reply_channel::channel();
     let (block_sender, _) = mpsc::unbounded_channel();
     let outbound_nci = OutboundNodeCommsInterface::new(request_sender, block_sender);
     let inbound_nch = InboundNodeCommsHandlers::new(

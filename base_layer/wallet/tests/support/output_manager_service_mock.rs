@@ -38,7 +38,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service_mock";
 pub fn make_output_manager_service_mock(
     shutdown_signal: ShutdownSignal,
 ) -> (OutputManagerServiceMock, OutputManagerHandle) {
-    let (sender, receiver) = reply_channel::unbounded();
+    let (sender, receiver) = reply_channel::channel();
     let (publisher, _) = broadcast::channel(100);
     let output_manager_handle = OutputManagerHandle::new(sender, publisher.clone());
     let mock = OutputManagerServiceMock::new(publisher, receiver, shutdown_signal);

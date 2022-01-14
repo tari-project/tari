@@ -38,7 +38,7 @@ const LOG_TARGET: &str = "wallet::transaction_service_mock";
 pub fn make_transaction_service_mock(
     shutdown_signal: ShutdownSignal,
 ) -> (TransactionServiceMock, TransactionServiceHandle) {
-    let (sender, receiver) = reply_channel::unbounded();
+    let (sender, receiver) = reply_channel::channel();
     let (publisher, _) = broadcast::channel(100);
     let transaction_handle = TransactionServiceHandle::new(sender, publisher.clone());
     let mock = TransactionServiceMock::new(publisher, receiver, shutdown_signal);

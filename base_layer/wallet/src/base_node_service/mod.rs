@@ -68,7 +68,7 @@ where T: WalletBackend + 'static
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         info!(target: LOG_TARGET, "Wallet base node service initializing.");
 
-        let (sender, request_stream) = reply_channel::unbounded();
+        let (sender, request_stream) = reply_channel::channel();
 
         let (event_publisher, _) = broadcast::channel(self.config.event_channel_size);
 

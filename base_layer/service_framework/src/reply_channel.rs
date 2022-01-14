@@ -22,21 +22,21 @@
 
 use std::{pin::Pin, task::Poll};
 
-use futures::{ready, stream::FusedStream, task::Context, Future, FutureExt, Stream};
+use futures::{ready, stream::FusedStream, task::Context, Future, Stream};
 use thiserror::Error;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, mpsc::error::TrySendError, oneshot};
 use tower_service::Service;
 
 /// Create a new Requester/Responder pair which wraps and calls the given service
-pub fn unbounded<TReq, TResp>() -> (SenderService<TReq, TResp>, Receiver<TReq, TResp>) {
-    let (tx, rx) = mpsc::unbounded_channel();
+pub fn channel<TReq, TResp>() -> (SenderService<TReq, TResp>, Receiver<TReq, TResp>) {
+    let (tx, rx) = mpsc::channel(1);
     (SenderService::new(tx), Receiver::new(rx))
 }
 
 /// Receiver for a (Request, Reply) tuple, where Reply is a oneshot::Sender
-type Rx<TReq, TRes> = mpsc::UnboundedReceiver<(TReq, oneshot::Sender<TRes>)>;
+type Rx<TReq, TRes> = mpsc::Receiver<(TReq, oneshot::Sender<TRes>)>;
 /// Sender for a (Request, Reply) tuple, where Reply is a oneshot::Sender
-type Tx<TReq, TRes> = mpsc::UnboundedSender<(TReq, oneshot::Sender<TRes>)>;
+type Tx<TReq, TRes> = mpsc::Sender<(TReq, oneshot::Sender<TRes>)>;
 
 pub type TrySenderService<TReq, TResp, TErr> = SenderService<TReq, Result<TResp, TErr>>;
 pub type TryReceiver<TReq, TResp, TErr> = Receiver<TReq, Result<TResp, TErr>>;
@@ -66,26 +66,30 @@ impl<TReq, TRes> Clone for SenderService<TReq, TRes> {
     }
 }
 
-impl<TReq, TRes> Service<TReq> for SenderService<TReq, TRes> {
+impl<TReq: Send + Sync + 'static, TRes: Send + Sync + 'static> Service<TReq> for SenderService<TReq, TRes> {
     type Error = TransportChannelError;
-    type Future = TransportResponseFuture<TRes>;
+    type Future = Pin<Box<dyn Future<Output = Result<TRes, TransportChannelError>> + Send + Sync + 'static>>;
     type Response = TRes;
 
     fn poll_ready(&mut self, _: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        // An unbounded sender is always ready (i.e. will never wait to send)
-        Poll::Ready(Ok(()))
+        match self.tx.try_reserve() {
+            Ok(_) => Poll::Ready(Ok(())),
+            Err(TrySendError::Full(_)) => Poll::Pending,
+            Err(TrySendError::Closed(_)) => Poll::Ready(Err(TransportChannelError::ChannelClosed)),
+        }
     }
 
     fn call(&mut self, request: TReq) -> Self::Future {
-        let (tx, rx) = oneshot::channel();
-
-        if self.tx.send((request, tx)).is_ok() {
-            TransportResponseFuture::new(rx)
-        } else {
-            // We're not able to send (rx closed) so return a future which resolves to
-            // a ChannelClosed error
-            TransportResponseFuture::closed()
-        }
+        let tx = self.tx.clone();
+        Box::pin(async move {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            if tx.send((request, reply_tx)).await.is_ok() {
+                let res = reply_rx.await.map_err(|_| TransportChannelError::Canceled)?;
+                Ok(res)
+            } else {
+                Err(TransportChannelError::ChannelClosed)
+            }
+        })
     }
 }
 
@@ -95,35 +99,6 @@ pub enum TransportChannelError {
     Canceled,
     #[error("The response channel has closed")]
     ChannelClosed,
-}
-
-/// Response future for Results received over a given oneshot channel Receiver.
-pub struct TransportResponseFuture<T> {
-    rx: Option<oneshot::Receiver<T>>,
-}
-
-impl<T> TransportResponseFuture<T> {
-    /// Create a new AwaitResponseFuture
-    pub fn new(rx: oneshot::Receiver<T>) -> Self {
-        Self { rx: Some(rx) }
-    }
-
-    /// Create a closed AwaitResponseFuture. If this is polled
-    /// an RequestorError::ChannelClosed error is returned.
-    pub fn closed() -> Self {
-        Self { rx: None }
-    }
-}
-
-impl<T> Future for TransportResponseFuture<T> {
-    type Output = Result<T, TransportChannelError>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        match self.rx {
-            Some(ref mut rx) => rx.poll_unpin(cx).map_err(|_| TransportChannelError::Canceled),
-            None => Poll::Ready(Err(TransportChannelError::ChannelClosed)),
-        }
-    }
 }
 
 /// This is the object received on the Receiver-side of this channel.
@@ -216,24 +191,11 @@ impl<TReq, TResp> Stream for Receiver<TReq, TResp> {
 mod test {
     use std::fmt::Debug;
 
-    use futures::{executor::block_on, future, StreamExt};
+    use futures::{executor::block_on, future, FutureExt, StreamExt};
     use tari_test_utils::unpack_enum;
     use tower::ServiceExt;
 
     use super::*;
-
-    #[test]
-    fn await_response_future_new() {
-        let (tx, rx) = oneshot::channel::<Result<(), ()>>();
-        tx.send(Ok(())).unwrap();
-        block_on(TransportResponseFuture::new(rx)).unwrap().unwrap();
-    }
-
-    #[test]
-    fn await_response_future_closed() {
-        let err = block_on(TransportResponseFuture::<()>::closed()).unwrap_err();
-        unpack_enum!(TransportChannelError::ChannelClosed = err);
-    }
 
     async fn reply<TReq, TResp>(mut rx: Rx<TReq, TResp>, msg: TResp)
     where TResp: Debug {
@@ -247,7 +209,7 @@ mod test {
 
     #[test]
     fn requestor_call() {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(1);
         let requestor = SenderService::<_, _>::new(tx);
 
         let fut = future::join(requestor.oneshot("PING"), reply(rx, "PONG"));
@@ -258,7 +220,7 @@ mod test {
 
     #[test]
     fn requestor_channel_closed() {
-        let (requestor, mut request_stream) = super::unbounded::<_, ()>();
+        let (requestor, mut request_stream) = super::channel::<_, ()>();
         request_stream.close();
 
         let err = block_on(requestor.oneshot(())).unwrap_err();
@@ -267,25 +229,8 @@ mod test {
     }
 
     #[test]
-    fn request_response_request_abort() {
-        let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
-
-        block_on(future::join(
-            async move {
-                // `_` drops the response receiver, so when a reply is sent it will fail
-                let _ = requestor.call("PING");
-            },
-            async move {
-                let a = request_stream.next().await.unwrap();
-                let req = a.reply_tx.send("PONG").unwrap_err();
-                assert_eq!(req, "PONG");
-            },
-        ));
-    }
-
-    #[test]
     fn request_response_response_canceled() {
-        let (mut requestor, mut request_stream) = super::unbounded::<_, &str>();
+        let (mut requestor, mut request_stream) = super::channel::<_, &str>();
 
         block_on(future::join(
             async move {
@@ -301,7 +246,7 @@ mod test {
 
     #[test]
     fn request_response_success() {
-        let (requestor, mut request_stream) = super::unbounded::<_, &str>();
+        let (requestor, mut request_stream) = super::channel::<_, &str>();
 
         let (result, _) = block_on(future::join(requestor.oneshot("PING"), async move {
             let req = request_stream.next().await.unwrap();

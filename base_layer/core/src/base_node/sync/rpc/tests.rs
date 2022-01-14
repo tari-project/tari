@@ -49,8 +49,8 @@ fn setup() -> (
     let request_mock = RpcRequestMock::new(peer_manager);
 
     let db = create_new_blockchain();
-    let (req_tx, _) = reply_channel::unbounded();
-    let (block_tx, _) = reply_channel::unbounded();
+    let (req_tx, _) = reply_channel::channel();
+    let (block_tx, _) = reply_channel::channel();
     let (block_event_tx, _) = broadcast::channel(1);
     let service = BaseNodeSyncRpcService::new(
         db.clone().into(),

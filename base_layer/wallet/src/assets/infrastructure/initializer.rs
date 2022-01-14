@@ -56,7 +56,7 @@ impl<T> ServiceInitializer for AssetManagerServiceInitializer<T>
 where T: OutputManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = reply_channel::unbounded();
+        let (sender, receiver) = reply_channel::channel();
 
         let handle = AssetManagerHandle::new(sender);
         context.register_handle(handle);

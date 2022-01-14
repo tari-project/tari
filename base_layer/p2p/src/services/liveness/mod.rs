@@ -118,7 +118,7 @@ impl LivenessInitializer {
 #[async_trait]
 impl ServiceInitializer for LivenessInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = reply_channel::unbounded();
+        let (sender, receiver) = reply_channel::channel();
 
         let (publisher, _) = broadcast::channel(200);
 

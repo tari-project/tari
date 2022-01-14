@@ -48,7 +48,7 @@
 //! use tari_service_framework::{reply_channel, tower::ServiceExt};
 //!
 //! block_on(async {
-//!     let (mut sender, mut receiver) = reply_channel::unbounded();
+//!     let (mut sender, mut receiver) = reply_channel::channel();
 //!
 //!     let (result, _) = futures::join!(
 //!         // Make the request and make progress on the resulting future

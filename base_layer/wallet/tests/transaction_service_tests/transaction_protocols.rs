@@ -129,7 +129,7 @@ pub async fn setup() -> (
 
     let db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection, None));
 
-    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_request_sender, oms_request_receiver) = reply_channel::channel();
     task::spawn(oms_reply_channel_task(oms_request_receiver));
 
     let (oms_event_publisher, _) = broadcast::channel(200);

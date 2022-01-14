@@ -152,10 +152,10 @@ where T: BlockchainBackend + 'static
         let inbound_response_stream = self.inbound_response_stream();
         let inbound_block_stream = self.inbound_block_stream();
         // Connect InboundNodeCommsInterface and OutboundNodeCommsInterface to BaseNodeService
-        let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
+        let (outbound_request_sender_service, outbound_request_stream) = reply_channel::channel();
         let (outbound_block_sender_service, outbound_block_stream) = mpsc::unbounded_channel();
-        let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
-        let (local_block_sender_service, local_block_stream) = reply_channel::unbounded();
+        let (local_request_sender_service, local_request_stream) = reply_channel::channel();
+        let (local_block_sender_service, local_block_stream) = reply_channel::channel();
         let outbound_nci =
             OutboundNodeCommsInterface::new(outbound_request_sender_service, outbound_block_sender_service);
         let (block_event_sender, _) = broadcast::channel(50);

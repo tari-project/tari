@@ -276,12 +276,12 @@ pub fn setup_transaction_service_no_comms(
     db_connection: WalletDbConnection,
     config: Option<TransactionServiceConfig>,
 ) -> TransactionServiceNoCommsInterface {
-    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_request_sender, oms_request_receiver) = reply_channel::channel();
 
     let (output_manager_service_event_publisher, _) = broadcast::channel(200);
     let (outbound_message_requester, mock_outbound_service) = create_outbound_service_mock(100);
 
-    let (ts_request_sender, ts_request_receiver) = reply_channel::unbounded();
+    let (ts_request_sender, ts_request_receiver) = reply_channel::channel();
     let (event_publisher, _) = channel(100);
     let transaction_service_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher.clone());
     let (transaction_send_message_channel, tx_receiver) = mpsc::channel(20);
@@ -328,7 +328,7 @@ pub fn setup_transaction_service_no_comms(
 
     let shutdown = Shutdown::new();
 
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, receiver_bns) = reply_channel::channel();
     let (base_node_service_event_publisher, _) = broadcast::channel(100);
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, base_node_service_event_publisher);

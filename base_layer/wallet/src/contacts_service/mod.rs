@@ -62,7 +62,7 @@ impl<T> ServiceInitializer for ContactsServiceInitializer<T>
 where T: ContactsBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = reply_channel::unbounded();
+        let (sender, receiver) = reply_channel::channel();
 
         let contacts_handle = ContactsServiceHandle::new(sender);
 

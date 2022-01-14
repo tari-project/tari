@@ -280,7 +280,7 @@ mod test {
         let (oms_event_sender, oms_event_receiver) = broadcast::channel(20);
         let (dht_event_sender, dht_event_receiver) = broadcast::channel(20);
 
-        let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+        let (oms_request_sender, oms_request_receiver) = reply_channel::channel();
         let mut oms_handle = OutputManagerHandle::new(oms_request_sender, oms_event_sender.clone());
 
         let shutdown_signal = Shutdown::new();

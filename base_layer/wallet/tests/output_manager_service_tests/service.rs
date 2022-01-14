@@ -117,16 +117,16 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static>(
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
 
-    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_request_sender, oms_request_receiver) = reply_channel::channel();
     let (oms_event_publisher, _) = broadcast::channel(200);
 
-    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+    let (ts_request_sender, _ts_request_receiver) = reply_channel::channel();
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
     let constants = create_consensus_constants(0);
 
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, receiver_bns) = reply_channel::channel();
     let (event_publisher_bns, _) = broadcast::channel(100);
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());
@@ -237,16 +237,16 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
 
-    let (oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (oms_request_sender, oms_request_receiver) = reply_channel::channel();
     let (oms_event_publisher, _) = broadcast::channel(200);
 
-    let (ts_request_sender, _ts_request_receiver) = reply_channel::unbounded();
+    let (ts_request_sender, _ts_request_receiver) = reply_channel::channel();
     let (event_publisher, _) = channel(100);
     let ts_handle = TransactionServiceHandle::new(ts_request_sender, event_publisher);
 
     let constants = create_consensus_constants(0);
 
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, receiver_bns) = reply_channel::channel();
     let (event_publisher_bns, _) = broadcast::channel(100);
 
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
@@ -1812,11 +1812,11 @@ async fn test_txo_revalidation() {
 async fn test_oms_key_manager_discrepancy() {
     let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
-    let (_oms_request_sender, oms_request_receiver) = reply_channel::unbounded();
+    let (_oms_request_sender, oms_request_receiver) = reply_channel::channel();
 
     let (oms_event_publisher, _) = broadcast::channel(200);
     let constants = ConsensusConstantsBuilder::new(Network::Weatherwax).build();
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, receiver_bns) = reply_channel::channel();
     let (event_publisher_bns, _) = broadcast::channel(100);
 
     let basenode_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns);
@@ -1850,7 +1850,7 @@ async fn test_oms_key_manager_discrepancy() {
 
     drop(output_manager_service);
 
-    let (_oms_request_sender2, oms_request_receiver2) = reply_channel::unbounded();
+    let (_oms_request_sender2, oms_request_receiver2) = reply_channel::channel();
 
     let server_node_identity2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service2 = OutputManagerService::new(
@@ -1870,7 +1870,7 @@ async fn test_oms_key_manager_discrepancy() {
     .expect("Should be able to make a new OMS with same master key");
     drop(output_manager_service2);
 
-    let (_oms_request_sender3, oms_request_receiver3) = reply_channel::unbounded();
+    let (_oms_request_sender3, oms_request_receiver3) = reply_channel::channel();
     let master_seed2 = CipherSeed::new();
     let server_node_identity3 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let output_manager_service3 = OutputManagerService::new(

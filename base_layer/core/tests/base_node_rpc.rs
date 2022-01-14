@@ -107,8 +107,8 @@ async fn setup() -> (
         base_node.mempool_handle.clone(),
         base_node.state_machine_handle.clone(),
     );
-    let (req_tx, _) = reply_channel::unbounded();
-    let (block_tx, _) = reply_channel::unbounded();
+    let (req_tx, _) = reply_channel::channel();
+    let (block_tx, _) = reply_channel::channel();
     let (block_event_tx, _) = broadcast::channel(1);
     let local_nci = LocalNodeCommsInterface::new(req_tx, block_tx, block_event_tx);
     let base_node_service = BaseNodeSyncRpcService::new(base_node.blockchain_db.clone().into(), local_nci);

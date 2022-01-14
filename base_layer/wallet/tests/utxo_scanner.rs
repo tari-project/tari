@@ -97,7 +97,7 @@ async fn setup(
     let factories = CryptoFactories::default();
 
     // Base Node Service Mock
-    let (sender, receiver_bns) = reply_channel::unbounded();
+    let (sender, receiver_bns) = reply_channel::channel();
     let (event_publisher_bns, _) = broadcast::channel(100);
     let base_node_service_handle = BaseNodeServiceHandle::new(sender, event_publisher_bns.clone());
     let mut mock_base_node_service = MockBaseNodeService::new(receiver_bns, shutdown.to_signal());

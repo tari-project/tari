@@ -38,7 +38,7 @@ use crate::mempool::{
 };
 
 pub fn create_mempool_service_mock() -> (MempoolHandle, MempoolMockState) {
-    let (tx, rx) = reply_channel::unbounded();
+    let (tx, rx) = reply_channel::channel();
     let mock = MempoolServiceMock::new(rx);
     let state = mock.get_shared_state();
     task::spawn(mock.run());

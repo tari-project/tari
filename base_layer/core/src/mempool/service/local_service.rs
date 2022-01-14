@@ -105,7 +105,7 @@ impl LocalMempoolService {
 #[cfg(test)]
 mod test {
     use futures::StreamExt;
-    use tari_service_framework::reply_channel::{unbounded, Receiver};
+    use tari_service_framework::reply_channel::{channel, Receiver};
     use tokio::task;
 
     use crate::mempool::{
@@ -138,7 +138,7 @@ mod test {
 
     #[tokio::test]
     async fn mempool_stats() {
-        let (tx, rx) = unbounded();
+        let (tx, rx) = channel();
         let mut service = LocalMempoolService::new(tx);
         task::spawn(mock_handler(rx));
         let stats = service.get_mempool_stats().await;
@@ -148,7 +148,7 @@ mod test {
 
     #[tokio::test]
     async fn mempool_stats_from_multiple() {
-        let (tx, rx) = unbounded();
+        let (tx, rx) = channel();
         let mut service = LocalMempoolService::new(tx);
         let mut service2 = service.clone();
         task::spawn(mock_handler(rx));

@@ -104,7 +104,7 @@ where T: OutputManagerBackend + 'static
             self.config.base_node_query_timeout.as_secs()
         );
 
-        let (sender, receiver) = reply_channel::unbounded();
+        let (sender, receiver) = reply_channel::channel();
         let (publisher, _) = broadcast::channel(self.config.event_channel_size);
 
         // Register handle before waiting for handles to be ready

@@ -116,7 +116,7 @@ impl ServiceBInitializer {
 #[async_trait]
 impl ServiceInitializer for ServiceBInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = reply_channel::unbounded();
+        let (sender, receiver) = reply_channel::channel();
 
         let service_b_handle = ServiceBHandle::new(sender);
 

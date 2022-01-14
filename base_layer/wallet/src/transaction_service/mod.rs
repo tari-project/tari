@@ -180,7 +180,7 @@ where
     W: WalletBackend + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let (sender, receiver) = reply_channel::unbounded();
+        let (sender, receiver) = reply_channel::channel();
         let transaction_stream = self.transaction_stream();
         let transaction_reply_stream = self.transaction_reply_stream();
         let transaction_finalized_stream = self.transaction_finalized_stream();

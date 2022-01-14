@@ -44,7 +44,7 @@ use crate::services::liveness::{
 const LOG_TARGET: &str = "p2p::liveness_mock";
 
 pub fn create_p2p_liveness_mock(buf_size: usize) -> (LivenessHandle, LivenessMock, LivenessEventSender) {
-    let (sender, receiver) = reply_channel::unbounded();
+    let (sender, receiver) = reply_channel::channel();
     let (publisher, _) = broadcast::channel(buf_size);
     (
         LivenessHandle::new(sender, publisher.clone()),

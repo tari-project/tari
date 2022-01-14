@@ -25,4 +25,4 @@ tari_test_utils = { version = "^0.23", path = "../../infrastructure/test_utils" 
 
 tokio = { version = "1.14", features = ["rt-multi-thread", "macros", "time"] }
 futures-test = { version = "0.3.3" }
-tower = "0.4"
+tower = { version = "0.4", features = ["util"] }

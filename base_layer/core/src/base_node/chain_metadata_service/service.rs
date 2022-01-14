@@ -298,8 +298,8 @@ mod test {
         LocalNodeCommsInterface,
         reply_channel::TryReceiver<NodeCommsRequest, NodeCommsResponse, CommsInterfaceError>,
     ) {
-        let (base_node_sender, base_node_receiver) = reply_channel::unbounded();
-        let (block_sender, _block_receiver) = reply_channel::unbounded();
+        let (base_node_sender, base_node_receiver) = reply_channel::channel();
+        let (block_sender, _block_receiver) = reply_channel::channel();
         let (block_event_sender, _) = broadcast::channel(50);
         let base_node = LocalNodeCommsInterface::new(base_node_sender, block_sender, block_event_sender);
 
