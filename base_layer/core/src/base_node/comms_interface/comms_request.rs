@@ -86,7 +86,7 @@ impl Display for NodeCommsRequest {
             FetchHeaders(range) => {
                 write!(f, "FetchHeaders ({:?})", range)
             },
-            FetchHeadersByHashes(v) => write!(f, "FetchHeadersWithHashes (n={})", v.len()),
+            FetchHeadersByHashes(v) => write!(f, "FetchHeadersByHashes (n={})", v.len()),
             FetchHeadersAfter(v, _hash) => write!(f, "FetchHeadersAfter (n={})", v.len()),
             FetchMatchingUtxos(v) => write!(f, "FetchMatchingUtxos (n={})", v.len()),
             FetchMatchingTxos(v) => write!(f, "FetchMatchingTxos (n={})", v.len()),
@@ -94,8 +94,8 @@ impl Display for NodeCommsRequest {
                 write!(f, "FetchMatchingBlocks ({:?})", range)
             },
             FetchBlocksByHash(v) => write!(f, "FetchBlocksByHash (n={})", v.len()),
-            FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksWithKernels (n={})", v.len()),
-            FetchBlocksByUtxos(v) => write!(f, "FetchBlocksWithUtxos (n={})", v.len()),
+            FetchBlocksByKernelExcessSigs(v) => write!(f, "FetchBlocksByKernelExcessSigs (n={})", v.len()),
+            FetchBlocksByUtxos(v) => write!(f, "FetchBlocksByUtxos (n={})", v.len()),
             GetHeaderByHash(v) => write!(f, "GetHeaderByHash({})", v.to_hex()),
             GetBlockByHash(v) => write!(f, "GetBlockByHash({})", v.to_hex()),
             GetNewBlockTemplate(v) => write!(f, "GetNewBlockTemplate ({}) with weight {}", v.algo, v.max_weight),

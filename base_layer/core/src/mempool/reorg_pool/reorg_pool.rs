@@ -52,9 +52,7 @@ type TransactionId = usize;
 
 /// The ReorgPool consists of all transactions that have recently been added to blocks.
 /// When a potential blockchain reorganization occurs the transactions can be recovered from the ReorgPool and can be
-/// added back into the UnconfirmedPool. Transactions in the ReOrg pool have a limited Time-to-live and will be removed
-/// from the pool when the Time-to-live thresholds is reached. Also, when the capacity of the pool has been reached, the
-/// oldest transactions will be removed to make space for incoming transactions.
+/// added back into the UnconfirmedPool. Transactions in the ReOrg pool expire as block height moves on.
 pub struct ReorgPool {
     config: ReorgPoolConfig,
     key_counter: usize,
@@ -64,7 +62,7 @@ pub struct ReorgPool {
 }
 
 impl ReorgPool {
-    /// Create a new ReorgPoolwith the specified configuration
+    /// Create a new ReorgPool with the specified configuration
     pub fn new(config: ReorgPoolConfig) -> Self {
         Self {
             config,

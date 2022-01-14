@@ -75,8 +75,7 @@ impl OutboundNodeCommsInterface {
         }
     }
 
-    /// Fetch the Blocks corresponding to the provided block hashes from a specific base node. The requested blocks
-    /// could be chain blocks or orphan blocks.
+    /// Fetch the Blocks corresponding to the provided excess_sig from the given peer `NodeId`.
     pub async fn request_transactions_by_excess_sig(
         &mut self,
         node_id: NodeId,
