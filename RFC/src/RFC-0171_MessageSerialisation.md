@@ -2,7 +2,7 @@
 
 ## Message Serialization
 
-![status: draft](theme/images/status-draft.svg)
+![status: outdated](theme/images/status-outofdate.svg)
 
 **Maintainer(s)**: [Cayle Sharrock](https://github.com/CjS77)
 

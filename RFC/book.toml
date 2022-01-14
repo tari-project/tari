@@ -5,7 +5,7 @@ description = "The Tari network RFC library and documentation"
 
 [build]
 build-dir = "../book"
-create-missing = true
+create-missing = false
 preprocess = ["links", "index"]
 
 [output.html]

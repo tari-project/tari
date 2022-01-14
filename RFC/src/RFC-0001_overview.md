@@ -53,7 +53,7 @@ The aim of this proposal is to provide a very high-level perspective of the movi
 ## Related Requests for Comment
 
 - [RFC-0100: Base layer](RFC-0100_BaseLayer.md)
-- [RFC-0300: Digital asset network](RFC-0300_DAN.md)
+- [RFC-0300: Digital asset network](RFCD-0300_DAN.md)
 - [RFC-0310: Digital assets](RFC-0311_AssetTemplates.md)
 
 ## Description
@@ -64,10 +64,9 @@ The Tari network comprises two layers:
 
 1. A base layer that deals with [Tari coin] [transaction]s. It governed by a proof-of-work (PoW) blockchain that is merged-mined with
    Monero. The base layer is highly secure, decentralized and relatively slow.
-2. A digital assets network (DAN), consisting of multiple independent sidechains, that manage the state of the native digital assets.
-   It is built for liveness, speed and scalability at the expense of decentralization.
-
-![Tari Network Overview](theme/images/tari_network_overview.png)
+2. A digital assets network (DAN), consisting of multiple independent side-chains, that manage the state of the native digital assets.
+   Usually, these side-chains favour liveness and scalability at the expense of decentralisation, but this need not be the
+   case.
 
 ### Currency Tokens and Digital Assets
 
@@ -84,7 +83,7 @@ On the other hand, the Tari network will be used to create and manage digital as
 In Tari parlance, a digital asset is defined as a finite set of digital stateful tokens that are governed by predefined
 rules. A single digital asset may define anything from one to thousands of tokens within its scope.
 
-For example, in a ticketing context, an _event_ will be an asset. The asset definition will allocate tokens representing
+For example, in a ticketing context, an _event_ might be an asset. The asset definition will allocate tokens representing
 the tickets for that event. The ticket tokens will have state, such as its current owner and whether or not it has been
 redeemed. Users might be interacting with digital assets hundreds of times a second, and state updates need to be
 propagated and agreed upon by the network very quickly. A blockchain-enabled ticketing system is practically useless if
@@ -103,13 +102,14 @@ We can't have fast, cheap digital assets and also highly secure and decentralize
 Tari overcomes this constraint by building two layers:
 
 1. A base layer that provides a public ledger of Tari coin transactions, secured by PoW to maximize security.
-2. A DAN consisting of multiple independent sidechains that each manage the state of a digital asset. It is very fast and cheap, at the expense of
-   decentralization.
+2. A DAN consisting of multiple independent side-chains that each manage the state of a digital asset. They are typically
+   is very fast and cheap, at the expense of decentralization.
 
 If required, the digital assets layer can refer back to the base layer to temporarily give up speed in exchange for
 increased security. These commitments allow token owners to make attestations based on their asset state without relying completely on
-the sidechain infrastructure. Furthermore, this link to the base layer can be used to resolve consensus issues on the digital assets
-layer that may crop up from time to time as a result of the lower degree of decentralization.
+the side-chain infrastructure.
+
+![Tari two-layer architecture](theme/images/chains.png)
 
 ### Base Layer
 
@@ -125,8 +125,8 @@ cryptocurrencies such as Bitcoin:
 
 - Transactions are private. This means that casual observers cannot ascertain the amounts being transferred or the
   identities of the parties involved.
-- Mimblewimble employs a novel blockchain "compression" method called cut-through, which dramatically reduces the
-  storage requirements for blockchain nodes.
+- Mimblewimble has a different set of security guarantees to Bitcoin. The upshot of this is that you can throw away UTXOs
+  away once they are spent and still verify the integrity of the ledger.
 - Multi-signature transactions can be easily aggregated, making such transactions very compact, and completely hiding
   the parties involved, or the fact that there were multiple parties involved at all.
 
@@ -148,15 +148,12 @@ There are a few options for the PoW mechanism for Tari:
   well-distributed.
 - A hybrid approach, utilizing two or more of the above mechanisms.
 
-Given Tari's relationship with Monero, a merged-mining strategy with Monero makes the most sense. However, the PoW mechanism
-SHOULD be written in a way that makes it relatively easy to code, implement and switch to a different strategy in the
-future. More information on Tari's current approach can be found in [RFC-0131_Mining].
-
-The mining strategy is explained more thoroughly in [RFC-130](RFC-0130_Mining.md).
+Ultimately, the community decided to employ a hybrid mining approach. On average, 60% of block rewards come from Monero merge-mining,
+ while 40% come from standalone SHA-3-based mining algorithm.  More information on Tari's current approach can be found in [RFC-0131_Mining].
 
 ### Digital Assets Network
 
-A more detailed proposal for the DAN is presented in [RFC-0300/DAN](RFC-0300_DAN.md). Digital assets
+A more detailed proposal for the DAN is presented in [RFC-0300/DAN](RFCD-0300_DAN.md). Digital assets
 _are discussed in more detail in [RFC-0310/Assets](RFC-0311_AssetTemplates.md)._
 
 The DAN is focused on achieving high speed and scalability, without compromising on security. To achieve
@@ -164,25 +161,34 @@ this we make the explicit trade-off of sacrificing decentralization. Generally, 
 security of a given digital asset are the Asset Issuer and Token owners. This fact points to a natural centralization of control
 of an asset by the Asset Issuer.
 
-Digital Assets consist of a set of tokens and their associated state. The state of an asset's tokens will be managed on a sidechain
-that will run in parallel to the Tari base layer. The consensus mechanism, ledger style and other characteristics of the sidechain
+Digital Assets consist of a set of tokens and their associated state. The state of an asset's tokens will be managed on a side-chain
+that will run in parallel to the Tari base layer. The consensus mechanism, ledger style and other characteristics of the side-chain
 will be chosen and managed by the Asset Issuer.
 
-There are many options for the nature of these sidechains. These are still under discussion but it will be possible to run
-multiple types of sidechains in the DAN and an Asset Issuer can choose which best suits the asset type it is supporting.
+There are many options for the nature of these side-chains. These are still under discussion but it will be possible to run
+multiple types of side-chains in the DAN and an Asset Issuer can choose which best suits the asset type it is supporting.
 
 Please refer to Tari Labs University (TLU) for detailed discussions on
 [layer 2 scaling solutions](https://tlu.tarilabs.com/layer2scaling/layer2scaling-landscape/layer2scaling-survey.html)
 and
 [consensus mechanisms](https://tlu.tarilabs.com/consensus-mechanisms/BFT-consensus-mechanisms-applications/Introduction.html).
 
-### Interaction between Base Layer and Digital Assets Network
+### The role of the base layer
 
-The base layer provides supporting services to the DAN. In general, the base layer only knows about
-Tari coin transactions. It knows nothing about the details of any digital assets and their state.
+The Base Layer fulfils these, and only these, major roles:
+
+1. It manages and enforces the accounting and consensus rules of the base Tari (XTR) token. This includes standard payments,
+   and simple smart contracts such as cross-chain atomic swaps.
+2. It maintains the Digital Asset register. This includes functionality for side-chain management, checkpoints, and transfer
+   of funds into and out of side-chains.
+3. Maintain the Validator Node register. This includes support for registering and de-registering Validator Nodes.
+
+In general, the base layer knows _nothing about the specifics of what is happening on the side-chains_. It only cares
+that no Tari is created or destroyed, and that the flow of funds in and out of side chains are carried out by the appropriate
+authorised agents.
 
 This is by design: the network cannot scale if details of digital asset contracts have to be tracked on the base layer.
-We envisage that there could be tens of thousands of contracts deployed on Tari. Some of those contracts may be enormous;
+We envisage that there could be hundreds of thousands of contracts deployed on Tari. Some of those contracts may be enormous;
 imagine controlling every piece of inventory and their live statistics for a massively multiplayer online role-playing
 game (MMORPG). The base layer is also too slow. If _any_ state relies on base layer transactions being confirmed, there
 is an immediate lag before that state change can be considered final, which kills the liveness properties we seek for the DAN.
@@ -191,27 +197,38 @@ It is better to keep the two networks almost totally decoupled from the outset, 
 strength.
 
 That said, there are key interactions between the two layers. The base layer is a ledger and can be used as a
-source of truth for the DAN. Asset sidechains will periodically commit to their state on the base layer. These commitments
-make it possible for token owners to make attestations about their tokens at certain points in time without relying on the
-sidechain. These commitments can also be used as a final court of appeal in the case of consensus disputes.
+source of truth for the DAN. Asset side-chains will periodically commit to (a summary of) their state on the base layer.
+These commitments make it possible for token owners to make attestations about their tokens at certain points in time
+without relying on the side-chain. These commitments can also be used as a final court of appeal in the case of consensus disputes.
+The checkpoints also serve as a mechanism to check that Validator Nodes are still alive and well.
 
-The interplay between base layer and DAN is what incentivizes every actor in the system to maintain an efficient and
+The interplay between the base layer and the DAN is what incentivises every actor in the system to maintain an efficient and
 well-functioning network, even while acting in their own self-interest.
 
 ### Summary
 
 The following table summarizes the defining characteristics of the Tari network layers:
 
-|                                      | Base Layer       | Digital Assets Network |
-| :----------------------------------- | :--------------- | ---------------------- |
-| Speed                                | Slow             | Fast                   |
-| Scalability                          | Moderate         | Very high              |
-| Security                             | High             | Moderate               |
-| Decentralization                     | High             | Low - Med              |
-| Processes digital asset instructions | Only checkpoints | Yes                    |
+|                                      | Base Layer                  | Digital Assets Network |
+|:-------------------------------------|:----------------------------|:-----------------------|
+| Speed                                | Slow                        | Fast                   |
+| Scalability                          | Moderate                    | Very high              |
+| Security                             | High                        | Moderate               |
+| Decentralization                     | High                        | Low - Med              |
+| Processes digital asset instructions | Side-chains and checkpoints | Yes                    |
 
 [tari coin]: Glossary.md#tari-coin
 [transaction]: Glossary.md#transaction
 [mimblewimble]: Glossary.md#mimblewimble
 [utxo]: Glossary.md#unspent-transaction-outputs
 [rfc-0131_mining]: RFC-0131_Mining.md
+
+# Change Log
+
+| Date        | Change                                                        | Author   |
+|:------------|:--------------------------------------------------------------|:---------|
+| 18 Dec 2018 | First outline                                                 | CjS77    |
+| 30 Mar 2019 | First draft v0.0.1                                            | CjS77    |
+| 19 Jun 2019 | Propose payment channel layer                                 | CjS77    |
+| 22 Jun 2021 | Remove payment channel layer proposal                         | SimianZa |
+| 14 Jan 2022 | Update image. Expound on Base layer responsibilities | CjS77    |
