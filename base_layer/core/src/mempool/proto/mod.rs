@@ -20,22 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub use mempool::{
-    mempool_service_request,
-    mempool_service_response,
-    InventoryIndexes,
-    MempoolServiceRequest,
-    MempoolServiceResponse,
-    TransactionInventory,
-    TransactionItem,
-};
+pub use mempool::{InventoryIndexes, TransactionInventory, TransactionItem};
 
 use crate::proto::mempool;
 
+mod state_response;
+mod stats_response;
 mod sync_protocol;
-// TODO: Clean up
-pub mod mempool_request;
-pub mod mempool_response;
-pub mod state_response;
-pub mod stats_response;
-pub mod tx_storage_response;
+mod tx_storage_response;

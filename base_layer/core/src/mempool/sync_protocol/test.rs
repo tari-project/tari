@@ -122,10 +122,10 @@ async fn empty_set() {
         .await
         .unwrap();
 
-    let transactions = mempool2.snapshot().await.unwrap();
+    let transactions = mempool2.snapshot().await;
     assert_eq!(transactions.len(), 0);
 
-    let transactions = mempool1.snapshot().await.unwrap();
+    let transactions = mempool1.snapshot().await;
     assert_eq!(transactions.len(), 0);
 }
 
@@ -319,14 +319,7 @@ async fn responder_messages() {
 }
 
 async fn get_snapshot(mempool: &Mempool) -> Vec<Transaction> {
-    mempool
-        .snapshot()
-        .await
-        .unwrap()
-        .iter()
-        .map(|t| &**t)
-        .cloned()
-        .collect()
+    mempool.snapshot().await.iter().map(|t| &**t).cloned().collect()
 }
 
 async fn read_message<S, T>(reader: &mut S) -> T

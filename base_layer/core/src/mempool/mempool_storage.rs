@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common_types::types::Signature;
+use tari_common_types::types::{PrivateKey, Signature};
 use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::{
@@ -135,7 +135,11 @@ impl MempoolStorage {
         let removed_transactions = self
             .unconfirmed_pool
             .remove_published_and_discard_deprecated_transactions(published_block);
-        self.reorg_pool.insert_txs(removed_transactions)?;
+        self.reorg_pool
+            .insert_all(published_block.header.height, removed_transactions);
+
+        self.unconfirmed_pool.compact();
+        self.reorg_pool.compact();
 
         Ok(())
     }
@@ -159,7 +163,7 @@ impl MempoolStorage {
         // Remove re-orged transactions from reorg  pool and re-submit them to the unconfirmed mempool
         let removed_txs = self
             .reorg_pool
-            .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks)?;
+            .remove_reorged_txs_and_discard_double_spends(removed_blocks, new_blocks);
         self.insert_txs(removed_txs)?;
         // Update the Mempool based on the received set of new blocks.
         for block in new_blocks {
@@ -192,9 +196,8 @@ impl MempoolStorage {
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
     // TODO: Investigate returning an iterator rather than a large vector of transactions
-    pub fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        let txs = self.unconfirmed_pool.snapshot();
-        Ok(txs)
+    pub fn snapshot(&self) -> Vec<Arc<Transaction>> {
+        self.unconfirmed_pool.snapshot()
     }
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
@@ -203,6 +206,16 @@ impl MempoolStorage {
         let results = self.unconfirmed_pool.highest_priority_txs(total_weight)?;
         self.insert_txs(results.transactions_to_insert)?;
         Ok(results.retrieved_transactions)
+    }
+
+    pub fn retrieve_by_excess_sigs(&self, excess_sigs: &[PrivateKey]) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
+        let (found_txns, remaining) = self.unconfirmed_pool.retrieve_by_excess_sigs(excess_sigs);
+        let (found_published_transactions, remaining) = self.reorg_pool.retrieve_by_excess_sigs(&remaining);
+
+        (
+            found_txns.into_iter().chain(found_published_transactions).collect(),
+            remaining,
+        )
     }
 
     /// Check if the specified excess signature is found in the Mempool.
@@ -249,38 +262,33 @@ impl MempoolStorage {
     }
 
     // Returns the total number of transactions in the Mempool.
-    fn len(&self) -> Result<usize, MempoolError> {
-        Ok(self.unconfirmed_pool.len())
+    fn len(&self) -> usize {
+        self.unconfirmed_pool.len() + self.reorg_pool.len()
     }
 
     /// Gathers and returns the stats of the Mempool.
-    pub fn stats(&mut self) -> Result<StatsResponse, MempoolError> {
+    pub fn stats(&self) -> StatsResponse {
         let weight = self.get_transaction_weight(0);
-        Ok(StatsResponse {
-            total_txs: self.len()?,
+        StatsResponse {
+            total_txs: self.len(),
             unconfirmed_txs: self.unconfirmed_pool.len(),
-            reorg_txs: self.reorg_pool.len()?,
+            reorg_txs: self.reorg_pool.len(),
             total_weight: self.unconfirmed_pool.calculate_weight(&weight),
-        })
+        }
     }
 
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
-    pub fn state(&mut self) -> Result<StateResponse, MempoolError> {
-        let unconfirmed_pool = self
-            .unconfirmed_pool
-            .snapshot()
-            .iter()
-            .map(|tx| tx.as_ref().clone())
-            .collect::<Vec<_>>();
+    pub fn state(&self) -> StateResponse {
+        let unconfirmed_pool = self.unconfirmed_pool.snapshot();
         let reorg_pool = self
             .reorg_pool
-            .snapshot()?
+            .snapshot()
             .iter()
-            .map(|tx| tx.body.kernels()[0].excess_sig.clone())
+            .map(|tx| tx.first_kernel_excess_sig().cloned().unwrap_or_default())
             .collect::<Vec<_>>();
-        Ok(StateResponse {
+        StateResponse {
             unconfirmed_pool,
             reorg_pool,
-        })
+        }
     }
 }
