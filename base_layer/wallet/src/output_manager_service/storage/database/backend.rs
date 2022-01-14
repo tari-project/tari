@@ -113,4 +113,5 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         amount: u64,
         current_tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
+    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
 }

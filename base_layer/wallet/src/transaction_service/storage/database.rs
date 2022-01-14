@@ -141,6 +141,7 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn get_pending_inbound_transaction_sender_info(
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
+    fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -431,6 +432,14 @@ where T: TransactionBackend + 'static
         .await
         .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(*t)
+    }
+
+    pub async fn get_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let t = tokio::task::spawn_blocking(move || db_clone.fetch_imported_transactions())
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
     }
 
     pub async fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {

@@ -578,6 +578,17 @@ where T: OutputManagerBackend + 'static
             .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
+
+    pub async fn fetch_outputs_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let db_clone = self.db.clone();
+        let outputs = tokio::task::spawn_blocking(move || db_clone.fetch_outputs_by_tx_id(tx_id))
+            .await
+            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(outputs)
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, OutputManagerStorageError> {

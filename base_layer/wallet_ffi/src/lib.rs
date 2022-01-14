@@ -4218,6 +4218,7 @@ pub unsafe extern "C" fn wallet_get_completed_transactions(
                 .values()
                 .filter(|ct| ct.status != TransactionStatus::Completed)
                 .filter(|ct| ct.status != TransactionStatus::Broadcast)
+                .filter(|ct| ct.status != TransactionStatus::Imported)
             {
                 completed.push(tx.clone());
             }
@@ -4281,7 +4282,11 @@ pub unsafe extern "C" fn wallet_get_pending_inbound_transactions(
                 // list here in the FFI interface
                 for ct in completed_txs
                     .values()
-                    .filter(|ct| ct.status == TransactionStatus::Completed || ct.status == TransactionStatus::Broadcast)
+                    .filter(|ct| {
+                        ct.status == TransactionStatus::Completed ||
+                            ct.status == TransactionStatus::Broadcast ||
+                            ct.status == TransactionStatus::Imported
+                    })
                     .filter(|ct| ct.direction == TransactionDirection::Inbound)
                 {
                     pending.push(InboundTransaction::from(ct.clone()));
