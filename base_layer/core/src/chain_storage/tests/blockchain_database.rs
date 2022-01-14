@@ -517,7 +517,7 @@ mod fetch_total_size_stats {
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
             stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
-            3
+            4003
         );
     }
 }
@@ -567,14 +567,14 @@ mod fetch_header_containing_utxo_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        assert_eq!(genesis.block().body.outputs().len(), 1);
-        // let mut mmr_position = 0;
-        // genesis.block().body.outputs().iter().for_each(|_| {
-        //     let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
-        //     assert_eq!(header.height(), 0);
-        //     mmr_position += 1;
-        // });
-        let err = db.fetch_header_containing_utxo_mmr(2).unwrap_err();
+        assert_eq!(genesis.block().body.outputs().len(), 4001);
+        let mut mmr_position = 0;
+        genesis.block().body.outputs().iter().for_each(|_| {
+            let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
+            assert_eq!(header.height(), 0);
+            mmr_position += 1;
+        });
+        let err = db.fetch_header_containing_utxo_mmr(4002).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
