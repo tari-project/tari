@@ -75,7 +75,7 @@ impl OutboundNodeCommsInterface {
         }
     }
 
-    /// Fetch the Blocks corresponding to the provided excess_sig from the given peer `NodeId`.
+    /// Fetch the transactions corresponding to the provided excess_sigs from the given peer `NodeId`.
     pub async fn request_transactions_by_excess_sig(
         &mut self,
         node_id: NodeId,
