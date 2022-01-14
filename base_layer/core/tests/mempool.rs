@@ -1107,7 +1107,7 @@ async fn consensus_validation_large_tx() {
 
 #[tokio::test]
 #[allow(clippy::erasing_op)]
-#[ignore = "broken after validator node merge"]
+#[allow(clippy::identity_op)]
 async fn consensus_validation_unique_id() {
     let mut rng = rand::thread_rng();
     let network = Network::LocalNet;
@@ -1138,7 +1138,7 @@ async fn consensus_validation_unique_id() {
     };
     let txs = vec![txn_schema!(
         from: vec![outputs[1][0].clone()],
-        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+        to: vec![1 * T], fee: 100.into(), lock: 0, features: features
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
 
@@ -1151,6 +1151,18 @@ async fn consensus_validation_unique_id() {
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // publishing a transaction that spends a unique id to a new output should succeed
+    let nft = outputs[2][0].clone();
+    let features = nft.features.clone();
+    let tx = txn_schema!(
+        from: vec![nft],
+        to: vec![0 * T], fee: 100.into(), lock: 0, features: features
+    );
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::UnconfirmedPool));
 
     // a different unique_id should be fine
     let features = OutputFeatures {
