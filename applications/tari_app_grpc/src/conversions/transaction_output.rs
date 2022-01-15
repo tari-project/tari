@@ -90,6 +90,6 @@ impl TryFrom<TransactionOutput> for grpc::TransactionOutput {
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
             covenant: output.covenant.to_consensus_bytes(),
-        }
+        })
     }
 }

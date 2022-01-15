@@ -84,35 +84,35 @@ fn get_igor_genesis_block_raw() -> Block {
     );
     let mut body = AggregateBody::new(
         vec![],
-        vec![TransactionOutput {
-            features: OutputFeatures {
+        vec![TransactionOutput::new_current_version(
+            OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
                .. Default::default()
             },
-            commitment: Commitment::from_hex(
+            Commitment::from_hex(
                 "fadafb12de96d90042dcbf839985aadb7ae88baa3446d5c6a17937ef2b36783e",
             )
                 .unwrap(),
-            proof: BulletRangeProof::from_hex("845c947cbf23683f6ff6a56d0aa55fca14a618f7476d4e29348c5cbadf2bb062b8da701a0f058eb69c88492895c3f034db194f6d1b2d29ea83c1a68cbdd19a3f90ae080cfd0315bb20cd05a462c4e06e708b015da1d70c0f87e8c7413b579008e43a6c8dc1edb72b0b67612e897d251ec55798184ff35c80d18262e98034677b73f2dcc7ae25c9119900aadaf04a16068bf57b9e8b9bb694331750dc8acc6102b8961be183419dce2f96c48ced9892e4cdb091dcda0d6a0bb4ed94fc0c63ca065f25ce1e560504d49970bcaac007f33368f15ffa0dd3f56bf799b66fa684fe0fbeb882aee4a6fe05a3ca7c488a6ba22779a42f0f5d875175b8ebc517dd49df20b4f04f027b7d22b7c62cb93727f35c18a0b776d95fac4ff5405d6ed3dbb7613152178cecea4b712aa6e6701804ded71d94cf67de2e86ae401499b39de81b7344185c9eb3bd570ac6121143a690f118d9413abb894729b6b3e057f4771b2c2204285151a56695257992f2b0331f27066270718b37ab472c339d2560c1f6559f3c4ce31ec7f7e2acdbebb1715951d8177283a1ccc2f393ce292956de5db4afde419c0264d5cc4758e6e2c07b730ad43819f3761658d63794cc8071b30f9d7cd622bece4f086b0ca6a04fee888856084543a99848f06334acf48cace58e5ef8c85412017c400b4ec92481ba6d745915aef40531db73d1d84d07d7fce25737629e0fc4ee71e7d505bfd382e362cd1ac03a67c93b8f20cb4285ce240cf1e000d48332ba32e713d6cdf6266449a0a156241f7b1b36753f46f1ecb8b1836625508c5f31bc7ebc1d7cd634272be02cc109bf86983a0591bf00bacea1287233fc12324846398be07d44e8e14bd78cd548415f6de60b5a0c43a84ac29f6a8ac0b1b748dd07a8a4124625e1055b5f5b19da79c319b6e465ca5df0eb70cb4e3dc399891ce90b").unwrap(),
+            BulletRangeProof::from_hex("845c947cbf23683f6ff6a56d0aa55fca14a618f7476d4e29348c5cbadf2bb062b8da701a0f058eb69c88492895c3f034db194f6d1b2d29ea83c1a68cbdd19a3f90ae080cfd0315bb20cd05a462c4e06e708b015da1d70c0f87e8c7413b579008e43a6c8dc1edb72b0b67612e897d251ec55798184ff35c80d18262e98034677b73f2dcc7ae25c9119900aadaf04a16068bf57b9e8b9bb694331750dc8acc6102b8961be183419dce2f96c48ced9892e4cdb091dcda0d6a0bb4ed94fc0c63ca065f25ce1e560504d49970bcaac007f33368f15ffa0dd3f56bf799b66fa684fe0fbeb882aee4a6fe05a3ca7c488a6ba22779a42f0f5d875175b8ebc517dd49df20b4f04f027b7d22b7c62cb93727f35c18a0b776d95fac4ff5405d6ed3dbb7613152178cecea4b712aa6e6701804ded71d94cf67de2e86ae401499b39de81b7344185c9eb3bd570ac6121143a690f118d9413abb894729b6b3e057f4771b2c2204285151a56695257992f2b0331f27066270718b37ab472c339d2560c1f6559f3c4ce31ec7f7e2acdbebb1715951d8177283a1ccc2f393ce292956de5db4afde419c0264d5cc4758e6e2c07b730ad43819f3761658d63794cc8071b30f9d7cd622bece4f086b0ca6a04fee888856084543a99848f06334acf48cace58e5ef8c85412017c400b4ec92481ba6d745915aef40531db73d1d84d07d7fce25737629e0fc4ee71e7d505bfd382e362cd1ac03a67c93b8f20cb4285ce240cf1e000d48332ba32e713d6cdf6266449a0a156241f7b1b36753f46f1ecb8b1836625508c5f31bc7ebc1d7cd634272be02cc109bf86983a0591bf00bacea1287233fc12324846398be07d44e8e14bd78cd548415f6de60b5a0c43a84ac29f6a8ac0b1b748dd07a8a4124625e1055b5f5b19da79c319b6e465ca5df0eb70cb4e3dc399891ce90b").unwrap(),
             // For genesis block: A default script can never be spent, intentionally
-            script: TariScript::default(),
+            TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
-            sender_offset_public_key: Default::default(),
+            Default::default(),
             // For genesis block: Metadata signature will never be checked
-            metadata_signature: Default::default(),
-            covenant: Covenant::default(),
-        }],
-        vec![TransactionKernel {
-            features: KernelFeatures::COINBASE_KERNEL,
-            fee: MicroTari(0),
-            lock_height: 0,
-            excess: Commitment::from_hex(
+            Default::default(),
+            Covenant::default(),
+        )],
+        vec![TransactionKernel::new(
+            KernelFeatures::COINBASE_KERNEL,
+             MicroTari(0),
+             0,
+             Commitment::from_hex(
                 "f472cc347a1006b7390f9c93b3c62fba334fd99f6c9c1daf9302646cd4781f61",
             )
-                .unwrap(),
-            excess_sig: sig,
-        }],
+            .unwrap(),
+             sig,
+        )],
     );
     body.sort();
     // set genesis timestamp
@@ -219,29 +219,29 @@ fn get_dibbler_genesis_block_raw() -> Block {
     );
     let mut body = AggregateBody::new(
         vec![],
-        vec![TransactionOutput {
-            features: OutputFeatures {
+        vec![TransactionOutput::new_current_version(
+            OutputFeatures {
                 flags: OutputFlags::COINBASE_OUTPUT,
                 maturity: 60,
                 ..Default::default()
             },
-            commitment: Commitment::from_hex("e6ce76ce2f6ca4278222b4ee556344cd0becb14532b4c57c7c40c248d61abd54").unwrap(),
-            proof: BulletRangeProof::from_hex("a853f198f5bf92849373c545aee14c1fd9cd4fb8b1b525ee539efa2123706f354034f2931b7d5e940aaa42b89da1e088ff9b196cbf108c57b3df788ad0b6893324fddfb16bbba09e3acb8d99626ef0ea0c595189ea5dcef33d650ad398369a6e74fb0dd74ea43198c4d834abfb40dcaba87731b18bdb95115a8bfd288d23610fd8a50bc8d124fb80b57b56f79dad937b37de46797697baa6cc358f78a0d2e400b0c172ff8da82775b3ec591e365fc098114d1fddf57dadb2f74d7fd4aae1a107a5b52f025d6d1035bb128a45a08c79435d7d7c22b0ea4d06d28e8ab11a21d8050ec55213562c863e7c773f8823a67f5c44fde70dd74c0ac79f9fdaab8a9176604cac8c6ee3110e9a8aa6b87dd3fa2312d2323fad631807f1992aa1b6bfb3043d84eeb33e2cc9383919ad4417db1768eaa0218d2683af097c0a544b417c3eea7ef4a299c3ddc989406a145fd9e6b935bb2797fb9b30ff8f79d0bcebdb17204f5cb6d0b027c7b05e0419cfa7810b16600498d2bf6526448d7f8be43eb048265a1d985a240641d01cb626fd0266da240c7c8b1cd7f74b3474a7c025998255e01f00521558ab4c74bee24c7dbd4fafb37438fceb907b0c0b034e15078bd6efa09e428cb0d61c31fa32174b0f0954b8f7fdb119b3c401b5e1b7d784cbc2a4ba73504136d4c7c992a19016a8841dd82107fca3f61aec7978ea78d55a4a8f14f9932175de1a2ca9effd29cb96e72c69bb1ef9980bac8d72122c23dcf348f7fb68017f7b04a1ae47a300a2a418642a807d19b310c60e2f3f9778ec2f5338b72b9f26a40234f44c78a5a8883daa88e3f1beecf7caa48c19003075766df4dfc5bca85a784214b34f89f4f63fb3e1da3ee7686ac3ae61607572f9a623768d8c43f2a129a80c4b50bdaa99729aba7218d5ef04f6f01cd49479d27e9f10a096aa3d5d89c16008").unwrap(),
+            Commitment::from_hex("e6ce76ce2f6ca4278222b4ee556344cd0becb14532b4c57c7c40c248d61abd54").unwrap(),
+            BulletRangeProof::from_hex("a853f198f5bf92849373c545aee14c1fd9cd4fb8b1b525ee539efa2123706f354034f2931b7d5e940aaa42b89da1e088ff9b196cbf108c57b3df788ad0b6893324fddfb16bbba09e3acb8d99626ef0ea0c595189ea5dcef33d650ad398369a6e74fb0dd74ea43198c4d834abfb40dcaba87731b18bdb95115a8bfd288d23610fd8a50bc8d124fb80b57b56f79dad937b37de46797697baa6cc358f78a0d2e400b0c172ff8da82775b3ec591e365fc098114d1fddf57dadb2f74d7fd4aae1a107a5b52f025d6d1035bb128a45a08c79435d7d7c22b0ea4d06d28e8ab11a21d8050ec55213562c863e7c773f8823a67f5c44fde70dd74c0ac79f9fdaab8a9176604cac8c6ee3110e9a8aa6b87dd3fa2312d2323fad631807f1992aa1b6bfb3043d84eeb33e2cc9383919ad4417db1768eaa0218d2683af097c0a544b417c3eea7ef4a299c3ddc989406a145fd9e6b935bb2797fb9b30ff8f79d0bcebdb17204f5cb6d0b027c7b05e0419cfa7810b16600498d2bf6526448d7f8be43eb048265a1d985a240641d01cb626fd0266da240c7c8b1cd7f74b3474a7c025998255e01f00521558ab4c74bee24c7dbd4fafb37438fceb907b0c0b034e15078bd6efa09e428cb0d61c31fa32174b0f0954b8f7fdb119b3c401b5e1b7d784cbc2a4ba73504136d4c7c992a19016a8841dd82107fca3f61aec7978ea78d55a4a8f14f9932175de1a2ca9effd29cb96e72c69bb1ef9980bac8d72122c23dcf348f7fb68017f7b04a1ae47a300a2a418642a807d19b310c60e2f3f9778ec2f5338b72b9f26a40234f44c78a5a8883daa88e3f1beecf7caa48c19003075766df4dfc5bca85a784214b34f89f4f63fb3e1da3ee7686ac3ae61607572f9a623768d8c43f2a129a80c4b50bdaa99729aba7218d5ef04f6f01cd49479d27e9f10a096aa3d5d89c16008").unwrap(),
             // For genesis block: A default script can never be spent, intentionally
-            script: TariScript::default(),
+            TariScript::default(),
             // Script offset never checked for coinbase, thus can use default
-            sender_offset_public_key: Default::default(),
+            Default::default(),
             // For genesis block: Metadata signature will never be checked
-            metadata_signature: Default::default(),
-            covenant: Default::default()
-        }],
-        vec![TransactionKernel {
-            features: KernelFeatures::COINBASE_KERNEL,
-            fee: MicroTari(0),
-            lock_height: 0,
-            excess: Commitment::from_hex("28a51f144c09c4b4e108a7e3b8653788e8237b1aa8dd264c8eba043b07566530").unwrap(),
+            Default::default(),
+             Default::default()
+        )],
+        vec![TransactionKernel::new(
+            KernelFeatures::COINBASE_KERNEL,
+            MicroTari(0),
+             0,
+             Commitment::from_hex("28a51f144c09c4b4e108a7e3b8653788e8237b1aa8dd264c8eba043b07566530").unwrap(),
             excess_sig,
-        }],
+        )],
     );
     body.sort();
     // set genesis timestamp

@@ -375,7 +375,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
                 }
 
                 let output_hashes = output_hashes.as_ref().unwrap();
-                let output_hash = input.output_hash();
+                let output_hash = input.output_hash().map_err(ValidationError::VersionError)?;
                 if output_hashes.iter().any(|output| output == &output_hash) {
                     continue;
                 }
@@ -401,7 +401,7 @@ pub fn check_inputs_are_utxos<B: BlockchainBackend>(db: &B, body: &AggregateBody
 
 /// This function checks that an input is a valid spendable UTXO
 pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInput) -> Result<(), ValidationError> {
-    let output_hash = input.output_hash();
+    let output_hash = input.output_hash().map_err(ValidationError::VersionError)?;
     if let Some(utxo_hash) = db.fetch_unspent_output_hash_by_commitment(input.commitment()?)? {
         // We know that the commitment exists in the UTXO set. Check that the output hash matches (i.e. all fields
         // like output features match)

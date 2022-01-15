@@ -50,7 +50,7 @@ use tari_crypto::{
     range_proof::RangeProofService as RangeProofServiceTrait,
     ristretto::pedersen::PedersenCommitmentFactory,
     script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray, Hashable},
+    tari_utilities::{hex::Hex, ByteArray},
 };
 
 use crate::{
@@ -75,6 +75,7 @@ use crate::{
 /// overflow and the ownership of the private key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionOutput {
+    pub version: u8,
     /// Options for an output's structure or use
     pub features: OutputFeatures,
     /// The homomorphic commitment representing the output amount
@@ -96,6 +97,7 @@ pub struct TransactionOutput {
 impl TransactionOutput {
     /// Create new Transaction Output
     pub fn new(
+        version: u8,
         features: OutputFeatures,
         commitment: Commitment,
         proof: RangeProof,
@@ -105,6 +107,7 @@ impl TransactionOutput {
         covenant: Covenant,
     ) -> Self {
         Self {
+            version,
             features,
             commitment,
             proof,
@@ -113,6 +116,27 @@ impl TransactionOutput {
             metadata_signature,
             covenant,
         }
+    }
+
+    pub fn new_current_version(
+        features: OutputFeatures,
+        commitment: Commitment,
+        proof: RangeProof,
+        script: TariScript,
+        sender_offset_public_key: PublicKey,
+        metadata_signature: ComSignature,
+        covenant: Covenant,
+    ) -> Self {
+        TransactionOutput::new(
+            0,
+            features,
+            commitment,
+            proof,
+            script,
+            sender_offset_public_key,
+            metadata_signature,
+            covenant,
+        )
     }
 
     /// Accessor method for the commitment contained in an output
@@ -191,7 +215,10 @@ impl TransactionOutput {
     /// This will ignore the output range proof
     #[inline]
     pub fn is_equal_to(&self, output: &TransactionInput) -> bool {
-        self.hash() == output.output_hash()
+        match self.try_hash() {
+            Ok(hash) => Ok(hash) == output.output_hash(),
+            _ => false,
+        }
     }
 
     /// Returns true if the output is a coinbase, otherwise false
@@ -335,18 +362,25 @@ impl TransactionOutput {
             self.script.consensus_encode_exact_size() +
             self.covenant.consensus_encode_exact_size()
     }
-}
 
-/// Implement the canonical hashing function for TransactionOutput for use in ordering.
-impl Hashable for TransactionOutput {
-    fn hash(&self) -> Vec<u8> {
-        transaction::hash_output(&self.features, &self.commitment, &self.script, &self.covenant)
+    /// Implement the canonical hashing function for TransactionOutput for use in ordering.
+    pub fn try_hash(&self) -> Result<Vec<u8>, String> {
+        match self.version {
+            0 => Ok(transaction::hash_output(
+                &self.features,
+                &self.commitment,
+                &self.script,
+                &self.covenant,
+            )),
+
+            _ => Err("new version needs implementing!".to_string()),
+        }
     }
 }
 
 impl Default for TransactionOutput {
     fn default() -> Self {
-        TransactionOutput::new(
+        TransactionOutput::new_current_version(
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),

@@ -1179,7 +1179,7 @@ pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Resul
 
         // Search the DB for the output leaf index so that it can be marked as spent/deleted.
         // If the output hash is not found, check the current output_mmr. This allows zero-conf transactions
-        let output_hash = input.output_hash();
+        let output_hash = input.output_hash().map_err(ChainStorageError::VersionError)?;
         let index = match db.fetch_mmr_leaf_index(MmrTree::Utxo, &output_hash)? {
             Some(index) => index,
             None => {
@@ -1395,15 +1395,16 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
         .fetch_inputs_in_block(&accumulated_data.hash)?
         .into_iter()
         .map(|mut compact_input| {
-            let utxo_mined_info = match db.fetch_output(&compact_input.output_hash()) {
-                Ok(Some(o)) => o,
-                Ok(None) => {
-                    return Err(ChainStorageError::InvalidBlock(
-                        "An Input in a block doesn't contain a matching spending output".to_string(),
-                    ))
-                },
-                Err(e) => return Err(e),
-            };
+            let utxo_mined_info =
+                match db.fetch_output(&compact_input.output_hash().map_err(ChainStorageError::VersionError)?) {
+                    Ok(Some(o)) => o,
+                    Ok(None) => {
+                        return Err(ChainStorageError::InvalidBlock(
+                            "An Input in a block doesn't contain a matching spending output".to_string(),
+                        ))
+                    },
+                    Err(e) => return Err(e),
+                };
 
             match utxo_mined_info.output {
                 PrunedOutput::Pruned { .. } => Ok(compact_input),

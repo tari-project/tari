@@ -77,14 +77,14 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
 
-        Ok(Self {
-            features: KernelFeatures::from_bits(kernel.features as u8)
+        Ok(Self::new(
+            KernelFeatures::from_bits(kernel.features as u8)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
+            MicroTari::from(kernel.fee),
+            kernel.lock_height,
             excess,
             excess_sig,
-            fee: MicroTari::from(kernel.fee),
-            lock_height: kernel.lock_height,
-        })
+        ))
     }
 }
 
@@ -150,7 +150,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
 
     fn try_from(input: TransactionInput) -> Result<Self, Self::Error> {
         if input.is_compact() {
-            let output_hash = input.output_hash();
+            let output_hash = input.output_hash()?;
             Ok(Self {
                 input_data: input.input_data.as_bytes(),
                 script_signature: Some(input.script_signature.into()),
@@ -224,15 +224,15 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
 
         let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
 
-        Ok(Self {
+        Ok(Self::new_current_version(
             features,
             commitment,
-            proof: BulletRangeProof(output.range_proof),
+            BulletRangeProof(output.range_proof),
             script,
             sender_offset_public_key,
             metadata_signature,
             covenant,
-        })
+        ))
     }
 }
 
@@ -267,23 +267,23 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
 
-        Ok(Self {
-            flags: OutputFlags::from_bits(features.flags as u8)
+        Ok(Self::new(
+            OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
-            maturity: features.maturity,
-            metadata: features.metadata,
+            features.maturity,
+            features.metadata,
             unique_id,
             parent_public_key,
-            asset: match features.asset {
+            match features.asset {
                 Some(a) => Some(a.try_into()?),
                 None => None,
             },
-            mint_non_fungible: match features.mint_non_fungible {
+            match features.mint_non_fungible {
                 Some(m) => Some(m.try_into()?),
                 None => None,
             },
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
-        })
+            features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
+        ))
     }
 }
 

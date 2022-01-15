@@ -66,6 +66,8 @@ pub enum TransactionError {
     MissingTransactionInputData,
     #[error("Error executing covenant: {0}")]
     CovenantError(String),
+    #[error("Version error: {0}")]
+    VersionError(String),
 }
 
 impl From<CovenantError> for TransactionError {

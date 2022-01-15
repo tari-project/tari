@@ -217,7 +217,7 @@ impl TransactionInput {
     /// features and script. This will ignore all other output and input fields
     pub fn is_equal_to(&self, output: &TransactionOutput) -> bool {
         match output.try_hash() {
-            Ok(hash) => self.output_hash() == hash,
+            Ok(hash) => self.output_hash() == Ok(hash),
             Err(_e) => false,
         }
     }
@@ -295,22 +295,25 @@ impl TransactionInput {
 
     /// Returns the hash of the output data contained in this input.
     /// This hash matches the hash of a transaction output that this input spends.
-    pub fn output_hash(&self) -> Vec<u8> {
-        match self.spent_output {
-            SpentOutput::OutputHash(ref h) => h.clone(),
-            SpentOutput::OutputData {
-                ref commitment,
-                ref script,
-                ref features,
-                ref covenant,
-                ..
-            } => HashDigest::new()
-                .chain(features.to_consensus_bytes())
-                .chain(commitment.as_bytes())
-                .chain(script.as_bytes())
-                .chain(covenant.to_consensus_bytes())
-                .finalize()
-                .to_vec(),
+    pub fn output_hash(&self) -> Result<Vec<u8>, String> {
+        match self.version {
+            0 => match self.spent_output {
+                SpentOutput::OutputHash(ref h) => Ok(h.clone()),
+                SpentOutput::OutputData {
+                    ref commitment,
+                    ref script,
+                    ref features,
+                    ref covenant,
+                    ..
+                } => Ok(HashDigest::new()
+                    .chain(features.to_consensus_bytes())
+                    .chain(commitment.as_bytes())
+                    .chain(script.as_bytes())
+                    .chain(covenant.to_consensus_bytes())
+                    .finalize()
+                    .to_vec()),
+            },
+            _ => Err("Newer version!".to_string()),
         }
     }
 
@@ -353,15 +356,15 @@ impl TransactionInput {
     }
 
     /// Return a clone of this Input into its compact form
-    pub fn to_compact(&self) -> Self {
-        Self::new(
+    pub fn to_compact(&self) -> Result<Self, String> {
+        Ok(Self::new(
             match &self.spent_output {
                 SpentOutput::OutputHash(h) => SpentOutput::OutputHash(h.clone()),
-                SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()),
+                SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()?),
             },
             self.input_data.clone(),
             self.script_signature.clone(),
-        )
+        ))
     }
 }
 

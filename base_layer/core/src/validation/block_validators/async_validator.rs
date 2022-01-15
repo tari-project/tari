@@ -268,10 +268,11 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             for input in inputs.iter_mut() {
                 // Read the spent_output for this compact input
                 if input.is_compact() {
-                    let output_mined_info = match db.fetch_output(&input.output_hash())? {
-                        None => return Err(ValidationError::TransactionInputSpentOutputMissing),
-                        Some(o) => o,
-                    };
+                    let output_mined_info =
+                        match db.fetch_output(&input.output_hash().map_err(ValidationError::VersionError)?)? {
+                            None => return Err(ValidationError::TransactionInputSpentOutputMissing),
+                            Some(o) => o,
+                        };
 
                     match output_mined_info.output {
                         PrunedOutput::Pruned { .. } => {
@@ -300,7 +301,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 match helpers::check_input_is_utxo(&*db, input) {
                     Err(ValidationError::UnknownInput) => {
                         // Check if the input spends from the current block
-                        let output_hash = input.output_hash();
+                        let output_hash = input.output_hash().map_err(ValidationError::VersionError)?;
                         if output_hashes.iter().all(|hash| hash != &output_hash) {
                             warn!(
                                 target: LOG_TARGET,

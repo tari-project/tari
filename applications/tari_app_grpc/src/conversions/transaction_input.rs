@@ -56,28 +56,32 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                         .map(TryInto::try_into)
                         .ok_or_else(|| "transaction output features not provided".to_string())??;
 
-            let sender_offset_public_key =
-                PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
-            let covenant = Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
+                    let sender_offset_public_key = PublicKey::from_bytes(input.sender_offset_public_key.as_bytes())
+                        .map_err(|err| format!("{:?}", err))?;
+                    let covenant =
+                        Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
 
-            Ok(TransactionInput::new_with_output_data(
-                features,
-                commitment,
-                TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
-                script_signature,
-                sender_offset_public_key,
-                covenant,
-            ))
-        } else {
-            if input.output_hash.is_empty() {
-                return Err("Compact Transaction Input does not contain `output_hash`".to_string());
-            }
-            Ok(TransactionInput::new_with_output_hash(
-                input.output_hash,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
-                script_signature,
-            ))
+                    Ok(TransactionInput::new_with_output_data(
+                        features,
+                        commitment,
+                        TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
+                        ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                        script_signature,
+                        sender_offset_public_key,
+                        covenant,
+                    ))
+                } else {
+                    if input.output_hash.is_empty() {
+                        return Err("Compact Transaction Input does not contain `output_hash`".to_string());
+                    }
+                    Ok(TransactionInput::new_with_output_hash(
+                        input.output_hash,
+                        ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                        script_signature,
+                    ))
+                }
+            },
+            _ => panic!(),
         }
     }
 }

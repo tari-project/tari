@@ -123,12 +123,16 @@ impl UnconfirmedPool {
             if prioritized_tx.priority < *self.lowest_priority() {
                 return Ok(());
             }
-            self.remove_lowest_priority_tx();
+            self.remove_lowest_priority_tx()
+                .map_err(UnconfirmedPoolError::VersionError)?;
         }
 
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
         for output in prioritized_tx.transaction.body.outputs() {
-            self.txs_by_output.entry(output.hash()).or_default().push(new_key);
+            self.txs_by_output
+                .entry(output.try_hash().map_err(UnconfirmedPoolError::VersionError)?)
+                .or_default()
+                .push(new_key);
         }
         for kernel in prioritized_tx.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
@@ -216,7 +220,8 @@ impl UnconfirmedPool {
             transactions_to_remove_and_recheck.len()
         );
         for (tx_key, _) in &transactions_to_remove_and_recheck {
-            self.remove_transaction(*tx_key);
+            self.remove_transaction(*tx_key)
+                .map_err(UnconfirmedPoolError::VersionError)?;
         }
 
         let results = RetrieveResults {
@@ -321,10 +326,11 @@ impl UnconfirmedPool {
             .expect("lowest_priority called on empty mempool")
     }
 
-    fn remove_lowest_priority_tx(&mut self) {
+    fn remove_lowest_priority_tx(&mut self) -> Result<(), String> {
         if let Some(tx_key) = self.tx_by_priority.values().next().copied() {
-            self.remove_transaction(tx_key);
+            self.remove_transaction(tx_key)?;
         }
+        Ok(())
     }
 
     /// Remove all current mempool transactions from the UnconfirmedPoolStorage, returning that which have been removed
@@ -339,7 +345,7 @@ impl UnconfirmedPool {
     pub fn remove_published_and_discard_deprecated_transactions(
         &mut self,
         published_block: &Block,
-    ) -> Vec<Arc<Transaction>> {
+    ) -> Result<Vec<Arc<Transaction>>, String> {
         trace!(
             target: LOG_TARGET,
             "Searching for transactions to remove from unconfirmed pool in block {} ({})",
@@ -360,7 +366,7 @@ impl UnconfirmedPool {
 
         let mut removed_transactions = to_remove
             .iter()
-            .filter_map(|key| self.remove_transaction(*key))
+            .filter_map(|key| self.remove_transaction(*key).unwrap())
             .collect::<Vec<_>>();
 
         // Reuse the buffer, clear is very cheap
@@ -374,7 +380,11 @@ impl UnconfirmedPool {
                 .map(|(key, _)| *key),
         );
 
-        removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+        removed_transactions.extend(
+            to_remove
+                .iter()
+                .filter_map(|key| self.remove_transaction(*key).unwrap()),
+        );
         to_remove.clear();
 
         // Remove all transactions that contain the outputs found in this block
@@ -383,14 +393,18 @@ impl UnconfirmedPool {
                 .body
                 .outputs()
                 .iter()
-                .filter_map(|output| self.txs_by_output.get(&output.hash()))
+                .filter_map(|output| self.txs_by_output.get(&output.try_hash().unwrap()))
                 .flatten()
                 .copied(),
         );
 
-        removed_transactions.extend(to_remove.iter().filter_map(|key| self.remove_transaction(*key)));
+        removed_transactions.extend(
+            to_remove
+                .iter()
+                .filter_map(|key| self.remove_transaction(*key).unwrap()),
+        );
 
-        removed_transactions
+        Ok(removed_transactions)
     }
 
     /// Searches a block and transaction for matching inputs
@@ -406,8 +420,11 @@ impl UnconfirmedPool {
     }
 
     /// Ensures that all transactions are safely deleted in order and from all storage
-    fn remove_transaction(&mut self, tx_key: TransactionKey) -> Option<Arc<Transaction>> {
-        let prioritized_transaction = self.tx_by_key.remove(&tx_key)?;
+    fn remove_transaction(&mut self, tx_key: TransactionKey) -> Result<Option<Arc<Transaction>>, String> {
+        let prioritized_transaction = match self.tx_by_key.remove(&tx_key) {
+            Some(prioritezed) => prioritezed,
+            None => return Ok(None),
+        };
 
         self.tx_by_priority.remove(&prioritized_transaction.priority);
 
@@ -423,7 +440,7 @@ impl UnconfirmedPool {
         }
 
         for output in prioritized_transaction.transaction.body.outputs() {
-            let output_hash = output.hash();
+            let output_hash = output.try_hash()?;
             if let Some(keys) = self.txs_by_output.get_mut(&output_hash) {
                 if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
                     keys.remove(pos);
@@ -438,12 +455,12 @@ impl UnconfirmedPool {
             "Deleted transaction: {}",
             &prioritized_transaction.transaction
         );
-        Some(prioritized_transaction.transaction)
+        Ok(Some(prioritized_transaction.transaction))
     }
 
     /// Remove all unconfirmed transactions that have become time locked. This can happen when the chain height was
     /// reduced on some reorgs.
-    pub fn remove_timelocked(&mut self, tip_height: u64) {
+    pub fn remove_timelocked(&mut self, tip_height: u64) -> Result<(), String> {
         debug!(target: LOG_TARGET, "Removing time-locked inputs from unconfirmed pool");
         let to_remove = self
             .tx_by_key
@@ -452,8 +469,9 @@ impl UnconfirmedPool {
             .map(|(k, _)| *k)
             .collect::<Vec<_>>();
         for tx_key in to_remove {
-            self.remove_transaction(tx_key);
+            self.remove_transaction(tx_key)?;
         }
+        Ok(())
     }
 
     /// Returns the total number of unconfirmed transactions stored in the UnconfirmedPool.

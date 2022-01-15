@@ -112,6 +112,8 @@ pub enum ValidationError {
     ConsensusError(String),
     #[error("Covenant failed to validate: {0}")]
     CovenantError(#[from] CovenantError),
+    #[error("Version error: {0}")]
+    VersionError(String),
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

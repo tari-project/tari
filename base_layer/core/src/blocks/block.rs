@@ -136,11 +136,11 @@ impl Block {
     }
 
     /// Return a cloned version of this block with the TransactionInputs in their compact form
-    pub fn to_compact(&self) -> Self {
-        Self {
+    pub fn to_compact(&self) -> Result<Self, String> {
+        Ok(Self {
             header: self.header.clone(),
-            body: self.body.to_compact(),
-        }
+            body: self.body.to_compact()?,
+        })
     }
 }
 

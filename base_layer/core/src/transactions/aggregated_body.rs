@@ -512,13 +512,17 @@ impl AggregateBody {
     }
 
     /// Return a cloned version of self with TransactionInputs in their compact form
-    pub fn to_compact(&self) -> Self {
-        Self {
+    pub fn to_compact(&self) -> Result<Self, String> {
+        Ok(Self {
             sorted: self.sorted,
-            inputs: self.inputs.iter().map(|i| i.to_compact()).collect(),
+            inputs: self
+                .inputs
+                .iter()
+                .map(|i| i.to_compact())
+                .collect::<Result<Vec<TransactionInput>, String>>()?,
             outputs: self.outputs.clone(),
             kernels: self.kernels.clone(),
-        }
+        })
     }
 }
 

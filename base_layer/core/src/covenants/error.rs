@@ -42,4 +42,6 @@ pub enum CovenantError {
     InvalidArgument { filter: &'static str, details: String },
     #[error("Unsupported argument {arg}: {details}")]
     UnsupportedArgument { arg: &'static str, details: String },
+    #[error("Version error : {0}")]
+    VersionError(String),
 }

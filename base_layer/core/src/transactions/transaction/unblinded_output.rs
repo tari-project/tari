@@ -123,17 +123,17 @@ impl UnblindedOutput {
         )
         .map_err(|_| TransactionError::InvalidSignatureError("Generating script signature".to_string()))?;
 
-        Ok(TransactionInput {
-            spent_output: SpentOutput::OutputData {
+        Ok(TransactionInput::new(
+            SpentOutput::OutputData {
                 features: self.features.clone(),
                 commitment,
                 script: self.script.clone(),
                 sender_offset_public_key: self.sender_offset_public_key.clone(),
                 covenant: self.covenant.clone(),
             },
-            input_data: self.input_data.clone(),
+            self.input_data.clone(),
             script_signature,
-        })
+        ))
     }
 
     /// Commits an UnblindedOutput into a TransactionInput that only contains the hash of the spent output data
@@ -143,11 +143,11 @@ impl UnblindedOutput {
     ) -> Result<TransactionInput, TransactionError> {
         let input = self.as_transaction_input(factory)?;
 
-        Ok(TransactionInput {
-            spent_output: SpentOutput::OutputHash(input.output_hash()),
-            input_data: input.input_data,
-            script_signature: input.script_signature,
-        })
+        Ok(TransactionInput::new(
+            SpentOutput::OutputHash(input.output_hash().map_err(TransactionError::VersionError)?),
+            input.input_data,
+            input.script_signature,
+        ))
     }
 
     pub fn as_transaction_output(&self, factories: &CryptoFactories) -> Result<TransactionOutput, TransactionError> {
@@ -158,20 +158,20 @@ impl UnblindedOutput {
             ));
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-        let output = TransactionOutput {
-            features: self.features.clone(),
+        let output = TransactionOutput::new_current_version(
+            self.features.clone(),
             commitment,
-            proof: RangeProof::from_bytes(
+            RangeProof::from_bytes(
                 &factories
                     .range_proof
                     .construct_proof(&self.spending_key, self.value.into())?,
             )
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?,
-            script: self.script.clone(),
-            sender_offset_public_key: self.sender_offset_public_key.clone(),
-            metadata_signature: self.metadata_signature.clone(),
-            covenant: self.covenant.clone(),
-        };
+            self.script.clone(),
+            self.sender_offset_public_key.clone(),
+            self.metadata_signature.clone(),
+            self.covenant.clone(),
+        );
 
         Ok(output)
     }
@@ -200,15 +200,15 @@ impl UnblindedOutput {
         let proof = RangeProof::from_bytes(&proof_bytes)
             .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
 
-        let output = TransactionOutput {
-            features: self.features.clone(),
+        let output = TransactionOutput::new_current_version(
+            self.features.clone(),
             commitment,
             proof,
-            script: self.script.clone(),
-            sender_offset_public_key: self.sender_offset_public_key.clone(),
-            metadata_signature: self.metadata_signature.clone(),
-            covenant: self.covenant.clone(),
-        };
+            self.script.clone(),
+            self.sender_offset_public_key.clone(),
+            self.metadata_signature.clone(),
+            self.covenant.clone(),
+        );
 
         Ok(output)
     }

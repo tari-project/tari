@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_utilities::Hashable;
-
 use crate::covenants::{context::CovenantContext, error::CovenantError, filters::Filter, output_set::OutputSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +29,7 @@ impl Filter for OutputHashEqFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
         let hash = context.next_arg()?.require_hash()?;
         // An output's hash is unique so the output set is either 1 or 0 outputs will match
-        output_set.find_inplace(|output| output.hash() == hash);
+        output_set.find_inplace(|output| output.try_hash().map_err(CovenantError::VersionError).unwrap() == hash);
         Ok(())
     }
 }

@@ -134,7 +134,8 @@ impl MempoolStorage {
         // Move published txs to ReOrgPool and discard double spends
         let removed_transactions = self
             .unconfirmed_pool
-            .remove_published_and_discard_deprecated_transactions(published_block);
+            .remove_published_and_discard_deprecated_transactions(published_block)
+            .map_err(MempoolError::VersionError)?;
         self.reorg_pool.insert_txs(removed_transactions)?;
 
         Ok(())
@@ -175,7 +176,9 @@ impl MempoolStorage {
                     previous_tip_height,
                     new_tip_height,
                 );
-                self.unconfirmed_pool.remove_timelocked(new_tip_height);
+                self.unconfirmed_pool
+                    .remove_timelocked(new_tip_height)
+                    .map_err(MempoolError::VersionError)?;
             } else {
                 debug!(
                     target: LOG_TARGET,

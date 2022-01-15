@@ -49,4 +49,6 @@ pub enum MempoolError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("The transaction did not contain any kernels")]
     TransactionNoKernels,
+    #[error("Version error: `{0}`")]
+    VersionError(String),
 }

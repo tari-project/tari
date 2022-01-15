@@ -671,7 +671,7 @@ impl LMDBDatabase {
                     details: format!("unique token ID with key {} does not exist in index", key.to_hex()),
                 })?;
 
-            let output_hash = input.output_hash();
+            let output_hash = input.output_hash().map_err(ChainStorageError::VersionError)?;
             if expected_output_hash != output_hash {
                 // This should have been checked by an upstream validator
                 return Err(ChainStorageError::DataInconsistencyDetected {
@@ -715,7 +715,7 @@ impl LMDBDatabase {
             &*self.inputs_db,
             key.as_bytes(),
             &TransactionInputRowDataRef {
-                input: &input.to_compact(),
+                input: &input.to_compact().map_err(ChainStorageError::VersionError)?,
                 header_hash,
                 mmr_position,
                 hash: &hash,
@@ -968,21 +968,25 @@ impl LMDBDatabase {
                 "txos_hash_to_index_db",
             )?;
             if let Some(ref output) = utxo.output {
-                let output_hash = output.try_hash().map_err(ChainStorageError::VersionError)?;
-                // if an output was already spent in the block, it was never created as unspent, so dont delete it as it
-                // does not exist here
-                if inputs.iter().any(|r| r.input.output_hash() == output_hash) {
-                    continue;
-                }
-                lmdb_delete(
-                    txn,
-                    &*self.utxo_commitment_index,
-                    output.commitment.as_bytes(),
-                    "utxo_commitment_index",
-                )?;
-                if let Some(unique_id) = output.features.unique_asset_id() {
-                    let key = UniqueIdIndexKey::new(output.features.parent_public_key.as_ref(), unique_id);
-                    lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
+                if let Ok(output_hash) = output.try_hash().map_err(ChainStorageError::VersionError) {
+                    // if an output was already spent in the block, it was never created as unspent, so dont delete it
+                    // as it does not exist here
+                    if inputs.iter().any(|r| match r.input.output_hash() {
+                        Ok(hash) => hash == output_hash,
+                        _ => false,
+                    }) {
+                        continue;
+                    }
+                    lmdb_delete(
+                        txn,
+                        &*self.utxo_commitment_index,
+                        output.commitment.as_bytes(),
+                        "utxo_commitment_index",
+                    )?;
+                    if let Some(unique_id) = output.features.unique_asset_id() {
+                        let key = UniqueIdIndexKey::new(output.features.parent_public_key.as_ref(), unique_id);
+                        lmdb_delete(txn, &self.unique_id_index, key.as_bytes(), "unique_id_index")?;
+                    }
                 }
             }
         }
@@ -990,7 +994,7 @@ impl LMDBDatabase {
         // by deleting all the block's outputs below
         for row in inputs {
             // If input spends an output in this block, don't add it to the utxo set
-            let output_hash = row.input.output_hash();
+            let output_hash = row.input.output_hash().map_err(ChainStorageError::VersionError)?;
             if output_rows.iter().any(|r| r.hash == output_hash) {
                 continue;
             }
@@ -1221,7 +1225,7 @@ impl LMDBDatabase {
         let mut spent_zero_conf_commitments = Vec::new();
         // unique_id_index expects inputs to be inserted before outputs
         for input in &inputs {
-            let output_hash = input.output_hash();
+            let output_hash = input.output_hash().map_err(ChainStorageError::VersionError)?;
             let index = match self.fetch_mmr_leaf_index(&**txn, MmrTree::Utxo, &output_hash)? {
                 Some(index) => index,
                 None => match output_mmr.find_leaf_index(&output_hash)? {
