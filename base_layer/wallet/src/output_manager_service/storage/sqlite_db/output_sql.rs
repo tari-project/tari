@@ -491,7 +491,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             .map(|p| PublicKey::from_bytes(&p))
             .transpose()?;
 
-        let unblinded_output = UnblindedOutput::new(
+        let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
                 error!(

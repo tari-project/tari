@@ -27,6 +27,7 @@ use tari_core::transactions::transaction::{
     AssetOutputFeatures,
     MintNonFungibleFeatures,
     OutputFeatures,
+    OutputFeaturesVersion,
     OutputFlags,
     SideChainCheckpointFeatures,
     TemplateParameter,
@@ -50,17 +51,20 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
 
-        Ok(Self {
-            flags: OutputFlags::from_bits(features.flags as u8)
+        Ok(OutputFeatures::new(
+            OutputFeaturesVersion::try_from(
+                u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
+            )?,
+            OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
-            maturity: features.maturity,
-            metadata: features.metadata,
+            features.maturity,
+            features.metadata,
             unique_id,
             parent_public_key,
-            asset: features.asset.map(|a| a.try_into()).transpose()?,
-            mint_non_fungible: features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
-        })
+            features.asset.map(|a| a.try_into()).transpose()?,
+            features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
+            features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
+        ))
     }
 }
 
@@ -78,6 +82,7 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+            version: features.version as u32,
         }
     }
 }

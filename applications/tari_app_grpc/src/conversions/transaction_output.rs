@@ -26,7 +26,7 @@ use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::{
     consensus::{ConsensusDecoding, ToConsensusBytes},
     covenants::Covenant,
-    transactions::transaction::TransactionOutput,
+    transactions::transaction::{TransactionOutput, TransactionOutputVersion},
 };
 use tari_crypto::script::TariScript;
 use tari_utilities::{ByteArray, Hashable};
@@ -56,15 +56,18 @@ impl TryFrom<grpc::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
         let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
-        Ok(Self {
+        Ok(Self::new(
+            TransactionOutputVersion::try_from(
+                u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,
+            )?,
             features,
             commitment,
-            proof: BulletRangeProof(output.range_proof),
+            BulletRangeProof(output.range_proof),
             script,
             sender_offset_public_key,
             metadata_signature,
             covenant,
-        })
+        ))
     }
 }
 
@@ -84,6 +87,7 @@ impl From<TransactionOutput> for grpc::TransactionOutput {
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
             covenant: output.covenant.to_consensus_bytes(),
+            version: output.version as u32,
         }
     }
 }

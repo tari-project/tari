@@ -121,7 +121,7 @@ impl SingleReceiverTransactionProtocol {
             &sender_info.covenant,
         )?;
 
-        let output = TransactionOutput::new(
+        let output = TransactionOutput::new_current_version(
             features,
             commitment,
             RangeProof::from_bytes(&proof)

@@ -26,7 +26,7 @@ use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
     consensus::{ConsensusDecoding, ToConsensusBytes},
     covenants::Covenant,
-    transactions::transaction::TransactionInput,
+    transactions::transaction::{TransactionInput, TransactionInputVersion},
 };
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
@@ -58,6 +58,9 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             let covenant = Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
 
             Ok(TransactionInput::new_with_output_data(
+                TransactionInputVersion::try_from(
+                    u8::try_from(input.version).map_err(|_| "Invalid version: overflowed u8")?,
+                )?,
                 features,
                 commitment,
                 TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
@@ -127,6 +130,7 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                     .covenant()
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
                     .to_consensus_bytes(),
+                version: input.version as u32,
             })
         }
     }

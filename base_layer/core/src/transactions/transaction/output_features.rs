@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_utilities::ByteArray;
 
+use super::OutputFeaturesVersion;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     transactions::transaction::{
@@ -46,6 +47,7 @@ use crate::{
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct OutputFeatures {
+    pub version: OutputFeaturesVersion,
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
     pub flags: OutputFlags,
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
@@ -62,6 +64,53 @@ pub struct OutputFeatures {
 impl OutputFeatures {
     /// The version number to use in consensus encoding. In future, this value could be dynamic.
     const CONSENSUS_ENCODING_VERSION: u8 = 0;
+
+    pub fn new(
+        version: OutputFeaturesVersion,
+        flags: OutputFlags,
+        maturity: u64,
+        metadata: Vec<u8>,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        asset: Option<AssetOutputFeatures>,
+        mint_non_fungible: Option<MintNonFungibleFeatures>,
+        sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
+    ) -> OutputFeatures {
+        OutputFeatures {
+            version,
+            flags,
+            maturity,
+            metadata,
+            unique_id,
+            parent_public_key,
+            asset,
+            mint_non_fungible,
+            sidechain_checkpoint,
+        }
+    }
+
+    pub fn new_current_version(
+        flags: OutputFlags,
+        maturity: u64,
+        metadata: Vec<u8>,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        asset: Option<AssetOutputFeatures>,
+        mint_non_fungible: Option<MintNonFungibleFeatures>,
+        sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
+    ) -> OutputFeatures {
+        OutputFeatures::new(
+            OutputFeaturesVersion::get_current_version(),
+            flags,
+            maturity,
+            metadata,
+            unique_id,
+            parent_public_key,
+            asset,
+            mint_non_fungible,
+            sidechain_checkpoint,
+        )
+    }
 
     /// Encodes output features using consensus encoding
     pub fn to_consensus_bytes(&self) -> Vec<u8> {
@@ -215,16 +264,7 @@ impl ConsensusDecoding for OutputFeatures {
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures {
-            flags: OutputFlags::empty(),
-            maturity: 0,
-            metadata: vec![],
-            unique_id: None,
-            parent_public_key: None,
-            asset: None,
-            mint_non_fungible: None,
-            sidechain_checkpoint: None,
-        }
+        OutputFeatures::new_current_version(OutputFlags::empty(), 0, vec![], None, None, None, None, None)
     }
 }
 

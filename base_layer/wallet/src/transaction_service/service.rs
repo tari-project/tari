@@ -927,7 +927,7 @@ where
 
         let recipient_reply = rtp.get_signed_data()?.clone();
         let output = recipient_reply.output.clone();
-        let unblinded_output = UnblindedOutput::new(
+        let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
             OutputFeatures::default(),

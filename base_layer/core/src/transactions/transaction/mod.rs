@@ -32,6 +32,7 @@ pub use kernel_features::KernelFeatures;
 pub use kernel_sum::KernelSum;
 pub use mint_non_fungible_features::MintNonFungibleFeatures;
 pub use output_features::OutputFeatures;
+pub use output_features_version::OutputFeaturesVersion;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
@@ -41,8 +42,11 @@ pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
 pub use transaction_input::TransactionInput;
+pub use transaction_input_version::TransactionInputVersion;
 pub use transaction_kernel::TransactionKernel;
+pub use transaction_kernel_version::TransactionKernelVersion;
 pub use transaction_output::TransactionOutput;
+pub use transaction_output_version::TransactionOutputVersion;
 pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 
@@ -56,6 +60,7 @@ mod kernel_features;
 mod kernel_sum;
 mod mint_non_fungible_features;
 mod output_features;
+mod output_features_version;
 mod output_flags;
 mod rewind_result;
 mod side_chain_checkpoint_features;
@@ -65,8 +70,11 @@ mod template_parameter;
 mod transaction;
 mod transaction_builder;
 mod transaction_input;
+mod transaction_input_version;
 mod transaction_kernel;
+mod transaction_kernel_version;
 mod transaction_output;
+mod transaction_output_version;
 mod unblinded_output;
 mod unblinded_output_builder;
 
@@ -92,6 +100,7 @@ pub(super) fn hash_output(
     commitment: &Commitment,
     script: &TariScript,
     covenant: &Covenant,
+    version: TransactionOutputVersion,
 ) -> Vec<u8> {
     HashDigest::new()
         .chain(features.to_consensus_bytes())
@@ -99,6 +108,7 @@ pub(super) fn hash_output(
         // .chain(range proof) // See docs as to why we exclude this
         .chain(script.as_bytes())
         .chain(covenant.to_consensus_bytes())
+        .chain((version as u8).to_le_bytes())
         .finalize()
         .to_vec()
 }
