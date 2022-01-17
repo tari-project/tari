@@ -89,11 +89,11 @@ Every [block] MUST:
 
   $$
   \begin{align}
-  \sum_i\mathrm{Cout_{i}} - \sum_j\mathrm{Cin_{j}} + \text{fees}H \stackrel{?}{=} \sum_k\mathrm{K_k} + \text{offset}
-  \\ \text{each output}, i,
-  \\ \text{for each input} j,
-  \\ \text{and each kernel excess}, k
-  \\ \textit{offset }\text{is the total kernel offset}
+  &\sum_i\mathrm{Cout_{i}} - \sum_j\mathrm{Cin_{j}} + \text{fees} \cdot H \stackrel{?}{=} \sum_k\mathrm{K_k} + \text{offset} \\\\
+  & \text{for each output}, i, \\\\
+  & \text{for each input}, j, \\\\
+  & \text{for each kernel excess}, k \\\\
+  & \text{and }\textit{offset }\text{is the total kernel offset} \\\\
   \end{align}
   \tag{1}
   $$
@@ -305,19 +305,19 @@ $$
 \newcommand{\solvetimemax}{ \mathrm{ST_{max}} }
 $$
 
-| Symbol                 	| Value                   	| Description                                                                                                                	|
-|--------------------------	|-------------------------	|----------------------------------------------------------------------------------------------------------------------------	|
-| N                        	| 90                      	| Target difficulty block window                                                                                             	|
-| T                        	| SHA3: 300 Monero: 200    	| Target block time in seconds.  The value used depends on the  PoW algorithm being used.                                    	|
-| \\( \solvetimemax \\)    	| SHA3: 1800 Monero: 1200 	| Maximum solve time.  This is 6 times the target time  of the current PoW algorithm.                                        	|
-| \\( \solvetime \\)    	| variable                	| The timestamp difference in seconds between  block _i_ and _i - 1_ where \\( 1 \le \solvetime \le \solvetimemax \\) 	|
-| \\( \mathrm{D_{avg}} \\) 	| variable                	| The average difficulty of the last _N_ blocks                                                                              	|
+| Symbol                 	| Value                   | Description                                                                                                         |
+|-------------------------|-------------------------|---------------------------------------------------------------------------------------------------------------------|
+| N                       | 90                      | Target difficulty block window                                                                                      |
+| T                       | SHA3: 300 Monero: 200   | Target block time in seconds.  The value used depends on the  PoW algorithm being used.                             |
+| \\( \solvetimemax \\)   | SHA3: 1800 Monero: 1200 | Maximum solve time.  This is 6 times the target time  of the current PoW algorithm.                                 |
+| \\( \solvetime \\)    	| variable                | The timestamp difference in seconds between  block _i_ and _i - 1_ where \\( 1 \le \solvetime \le \solvetimemax \\) |
+| \\( \mathrm{D_{avg}} \\)| variable                | The average difficulty of the last _N_ blocks                                                                       |
 
 $$
 \begin{align}
-\\ \textit{weighted_solve_time} = \sum\limits_{i=1}^N(\solvetime*i) 
-\\ \textit{weighted_target_time} = (\sum\limits_{i=1}^Ni) * \mathrm{T} 
-\\ \textit{difficulty} = \mathrm{D_{avg}} * \frac{\textit{weighted_target_time}}{\textit{weighted_solve_time}}
+& \textit{weighted_solve_time} = \sum\limits_{i=1}^N(\solvetime*i)  \\\\
+& \textit{weighted_target_time} = (\sum\limits_{i=1}^Ni) * \mathrm{T} \\\\
+& \textit{difficulty} = \mathrm{D_{avg}} * \frac{\textit{weighted_target_time}}{\textit{weighted_solve_time}}\\\\
 \end{align}
 \tag{2}
 $$
@@ -343,7 +343,10 @@ last _N_ blocks. Any block with a timestamp that is less than MTP will be reject
 This is defined as the total accumulated proof of work done on the blockchain. Tari uses two _independent_ proof of work algorithms that are
 rated at different difficulties. To compare them, we simply multiply them together into one number:
 $$
+\begin{align}
  \textit{accumulated_monero_difficulty} * \textit{accumulated_sha_difficulty} 
+\end{align}
+\tag{3}
 $$
 This value is used to compare chain tips to determine the strongest chain.
 
@@ -356,7 +359,7 @@ final Merkle root. Input, output and kernel ordering within a block is therefore
 The block MUST be transmitted in canonical ordering. The advantage of this approach is that sorting does not need to be 
 done by the whole network, and verification of sorting is extremely cheap.
 
-Transaction inputs and outputs are sorted by their Pedersen commitment i.e. `kG + vH`. Specifically, the byte representation of the 
+Transaction inputs and outputs are sorted by their Pedersen commitment i.e. `\\(k \cdot G + v \cdot H\\)`. Specifically, the byte representation of the 
 compressed [Ristretto] point of the commitment.
 
 
