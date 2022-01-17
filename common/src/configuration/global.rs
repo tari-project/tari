@@ -144,6 +144,8 @@ pub struct GlobalConfig {
     pub mining_worker_name: String,
     pub base_node_bypass_range_proof_verification: bool,
     pub metrics: MetricsConfig,
+    pub base_node_use_libtor: bool,
+    pub console_wallet_use_libtor: bool,
     pub merge_mining_config: Option<MergeMiningConfig>,
 }
 
@@ -784,6 +786,7 @@ fn convert_node_config(
         .collect::<String>();
 
     let metrics = MetricsConfig::from_config(&cfg)?;
+    let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(&cfg, net_str);
 
     Ok(GlobalConfig {
         autoupdate_check_interval,
@@ -867,8 +870,25 @@ fn convert_node_config(
         mining_worker_name,
         base_node_bypass_range_proof_verification,
         metrics,
+        base_node_use_libtor,
+        console_wallet_use_libtor,
         merge_mining_config,
     })
+}
+
+#[cfg(unix)]
+fn libtor_enabled(cfg: &Config, net_str: &str) -> (bool, bool) {
+    let key = config_string("base_node", net_str, "use_libtor");
+    let base_node_use_libtor = cfg.get_bool(&key).unwrap_or(false);
+    let key = config_string("wallet", net_str, "use_libtor");
+    let console_wallet_use_libtor = cfg.get_bool(&key).unwrap_or(false);
+
+    (base_node_use_libtor, console_wallet_use_libtor)
+}
+
+#[cfg(windows)]
+fn libtor_enabled(_: &Config, _: &str) -> (bool, bool) {
+    (false, false)
 }
 
 /// Changes ConfigError::NotFound into None

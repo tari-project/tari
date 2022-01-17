@@ -4,7 +4,7 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-[merge_mining_proxy.weatherwax]
+[merge_mining_proxy.dibbler]
 
 # URL to monerod
 monerod_url = [ # stagenet

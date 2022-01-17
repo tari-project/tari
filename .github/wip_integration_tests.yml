@@ -23,7 +23,7 @@ jobs:
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-08-18
+          toolchain: nightly-2021-11-20
           components: clippy, rustfmt
           override: true
       - name: dependencies
