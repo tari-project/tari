@@ -47,10 +47,10 @@ RUN apt update && apt -y install \
 
 RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
 
-RUN mkdir -p "/var/tari/base_node/weatherwax" \
-    && mkdir -p "/var/tari/base_node/igor" \
-    && mkdir -p "/var/tari/base_node/mainnet" \
-    && chown -R tari.tari "/var/tari/base_node"
+RUN mkdir -p "/var/tari/base_node/weatherwax" &&
+  mkdir -p "/var/tari/base_node/igor" &&
+  mkdir -p "/var/tari/base_node/mainnet" &&
+  chown -R tari.tari "/var/tari/base_node"
 
 RUN mkdir /blockchain && chown tari.tari /blockchain && chmod 777 /blockchain
 USER tari

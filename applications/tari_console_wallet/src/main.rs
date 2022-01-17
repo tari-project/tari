@@ -47,6 +47,8 @@ use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::{consts, initialization::init_configuration};
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
+#[cfg(unix)]
+use tari_common::{tor::Tor, CommsTransport};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
@@ -88,7 +90,8 @@ fn main_inner() -> Result<(), ExitCodes> {
         .build()
         .expect("Failed to build a runtime!");
 
-    let (bootstrap, global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
+    #[allow(unused_mut)] // config isn't mutated on windows
+    let (bootstrap, mut global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
 
     if bootstrap.tracing_enabled {
         enable_tracing();
@@ -130,6 +133,21 @@ fn main_inner() -> Result<(), ExitCodes> {
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
         return runtime.block_on(change_password(&global_config, arg_password, shutdown_signal));
+    }
+
+    // Run our own Tor instance, if configured
+    // This is currently only possible on linux/macos
+    #[cfg(unix)]
+    if global_config.console_wallet_use_libtor &&
+        matches!(global_config.comms_transport, CommsTransport::TorHiddenService { .. })
+    {
+        let tor = Tor::initialize()?;
+        global_config.comms_transport = tor.update_comms_transport(global_config.comms_transport)?;
+        runtime.spawn(tor.run(shutdown.to_signal()));
+        debug!(
+            target: LOG_TARGET,
+            "Updated Tor comms transport: {:?}", global_config.comms_transport
+        );
     }
 
     // initialize wallet
