@@ -252,8 +252,8 @@ impl UnblindedOutput {
             self.covenant.consensus_encode_exact_size()
     }
 
-    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` us not
-    // Note: added to the struct to ensure the atomic nature between `commitment`, `spending_key` and `value`.
+    // Note: The Hashable trait is not used here due to the dependency on `CryptoFactories`, and `commitment` is not
+    // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
         transaction::hash_output(&self.features, &commitment, &self.script, &self.covenant, self.version)

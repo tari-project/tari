@@ -23,28 +23,14 @@
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 
-use crate::{
-    chain_storage::ChainStorageError,
-    mempool::{reorg_pool::ReorgPoolError, unconfirmed_pool::UnconfirmedPoolError},
-    transactions::transaction::TransactionError,
-};
+use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transactions::transaction::TransactionError};
 
 #[derive(Debug, Error)]
 pub enum MempoolError {
     #[error("Unconfirmed pool error: `{0}`")]
     UnconfirmedPoolError(#[from] UnconfirmedPoolError),
-    #[error("Reorg pool error: `{0}`")]
-    ReorgPoolError(#[from] ReorgPoolError),
     #[error("Transaction error: `{0}`")]
     TransactionError(#[from] TransactionError),
-    #[error("Chain storage error: `{0}`")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("The Blockchain height is undefined")]
-    ChainHeightUndefined,
-    #[error("Blocking task spawn error: `{0}`")]
-    BlockingTaskSpawnError(String),
-    #[error("A problem has been encountered with the storage backend: `{0}`")]
-    BackendError(String),
     #[error("Internal reply channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
     #[error("The transaction did not contain any kernels")]

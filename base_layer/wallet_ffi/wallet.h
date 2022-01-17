@@ -390,7 +390,7 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 
 /// -------------------------------- TariCommsConfig ----------------------------------------------- ///
 // Creates a TariCommsConfig
-// Valid values for network are: ridcully, stibbons, weatherwax, localnet, mainnet
+// Valid values for network are: dibbler, igor, localnet, mainnet
 struct TariCommsConfig *comms_config_create(const char *public_address,
                                             struct TariTransportType *transport,
                                             const char *database_name,
@@ -450,12 +450,12 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// }
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
 /// called when a Transaction validation process is completed. The request_key is used to identify which request this
-/// callback references and the second parameter is a u8 that represent the CallbackValidationResults enum.
+/// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
@@ -492,9 +492,9 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
-                                 void (*callback_txo_validation_complete)(unsigned long long, unsigned char),
+                                 void (*callback_txo_validation_complete)(unsigned long long, bool),
                                  void (*callback_balance_updated)(struct TariBalance *),
-                                 void (*callback_transaction_validation_complete)(unsigned long long, unsigned char),
+                                 void (*callback_transaction_validation_complete)(unsigned long long, bool),
                                  void (*callback_saf_message_received)(),
                                  bool *recovery_in_progress,
                                  int *error_out);

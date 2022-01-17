@@ -1243,12 +1243,12 @@ impl LMDBDatabase {
                     index
                 )));
             }
-            debug!(target: LOG_TARGET, "Inserting input `{}`", input.commitment()?.to_hex());
+            trace!(target: LOG_TARGET, "Inserting input `{}`", input.commitment()?.to_hex());
             self.insert_input(txn, current_header_at_height.height, &block_hash, input, index)?;
         }
 
         for (output, mmr_count) in outputs {
-            debug!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
+            trace!(target: LOG_TARGET, "Inserting output `{}`", output.commitment.to_hex());
             self.insert_output(txn, &block_hash, header.height, &output, mmr_count as u32 - 1)?;
         }
 

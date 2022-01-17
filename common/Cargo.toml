@@ -33,8 +33,15 @@ prost-build = { version = "0.9.0", optional = true }
 toml = { version = "0.5", optional = true }
 thiserror = "1.0.29"
 fs2 = "0.4.3"
+tempfile = "3.1.0"
+
+[target.'cfg(unix)'.dependencies]
+tari_shutdown = { version = "^0.23", path = "../infrastructure/shutdown"}
+
+libtor = "46.9"
+rand = "0.8"
+tor-hash-passwd = "1.0.1"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.23", path = "../infrastructure/test_utils"}
-tempfile = "3.1.0"
 anyhow = "1.0"

@@ -128,7 +128,6 @@ jobs:
       - checkout
       - cucumber-js-ffi
 
-
 workflows:
   version: 2
   workflow:

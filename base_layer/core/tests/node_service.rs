@@ -29,7 +29,7 @@ use helpers::{
 };
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
-use tari_comms::protocol::messaging::MessagingEvent;
+use tari_comms::{connectivity::ConnectivityEvent, protocol::messaging::MessagingEvent};
 use tari_core::{
     base_node::{
         comms_interface::{BlockEvent, CommsInterfaceError},
@@ -198,7 +198,7 @@ async fn propagate_and_forward_invalid_block_hash() {
     let consensus_constants = ConsensusConstantsBuilder::new(network)
         .with_emission_amounts(100_000_000.into(), &EMISSION, 100.into())
         .build();
-    let (block0, _) = create_genesis_block(&factories, &consensus_constants);
+    let (block0, genesis_coinbase) = create_genesis_block(&factories, &consensus_constants);
     let rules = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(block0.clone())
@@ -241,11 +241,14 @@ async fn propagate_and_forward_invalid_block_hash() {
         randomx_vm_flags: RandomXFlag::FLAG_DEFAULT,
     });
 
-    let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
+    // Add a transaction that Bob does not have to force a request
+    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![genesis_coinbase], to: vec![5 * T], fee: 5.into())]);
+    let txs = txs.into_iter().map(|tx| (*tx).clone()).collect();
+    let block1 = append_block(&alice_node.blockchain_db, &block0, txs, &rules, 1.into()).unwrap();
     let block1 = {
         // Create unknown block hash
         let mut block = block1.block().clone();
-        block.header.height = 0;
+        block.header.version += 1;
         let mut accum_data = block1.accumulated_data().clone();
         accum_data.hash = block.hash();
         ChainBlock::try_construct(block.into(), accum_data).unwrap()
@@ -266,16 +269,17 @@ async fn propagate_and_forward_invalid_block_hash() {
         .await
         .unwrap();
     unpack_enum!(MessagingEvent::MessageReceived(_a, _b) = &*msg_event);
-    // Sent the request for the block to Alice
-    // Bob received a response from Alice
+
+    // Bob asks Alice for missing transaction
     let msg_event = event_stream_next(&mut bob_message_events, Duration::from_secs(10))
         .await
         .unwrap();
     unpack_enum!(MessagingEvent::MessageReceived(node_id, _a) = &*msg_event);
-    assert_eq!(&*node_id, alice_node.node_identity.node_id());
+    assert_eq!(node_id, alice_node.node_identity.node_id());
+
     // Checking a negative: Bob should not have propagated this hash to Carol. If Bob does, this assertion will be
     // flaky.
-    let msg_event = event_stream_next(&mut carol_message_events, Duration::from_millis(500)).await;
+    let msg_event = event_stream_next(&mut carol_message_events, Duration::from_secs(1)).await;
     assert!(msg_event.is_none());
 
     alice_node.shutdown().await;
@@ -340,6 +344,12 @@ async fn propagate_and_forward_invalid_block() {
         .start(temp_dir.path().join("alice").to_str().unwrap())
         .await;
 
+    alice_node
+        .comms
+        .connectivity()
+        .dial_peer(bob_node.node_identity.node_id().clone())
+        .await
+        .unwrap();
     wait_until_online(&[&alice_node, &bob_node, &carol_node, &dan_node]).await;
 
     alice_node.mock_base_node_state_machine.publish_status(StatusInfo {
@@ -372,33 +382,34 @@ async fn propagate_and_forward_invalid_block() {
     let block1 = append_block(&alice_node.blockchain_db, &block0, vec![], &rules, 1.into()).unwrap();
     let block1_hash = block1.hash();
 
-    let mut bob_block_event_stream = bob_node.local_nci.get_block_event_stream();
-    let mut carol_block_event_stream = carol_node.local_nci.get_block_event_stream();
-    let mut dan_block_event_stream = dan_node.local_nci.get_block_event_stream();
-
+    let mut bob_connectivity_events = bob_node.comms.connectivity().get_event_subscription();
     assert!(alice_node
         .outbound_nci
         .propagate_block(NewBlock::from(block1.block()), vec![])
         .await
         .is_ok());
 
-    let bob_block_event_fut = event_stream_next(&mut bob_block_event_stream, Duration::from_millis(20000));
-    let carol_block_event_fut = event_stream_next(&mut carol_block_event_stream, Duration::from_millis(20000));
-    let dan_block_event_fut = event_stream_next(&mut dan_block_event_stream, Duration::from_millis(5000));
-    let (bob_block_event, carol_block_event, dan_block_event) =
-        tokio::join!(bob_block_event_fut, carol_block_event_fut, dan_block_event_fut);
+    #[allow(unused_assignments)]
+    let mut has_banned = false;
+    loop {
+        let event = event_stream_next(&mut bob_connectivity_events, Duration::from_secs(10))
+            .await
+            .unwrap();
+        #[allow(clippy::single_match)]
+        match event {
+            ConnectivityEvent::PeerBanned(node_id) => {
+                assert_eq!(node_id, *alice_node.node_identity.node_id());
+                has_banned = true;
+                break;
+            },
+            _ => {},
+        }
+    }
+    assert!(has_banned);
 
-    if let BlockEvent::AddBlockFailed(received_block) = &*bob_block_event.unwrap() {
-        assert_eq!(&received_block.hash(), block1_hash);
-    } else {
-        panic!("Bob's node should have detected an invalid block");
-    }
-    if let BlockEvent::AddBlockFailed(received_block) = &*carol_block_event.unwrap() {
-        assert_eq!(&received_block.hash(), block1_hash);
-    } else {
-        panic!("Carol's node should have detected an invalid block");
-    }
-    assert!(dan_block_event.is_none());
+    assert!(!bob_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
+    assert!(!carol_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
+    assert!(!dan_node.blockchain_db.block_exists(block1_hash.clone()).unwrap());
 
     alice_node.shutdown().await;
     bob_node.shutdown().await;
@@ -432,7 +443,7 @@ async fn service_request_timeout() {
     unpack_enum!(
         CommsInterfaceError::RequestTimedOut = alice_node
             .outbound_nci
-            .request_blocks_with_hashes_from_peer(vec![], Some(bob_node_id))
+            .request_blocks_by_hashes_from_peer(vec![], Some(bob_node_id))
             .await
             .unwrap_err()
     );
@@ -500,7 +511,6 @@ async fn local_get_new_block_template_and_get_new_block() {
 }
 
 #[tokio::test]
-#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_zero_conf() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();
@@ -578,7 +588,6 @@ async fn local_get_new_block_with_zero_conf() {
 }
 
 #[tokio::test]
-#[ignore = "0-conf regression fixed in #3680"]
 async fn local_get_new_block_with_combined_transaction() {
     let factories = CryptoFactories::default();
     let temp_dir = tempdir().unwrap();

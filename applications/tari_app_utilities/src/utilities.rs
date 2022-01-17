@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use futures::future::Either;
 use log::*;
-use tari_common::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
+use tari_common::{exit_codes::ExitCodes, CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication};
 use tari_common_types::{emoji::EmojiId, types::BlockHash};
 use tari_comms::{
     peer_manager::NodeId,
@@ -145,7 +145,7 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
 ///
 /// ## Returns
 /// A result containing the runtime on success, string indicating the error on failure
-pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
+pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, ExitCodes> {
     let mut builder = runtime::Builder::new_multi_thread();
 
     if let Some(core_threads) = config.core_threads {
@@ -161,10 +161,10 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, String> {
         builder.worker_threads(core_threads);
     }
 
-    builder
-        .enable_all()
-        .build()
-        .map_err(|e| format!("There was an error while building the node runtime. {}", e))
+    builder.enable_all().build().map_err(|e| {
+        let msg = format!("There was an error while building the node runtime. {}", e);
+        ExitCodes::UnknownError(msg)
+    })
 }
 
 /// Returns a CommsPublicKey from either a emoji id or a public key

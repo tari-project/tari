@@ -20,12 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::seconds, NetworkConfigPath};
+use tari_common::NetworkConfigPath;
 
-use crate::mempool::{consts, reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
+use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
 /// Configuration for the Mempool.
 #[derive(Clone, Copy, Deserialize, Serialize, Default)]
@@ -43,9 +41,6 @@ impl NetworkConfigPath for MempoolConfig {
 /// Configuration for the MempoolService.
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct MempoolServiceConfig {
-    /// The allocated waiting time for a request waiting for service responses from the Mempools of remote Base nodes.
-    #[serde(with = "seconds")]
-    pub request_timeout: Duration,
     /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
     /// not initiate any more mempool syncs. Default: 2
     pub initial_sync_num_peers: usize,
@@ -56,7 +51,6 @@ pub struct MempoolServiceConfig {
 impl Default for MempoolServiceConfig {
     fn default() -> Self {
         Self {
-            request_timeout: consts::MEMPOOL_SERVICE_REQUEST_TIMEOUT,
             initial_sync_num_peers: 2,
             initial_sync_max_transactions: 10_000,
         }
@@ -74,10 +68,8 @@ mod test {
     use config::Config;
     use tari_common::DefaultConfigLoader;
 
-    use super::{
-        consts::{MEMPOOL_REORG_POOL_CACHE_TTL, MEMPOOL_REORG_POOL_STORAGE_CAPACITY},
-        MempoolConfig,
-    };
+    use super::MempoolConfig;
+    use crate::mempool::reorg_pool::ReorgPoolConfig;
 
     #[test]
     pub fn test_mempool() {
@@ -90,12 +82,11 @@ mod test {
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
         assert_eq!(my_config.unconfirmed_pool.storage_capacity, 3);
         // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 512
-        assert_eq!(
-            my_config.reorg_pool.storage_capacity,
-            MEMPOOL_REORG_POOL_STORAGE_CAPACITY
-        );
         // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 10s
-        assert_eq!(my_config.reorg_pool.tx_ttl, MEMPOOL_REORG_POOL_CACHE_TTL);
+        assert_eq!(
+            my_config.reorg_pool.expiry_height,
+            ReorgPoolConfig::default().expiry_height
+        );
 
         config
             .set("mempool.mainnet.unconfirmed_pool.storage_capacity", 20)
@@ -108,13 +99,11 @@ mod test {
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
         assert_eq!(my_config.unconfirmed_pool.storage_capacity, 20);
-        // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 512
-        assert_eq!(
-            my_config.reorg_pool.storage_capacity,
-            MEMPOOL_REORG_POOL_STORAGE_CAPACITY
-        );
         // [ ] mempool.mainnet, [ ]  mempool, [X] Default = 10s
-        assert_eq!(my_config.reorg_pool.tx_ttl, MEMPOOL_REORG_POOL_CACHE_TTL);
+        assert_eq!(
+            my_config.reorg_pool.expiry_height,
+            ReorgPoolConfig::default().expiry_height
+        );
 
         config
             .set("mempool.network", "wrong_network")

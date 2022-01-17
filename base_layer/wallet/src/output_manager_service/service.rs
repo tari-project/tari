@@ -71,12 +71,13 @@ use crate::{
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
-        handle::{OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
         recovery::StandardUtxoRecoverer,
         resources::OutputManagerResources,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
+            OutputStatus,
         },
         tasks::TxoValidationTask,
         MasterKeyManager,
@@ -410,7 +411,16 @@ where
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
+            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => self
+                .get_output_status_by_tx_id(tx_id)
+                .await
+                .map(OutputManagerResponse::OutputStatusesByTxId),
         }
+    }
+
+    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+        let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
+        Ok(outputs.into_iter().map(|uo| uo.status).collect())
     }
 
     async fn claim_sha_atomic_swap_with_hash(
@@ -464,7 +474,7 @@ where
         );
 
         let shutdown = self.resources.shutdown_signal.clone();
-
+        let event_publisher = self.resources.event_publisher.clone();
         tokio::spawn(async move {
             match utxo_validation.execute(shutdown).await {
                 Ok(id) => {
@@ -478,6 +488,12 @@ where
                         target: LOG_TARGET,
                         "Error completing UTXO Validation Protocol (Id: {}): {:?}", id, error
                     );
+                    if let Err(e) = event_publisher.send(Arc::new(OutputManagerEvent::TxoValidationFailure(id))) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Error sending event because there are no subscribers: {:?}", e
+                        );
+                    }
                 },
             }
         });

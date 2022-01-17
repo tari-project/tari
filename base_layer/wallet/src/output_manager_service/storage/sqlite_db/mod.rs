@@ -1265,6 +1265,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .map(|o| DbUnblindedOutput::try_from(o.clone()))
             .collect::<Result<Vec<_>, _>>()
     }
+
+    fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        let mut outputs = OutputSql::find_by_tx_id(tx_id, &conn)?;
+        for o in outputs.iter_mut() {
+            self.decrypt_if_necessary(o)?;
+        }
+        outputs
+            .iter()
+            .map(|o| DbUnblindedOutput::try_from(o.clone()))
+            .collect::<Result<Vec<_>, _>>()
+    }
 }
 
 /// These are the fields that can be updated for an Output

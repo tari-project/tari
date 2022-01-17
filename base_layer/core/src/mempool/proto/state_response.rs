@@ -20,40 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::{TryFrom, TryInto};
-
-use tari_common_types::types::{PrivateKey, PublicKey, Signature};
-use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
-
-use crate::{
-    mempool::{
-        proto::mempool::{Signature as ProtoSignature, StateResponse as ProtoStateResponse},
-        StateResponse,
-    },
-    proto::{mempool::Signature as SignatureProto, types::Transaction},
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
 };
 
-//---------------------------------- Signature --------------------------------------------//
-// TODO: Remove duplicate Signature, transaction also has a Signature.
-impl TryFrom<ProtoSignature> for Signature {
-    type Error = ByteArrayError;
-
-    fn try_from(sig: ProtoSignature) -> Result<Self, Self::Error> {
-        let public_nonce = PublicKey::from_bytes(&sig.public_nonce)?;
-        let signature = PrivateKey::from_bytes(&sig.signature)?;
-
-        Ok(Self::new(public_nonce, signature))
-    }
-}
-
-impl From<Signature> for ProtoSignature {
-    fn from(sig: Signature) -> Self {
-        Self {
-            public_nonce: sig.get_public_nonce().to_vec(),
-            signature: sig.get_signature().to_vec(),
-        }
-    }
-}
+use crate::mempool::{proto::mempool::StateResponse as ProtoStateResponse, StateResponse};
 
 //--------------------------------- StateResponse -------------------------------------------//
 
@@ -65,14 +37,14 @@ impl TryFrom<ProtoStateResponse> for StateResponse {
             unconfirmed_pool: state
                 .unconfirmed_pool
                 .into_iter()
-                .map(TryInto::try_into)
+                .map(|tx| tx.try_into().map(Arc::new))
                 .collect::<Result<Vec<_>, _>>()?,
             reorg_pool: state
                 .reorg_pool
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|err: ByteArrayError| err.to_string())?,
+                .map_err(|_| "Malformed excess sig")?,
         })
     }
 }
@@ -86,12 +58,8 @@ impl TryFrom<StateResponse> for ProtoStateResponse {
                 .unconfirmed_pool
                 .into_iter()
                 .map(TryInto::try_into)
-                .collect::<Result<Vec<Transaction>, _>>()?,
-            reorg_pool: state
-                .reorg_pool
-                .into_iter()
-                .map(Into::into)
-                .collect::<Vec<SignatureProto>>(),
+                .collect::<Result<Vec<_>, _>>()?,
+            reorg_pool: state.reorg_pool.into_iter().map(Into::into).collect::<Vec<_>>(),
         })
     }
 }

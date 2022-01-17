@@ -41,7 +41,7 @@ use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
-pub use transaction_input::TransactionInput;
+pub use transaction_input::{SpentOutput, TransactionInput};
 pub use transaction_input_version::TransactionInputVersion;
 pub use transaction_kernel::TransactionKernel;
 pub use transaction_kernel_version::TransactionKernelVersion;

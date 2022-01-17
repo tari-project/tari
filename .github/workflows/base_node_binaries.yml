@@ -62,7 +62,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly-2021-09-18
+          toolchain: nightly-2021-11-20
           components: rustfmt
           override: true
 
@@ -144,9 +144,9 @@ jobs:
 
       - name: Compile launchpad GUI
         run: |
-            cd applications/launchpad/gui-vue
-            npm install
-            npm run build
+          cd applications/launchpad/gui-vue
+          npm install
+          npm run build
 
       - name: Compile collectibles GUI
         run: |

@@ -45,7 +45,10 @@ use tower::Service;
 use crate::output_manager_service::{
     error::OutputManagerError,
     service::Balance,
-    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
+    storage::{
+        models::{KnownOneSidedPaymentScript, SpendingPriority},
+        OutputStatus,
+    },
 };
 
 /// API Request enum
@@ -114,6 +117,7 @@ pub enum OutputManagerRequest {
     SetCoinbaseAbandoned(TxId, bool),
     CreateClaimShaAtomicSwapTransaction(HashOutput, PublicKey, MicroTari),
     CreateHtlcRefundTransaction(HashOutput, MicroTari),
+    GetOutputStatusesByTxId(TxId),
 }
 
 impl fmt::Display for OutputManagerRequest {
@@ -181,6 +185,8 @@ impl fmt::Display for OutputManagerRequest {
                 output.to_hex(),
                 fee_per_gram,
             ),
+
+            GetOutputStatusesByTxId(t) => write!(f, "GetOutputStatusesByTxId: {}", t),
         }
     }
 }
@@ -217,6 +223,7 @@ pub enum OutputManagerResponse {
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
+    OutputStatusesByTxId(Vec<OutputStatus>),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -225,31 +232,19 @@ pub type OutputManagerEventReceiver = broadcast::Receiver<Arc<OutputManagerEvent
 /// Events that can be published on the Output Manager Service Event Stream
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum OutputManagerEvent {
-    TxoValidationTimedOut(u64),
     TxoValidationSuccess(u64),
     TxoValidationFailure(u64),
-    TxoValidationAborted(u64),
-    TxoValidationDelayed(u64),
     Error(String),
 }
 
 impl fmt::Display for OutputManagerEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            OutputManagerEvent::TxoValidationTimedOut(tx) => {
-                write!(f, "TxoValidationTimedOut for {}", tx)
-            },
             OutputManagerEvent::TxoValidationSuccess(tx) => {
                 write!(f, "TxoValidationSuccess for {}", tx)
             },
             OutputManagerEvent::TxoValidationFailure(tx) => {
                 write!(f, "TxoValidationFailure for {}", tx)
-            },
-            OutputManagerEvent::TxoValidationAborted(tx) => {
-                write!(f, "TxoValidationAborted for {}", tx)
-            },
-            OutputManagerEvent::TxoValidationDelayed(tx) => {
-                write!(f, "TxoValidationDelayed for {}", tx)
             },
             OutputManagerEvent::Error(error) => {
                 write!(f, "Error {}", error)
@@ -726,6 +721,17 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::CoinbaseAbandonedSet => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn get_output_statuses_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
+            .await??
+        {
+            OutputManagerResponse::OutputStatusesByTxId(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
