@@ -6,6 +6,7 @@ Feature: Wallet FFI
     # https://github.com/nodejs/node/issues/32463
     # https://github.com/node-ffi-napi/node-ffi-napi/issues/97
 
+    @critical
     Scenario: As a client I want to be able to protect my wallet with a passphrase
         Given I have a base node BASE
         And I have a ffi wallet FFI_WALLET connected to base node BASE
@@ -20,6 +21,7 @@ Feature: Wallet FFI
         And I want to get emoji id of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         And I have wallet SPECTATOR connected to base node BASE
@@ -30,6 +32,7 @@ Feature: Wallet FFI
         And I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to retrieve the mnemonic word list for a given language
         Given I have a base node BASE
         And I have a ffi wallet FFI_WALLET connected to base node BASE
@@ -85,6 +88,7 @@ Feature: Wallet FFI
         Then I don't have contact with alias ALIAS in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
@@ -115,6 +119,7 @@ Feature: Wallet FFI
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
