@@ -58,7 +58,7 @@ contracts are not Turing complete, such as those executed by the Ethereum Virtua
 ## Related Requests for Comment
 
 * [RFC-0300: The Digital Assets Network](RFCD-0300_DAN.md)
-* [RFC-0301: Namespace Registration](RFCD-0301_NamespaceRegistration.md)
+* [RFC-0301: Namespace Registration](RFC-0301_NamespaceRegistration.md)
 * [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
 * [RFC-0345: Asset Life cycle](RFC-0345_AssetLifeCycle.md)
 
@@ -292,4 +292,4 @@ If step 9 passes, then the VN has proven that the `create_asset` contains a vali
 FQDN was provided, the owner of that domain provided the `create_asset` instruction. In this case, the VN SHOULD
 propagate the instruction to the network.
 
-[RFC-0301]: RFCD-0301_NamespaceRegistration.md
+[RFC-0301]: RFC-0301_NamespaceRegistration.md

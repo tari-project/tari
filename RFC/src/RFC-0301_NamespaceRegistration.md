@@ -2,7 +2,7 @@
 
 ## Namespace Registration on Base Layer
 
-![status: deprecated](./theme/images/status-deprecated.svg)
+![status: outdated](../../book/theme/images/status-outofdate.svg)
 
 **Maintainer(s)**: [Hansie Odendaal](https://github.com/hansieodendaal)
 
