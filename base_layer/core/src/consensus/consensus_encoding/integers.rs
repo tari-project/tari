@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,42 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
+macro_rules! consensus_encoding_varint_impl {
+    ($ty:ty) => {
+        impl $crate::consensus::ConsensusEncoding for $ty {
+            fn consensus_encode<W: std::io::Write>(&self, writer: &mut W) -> Result<usize, std::io::Error> {
+                use integer_encoding::VarIntWriter;
+                let bytes_written = writer.write_varint(*self)?;
+                Ok(bytes_written)
+            }
+        }
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+        impl $crate::consensus::ConsensusDecoding for $ty {
+            fn consensus_decode<R: std::io::Read>(reader: &mut R) -> Result<Self, std::io::Error> {
+                use integer_encoding::VarIntReader;
+                let value = reader.read_varint()?;
+                Ok(value)
+            }
+        }
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct MintNonFungibleFeatures {
-    pub asset_public_key: PublicKey,
-    pub asset_owner_commitment: Commitment,
-    // pub proof_of_ownership: ComSignature
+        impl $crate::consensus::ConsensusEncodingSized for $ty {
+            fn consensus_encode_exact_size(&self) -> usize {
+                use integer_encoding::VarInt;
+                self.required_space()
+            }
+        }
+    };
 }
 
-impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let mut written = self.asset_public_key.consensus_encode(writer)?;
-        written += self.asset_owner_commitment.consensus_encode(writer)?;
-        Ok(written)
-    }
-}
-
-impl ConsensusEncodingSized for MintNonFungibleFeatures {
-    fn consensus_encode_exact_size(&self) -> usize {
-        PublicKey::key_length() * 2
-    }
-}
-
-impl ConsensusDecoding for MintNonFungibleFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let asset_public_key = PublicKey::consensus_decode(reader)?;
-        let asset_owner_commitment = Commitment::consensus_decode(reader)?;
-        Ok(Self {
-            asset_public_key,
-            asset_owner_commitment,
-        })
-    }
-}
+consensus_encoding_varint_impl!(u16);
+consensus_encoding_varint_impl!(u32);
+consensus_encoding_varint_impl!(u64);

@@ -20,10 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::{Error, Read, Write};
+
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PublicKey;
 
-use crate::transactions::transaction::TemplateParameter;
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec},
+    transactions::transaction::TemplateParameter,
+};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct AssetOutputFeatures {
@@ -31,4 +36,33 @@ pub struct AssetOutputFeatures {
     // TODO: remove in favour of template args
     pub template_ids_implemented: Vec<u32>,
     pub template_parameters: Vec<TemplateParameter>,
+}
+
+impl ConsensusEncoding for AssetOutputFeatures {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        let mut written = self.public_key.consensus_encode(writer)?;
+        written += self.template_ids_implemented.consensus_encode(writer)?;
+        written += self.template_parameters.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusEncodingSized for AssetOutputFeatures {}
+
+impl ConsensusDecoding for AssetOutputFeatures {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let public_key = PublicKey::consensus_decode(reader)?;
+        const MAX_TEMPLATES: usize = 50;
+        let template_ids_implemented = <MaxSizeVec<u32, MAX_TEMPLATES> as ConsensusDecoding>::consensus_decode(reader)?;
+
+        const MAX_TEMPLATE_PARAMS: usize = 50;
+        let template_parameters =
+            <MaxSizeVec<TemplateParameter, MAX_TEMPLATE_PARAMS> as ConsensusDecoding>::consensus_decode(reader)?;
+
+        Ok(Self {
+            public_key,
+            template_ids_implemented: template_ids_implemented.into(),
+            template_parameters: template_parameters.into(),
+        })
+    }
 }
