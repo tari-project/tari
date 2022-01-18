@@ -65,6 +65,7 @@ impl OutputFeatures {
     /// The version number to use in consensus encoding. In future, this value could be dynamic.
     const CONSENSUS_ENCODING_VERSION: u8 = 0;
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         version: OutputFeaturesVersion,
         flags: OutputFlags,
@@ -89,6 +90,7 @@ impl OutputFeatures {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_current_version(
         flags: OutputFlags,
         maturity: u64,

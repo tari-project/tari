@@ -110,6 +110,7 @@ impl TransactionInput {
     }
 
     /// Create a new Transaction Input with just a reference hash of the spent output
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_output_data(
         version: TransactionInputVersion,
         features: OutputFeatures,

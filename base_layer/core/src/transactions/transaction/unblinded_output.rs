@@ -103,6 +103,7 @@ impl UnblindedOutput {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_current_version(
         value: MicroTari,
         spending_key: BlindingFactor,
