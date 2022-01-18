@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.24.0](https://github.com/tari-project/tari/compare/v0.23.0...v0.24.0) (2022-01-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* fix tx and txo validation callback bug in wallet FFI (#3695)
+* compact block propagation (#3704)
+
+### Features
+
+* add versioning to transaction(input,output,kernel) ([#3709](https://github.com/tari-project/tari/issues/3709)) ([08995c7](https://github.com/tari-project/tari/commit/08995c753d24a587993bc2d1264176026c2728c3))
+* compact block propagation ([#3704](https://github.com/tari-project/tari/issues/3704)) ([274b7d9](https://github.com/tari-project/tari/commit/274b7d9048d0054688a9ce07bcde35311edf6a36))
+* enable optional libtor for macos/linux ([#3703](https://github.com/tari-project/tari/issues/3703)) ([572168f](https://github.com/tari-project/tari/commit/572168f82edfa7fc3521f721392c83281c7239bc))
+* update faux transaction status when imported output is validated ([#3684](https://github.com/tari-project/tari/issues/3684)) ([aaeb186](https://github.com/tari-project/tari/commit/aaeb186068c48ab082c693d30b3615bef64d9103))
+
+
+### Bug Fixes
+
+* fix tx and txo validation callback bug in wallet FFI ([#3695](https://github.com/tari-project/tari/issues/3695)) ([16cfa22](https://github.com/tari-project/tari/commit/16cfa224d95917fe8f0581103d3abe8e1018cb68))
+
 ## [0.23.0](https://github.com/tari-project/tari/compare/v0.22.1...v0.23.0) (2022-01-13)
 
 

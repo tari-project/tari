@@ -384,7 +384,7 @@ impl SenderTransactionInitializer {
                             &self.change_covenant,
                         )
                         .map_err(|e| e.to_string())?;
-                        let change_unblinded_output = UnblindedOutput::new(
+                        let change_unblinded_output = UnblindedOutput::new_current_version(
                             v,
                             change_key.clone(),
                             output_features,

@@ -58,7 +58,7 @@ The aim of this Request for Comment (RFC) is to describe the fields that a block
 
 ## Description
 
-Blockchain consensus is a set of rules that a majority of nodes agree on, that determines the state of the blockchain. 
+Blockchain consensus is a set of rules that a majority of nodes agree on that determines the state of the blockchain. 
 
 This RFC details the consensus rules for the Tari network. 
 
@@ -70,7 +70,7 @@ Every [block] MUST:
 * have _exactly one_ valid [block header], as per the [Block Headers] section
 * have _exactly one_ [coinbase] transaction
 * have a total [transaction weight] less than the consensus maximum
-* be able to calculate matching Merkle roots ([kernel_mr], [output_mr], [witness_mr] and [input_mr]) 
+* be able to calculate matching Merkle roots ([kernel_mr], [output_mr], [witness_mr], and [input_mr]) 
 * each [transaction input] MUST: 
   * spend an existing valid [UTXO] 
   * have a maturity greater than the current block height
@@ -89,11 +89,11 @@ Every [block] MUST:
 
   $$
   \begin{align}
-  \sum_i\mathrm{Cout_{i}} - \sum_j\mathrm{Cin_{j}} + \text{fees}H \stackrel{?}{=} \sum_k\mathrm{K_k} + \text{offset}
-  \\ \text{each output}, i,
-  \\ \text{for each input} j,
-  \\ \text{and each kernel excess}, k
-  \\ \textit{offset }\text{is the total kernel offset}
+  &\sum_i\mathrm{Cout_{i}} - \sum_j\mathrm{Cin_{j}} + \text{fees} \cdot H \stackrel{?}{=} \sum_k\mathrm{K_k} + \text{offset} \\\\
+  & \text{for each output}, i, \\\\
+  & \text{for each input}, j, \\\\
+  & \text{for each kernel excess}, k \\\\
+  & \text{and }\textit{offset }\text{is the total kernel offset} \\\\
   \end{align}
   \tag{1}
   $$
@@ -160,7 +160,7 @@ A counter indicating how many blocks have passed since the genesis block (inclus
 The height MUST conform to the following:
 
 * Represented as an unsigned 64-bit integer.
-* The height MUST be exactly 1 more than the block referenced in the `prev_hash` block header field.
+* The height MUST be exactly one more than the block referenced in the `prev_hash` block header field.
 * The genesis block MUST have a height of 0.
 
 #### Prev_hash
@@ -196,7 +196,7 @@ of all the outputs that have ever been spent.
 The output_mr MUST conform to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
-* The hashing function used MUST be blake2b with a 256 bit digest.
+* The hashing function used MUST be blake2b with a 256-bit digest.
 
 #### Output_mmr_size
 
@@ -210,35 +210,35 @@ The Output_mmr_size MUST conform to the following:
 [input_mr]: #input_mr "Input Merkle root"
 
 This is the Merkle root of all the inputs in the block, which consists of the hashed inputs. It is used to prove that 
-all inputs are correct and not changed after mining. This MUST be constructed by adding in order, the hash of every 
+all inputs are correct and not changed after mining. This MUST be constructed by adding, in order, the hash of every 
 input contained in the block. 
 
 The input_mr MUST conform to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
-* The hashing function used must be blake2b with a 256 bit digest.
+* The hashing function must be blake2b with a 256-bit digest.
 
 #### Witness_mr
 [witness_mr]: #witness_mr "Witness Merkle root"
 
-This is the Merkle root of the output witness data, specifically the [range proof] and 
-metadata signatures of all created outputs. This MUST be constructed by 
-Hash ( `RangeProof` || `metadata commitment signature`) in order for every output contain in the block.
+This is the Merkle root of the output witness data, specifically all created outputs’ [range proof]s and 
+metadata signatures. This MUST be constructed by 
+Hash ( `RangeProof` || `metadata commitment signature`), in order, for every output contained in the block.
 
 The witness_mr MUST conform to the following:
 
 * Represented as an array of unsigned 8-bit integers (bytes) in little-endian format.
-* The hashing function used must be blake2b with a 256 bit digest.
+* The hashing function used must be blake2b with a 256-bit digest.
 
 #### Kernel_mr
 [kernel_mr]: #kernel_mr "Kernel Merkle root"
 
 This is the Merkle root of the outputs.
 
-The kernel_mr MUST conform to the following:.
+The kernel_mr MUST conform to the following:
 
 * Must be transmitted as an array of unsigned 8-bit integers (bytes) in little-endian format.
-* The hashing function used must be blake2b with a 256 bit digest.
+* The hashing function used must be blake2b with a 256-bit digest.
 
 #### Kernel_mmr_size
 
@@ -250,7 +250,7 @@ The Kernel_mmr_size MUST conform to the following:
 
 #### Total_kernel_offset
 
-This is total summed offset of all the transactions contained in this block.
+This is the total summed offset of all the transactions in this block.
 
 The total_kernel_offset MUST conform to the following:
 
@@ -258,7 +258,7 @@ The total_kernel_offset MUST conform to the following:
 
 #### Total_script_offset
 
-This is total summed script offset of all the transactions contained in this block.
+This is the total summed script offset of all the transactions in this block.
 
 The total_script_offset MUST conform to the following:
 
@@ -270,7 +270,7 @@ This is the total accumulated difficulty of the mined chained.
 
 The total_difficulty MUST conform to the following:
 
-* Must be transmitted as unsigned 64-bit integer.
+* Must be transmitted as an unsigned 64-bit integer.
 * MUST be larger than the previous block's `total_difficulty`.
 * meet the difficulty target for the block as determined by the consensus difficulty algorithm.
 
@@ -280,18 +280,18 @@ This is the nonce used in solving the Proof of Work.
 
 The nonce MUST conform to the following:
 
-* Must be transmitted as unsigned 64-bit integer;
+* Must be transmitted as an unsigned 64-bit integer;
 
 #### PoW
 
-This is Proof of Work algorithm that was used to solve the Proof of Work. This is used in conjunction with the Nonce
+This is the Proof of Work algorithm used to solve the Proof of Work. This is used in conjunction with the Nonce.
 
 The [PoW] MUST contain the following:
 
-* accumulated_monero_difficulty as unsigned 64-bit integer.
-* accumulated_blake_difficulty as unsigned 64-bit integer.
-* pow_algo as an enum (0 for monero, 1 for blake).
-* pow_data as array of unsigned 8-bit integers (bytes) in little-endian format.
+* accumulated_monero_difficulty as an unsigned 64-bit integer.
+* accumulated_blake_difficulty as an unsigned 64-bit integer.
+* pow_algo as an enum (0 for Monero, 1 for Sha3).
+* pow_data as an array of unsigned 8-bit integers (bytes) in little-endian format.
 
 #### Difficulty Calculation
 [target difficulty]: #target-difficulty "Target Difficulty"
@@ -305,32 +305,32 @@ $$
 \newcommand{\solvetimemax}{ \mathrm{ST_{max}} }
 $$
 
-| Symbol                 	| Value                   	| Description                                                                                                                	|
-|--------------------------	|-------------------------	|----------------------------------------------------------------------------------------------------------------------------	|
-| N                        	| 90                      	| Target difficulty block window                                                                                             	|
-| T                        	| SHA3: 300 Monero: 200    	| Target block time in seconds.  The value used depends on the  PoW algorithm being used.                                    	|
-| \\( \solvetimemax \\)    	| SHA3: 1800 Monero: 1200 	| Maximum solve time.  This is 6 times the target time  of the current PoW algorithm.                                        	|
-| \\( \solvetime \\)    	| variable                	| The timestamp difference in seconds between  block _i_ and _i - 1_ where \\( 1 \le \solvetime \le \solvetimemax \\) 	|
-| \\( \mathrm{D_{avg}} \\) 	| variable                	| The average difficulty of the last _N_ blocks                                                                              	|
+| Symbol                 	| Value                   | Description                                                                                                         |
+|-------------------------|-------------------------|---------------------------------------------------------------------------------------------------------------------|
+| N                       | 90                      | Target difficulty block window                                                                                      |
+| T                       | SHA3: 300 Monero: 200   | Target block time in seconds.  The value used depends on the  PoW algorithm being used.                             |
+| \\( \solvetimemax \\)   | SHA3: 1800 Monero: 1200 | Maximum solve time.  This is six times the target time  of the current PoW algorithm.                                 |
+| \\( \solvetime \\)    	| variable                | The timestamp difference in seconds between  block _i_ and _i - 1_ where \\( 1 \le \solvetime \le \solvetimemax \\) |
+| \\( \mathrm{D_{avg}} \\)| variable                | The average difficulty of the last _N_ blocks                                                                       |
 
 $$
 \begin{align}
-\\ \textit{weighted_solve_time} = \sum\limits_{i=1}^N(\solvetime*i) 
-\\ \textit{weighted_target_time} = (\sum\limits_{i=1}^Ni) * \mathrm{T} 
-\\ \textit{difficulty} = \mathrm{D_{avg}} * \frac{\textit{weighted_target_time}}{\textit{weighted_solve_time}}
+& \textit{weighted_solve_time} = \sum\limits_{i=1}^N(\solvetime*i)  \\\\
+& \textit{weighted_target_time} = (\sum\limits_{i=1}^Ni) * \mathrm{T} \\\\
+& \textit{difficulty} = \mathrm{D_{avg}} * \frac{\textit{weighted_target_time}}{\textit{weighted_solve_time}}\\\\
 \end{align}
 \tag{2}
 $$
 
-It is important to note that the 2 proof of work algorithms are calculated _independently_. i.e. if the current block is using _SHA3_ proof of work, the block window and solve times only include _SHA3_ blocks and vice versa.
+It is important to note that the two proof of work algorithms are calculated _independently_. i.e., if the current block uses _SHA3_ proof of work, the block window and solve times only include _SHA3_ blocks and vice versa.
 
 ### FTL
 [FTL]: #ftl "Future Time Limit"
 
 The Future Time Limit. This is how far into the future a time is accepted as a valid time. Any time that is more than the FTL is rejected until such a time that it is not less than the FTL.
 The FTL is calculated as (T*N)/20 with T and N defined as:
-T: Target time - This is the ideal time that should pass between blocks which have been mined.
-N: Block window - This is the amount of blocks used when calculating difficulty adjustments.
+T: Target time - This is the ideal time that should pass between blocks that have been mined.
+N: Block window - This is the number of blocks used when calculating difficulty adjustments.
 
 ### MTP
 [MTP]: #mtp "Median Time Passed"
@@ -340,23 +340,26 @@ last _N_ blocks. Any block with a timestamp that is less than MTP will be reject
 
 ### Total accumulated proof of work
 
-This is defined as the total accumulated proof of work done on the blockchain. Tari uses two _independent_ proof of work algorithms that are
+This is defined as the total accumulated proof of work done on the blockchain. Tari uses two _independent_ proof of work algorithms 
 rated at different difficulties. To compare them, we simply multiply them together into one number:
 $$
+\begin{align}
  \textit{accumulated_monero_difficulty} * \textit{accumulated_sha_difficulty} 
+\end{align}
+\tag{3}
 $$
 This value is used to compare chain tips to determine the strongest chain.
 
 ### Transaction Ordering
 [Transaction ordering]: #transaction-ordering "Canonical Transaction Ordering"
 
-The order in which transaction inputs, outputs and kernels are added to the Merkle mountain range completely changes the
-final Merkle root. Input, output and kernel ordering within a block is therefore part of consensus. 
+The order in which transaction inputs, outputs, and kernels are added to the Merkle mountain range completely changes the
+final Merkle root. Input, output, and kernel ordering within a block is, therefore, part of the consensus. 
 
 The block MUST be transmitted in canonical ordering. The advantage of this approach is that sorting does not need to be 
-done by the whole network, and verification of sorting is extremely cheap.
+done by the whole network, and verification of sorting is exceptionally cheap.
 
-Transaction inputs and outputs are sorted by their Pedersen commitment i.e. `kG + vH`. Specifically, the byte representation of the 
+Transaction inputs and outputs are sorted by their Pedersen commitment i.e. `\\(k \cdot G + v \cdot H\\)`. Specifically, the byte representation of the 
 compressed [Ristretto] point of the commitment.
 
 

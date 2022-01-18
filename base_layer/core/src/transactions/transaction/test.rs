@@ -119,7 +119,7 @@ fn range_proof_verification() {
         .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
         .unwrap();
 
-    let tx_output3 = TransactionOutput::new(
+    let tx_output3 = TransactionOutput::new_current_version(
         output_features.clone(),
         c,
         RangeProof::from_bytes(&proof).unwrap(),
@@ -176,7 +176,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "fe25e4e961d5efec889c489d43e40a1334bf9b4408be4c2e8035a523f231a732"
+        "1b772d53cb42b54553b8049c6b010449405278262155c4354a680522d673df54"
     );
 }
 
@@ -195,7 +195,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "f1e7348b0952d8afbec6bfaa07a1cbc9c45e51e022242d3faeb0f190e2a9dd07"
+        "7a86132527fe2c40c09cc39270c69dc44ba6fe94bc9850c0f9940397be72a394"
     )
 }
 
@@ -211,6 +211,7 @@ fn check_timelocks() {
     let script_signature = ComSignature::default();
     let offset_pub_key = PublicKey::default();
     let mut input = TransactionInput::new_with_output_data(
+        TransactionInputVersion::get_current_version(),
         OutputFeatures::default(),
         c,
         script,

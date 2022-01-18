@@ -52,6 +52,7 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
+use super::TransactionOutputVersion;
 use crate::{
     consensus::{ConsensusEncodingSized, ToConsensusBytes},
     covenants::Covenant,
@@ -74,6 +75,7 @@ use crate::{
 /// overflow and the ownership of the private key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionOutput {
+    pub version: TransactionOutputVersion,
     /// Options for an output's structure or use
     pub features: OutputFeatures,
     /// The homomorphic commitment representing the output amount
@@ -94,7 +96,9 @@ pub struct TransactionOutput {
 /// An output for a transaction, includes a range proof and Tari script metadata
 impl TransactionOutput {
     /// Create new Transaction Output
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        version: TransactionOutputVersion,
         features: OutputFeatures,
         commitment: Commitment,
         proof: RangeProof,
@@ -102,8 +106,9 @@ impl TransactionOutput {
         sender_offset_public_key: PublicKey,
         metadata_signature: ComSignature,
         covenant: Covenant,
-    ) -> Self {
-        Self {
+    ) -> TransactionOutput {
+        TransactionOutput {
+            version,
             features,
             commitment,
             proof,
@@ -112,6 +117,27 @@ impl TransactionOutput {
             metadata_signature,
             covenant,
         }
+    }
+
+    pub fn new_current_version(
+        features: OutputFeatures,
+        commitment: Commitment,
+        proof: RangeProof,
+        script: TariScript,
+        sender_offset_public_key: PublicKey,
+        metadata_signature: ComSignature,
+        covenant: Covenant,
+    ) -> TransactionOutput {
+        TransactionOutput::new(
+            TransactionOutputVersion::get_current_version(),
+            features,
+            commitment,
+            proof,
+            script,
+            sender_offset_public_key,
+            metadata_signature,
+            covenant,
+        )
     }
 
     /// Accessor method for the commitment contained in an output
@@ -339,13 +365,19 @@ impl TransactionOutput {
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        transaction::hash_output(&self.features, &self.commitment, &self.script, &self.covenant)
+        transaction::hash_output(
+            &self.features,
+            &self.commitment,
+            &self.script,
+            &self.covenant,
+            self.version,
+        )
     }
 }
 
 impl Default for TransactionOutput {
     fn default() -> Self {
-        TransactionOutput::new(
+        TransactionOutput::new_current_version(
             OutputFeatures::default(),
             CommitmentFactory::default().zero(),
             RangeProof::default(),

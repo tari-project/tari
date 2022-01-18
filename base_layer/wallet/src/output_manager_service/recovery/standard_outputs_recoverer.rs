@@ -95,6 +95,7 @@ where TBackend: OutputManagerBackend + 'static
                     // will not be spendable.
                     let script_key = PrivateKey::random(&mut OsRng);
                     UnblindedOutput::new(
+                        output.version,
                         rewind_result.committed_value,
                         rewind_result.blinding_factor,
                         output.features,

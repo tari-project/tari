@@ -82,7 +82,6 @@ where B: BlockchainBackend + 'static
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn start_streaming(
         &self,
         tx: &mut mpsc::Sender<Result<SyncUtxosByBlockResponse, RpcStatus>>,

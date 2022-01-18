@@ -210,7 +210,7 @@ impl CoinbaseBuilder {
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
-        let unblinded_output = UnblindedOutput::new(
+        let unblinded_output = UnblindedOutput::new_current_version(
             total_reward,
             spending_key,
             output_features,
