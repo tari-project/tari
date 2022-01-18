@@ -37,6 +37,7 @@ thiserror = "1.0.30"
 uuid = {  version = "0.8.2", features = ["serde"] }
 prost = "0.9"
 prost-types = "0.9"
+structopt = "0.3.25"
 
 [features]
 default = [ "custom-protocol" ]

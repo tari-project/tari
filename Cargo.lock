@@ -6427,6 +6427,7 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.133",
  "serde_json",
+ "structopt",
  "tari_app_grpc",
  "tari_common_types",
  "tari_crypto",
