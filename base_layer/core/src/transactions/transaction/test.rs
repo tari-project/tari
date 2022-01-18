@@ -119,7 +119,7 @@ fn range_proof_verification() {
         .construct_proof(&test_params_2.spend_key, 2u64.pow(32) + 1)
         .unwrap();
 
-    let tx_output3 = TransactionOutput::new(
+    let tx_output3 = TransactionOutput::new_current_version(
         output_features.clone(),
         c,
         RangeProof::from_bytes(&proof).unwrap(),
@@ -211,6 +211,7 @@ fn check_timelocks() {
     let script_signature = ComSignature::default();
     let offset_pub_key = PublicKey::default();
     let mut input = TransactionInput::new_with_output_data(
+        TransactionInputVersion::get_current_version(),
         OutputFeatures::default(),
         c,
         script,

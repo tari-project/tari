@@ -195,9 +195,9 @@ pub fn get_dibbler_genesis_block() -> ChainBlock {
     // println!("output mr: {}", block.header.output_mr.to_hex());
 
     // hardcode the Merkle roots once they've been computed above
-    block.header.kernel_mr = from_hex("bc02a300e902fd1bd337042ee0b35100a1e302ca0888c969cef7390ceff0e87b").unwrap();
+    block.header.kernel_mr = from_hex("9b47581a99c832b06a160a02e2f141c962590cf7a382102dbce40ca999e04ad2").unwrap();
     block.header.witness_mr = from_hex("9bd974132a2496e90ac2100b883c568f53142b793f7116d061bb556f15e920b4").unwrap();
-    block.header.output_mr = from_hex("5ccc7a4dbacece4b9e496d2ffede904e44da25db3dc410a10d2180ad2a37fb0e").unwrap();
+    block.header.output_mr = from_hex("852f6be27a6ef811fd71f6bb221621dd13d0d6dec0ade6a550b1691bf631ea42").unwrap();
 
     let accumulated_data = BlockHeaderAccumulatedData {
         hash: block.hash(),

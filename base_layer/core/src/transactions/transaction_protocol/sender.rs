@@ -816,7 +816,7 @@ mod test {
         )
         .unwrap();
 
-        let mut output = TransactionOutput::new(
+        let mut output = TransactionOutput::new_current_version(
             Default::default(),
             commitment.clone(),
             proof,

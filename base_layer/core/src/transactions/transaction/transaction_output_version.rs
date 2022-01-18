@@ -30,12 +30,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TransactionOutputVersion {
-    V1 = 0,
+    V0 = 0,
 }
 
 impl TransactionOutputVersion {
     pub fn get_current_version() -> Self {
-        Self::V1
+        Self::V0
     }
 }
 
@@ -44,7 +44,7 @@ impl TryFrom<u8> for TransactionOutputVersion {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(TransactionOutputVersion::V1),
+            0 => Ok(TransactionOutputVersion::V0),
             _ => Err("Unknown version!".to_string()),
         }
     }

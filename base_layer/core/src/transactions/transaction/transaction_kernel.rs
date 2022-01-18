@@ -132,6 +132,7 @@ impl Hashable for TransactionKernel {
             .chain(self.excess.as_bytes())
             .chain(self.excess_sig.get_public_nonce().as_bytes())
             .chain(self.excess_sig.get_signature().as_bytes())
+            .chain((self.version as u8).to_le_bytes())
             .finalize()
             .to_vec()
     }

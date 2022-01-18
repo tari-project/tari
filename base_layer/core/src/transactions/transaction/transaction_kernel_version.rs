@@ -5,12 +5,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TransactionKernelVersion {
-    V1 = 0,
+    V0 = 0,
 }
 
 impl TransactionKernelVersion {
     pub fn get_current_version() -> Self {
-        Self::V1
+        Self::V0
     }
 }
 impl TryFrom<u8> for TransactionKernelVersion {
@@ -18,7 +18,7 @@ impl TryFrom<u8> for TransactionKernelVersion {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(TransactionKernelVersion::V1),
+            0 => Ok(TransactionKernelVersion::V0),
             _ => Err("Unknown version!".to_string()),
         }
     }
