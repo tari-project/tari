@@ -112,13 +112,7 @@ fn chain_balance_validation() {
     );
     let (pk, sig) = create_random_signature_from_s_key(faucet_key, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
-    let kernel = TransactionKernel {
-        features: KernelFeatures::empty(),
-        fee: MicroTari::from(0),
-        lock_height: 0,
-        excess,
-        excess_sig: sig,
-    };
+    let kernel = TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig);
     // let _faucet_hash = faucet_utxo.hash();
     let mut gen_block = genesis.block().clone();
     gen_block.body.add_output(faucet_utxo);

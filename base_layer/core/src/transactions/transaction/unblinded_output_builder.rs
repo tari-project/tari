@@ -113,28 +113,23 @@ impl UnblindedOutputBuilder {
                 "Cannot build output because it has not been signed by the sender".to_string(),
             ));
         }
-        let ub = UnblindedOutput {
-            value: self.value,
-            spending_key: self.spending_key,
-            features: self.features,
-            script: self
-                .script
+        let ub = UnblindedOutput::new_current_version(
+            self.value,
+            self.spending_key,
+            self.features,
+            self.script
                 .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
-            covenant: self.covenant,
-            input_data: self
-                .input_data
+            self.input_data
                 .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
-            script_private_key: self
-                .script_private_key
+            self.script_private_key
                 .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
-            sender_offset_public_key: self
-                .sender_offset_public_key
+            self.sender_offset_public_key
                 .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
-            metadata_signature: self
-                .metadata_signature
+            self.metadata_signature
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
-            script_lock_height: 0,
-        };
+            0,
+            self.covenant,
+        );
         Ok(ub)
     }
 

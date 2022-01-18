@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::Commitment;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionKernel},
+    transaction::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
 };
 use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
@@ -44,14 +44,17 @@ impl TryFrom<grpc::TransactionKernel> for TransactionKernel {
             .try_into()
             .map_err(|_| "excess_sig could not be converted".to_string())?;
 
-        Ok(Self {
-            features: KernelFeatures::from_bits(kernel.features as u8)
+        Ok(Self::new(
+            TransactionKernelVersion::try_from(
+                u8::try_from(kernel.version).map_err(|_| "Invalid version: overflowed u8")?,
+            )?,
+            KernelFeatures::from_bits(kernel.features as u8)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
+            MicroTari::from(kernel.fee),
+            kernel.lock_height,
             excess,
             excess_sig,
-            fee: MicroTari::from(kernel.fee),
-            lock_height: kernel.lock_height,
-        })
+        ))
     }
 }
 
@@ -69,6 +72,7 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
                 signature: Vec::from(kernel.excess_sig.get_signature().as_bytes()),
             }),
             hash,
+            version: kernel.version as u32,
         }
     }
 }
