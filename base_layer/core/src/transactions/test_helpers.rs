@@ -150,7 +150,7 @@ impl TestParams {
         )
         .unwrap();
 
-        UnblindedOutput::new(
+        UnblindedOutput::new_current_version(
             params.value,
             self.spend_key.clone(),
             params.features,
@@ -585,7 +585,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
     )
     .unwrap();
 
-    let change_output = UnblindedOutput::new(
+    let change_output = UnblindedOutput::new_current_version(
         change,
         test_params_change_and_txn.change_spend_key.clone(),
         OutputFeatures::default(),
@@ -637,7 +637,7 @@ pub fn create_utxo(
     )
     .unwrap();
 
-    let utxo = TransactionOutput::new(
+    let utxo = TransactionOutput::new_current_version(
         features,
         commitment,
         proof.into(),

@@ -373,7 +373,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
     )
     .unwrap();
-    let unblinded_output = UnblindedOutput::new(
+    let unblinded_output = UnblindedOutput::new_current_version(
         MicroTari(10_000),
         key.clone(),
         Default::default(),

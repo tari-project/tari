@@ -33,6 +33,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashDigest, Signature};
 use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
+use super::TransactionKernelVersion;
 use crate::transactions::{
     tari_amount::MicroTari,
     transaction::{KernelFeatures, TransactionError},
@@ -46,6 +47,7 @@ use crate::transactions::{
 /// this transaction can be mined) and the transaction fee, in cleartext.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TransactionKernel {
+    pub version: TransactionKernelVersion,
     /// Options for a kernel's structure or use
     pub features: KernelFeatures,
     /// Fee originally included in the transaction this proof is for.
@@ -62,6 +64,41 @@ pub struct TransactionKernel {
 }
 
 impl TransactionKernel {
+    pub fn new(
+        version: TransactionKernelVersion,
+        features: KernelFeatures,
+        fee: MicroTari,
+        lock_height: u64,
+        excess: Commitment,
+        excess_sig: Signature,
+    ) -> TransactionKernel {
+        TransactionKernel {
+            version,
+            features,
+            fee,
+            lock_height,
+            excess,
+            excess_sig,
+        }
+    }
+
+    pub fn new_current_version(
+        features: KernelFeatures,
+        fee: MicroTari,
+        lock_height: u64,
+        excess: Commitment,
+        excess_sig: Signature,
+    ) -> TransactionKernel {
+        TransactionKernel::new(
+            TransactionKernelVersion::get_current_version(),
+            features,
+            fee,
+            lock_height,
+            excess,
+            excess_sig,
+        )
+    }
+
     pub fn is_coinbase(&self) -> bool {
         self.features.contains(KernelFeatures::COINBASE_KERNEL)
     }
@@ -95,6 +132,7 @@ impl Hashable for TransactionKernel {
             .chain(self.excess.as_bytes())
             .chain(self.excess_sig.get_public_nonce().as_bytes())
             .chain(self.excess_sig.get_signature().as_bytes())
+            .chain((self.version as u8).to_le_bytes())
             .finalize()
             .to_vec()
     }

@@ -386,7 +386,7 @@ where
         script_lock_height: u64,
         covenant: Covenant,
     ) -> Result<TxId, WalletError> {
-        let unblinded_output = UnblindedOutput::new(
+        let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spending_key.clone(),
             features.clone(),

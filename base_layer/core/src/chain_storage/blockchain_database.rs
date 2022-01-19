@@ -1414,6 +1414,7 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
+                        output.version,
                     );
                     Ok(compact_input)
                 },

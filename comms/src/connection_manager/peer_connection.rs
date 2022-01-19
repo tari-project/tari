@@ -398,7 +398,6 @@ impl PeerConnectionActor {
                 err
             );
         }
-        self.request_rx.close();
     }
 
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
@@ -484,6 +483,7 @@ impl PeerConnectionActor {
     ///
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) -> Result<(), PeerConnectionError> {
+        self.request_rx.close();
         match self.control.close().await {
             Err(yamux::ConnectionError::Closed) => {
                 debug!(
@@ -505,8 +505,6 @@ impl PeerConnectionActor {
                 }
             },
         }
-
-        self.request_rx.close();
 
         debug!(
             target: LOG_TARGET,

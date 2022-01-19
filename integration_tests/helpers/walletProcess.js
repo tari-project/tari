@@ -13,7 +13,7 @@ let outputProcess;
 
 class WalletProcess {
   constructor(name, excludeTestEnvars, options, logFilePath, seedWords) {
-    this.name = name;
+    this.name = name.toString();
     this.options = Object.assign(
       {
         baseDir: "./temp/base_nodes",

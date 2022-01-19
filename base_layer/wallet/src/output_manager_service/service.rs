@@ -611,7 +611,7 @@ where
             .await?;
 
         let output = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(
+            UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
                 spending_key.clone(),
                 single_round_sender_data.features.clone(),
@@ -1155,7 +1155,7 @@ where
             &covenant,
         )?;
         let utxo = DbUnblindedOutput::from_unblinded_output(
-            UnblindedOutput::new(
+            UnblindedOutput::new_current_version(
                 amount,
                 spending_key.clone(),
                 output_features,
@@ -1500,7 +1500,7 @@ where
                 &covenant,
             )?;
             let utxo = DbUnblindedOutput::from_unblinded_output(
-                UnblindedOutput::new(
+                UnblindedOutput::new_current_version(
                     output_amount,
                     spending_key.clone(),
                     output_features.clone(),
@@ -1627,6 +1627,7 @@ where
             output.full_rewind_range_proof(&self.resources.factories.range_proof, &rewind_key, &blinding_key)?;
 
         let rewound_output = UnblindedOutput::new(
+            output.version,
             rewound.committed_value,
             rewound.blinding_factor.clone(),
             output.features,
@@ -1839,6 +1840,7 @@ where
 
                 if let Ok(rewound_result) = rewound {
                     let rewound_output = UnblindedOutput::new(
+                        output.version,
                         rewound_result.committed_value,
                         rewound_result.blinding_factor.clone(),
                         output.features,

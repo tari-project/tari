@@ -803,11 +803,12 @@ mod test {
 
     mod check_maturity {
         use super::*;
-        use crate::transactions::transaction::OutputFeatures;
+        use crate::transactions::transaction::{OutputFeatures, TransactionInputVersion};
 
         #[test]
         fn it_checks_the_input_maturity() {
             let input = TransactionInput::new_with_output_data(
+                TransactionInputVersion::get_current_version(),
                 OutputFeatures::with_maturity(5),
                 Default::default(),
                 Default::default(),

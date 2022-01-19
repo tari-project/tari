@@ -149,6 +149,8 @@ message TransactionKernel {
     Signature excess_sig = 7;
     // The hash of the kernel, as it appears in the MMR
     bytes hash = 8;
+    // Version
+    uint32 version = 9;
 }
 
 // A transaction input.
@@ -173,6 +175,8 @@ message TransactionInput {
     bytes output_hash = 9;
     // Covenant
     bytes covenant = 10;
+    // Version
+    uint32 version = 11;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -196,6 +200,8 @@ message TransactionOutput {
     ComSignature metadata_signature = 7;
     // Covenant
     bytes covenant = 8;
+    // Version
+    uint32 version = 9;
 }
 
 // Options for UTXO's
@@ -217,6 +223,8 @@ message OutputFeatures {
     MintNonFungibleFeatures mint_non_fungible = 7;
 
     SideChainCheckpointFeatures sidechain_checkpoint = 8;
+    // Version
+    uint32 version = 9;
 }
 
 message AssetOutputFeatures {
