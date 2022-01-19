@@ -119,7 +119,7 @@ use tari_app_utilities::{
     utilities::setup_runtime,
 };
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-#[cfg(unix)]
+#[cfg(all(unix, feature = "libtor"))]
 use tari_common::{tor::Tor, CommsTransport};
 use tari_comms::{
     peer_manager::PeerFeatures,
@@ -192,7 +192,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "libtor"))]
     if config.base_node_use_libtor && matches!(config.comms_transport, CommsTransport::TorHiddenService { .. }) {
         let tor = Tor::initialize()?;
         config.comms_transport = tor.update_comms_transport(config.comms_transport)?;

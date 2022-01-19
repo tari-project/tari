@@ -47,7 +47,7 @@ use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::{consts, initialization::init_configuration};
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
-#[cfg(unix)]
+#[cfg(all(unix, feature = "libtor"))]
 use tari_common::{tor::Tor, CommsTransport};
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_shutdown::Shutdown;
@@ -137,7 +137,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "libtor"))]
     if global_config.console_wallet_use_libtor &&
         matches!(global_config.comms_transport, CommsTransport::TorHiddenService { .. })
     {

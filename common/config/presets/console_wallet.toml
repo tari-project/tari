@@ -122,6 +122,7 @@ base_node_service_request_max_age = 180
 transport = "tor"
 
 # Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
+# This requires that the base node was built with the optional "libtor" feature flag.
 #use_libtor = true
 
 # Address of the tor control server
@@ -176,6 +177,7 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 transport = "tor"
 
 # Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
+# This requires that the wallet was built with the optional "libtor" feature flag.
 #use_libtor = true
 
 # Address of the tor control server
