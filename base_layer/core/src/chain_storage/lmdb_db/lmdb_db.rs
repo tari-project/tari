@@ -69,6 +69,7 @@ use crate::{
         lmdb_db::{
             lmdb::{
                 fetch_db_entry_sizes,
+                lmdb_clear,
                 lmdb_delete,
                 lmdb_delete_each_where,
                 lmdb_delete_key_value,
@@ -99,6 +100,7 @@ use crate::{
         HorizonData,
         MmrTree,
         PrunedOutput,
+        Reorg,
     },
     transactions::{
         aggregated_body::AggregateBody,
@@ -132,6 +134,7 @@ const LMDB_DB_ORPHAN_HEADER_ACCUMULATED_DATA: &str = "orphan_accumulated_data";
 const LMDB_DB_ORPHAN_CHAIN_TIPS: &str = "orphan_chain_tips";
 const LMDB_DB_ORPHAN_PARENT_MAP_INDEX: &str = "orphan_parent_map_index";
 const LMDB_DB_BAD_BLOCK_LIST: &str = "bad_blocks";
+const LMDB_DB_REORGS: &str = "reorgs";
 
 pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Result<LMDBDatabase, ChainStorageError> {
     let flags = db::CREATE;
@@ -168,6 +171,7 @@ pub fn create_lmdb_database<P: AsRef<Path>>(path: P, config: LMDBConfig) -> Resu
         .add_database(LMDB_DB_ORPHAN_CHAIN_TIPS, flags)
         .add_database(LMDB_DB_ORPHAN_PARENT_MAP_INDEX, flags | db::DUPSORT)
         .add_database(LMDB_DB_BAD_BLOCK_LIST, flags)
+        .add_database(LMDB_DB_REORGS, flags | db::INTEGERKEY)
         .build()
         .map_err(|err| ChainStorageError::CriticalError(format!("Could not create LMDB store:{}", err)))?;
     debug!(target: LOG_TARGET, "LMDB database creation successful");
@@ -200,6 +204,7 @@ pub struct LMDBDatabase {
     orphan_chain_tips_db: DatabaseRef,
     orphan_parent_map_index: DatabaseRef,
     bad_blocks: DatabaseRef,
+    reorgs: DatabaseRef,
     _file_lock: Arc<File>,
 }
 
@@ -233,25 +238,13 @@ impl LMDBDatabase {
             orphan_chain_tips_db: get_database(&store, LMDB_DB_ORPHAN_CHAIN_TIPS)?,
             orphan_parent_map_index: get_database(&store, LMDB_DB_ORPHAN_PARENT_MAP_INDEX)?,
             bad_blocks: get_database(&store, LMDB_DB_BAD_BLOCK_LIST)?,
+            reorgs: get_database(&store, LMDB_DB_REORGS)?,
             env,
             env_config: store.env_config(),
             _file_lock: Arc::new(file_lock),
         };
 
-        db.check_if_rebuild_required()?;
-
         Ok(db)
-    }
-
-    fn check_if_rebuild_required(&self) -> Result<(), ChainStorageError> {
-        let txn = self.read_transaction()?;
-        if lmdb_len(&txn, &self.deleted_txo_mmr_position_to_height_index)? == 0 && lmdb_len(&txn, &self.inputs_db)? > 0
-        {
-            return Err(ChainStorageError::DatabaseResyncRequired(
-                "deleted_txo_mmr_position_to_height_index is needs to be built",
-            ));
-        }
-        Ok(())
     }
 
     /// Try to establish a read lock on the LMDB database. If an exclusive write lock has been previously acquired, this
@@ -422,6 +415,12 @@ impl LMDBDatabase {
                 InsertBadBlock { hash, height } => {
                     self.insert_bad_block_and_cleanup(&write_txn, hash, *height)?;
                 },
+                InsertReorg { reorg } => {
+                    lmdb_replace(&write_txn, &self.reorgs, &reorg.local_time.timestamp(), &reorg)?;
+                },
+                ClearAllReorgs => {
+                    lmdb_clear(&write_txn, &self.reorgs)?;
+                },
             }
         }
         write_txn.commit()?;
@@ -429,7 +428,7 @@ impl LMDBDatabase {
         Ok(())
     }
 
-    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 22] {
+    fn all_dbs(&self) -> [(&'static str, &DatabaseRef); 23] {
         [
             ("metadata_db", &self.metadata_db),
             ("headers_db", &self.headers_db),
@@ -459,6 +458,7 @@ impl LMDBDatabase {
             ("orphan_chain_tips_db", &self.orphan_chain_tips_db),
             ("orphan_parent_map_index", &self.orphan_parent_map_index),
             ("bad_blocks", &self.bad_blocks),
+            ("reorgs", &self.reorgs),
         ]
     }
 
@@ -2233,7 +2233,7 @@ impl BlockchainBackend for LMDBDatabase {
             let read_txn = self.read_transaction()?;
 
             orphans = lmdb_filter_map_values(&read_txn, &self.orphans_db, |block: Block| {
-                Ok(Some((block.header.height, block.hash())))
+                Some((block.header.height, block.hash()))
             })?;
         }
 
@@ -2323,6 +2323,11 @@ impl BlockchainBackend for LMDBDatabase {
         }
         txn.commit()?;
         Ok(num_deleted)
+    }
+
+    fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
+        let txn = self.read_transaction()?;
+        lmdb_filter_map_values(&txn, &self.reorgs, Some)
     }
 }
 
