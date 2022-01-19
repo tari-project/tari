@@ -65,6 +65,7 @@ use crate::{
         LMDBDatabase,
         MmrTree,
         PrunedOutput,
+        Reorg,
         UtxoMinedInfo,
         Validators,
     },
@@ -425,6 +426,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
         self.db.as_ref().unwrap().bad_block_exists(block_hash)
+    }
+
+    fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 }
 

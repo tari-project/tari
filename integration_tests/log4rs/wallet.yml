@@ -139,3 +139,9 @@ loggers:
     appenders:
       - other
     additive: false
+  # Route R2D2 log events
+  r2d2:
+    level: info
+    appenders:
+      - other
+    additive: false

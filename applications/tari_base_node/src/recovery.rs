@@ -109,6 +109,7 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
         orphan_storage_capacity: node_config.orphan_storage_capacity,
         pruning_horizon: node_config.pruning_horizon,
         pruning_interval: node_config.pruned_mode_cleanup_interval,
+        track_reorgs: false,
     };
     let db = BlockchainDatabase::new(
         main_db,
