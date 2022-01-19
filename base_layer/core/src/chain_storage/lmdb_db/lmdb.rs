@@ -356,7 +356,7 @@ pub fn lmdb_filter_map_values<F, V, R>(
     f: F,
 ) -> Result<Vec<R>, ChainStorageError>
 where
-    F: Fn(V) -> Result<Option<R>, ChainStorageError>,
+    F: Fn(V) -> Option<R>,
     V: DeserializeOwned,
 {
     let access = txn.access();
@@ -375,7 +375,7 @@ where
     for row in iter {
         // result.push(Vec::from(row?.0));
         let val = deserialize::<V>(row?.1)?;
-        if let Some(r) = f(val)? {
+        if let Some(r) = f(val) {
             result.push(r);
         }
     }
@@ -431,6 +431,17 @@ where
                 return Err(ChainStorageError::AccessError(e.to_string()));
             },
         }
+    }
+    Ok(num_deleted)
+}
+
+pub fn lmdb_clear(txn: &WriteTransaction<'_>, db: &Database) -> Result<usize, ChainStorageError> {
+    let mut cursor = txn.cursor(db)?;
+    let mut access = txn.access();
+    let mut num_deleted = 0;
+    while cursor.next::<[u8], [u8]>(&access).to_opt()?.is_some() {
+        cursor.del(&mut access, del::Flags::empty())?;
+        num_deleted += 1;
     }
     Ok(num_deleted)
 }

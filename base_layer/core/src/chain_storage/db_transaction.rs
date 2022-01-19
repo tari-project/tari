@@ -35,7 +35,7 @@ use tari_crypto::tari_utilities::{
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock, ChainHeader, UpdateBlockAccumulatedData},
-    chain_storage::{error::ChainStorageError, HorizonData},
+    chain_storage::{error::ChainStorageError, HorizonData, Reorg},
     transactions::transaction::{TransactionKernel, TransactionOutput},
 };
 
@@ -270,6 +270,16 @@ impl DbTransaction {
         self.operations
             .push(WriteOperation::InsertMoneroSeedHeight(monero_seed, height));
     }
+
+    pub fn insert_reorg(&mut self, reorg: Reorg) -> &mut Self {
+        self.operations.push(WriteOperation::InsertReorg { reorg });
+        self
+    }
+
+    pub fn clear_all_reorgs(&mut self) -> &mut Self {
+        self.operations.push(WriteOperation::ClearAllReorgs);
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -338,6 +348,10 @@ pub enum WriteOperation {
     SetHorizonData {
         horizon_data: HorizonData,
     },
+    InsertReorg {
+        reorg: Reorg,
+    },
+    ClearAllReorgs,
 }
 
 impl fmt::Display for WriteOperation {
@@ -426,6 +440,8 @@ impl fmt::Display for WriteOperation {
             DeleteOrphan(hash) => write!(f, "Delete orphan with hash: {}", hash.to_hex()),
             InsertBadBlock { hash, height } => write!(f, "Insert bad block #{} {}", height, hash.to_hex()),
             SetHorizonData { .. } => write!(f, "Set horizon data"),
+            InsertReorg { .. } => write!(f, "Insert reorg"),
+            ClearAllReorgs => write!(f, "Clear all reorgs"),
         }
     }
 }

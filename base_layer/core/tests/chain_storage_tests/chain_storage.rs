@@ -256,6 +256,7 @@ fn rewind_past_horizon_height() {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
         pruning_interval: 2,
+        ..Default::default()
     };
     let store = BlockchainDatabase::new(
         db,
@@ -1396,6 +1397,7 @@ fn orphan_cleanup_on_block_add() {
         orphan_storage_capacity: 3,
         pruning_horizon: 0,
         pruning_interval: 50,
+        ..Default::default()
     };
     let store = BlockchainDatabase::new(
         db,
@@ -1465,6 +1467,7 @@ fn horizon_height_orphan_cleanup() {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
         pruning_interval: 50,
+        ..Default::default()
     };
     let store = BlockchainDatabase::new(
         db,
@@ -1530,6 +1533,7 @@ fn orphan_cleanup_on_reorg() {
         orphan_storage_capacity: 3,
         pruning_horizon: 0,
         pruning_interval: 50,
+        ..Default::default()
     };
     let mut store = BlockchainDatabase::new(
         db,
@@ -1668,6 +1672,7 @@ fn orphan_cleanup_delete_all_orphans() {
         orphan_storage_capacity: 5,
         pruning_horizon: 0,
         pruning_interval: 50,
+        ..Default::default()
     };
     // Test cleanup during runtime
     {
@@ -1778,6 +1783,7 @@ fn fails_validation() {
         orphan_storage_capacity: 3,
         pruning_horizon: 0,
         pruning_interval: 50,
+        ..Default::default()
     };
     let mut store = BlockchainDatabase::new(
         db,
@@ -1823,6 +1829,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
         orphan_storage_capacity: 3,
         pruning_horizon: 3,
         pruning_interval: 1,
+        ..Default::default()
     };
     let store = BlockchainDatabase::new(
         db,
