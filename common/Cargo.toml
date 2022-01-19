@@ -38,7 +38,7 @@ tempfile = "3.1.0"
 [target.'cfg(unix)'.dependencies]
 tari_shutdown = { version = "^0.24", path = "../infrastructure/shutdown"}
 
-libtor = "46.9"
+libtor = { version = "46.9.0", optional = true }
 rand = "0.8"
 tor-hash-passwd = "1.0.1"
 

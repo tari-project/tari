@@ -57,5 +57,6 @@ default = ["metrics"]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2", "tari_comms/avx2", "tari_comms_dht/avx2"]
 metrics = ["warp", "reqwest", "tari_metrics",  "tari_comms/metrics"]
 safe = []
+libtor = ["tari_common/libtor"]
 
 
