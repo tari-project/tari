@@ -222,7 +222,8 @@ Given(
   /I recover wallet (.*) into wallet (.*) connected to all seed nodes/,
   { timeout: 30 * 1000 },
   async function (walletNameA, walletNameB) {
-    const seedWords = this.getWallet(walletNameA).getSeedWords();
+    let walletA = this.getWallet(walletNameA);
+    const seedWords = walletA.getSeedWords();
     console.log(
       "Recover " +
         walletNameA +
@@ -251,7 +252,8 @@ Given(
   /I recover wallet (.*) into (\d+) wallets connected to all seed nodes/,
   { timeout: 30 * 1000 },
   async function (walletNameA, numwallets) {
-    const seedWords = this.getWallet(walletNameA).getSeedWords();
+    let walletA = this.getWallet(walletNameA);
+    const seedWords = walletA.getSeedWords();
     for (let i = 1; i <= numwallets; i++) {
       console.log(
         "Recover " +
@@ -319,7 +321,7 @@ Then(
   }
 );
 
-When(/I stop wallet (.*)/, async function (walletName) {
+When(/I stop wallet ([^\s]+)/, async function (walletName) {
   let wallet = this.getWallet(walletName);
   await wallet.stop();
 });
