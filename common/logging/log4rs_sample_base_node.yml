@@ -146,3 +146,9 @@ loggers:
     level: info
     appenders:
       - base_layer
+  # Route R2D2 log events
+  r2d2:
+    level: warn
+    appenders:
+      - other
+    additive: false
