@@ -30,6 +30,7 @@ jobs:
           SRCDIR=$(pwd)
           echo $SRCDIR
           chmod +x .github/scripts/libwallet/*.sh
+          .github/scripts/libwallet/setup.sh
           .github/scripts/libwallet/entrypoint.sh $PLATFORMS $LEVEL $SRCDIR $GITHUB_REF
       # Upload artifacts to Github
       - name: Upload artifacts
