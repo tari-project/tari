@@ -73,12 +73,12 @@ impl MultiaddressesWithStats {
             .collect();
 
         let to_add = addresses
-            .iter()
-            .filter(|addr| !self.addresses.iter().any(|a| a.address == **addr))
+            .into_iter()
+            .filter(|addr| !self.addresses.iter().any(|a| a.address == *addr))
             .collect::<Vec<_>>();
 
         for address in to_add {
-            self.addresses.push(address.clone().into());
+            self.addresses.push(address.into());
         }
 
         self.addresses.sort();
@@ -88,6 +88,16 @@ impl MultiaddressesWithStats {
     /// connections and latency.
     pub fn iter(&self) -> impl Iterator<Item = &Multiaddr> {
         self.addresses.iter().map(|addr| &addr.address)
+    }
+
+    pub fn to_lexicographically_sorted(&self) -> Vec<Multiaddr> {
+        let mut addresses = self.iter().cloned().collect::<Vec<_>>();
+        addresses.sort_by(|a, b| {
+            let bytes_a = a.as_ref();
+            let bytes_b = b.as_ref();
+            bytes_a.cmp(bytes_b)
+        });
+        addresses
     }
 
     /// Finds the specified address in the set and allow updating of its variables such as its usage stats
