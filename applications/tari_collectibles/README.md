@@ -2,16 +2,15 @@
 
 ```bash
 # run a tari_console_wallet with grpc on port 18143
+# run a base node with grpc on port 18142
+# run a validator node with grpc on port 18144
 # ...
 
 # then in `tari_collectibles/web-app/`
 npm i
+npm run build
 
-# in `tari_collectibles/`
-cargo install tauri-cli --version "^1.0.0-beta"
-npm i
+#Then in root 
+cargo run --bin tari_collectibles
 
-npm start # npm run tauri dev
-
-# dev cycle: https://tauri.studio/en/docs/usage/development/development
 ```

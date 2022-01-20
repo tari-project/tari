@@ -25,7 +25,7 @@ use std::{
     fmt,
 };
 
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -144,6 +144,7 @@ impl TryFrom<common::IdentitySignature> for IdentitySignature {
         let signature = CommsSecretKey::from_bytes(&value.signature)?;
         let updated_at = NaiveDateTime::from_timestamp_opt(value.updated_at, 0)
             .ok_or_else(|| anyhow::anyhow!("updated_at overflowed"))?;
+        let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);
 
         Ok(Self::new(version, Signature::new(public_nonce, signature), updated_at))
     }

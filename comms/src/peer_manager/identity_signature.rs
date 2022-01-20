@@ -22,7 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
@@ -42,13 +42,13 @@ use crate::{
 pub struct IdentitySignature {
     version: u8,
     signature: Signature,
-    updated_at: NaiveDateTime,
+    updated_at: DateTime<Utc>,
 }
 
 impl IdentitySignature {
     pub const LATEST_VERSION: u8 = 0;
 
-    pub fn new(version: u8, signature: Signature, updated_at: NaiveDateTime) -> Self {
+    pub fn new(version: u8, signature: Signature, updated_at: DateTime<Utc>) -> Self {
         Self {
             version,
             signature,
@@ -56,11 +56,11 @@ impl IdentitySignature {
         }
     }
 
-    pub fn sign_new<'a, I: IntoIterator<Item = &'a Multiaddr>>(
+    pub(crate) fn sign_new<'a, I: IntoIterator<Item = &'a Multiaddr>>(
         secret_key: &CommsSecretKey,
         features: PeerFeatures,
         addresses: I,
-        updated_at: NaiveDateTime,
+        updated_at: DateTime<Utc>,
     ) -> Self {
         let challenge = Self::construct_challenge(Self::LATEST_VERSION, features, addresses, updated_at);
         let nonce = CommsSecretKey::random(&mut OsRng);
@@ -77,7 +77,7 @@ impl IdentitySignature {
         &self.signature
     }
 
-    pub fn updated_at(&self) -> NaiveDateTime {
+    pub fn updated_at(&self) -> DateTime<Utc> {
         self.updated_at
     }
 
@@ -86,7 +86,11 @@ impl IdentitySignature {
     }
 
     pub fn is_valid_for_peer(&self, peer: &Peer) -> bool {
-        self.is_valid(&peer.public_key, peer.features, peer.addresses.iter())
+        self.is_valid(
+            &peer.public_key,
+            peer.features,
+            peer.addresses.to_lexicographically_sorted().iter(),
+        )
     }
 
     pub fn is_valid<'a, I: IntoIterator<Item = &'a Multiaddr>>(
@@ -100,7 +104,7 @@ impl IdentitySignature {
             return false;
         }
         // Do not accept timestamp more than 1 day in the future
-        if self.updated_at.timestamp() > (Utc::now().timestamp() + 24 * 60 * 60) {
+        if self.updated_at > Utc::now() + chrono::Duration::days(1) {
             return false;
         }
 
@@ -112,11 +116,11 @@ impl IdentitySignature {
         version: u8,
         features: PeerFeatures,
         addresses: I,
-        updated_at: NaiveDateTime,
+        updated_at: DateTime<Utc>,
     ) -> Challenge {
         let challenge = Challenge::new()
             .chain(version.to_le_bytes())
-            .chain(u64::try_from(updated_at.timestamp()).unwrap_or(0).to_le_bytes())
+            .chain((updated_at.timestamp() as u64).to_le_bytes())
             .chain(features.bits().to_le_bytes());
         addresses
             .into_iter()
@@ -146,6 +150,7 @@ impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
             CommsSecretKey::from_bytes(&value.signature).map_err(|_| PeerManagerError::InvalidIdentitySignature)?;
         let updated_at =
             NaiveDateTime::from_timestamp_opt(value.updated_at, 0).ok_or(PeerManagerError::InvalidIdentitySignature)?;
+        let updated_at = DateTime::<Utc>::from_utc(updated_at, Utc);
 
         Ok(Self {
             version,
@@ -183,7 +188,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut OsRng);
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now().naive_utc();
+            let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
             let node_id = NodeId::from_public_key(&public_key);
@@ -205,7 +210,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut OsRng);
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now().naive_utc();
+            let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
             let node_id = NodeId::from_public_key(&public_key);
@@ -229,7 +234,7 @@ mod test {
             let secret = CommsSecretKey::random(&mut OsRng);
             let public_key = CommsPublicKey::from_secret_key(&secret);
             let address = Multiaddr::from_str("/ip4/127.0.0.1/tcp/1234").unwrap();
-            let updated_at = Utc::now().naive_utc();
+            let updated_at = Utc::now();
             let identity =
                 IdentitySignature::sign_new(&secret, PeerFeatures::COMMUNICATION_NODE, [&address], updated_at);
             let node_id = NodeId::from_public_key(&public_key);
