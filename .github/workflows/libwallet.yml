@@ -20,10 +20,12 @@ jobs:
       # Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@master
-        with:
-          platforms: "x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
-          level: "24"
+        run: |
+          PLATFORMS="x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
+          LEVEL=24
+          SRCDIR=/github/workspace
+          pwd
+          ./.github/scripts/libwallet/entrypoint.sh $PLATFORMS $LEVEL $SRCDIR $GITHUB_REF
       # Upload artifacts to Github
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
