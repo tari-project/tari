@@ -18,7 +18,7 @@ mkdir -p "${NDK_PATH}"/sources/cxx-stl/llvm-libc++/include/sys
 cp "${NDK_PATH}/sources/cxx-stl/llvm-libc++/include/limits.h" "${NDK_PATH}/sources/cxx-stl/llvm-libc++/include/sys/syslimits.h"
 
 # Add Android ABIs
-TARGETS="x86_64-linux-android aarch64-linux-android armv7-linux-androideabi i686-linux-android arm-linux-androideabi"
+TARGETS="x86_64-linux-android aarch64-linux-android armv7-linux-androideabi arm-linux-androideabi"
 LEVEL=24
 NDK_HOME=${NDK_PATH}
 NDK_TOOLCHAIN_VERSION=clang
@@ -159,4 +159,4 @@ rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-android
 
 # Build rust build!
 echo "cargo build"
-cargo build --package tari_wallet_ffi --lib --release
+RUST_BACKTRACE=1 cargo build --package tari_wallet_ffi --lib --release
