@@ -96,45 +96,33 @@ echo "CPPFLAGS: ${CPPFLAGS}"
 export RUSTFLAGS="${RUSTFLAGS//PF/$PLATFORMABI}"
 echo "RUSTFLAGS: ${RUSTFLAGS}"
 
-echo " "
-echo "Copying files"
-mkdir -p /srcroot
-cp -rT ${SRCDIR} /srcroot
-echo "Copying done"
-echo " "
-
 mkdir -p /build/
 argify "build.target.dir"
-export $arg="/build/"
-echo $arg="/build/"
+export "$arg"="/build/"
+echo "$arg"="/build/"
 
 argify "build.target"
-export $arg="${PLATFORMABI}"
-echo $arg="${PLATFORMABI}"
+export "$arg"="${PLATFORMABI}"
+echo "$arg"="${PLATFORMABI}"
 argify "target.${PLATFORMABI}.ar"
-export $arg="${AR}"
-echo $arg="${AR}"
+export "$arg"="${AR}"
+echo "$arg"="${AR}"
 argify "target.${PLATFORMABI}.linker"
-export $arg="${CC}"
-echo $arg="${CC}"
+export "$arg"="${CC}"
+echo "$arg"="${CC}"
 argify "target.${PLATFORMABI}.rustflags"
-export ${arg}="${RUSTFLAGS}"
-echo ${arg}="${RUSTFLAGS}"
+export "${arg}"="${RUSTFLAGS}"
+echo "${arg}"="${RUSTFLAGS}"
 
 echo "Cargo Flags: ${CARGO_FLAGS}"
 echo "Cargo HTTP multiplexing: ${CARGO_HTTP_MULTIPLEXING}"
 
 # Fix for "Invalid cross-device link" when changing output directory of build
 # from mounted volume
-cd /srcroot
+cd "$SRCDIR"
 
 # Ensure target is installed in the event rust updated and invalidated it
 rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-androideabi
 
 # Build rust build!
-cargo build ${CARGO_FLAGS}
-
-# Cleanup
-rm -rf /srcroot
-
-#ls /build/${PLATFORMABI}/release
+cargo build "${CARGO_FLAGS}"
