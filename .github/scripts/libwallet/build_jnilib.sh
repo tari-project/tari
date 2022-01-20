@@ -11,7 +11,7 @@ mkdir -p /opt/android-ndk-tmp &&
     mv /opt/android-ndk-tmp/android-ndk-${NDK_VERSION} /opt/android-ndk
 # add to PATH
 PATH=${PATH}:${ANDROID_NDK_HOME}
-NDK_PATHj${ANDROID_NDK_HOME}
+NDK_PATH=${ANDROID_NDK_HOME}
 
 #Fix for missing header, c code should reference limits.h instead of syslimits.h, happens with code that has been around for a long time.
 mkdir -p "${NDK_PATH}"/sources/cxx-stl/llvm-libc++/include/sys
