@@ -61,6 +61,7 @@ import Setup, { UnlockWallet } from "./Setup";
 import { useEffect, useState } from "react";
 import binding from "./binding";
 import { Spinner } from "./components";
+import { listen } from '@tauri-apps/api/event'
 
 const mdTheme = createTheme({
   palette: {
@@ -116,7 +117,7 @@ const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  useEffect(async () => {
     console.log("refreshing accounts");
     setError("");
     binding
@@ -130,7 +131,29 @@ const AccountsMenu = (props) => {
         console.error("accounts_list error:", e);
         setError(e.message);
       });
+
+
+    await listen("asset_wallets::updated", event => {
+          console.log("accounts have changed");
+          setError("");
+          binding
+              .command_asset_wallets_list()
+              .then((accounts) => {
+                console.log("accounts", accounts);
+                setAccounts(accounts);
+              })
+              .catch((e) => {
+                // todo error handling
+                console.error("accounts_list error:", e);
+                setError(e.message);
+              });
+        }
+    );
   }, [props.walletId]);
+
+
+
+
 
   // todo: hide accounts when not authenticated
   return (
