@@ -5,7 +5,7 @@ ANDROID_NDK_HOME=/opt/android-ndk
 # Download and install NDK
 mkdir -p /opt/android-ndk-tmp &&
     cd /opt/android-ndk-tmp &&
-    wget https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip &&
+    wget -q https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip &&
     cd /opt/android-ndk-tmp &&
     unzip android-ndk-${NDK_VERSION}-linux-x86_64.zip &&
     mv /opt/android-ndk-tmp/android-ndk-${NDK_VERSION} /opt/android-ndk
@@ -52,6 +52,8 @@ SRCDIR=$3
 set -e
 
 export PKG_CONFIG_ALLOW_CROSS=1
+
+cd $SRCDIR
 
 echo "Building ${SRCDIR} for ${PLATFORMABI} on level ${LEVEL}"
 PLATFORM=$(cut -d'-' -f1 <<<"${PLATFORMABI}")
