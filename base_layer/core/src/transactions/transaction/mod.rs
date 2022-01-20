@@ -37,7 +37,7 @@ pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
-use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+use tari_crypto::script::TariScript;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
@@ -49,8 +49,6 @@ pub use transaction_output::TransactionOutput;
 pub use transaction_output_version::TransactionOutputVersion;
 pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
-
-use crate::{consensus::ToConsensusBytes, covenants::Covenant};
 
 mod asset_output_features;
 mod error;
@@ -88,6 +86,10 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
+use std::io::Write;
+
+use crate::{common::hash_writer::HashWriter, consensus::ConsensusEncoding, covenants::Covenant};
+
 /// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.
 ///
@@ -96,19 +98,18 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 /// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
 /// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 pub(super) fn hash_output(
+    version: TransactionOutputVersion,
     features: &OutputFeatures,
     commitment: &Commitment,
     script: &TariScript,
     covenant: &Covenant,
-    version: TransactionOutputVersion,
-) -> Vec<u8> {
-    HashDigest::new()
-        .chain(features.to_consensus_bytes())
-        .chain(commitment.as_bytes())
-        // .chain(range proof) // See docs as to why we exclude this
-        .chain(script.as_bytes())
-        .chain(covenant.to_consensus_bytes())
-        .chain((version as u8).to_le_bytes())
-        .finalize()
-        .to_vec()
+) -> [u8; 32] {
+    let mut hasher = HashWriter::new(HashDigest::new());
+    // unwrap: hashwriter is infallible
+    hasher.write_all(&[version as u8]).unwrap();
+    features.consensus_encode(&mut hasher).unwrap();
+    commitment.consensus_encode(&mut hasher).unwrap();
+    script.consensus_encode(&mut hasher).unwrap();
+    covenant.consensus_encode(&mut hasher).unwrap();
+    hasher.finalize()
 }

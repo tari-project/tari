@@ -31,15 +31,12 @@ use serde::{
 };
 use tari_utilities::hex::{from_hex, Hex};
 
-use crate::{
-    consensus::{ConsensusDecoding, ToConsensusBytes},
-    covenants::Covenant,
-};
+use crate::covenants::Covenant;
 
 impl Serialize for Covenant {
     fn serialize<S>(&self, ser: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
-        let bytes = self.to_consensus_bytes();
+        let bytes = self.to_bytes();
         if ser.is_human_readable() {
             ser.serialize_str(&bytes.to_hex())
         } else {
@@ -68,9 +65,9 @@ impl<'de> Visitor<'de> for CovenantVisitor {
         self.visit_str(&v)
     }
 
-    fn visit_bytes<E>(self, mut v: &[u8]) -> Result<Self::Value, E>
+    fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E>
     where E: Error {
-        Covenant::consensus_decode(&mut v).map_err(|e| E::custom(e.to_string()))
+        Covenant::from_bytes(v).map_err(|e| E::custom(e.to_string()))
     }
 
     fn visit_borrowed_bytes<E>(self, v: &'de [u8]) -> Result<Self::Value, E>

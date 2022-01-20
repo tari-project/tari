@@ -25,13 +25,13 @@ use std::{
     io,
 };
 
-use integer_encoding::{VarIntReader, VarIntWriter};
+use integer_encoding::VarIntWriter;
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_crypto::script::TariScript;
 use tari_utilities::hex::{to_hex, Hex};
 
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
     covenants::{
         byte_codes,
         covenant::Covenant,
@@ -42,7 +42,6 @@ use crate::{
     },
 };
 
-const MAX_TARISCRIPT_ARG_SIZE: usize = 4096;
 const MAX_COVENANT_ARG_SIZE: usize = 4096;
 const MAX_BYTES_ARG_SIZE: usize = 4096;
 
@@ -80,17 +79,19 @@ impl CovenantArg {
             },
             ARG_COMMITMENT => Ok(CovenantArg::Commitment(Commitment::consensus_decode(reader)?)),
             ARG_TARI_SCRIPT => {
-                let buf = reader.read_variable_length_bytes(MAX_TARISCRIPT_ARG_SIZE)?;
-                let script = TariScript::from_bytes(&buf[..])?;
+                let script = TariScript::consensus_decode(reader)?;
                 Ok(CovenantArg::TariScript(script))
             },
             ARG_COVENANT => {
                 let buf = reader.read_variable_length_bytes(MAX_COVENANT_ARG_SIZE)?;
-                let covenant = Covenant::consensus_decode(&mut buf.as_slice())?;
+                // Do not use consensus_decoding here because the compiler infinitely recurses to resolve the R generic,
+                // R becomes the reader of this call and so on. This impl has an arg limit anyway and so is safe
+                // TODO: Impose a limit on depth of covenants within covenants
+                let covenant = Covenant::from_bytes(&buf)?;
                 Ok(CovenantArg::Covenant(covenant))
             },
             ARG_UINT => {
-                let v = reader.read_varint::<u64>()?;
+                let v = u64::consensus_decode(reader)?;
                 Ok(CovenantArg::Uint(v))
             },
             ARG_OUTPUT_FIELD => {
@@ -108,8 +109,8 @@ impl CovenantArg {
                 Ok(CovenantArg::OutputFields(fields))
             },
             ARG_BYTES => {
-                let buf = reader.read_variable_length_bytes(MAX_BYTES_ARG_SIZE)?;
-                Ok(CovenantArg::Bytes(buf))
+                let buf = MaxSizeBytes::<MAX_BYTES_ARG_SIZE>::consensus_decode(reader)?;
+                Ok(CovenantArg::Bytes(buf.into()))
             },
 
             _ => Err(CovenantDecodeError::UnknownArgByteCode { code }),
@@ -137,21 +138,21 @@ impl CovenantArg {
             },
             TariScript(script) => {
                 written += writer.write_u8_fixed(ARG_TARI_SCRIPT)?;
-                written += writer.write_variable_length_bytes(&script.as_bytes())?;
+                written += script.consensus_encode(writer)?;
             },
             Covenant(covenant) => {
                 written += writer.write_u8_fixed(ARG_COVENANT)?;
-                let len = covenant.consensus_encode_exact_size();
+                let len = covenant.get_byte_length();
                 written += writer.write_varint(len)?;
                 written += covenant.write_to(writer)?;
             },
             Uint(int) => {
                 written += writer.write_u8_fixed(ARG_UINT)?;
-                written += writer.write_varint(*int)?;
+                written += int.consensus_encode(writer)?;
             },
             OutputField(field) => {
                 written += writer.write_u8_fixed(ARG_OUTPUT_FIELD)?;
-                written += writer.write_varint(field.as_byte())?;
+                written += writer.write_u8_fixed(field.as_byte())?;
             },
             OutputFields(fields) => {
                 written += writer.write_u8_fixed(ARG_OUTPUT_FIELDS)?;
@@ -159,7 +160,7 @@ impl CovenantArg {
             },
             Bytes(bytes) => {
                 written += writer.write_u8_fixed(ARG_BYTES)?;
-                written += writer.write_variable_length_bytes(bytes)?;
+                written += bytes.consensus_encode(writer)?;
             },
         }
 

@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
+use std::{
+    io,
+    io::{Read, Write},
+};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PublicKey};
@@ -36,7 +39,7 @@ pub struct MintNonFungibleFeatures {
 }
 
 impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut written = self.asset_public_key.consensus_encode(writer)?;
         written += self.asset_owner_commitment.consensus_encode(writer)?;
         Ok(written)
@@ -50,7 +53,7 @@ impl ConsensusEncodingSized for MintNonFungibleFeatures {
 }
 
 impl ConsensusDecoding for MintNonFungibleFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let asset_public_key = PublicKey::consensus_decode(reader)?;
         let asset_owner_commitment = Commitment::consensus_decode(reader)?;
         Ok(Self {

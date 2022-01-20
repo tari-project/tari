@@ -176,7 +176,7 @@ fn kernel_hash() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "1b772d53cb42b54553b8049c6b010449405278262155c4354a680522d673df54"
+        "b33b9571d12361f888d3e568ebaa0ba5414f54d9f3b78158380aae2005ee25c6"
     );
 }
 
@@ -195,7 +195,7 @@ fn kernel_metadata() {
         .unwrap();
     assert_eq!(
         &k.hash().to_hex(),
-        "7a86132527fe2c40c09cc39270c69dc44ba6fe94bc9850c0f9940397be72a394"
+        "833d6377df8fb260750f445e1b1a327158a08f03e57187927b4808dca8b0c14b"
     )
 }
 
@@ -282,9 +282,8 @@ fn check_cut_through() {
     assert_eq!(tx.body.kernels().len(), 1);
 
     let factories = CryptoFactories::default();
-    assert!(tx
-        .validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .is_ok());
+    tx.validate_internal_consistency(false, &factories, None, None, u64::MAX)
+        .unwrap();
 
     let schema = txn_schema!(from: vec![outputs[1].clone()], to: vec![1 * T, 2 * T]);
     let (tx2, _outputs) = test_helpers::spend_utxos(schema);
@@ -315,14 +314,13 @@ fn check_cut_through() {
     }
 
     // Validate basis transaction where cut-through has not been applied.
-    assert!(tx3
-        .validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .is_ok());
+    tx3.validate_internal_consistency(false, &factories, None, None, u64::MAX)
+        .unwrap();
 
     // tx3_cut_through has manual cut-through, it should not be possible so this should fail
-    assert!(tx3_cut_through
+    tx3_cut_through
         .validate_internal_consistency(false, &factories, None, None, u64::MAX)
-        .is_err());
+        .unwrap_err();
 }
 
 #[test]
@@ -488,6 +486,7 @@ mod output_features {
 
 mod validate_internal_consistency {
     use super::*;
+    use crate::consensus::ToConsensusBytes;
 
     fn test_case(
         input_params: &UtxoTestParams,

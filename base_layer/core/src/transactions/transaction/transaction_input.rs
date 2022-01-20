@@ -49,11 +49,9 @@ use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     consensus::ToConsensusBytes,
     covenants::Covenant,
-    transactions::transaction::{
-        transaction_output::TransactionOutput,
-        OutputFeatures,
-        TransactionError,
-        UnblindedOutput,
+    transactions::{
+        transaction,
+        transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
     },
 };
 
@@ -164,11 +162,11 @@ impl TransactionInput {
         commitment: &Commitment,
     ) -> Vec<u8> {
         Challenge::new()
-            .chain(nonce_commitment.as_bytes())
-            .chain(script.as_bytes().as_slice())
-            .chain(input_data.as_bytes().as_slice())
-            .chain(script_public_key.as_bytes())
-            .chain(commitment.as_bytes())
+            .chain(nonce_commitment.to_consensus_bytes())
+            .chain(script.to_consensus_bytes())
+            .chain(input_data.to_consensus_bytes())
+            .chain(script_public_key.to_consensus_bytes())
+            .chain(commitment.to_consensus_bytes())
             .finalize()
             .to_vec()
     }
@@ -311,20 +309,13 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(ref h) => h.clone(),
             SpentOutput::OutputData {
+                version,
                 ref commitment,
                 ref script,
                 ref features,
                 ref covenant,
-                version,
                 ..
-            } => HashDigest::new()
-                .chain(features.to_consensus_bytes())
-                .chain(commitment.as_bytes())
-                .chain(script.as_bytes())
-                .chain(covenant.to_consensus_bytes())
-                .chain((version as u8).to_le_bytes())
-                .finalize()
-                .to_vec(),
+            } => transaction::hash_output(version, features, commitment, script, covenant).to_vec(),
         }
     }
 
@@ -337,13 +328,14 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
+                version,
                 ref features,
                 ref commitment,
                 ref script,
                 ref sender_offset_public_key,
                 ref covenant,
-                version,
             } => Ok(HashDigest::new()
+                .chain((version as u8).to_le_bytes())
                 .chain(features.to_consensus_bytes())
                 .chain(commitment.to_consensus_bytes())
                 .chain(script.as_bytes())
@@ -353,7 +345,6 @@ impl TransactionInput {
                 .chain(self.script_signature.public_nonce().to_consensus_bytes())
                 .chain(self.input_data.as_bytes())
                 .chain(covenant.to_consensus_bytes())
-                .chain((version as u8).to_le_bytes())
                 .finalize()
                 .to_vec()),
         }
@@ -431,12 +422,12 @@ impl Ord for TransactionInput {
 pub enum SpentOutput {
     OutputHash(HashOutput),
     OutputData {
+        version: TransactionOutputVersion,
         features: OutputFeatures,
         commitment: Commitment,
         script: TariScript,
         sender_offset_public_key: PublicKey,
         /// The transaction covenant
         covenant: Covenant,
-        version: TransactionOutputVersion,
     },
 }

@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
+use std::{
+    io,
+    io::{Read, Write},
+};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PublicKey;
@@ -39,7 +42,7 @@ pub struct AssetOutputFeatures {
 }
 
 impl ConsensusEncoding for AssetOutputFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut written = self.public_key.consensus_encode(writer)?;
         written += self.template_ids_implemented.consensus_encode(writer)?;
         written += self.template_parameters.consensus_encode(writer)?;
@@ -50,14 +53,13 @@ impl ConsensusEncoding for AssetOutputFeatures {
 impl ConsensusEncodingSized for AssetOutputFeatures {}
 
 impl ConsensusDecoding for AssetOutputFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let public_key = PublicKey::consensus_decode(reader)?;
         const MAX_TEMPLATES: usize = 50;
-        let template_ids_implemented = <MaxSizeVec<u32, MAX_TEMPLATES> as ConsensusDecoding>::consensus_decode(reader)?;
+        let template_ids_implemented = MaxSizeVec::<u32, MAX_TEMPLATES>::consensus_decode(reader)?;
 
         const MAX_TEMPLATE_PARAMS: usize = 50;
-        let template_parameters =
-            <MaxSizeVec<TemplateParameter, MAX_TEMPLATE_PARAMS> as ConsensusDecoding>::consensus_decode(reader)?;
+        let template_parameters = MaxSizeVec::<TemplateParameter, MAX_TEMPLATE_PARAMS>::consensus_decode(reader)?;
 
         Ok(Self {
             public_key,

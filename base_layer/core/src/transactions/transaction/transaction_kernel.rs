@@ -126,13 +126,13 @@ impl Hashable for TransactionKernel {
     /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
     fn hash(&self) -> Vec<u8> {
         HashDigest::new()
+            .chain((self.version as u8).to_le_bytes())
             .chain(&[self.features.bits()])
             .chain(u64::from(self.fee).to_le_bytes())
             .chain(self.lock_height.to_le_bytes())
             .chain(self.excess.as_bytes())
             .chain(self.excess_sig.get_public_nonce().as_bytes())
             .chain(self.excess_sig.get_signature().as_bytes())
-            .chain((self.version as u8).to_le_bytes())
             .finalize()
             .to_vec()
     }
