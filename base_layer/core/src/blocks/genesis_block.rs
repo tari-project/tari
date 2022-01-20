@@ -245,7 +245,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
     );
     body.sort();
     // set genesis timestamp
-    let genesis = DateTime::parse_from_rfc2822("07 Jan 2022 00:00:00 +0200").unwrap();
+    let genesis = DateTime::parse_from_rfc2822("20 Jan 2022 00:00:00 +0200").unwrap();
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
