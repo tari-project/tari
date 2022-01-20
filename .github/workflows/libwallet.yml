@@ -20,7 +20,7 @@ jobs:
       # Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@v0.3.3
+        uses: tari-project/action-buildlibs@master
         with:
           platforms: "x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
           level: "24"
@@ -67,7 +67,7 @@ jobs:
           mkdir -p MobileWallet/TariLib/
           cd base_layer/wallet_ffi
           mv ios.config build.config
-          ./mobile_build.sh
+          ./mobile_build.sh || exit 1
           ls -alht $GITHUB_WORKSPACE/MobileWallet/TariLib/
       - name: Upload artifacts
         uses: actions/upload-artifact@v2

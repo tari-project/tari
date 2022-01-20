@@ -6380,6 +6380,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_libtor",
  "tari_metrics",
  "tari_mmr",
  "tari_p2p",
@@ -6452,24 +6453,20 @@ dependencies = [
  "fs2 0.4.3",
  "get_if_addrs",
  "git2",
- "libtor",
  "log",
  "log4rs 1.0.0",
  "multiaddr",
  "path-clean",
  "prost-build",
- "rand 0.8.4",
  "serde 1.0.133",
  "serde_json",
  "sha2",
  "structopt",
- "tari_shutdown",
  "tari_storage",
  "tari_test_utils 0.24.0",
  "tempfile",
  "thiserror",
  "toml 0.5.8",
- "tor-hash-passwd",
 ]
 
 [[package]]
@@ -6632,6 +6629,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_key_manager",
+ "tari_libtor",
  "tari_p2p",
  "tari_shutdown",
  "tari_utilities",
@@ -6841,6 +6839,21 @@ dependencies = [
  "tauri-build",
  "thiserror",
  "tokio 1.15.0",
+ "tor-hash-passwd",
+]
+
+[[package]]
+name = "tari_libtor"
+version = "0.24.0"
+dependencies = [
+ "libtor",
+ "log",
+ "log4rs 1.0.0",
+ "multiaddr",
+ "rand 0.8.4",
+ "tari_common",
+ "tari_shutdown",
+ "tempfile",
  "tor-hash-passwd",
 ]
 
