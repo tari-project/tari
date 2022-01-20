@@ -26,7 +26,8 @@ jobs:
           SRCDIR=/github/workspace
           pwd
           ls -alh
-          ./.github/scripts/libwallet/entrypoint.sh $PLATFORMS $LEVEL $SRCDIR $GITHUB_REF
+          chmod +x .github/scripts/libwallet/*.sh
+          .github/scripts/libwallet/entrypoint.sh $PLATFORMS $LEVEL $SRCDIR $GITHUB_REF
       # Upload artifacts to Github
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
