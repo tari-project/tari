@@ -92,7 +92,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where H: FnMut(u64, u64, &NodeId) + Send + Sync + 'static {
+    where H: FnMut(u64, u64, &NodeId, Option<Duration>) + Send + Sync + 'static {
         self.hooks.add_on_progress_header_hook(hook);
     }
 
@@ -284,6 +284,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     split_info.local_tip_header.height(),
                     split_info.remote_tip_height,
                     sync_peer.node_id(),
+                    client.get_last_request_latency(),
                 );
                 self.synchronize_headers(sync_peer, &mut client, *split_info).await?;
                 Ok(())
@@ -607,8 +608,12 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                 }
             }
 
-            self.hooks
-                .call_on_progress_header_hooks(current_height, split_info.remote_tip_height, sync_peer.node_id());
+            self.hooks.call_on_progress_header_hooks(
+                current_height,
+                split_info.remote_tip_height,
+                sync_peer.node_id(),
+                client.get_last_request_latency(),
+            );
         }
 
         if !has_switched_to_new_chain {
