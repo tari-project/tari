@@ -1,4 +1,38 @@
 #!/bin/bash
+NDK_VERSION=r21b
+ANDROID_NDK_HOME=/opt/android-ndk
+
+# Download and install NDK
+mkdir -p /opt/android-ndk-tmp &&
+    cd /opt/android-ndk-tmp &&
+    wget https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip &&
+    cd /opt/android-ndk-tmp &&
+    unzip android-ndk-${NDK_VERSION}-linux-x86_64.zip &&
+    mv /opt/android-ndk-tmp/android-ndk-${NDK_VERSION} /opt/android-ndk
+# add to PATH
+PATH=${PATH}:${ANDROID_NDK_HOME}
+NDK_PATHj${ANDROID_NDK_HOME}
+
+#Fix for missing header, c code should reference limits.h instead of syslimits.h, happens with code that has been around for a long time.
+mkdir -p "${NDK_PATH}"/sources/cxx-stl/llvm-libc++/include/sys
+cp "${NDK_PATH}/sources/cxx-stl/llvm-libc++/include/limits.h" "${NDK_PATH}/sources/cxx-stl/llvm-libc++/include/sys/syslimits.h"
+
+# Add Android ABIs
+TARGETS="x86_64-linux-android aarch64-linux-android armv7-linux-androideabi i686-linux-android arm-linux-androideabi"
+LEVEL=24
+NDK_HOME=${NDK_PATH}
+NDK_TOOLCHAIN_VERSION=clang
+rustup target add "${TARGETS}"
+
+# Build Android libs
+# ADD scripts /scripts
+# We'll build a version of the library for every platform given in `PLATFORMS`. Separate multiple platforms by a semicolon
+# ENV PLATFORMS "x86_64-linux-android;aarch64-linux-android;i686-linux-android;armv7-linux-androideabi"
+# Cargo will build the source code found in SRC_DIR
+# ENV SRC_DIR "/src"
+# You can pass any flags you wish to cargo by overriding the CARGO_FLAGS envar
+CARGO_FLAGS="--package tari_wallet_ffi --lib --release"
+CARGO_HTTP_MULTIPLEXING="false"
 
 # Converts a rust option from the config file format into the corresponding env variable name
 # E.G.  "target.x86_64-unknown-linux-gnu.runner" => "CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER"
@@ -116,9 +150,6 @@ echo "${arg}"="${RUSTFLAGS}"
 
 echo "Cargo Flags: ${CARGO_FLAGS}"
 echo "Cargo HTTP multiplexing: ${CARGO_HTTP_MULTIPLEXING}"
-
-# Fix for "Invalid cross-device link" when changing output directory of build
-# from mounted volume
 
 # Ensure target is installed in the event rust updated and invalidated it
 echo "rustup target add"
