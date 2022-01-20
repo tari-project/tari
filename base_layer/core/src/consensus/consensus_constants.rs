@@ -248,7 +248,7 @@ impl ConsensusConstants {
         let mut algos = HashMap::new();
         // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 180,
+            max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
             target_time: 300,
