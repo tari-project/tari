@@ -20,8 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod v4;
 mod v5;
+mod v6;
 
 use log::*;
 use tari_storage::lmdb_store::{LMDBDatabase, LMDBError};
@@ -32,7 +32,7 @@ pub(super) const MIGRATION_VERSION_KEY: u64 = u64::MAX;
 
 pub fn migrate(database: &LMDBDatabase) -> Result<(), LMDBError> {
     // Add migrations here in version order
-    let migrations = vec![v4::Migration.boxed(), v5::Migration.boxed()];
+    let migrations = vec![v5::Migration.boxed(), v6::Migration.boxed()];
     if migrations.is_empty() {
         return Ok(());
     }
