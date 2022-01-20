@@ -34,12 +34,14 @@ use prost::Message;
 use tari_common_types::types::PublicKey;
 use tari_dan_common_types::proto::tips::tip002;
 use tari_utilities::{hex::Hex, ByteArray};
+use tauri::Manager;
 use uuid::Uuid;
 
 #[tauri::command]
 pub(crate) async fn asset_wallets_create(
   asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
+  app: tauri::AppHandle,
 ) -> Result<(), Status> {
   let wallet_id = state
     .current_wallet_id()
@@ -96,7 +98,21 @@ pub(crate) async fn asset_wallets_create(
     wallet_id,
   };
   db.asset_wallets().insert(&new_asset_wallet, &tx)?;
+  let (key_manager_path, _, address_public_key) = state
+    .key_manager()
+    .await
+    .generate_asset_address(wallet_id, &asset_public_key, None, &tx)
+    .map_err(|e| Status::internal(format!("could not generate address key: {}", e)))?;
+  let address = AddressRow {
+    id: Uuid::new_v4(),
+    asset_wallet_id: new_asset_wallet.id,
+    name: None,
+    public_key: address_public_key,
+    key_manager_path,
+  };
+  db.addresses().insert(&address, &tx)?;
   tx.commit()?;
+  app.emit_all("asset_wallets::updated", ()).unwrap();
   Ok(())
 }
 
