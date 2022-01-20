@@ -27,7 +27,7 @@ jobs:
         run: |
           PLATFORMS="x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
           LEVEL=24
-          SRCDIR=$(PWD)
+          SRCDIR=$(pwd)
           echo $SRCDIR
           chmod +x .github/scripts/libwallet/*.sh
           .github/scripts/libwallet/entrypoint.sh $PLATFORMS $LEVEL $SRCDIR $GITHUB_REF
