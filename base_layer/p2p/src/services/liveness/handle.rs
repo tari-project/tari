@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use tari_comms::peer_manager::NodeId;
 use tari_service_framework::reply_channel::SenderService;
@@ -55,7 +55,7 @@ pub enum LivenessResponse {
     /// Used to return a counter value from `GetPingCount` and `GetPongCount`
     Count(usize),
     /// Response for GetAvgLatency and GetNetworkAvgLatency
-    AvgLatency(Option<u32>),
+    AvgLatency(Option<Duration>),
     /// The number of active neighbouring peers
     NumActiveNeighbours(usize),
 }
@@ -77,13 +77,13 @@ pub struct PingPongEvent {
     /// The node id of the node which sent this ping or pong
     pub node_id: NodeId,
     /// Latency if available (i.e. a corresponding event was sent within the Liveness state inflight ping TTL)
-    pub latency: Option<u32>,
+    pub latency: Option<Duration>,
     /// Metadata of the corresponding node
     pub metadata: Metadata,
 }
 
 impl PingPongEvent {
-    pub fn new(node_id: NodeId, latency: Option<u32>, metadata: Metadata) -> Self {
+    pub fn new(node_id: NodeId, latency: Option<Duration>, metadata: Metadata) -> Self {
         Self {
             node_id,
             latency,
@@ -154,7 +154,7 @@ impl LivenessHandle {
     }
 
     /// Retrieve the average latency for a given node
-    pub async fn get_avg_latency(&mut self, node_id: NodeId) -> Result<Option<u32>, LivenessError> {
+    pub async fn get_avg_latency(&mut self, node_id: NodeId) -> Result<Option<Duration>, LivenessError> {
         match self.handle.call(LivenessRequest::GetAvgLatency(node_id)).await?? {
             LivenessResponse::AvgLatency(v) => Ok(v),
             _ => Err(LivenessError::UnexpectedApiResponse),
@@ -162,7 +162,7 @@ impl LivenessHandle {
     }
 
     /// Retrieve the mean average latency for all connected nodes
-    pub async fn get_network_avg_latency(&mut self) -> Result<Option<u32>, LivenessError> {
+    pub async fn get_network_avg_latency(&mut self) -> Result<Option<Duration>, LivenessError> {
         match self.handle.call(LivenessRequest::GetNetworkAvgLatency).await?? {
             LivenessResponse::AvgLatency(v) => Ok(v),
             _ => Err(LivenessError::UnexpectedApiResponse),

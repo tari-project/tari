@@ -33,9 +33,9 @@ use tari_core::{
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        state_machine_service::{initializer::BaseNodeStateMachineInitializer, states::HorizonSyncConfig},
+        state_machine_service::initializer::BaseNodeStateMachineInitializer,
         BaseNodeStateMachineConfig,
-        BlockSyncConfig,
+        BlockchainSyncConfig,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
@@ -110,8 +110,6 @@ where B: BlockchainBackend + 'static
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
-        let rules = self.rules.clone();
-
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
@@ -157,19 +155,15 @@ where B: BlockchainBackend + 'static
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
                 BaseNodeStateMachineConfig {
-                    block_sync_config: BlockSyncConfig {
-                        sync_peers,
-                        ..Default::default()
-                    },
-                    horizon_sync_config: HorizonSyncConfig {
-                        horizon_sync_height_offset: rules.consensus_constants(0).coinbase_lock_height() + 50,
+                    blockchain_sync_config: BlockchainSyncConfig {
+                        forced_sync_peers: sync_peers,
+                        validation_concurrency: num_cpus::get(),
                         ..Default::default()
                     },
                     pruning_horizon: config.pruning_horizon,
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     max_randomx_vms: config.max_randomx_vms,
                     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                    sync_validation_concurrency: num_cpus::get(),
                     ..Default::default()
                 },
                 self.rules,

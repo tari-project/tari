@@ -23,6 +23,7 @@
 use std::{
     fmt::{Display, Error, Formatter},
     sync::Arc,
+    time::Duration,
 };
 
 use tari_common_types::chain_metadata::ChainMetadata;
@@ -33,11 +34,11 @@ use tokio::sync::broadcast;
 pub struct PeerChainMetadata {
     node_id: NodeId,
     chain_metadata: ChainMetadata,
-    latency: Option<u32>,
+    latency: Option<Duration>,
 }
 
 impl PeerChainMetadata {
-    pub fn new(node_id: NodeId, chain_metadata: ChainMetadata, latency: Option<u32>) -> Self {
+    pub fn new(node_id: NodeId, chain_metadata: ChainMetadata, latency: Option<Duration>) -> Self {
         Self {
             node_id,
             chain_metadata,
@@ -53,15 +54,27 @@ impl PeerChainMetadata {
         &self.chain_metadata
     }
 
-    pub fn latency(&self) -> Option<u32> {
+    pub fn latency(&self) -> Option<Duration> {
         self.latency
+    }
+
+    pub(crate) fn set_latency(&mut self, latency: Duration) -> &mut Self {
+        self.latency = Some(latency);
+        self
     }
 }
 
 impl Display for PeerChainMetadata {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        writeln!(f, "Node ID: {}", self.node_id)?;
-        writeln!(f, "Chain metadata: {}", self.chain_metadata)
+        write!(
+            f,
+            "Node ID: {}, Chain metadata: {}, Latency: {}",
+            self.node_id,
+            self.chain_metadata,
+            self.latency
+                .map(|d| format!("{:.2?}", d))
+                .unwrap_or_else(|| "--".to_string())
+        )
     }
 }
 

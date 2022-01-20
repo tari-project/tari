@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::cmp::Ordering;
+
 use log::*;
 
 use crate::{
@@ -64,88 +66,110 @@ impl DecideNextSync {
 
             let horizon_sync_height = local_metadata.horizon_block(last_header.height);
             // Filter sync peers that claim to be able to provide blocks up until our pruned height
-            let sync_peers_iter = self.sync_peers.iter().filter(|sync_peer| {
-                let remote_metadata = sync_peer.claimed_chain_metadata();
-                remote_metadata.height_of_longest_chain() >= horizon_sync_height
-            });
+            let sync_peers = self
+                .sync_peers
+                .drain(..)
+                .filter(|sync_peer| {
+                    let remote_metadata = sync_peer.claimed_chain_metadata();
+                    remote_metadata.height_of_longest_chain() >= horizon_sync_height
+                })
+                .collect::<Vec<_>>();
 
-            match find_best_latency(sync_peers_iter) {
-                Some(sync_peer) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Proceeding to horizon sync with sync peer {} with a latency of {:.2?}",
-                        sync_peer.node_id(),
-                        sync_peer.latency()
-                    );
-                    ProceedToHorizonSync(sync_peer)
-                },
-                None => Continue,
+            if sync_peers.is_empty() {
+                warn!(
+                    target: LOG_TARGET,
+                    "Unable to find any appropriate sync peers for horizon sync"
+                );
+                return Continue;
             }
+
+            debug!(
+                target: LOG_TARGET,
+                "Proceeding to horizon sync with {} sync peer(s) with a best latency of {:.2?}",
+                sync_peers.len(),
+                sync_peers.first().map(|p| p.latency()).unwrap_or_default()
+            );
+            ProceedToHorizonSync(sync_peers)
         } else {
             // Filter sync peers that are able to provide full blocks from our current tip
-            let sync_peers_iter = self.sync_peers.iter().filter(|sync_peer| {
-                sync_peer.claimed_chain_metadata().pruning_horizon() <= local_metadata.height_of_longest_chain()
-            });
+            let sync_peers = self
+                .sync_peers
+                .drain(..)
+                .filter(|sync_peer| {
+                    sync_peer.claimed_chain_metadata().pruning_horizon() <= local_metadata.height_of_longest_chain()
+                })
+                .collect::<Vec<_>>();
 
-            match find_best_latency(sync_peers_iter) {
-                Some(sync_peer) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Proceeding to block sync with sync peer {} with a latency of {:.2?}",
-                        sync_peer.node_id(),
-                        sync_peer.latency()
-                    );
-                    ProceedToBlockSync(sync_peer)
-                },
-                None => Continue,
+            if sync_peers.is_empty() {
+                warn!(
+                    target: LOG_TARGET,
+                    "Unable to find any appropriate sync peers for block sync"
+                );
+                return Continue;
             }
+
+            debug!(
+                target: LOG_TARGET,
+                "Proceeding to block sync with {} sync peer(s) with a best latency of {:.2?}",
+                sync_peers.len(),
+                sync_peers.first().map(|p| p.latency()).unwrap_or_default()
+            );
+            ProceedToBlockSync(sync_peers)
         }
     }
 }
 
-/// Find the peer with the best latency
-fn find_best_latency<'a, I: IntoIterator<Item = &'a SyncPeer>>(iter: I) -> Option<SyncPeer> {
-    iter.into_iter()
-        .fold(Option::<&'a SyncPeer>::None, |current, sync_peer| match current {
-            Some(p) => match (p.latency(), sync_peer.latency()) {
-                (Some(_), None) => Some(p),
-                (None, Some(_)) => Some(sync_peer),
-                (Some(current), Some(latency)) if current > latency => Some(sync_peer),
-                (Some(_), Some(_)) | (None, None) => current,
-            },
-            None => Some(sync_peer),
-        })
-        .cloned()
-}
-
 impl From<HeaderSyncState> for DecideNextSync {
     fn from(sync: HeaderSyncState) -> Self {
-        Self {
-            sync_peers: sync.into_sync_peers(),
-        }
+        sync.into_sync_peers().into()
+    }
+}
+
+impl From<Vec<SyncPeer>> for DecideNextSync {
+    fn from(mut sync_peers: Vec<SyncPeer>) -> Self {
+        sync_peers.sort_by(|a, b| match (a.latency(), b.latency()) {
+            (None, None) => Ordering::Equal,
+            // No latency goes to the end
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some(la), Some(lb)) => la.cmp(&lb),
+        });
+        Self { sync_peers }
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
     use rand::{rngs::OsRng, seq::SliceRandom};
     use tari_common_types::chain_metadata::ChainMetadata;
 
     use super::*;
 
-    mod find_best_latency {
+    mod sort_by_latency {
         use super::*;
+        use crate::base_node::chain_metadata_service::PeerChainMetadata;
 
         #[test]
-        fn it_selects_the_best_latency() {
+        fn it_sorts_by_latency() {
             let peers = (0..10)
-                .map(|i| SyncPeer::new(Default::default(), ChainMetadata::empty(), Some(i)))
-                .chain(Some(SyncPeer::new(Default::default(), ChainMetadata::empty(), None)))
-                .collect::<Vec<_>>();
+                .map(|i| {
+                    PeerChainMetadata::new(
+                        Default::default(),
+                        ChainMetadata::empty(),
+                        Some(Duration::from_millis(i)),
+                    )
+                    .into()
+                })
+                .chain(Some(
+                    PeerChainMetadata::new(Default::default(), ChainMetadata::empty(), None).into(),
+                ))
+                .collect::<Vec<SyncPeer>>();
             let mut shuffled = peers.clone();
             shuffled.shuffle(&mut OsRng);
-            let selected = find_best_latency(shuffled.iter());
-            assert_eq!(selected, peers.first().cloned());
+            let decide = DecideNextSync::from(shuffled);
+            assert_eq!(decide.sync_peers, peers);
         }
     }
 }

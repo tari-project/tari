@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,10 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::num::TryFromIntError;
+use std::{num::TryFromIntError, time::Duration};
 
 use tari_comms::{
     connectivity::ConnectivityError,
+    peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
 use tari_mmr::error::MerkleMountainRangeError;
@@ -31,7 +32,7 @@ use thiserror::Error;
 use tokio::task;
 
 use crate::{
-    base_node::{comms_interface::CommsInterfaceError, state_machine_service::states::helpers::BaseNodeRequestError},
+    base_node::comms_interface::CommsInterfaceError,
     chain_storage::{ChainStorageError, MmrTree},
     transactions::transaction::TransactionError,
     validation::ValidationError,
@@ -60,8 +61,6 @@ pub enum HorizonSyncError {
     },
     #[error("Invalid range proof for output:{0} : {1}")]
     InvalidRangeProof(String, String),
-    #[error("Base node request error: {0}")]
-    BaseNodeRequestError(#[from] BaseNodeRequestError),
     #[error("RPC error: {0}")]
     RpcError(#[from] RpcError),
     #[error("RPC status: {0}")]
@@ -74,6 +73,18 @@ pub enum HorizonSyncError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("Validation error: {0}")]
     ValidationError(#[from] ValidationError),
+    #[error("No sync peers")]
+    NoSyncPeers,
+    #[error("Sync failed for all peers")]
+    FailedSyncAllPeers,
+    #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
+    MaxLatencyExceeded {
+        peer: NodeId,
+        latency: Duration,
+        max_latency: Duration,
+    },
+    #[error("All sync peers exceeded max allowed latency")]
+    AllSyncPeersExceedLatency,
 }
 
 impl From<TryFromIntError> for HorizonSyncError {

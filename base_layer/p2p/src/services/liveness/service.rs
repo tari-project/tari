@@ -192,7 +192,9 @@ where
                     "Received pong from peer '{}' with useragent '{}'. {} (Trace: {})",
                     node_id.short_str(),
                     source_peer.user_agent,
-                    maybe_latency.map(|ms| format!("Latency: {}ms", ms)).unwrap_or_default(),
+                    maybe_latency
+                        .map(|latency| format!("Latency: {:.2?}", latency))
+                        .unwrap_or_default(),
                     message_tag,
                 );
 
@@ -242,7 +244,7 @@ where
                 Ok(LivenessResponse::Count(pong_count))
             },
             GetAvgLatency(node_id) => {
-                let latency = self.state.get_avg_latency_ms(&node_id);
+                let latency = self.state.get_avg_latency(&node_id);
                 Ok(LivenessResponse::AvgLatency(latency))
             },
             GetNetworkAvgLatency => {
