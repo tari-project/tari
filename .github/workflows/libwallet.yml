@@ -47,46 +47,46 @@ jobs:
           AWS_REGION: "us-east-1" # optional: defaults to us-east-1
           SOURCE_DIR: "$GITHUB_WORKSPACE/libwallet"
           DEST_DIR: "libwallet"
-  ios:
-    runs-on: macos-10.15
-    steps:
-      - uses: actions/checkout@v2
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2021-11-20
-          target: aarch64-apple-ios
-          components: rustfmt
-          override: true
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly-2021-11-20
-          target: x86_64-apple-ios
-          components: rustfmt
-          override: true
-      - name: Install macOS dependencies
-        run: brew install cmake zip
-      - name: Build
-        run: |
-          mkdir -p MobileWallet/TariLib/
-          cd base_layer/wallet_ffi
-          mv ios.config build.config
-          ./mobile_build.sh || exit 1
-          ls -alht $GITHUB_WORKSPACE/MobileWallet/TariLib/
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: libwallet-ios
-          path: ${{ github.workspace }}/MobileWallet/TariLib/
+  # ios:
+  #   runs-on: macos-10.15
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: nightly-2021-11-20
+  #         target: aarch64-apple-ios
+  #         components: rustfmt
+  #         override: true
+  #     - uses: actions-rs/toolchain@v1
+  #       with:
+  #         toolchain: nightly-2021-11-20
+  #         target: x86_64-apple-ios
+  #         components: rustfmt
+  #         override: true
+  #     - name: Install macOS dependencies
+  #       run: brew install cmake zip
+  #     - name: Build
+  #       run: |
+  #         mkdir -p MobileWallet/TariLib/
+  #         cd base_layer/wallet_ffi
+  #         mv ios.config build.config
+  #         ./mobile_build.sh || exit 1
+  #         ls -alht $GITHUB_WORKSPACE/MobileWallet/TariLib/
+  #     - name: Upload artifacts
+  #       uses: actions/upload-artifact@v2
+  #       with:
+  #         name: libwallet-ios
+  #         path: ${{ github.workspace }}/MobileWallet/TariLib/
 
-      # "Error: Container action is only supported on Linux"
-      # - name: Sync to S3
-      #   uses: jakejarvis/s3-sync-action@v0.5.1
-      #   with:
-      #     args: --acl public-read --follow-symlinks
-      #   env:
-      #     AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     AWS_REGION: "us-east-1" # optional: defaults to us-east-1
-      #     SOURCE_DIR: "$GITHUB_WORKSPACE/MobileWallet/TariLib/"
-      #     DEST_DIR: "libwallet-ios"
+  # "Error: Container action is only supported on Linux"
+  # - name: Sync to S3
+  #   uses: jakejarvis/s3-sync-action@v0.5.1
+  #   with:
+  #     args: --acl public-read --follow-symlinks
+  #   env:
+  #     AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+  #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #     AWS_REGION: "us-east-1" # optional: defaults to us-east-1
+  #     SOURCE_DIR: "$GITHUB_WORKSPACE/MobileWallet/TariLib/"
+  #     DEST_DIR: "libwallet-ios"
