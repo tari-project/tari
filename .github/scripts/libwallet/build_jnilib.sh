@@ -96,10 +96,10 @@ echo "CPPFLAGS: ${CPPFLAGS}"
 export RUSTFLAGS="${RUSTFLAGS//PF/$PLATFORMABI}"
 echo "RUSTFLAGS: ${RUSTFLAGS}"
 
-mkdir -p /build/
+mkdir -p build
 argify "build.target.dir"
-export "$arg"="/build/"
-echo "$arg"="/build/"
+export "$arg"="build/"
+echo "$arg"="build/"
 
 argify "build.target"
 export "$arg"="${PLATFORMABI}"
