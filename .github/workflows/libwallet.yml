@@ -17,6 +17,10 @@ jobs:
     steps:
       # Checkout the code
       - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-20
+          override: true
       # Build and package the libraries
       - name: Build libwallet
         id: build-libwallet

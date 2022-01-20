@@ -119,10 +119,13 @@ echo "Cargo HTTP multiplexing: ${CARGO_HTTP_MULTIPLEXING}"
 
 # Fix for "Invalid cross-device link" when changing output directory of build
 # from mounted volume
+echo "cd $SRCDIR"
 cd "$SRCDIR"
 
 # Ensure target is installed in the event rust updated and invalidated it
+echo "rustup target add"
 rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-androideabi
 
 # Build rust build!
+echo "cargo build"
 cargo build "${CARGO_FLAGS}"
