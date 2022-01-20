@@ -165,7 +165,7 @@ impl NodeIdentity {
             self.secret_key(),
             self.features,
             Some(&*acquire_read_lock!(self.public_address)),
-            Utc::now().naive_utc(),
+            Utc::now(),
         );
 
         *acquire_write_lock!(self.identity_signature) = Some(identity_sig);
