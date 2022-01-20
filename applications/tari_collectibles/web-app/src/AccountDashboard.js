@@ -22,9 +22,11 @@
 
 import React from "react";
 import {withRouter} from "react-router-dom";
-import {Alert, Button, Container, Grid, Paper, Stack, TextField, Typography} from "@mui/material";
+import {Alert, Button, Container, Grid, IconButton, Paper, Stack, TextField, Typography} from "@mui/material";
 import binding from "./binding";
 import protobuf from "protobufjs";
+import StarIcon from "@mui/icons-material/Star";
+import StarOutlineIcon from "@mui/icons-material/StarOutline";
 
 class AccountDashboard extends React.Component {
     constructor(props) {
@@ -33,13 +35,15 @@ class AccountDashboard extends React.Component {
         console.log(props);
         this.state = {
             error: null,
+            hasAssetWallet: false,
             isSaving: false,
             tip002: false,
             tip004: false,
             tip721: false,
             tip002Data: {},
             tip721Data: {},
-            assetPubKey: props.match.params.assetPubKey,
+            assetPublicKey: props.match.params.assetPubKey,
+            assetInfo: {},
             balance: -1,
             receiveAddress: "",
             sendToAddress: "",
@@ -48,34 +52,60 @@ class AccountDashboard extends React.Component {
     }
 
     async componentDidMount() {
+        await this.reload();
+    }
+
+    async reload() {
         try {
 
-            let receiveAddress = await binding.command_asset_wallets_get_latest_address(this.state.assetPubKey);
-            let assetInfo = await binding.command_assets_get_registration(this.state.assetPubKey);
+             let assetInfo = await binding.command_assets_get_registration(this.state.assetPublicKey);
             console.log(assetInfo);
             let tip002 = assetInfo.features["template_ids_implemented"].includes(2);
             let tip004 = assetInfo.features["template_ids_implemented"].includes(4);
             let tip721 = assetInfo.features["template_ids_implemented"].includes(721);
-            let tip002Data = {};
-            if (tip002) {
-                await this.refreshBalance();
-                let templateParams = assetInfo.features["template_parameters"];
-                let tip002Params = templateParams.filter((item) => {
-                    return item.template_id === 2
-                })[0];
+            // this.setState({tip002, tip004, tip721});
+            let receiveAddress;
+            let hasAssetWallet = false;
+            try {
+                receiveAddress = await binding.command_asset_wallets_get_latest_address(this.state.assetPublicKey);
+                hasAssetWallet = true;
+            }
+            catch(err) {
+                if (err.code !== 404) {
+                    throw err;
+                } else {
+                    // no saved account wallet
+                }
+            }
+            this.setState({assetInfo, receiveAddress: receiveAddress?.public_key, hasAssetWallet});
+            if (hasAssetWallet) {
+                let tip002Data = {};
+                if (tip002) {
+                    await this.refreshBalance();
+                    let templateParams = assetInfo.features["template_parameters"];
+                    let tip002Params = templateParams.filter((item) => {
+                        return item.template_id === 2
+                    })[0];
 
-                await protobuf.load("/proto/tip002.proto").then(function (root) {
-                    let InitRequest = root.lookupType("tip002.InitRequest");
-                    let message = InitRequest.decode(tip002Params["template_data"]);
-                    tip002Data = InitRequest.toObject(message, {});
-                    console.log(tip002Data);
+                    await protobuf.load("/proto/tip002.proto").then(function (root) {
+                        let InitRequest = root.lookupType("tip002.InitRequest");
+                        let message = InitRequest.decode(tip002Params["template_data"]);
+                        tip002Data = InitRequest.toObject(message, {});
+                        console.log(tip002Data);
+                    });
+                }
+                let tip721Data = {};
+                if (tip004) {
+                    tip721Data = await this.refresh721();
+                }
+                this.setState({
+                    tip002,
+                    tip004,
+                    tip721,
+                    tip002Data,
+                    tip721Data
                 });
             }
-            let tip721Data = {};
-            if (tip004) {
-               tip721Data = await this.refresh721();
-            }
-            this.setState({receiveAddress: receiveAddress.public_key, tip002, tip004, tip721, tip002Data, tip721Data});
         } catch (err) {
             console.error(err);
             this.setState({error: err.message});
@@ -84,7 +114,7 @@ class AccountDashboard extends React.Component {
 
     refreshBalance = async () => {
         this.setState({error: null});
-        let balance = await binding.command_asset_wallets_get_balance(this.state.assetPubKey);
+        let balance = await binding.command_asset_wallets_get_balance(this.state.assetPublicKey);
         console.log("balance", balance);
         this.setState({balance});
         return balance;
@@ -92,7 +122,7 @@ class AccountDashboard extends React.Component {
 
     refresh721 = async() => {
         let tip721Data = {};
-            let tokens = await binding.command_tip004_list_tokens(this.state.assetPubKey);
+            let tokens = await binding.command_tip004_list_tokens(this.state.assetPublicKey);
             console.log(tokens);
             tip721Data.tokens = [];
             await tokens.forEach((token) => {
@@ -107,10 +137,9 @@ class AccountDashboard extends React.Component {
     }
 
     onGenerateReceiveAddress = async () => {
-        console.log("hello");
         try {
             this.setState({error: null});
-            let receiveAddress = await binding.command_asset_wallets_create_address(this.state.assetPubKey);
+            let receiveAddress = await binding.command_asset_wallets_create_address(this.state.assetPublicKey);
             console.log("new address", receiveAddress);
             this.setState({receiveAddress: receiveAddress.public_key});
         } catch (err) {
@@ -129,7 +158,7 @@ class AccountDashboard extends React.Component {
     onSend = async () => {
         try {
             this.setState({error: ""});
-            let result = await binding.command_asset_wallets_send_to(this.state.assetPubKey, this.state.sendToAmount, this.state.sendToAddress);
+            let result = await binding.command_asset_wallets_send_to(this.state.assetPublicKey, this.state.sendToAmount, this.state.sendToAddress);
             console.log(result);
             this.setState({
                 sendToAddress: "", sendToAmount: ""
@@ -148,13 +177,23 @@ class AccountDashboard extends React.Component {
     on721Send = async(fromAddressId, tokenId) => {
         try {
             this.setState({error: ""});
-            let result = await binding.command_tip721_transfer_from(this.state.assetPubKey, fromAddressId, this.state.sendToAddress,  tokenId);
+            let result = await binding.command_tip721_transfer_from(this.state.assetPublicKey, fromAddressId, this.state.sendToAddress,  tokenId);
             console.log(result);
             let tip721Data = await this.refresh721();
             this.setState({ tip721Data});
             await this.refreshBalance();
         } catch (err) {
             console.error("Error sending:", err);
+            this.setState({error: err.message});
+        }
+    }
+
+    onSaveToFavorites = async() =>  {
+        try {
+          await binding.command_asset_wallets_create(this.state.assetPublicKey);
+          await this.reload();
+        } catch (err) {
+            console.error("Error saving:", err);
             this.setState({error: err.message});
         }
     }
@@ -170,13 +209,15 @@ class AccountDashboard extends React.Component {
                             <span/>
                         )}
                         <Typography variant="h3" sx={{mb: "30px"}}>
-                            Asset Details
+                            { this.state.assetInfo.name} { this.state.hasAssetWallet ? (<StarIcon></StarIcon>) : (<IconButton onClick={this.onSaveToFavorites}><StarOutlineIcon/></IconButton>)}
+
                         </Typography>
+
                         <Container>
                             <Typography variant="h4">Info</Typography>
                             <Stack spacing="2">
                                 <Typography>
-                                    Pub key: {this.state.assetPubKey}
+                                    Pub key: {this.state.assetPublicKey}
                                 </Typography>
                                 <Typography>Receive Address: {this.state.receiveAddress}</Typography>
                                 <Button onClick={this.onGenerateReceiveAddress}>Generate new receive
