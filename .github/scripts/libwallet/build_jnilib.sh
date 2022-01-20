@@ -157,4 +157,4 @@ rustup target add x86_64-linux-android aarch64-linux-android armv7-linux-android
 
 # Build rust build!
 echo "cargo build"
-cargo build "${CARGO_FLAGS}"
+cargo build --package tari_wallet_ffi --lib --release
