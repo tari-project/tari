@@ -42,7 +42,6 @@ import {
   ListSubheader,
   Toolbar,
 } from "@mui/material";
-import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import DashboardIcon from "@mui/icons-material/Dashboard";
 import CreateIcon from "@mui/icons-material/Create";
 import AddIcon from "@mui/icons-material/Add";
@@ -117,38 +116,41 @@ const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(async () => {
-    console.log("refreshing accounts");
-    setError("");
-    binding
-      .command_asset_wallets_list()
-      .then((accounts) => {
-        console.log("accounts", accounts);
-        setAccounts(accounts);
-      })
-      .catch((e) => {
-        // todo error handling
-        console.error("accounts_list error:", e);
-        setError(e.message);
-      });
+  useEffect( () => {
+    async function inner() {
+      console.log("refreshing accounts");
+      setError("");
+      binding
+          .command_asset_wallets_list()
+          .then((accounts) => {
+            console.log("accounts", accounts);
+            setAccounts(accounts);
+          })
+          .catch((e) => {
+            // todo error handling
+            console.error("accounts_list error:", e);
+            setError(e.message);
+          });
 
 
-    await listen("asset_wallets::updated", event => {
-          console.log("accounts have changed");
-          setError("");
-          binding
-              .command_asset_wallets_list()
-              .then((accounts) => {
-                console.log("accounts", accounts);
-                setAccounts(accounts);
-              })
-              .catch((e) => {
-                // todo error handling
-                console.error("accounts_list error:", e);
-                setError(e.message);
-              });
-        }
-    );
+      await listen("asset_wallets::updated", event => {
+            console.log("accounts have changed");
+            setError("");
+            binding
+                .command_asset_wallets_list()
+                .then((accounts) => {
+                  console.log("accounts", accounts);
+                  setAccounts(accounts);
+                })
+                .catch((e) => {
+                  // todo error handling
+                  console.error("accounts_list error:", e);
+                  setError(e.message);
+                });
+          }
+      );
+    }
+    inner();
   }, [props.walletId]);
 
 

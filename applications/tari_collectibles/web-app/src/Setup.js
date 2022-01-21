@@ -33,71 +33,71 @@ import { Spinner } from "./components";
 import binding from "./binding";
 import {withRouter, useParams, useHistory} from "react-router-dom";
 
-const chunk = (arr, len) => {
-  const chunks = [];
-  let i = 0;
-  let n = arr.length;
-
-  while (i < n) {
-    chunks.push(arr.slice(i, (i += len)));
-  }
-
-  return chunks;
-};
-
-const SeedWords = ({ wallet, password}) => {
-  const [seedWords, setSeedWords] = useState([]);
-  const [error, setError] = useState("");
-  const history= useHistory();
-  useEffect(() => {
-    binding
-      .command_wallets_seed_words(wallet.id, password)
-      .then((words) => setSeedWords(words))
-      .catch((e) => {
-
-        console.error("error: ", e);
-        setError(e.message);
-      });
-  }, [wallet.id, password]);
-
-  const display = (seedWords) => {
-    console.log(seedWords);
-    if (seedWords.length === 0) return <Spinner />;
-
-    const chunks = chunk(seedWords, 6);
-    return (
-      <div>
-        {chunks.map((words, i) => (
-          <pre key={i}>{words.join(" ")}</pre>
-        ))}
-      </div>
-    );
-  };
-
-  return (
-    <div>
-      <Typography variant="h3" sx={{ mb: "30px" }}>
-        Seed words
-      </Typography>
-      {error ? (
-          <Alert severity="error">{error}</Alert>
-      ) : (
-          <span />
-      )}
-      <p>
-        Save these seed words securely. This is the recovery phrase for this
-        wallet.
-      </p>
-      {display(seedWords)}
-      <Button
-        disabled={seedWords.length === 0}
-        onClick={() => history.push(`/`)}
-      >
-        I have saved my seed words
-      </Button>
-    </div>
-  );
-};
+// const chunk = (arr, len) => {
+//   const chunks = [];
+//   let i = 0;
+//   let n = arr.length;
+//
+//   while (i < n) {
+//     chunks.push(arr.slice(i, (i += len)));
+//   }
+//
+//   return chunks;
+// };
+//
+// const SeedWords = ({ wallet, password}) => {
+//   const [seedWords, setSeedWords] = useState([]);
+//   const [error, setError] = useState("");
+//   const history= useHistory();
+//   useEffect(() => {
+//     binding
+//       .command_wallets_seed_words(wallet.id, password)
+//       .then((words) => setSeedWords(words))
+//       .catch((e) => {
+//
+//         console.error("error: ", e);
+//         setError(e.message);
+//       });
+//   }, [wallet.id, password]);
+//
+//   const display = (seedWords) => {
+//     console.log(seedWords);
+//     if (seedWords.length === 0) return <Spinner />;
+//
+//     const chunks = chunk(seedWords, 6);
+//     return (
+//       <div>
+//         {chunks.map((words, i) => (
+//           <pre key={i}>{words.join(" ")}</pre>
+//         ))}
+//       </div>
+//     );
+//   };
+//
+//   return (
+//     <div>
+//       <Typography variant="h3" sx={{ mb: "30px" }}>
+//         Seed words
+//       </Typography>
+//       {error ? (
+//           <Alert severity="error">{error}</Alert>
+//       ) : (
+//           <span />
+//       )}
+//       <p>
+//         Save these seed words securely. This is the recovery phrase for this
+//         wallet.
+//       </p>
+//       {display(seedWords)}
+//       <Button
+//         disabled={seedWords.length === 0}
+//         onClick={() => history.push(`/`)}
+//       >
+//         I have saved my seed words
+//       </Button>
+//     </div>
+//   );
+// };
 
 const CreateWallet = ({ setAuthenticated }) => {
   const [password, setPassword] = useState("");
