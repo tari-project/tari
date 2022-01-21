@@ -26,10 +26,12 @@ use std::{
     sync::Arc,
 };
 
+use digest::Digest;
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{HashOutput, PrivateKey, Signature};
+use tari_common_types::types::{HashDigest, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::Block,
@@ -38,7 +40,10 @@ use crate::{
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
-    transactions::{transaction::Transaction, weight::TransactionWeight},
+    transactions::{
+        transaction::{Transaction, TransactionOutput},
+        weight::TransactionWeight,
+    },
 };
 
 pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage";
@@ -79,6 +84,7 @@ pub struct UnconfirmedPool {
     txs_by_signature: HashMap<PrivateKey, Vec<TransactionKey>>,
     tx_by_priority: BTreeMap<FeePriority, TransactionKey>,
     txs_by_output: HashMap<HashOutput, Vec<TransactionKey>>,
+    txs_by_unique_id: HashMap<[u8; 32], Vec<TransactionKey>>,
 }
 
 // helper class to reduce type complexity
@@ -97,6 +103,7 @@ impl UnconfirmedPool {
             txs_by_signature: HashMap::new(),
             tx_by_priority: BTreeMap::new(),
             txs_by_output: HashMap::new(),
+            txs_by_unique_id: HashMap::new(),
         }
     }
 
@@ -130,6 +137,10 @@ impl UnconfirmedPool {
         self.tx_by_priority.insert(prioritized_tx.priority.clone(), new_key);
         for output in prioritized_tx.transaction.body.outputs() {
             self.txs_by_output.entry(output.hash()).or_default().push(new_key);
+
+            if let Some(hash) = get_output_token_id(output) {
+                self.txs_by_unique_id.entry(hash).or_default().push(new_key);
+            }
         }
         for kernel in prioritized_tx.transaction.body.kernels() {
             let sig = kernel.excess_sig.get_signature();
@@ -169,12 +180,13 @@ impl UnconfirmedPool {
     }
 
     /// Returns a set of the highest priority unconfirmed transactions, that can be included in a block
-    pub fn highest_priority_txs(&mut self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
+    pub fn fetch_highest_priority_txs(&mut self, total_weight: u64) -> Result<RetrieveResults, UnconfirmedPoolError> {
         let mut selected_txs = HashMap::new();
         let mut curr_weight = 0;
         let mut curr_skip_count = 0;
         let mut transactions_to_remove_and_recheck = Vec::new();
         let mut potential_transactions_to_remove_and_recheck = Vec::new();
+        let mut unique_ids = HashSet::new();
         for (_, tx_key) in self.tx_by_priority.iter().rev() {
             if selected_txs.contains_key(tx_key) {
                 continue;
@@ -193,6 +205,7 @@ impl UnconfirmedPool {
                 &mut potential_transactions_to_remove_and_recheck,
                 &selected_txs,
                 &mut total_transaction_weight,
+                &mut unique_ids,
             )?;
             let total_weight_after_candidates = curr_weight + total_transaction_weight;
             if total_weight_after_candidates <= total_weight && potential_transactions_to_remove_and_recheck.is_empty()
@@ -259,9 +272,10 @@ impl UnconfirmedPool {
         &self,
         transaction: &PrioritizedTransaction,
         required_transactions: &mut HashMap<TransactionKey, Arc<Transaction>>,
-        transactions_to_delete: &mut Vec<(TransactionKey, Arc<Transaction>)>,
+        transactions_to_recheck: &mut Vec<(TransactionKey, Arc<Transaction>)>,
         selected_txs: &HashMap<TransactionKey, Arc<Transaction>>,
         total_weight: &mut u64,
+        unique_ids: &mut HashSet<[u8; 32]>,
     ) -> Result<(), UnconfirmedPoolError> {
         for dependent_output in &transaction.dependent_output_hashes {
             match self.txs_by_output.get(dependent_output) {
@@ -271,13 +285,14 @@ impl UnconfirmedPool {
                         self.get_all_dependent_transactions(
                             dependent_transaction,
                             required_transactions,
-                            transactions_to_delete,
+                            transactions_to_recheck,
                             selected_txs,
                             total_weight,
+                            unique_ids,
                         )?;
 
-                        if !transactions_to_delete.is_empty() {
-                            transactions_to_delete.push((transaction.key, transaction.transaction.clone()));
+                        if !transactions_to_recheck.is_empty() {
+                            transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
                             break;
                         }
                     }
@@ -286,17 +301,32 @@ impl UnconfirmedPool {
                     // this transactions requires an output, that the mempool does not currently have, but did have at
                     // some point. This means that we need to remove this transaction and re
                     // validate it
-                    transactions_to_delete.push((transaction.key, transaction.transaction.clone()));
+                    transactions_to_recheck.push((transaction.key, transaction.transaction.clone()));
                     break;
                 },
             }
         }
+
+        for output in transaction.transaction.body.outputs() {
+            match get_output_token_id(output) {
+                Some(hash) => {
+                    if !unique_ids.insert(hash) {
+                        // This transaction has a unique id of another transaction that has already been selected,
+                        // Skip adding it.
+                        return Ok(());
+                    }
+                },
+                None => continue,
+            }
+        }
+
         if required_transactions
             .insert(transaction.key, transaction.transaction.clone())
             .is_none()
         {
             *total_weight += transaction.weight;
         }
+
         Ok(())
     }
 
@@ -458,7 +488,19 @@ impl UnconfirmedPool {
                     self.txs_by_output.remove(&output_hash);
                 }
             }
+
+            if let Some(hash) = get_output_token_id(output) {
+                if let Some(keys) = self.txs_by_unique_id.get_mut(&hash) {
+                    if let Some(pos) = keys.iter().position(|k| *k == tx_key) {
+                        keys.remove(pos);
+                    }
+                    if keys.is_empty() {
+                        self.txs_by_unique_id.remove(&hash);
+                    }
+                }
+            }
         }
+
         trace!(
             target: LOG_TARGET,
             "Deleted transaction: {}",
@@ -511,6 +553,9 @@ impl UnconfirmedPool {
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
             self.txs_by_output
                 .values()
+                .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key))) &&
+            self.txs_by_unique_id
+                .values()
                 .all(|tx_keys| tx_keys.iter().all(|tx_key| self.tx_by_key.contains_key(tx_key)))
     }
 
@@ -534,6 +579,7 @@ impl UnconfirmedPool {
         let (old, new) = shrink_hashmap(&mut self.tx_by_key);
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_output);
+        shrink_hashmap(&mut self.txs_by_unique_id);
 
         if old - new > 0 {
             debug!(
@@ -547,10 +593,30 @@ impl UnconfirmedPool {
     }
 }
 
+fn get_output_token_id(output: &TransactionOutput) -> Option<[u8; 32]> {
+    output.features.unique_id.as_ref().map(|unique_id| {
+        // "root" token public key
+        let root_pk = PublicKey::default();
+        let parent_pk_bytes = output
+            .features
+            .parent_public_key
+            .as_ref()
+            .map(|pk| pk.as_bytes())
+            .unwrap_or_else(|| root_pk.as_bytes());
+        HashDigest::new()
+            .chain(parent_pk_bytes)
+            .chain(unique_id)
+            .finalize()
+            .into()
+    })
+}
+
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
     use tari_common::configuration::Network;
     use tari_common_types::types::HashDigest;
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
 
     use super::*;
     use crate::{
@@ -560,7 +626,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction::KernelFeatures,
+            transaction::{KernelFeatures, OutputFeatures},
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,
@@ -617,7 +683,7 @@ mod test {
         // Retrieve the set of highest priority unspent transactions
         let desired_weight =
             tx1.calculate_weight(&tx_weight) + tx3.calculate_weight(&tx_weight) + tx5.calculate_weight(&tx_weight);
-        let results = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
+        let results = unconfirmed_pool.fetch_highest_priority_txs(desired_weight).unwrap();
         assert_eq!(results.retrieved_transactions.len(), 3);
         assert!(results.retrieved_transactions.contains(&tx1));
         assert!(results.retrieved_transactions.contains(&tx3));
@@ -692,7 +758,7 @@ mod test {
             tx2.calculate_weight(&tx_weight) +
             tx3.calculate_weight(&tx_weight) +
             1000;
-        let results = unconfirmed_pool.highest_priority_txs(desired_weight).unwrap();
+        let results = unconfirmed_pool.fetch_highest_priority_txs(desired_weight).unwrap();
         assert!(results.retrieved_transactions.contains(&tx1));
         // Whether tx2 or tx3 is selected is non-deterministic
         assert!(results.retrieved_transactions.contains(&tx2) ^ results.retrieved_transactions.contains(&tx3));
@@ -876,5 +942,65 @@ mod test {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_multiple_transactions_with_same_unique_id() {
+        let unique_id = vec![1, 2, 3];
+        let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
+        let nft_features = OutputFeatures {
+            unique_id: Some(unique_id.clone()),
+            parent_public_key: Some(parent_pk.clone()),
+            ..Default::default()
+        };
+
+        let (tx1, _, _) =
+            tx!(MicroTari(150_000), fee: MicroTari(50), inputs:5, outputs:1, features: nft_features.clone());
+        let (tx2, _, _) = tx!(MicroTari(250_000), fee: MicroTari(50), inputs:5, outputs:5);
+        let (tx3, _, _) = tx!(MicroTari(350_000), fee: MicroTari(51), inputs:5, outputs:1, features: nft_features);
+        let (tx4, _, _) = tx!(MicroTari(450_000), fee: MicroTari(50), inputs:5, outputs:5);
+
+        // Insert multiple transactions with the same outputs into the mempool
+
+        let tx_weight = TransactionWeight::latest();
+        let mut unconfirmed_pool = UnconfirmedPool::new(UnconfirmedPoolConfig {
+            storage_capacity: 10,
+            weight_tx_skip_count: 3,
+        });
+
+        let tx1 = Arc::new(tx1);
+        let tx2 = Arc::new(tx2);
+        let tx3 = Arc::new(tx3);
+        let tx4 = Arc::new(tx4);
+        unconfirmed_pool
+            .insert_many(vec![tx1.clone(), tx2.clone(), tx3.clone(), tx4.clone()], &tx_weight)
+            .unwrap();
+        let expected_hash: [u8; 32] = HashDigest::new()
+            .chain(parent_pk.as_bytes())
+            .chain(&unique_id)
+            .finalize()
+            .into();
+        let entry = unconfirmed_pool.txs_by_unique_id.get(&expected_hash).unwrap();
+        let tx_id1 = unconfirmed_pool
+            .txs_by_signature
+            .get(tx1.first_kernel_excess_sig().unwrap().get_signature())
+            .unwrap()
+            .first()
+            .copied()
+            .unwrap();
+        let tx_id2 = unconfirmed_pool
+            .txs_by_signature
+            .get(tx3.first_kernel_excess_sig().unwrap().get_signature())
+            .unwrap()
+            .first()
+            .copied()
+            .unwrap();
+        assert_eq!(entry, &[tx_id1, tx_id2]);
+
+        let results = unconfirmed_pool.fetch_highest_priority_txs(100_000).unwrap();
+        assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx2));
+        assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx3));
+        assert!(results.retrieved_transactions.iter().any(|tx| *tx == tx4));
+        assert_eq!(results.retrieved_transactions.len(), 3);
     }
 }

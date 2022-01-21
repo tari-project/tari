@@ -108,18 +108,8 @@ impl OutputField {
             Features => output.features.to_consensus_bytes(),
             FeaturesFlags => output.features.flags.to_consensus_bytes(),
             FeaturesMaturity => output.features.maturity.to_consensus_bytes(),
-            FeaturesUniqueId => output
-                .features
-                .unique_id
-                .as_ref()
-                .map(|unique_id| unique_id.to_consensus_bytes())
-                .unwrap_or_default(),
-            FeaturesParentPublicKey => output
-                .features
-                .parent_public_key
-                .as_ref()
-                .map(|pk| pk.to_consensus_bytes())
-                .unwrap_or_default(),
+            FeaturesUniqueId => output.features.unique_id.to_consensus_bytes(),
+            FeaturesParentPublicKey => output.features.parent_public_key.to_consensus_bytes(),
             FeaturesMetadata => output.features.metadata.to_consensus_bytes(),
         }
     }

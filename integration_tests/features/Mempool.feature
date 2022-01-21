@@ -176,3 +176,20 @@ Feature: Mempool
     Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
     When I mine 1 blocks on BN1
     Then I wait until base node BN1 has 0 unconfirmed transactions in its mempool
+
+  Scenario: Mempool does not include duplicate unique IDs
+    Given I have 1 seed nodes
+    And I have a base node BN1 connected to all seed nodes
+    When I mine a block on BN1 with coinbase CB1
+    When I mine a block on BN1 with coinbase CB2
+    When I mine 2 blocks on BN1
+    When I create a custom transaction TX1 spending CB1 to UTX1 with fee 16 and unique ID 'moucky-mise'
+    When I create a custom transaction TX2 spending UTX1 to UTX2 with fee 16 and unique ID 'moucky-mise'
+    When I submit transaction TX1 to BN1
+    When I submit transaction TX2 to BN1
+    Then I wait until base node BN1 has 2 unconfirmed transactions in its mempool
+    When I mine 1 blocks on BN1
+    Then I wait until base node BN1 has 1 unconfirmed transactions in its mempool
+    When I mine 1 blocks on BN1
+    When I mine 1 blocks on BN1
+    Then I wait until base node BN1 has 0 unconfirmed transactions in its mempool

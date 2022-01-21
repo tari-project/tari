@@ -253,8 +253,8 @@ impl TransactionOutput {
             .chain(public_commitment_nonce.to_consensus_bytes())
             .chain(script.as_bytes())
             .chain(features.to_consensus_bytes())
-            .chain(sender_offset_public_key.as_bytes())
-            .chain(commitment.as_bytes())
+            .chain(sender_offset_public_key.to_consensus_bytes())
+            .chain(commitment.to_consensus_bytes())
             .chain(covenant.to_consensus_bytes())
     }
 

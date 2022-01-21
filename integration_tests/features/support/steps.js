@@ -155,6 +155,21 @@ When(
 );
 
 When(
+  /I create a custom transaction (.*) spending (.*) to (.*) with fee (\d+) and unique id '([^']+)'/i,
+  function (txnName, inputs, output, fee, unique_id) {
+    const txInputs = inputs.split(",").map((input) => this.outputs[input]);
+    const txn = new TransactionBuilder();
+    txn.changeFee(fee);
+    txInputs.forEach((txIn) => txn.addInput(txIn));
+    const txOutput = txn.addOutput(txn.getSpendableAmount(), {
+      unique_id,
+    });
+    this.addOutput(output, txOutput);
+    this.transactions[txnName] = txn.build();
+  }
+);
+
+When(
   /I create a custom fee transaction (.*) spending (.*) to (.*) with fee (\d+)/,
   function (txnName, inputs, output, fee) {
     const txInputs = inputs.split(",").map((input) => this.outputs[input]);
