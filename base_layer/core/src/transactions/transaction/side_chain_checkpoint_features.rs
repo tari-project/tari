@@ -20,11 +20,90 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::{Error, ErrorKind, Read, Write};
+
+use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::PublicKey;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
+
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct SideChainCheckpointFeatures {
+    // TODO: This should be fixed size [u8;32]
     pub merkle_root: Vec<u8>,
     pub committee: Vec<PublicKey>,
+}
+
+impl ConsensusEncoding for SideChainCheckpointFeatures {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        if self.merkle_root.len() != 32 {
+            return Err(Error::new(ErrorKind::InvalidInput, "merkle_root must be 32 bytes"));
+        }
+        writer.write_all(&self.merkle_root[0..32])?;
+        let mut written = 32;
+        written += self.committee.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusEncodingSized for SideChainCheckpointFeatures {
+    fn consensus_encode_exact_size(&self) -> usize {
+        32 + self.committee.len().required_space() + self.committee.len() * PublicKey::key_length()
+    }
+}
+
+impl ConsensusDecoding for SideChainCheckpointFeatures {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let merkle_root = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+
+        const MAX_COMMITTEE_KEYS: usize = 50;
+        let committee = <MaxSizeVec<PublicKey, MAX_COMMITTEE_KEYS> as ConsensusDecoding>::consensus_decode(reader)?;
+
+        Ok(Self {
+            merkle_root,
+            committee: committee.into(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{io::ErrorKind, iter};
+
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let subject = SideChainCheckpointFeatures {
+            merkle_root: vec![1u8; 32],
+            committee: iter::repeat_with(PublicKey::default).take(50).collect(),
+        };
+
+        check_consensus_encoding_correctness(subject).unwrap();
+    }
+
+    #[test]
+    fn it_fails_for_too_many_committee_pks() {
+        let subject = SideChainCheckpointFeatures {
+            merkle_root: vec![1u8; 32],
+            committee: iter::repeat_with(PublicKey::default).take(51).collect(),
+        };
+
+        let err = check_consensus_encoding_correctness(subject).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn it_fails_for_incorrect_merkle_root_length() {
+        let subject = SideChainCheckpointFeatures {
+            merkle_root: vec![1u8; 31],
+            committee: vec![],
+        };
+
+        let err = check_consensus_encoding_correctness(subject).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
 }
