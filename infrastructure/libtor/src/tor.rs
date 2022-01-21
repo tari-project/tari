@@ -20,26 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, net::TcpListener};
+use std::{fmt, io, net::TcpListener};
 
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use tari_common::{exit_codes::ExitCodes, CommsTransport, TorControlAuthentication};
 use tari_shutdown::ShutdownSignal;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
 
-use crate::{exit_codes::ExitCodes, CommsTransport, TorControlAuthentication};
+const LOG_TARGET: &str = "tari_libtor";
 
-const LOG_TARGET: &str = "common::tor";
+pub struct TorPassword(Option<String>);
 
+impl fmt::Debug for TorPassword {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TorPassword: ...")
+    }
+}
+
+#[derive(Debug)]
 pub struct Tor {
     control_port: u16,
     data_dir: String,
     log_destination: String,
     log_level: LogLevel,
-    passphrase: Option<String>,
+    passphrase: TorPassword,
     socks_port: u16,
     temp_dir: Option<TempDir>,
     temp_file: Option<TempPath>,
@@ -52,7 +60,7 @@ impl Default for Tor {
             data_dir: "/tmp/tor-data".into(),
             log_destination: "/tmp/tor.log".into(),
             log_level: LogLevel::Err,
-            passphrase: None,
+            passphrase: TorPassword(None),
             socks_port: 19_050,
             temp_dir: None,
             temp_file: None,
@@ -67,6 +75,7 @@ impl Tor {
     /// These ports are used for the control and socks ports, the onion address and port info are still loaded from the
     /// node identity file.
     pub fn initialize() -> Result<Tor, ExitCodes> {
+        debug!(target: LOG_TARGET, "Initializing libtor");
         let mut instance = Tor::default();
 
         // check for unused ports to assign
@@ -80,7 +89,7 @@ impl Tor {
             .take(30)
             .map(char::from)
             .collect();
-        instance.passphrase = Some(passphrase);
+        instance.passphrase = TorPassword(Some(passphrase));
 
         // data dir
         let temp = tempdir()?;
@@ -94,11 +103,13 @@ impl Tor {
         instance.temp_file = Some(temp);
         instance.log_destination = file;
 
+        debug!(target: LOG_TARGET, "tor instance: {:?}", instance);
         Ok(instance)
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance
     pub fn update_comms_transport(&self, transport: CommsTransport) -> Result<CommsTransport, ExitCodes> {
+        debug!(target: LOG_TARGET, "updating comms transport");
         if let CommsTransport::TorHiddenService {
             socks_address_override,
             forward_address,
@@ -110,7 +121,7 @@ impl Tor {
         } = transport
         {
             let control_server_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse::<Multiaddr>()?;
-            let auth = if let Some(ref passphrase) = self.passphrase {
+            let auth = if let Some(ref passphrase) = self.passphrase.0 {
                 TorControlAuthentication::Password(passphrase.to_owned())
             } else {
                 auth
@@ -124,6 +135,7 @@ impl Tor {
                 tor_proxy_bypass_addresses,
                 tor_proxy_bypass_for_outbound_tcp,
             };
+            debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
             Ok(transport)
         } else {
             let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
@@ -133,7 +145,7 @@ impl Tor {
 
     /// Run the Tor instance until the shutdown signal is received
     pub async fn run(self, mut shutdown_signal: ShutdownSignal) -> Result<(), ExitCodes> {
-        info!(target: LOG_TARGET, "Starting Tor");
+        info!(target: LOG_TARGET, "Starting Tor instance");
 
         let Tor {
             data_dir,
@@ -153,7 +165,7 @@ impl Tor {
             .flag(TorFlag::Hush())
             .flag(TorFlag::LogTo(log_level, LogDestination::File(log_destination)));
 
-        if let Some(secret) = passphrase {
+        if let Some(secret) = passphrase.0 {
             let hash = EncryptedKey::hash_password(&secret).to_string();
             tor.flag(TorFlag::HashedControlPassword(hash));
         }
@@ -161,6 +173,7 @@ impl Tor {
         tor.start_background();
 
         shutdown_signal.wait().await;
+        info!(target: LOG_TARGET, "Shutting down Tor instance");
 
         Ok(())
     }
