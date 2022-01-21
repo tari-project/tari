@@ -41,6 +41,7 @@ class DashboardContent extends React.Component {
   }
 
   async componentDidMount() {
+    console.log("Dashboard loaded");
     this.setState({
       isLoading: true,
     });

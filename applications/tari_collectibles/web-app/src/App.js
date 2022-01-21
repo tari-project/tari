@@ -225,7 +225,7 @@ function App() {
           <Box sx={{ display: "flex" }}>
             <CssBaseline />
 
-            <Drawer variant="permanent">
+            <Drawer variant="permanent" hidden={!walletId}>
               <RouterLink to="/">
                 <Toolbar sx={{ display: "flex", color: "white" }}>
                   Tari Collectibles
@@ -250,13 +250,13 @@ function App() {
                   to="/create"
                   icon={<CreateIcon />}
                 />
-                <Divider></Divider>
-                <ListSubheader>My Wallet</ListSubheader>
-                <ListItemLink
-                  primary="Main"
-                  to={`/wallets/${walletId}`}
-                  icon={<AccountBalanceWalletIcon />}
-                />
+                {/*<Divider></Divider>*/}
+                {/*<ListSubheader>My Wallet</ListSubheader>*/}
+                {/*<ListItemLink*/}
+                {/*  primary="Main"*/}
+                {/*  to={`/wallets/${walletId}`}*/}
+                {/*  icon={<AccountBalanceWalletIcon />}*/}
+                {/*/>*/}
               </List>
             </Drawer>
             <Box
@@ -299,11 +299,15 @@ function App() {
                   />
                 </Route>
                 <Route path="/unlock">
-                  <Setup />
+                  <Setup setAuthenticated={(id, password) => {
+                    setWalletId(id);
+                    setPassword(password);
+                    setAuthenticated(true);
+                  }}/>
                 </Route>
-                <Route path="/" >
+                <ProtectedRoute path="/"  authenticated={authenticated} >
                   <Dashboard />
-                </Route>
+                </ProtectedRoute>
               </Switch>
             </Box>
           </Box>
