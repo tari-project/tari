@@ -67,6 +67,7 @@ mod test {
 
     use super::*;
     use crate::{
+        consensus::ToConsensusBytes,
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
         transactions::transaction::OutputFeatures,

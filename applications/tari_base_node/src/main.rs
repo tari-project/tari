@@ -118,9 +118,9 @@ use tari_app_utilities::{
     initialization::init_configuration,
     utilities::setup_runtime,
 };
-use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 #[cfg(all(unix, feature = "libtor"))]
-use tari_common::{tor::Tor, CommsTransport};
+use tari_common::CommsTransport;
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::PeerFeatures,
     tor::HiddenServiceControllerError,
@@ -128,6 +128,8 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_core::chain_storage::ChainStorageError;
+#[cfg(all(unix, feature = "libtor"))]
+use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,

@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,42 +20,48 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
+use std::{convert::TryFrom, io, io::Read};
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use integer_encoding::VarIntReader;
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
+use crate::consensus::ConsensusDecoding;
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct MintNonFungibleFeatures {
-    pub asset_public_key: PublicKey,
-    pub asset_owner_commitment: Commitment,
-    // pub proof_of_ownership: ComSignature
+pub struct MaxSizeVec<T, const MAX: usize> {
+    inner: Vec<T>,
 }
 
-impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let mut written = self.asset_public_key.consensus_encode(writer)?;
-        written += self.asset_owner_commitment.consensus_encode(writer)?;
-        Ok(written)
+impl<T, const MAX: usize> From<MaxSizeVec<T, MAX>> for Vec<T> {
+    fn from(value: MaxSizeVec<T, MAX>) -> Self {
+        value.inner
     }
 }
 
-impl ConsensusEncodingSized for MintNonFungibleFeatures {
-    fn consensus_encode_exact_size(&self) -> usize {
-        PublicKey::key_length() * 2
+impl<T, const MAX: usize> TryFrom<Vec<T>> for MaxSizeVec<T, MAX> {
+    type Error = Vec<T>;
+
+    fn try_from(value: Vec<T>) -> Result<Self, Self::Error> {
+        if value.len() > MAX {
+            return Err(value);
+        }
+
+        Ok(Self { inner: value })
     }
 }
 
-impl ConsensusDecoding for MintNonFungibleFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let asset_public_key = PublicKey::consensus_decode(reader)?;
-        let asset_owner_commitment = Commitment::consensus_decode(reader)?;
-        Ok(Self {
-            asset_public_key,
-            asset_owner_commitment,
-        })
+impl<T: ConsensusDecoding, const MAX: usize> ConsensusDecoding for MaxSizeVec<T, MAX> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let len = reader.read_varint()?;
+        if len > MAX {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Vec size ({}) exceeded maximum ({})", len, MAX),
+            ));
+        }
+        let mut elems = Vec::with_capacity(len);
+        for _ in 0..len {
+            let elem = T::consensus_decode(reader)?;
+            elems.push(elem)
+        }
+        Ok(Self { inner: elems })
     }
 }

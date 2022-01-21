@@ -82,7 +82,7 @@ root:
 loggers:
   # Route log events common to every application to all appenders
   tari::application:
-    level: info
+    level: debug
     appenders:
       - base_layer
       - network
@@ -91,33 +91,33 @@ loggers:
 
   # Route log events sent to the "core" logger to the "base_layer" appender
   c:
-    level: info
+    level: debug
     appenders:
       - base_layer
   tari:
-    level: info
+    level: debug
     appenders:
       - base_layer
 
   # Route log events sent to the "wallet" logger to the "base_layer" appender
   wallet:
-    level: info
+    level: debug
     appenders:
       - base_layer
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: info
+    level: debug
     appenders:
       - network
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
-    level: info
+    level: debug
     appenders:
       - network
 
     # Route log events sent to the "yamux" logger to the "network" appender
   yamux:
-    level: info
+    level: debug
     appenders:
       - network
   # Route log events sent to the "mio" logger to the "network" appender
@@ -144,7 +144,7 @@ loggers:
       - other
   # Route log events sent to the "tari_mm_proxy" logger to the "base_layer" appender
   tari_mm_proxy:
-    level: info
+    level: debug
     appenders:
       - base_layer
   # Route R2D2 log events

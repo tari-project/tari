@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,28 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[cfg(feature = "base_node")]
-pub(crate) mod chain_strength_comparer;
-
-pub mod consensus_constants;
-pub use consensus_constants::{ConsensusConstants, ConsensusConstantsBuilder};
-
-mod consensus_manager;
-pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
-
-mod consensus_encoding;
-#[cfg(test)]
-pub(crate) use consensus_encoding::test::check_consensus_encoding_correctness;
-pub use consensus_encoding::{
-    ConsensusDecoding,
-    ConsensusEncoding,
-    ConsensusEncodingSized,
-    MaxSizeBytes,
-    MaxSizeVec,
-    ToConsensusBytes,
-};
-
-mod network;
-pub use network::NetworkConsensus;
-
-pub mod emission;
+#[cfg(all(unix, feature = "libtor"))]
+pub mod tor;

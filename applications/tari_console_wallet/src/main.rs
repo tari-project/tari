@@ -46,10 +46,12 @@ use log::*;
 use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::{consts, initialization::init_configuration};
-use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
 #[cfg(all(unix, feature = "libtor"))]
-use tari_common::{tor::Tor, CommsTransport};
+use tari_common::CommsTransport;
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
 use tari_key_manager::cipher_seed::CipherSeed;
+#[cfg(all(unix, feature = "libtor"))]
+use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};

@@ -16,6 +16,7 @@ members = [
     "dan_layer/core",
     "dan_layer/storage_sqlite",
     "common_sqlite",
+    "infrastructure/libtor",
     "infrastructure/metrics",
     "infrastructure/shutdown",
     "infrastructure/storage",
