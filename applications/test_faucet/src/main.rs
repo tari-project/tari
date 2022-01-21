@@ -123,7 +123,7 @@ impl Iterator for Values {
     type Item = MicroTari;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(5000 * T)
+        Some(10 * T)
     }
 }
 
