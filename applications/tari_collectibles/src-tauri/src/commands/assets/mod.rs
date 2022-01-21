@@ -149,6 +149,52 @@ pub(crate) async fn assets_list_owned(
   )
 }
 
+// TODO: remove and use better serializer
+#[derive(Debug)]
+struct AssetMetadata {
+  name: String,
+  description: String,
+  image: String,
+}
+
+trait AssetMetadataDeserializer {
+  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata;
+}
+trait AssetMetadataSerializer {
+  fn serialize(&self, model: &AssetMetadata) -> Vec<u8>;
+}
+
+struct V1AssetMetadataSerializer {}
+
+impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
+  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
+    let m = String::from_utf8(Vec::from(metadata)).unwrap();
+    let mut m = m
+      .as_str()
+      .split('|')
+      .map(|s| s.to_string())
+      .collect::<Vec<String>>()
+      .into_iter();
+    let name = m.next();
+    let description = m.next();
+    let image = m.next();
+
+    AssetMetadata {
+      name: name.unwrap_or_else(|| "".to_string()),
+      description: description.unwrap_or_else(|| "".to_string()),
+      image: image.unwrap_or_else(|| "".to_string()),
+    }
+  }
+}
+
+impl AssetMetadataSerializer for V1AssetMetadataSerializer {
+  fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
+    let str = format!("{}|{}|{}", model.name, model.description, model.image);
+
+    str.into_bytes()
+  }
+}
+
 #[tauri::command]
 pub(crate) async fn assets_list_registered_assets(
   offset: u64,
@@ -157,17 +203,28 @@ pub(crate) async fn assets_list_registered_assets(
 ) -> Result<Vec<RegisteredAssetInfo>, Status> {
   let mut client = state.connect_base_node_client().await?;
   let assets = client.list_registered_assets(offset, count).await?;
+  let serializer = V1AssetMetadataSerializer {};
   assets
     .into_iter()
-    .map(|asset| {
-      Ok(RegisteredAssetInfo {
-        owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
-        asset_public_key: RistrettoPublicKey::from_bytes(&asset.asset_public_key).ok(),
-        unique_id: asset.unique_id,
-        mined_height: asset.mined_height,
-        mined_in_block: asset.mined_in_block,
-        features: asset.features.map(|f| f.into()).unwrap(),
-      })
+    .filter_map(|asset| {
+      if let Some(ref features) = asset.features {
+        let metadata = serializer.deserialize(&features.metadata[1..]);
+
+        // TODO: Find a better way of reading the metadata
+        Some(Ok(RegisteredAssetInfo {
+          owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
+          asset_public_key: RistrettoPublicKey::from_bytes(&asset.asset_public_key).ok(),
+          unique_id: asset.unique_id,
+          mined_height: asset.mined_height,
+          mined_in_block: asset.mined_in_block,
+          features: features.clone().into(),
+          name: metadata.name.clone(),
+          description: Some(metadata.description.clone()),
+          image: Some(metadata.image),
+        }))
+      } else {
+        None
+      }
     })
     .collect()
 }
@@ -204,6 +261,8 @@ pub(crate) async fn assets_get_registration(
 
   dbg!(&asset);
   let features = asset.features.unwrap();
+  let serializer = V1AssetMetadataSerializer {};
+  let metadata = serializer.deserialize(&features.metadata[1..]);
 
   Ok(RegisteredAssetInfo {
     owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
@@ -212,5 +271,8 @@ pub(crate) async fn assets_get_registration(
     mined_height: asset.mined_height,
     mined_in_block: asset.mined_in_block,
     features: features.into(),
+    name: metadata.name.clone(),
+    description: Some(metadata.description.clone()),
+    image: Some(metadata.image),
   })
 }
