@@ -30,15 +30,7 @@ use std::{
 
 use blake2::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{
-    Challenge,
-    ComSignature,
-    Commitment,
-    CommitmentFactory,
-    HashDigest,
-    HashOutput,
-    PublicKey,
-};
+use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashDigest, HashOutput, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     script::{ExecutionStack, ScriptContext, StackItem, TariScript},
@@ -47,7 +39,8 @@ use tari_crypto::{
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    consensus::ToConsensusBytes,
+    common::hash_writer::HashWriter,
+    consensus::ConsensusEncoding,
     covenants::Covenant,
     transactions::{
         transaction,
@@ -161,14 +154,13 @@ impl TransactionInput {
         script_public_key: &PublicKey,
         commitment: &Commitment,
     ) -> Vec<u8> {
-        Challenge::new()
-            .chain(nonce_commitment.to_consensus_bytes())
-            .chain(script.to_consensus_bytes())
-            .chain(input_data.to_consensus_bytes())
-            .chain(script_public_key.to_consensus_bytes())
-            .chain(commitment.to_consensus_bytes())
-            .finalize()
-            .to_vec()
+        let mut writer = HashWriter::new(HashDigest::new());
+        nonce_commitment.consensus_encode(&mut writer).unwrap();
+        script.consensus_encode(&mut writer).unwrap();
+        input_data.consensus_encode(&mut writer).unwrap();
+        script_public_key.consensus_encode(&mut writer).unwrap();
+        commitment.consensus_encode(&mut writer).unwrap();
+        writer.finalize().to_vec()
     }
 
     pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
@@ -334,19 +326,19 @@ impl TransactionInput {
                 ref script,
                 ref sender_offset_public_key,
                 ref covenant,
-            } => Ok(HashDigest::new()
-                .chain((version as u8).to_le_bytes())
-                .chain(features.to_consensus_bytes())
-                .chain(commitment.to_consensus_bytes())
-                .chain(script.as_bytes())
-                .chain(sender_offset_public_key.to_consensus_bytes())
-                .chain(self.script_signature.u().to_consensus_bytes())
-                .chain(self.script_signature.v().to_consensus_bytes())
-                .chain(self.script_signature.public_nonce().to_consensus_bytes())
-                .chain(self.input_data.as_bytes())
-                .chain(covenant.to_consensus_bytes())
-                .finalize()
-                .to_vec()),
+            } => {
+                let mut writer = HashWriter::new(HashDigest::new());
+                version.consensus_encode(&mut writer)?;
+                features.consensus_encode(&mut writer)?;
+                commitment.consensus_encode(&mut writer)?;
+                script.consensus_encode(&mut writer)?;
+                sender_offset_public_key.consensus_encode(&mut writer)?;
+                self.script_signature.consensus_encode(&mut writer)?;
+                self.input_data.consensus_encode(&mut writer)?;
+                covenant.consensus_encode(&mut writer)?;
+
+                Ok(writer.finalize().to_vec())
+            },
         }
     }
 

@@ -34,10 +34,14 @@ use tari_common_types::types::{Commitment, HashDigest, Signature};
 use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
 
 use super::TransactionKernelVersion;
-use crate::transactions::{
-    tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionError},
-    transaction_protocol::{build_challenge, TransactionMetadata},
+use crate::{
+    common::hash_writer::HashWriter,
+    consensus::ConsensusEncoding,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{KernelFeatures, TransactionError},
+        transaction_protocol::{build_challenge, TransactionMetadata},
+    },
 };
 
 /// The transaction kernel tracks the excess for a given transaction. For an explanation of what the excess is, and
@@ -125,16 +129,16 @@ impl Hashable for TransactionKernel {
     /// Produce a canonical hash for a transaction kernel. The hash is given by
     /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
     fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain((self.version as u8).to_le_bytes())
-            .chain(&[self.features.bits()])
-            .chain(u64::from(self.fee).to_le_bytes())
-            .chain(self.lock_height.to_le_bytes())
-            .chain(self.excess.as_bytes())
-            .chain(self.excess_sig.get_public_nonce().as_bytes())
-            .chain(self.excess_sig.get_signature().as_bytes())
-            .finalize()
-            .to_vec()
+        let mut writer = HashWriter::new(HashDigest::new());
+        // unwraps: HashWriter is infallible
+        self.version.consensus_encode(&mut writer).unwrap();
+        self.features.consensus_encode(&mut writer).unwrap();
+        self.fee.consensus_encode(&mut writer).unwrap();
+        self.lock_height.consensus_encode(&mut writer).unwrap();
+        self.excess.consensus_encode(&mut writer).unwrap();
+        self.excess_sig.consensus_encode(&mut writer).unwrap();
+
+        writer.finalize().to_vec()
     }
 }
 

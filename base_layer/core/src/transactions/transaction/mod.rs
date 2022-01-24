@@ -86,8 +86,6 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
-use std::io::Write;
-
 use crate::{common::hash_writer::HashWriter, consensus::ConsensusEncoding, covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
@@ -106,7 +104,7 @@ pub(super) fn hash_output(
 ) -> [u8; 32] {
     let mut hasher = HashWriter::new(HashDigest::new());
     // unwrap: hashwriter is infallible
-    hasher.write_all(&[version as u8]).unwrap();
+    version.consensus_encode(&mut hasher).unwrap();
     features.consensus_encode(&mut hasher).unwrap();
     commitment.consensus_encode(&mut hasher).unwrap();
     script.consensus_encode(&mut hasher).unwrap();
