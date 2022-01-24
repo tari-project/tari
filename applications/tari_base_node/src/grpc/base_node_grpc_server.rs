@@ -36,7 +36,12 @@ use tari_app_utilities::consts;
 use tari_common_types::types::{Commitment, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
-    base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface, StateMachineHandle},
+    base_node::{
+        comms_interface::CommsInterfaceError,
+        state_machine_service::states::StateInfo,
+        LocalNodeCommsInterface,
+        StateMachineHandle,
+    },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, PrunedOutput},
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
@@ -1297,6 +1302,49 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         debug!(target: LOG_TARGET, "Sending GetTokensInCirculation response to client");
         Ok(Response::new(rx))
+    }
+
+    async fn get_sync_progress(
+        &self,
+        _request: Request<tari_rpc::Empty>,
+    ) -> Result<Response<tari_rpc::SyncProgressResponse>, Status> {
+        let state = self
+            .state_machine_handle
+            .get_status_info_watch()
+            .borrow()
+            .state_info
+            .clone();
+        let response = match state {
+            StateInfo::HeaderSync(None) => tari_rpc::SyncProgressResponse {
+                tip_height: 0,
+                local_height: 0,
+                state: tari_rpc::SyncState::HeaderStarting.into(),
+            },
+            StateInfo::HeaderSync(Some(info)) => tari_rpc::SyncProgressResponse {
+                tip_height: info.tip_height,
+                local_height: info.local_height,
+                state: tari_rpc::SyncState::Header.into(),
+            },
+            StateInfo::BlockSyncStarting => tari_rpc::SyncProgressResponse {
+                tip_height: 0,
+                local_height: 0,
+                state: tari_rpc::SyncState::BlockStarting.into(),
+            },
+            StateInfo::BlockSync(info) => tari_rpc::SyncProgressResponse {
+                tip_height: info.tip_height,
+                local_height: info.local_height,
+                state: tari_rpc::SyncState::Block.into(),
+            },
+            _ => tari_rpc::SyncProgressResponse {
+                tip_height: 0,
+                local_height: 0,
+                state: match state.is_synced() {
+                    true => tari_rpc::SyncState::Done.into(),
+                    false => tari_rpc::SyncState::Startup.into(),
+                },
+            },
+        };
+        Ok(Response::new(response))
     }
 
     async fn get_sync_info(

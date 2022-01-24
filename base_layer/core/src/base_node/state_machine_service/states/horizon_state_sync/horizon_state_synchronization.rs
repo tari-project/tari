@@ -174,7 +174,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let info = HorizonSyncInfo::new(
             vec![self.sync_peer.node_id().clone()],
-            HorizonSyncStatus::Kernels(local_num_kernels, remote_num_kernels, self.sync_peer.node_id().clone()),
+            HorizonSyncStatus::Kernels(
+                local_num_kernels,
+                remote_num_kernels,
+                self.sync_peer.node_id().clone(),
+                client.get_last_request_latency(),
+            ),
         );
         self.shared.set_state_info(StateInfo::HorizonSync(info));
 
@@ -285,7 +290,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
                 let info = HorizonSyncInfo::new(
                     vec![self.sync_peer.node_id().clone()],
-                    HorizonSyncStatus::Kernels(mmr_position, self.num_kernels, self.sync_peer.node_id().clone()),
+                    HorizonSyncStatus::Kernels(
+                        mmr_position,
+                        self.num_kernels,
+                        self.sync_peer.node_id().clone(),
+                        client.get_last_request_latency(),
+                    ),
                 );
                 self.shared.set_state_info(StateInfo::HorizonSync(info));
             }
@@ -316,7 +326,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let info = HorizonSyncInfo::new(
             vec![self.sync_peer.node_id().clone()],
-            HorizonSyncStatus::Outputs(local_num_outputs, self.num_outputs, self.sync_peer.node_id().clone()),
+            HorizonSyncStatus::Outputs(
+                local_num_outputs,
+                self.num_outputs,
+                self.sync_peer.node_id().clone(),
+                client.get_last_request_latency(),
+            ),
         );
         self.shared.set_state_info(StateInfo::HorizonSync(info));
 
@@ -566,7 +581,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             if mmr_position % 100 == 0 || mmr_position == self.num_outputs {
                 let info = HorizonSyncInfo::new(
                     vec![self.sync_peer.node_id().clone()],
-                    HorizonSyncStatus::Outputs(mmr_position, self.num_outputs, self.sync_peer.node_id().clone()),
+                    HorizonSyncStatus::Outputs(
+                        mmr_position,
+                        self.num_outputs,
+                        self.sync_peer.node_id().clone(),
+                        client.get_last_request_latency(),
+                    ),
                 );
                 self.shared.set_state_info(StateInfo::HorizonSync(info));
             }

@@ -76,7 +76,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
     }
 
     pub fn on_progress<H>(&mut self, hook: H)
-    where H: FnMut(Arc<ChainBlock>, u64, &NodeId) + Send + Sync + 'static {
+    where H: FnMut(Arc<ChainBlock>, u64, &NodeId, Option<Duration>) + Send + Sync + 'static {
         self.hooks.add_on_progress_block_hook(hook);
     }
 
@@ -273,7 +273,8 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 .commit()
                 .await?;
 
-            self.hooks.call_on_progress_block_hooks(block.clone(), tip_height, peer);
+            self.hooks
+                .call_on_progress_block_hooks(block.clone(), tip_height, peer, client.get_last_request_latency());
 
             debug!(
                 target: LOG_TARGET,
