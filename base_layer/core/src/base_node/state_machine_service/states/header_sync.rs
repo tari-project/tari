@@ -97,11 +97,12 @@ impl HeaderSyncState {
         });
 
         let status_event_sender = shared.status_event_sender.clone();
-        synchronizer.on_progress(move |current_height, remote_tip_height, sync_peer| {
+        synchronizer.on_progress(move |current_height, remote_tip_height, sync_peer, latency| {
             let details = BlockSyncInfo {
                 tip_height: remote_tip_height,
                 local_height: current_height,
                 sync_peers: vec![sync_peer.clone()],
+                latency,
             };
             let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
