@@ -112,10 +112,19 @@ impl NodeIdentity {
         acquire_read_lock!(self.public_address).clone()
     }
 
-    /// Modify the public address. The account signature will be invalid
+    /// Modify the public address.
     pub fn set_public_address(&self, address: Multiaddr) {
-        *acquire_write_lock!(self.public_address) = address;
-        self.sign()
+        let mut must_sign = false;
+        {
+            let mut lock = acquire_write_lock!(self.public_address);
+            if *lock != address {
+                *lock = address;
+                must_sign = true;
+            }
+        }
+        if must_sign {
+            self.sign()
+        }
     }
 
     /// This returns a random NodeIdentity for testing purposes. This function can panic. If public_address
