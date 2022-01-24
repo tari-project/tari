@@ -21,19 +21,31 @@ jobs:
         with:
           toolchain: nightly-2021-11-20
           override: true
+      - name: Install cross
+        run: |
+          curl -L https://github.com/cross-rs/cross/releases/download/v0.2.1/cross-v0.2.1-x86_64-unknown-linux-gnu.tar.gz | tar xvz
       # Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@master
-        with:
-          platforms: "x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
-          level: "24"
+        env:
+          CFLAGS: "-DMDB_USE_ROBUST=0"
+          # todo: once determined if this 32bit arm build is still required
+          # then make necessary changes to tari comms (metrics fully optional)
+          # cross build --target=armv7-linux-androideabi -p tari_wallet_ffi --release
+        run: |
+          ./cross build --target=x86_64-linux-android -p tari_wallet_ffi --release
+          ./cross build --target=aarch64-linux-android -p tari_wallet_ffi --release
+          ls -alht target/x86_64-linux-android/release/
+          ls -alht target/aarch64-linux-android/release/
+          mkdir "$GITHUB_WORKSPACE/libwallet"
+          cp target/x86_64-linux-android/release/libtari_wallet_ffi.a "$GITHUB_WORKSPACE/libwallet/libtari_wallet_ffi.x86.a"
+          cp target/aarch64-linux-android/release/libtari_wallet_ffi.a "$GITHUB_WORKSPACE/libwallet/libtari_wallet_ffi.aarch64.a"
       # Upload artifacts to Github
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: libwallet-android
-          path: ${{ github.workspace }}/libwallet/
+          name: libwallet
+          path: ${{ github.workspace }}/libwallet
       # Copy tarballs to S3
       - name: Sync to S3
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}

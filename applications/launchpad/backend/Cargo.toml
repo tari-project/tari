@@ -1,6 +1,6 @@
 [package]
 name = "tari_launchpad"
-version = "0.25.0"
+version = "0.25.1"
 description = "The Tari Launcher"
 authors = ["The Tari Development Community"]
 license = ""

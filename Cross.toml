@@ -1,0 +1,8 @@
+[target.x86_64-linux-android.env]
+passthrough = ["CFLAGS"]
+
+[target.aarch64-linux-android.env]
+passthrough = ["CFLAGS"]
+
+[target.arm-linux-androideabi.env]
+passthrough = ["CFLAGS"]
