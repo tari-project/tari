@@ -73,6 +73,7 @@ use crate::{
         MmrTree,
         Optional,
         OrNotFound,
+        Reorg,
         TargetDifficulties,
     },
     common::rolling_vec::RollingVec,
@@ -96,6 +97,7 @@ pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
     pub pruning_interval: u64,
+    pub track_reorgs: bool,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -104,6 +106,7 @@ impl Default for BlockchainDatabaseConfig {
             orphan_storage_capacity: BLOCKCHAIN_DATABASE_ORPHAN_STORAGE_CAPACITY,
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
+            track_reorgs: false,
         }
     }
 }
@@ -246,6 +249,11 @@ where B: BlockchainBackend
             );
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
         }
+
+        if !config.track_reorgs {
+            blockchain_db.clear_all_reorgs()?;
+        }
+
         Ok(blockchain_db)
     }
 
@@ -875,6 +883,7 @@ where B: BlockchainBackend
         let mut db = self.db_write_access()?;
         let block_add_result = add_block(
             &mut *db,
+            &self.config,
             &*self.validators.block,
             &*self.validators.header,
             self.consensus_manager.chain_strength_comparer(),
@@ -1110,6 +1119,18 @@ where B: BlockchainBackend
         let lock = self.db_read_access()?;
         lock.fetch_total_size_stats()
     }
+
+    pub fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.fetch_all_reorgs()
+    }
+
+    pub fn clear_all_reorgs(&self) -> Result<(), ChainStorageError> {
+        let mut db = self.db_write_access()?;
+        let mut txn = DbTransaction::new();
+        txn.clear_all_reorgs();
+        db.write(txn)
+    }
 }
 
 fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
@@ -1304,6 +1325,7 @@ fn fetch_orphan<T: BlockchainBackend>(db: &T, hash: BlockHash) -> Result<Block, 
 
 fn add_block<T: BlockchainBackend>(
     db: &mut T,
+    config: &BlockchainDatabaseConfig,
     block_validator: &dyn PostOrphanBodyValidation<T>,
     header_validator: &dyn HeaderValidation<T>,
     chain_strength_comparer: &dyn ChainStrengthComparer,
@@ -1316,6 +1338,7 @@ fn add_block<T: BlockchainBackend>(
     }
     handle_possible_reorg(
         db,
+        config,
         block_validator,
         header_validator,
         difficulty_calculator,
@@ -1677,6 +1700,7 @@ fn rewind_to_hash<T: BlockchainBackend>(
 // is reorganised if necessary.
 fn handle_possible_reorg<T: BlockchainBackend>(
     db: &mut T,
+    config: &BlockchainDatabaseConfig,
     block_validator: &dyn PostOrphanBodyValidation<T>,
     header_validator: &dyn HeaderValidation<T>,
     difficulty_calculator: &DifficultyCalculator,
@@ -1790,6 +1814,14 @@ fn handle_possible_reorg<T: BlockchainBackend>(
     // reorg is required when any blocks are removed or more than one are added
     // see https://github.com/tari-project/tari/issues/2101
     if num_removed_blocks > 0 || num_added_blocks > 1 {
+        if config.track_reorgs {
+            let mut txn = DbTransaction::new();
+            txn.insert_reorg(Reorg::from_reorged_blocks(&reorg_chain, &removed_blocks));
+            if let Err(e) = db.write(txn) {
+                error!(target: LOG_TARGET, "Failed to track reorg: {}", e);
+            }
+        }
+
         log!(
             target: LOG_TARGET,
             if num_removed_blocks > 1 {
@@ -2713,6 +2745,7 @@ mod test {
         // Add true orphans
         let result = handle_possible_reorg(
             &mut *access,
+            &Default::default(),
             &mock_validator,
             &mock_validator,
             &db.difficulty_calculator,
@@ -2725,6 +2758,7 @@ mod test {
         // Test adding a duplicate orphan
         let result = handle_possible_reorg(
             &mut *access,
+            &Default::default(),
             &mock_validator,
             &mock_validator,
             &db.difficulty_calculator,
@@ -2736,6 +2770,7 @@ mod test {
 
         let result = handle_possible_reorg(
             &mut *access,
+            &Default::default(),
             &mock_validator,
             &mock_validator,
             &db.difficulty_calculator,
@@ -2750,6 +2785,7 @@ mod test {
 
         let result = handle_possible_reorg(
             &mut *access,
+            &Default::default(),
             &mock_validator,
             &mock_validator,
             &db.difficulty_calculator,
@@ -2784,6 +2820,7 @@ mod test {
         // Add true orphans
         let result = handle_possible_reorg(
             &mut *access,
+            &Default::default(),
             &mock_validator,
             &mock_validator,
             &db.difficulty_calculator,
@@ -2795,6 +2832,7 @@ mod test {
 
         let _ = handle_possible_reorg(
             &mut *access,
+            &Default::default(),
             &MockValidator::new(false),
             &mock_validator,
             &db.difficulty_calculator,
@@ -2995,6 +3033,7 @@ mod test {
 
     struct TestHarness {
         db: BlockchainDatabase<TempDatabase>,
+        config: BlockchainDatabaseConfig,
         chain_strength_comparer: Box<dyn ChainStrengthComparer>,
         difficulty_calculator: DifficultyCalculator,
         post_orphan_body_validator: Box<dyn PostOrphanBodyValidation<TempDatabase>>,
@@ -3019,6 +3058,7 @@ mod test {
             let chain_strength_comparer = strongest_chain().by_sha3_difficulty().build();
             Self {
                 db,
+                config: Default::default(),
                 chain_strength_comparer,
                 difficulty_calculator,
                 header_validator,
@@ -3034,6 +3074,7 @@ mod test {
             let mut access = self.db_write_access();
             handle_possible_reorg(
                 &mut *access,
+                &self.config,
                 &*self.post_orphan_body_validator,
                 &*self.header_validator,
                 &self.difficulty_calculator,

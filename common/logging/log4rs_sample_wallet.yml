@@ -134,3 +134,9 @@ loggers:
     appenders:
       - network
     additive: false
+  # Route R2D2 log events
+  r2d2:
+    level: warn
+    appenders:
+      - other
+    additive: false

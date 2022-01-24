@@ -118,9 +118,9 @@ use tari_app_utilities::{
     initialization::init_configuration,
     utilities::setup_runtime,
 };
+#[cfg(all(unix, feature = "libtor"))]
+use tari_common::CommsTransport;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
-#[cfg(unix)]
-use tari_common::{tor::Tor, CommsTransport};
 use tari_comms::{
     peer_manager::PeerFeatures,
     tor::HiddenServiceControllerError,
@@ -128,6 +128,8 @@ use tari_comms::{
     NodeIdentity,
 };
 use tari_core::chain_storage::ChainStorageError;
+#[cfg(all(unix, feature = "libtor"))]
+use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
@@ -192,7 +194,7 @@ fn main_inner() -> Result<(), ExitCodes> {
 
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "libtor"))]
     if config.base_node_use_libtor && matches!(config.comms_transport, CommsTransport::TorHiddenService { .. }) {
         let tor = Tor::initialize()?;
         config.comms_transport = tor.update_comms_transport(config.comms_transport)?;

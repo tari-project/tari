@@ -29,6 +29,9 @@ grpc_enabled = true
 # The socket to expose for the gRPC base node server. This value is ignored if grpc_enabled is false.
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
+# Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
+track_reorgs = false
+
 
 # Configuration options for testnet dibbler
 [base_node.dibbler]
@@ -108,6 +111,7 @@ base_node_identity_file = "config/base_node_id.json"
 transport = "tor"
 
 # Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
+# This requires that the base node was built with the optional "libtor" feature flag.
 #use_libtor = true
 
 # Address of the tor control server
@@ -285,6 +289,7 @@ console_wallet_identity_file = "config/console_wallet_id.json"
 transport = "tor"
 
 # Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
+# This requires that the base node was built with the optional "libtor" feature flag.
 #use_libtor = true
 
 # Address of the tor control server

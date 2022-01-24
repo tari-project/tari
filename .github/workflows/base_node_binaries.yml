@@ -96,7 +96,7 @@ jobs:
             librsvg2-dev
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
-        run: brew install cmake zip coreutils
+        run: brew install cmake zip coreutils automake autoconf
 
       - name: Install Windows dependencies
         if: startsWith(runner.os,'Windows')

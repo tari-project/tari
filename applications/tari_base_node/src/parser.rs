@@ -79,6 +79,7 @@ pub enum BaseNodeCommand {
     HeaderStats,
     BlockTiming,
     CalcTiming,
+    ListReorgs,
     DiscoverPeer,
     GetBlock,
     SearchUtxo,
@@ -251,6 +252,9 @@ impl Parser {
             BlockTiming | CalcTiming => {
                 self.process_block_timing(args).await;
             },
+            ListReorgs => {
+                self.process_list_reorgs().await;
+            },
             GetBlock => {
                 self.process_get_block(args).await;
             },
@@ -380,6 +384,13 @@ impl Parser {
                 println!("Calculates the maximum, minimum, and average time taken to mine a given range of blocks.");
                 println!("block-timing [start height] [end height]");
                 println!("block-timing [number of blocks from chain tip]");
+            },
+            ListReorgs => {
+                println!("List tracked reorgs.");
+                println!(
+                    "This feature must be enabled by setting `track_reorgs = true` in the [base_node] section of your \
+                     config."
+                );
             },
             GetBlock => {
                 println!("Display a block by height or hash:");
@@ -730,5 +741,9 @@ impl Parser {
             .ok_or("new_height argument required")
             .and_then(|s| u64::from_str(s).map_err(|_| "new_height must be an integer.")));
         self.command_handler.lock().await.rewind_blockchain(new_height);
+    }
+
+    async fn process_list_reorgs(&self) {
+        self.command_handler.lock().await.list_reorgs();
     }
 }

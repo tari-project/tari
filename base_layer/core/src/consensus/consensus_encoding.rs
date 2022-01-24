@@ -20,7 +20,19 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod bytes;
+mod crypto;
+mod generic;
+mod integers;
+mod script;
+mod vec;
+
 use std::io;
+
+pub use vec::MaxSizeVec;
+
+pub use self::bytes::MaxSizeBytes;
+use crate::common::byte_counter::ByteCounter;
 
 /// Abstracts the ability of a type to canonically encode itself for the purposes of consensus
 pub trait ConsensusEncoding {
@@ -32,7 +44,12 @@ pub trait ConsensusEncoding {
 pub trait ConsensusEncodingSized: ConsensusEncoding {
     /// The return value MUST be the exact byte size of the implementing type
     /// and SHOULD be implemented without allocations.
-    fn consensus_encode_exact_size(&self) -> usize;
+    fn consensus_encode_exact_size(&self) -> usize {
+        let mut byte_counter = ByteCounter::new();
+        self.consensus_encode(&mut byte_counter)
+            .expect("ByteCounter is infallible");
+        byte_counter.get()
+    }
 }
 
 /// Abstracts the ability of a type to be decoded from canonical consensus bytes
@@ -54,201 +71,19 @@ impl<T: ConsensusEncoding + ConsensusEncodingSized + ?Sized> ToConsensusBytes fo
     }
 }
 
-impl ConsensusEncoding for Vec<u8> {
-    fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write(self)
-    }
-}
-
-impl ConsensusEncodingSized for Vec<u8> {
-    fn consensus_encode_exact_size(&self) -> usize {
-        self.len()
-    }
-}
-
-macro_rules! consensus_encoding_varint_impl {
-    ($ty:ty) => {
-        impl ConsensusEncoding for $ty {
-            fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-                use integer_encoding::VarIntWriter;
-                let bytes_written = writer.write_varint(*self)?;
-                Ok(bytes_written)
-            }
-        }
-
-        impl ConsensusDecoding for $ty {
-            fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error> {
-                use integer_encoding::VarIntReader;
-                let value = reader.read_varint()?;
-                Ok(value)
-            }
-        }
-
-        impl ConsensusEncodingSized for $ty {
-            fn consensus_encode_exact_size(&self) -> usize {
-                use integer_encoding::VarInt;
-                self.required_space()
-            }
-        }
-    };
-}
-
-consensus_encoding_varint_impl!(u8);
-consensus_encoding_varint_impl!(u64);
-
-// Keep separate the dependencies of the impls that may in future be implemented in tari crypto
-mod impls {
-    use std::io::Read;
-
-    use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        script::{ExecutionStack, TariScript},
-    };
-    use tari_utilities::ByteArray;
-
+#[cfg(test)]
+pub mod test {
     use super::*;
-    use crate::common::byte_counter::ByteCounter;
 
-    //---------------------------------- TariScript --------------------------------------------//
-
-    impl ConsensusEncoding for TariScript {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            self.as_bytes().consensus_encode(writer)
-        }
-    }
-
-    impl ConsensusEncodingSized for TariScript {
-        fn consensus_encode_exact_size(&self) -> usize {
-            let mut counter = ByteCounter::new();
-            // TODO: consensus_encode_exact_size must be cheap to run
-            // unreachable panic: ByteCounter is infallible
-            self.consensus_encode(&mut counter).expect("unreachable");
-            counter.get()
-        }
-    }
-
-    impl ConsensusEncoding for ExecutionStack {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            self.as_bytes().consensus_encode(writer)
-        }
-    }
-
-    impl ConsensusEncodingSized for ExecutionStack {
-        fn consensus_encode_exact_size(&self) -> usize {
-            let mut counter = ByteCounter::new();
-            // TODO: consensus_encode_exact_size must be cheap to run
-            // unreachable panic: ByteCounter is infallible
-            self.consensus_encode(&mut counter).expect("unreachable");
-            counter.get()
-        }
-    }
-
-    //---------------------------------- PublicKey --------------------------------------------//
-
-    impl ConsensusEncoding for PublicKey {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            writer.write(self.as_bytes())
-        }
-    }
-
-    impl ConsensusEncodingSized for PublicKey {
-        fn consensus_encode_exact_size(&self) -> usize {
-            PublicKey::key_length()
-        }
-    }
-
-    impl ConsensusDecoding for PublicKey {
-        fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-            let mut buf = [0u8; 32];
-            reader.read_exact(&mut buf)?;
-            let pk = PublicKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            Ok(pk)
-        }
-    }
-
-    //---------------------------------- PrivateKey --------------------------------------------//
-
-    impl ConsensusEncoding for PrivateKey {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            writer.write(self.as_bytes())
-        }
-    }
-
-    impl ConsensusEncodingSized for PrivateKey {
-        fn consensus_encode_exact_size(&self) -> usize {
-            PrivateKey::key_length()
-        }
-    }
-
-    impl ConsensusDecoding for PrivateKey {
-        fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-            let mut buf = [0u8; 32];
-            reader.read_exact(&mut buf)?;
-            let sk =
-                PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            Ok(sk)
-        }
-    }
-
-    //---------------------------------- Commitment --------------------------------------------//
-
-    impl ConsensusEncoding for Commitment {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            let buf = self.as_bytes();
-            let len = buf.len();
-            writer.write_all(buf)?;
-            Ok(len)
-        }
-    }
-
-    impl ConsensusEncodingSized for Commitment {
-        fn consensus_encode_exact_size(&self) -> usize {
-            32
-        }
-    }
-
-    impl ConsensusDecoding for Commitment {
-        fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-            let mut buf = [0u8; 32];
-            reader.read_exact(&mut buf)?;
-            let commitment =
-                Commitment::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            Ok(commitment)
-        }
-    }
-
-    //---------------------------------- Signature --------------------------------------------//
-
-    impl ConsensusEncoding for Signature {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            let pub_nonce = self.get_public_nonce().as_bytes();
-            let mut written = pub_nonce.len();
-            writer.write_all(pub_nonce)?;
-            let sig = self.get_signature().as_bytes();
-            written += sig.len();
-            writer.write_all(sig)?;
-            Ok(written)
-        }
-    }
-
-    impl ConsensusEncodingSized for Signature {
-        fn consensus_encode_exact_size(&self) -> usize {
-            self.get_signature().consensus_encode_exact_size() + self.get_public_nonce().consensus_encode_exact_size()
-        }
-    }
-
-    impl ConsensusDecoding for Signature {
-        fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-            let mut buf = [0u8; 32];
-            reader.read_exact(&mut buf)?;
-            let pub_nonce =
-                PublicKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            let mut buf = [0u8; 32];
-            reader.read_exact(&mut buf)?;
-            let sig =
-                PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-            Ok(Signature::new(pub_nonce, sig))
-        }
+    /// Test utility function that checks the correctness of the ConsensusEncoding, ConsensusEncodingSized,
+    /// ConsensusDecoding implementations
+    pub fn check_consensus_encoding_correctness<T>(subject: T) -> Result<(), io::Error>
+    where T: ConsensusEncoding + ConsensusEncodingSized + ConsensusDecoding + Eq + std::fmt::Debug {
+        let mut buf = Vec::new();
+        subject.consensus_encode(&mut buf)?;
+        assert_eq!(buf.len(), subject.consensus_encode_exact_size());
+        let decoded = T::consensus_decode(&mut buf.as_slice())?;
+        assert_eq!(decoded, subject);
+        Ok(())
     }
 }

@@ -6315,7 +6315,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_grpc"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "chrono",
  "prost",
@@ -6331,7 +6331,7 @@ dependencies = [
 
 [[package]]
 name = "tari_app_utilities"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "config 0.9.3",
  "dirs-next 1.0.2",
@@ -6353,7 +6353,7 @@ dependencies = [
 
 [[package]]
 name = "tari_base_node"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -6380,6 +6380,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_core",
  "tari_crypto",
+ "tari_libtor",
  "tari_metrics",
  "tari_mmr",
  "tari_p2p",
@@ -6444,7 +6445,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "config 0.9.3",
@@ -6452,29 +6453,25 @@ dependencies = [
  "fs2 0.4.3",
  "get_if_addrs",
  "git2",
- "libtor",
  "log",
  "log4rs 1.0.0",
  "multiaddr",
  "path-clean",
  "prost-build",
- "rand 0.8.4",
  "serde 1.0.133",
  "serde_json",
  "sha2",
  "structopt",
- "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tempfile",
  "thiserror",
  "toml 0.5.8",
- "tor-hash-passwd",
 ]
 
 [[package]]
 name = "tari_common_sqlite"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "diesel",
  "log",
@@ -6483,7 +6480,7 @@ dependencies = [
 
 [[package]]
 name = "tari_common_types"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "digest 0.9.0",
  "lazy_static 1.4.0",
@@ -6496,7 +6493,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6532,7 +6529,7 @@ dependencies = [
  "tari_metrics",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tempfile",
  "thiserror",
  "tokio 1.15.0",
@@ -6545,7 +6542,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_dht"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -6579,7 +6576,7 @@ dependencies = [
  "tari_crypto",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -6590,7 +6587,7 @@ dependencies = [
 
 [[package]]
 name = "tari_comms_rpc_macros"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "futures 0.3.19",
  "proc-macro2",
@@ -6598,14 +6595,14 @@ dependencies = [
  "quote",
  "syn",
  "tari_comms",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tokio 1.15.0",
  "tower-service",
 ]
 
 [[package]]
 name = "tari_console_wallet"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
@@ -6632,6 +6629,7 @@ dependencies = [
  "tari_core",
  "tari_crypto",
  "tari_key_manager",
+ "tari_libtor",
  "tari_p2p",
  "tari_shutdown",
  "tari_utilities",
@@ -6649,7 +6647,7 @@ dependencies = [
 
 [[package]]
 name = "tari_core"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "async-trait",
  "bincode",
@@ -6693,7 +6691,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -6794,7 +6792,7 @@ dependencies = [
 
 [[package]]
 name = "tari_key_manager"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "argon2",
  "arrayvec 0.7.2",
@@ -6823,7 +6821,7 @@ dependencies = [
 
 [[package]]
 name = "tari_launchpad"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "bollard",
  "config 0.11.0",
@@ -6845,8 +6843,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_merge_mining_proxy"
+name = "tari_libtor"
 version = "0.24.0"
+dependencies = [
+ "libtor",
+ "log",
+ "log4rs 1.0.0",
+ "multiaddr",
+ "rand 0.8.4",
+ "tari_common",
+ "tari_shutdown",
+ "tempfile",
+ "tor-hash-passwd",
+]
+
+[[package]]
+name = "tari_merge_mining_proxy"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -6888,7 +6901,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mining_node"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "bufstream",
  "chrono",
@@ -6918,7 +6931,7 @@ dependencies = [
 
 [[package]]
 name = "tari_mmr"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "bincode",
  "blake2",
@@ -6936,7 +6949,7 @@ dependencies = [
 
 [[package]]
 name = "tari_p2p"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "bytes 0.5.6",
@@ -6963,7 +6976,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -6977,7 +6990,7 @@ dependencies = [
 
 [[package]]
 name = "tari_service_framework"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -6985,7 +6998,7 @@ dependencies = [
  "futures-test",
  "log",
  "tari_shutdown",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "thiserror",
  "tokio 1.15.0",
  "tower",
@@ -6994,7 +7007,7 @@ dependencies = [
 
 [[package]]
 name = "tari_shutdown"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "futures 0.3.19",
  "tokio 1.15.0",
@@ -7002,7 +7015,7 @@ dependencies = [
 
 [[package]]
 name = "tari_storage"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "bincode",
  "lmdb-zero",
@@ -7016,7 +7029,7 @@ dependencies = [
 
 [[package]]
 name = "tari_stratum_ffi"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "hex",
  "libc",
@@ -7032,7 +7045,7 @@ dependencies = [
 
 [[package]]
 name = "tari_stratum_transcoder"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "bincode",
  "bytes 0.5.6",
@@ -7079,7 +7092,7 @@ dependencies = [
 
 [[package]]
 name = "tari_test_utils"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "futures 0.3.19",
  "futures-test",
@@ -7109,7 +7122,7 @@ dependencies = [
 
 [[package]]
 name = "tari_validator_node"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7150,7 +7163,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "aes-gcm 0.8.0",
  "argon2",
@@ -7189,7 +7202,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tari_utilities",
  "tempfile",
  "thiserror",
@@ -7199,7 +7212,7 @@ dependencies = [
 
 [[package]]
 name = "tari_wallet_ffi"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "chrono",
  "futures 0.3.19",
@@ -7218,7 +7231,7 @@ dependencies = [
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
- "tari_test_utils 0.24.0",
+ "tari_test_utils 0.25.0",
  "tari_utilities",
  "tari_wallet",
  "tempfile",
@@ -7410,7 +7423,7 @@ dependencies = [
 
 [[package]]
 name = "test_faucet"
-version = "0.24.0"
+version = "0.25.0"
 dependencies = [
  "rand 0.8.4",
  "serde 1.0.133",

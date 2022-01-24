@@ -1,8 +1,13 @@
-use std::convert::TryFrom;
+use std::{
+    convert::{TryFrom, TryInto},
+    io::{Error, ErrorKind, Read, Write},
+};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq)]
 #[repr(u8)]
 pub enum OutputFeaturesVersion {
     V0 = 0,
@@ -11,6 +16,10 @@ pub enum OutputFeaturesVersion {
 impl OutputFeaturesVersion {
     pub fn get_current_version() -> Self {
         Self::V0
+    }
+
+    pub fn as_u8(self) -> u8 {
+        self as u8
     }
 }
 
@@ -22,5 +31,29 @@ impl TryFrom<u8> for OutputFeaturesVersion {
             0 => Ok(OutputFeaturesVersion::V0),
             _ => Err("Unknown version!".to_string()),
         }
+    }
+}
+
+impl ConsensusEncoding for OutputFeaturesVersion {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        writer.write_all(&[self.as_u8()])?;
+        Ok(1)
+    }
+}
+
+impl ConsensusEncodingSized for OutputFeaturesVersion {
+    fn consensus_encode_exact_size(&self) -> usize {
+        1
+    }
+}
+
+impl ConsensusDecoding for OutputFeaturesVersion {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        let version = buf[0]
+            .try_into()
+            .map_err(|_| Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
+        Ok(version)
     }
 }

@@ -20,12 +20,42 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::{Error, Read, Write};
+
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PublicKey};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
+
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct MintNonFungibleFeatures {
     pub asset_public_key: PublicKey,
     pub asset_owner_commitment: Commitment,
     // pub proof_of_ownership: ComSignature
+}
+
+impl ConsensusEncoding for MintNonFungibleFeatures {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        let mut written = self.asset_public_key.consensus_encode(writer)?;
+        written += self.asset_owner_commitment.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusEncodingSized for MintNonFungibleFeatures {
+    fn consensus_encode_exact_size(&self) -> usize {
+        PublicKey::key_length() * 2
+    }
+}
+
+impl ConsensusDecoding for MintNonFungibleFeatures {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let asset_public_key = PublicKey::consensus_decode(reader)?;
+        let asset_owner_commitment = Commitment::consensus_decode(reader)?;
+        Ok(Self {
+            asset_public_key,
+            asset_owner_commitment,
+        })
+    }
 }

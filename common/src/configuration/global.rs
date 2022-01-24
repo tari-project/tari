@@ -147,6 +147,7 @@ pub struct GlobalConfig {
     pub base_node_use_libtor: bool,
     pub console_wallet_use_libtor: bool,
     pub merge_mining_config: Option<MergeMiningConfig>,
+    pub blockchain_track_reorgs: bool,
 }
 
 impl GlobalConfig {
@@ -202,6 +203,11 @@ fn convert_node_config(
             &format!("Invalid option: {}", invalid_opt),
         )),
     }?;
+
+    let key = "base_node.track_reorgs";
+    let blockchain_track_reorgs = optional(cfg.get_bool(key))
+        .map_err(|_| ConfigurationError::new(key, None, "Invalid boolean"))?
+        .unwrap_or(false);
 
     let key = config_string("base_node", net_str, "db_init_size_mb");
     let init_size_mb = match cfg.get_int(&key) {
@@ -873,6 +879,7 @@ fn convert_node_config(
         base_node_use_libtor,
         console_wallet_use_libtor,
         merge_mining_config,
+        blockchain_track_reorgs,
     })
 }
 

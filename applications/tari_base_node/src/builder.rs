@@ -235,6 +235,7 @@ async fn build_node_context(
         orphan_storage_capacity: config.orphan_storage_capacity,
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
+        track_reorgs: config.blockchain_track_reorgs,
     };
     let blockchain_db = BlockchainDatabase::new(
         backend,

@@ -33,6 +33,7 @@ pub mod async_db;
 
 mod block_add_result;
 pub use block_add_result::BlockAddResult;
+
 mod blockchain_database;
 pub use blockchain_database::{
     calculate_mmr_roots,
@@ -64,6 +65,9 @@ pub use horizon_data::HorizonData;
 
 mod pruned_output;
 pub use pruned_output::PrunedOutput;
+
+mod reorg;
+pub use reorg::Reorg;
 
 mod lmdb_db;
 pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatabase};

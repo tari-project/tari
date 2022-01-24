@@ -508,38 +508,39 @@ impl ConnectivityManagerActor {
                         );
                         self.pool.remove(existing_conn.peer_node_id());
                     },
-                    Some(mut existing_conn) if self.tie_break_existing_connection(&existing_conn, new_conn) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect existing \
-                             connection (id: {}, peer: {}, direction: {})",
-                            new_conn.id(),
-                            new_conn.peer_node_id(),
-                            new_conn.direction(),
-                            existing_conn.id(),
-                            existing_conn.peer_node_id(),
-                            existing_conn.direction(),
-                        );
+                    Some(mut existing_conn) => {
+                        if self.tie_break_existing_connection(&existing_conn, new_conn) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Tie break: Keep new connection (id: {}, peer: {}, direction: {}). Disconnect \
+                                 existing connection (id: {}, peer: {}, direction: {})",
+                                new_conn.id(),
+                                new_conn.peer_node_id(),
+                                new_conn.direction(),
+                                existing_conn.id(),
+                                existing_conn.peer_node_id(),
+                                existing_conn.direction(),
+                            );
 
-                        let _ = existing_conn.disconnect_silent().await;
-                        self.pool.remove(existing_conn.peer_node_id());
-                    },
-                    Some(existing_conn) => {
-                        debug!(
-                            target: LOG_TARGET,
-                            "Tie break: Keeping existing connection (id: {}, peer: {}, direction: {}). Disconnecting \
-                             new connection (id: {}, peer: {}, direction: {})",
-                            new_conn.id(),
-                            new_conn.peer_node_id(),
-                            new_conn.direction(),
-                            existing_conn.id(),
-                            existing_conn.peer_node_id(),
-                            existing_conn.direction(),
-                        );
+                            let _ = existing_conn.disconnect_silent().await;
+                            self.pool.remove(existing_conn.peer_node_id());
+                        } else {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Tie break: Keeping existing connection (id: {}, peer: {}, direction: {}). \
+                                 Disconnecting new connection (id: {}, peer: {}, direction: {})",
+                                new_conn.id(),
+                                new_conn.peer_node_id(),
+                                new_conn.direction(),
+                                existing_conn.id(),
+                                existing_conn.peer_node_id(),
+                                existing_conn.direction(),
+                            );
 
-                        let _ = new_conn.clone().disconnect_silent().await;
-                        // Ignore this event - state can stay as is
-                        return Ok(());
+                            let _ = new_conn.clone().disconnect_silent().await;
+                            // Ignore this event - state can stay as is
+                            return Ok(());
+                        }
                     },
 
                     _ => {},

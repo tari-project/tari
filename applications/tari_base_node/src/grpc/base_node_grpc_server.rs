@@ -514,7 +514,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         const ASSET_METADATA_TEMPLATE_ID: u32 = 1;
                         if asset.template_ids_implemented.contains(&ASSET_METADATA_TEMPLATE_ID) {
                             // TODO: move to a better location, or better yet, have the grpc caller split the metadata
-                            let m = String::from_utf8(output.features.metadata.clone()).unwrap();
+                            let m = String::from_utf8(Vec::from(&output.features.metadata[1..])).unwrap();
                             let mut m = m
                                 .as_str()
                                 .split('|')
