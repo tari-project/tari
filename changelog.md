@@ -1,5 +1,21 @@
 # Changelog
 
+
+### [0.25.1](https://github.com/tari-project/tari/compare/v0.25.0...v0.25.1) (2022-01-24)
+
+
+### Features
+
+* add icon to mining node ([#3555](https://github.com/tari-project/tari/issues/3555)) ([4551a90](https://github.com/tari-project/tari/commit/4551a9033aff8a22ab3f5cf1c2c4a65534dcb743))
+* add sync progress grpc ([#3722](https://github.com/tari-project/tari/issues/3722)) ([d47ad5e](https://github.com/tari-project/tari/commit/d47ad5ec165b23fbf17d791ba63f8a49419075f8))
+* validator node shows its public key on startup ([#3734](https://github.com/tari-project/tari/issues/3734)) ([fc7da51](https://github.com/tari-project/tari/commit/fc7da511999d407cf38294dc3e68bb5c99af12a1))
+* **validator:** add grpc identity rpc ([#3731](https://github.com/tari-project/tari/issues/3731)) ([6d2a4a4](https://github.com/tari-project/tari/commit/6d2a4a402be8120a66d4dd7b23adfe00bdf9434e))
+
+
+### Bug Fixes
+
+* prevent key leaking through derive debug impl ([#3735](https://github.com/tari-project/tari/issues/3735)) ([12a90e6](https://github.com/tari-project/tari/commit/12a90e6b8781d1d4de02e1374b2e3277d132d44c))
+
 ## [0.25.0](https://github.com/tari-project/tari/compare/v0.24.0...v0.25.0) (2022-01-21)
 
 
