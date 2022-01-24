@@ -23,7 +23,11 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
-use std::{cmp::Ordering, ops::Shl};
+use std::{
+    cmp::Ordering,
+    fmt::{Debug, Formatter},
+    ops::Shl,
+};
 
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
@@ -57,7 +61,7 @@ use crate::{
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
 // TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
     pub value: MicroTari,
@@ -279,5 +283,23 @@ impl PartialOrd<UnblindedOutput> for UnblindedOutput {
 impl Ord for UnblindedOutput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.value.cmp(&other.value)
+    }
+}
+
+impl Debug for UnblindedOutput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UnblindedOutput")
+            .field("version", &self.version)
+            .field("value", &self.value)
+            .field("spending_key", &"<secret>")
+            .field("features", &self.features)
+            .field("script", &self.script)
+            .field("covenant", &self.covenant)
+            .field("input_data", &self.input_data)
+            .field("script_private_key", &"<secret>")
+            .field("sender_offset_public_key", &self.sender_offset_public_key)
+            .field("metadata_signature", &self.metadata_signature)
+            .field("script_lock_height", &self.script_lock_height)
+            .finish()
     }
 }
