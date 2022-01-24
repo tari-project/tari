@@ -37,6 +37,7 @@ use crate::{
         connection_stats::PeerConnectionStats,
         migrations::MIGRATION_VERSION_KEY,
         node_id::deserialize_node_id_from_hex,
+        IdentitySignature,
         NodeId,
         PeerFeatures,
         PeerFlags,
@@ -46,30 +47,10 @@ use crate::{
     types::CommsPublicKey,
 };
 
-const LOG_TARGET: &str = "comms::peer_manager::migrations::v4";
+const LOG_TARGET: &str = "comms::peer_manager::migrations::v6";
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct PeerV3 {
-    pub(super) id: Option<PeerId>,
-    pub public_key: CommsPublicKey,
-    #[serde(serialize_with = "serialize_to_hex")]
-    #[serde(deserialize_with = "deserialize_node_id_from_hex")]
-    pub node_id: NodeId,
-    pub addresses: MultiaddressesWithStats,
-    pub flags: PeerFlags,
-    pub banned_until: Option<NaiveDateTime>,
-    pub banned_reason: String,
-    pub offline_at: Option<NaiveDateTime>,
-    pub features: PeerFeatures,
-    pub connection_stats: PeerConnectionStats,
-    pub supported_protocols: Vec<ProtocolId>,
-    pub added_at: NaiveDateTime,
-    pub user_agent: String,
-    pub metadata: HashMap<u8, Vec<u8>>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct PeerV4 {
+pub struct PeerV5 {
     pub(super) id: Option<PeerId>,
     pub public_key: CommsPublicKey,
     #[serde(serialize_with = "serialize_to_hex")]
@@ -87,41 +68,44 @@ pub struct PeerV4 {
     pub added_at: NaiveDateTime,
     pub user_agent: String,
     pub metadata: HashMap<u8, Vec<u8>>,
+    pub identity_signature: Option<IdentitySignature>,
 }
 
+/// No structural changes, just clears the identity signatures
 pub struct Migration;
 
 impl super::Migration<LMDBDatabase> for Migration {
     type Error = LMDBError;
 
     fn get_version(&self) -> u32 {
-        4
+        6
     }
 
     fn migrate(&self, db: &LMDBDatabase) -> Result<(), Self::Error> {
-        let result = db.for_each::<PeerId, PeerV3, _>(|old_peer| {
+        db.for_each::<PeerId, PeerV5, _>(|old_peer| {
             let result = old_peer.and_then(|(key, peer)| {
                 if key == MIGRATION_VERSION_KEY {
                     return Ok(());
                 }
 
                 debug!(target: LOG_TARGET, "Migrating peer `{}`", peer.node_id.short_str());
-                db.insert(&key, &PeerV4 {
+                db.insert(&key, &PeerV5 {
                     id: peer.id,
                     public_key: peer.public_key,
                     node_id: peer.node_id,
-                    last_seen: peer.addresses.last_seen().map(|ts| ts.naive_utc()),
                     addresses: peer.addresses,
                     flags: peer.flags,
                     banned_until: peer.banned_until,
                     banned_reason: peer.banned_reason,
                     offline_at: peer.offline_at,
+                    last_seen: peer.last_seen,
                     features: peer.features,
                     connection_stats: peer.connection_stats,
                     supported_protocols: peer.supported_protocols,
                     added_at: peer.added_at,
                     user_agent: peer.user_agent,
                     metadata: peer.metadata,
+                    identity_signature: None,
                 })
                 .map_err(Into::into)
             });
@@ -133,14 +117,7 @@ impl super::Migration<LMDBDatabase> for Migration {
                 );
             }
             IterationResult::Continue
-        });
-
-        if let Err(err) = result {
-            error!(
-                target: LOG_TARGET,
-                "Error reading peer pd: {} ** Database may be corrupt **", err
-            );
-        }
+        })?;
 
         Ok(())
     }

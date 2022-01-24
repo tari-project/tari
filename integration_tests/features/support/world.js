@@ -172,7 +172,7 @@ class CustomWorld {
   }
 
   addWallet(name, process) {
-    this.wallets[name] = process;
+    this.wallets[name.toString()] = process;
   }
 
   addWalletPubkey(name, pubkey) {

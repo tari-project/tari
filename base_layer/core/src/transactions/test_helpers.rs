@@ -258,13 +258,20 @@ pub fn create_unblinded_output(
 /// via keywords.
 #[macro_export]
 macro_rules! tx {
+  ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr, features: $features:expr) => {{
+      use $crate::transactions::test_helpers::create_tx;
+      create_tx($amount, $fee, $lock, $n_in, $mat, $n_out, $features)
+  }};
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, maturity: $mat:expr, outputs: $n_out:expr) => {{
-    use $crate::transactions::test_helpers::create_tx;
-    create_tx($amount, $fee, $lock, $n_in, $mat, $n_out)
+    tx!($amount, fee: $fee, lock: $lock, inputs: $n_in, maturity: $mat, outputs: $n_out, features: Default::default())
   }};
 
   ($amount:expr, fee: $fee:expr, lock: $lock:expr, inputs: $n_in:expr, outputs: $n_out:expr) => {
     tx!($amount, fee: $fee, lock: $lock, inputs: $n_in, maturity: 0, outputs: $n_out)
+  };
+
+  ($amount:expr, fee: $fee:expr, inputs: $n_in:expr, outputs: $n_out:expr, features: $features:expr) => {
+    tx!($amount, fee: $fee, lock: 0, inputs: $n_in, maturity: 0, outputs: $n_out, features: $features)
   };
 
   ($amount:expr, fee: $fee:expr, inputs: $n_in:expr, outputs: $n_out:expr) => {
@@ -365,6 +372,7 @@ pub fn create_tx(
     input_count: usize,
     input_maturity: u64,
     output_count: usize,
+    output_features: OutputFeatures,
 ) -> (Transaction, Vec<UnblindedOutput>, Vec<UnblindedOutput>) {
     let (inputs, outputs) = create_unblinded_txos(
         amount,
@@ -372,7 +380,7 @@ pub fn create_tx(
         input_maturity,
         output_count,
         fee_per_gram,
-        Default::default(),
+        output_features,
         script![Nop],
         Default::default(),
     );

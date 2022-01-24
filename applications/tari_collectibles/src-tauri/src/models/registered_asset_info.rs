@@ -32,4 +32,7 @@ pub struct RegisteredAssetInfo {
   pub mined_height: u64,
   pub mined_in_block: BlockHash,
   pub features: OutputFeatures,
+  pub name: String,
+  pub description: Option<String>,
+  pub image: Option<String>,
 }

@@ -31,83 +31,88 @@ import {
 import React, { useState, useEffect } from "react";
 import { Spinner } from "./components";
 import binding from "./binding";
-import { withRouter, useParams } from "react-router-dom";
+import {withRouter, useParams, useHistory} from "react-router-dom";
 
-const chunk = (arr, len) => {
-  const chunks = [];
-  let i = 0;
-  let n = arr.length;
+// const chunk = (arr, len) => {
+//   const chunks = [];
+//   let i = 0;
+//   let n = arr.length;
+//
+//   while (i < n) {
+//     chunks.push(arr.slice(i, (i += len)));
+//   }
+//
+//   return chunks;
+// };
+//
+// const SeedWords = ({ wallet, password}) => {
+//   const [seedWords, setSeedWords] = useState([]);
+//   const [error, setError] = useState("");
+//   const history= useHistory();
+//   useEffect(() => {
+//     binding
+//       .command_wallets_seed_words(wallet.id, password)
+//       .then((words) => setSeedWords(words))
+//       .catch((e) => {
+//
+//         console.error("error: ", e);
+//         setError(e.message);
+//       });
+//   }, [wallet.id, password]);
+//
+//   const display = (seedWords) => {
+//     console.log(seedWords);
+//     if (seedWords.length === 0) return <Spinner />;
+//
+//     const chunks = chunk(seedWords, 6);
+//     return (
+//       <div>
+//         {chunks.map((words, i) => (
+//           <pre key={i}>{words.join(" ")}</pre>
+//         ))}
+//       </div>
+//     );
+//   };
+//
+//   return (
+//     <div>
+//       <Typography variant="h3" sx={{ mb: "30px" }}>
+//         Seed words
+//       </Typography>
+//       {error ? (
+//           <Alert severity="error">{error}</Alert>
+//       ) : (
+//           <span />
+//       )}
+//       <p>
+//         Save these seed words securely. This is the recovery phrase for this
+//         wallet.
+//       </p>
+//       {display(seedWords)}
+//       <Button
+//         disabled={seedWords.length === 0}
+//         onClick={() => history.push(`/`)}
+//       >
+//         I have saved my seed words
+//       </Button>
+//     </div>
+//   );
+// };
 
-  while (i < n) {
-    chunks.push(arr.slice(i, (i += len)));
-  }
-
-  return chunks;
-};
-
-const SeedWords = ({ wallet, password, history }) => {
-  const [seedWords, setSeedWords] = useState([]);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    binding
-      .command_wallets_seed_words(wallet.id, password)
-      .then((words) => setSeedWords(words))
-      .catch((e) => {
-
-        console.error("error: ", e);
-        setError(e.message);
-      });
-  }, [wallet.id, password]);
-
-  const display = (seedWords) => {
-    console.log(seedWords);
-    if (seedWords.length === 0) return <Spinner />;
-
-    const chunks = chunk(seedWords, 6);
-    return (
-      <div>
-        {chunks.map((words, i) => (
-          <pre key={i}>{words.join(" ")}</pre>
-        ))}
-      </div>
-    );
-  };
-
-  return (
-    <div>
-      <Typography variant="h3" sx={{ mb: "30px" }}>
-        Seed words
-      </Typography>
-      {error ? (
-          <Alert severity="error">{error}</Alert>
-      ) : (
-          <span />
-      )}
-      <p>
-        Save these seed words securely. This is the recovery phrase for this
-        wallet.
-      </p>
-      {display(seedWords)}
-      <Button
-        disabled={seedWords.length === 0}
-        onClick={() => history.push(`/dashboard`)}
-      >
-        I have saved my seed words
-      </Button>
-    </div>
-  );
-};
-
-const CreateWallet = ({ history }) => {
+const CreateWallet = ({ setAuthenticated }) => {
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
   const [creating, setCreating] = useState(false);
   const [wallet, setWallet] = useState(undefined);
   const [error, setError] = useState("");
+  const history = useHistory();
 
-  if (wallet)
-    return <SeedWords wallet={wallet} password={password} history={history} />;
-
+  if (wallet) {
+    setAuthenticated(wallet.id, password);
+    //return <SeedWords wallet={wallet} password={password} history={history} />;
+    history.push(`/`);
+    return <Spinner />;
+  }
   let valid = false;
   let helperText = "Passwords must match.";
   if (password === password2) {
@@ -146,6 +151,7 @@ const CreateWallet = ({ history }) => {
             variant="filled"
             color="primary"
             value={password}
+            required="true"
             onChange={(e) => setPassword(e.target.value)}
           ></TextField>
           <TextField
@@ -157,6 +163,7 @@ const CreateWallet = ({ history }) => {
             value={password2}
             helperText={helperText}
             error={!valid}
+            required="true"
             onChange={(e) => setPassword2(e.target.value)}
           ></TextField>
           <Button disabled={!valid || creating} onClick={create}>
@@ -168,19 +175,20 @@ const CreateWallet = ({ history }) => {
   );
 };
 
-const OpenWallet = ({ history, setAuthenticated }) => {
+const OpenWallet = ({ setAuthenticated }) => {
   const { id } = useParams();
   const [password, setPassword] = useState("");
   const [unlocking, setUnlocking] = useState(false);
   const [error, setError] = useState("");
   const isError = error !== "";
+  const history = useHistory();
 
   const unlock = async () => {
     setUnlocking(true);
     try {
       await binding.command_wallets_unlock(id, password);
       setAuthenticated(id, password);
-      history.push("/dashboard");
+      history.push("/");
     } catch (e) {
       console.error("error: ", e);
       setUnlocking(false);
@@ -218,9 +226,9 @@ const OpenWallet = ({ history, setAuthenticated }) => {
   );
 };
 
-const Setup = ({ history }) => {
+const Setup = ({ setAuthenticated }) => {
   const [loading, setLoading] = useState(true);
-
+const history= useHistory();
   useEffect(() => {
     binding
       .command_wallets_list()
@@ -243,7 +251,7 @@ const Setup = ({ history }) => {
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4, py: 8 }}>
-      <CreateWallet history={history} />
+      <CreateWallet setAuthenticated={setAuthenticated } />
     </Container>
   );
 };

@@ -34,12 +34,12 @@ const LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 
 #[derive(Debug, thiserror::Error)]
 pub enum PeerValidatorError {
-    #[error("Node ID was invalid")]
-    InvalidNodeId,
-    #[error("Peer signature was invalid")]
-    InvalidPeerSignature,
-    #[error("One or more peer addresses were invalid")]
-    InvalidPeerAddresses,
+    #[error("Node ID was invalid for peer '{peer}'")]
+    InvalidNodeId { peer: NodeId },
+    #[error("Peer signature was invalid for peer '{peer}'")]
+    InvalidPeerSignature { peer: NodeId },
+    #[error("One or more peer addresses were invalid for '{peer}'")]
+    InvalidPeerAddresses { peer: NodeId },
     #[error("Peer manager error: {0}")]
     PeerManagerError(#[from] PeerManagerError),
 }
@@ -61,13 +61,13 @@ impl<'a> PeerValidator<'a> {
 
         if let Err(err) = validate_peer_addresses(new_peer.addresses.iter(), self.config.allow_test_addresses) {
             warn!(target: LOG_TARGET, "Invalid peer address: {}", err);
-            return Err(PeerValidatorError::InvalidPeerAddresses);
+            return Err(PeerValidatorError::InvalidPeerAddresses { peer: new_peer.node_id });
         }
 
         let can_update = match new_peer.is_valid_identity_signature() {
             // Update/insert peer
             Some(true) => true,
-            Some(false) => return Err(PeerValidatorError::InvalidPeerSignature),
+            Some(false) => return Err(PeerValidatorError::InvalidPeerSignature { peer: new_peer.node_id }),
             // Insert new peer if it doesn't exist, do not update
             None => false,
         };
@@ -124,6 +124,6 @@ fn validate_node_id(public_key: &CommsPublicKey, node_id: &NodeId) -> Result<Nod
     if expected_node_id == *node_id {
         Ok(expected_node_id)
     } else {
-        Err(PeerValidatorError::InvalidNodeId)
+        Err(PeerValidatorError::InvalidNodeId { peer: node_id.clone() })
     }
 }

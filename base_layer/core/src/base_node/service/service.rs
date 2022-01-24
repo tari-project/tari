@@ -645,7 +645,5 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
         .handle_new_block_message(new_block, source_peer.node_id)
         .await?;
 
-    // TODO - retain peer info for stats and potential banning for sending invalid blocks
-
     Ok(())
 }
