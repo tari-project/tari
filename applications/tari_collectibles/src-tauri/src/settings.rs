@@ -20,33 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{env, path::PathBuf};
+use std::path::PathBuf;
 
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
 pub struct Settings {
-  pub(crate) wallet_grpc_address: String,
-  pub(crate) base_node_grpc_address: String,
-  pub(crate) validator_node_grpc_address: String,
+  #[structopt(short, long, aliases = &["base_path", "base_dir", "base-dir"], env="DATA_DIR", default_value = "data")]
   pub(crate) data_dir: PathBuf,
+  #[structopt(
+    short,
+    long,
+    env = "WALLET_GRPC_ADDRESS",
+    default_value = "localhost:18143"
+  )]
+  pub(crate) wallet_grpc_address: String,
+  #[structopt(
+    short,
+    long,
+    env = "BASE_NODE_GRPC_ADDRESS",
+    default_value = "localhost:18142"
+  )]
+  pub(crate) base_node_grpc_address: String,
+  #[structopt(
+    short,
+    long,
+    env = "VALIDATOR_NODE_GRPC_ADDRESS",
+    default_value = "localhost:18144"
+  )]
+  pub(crate) validator_node_grpc_address: String,
 }
 
 impl Settings {
   pub fn new() -> Self {
-    // Self {
-    //   wallet_grpc_address: "localhost:18143".to_string(),
-    //   base_node_grpc_address: "localhost:18142".to_string(),
-    //   _favourite_assets: vec!["1234".to_string()],
-    // }
-    let data_dir = env::var("DATA_DIR").unwrap_or_else(|_| "data".to_string());
-    let data_dir = PathBuf::from(data_dir);
-    // TODO: remove this, just for convenience
-    Self {
-      wallet_grpc_address: env::var("WALLET_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18143".to_string()),
-      base_node_grpc_address: env::var("BASE_NODE_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18142".to_string()),
-      validator_node_grpc_address: env::var("VALIDATOR_NODE_GRPC_ADDRESS")
-        .unwrap_or_else(|_| "localhost:18144".to_string()),
-      data_dir,
-    }
+    Self::from_args()
   }
 }

@@ -132,9 +132,6 @@ fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWork>(
                 entity: "state_keys",
                 id: format!("tokens.{}", token_id.to_hex()),
             })?;
-        let mut data2: [u8; 8] = [0; 8];
-        data2.copy_from_slice(&token_id);
-        let token_id = u64::from_le_bytes(data2);
         let response = tip004::TokenOfOwnerByIndexResponse {
             token_id,
             token: String::from_utf8(token).expect("should fix this"),

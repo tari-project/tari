@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 // Copyright 2020. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
@@ -21,7 +20,8 @@ use std::convert::TryInto;
 // CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use std::time::Duration;
+
+use std::{convert::TryInto, time::Duration};
 
 use log::*;
 use tari_common_types::transaction::TxId;

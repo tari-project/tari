@@ -24,13 +24,14 @@ use std::{collections::HashMap, ops::Add};
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_crypto::{script, tari_utilities::epoch_time::EpochTime};
 
 use crate::{
-    consensus::network::NetworkConsensus,
+    consensus::{network::NetworkConsensus, ConsensusEncodingSized},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
+        transaction::OutputFeatures,
         weight::TransactionWeight,
     },
 };
@@ -140,7 +141,11 @@ impl ConsensusConstants {
     }
 
     pub fn coinbase_weight(&self) -> u64 {
-        self.transaction_weight.calculate(1, 0, 1, 0)
+        // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+        let metadata_size = self.transaction_weight.round_up_metadata_size(
+            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+        );
+        self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
 
     /// The amount of PoW algorithms used by the Tari chain.
@@ -234,134 +239,19 @@ impl ConsensusConstants {
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
-            transaction_weight: TransactionWeight::v2(),
+            transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
         }]
-    }
-
-    pub fn ridcully() -> Vec<Self> {
-        let difficulty_block_window = 90;
-        let mut algos = HashMap::new();
-        // setting sha3/monero to 40/60 split
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_00.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 300,
-        });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 200,
-        });
-        vec![ConsensusConstants {
-            effective_from_height: 0,
-            coinbase_lock_height: 1,
-            blockchain_version: 1,
-            future_time_limit: 540,
-            difficulty_block_window,
-            max_block_transaction_weight: 19500,
-            median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
-            max_randomx_seed_height: u64::MAX,
-            proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
-            transaction_weight: TransactionWeight::v1(),
-            max_script_byte_size: 2048,
-        }]
-    }
-
-    pub fn stibbons() -> Vec<Self> {
-        let mut algos = HashMap::new();
-        // Previously these were incorrectly set to `target_time` of 20 and 30, so
-        // most blocks before 1400 hit the minimum difficulty of 60M and 60k
-        // algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-        //     max_target_time: 1800,
-        //     min_difficulty: 60_000_000.into(),
-        //     max_difficulty: u64::MAX.into(),
-        //     target_time: 30,
-        // });
-        // algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-        //     max_target_time: 1200,
-        //     min_difficulty: 60_000.into(),
-        //     max_difficulty: u64::MAX.into(),
-        //     target_time: 20,
-        // });
-        algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_00.into(),
-            max_difficulty: 60_000_000.into(),
-            target_time: 300,
-        });
-        algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: 60_000.into(),
-            target_time: 200,
-        });
-        let mut algos2 = HashMap::new();
-        // setting sha3/monero to 40/60 split
-        algos2.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 1800,
-            min_difficulty: 60_000_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 300,
-        });
-        algos2.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
-            max_target_time: 1200,
-            min_difficulty: 60_000.into(),
-            max_difficulty: u64::MAX.into(),
-            target_time: 200,
-        });
-        vec![
-            ConsensusConstants {
-                effective_from_height: 0,
-                coinbase_lock_height: 60,
-                blockchain_version: 1,
-                future_time_limit: 540,
-                difficulty_block_window: 90,
-                max_block_transaction_weight: 19500,
-                median_timestamp_count: 11,
-                emission_initial: 5_538_846_115 * uT,
-                emission_decay: &EMISSION_DECAY,
-                emission_tail: 100.into(),
-                max_randomx_seed_height: u64::MAX,
-                proof_of_work: algos,
-                faucet_value: (5000 * 4000) * T,
-                transaction_weight: TransactionWeight::v1(),
-                max_script_byte_size: 2048,
-            },
-            ConsensusConstants {
-                effective_from_height: 1400,
-                coinbase_lock_height: 60,
-                blockchain_version: 1,
-                future_time_limit: 540,
-                difficulty_block_window: 90,
-                max_block_transaction_weight: 19500,
-                median_timestamp_count: 11,
-                emission_initial: 5_538_846_115 * uT,
-                emission_decay: &EMISSION_DECAY,
-                emission_tail: 100.into(),
-                max_randomx_seed_height: u64::MAX,
-                proof_of_work: algos2,
-                faucet_value: (5000 * 4000) * T,
-                transaction_weight: TransactionWeight::v1(),
-                max_script_byte_size: 2048,
-            },
-        ]
     }
 
     pub fn weatherwax() -> Vec<Self> {
         let mut algos = HashMap::new();
         // setting sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
-            max_target_time: 180,
-            min_difficulty: 60_00.into(),
+            max_target_time: 1800,
+            min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 30,
+            target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
@@ -390,7 +280,7 @@ impl ConsensusConstants {
 
     pub fn igor() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // seting sha3/monero to 40/60 split
+        // sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
             min_difficulty: 60_000_000.into(),
@@ -427,18 +317,18 @@ impl ConsensusConstants {
 
     pub fn dibbler() -> Vec<Self> {
         let mut algos = HashMap::new();
-        // setting sha3/monero to 40/60 split
+        // sha3/monero to 40/60 split
         algos.insert(PowAlgorithm::Sha3, PowAlgorithmConstants {
             max_target_time: 1800,
-            min_difficulty: 60_000.into(),
+            min_difficulty: 60_000_000.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 30,
+            target_time: 300,
         });
         algos.insert(PowAlgorithm::Monero, PowAlgorithmConstants {
             max_target_time: 1200,
-            min_difficulty: 60.into(),
+            min_difficulty: 60_000.into(),
             max_difficulty: u64::MAX.into(),
-            target_time: 20,
+            target_time: 200,
         });
         vec![ConsensusConstants {
             effective_from_height: 0,
@@ -446,6 +336,9 @@ impl ConsensusConstants {
             blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
+            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
+            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
+            // weightings
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
             emission_initial: 5_538_846_115 * uT,

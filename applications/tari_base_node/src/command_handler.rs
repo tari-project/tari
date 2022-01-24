@@ -158,7 +158,7 @@ impl CommandHandler {
                 "Mempool",
                 format!(
                     "{}tx ({}g, +/- {}blks)",
-                    mempool_stats.total_txs,
+                    mempool_stats.unconfirmed_txs,
                     mempool_stats.total_weight,
                     if mempool_stats.total_weight == 0 {
                         0
@@ -1118,7 +1118,9 @@ impl CommandHandler {
         let local_node_comms_interface = self.node_service.clone();
         self.executor.spawn(async move {
             let blocks = try_or_print!(db.rewind_to_height(new_height).await);
-            local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+            if !blocks.is_empty() {
+                local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+            }
         });
     }
 
@@ -1271,6 +1273,38 @@ impl CommandHandler {
             }
         }
         table.print_stdout();
+    }
+
+    pub fn list_reorgs(&self) {
+        if !self.config.blockchain_track_reorgs {
+            println!(
+                "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \
+                 turn it on."
+            );
+            return;
+        }
+
+        match self.blockchain_db.inner().fetch_all_reorgs() {
+            Ok(reorgs) => {
+                let mut table = Table::new();
+                table.set_titles(vec!["#", "New Tip", "Prev Tip", "Depth", "Timestamp"]);
+
+                for (i, reorg) in reorgs.iter().enumerate() {
+                    table.add_row(row![
+                        i + 1,
+                        format!("#{} ({})", reorg.new_height, reorg.new_hash.to_hex()),
+                        format!("#{} ({})", reorg.prev_height, reorg.prev_hash.to_hex()),
+                        format!("{} added, {} removed", reorg.num_blocks_added, reorg.num_blocks_removed),
+                        reorg.local_time
+                    ]);
+                }
+
+                table.enable_row_count().print_stdout();
+            },
+            Err(e) => {
+                eprintln!("Error fetching reorgs: {}", e);
+            },
+        }
     }
 }
 

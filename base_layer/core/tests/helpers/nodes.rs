@@ -199,7 +199,7 @@ impl BaseNodeBuilder {
         let mempool = Mempool::new(
             self.mempool_config.unwrap_or_default(),
             consensus_manager.clone(),
-            Arc::new(mempool_validator),
+            Box::new(mempool_validator),
         );
         let node_identity = self.node_identity.unwrap_or_else(|| random_node_identity());
         let node_interfaces = setup_base_node_services(
@@ -209,7 +209,6 @@ impl BaseNodeBuilder {
             mempool,
             consensus_manager.clone(),
             self.base_node_service_config.unwrap_or_default(),
-            self.mempool_service_config.unwrap_or_default(),
             self.liveness_service_config.unwrap_or_default(),
             data_path,
         )
@@ -402,7 +401,6 @@ async fn setup_base_node_services(
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     base_node_service_config: BaseNodeServiceConfig,
-    mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> NodeInterfaces {
@@ -427,11 +425,7 @@ async fn setup_base_node_services(
             consensus_manager,
             base_node_service_config,
         ))
-        .add_initializer(MempoolServiceInitializer::new(
-            mempool_service_config,
-            mempool.clone(),
-            subscription_factory,
-        ))
+        .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
         .add_initializer(mock_state_machine.get_initializer())
         .add_initializer(ChainMetadataServiceInitializer)
         .build()

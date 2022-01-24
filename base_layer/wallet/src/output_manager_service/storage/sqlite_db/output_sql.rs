@@ -29,10 +29,14 @@ use tari_common_types::{
     transaction::TxId,
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
-use tari_core::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
-    CryptoFactories,
+use tari_core::{
+    consensus::ConsensusDecoding,
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        CryptoFactories,
+    },
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
@@ -92,6 +96,7 @@ pub struct OutputSql {
     pub script_lock_height: i64,
     pub spending_priority: i32,
     pub features_json: String,
+    pub covenant: Vec<u8>,
 }
 
 impl OutputSql {
@@ -143,7 +148,7 @@ impl OutputSql {
             .filter(outputs::maturity.le(tip_height))
             .filter(outputs::features_unique_id.is_null())
             .filter(outputs::features_parent_public_key.is_null())
-            .order_by(outputs::spending_priority.asc());
+            .order_by(outputs::spending_priority.desc());
         match strategy {
             UTXOSelectionStrategy::Smallest => {
                 query = query.then_order_by(outputs::value.asc());
@@ -194,7 +199,7 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         Ok(outputs::table
-            // Return outputs not marked as deleted or confirmed 
+            // Return outputs not marked as deleted or confirmed
             .filter(outputs::marked_deleted_in_block.is_null().or(outputs::status.eq(OutputStatus::SpentMinedUnconfirmed as i32)))
             // Only return mined
             .filter(outputs::mined_in_block.is_not_null())
@@ -225,6 +230,16 @@ impl OutputSql {
         Ok(outputs::table
             .filter(outputs::spending_key.eq(spending_key))
             .first::<OutputSql>(conn)?)
+    }
+
+    pub fn find_by_tx_id(tx_id: TxId, conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(
+                outputs::received_in_tx_id
+                    .eq(i64::from(tx_id))
+                    .or(outputs::spent_in_tx_id.eq(i64::from(tx_id))),
+            )
+            .load(conn)?)
     }
 
     /// Return the available, time locked, pending incoming and pending outgoing balance
@@ -486,7 +501,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             .map(|p| PublicKey::from_bytes(&p))
             .transpose()?;
 
-        let unblinded_output = UnblindedOutput::new(
+        let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
                 error!(
@@ -548,6 +563,15 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 })?,
             ),
             o.script_lock_height as u64,
+            Covenant::consensus_decode(&mut o.covenant.as_slice()).map_err(|e| {
+                error!(
+                    target: LOG_TARGET,
+                    "Could not create Covenant from stored bytes ({}), They might be encrypted", e
+                );
+                OutputManagerStorageError::ConversionError {
+                    reason: "Covenant could not be converted from bytes".to_string(),
+                }
+            })?,
         );
 
         let hash = match o.hash {

@@ -398,7 +398,6 @@ impl PeerConnectionActor {
                 err
             );
         }
-        self.request_rx.close();
     }
 
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
@@ -484,12 +483,28 @@ impl PeerConnectionActor {
     ///
     /// silent - true to suppress the PeerDisconnected event, false to publish the event
     async fn disconnect(&mut self, silent: bool) -> Result<(), PeerConnectionError> {
-        if !silent {
-            self.notify_event(ConnectionManagerEvent::PeerDisconnected(self.peer_node_id.clone()))
-                .await;
-        }
+        self.request_rx.close();
+        match self.control.close().await {
+            Err(yamux::ConnectionError::Closed) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "(Peer = {}) Connection already closed",
+                    self.peer_node_id.short_str()
+                );
 
-        self.control.close().await?;
+                return Ok(());
+            },
+            // Only emit closed event once
+            _ => {
+                if !silent {
+                    self.notify_event(ConnectionManagerEvent::PeerDisconnected(
+                        self.id,
+                        self.peer_node_id.clone(),
+                    ))
+                    .await;
+                }
+            },
+        }
 
         debug!(
             target: LOG_TARGET,

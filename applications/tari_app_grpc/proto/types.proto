@@ -149,6 +149,8 @@ message TransactionKernel {
     Signature excess_sig = 7;
     // The hash of the kernel, as it appears in the MMR
     bytes hash = 8;
+    // Version
+    uint32 version = 9;
 }
 
 // A transaction input.
@@ -171,6 +173,10 @@ message TransactionInput {
     bytes sender_offset_public_key = 8;
     // The hash of the output this input is spending
     bytes output_hash = 9;
+    // Covenant
+    bytes covenant = 10;
+    // Version
+    uint32 version = 11;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -192,7 +198,10 @@ message TransactionOutput {
     // Metadata signature with the homomorphic commitment private values (amount and blinding factor) and the sender
     // offset private key
     ComSignature metadata_signature = 7;
-    // Tari script offset pubkey, K_O
+    // Covenant
+    bytes covenant = 8;
+    // Version
+    uint32 version = 9;
 }
 
 // Options for UTXO's
@@ -214,6 +223,8 @@ message OutputFeatures {
     MintNonFungibleFeatures mint_non_fungible = 7;
 
     SideChainCheckpointFeatures sidechain_checkpoint = 8;
+    // Version
+    uint32 version = 9;
 }
 
 message AssetOutputFeatures {
@@ -328,6 +339,8 @@ message UnblindedOutput {
     ComSignature metadata_signature = 9;
     // The minimum height the script allows this output to be spent
     uint64 script_lock_height = 10;
+    // Covenant
+    bytes covenant = 11;
 }
 
 // ----------------------------- Network Types ----------------------------- //
@@ -397,4 +410,12 @@ message SoftwareUpdate {
     string version = 2;
     string sha = 3;
     string download_url = 4;
+}
+
+message GetIdentityRequest { }
+
+message GetIdentityResponse {
+    bytes public_key = 1;
+    string public_address = 2;
+    bytes node_id = 3;
 }

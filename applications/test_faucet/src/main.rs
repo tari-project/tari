@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
                 let script = script!(Nop);
-                let (utxo, key, _) = test_helpers::create_utxo(value, &fc, feature, &script);
+                let (utxo, key, _) = test_helpers::create_utxo(value, &fc, feature, &script, &Default::default());
                 print!(".");
                 (utxo, key, value)
             })
@@ -110,13 +110,8 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
     }
     let (pk, sig) = test_helpers::create_random_signature_from_s_key(key_sum, 0.into(), 0);
     let excess = Commitment::from_public_key(&pk);
-    let kernel = TransactionKernel {
-        features: KernelFeatures::empty(),
-        fee: MicroTari::from(0),
-        lock_height: 0,
-        excess,
-        excess_sig: sig,
-    };
+    let kernel = TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig);
+    let kernel = serde_json::to_string(&kernel).unwrap();
     let _ = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 
     println!("Done.");
@@ -128,7 +123,7 @@ impl Iterator for Values {
     type Item = MicroTari;
 
     fn next(&mut self) -> Option<Self::Item> {
-        Some(5000 * T)
+        Some(10 * T)
     }
 }
 

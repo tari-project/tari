@@ -30,7 +30,7 @@ use std::{
 
 use log::*;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::BlockHash;
+use tari_common_types::types::PrivateKey;
 use tari_crypto::tari_utilities::Hashable;
 use tari_utilities::hex::Hex;
 use thiserror::Error;
@@ -42,12 +42,20 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction::{
+            KernelFeatures,
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
         CryptoFactories,
     },
 };
 
-#[derive(Clone, Debug, PartialEq, Error)]
+#[derive(Clone, Debug, Error)]
 pub enum BlockValidationError {
     #[error("A transaction in the block failed to validate: `{0}`")]
     TransactionError(#[from] TransactionError),
@@ -63,8 +71,8 @@ pub enum BlockValidationError {
         expected: u64,
         actual: u64,
     },
-    #[error("The block weight is above the maximum")]
-    BlockTooLarge,
+    #[error("The block weight ({actual_weight}) is above the maximum ({max_weight})")]
+    BlockTooLarge { actual_weight: u64, max_weight: u64 },
 }
 
 /// A Tari block. Blocks are linked together into a blockchain.
@@ -187,13 +195,13 @@ impl BlockBuilder {
         self
     }
 
-    /// This function adds the provided transaction outputs to the block
+    /// This function adds the provided transaction outputs to the block WITHOUT updating output_mmr_size in the header
     pub fn add_outputs(mut self, mut outputs: Vec<TransactionOutput>) -> Self {
         self.outputs.append(&mut outputs);
         self
     }
 
-    /// This function adds the provided transaction kernels to the block
+    /// This function adds the provided transaction kernels to the block WITHOUT updating kernel_mmr_size in the header
     pub fn add_kernels(mut self, mut kernels: Vec<TransactionKernel>) -> Self {
         for kernel in &kernels {
             self.total_fee += kernel.fee;
@@ -202,23 +210,15 @@ impl BlockBuilder {
         self
     }
 
-    /// This functions add the provided transactions to the block
+    /// This functions adds the provided transactions to the block, modifying the header MMR counts and offsets
     pub fn with_transactions(mut self, txs: Vec<Transaction>) -> Self {
-        let iter = txs.into_iter();
-        for tx in iter {
-            let (inputs, outputs, kernels) = tx.body.dissolve();
-            self = self.add_inputs(inputs);
-            self.header.output_mmr_size += outputs.len() as u64;
-            self = self.add_outputs(outputs);
-            self.header.kernel_mmr_size += kernels.len() as u64;
-            self = self.add_kernels(kernels);
-            self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
-            self.header.total_script_offset = self.header.total_script_offset + tx.script_offset;
+        for tx in txs {
+            self = self.add_transaction(tx)
         }
         self
     }
 
-    /// This functions add the provided transactions to the block
+    /// This functions adds the provided transaction to the block, modifying the header MMR counts and offsets
     pub fn add_transaction(mut self, tx: Transaction) -> Self {
         let (inputs, outputs, kernels) = tx.body.dissolve();
         self = self.add_inputs(inputs);
@@ -226,7 +226,8 @@ impl BlockBuilder {
         self = self.add_outputs(outputs);
         self.header.kernel_mmr_size += kernels.len() as u64;
         self = self.add_kernels(kernels);
-        self.header.total_kernel_offset = &self.header.total_kernel_offset + &tx.offset;
+        self.header.total_kernel_offset = self.header.total_kernel_offset + tx.offset;
+        self.header.total_script_offset = self.header.total_script_offset + tx.script_offset;
         self
     }
 
@@ -264,21 +265,43 @@ impl Hashable for Block {
 
 //---------------------------------- NewBlock --------------------------------------------//
 pub struct NewBlock {
-    pub block_hash: BlockHash,
-}
-
-impl NewBlock {
-    pub fn new(block_hash: BlockHash) -> Self {
-        Self { block_hash }
-    }
+    /// The block header.
+    pub header: BlockHeader,
+    /// Coinbase kernel of the block
+    pub coinbase_kernel: TransactionKernel,
+    pub coinbase_output: TransactionOutput,
+    /// The scalar `s` component of the kernel excess signatures of the transactions contained in the block.
+    pub kernel_excess_sigs: Vec<PrivateKey>,
 }
 
 impl From<&Block> for NewBlock {
     fn from(block: &Block) -> Self {
+        let coinbase_kernel = block
+            .body
+            .kernels()
+            .iter()
+            .find(|k| k.features.contains(KernelFeatures::COINBASE_KERNEL))
+            .cloned()
+            .expect("Invalid block given to NewBlock::from, no coinbase kernel");
+        let coinbase_output = block
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.features.flags.contains(OutputFlags::COINBASE_OUTPUT))
+            .cloned()
+            .expect("Invalid block given to NewBlock::from, no coinbase output");
+
         Self {
-            block_hash: block.hash(),
+            header: block.header.clone(),
+            coinbase_kernel,
+            coinbase_output,
+            kernel_excess_sigs: block
+                .body
+                .kernels()
+                .iter()
+                .filter(|k| !k.features.contains(KernelFeatures::COINBASE_KERNEL))
+                .map(|kernel| kernel.excess_sig.get_signature().clone())
+                .collect(),
         }
     }
 }
-
-//----------------------------------------         Tests          ----------------------------------------------------//

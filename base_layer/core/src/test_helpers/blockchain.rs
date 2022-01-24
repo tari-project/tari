@@ -41,7 +41,7 @@ use tari_utilities::Hashable;
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::get_igor_genesis_block,
+        genesis_block::get_dibbler_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
@@ -65,6 +65,7 @@ use crate::{
         LMDBDatabase,
         MmrTree,
         PrunedOutput,
+        Reorg,
         UtxoMinedInfo,
         Validators,
     },
@@ -86,7 +87,7 @@ use crate::{
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
     let network = Network::LocalNet;
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_igor_genesis_block();
+    let genesis = get_dibbler_genesis_block();
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis)
@@ -425,6 +426,10 @@ impl BlockchainBackend for TempDatabase {
 
     fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError> {
         self.db.as_ref().unwrap().bad_block_exists(block_hash)
+    }
+
+    fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError> {
+        self.db.as_ref().unwrap().fetch_all_reorgs()
     }
 }
 

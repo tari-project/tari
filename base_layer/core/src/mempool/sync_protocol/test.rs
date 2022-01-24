@@ -44,7 +44,6 @@ use tokio::{
 use crate::{
     consensus::ConsensusManager,
     mempool::{
-        async_mempool,
         proto,
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
@@ -55,29 +54,29 @@ use crate::{
 
 pub fn create_transactions(n: usize) -> Vec<Transaction> {
     repeat_with(|| {
-        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 4);
+        let (transaction, _, _) = create_tx(5000 * uT, 3 * uT, 1, 2, 1, 3, Default::default());
         transaction
     })
     .take(n)
     .collect()
 }
 
-fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
+async fn new_mempool_with_transactions(n: usize) -> (Mempool, Vec<Transaction>) {
     let mempool = Mempool::new(
         Default::default(),
         ConsensusManager::builder(Network::LocalNet).build(),
-        Arc::new(MockValidator::new(true)),
+        Box::new(MockValidator::new(true)),
     );
 
     let transactions = create_transactions(n);
     for txn in &transactions {
-        mempool.insert(Arc::new(txn.clone())).unwrap();
+        mempool.insert(Arc::new(txn.clone())).await.unwrap();
     }
 
     (mempool, transactions)
 }
 
-fn setup(
+async fn setup(
     num_txns: usize,
 ) -> (
     ProtocolNotificationTx<MemorySocket>,
@@ -87,7 +86,7 @@ fn setup(
 ) {
     let (protocol_notif_tx, protocol_notif_rx) = mpsc::channel(1);
     let (connectivity_events_tx, connectivity_events_rx) = broadcast::channel(10);
-    let (mempool, transactions) = new_mempool_with_transactions(num_txns);
+    let (mempool, transactions) = new_mempool_with_transactions(num_txns).await;
     let protocol = MempoolSyncProtocol::new(
         Default::default(),
         protocol_notif_rx,
@@ -102,7 +101,7 @@ fn setup(
 
 #[tokio::test]
 async fn empty_set() {
-    let (_, connectivity_events_tx, mempool1, _) = setup(0);
+    let (_, connectivity_events_tx, mempool1, _) = setup(0).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -117,22 +116,22 @@ async fn empty_set() {
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
 
-    let (mempool2, _) = new_mempool_with_transactions(0);
+    let (mempool2, _) = new_mempool_with_transactions(0).await;
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_responder()
         .await
         .unwrap();
 
-    let transactions = mempool2.snapshot().unwrap();
+    let transactions = mempool2.snapshot().await;
     assert_eq!(transactions.len(), 0);
 
-    let transactions = mempool1.snapshot().unwrap();
+    let transactions = mempool1.snapshot().await;
     assert_eq!(transactions.len(), 0);
 }
 
 #[tokio::test]
 async fn synchronise() {
-    let (_, connectivity_events_tx, mempool1, transactions1) = setup(5);
+    let (_, connectivity_events_tx, mempool1, transactions1) = setup(5).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -147,18 +146,18 @@ async fn synchronise() {
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
 
-    let (mempool2, transactions2) = new_mempool_with_transactions(3);
+    let (mempool2, transactions2) = new_mempool_with_transactions(3).await;
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_responder()
         .await
         .unwrap();
 
-    let transactions = get_snapshot(&mempool2);
+    let transactions = get_snapshot(&mempool2).await;
     assert_eq!(transactions.len(), 8);
     assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
     assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
-    let transactions = get_snapshot(&mempool1);
+    let transactions = get_snapshot(&mempool1).await;
     assert_eq!(transactions.len(), 8);
     assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
     assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
@@ -166,7 +165,7 @@ async fn synchronise() {
 
 #[tokio::test]
 async fn duplicate_set() {
-    let (_, connectivity_events_tx, mempool1, transactions1) = setup(2);
+    let (_, connectivity_events_tx, mempool1, transactions1) = setup(2).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -181,19 +180,19 @@ async fn duplicate_set() {
     let substream = node1_mock.next_incoming_substream().await.unwrap();
     let framed = framing::canonical(substream, MAX_FRAME_SIZE);
 
-    let (mempool2, transactions2) = new_mempool_with_transactions(1);
-    mempool2.insert(Arc::new(transactions1[0].clone())).unwrap();
+    let (mempool2, transactions2) = new_mempool_with_transactions(1).await;
+    mempool2.insert(Arc::new(transactions1[0].clone())).await.unwrap();
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_responder()
         .await
         .unwrap();
 
-    let transactions = get_snapshot(&mempool2);
+    let transactions = get_snapshot(&mempool2).await;
     assert_eq!(transactions.len(), 3);
     assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
     assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
 
-    let transactions = get_snapshot(&mempool1);
+    let transactions = get_snapshot(&mempool1).await;
     assert_eq!(transactions.len(), 3);
     assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
     assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
@@ -201,7 +200,7 @@ async fn duplicate_set() {
 
 #[tokio::test]
 async fn responder() {
-    let (protocol_notif, _, _, transactions1) = setup(2);
+    let (protocol_notif, _, _, transactions1) = setup(2).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -215,17 +214,15 @@ async fn responder() {
         .await
         .unwrap();
 
-    let (mempool2, transactions2) = new_mempool_with_transactions(1);
-    async_mempool::insert(mempool2.clone(), Arc::new(transactions1[0].clone()))
-        .await
-        .unwrap();
+    let (mempool2, transactions2) = new_mempool_with_transactions(1).await;
+    mempool2.insert(Arc::new(transactions1[0].clone())).await.unwrap();
     let framed = framing::canonical(sock_out, MAX_FRAME_SIZE);
     MempoolPeerProtocol::new(Default::default(), framed, node2.node_id().clone(), mempool2.clone())
         .start_initiator()
         .await
         .unwrap();
 
-    let transactions = get_snapshot(&mempool2);
+    let transactions = get_snapshot(&mempool2).await;
     assert_eq!(transactions.len(), 3);
     assert!(transactions1.iter().all(|txn| transactions.contains(txn)));
     assert!(transactions2.iter().all(|txn| transactions.contains(txn)));
@@ -237,7 +234,7 @@ async fn responder() {
 
 #[tokio::test]
 async fn initiator_messages() {
-    let (protocol_notif, _, _, transactions1) = setup(2);
+    let (protocol_notif, _, _, transactions1) = setup(2).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
 
@@ -272,7 +269,7 @@ async fn initiator_messages() {
 
 #[tokio::test]
 async fn responder_messages() {
-    let (_, connectivity_events_tx, _, transactions1) = setup(1);
+    let (_, connectivity_events_tx, _, transactions1) = setup(1).await;
 
     let node1 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
     let node2 = build_node_identity(PeerFeatures::COMMUNICATION_NODE);
@@ -321,8 +318,8 @@ async fn responder_messages() {
     assert!(framed.next().await.is_none());
 }
 
-fn get_snapshot(mempool: &Mempool) -> Vec<Transaction> {
-    mempool.snapshot().unwrap().iter().map(|t| &**t).cloned().collect()
+async fn get_snapshot(mempool: &Mempool) -> Vec<Transaction> {
+    mempool.snapshot().await.iter().map(|t| &**t).cloned().collect()
 }
 
 async fn read_message<S, T>(reader: &mut S) -> T

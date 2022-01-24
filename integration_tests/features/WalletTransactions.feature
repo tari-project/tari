@@ -1,7 +1,6 @@
 @wallet-transact @wallet
 Feature: Wallet Transactions
 
-  @critical
   Scenario: Wallet sending and receiving one-sided transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -51,7 +50,7 @@ Feature: Wallet Transactions
     Then I wait for wallet WALLET_C to have at least 1000000 uT
     Then I check if last imported transactions are valid in wallet WALLET_C
 
-  @critical @flaky
+  @flaky
   Scenario: Wallet imports spent outputs that become invalidated
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -80,7 +79,7 @@ Feature: Wallet Transactions
   # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes Spent
   #Then I check if last imported transactions are invalid in wallet WALLET_C
 
-  @critical @flaky
+  @flaky
   Scenario: Wallet imports reorged outputs that become invalidated
     # Chain 1
     Given I have a seed node SEED_B
@@ -123,7 +122,6 @@ Feature: Wallet Transactions
   # for imported UTXO's anyway so until that is decided we will just check that the imported output becomes invalid
   # Then I check if last imported transactions are invalid in wallet WALLET_IMPORTED
 
-  @critical
   Scenario: Wallet imports faucet UTXO
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
@@ -218,7 +216,6 @@ Feature: Wallet Transactions
     When I mine 6 blocks on NODE_C
     Then all nodes are at height 16
 
-  @critical
   Scenario: Short wallet clearing out invalid transactions after a reorg
     #
     # Chain 1:

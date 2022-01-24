@@ -28,13 +28,13 @@ use std::{
     io::{Read, Write},
 };
 
-use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_utilities::ByteArray;
 
+use super::OutputFeaturesVersion;
 use crate::{
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     transactions::transaction::{
         AssetOutputFeatures,
         MintNonFungibleFeatures,
@@ -47,6 +47,7 @@ use crate::{
 /// Options for UTXO's
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
 pub struct OutputFeatures {
+    pub version: OutputFeaturesVersion,
     /// Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
     pub flags: OutputFlags,
     /// the maturity of the specific UTXO. This is the min lock height at which an UTXO can be spent. Coinbase UTXO
@@ -61,15 +62,53 @@ pub struct OutputFeatures {
 }
 
 impl OutputFeatures {
-    /// The version number to use in consensus encoding. In future, this value could be dynamic.
-    const CONSENSUS_ENCODING_VERSION: u8 = 0;
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        version: OutputFeaturesVersion,
+        flags: OutputFlags,
+        maturity: u64,
+        metadata: Vec<u8>,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        asset: Option<AssetOutputFeatures>,
+        mint_non_fungible: Option<MintNonFungibleFeatures>,
+        sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
+    ) -> OutputFeatures {
+        OutputFeatures {
+            version,
+            flags,
+            maturity,
+            metadata,
+            unique_id,
+            parent_public_key,
+            asset,
+            mint_non_fungible,
+            sidechain_checkpoint,
+        }
+    }
 
-    /// Encodes output features using consensus encoding
-    pub fn to_consensus_bytes(&self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(self.consensus_encode_exact_size());
-        // unreachable panic: Vec's Write impl is infallible
-        self.consensus_encode(&mut buf).expect("unreachable");
-        buf
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_current_version(
+        flags: OutputFlags,
+        maturity: u64,
+        metadata: Vec<u8>,
+        unique_id: Option<Vec<u8>>,
+        parent_public_key: Option<PublicKey>,
+        asset: Option<AssetOutputFeatures>,
+        mint_non_fungible: Option<MintNonFungibleFeatures>,
+        sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
+    ) -> OutputFeatures {
+        OutputFeatures::new(
+            OutputFeaturesVersion::get_current_version(),
+            flags,
+            maturity,
+            metadata,
+            unique_id,
+            parent_public_key,
+            asset,
+            mint_non_fungible,
+            sidechain_checkpoint,
+        )
     }
 
     pub fn create_coinbase(maturity_height: u64) -> OutputFeatures {
@@ -174,58 +213,54 @@ impl OutputFeatures {
 
 impl ConsensusEncoding for OutputFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = writer.write_varint(Self::CONSENSUS_ENCODING_VERSION)?;
-        written += writer.write_varint(self.maturity)?;
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.maturity.consensus_encode(writer)?;
         written += self.flags.consensus_encode(writer)?;
+        written += self.parent_public_key.consensus_encode(writer)?;
+        written += self.unique_id.consensus_encode(writer)?;
+        written += self.asset.consensus_encode(writer)?;
+        written += self.mint_non_fungible.consensus_encode(writer)?;
+        written += self.sidechain_checkpoint.consensus_encode(writer)?;
+        written += self.metadata.consensus_encode(writer)?;
         Ok(written)
     }
 }
 
-impl ConsensusEncodingSized for OutputFeatures {
-    fn consensus_encode_exact_size(&self) -> usize {
-        Self::CONSENSUS_ENCODING_VERSION.required_space() +
-            self.flags.consensus_encode_exact_size() +
-            self.maturity.required_space()
-    }
-}
+impl ConsensusEncodingSized for OutputFeatures {}
 
 impl ConsensusDecoding for OutputFeatures {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         // Changing the order of these operations is consensus breaking
-        let version = reader.read_varint::<u8>()?;
-        if version != Self::CONSENSUS_ENCODING_VERSION {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Invalid version. Expected {} but got {}",
-                    Self::CONSENSUS_ENCODING_VERSION,
-                    version
-                ),
-            ));
-        }
-        // Decode safety: read_varint will stop reading the varint after 10 bytes
-        let maturity = reader.read_varint()?;
+        let version = OutputFeaturesVersion::consensus_decode(reader)?;
+        // Decode safety: consensus_decode will stop reading the varint after 10 bytes
+        let maturity = u64::consensus_decode(reader)?;
         let flags = OutputFlags::consensus_decode(reader)?;
+        let parent_public_key = <Option<PublicKey> as ConsensusDecoding>::consensus_decode(reader)?;
+        const MAX_UNIQUE_ID_SIZE: usize = 256;
+        let unique_id = <Option<MaxSizeBytes<MAX_UNIQUE_ID_SIZE>> as ConsensusDecoding>::consensus_decode(reader)?;
+        let asset = <Option<AssetOutputFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
+        let mint_non_fungible = <Option<MintNonFungibleFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
+        let sidechain_checkpoint =
+            <Option<SideChainCheckpointFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
+        const MAX_METADATA_SIZE: usize = 1024;
+        let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
         Ok(Self {
+            version,
             flags,
             maturity,
-            ..Default::default()
+            parent_public_key,
+            unique_id: unique_id.map(Into::into),
+            asset,
+            mint_non_fungible,
+            sidechain_checkpoint,
+            metadata: metadata.into(),
         })
     }
 }
 
 impl Default for OutputFeatures {
     fn default() -> Self {
-        OutputFeatures {
-            flags: OutputFlags::empty(),
-            maturity: 0,
-            metadata: vec![],
-            unique_id: None,
-            parent_public_key: None,
-            asset: None,
-            mint_non_fungible: None,
-            sidechain_checkpoint: None,
-        }
+        OutputFeatures::new_current_version(OutputFlags::empty(), 0, vec![], None, None, None, None, None)
     }
 }
 
@@ -248,5 +283,76 @@ impl Display for OutputFeatures {
             "OutputFeatures: Flags = {:?}, Maturity = {}",
             self.flags, self.maturity
         )
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::{io::ErrorKind, iter};
+
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    fn make_fully_populated_output_features() -> OutputFeatures {
+        OutputFeatures {
+            version: OutputFeaturesVersion::get_current_version(),
+            flags: OutputFlags::all(),
+            maturity: u64::MAX,
+            metadata: vec![1; 1024],
+            unique_id: Some(vec![0u8; 256]),
+            parent_public_key: Some(PublicKey::default()),
+            asset: Some(AssetOutputFeatures {
+                public_key: Default::default(),
+                template_ids_implemented: vec![1u32; 50],
+                template_parameters: iter::repeat_with(|| TemplateParameter {
+                    template_id: 0,
+                    template_data_version: 0,
+                    template_data: vec![],
+                })
+                .take(50)
+                .collect(),
+            }),
+            mint_non_fungible: Some(MintNonFungibleFeatures {
+                asset_public_key: Default::default(),
+                asset_owner_commitment: Default::default(),
+            }),
+            sidechain_checkpoint: Some(SideChainCheckpointFeatures {
+                merkle_root: vec![1u8; 32],
+                committee: iter::repeat_with(PublicKey::default).take(50).collect(),
+            }),
+        }
+    }
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let subject = make_fully_populated_output_features();
+        check_consensus_encoding_correctness(subject).unwrap();
+    }
+
+    #[test]
+    fn it_encodes_and_decodes_correctly_in_none_case() {
+        let mut subject = make_fully_populated_output_features();
+        subject.unique_id = None;
+        subject.asset = None;
+        subject.mint_non_fungible = None;
+        subject.sidechain_checkpoint = None;
+        check_consensus_encoding_correctness(subject).unwrap();
+    }
+
+    #[test]
+    fn it_fails_for_large_metadata() {
+        let mut subject = make_fully_populated_output_features();
+        subject.metadata = vec![1u8; 1025];
+        let err = check_consensus_encoding_correctness(subject).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn it_fails_for_large_unique_id() {
+        let mut subject = make_fully_populated_output_features();
+        subject.unique_id = Some(vec![0u8; 257]);
+
+        let err = check_consensus_encoding_correctness(subject).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::InvalidInput);
     }
 }

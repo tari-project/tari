@@ -37,6 +37,7 @@ use crate::{
         emission::{Emission, EmissionSchedule},
         ConsensusConstants,
     },
+    covenants::Covenant,
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
@@ -80,6 +81,7 @@ pub struct CoinbaseBuilder {
     script: Option<TariScript>,
     private_nonce: Option<PrivateKey>,
     rewind_data: Option<RewindData>,
+    covenant: Covenant,
 }
 
 impl CoinbaseBuilder {
@@ -95,6 +97,7 @@ impl CoinbaseBuilder {
             script: None,
             private_nonce: None,
             rewind_data: None,
+            covenant: Covenant::default(),
         }
     }
 
@@ -126,6 +129,12 @@ impl CoinbaseBuilder {
     /// Provides the private script for this transaction, usually by a miner's wallet instance.
     pub fn with_script(mut self, script: TariScript) -> Self {
         self.script = Some(script);
+        self
+    }
+
+    /// Set the covenant for this transaction.
+    pub fn with_covenant(mut self, covenant: Covenant) -> Self {
+        self.covenant = covenant;
         self
     }
 
@@ -189,6 +198,7 @@ impl CoinbaseBuilder {
 
         let sender_offset_private_key = PrivateKey::random(&mut OsRng);
         let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
+        let covenant = self.covenant;
 
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
             &total_reward,
@@ -196,10 +206,11 @@ impl CoinbaseBuilder {
             &script,
             &output_features,
             &sender_offset_private_key,
+            &covenant,
         )
         .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
 
-        let unblinded_output = UnblindedOutput::new(
+        let unblinded_output = UnblindedOutput::new_current_version(
             total_reward,
             spending_key,
             output_features,
@@ -209,6 +220,7 @@ impl CoinbaseBuilder {
             sender_offset_public_key,
             metadata_sig,
             0,
+            covenant,
         );
         // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
@@ -237,7 +249,7 @@ impl CoinbaseBuilder {
             .with_reward(total_reward)
             .with_kernel(kernel);
         let tx = builder
-            .build(&self.factories, None, Some(height))
+            .build(&self.factories, None, height)
             .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?;
         Ok((tx, unblinded_output))
     }
@@ -328,15 +340,14 @@ mod test {
             .open_value(&p.spend_key, block_reward.into(), utxo.commitment()));
         utxo.verify_range_proof(&factories.range_proof).unwrap();
         assert!(utxo.features.flags.contains(OutputFlags::COINBASE_OUTPUT));
-        assert_eq!(
-            tx.body.check_coinbase_output(
+        tx.body
+            .check_coinbase_output(
                 block_reward,
                 rules.consensus_constants(0).coinbase_lock_height(),
                 &factories,
-                42
-            ),
-            Ok(())
-        );
+                42,
+            )
+            .unwrap();
     }
 
     #[test]
@@ -386,7 +397,7 @@ mod test {
             .build(rules.consensus_constants(42), rules.emission_schedule())
             .unwrap();
         tx.body.outputs_mut()[0].features.maturity = 1;
-        assert_eq!(
+        assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
                 rules.consensus_constants(0).coinbase_lock_height(),
@@ -394,7 +405,7 @@ mod test {
                 42
             ),
             Err(TransactionError::InvalidCoinbaseMaturity)
-        );
+        ));
     }
 
     #[test]
@@ -430,7 +441,7 @@ mod test {
         tx.body.add_kernel(coinbase_kernel2);
 
         // test catches that coinbase amount is wrong
-        assert_eq!(
+        assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
                 rules.consensus_constants(0).coinbase_lock_height(),
@@ -438,7 +449,7 @@ mod test {
                 42
             ),
             Err(TransactionError::InvalidCoinbase)
-        );
+        ));
         // lets construct a correct one now, with the correct amount.
         let builder = CoinbaseBuilder::new(factories.clone());
         let builder = builder
@@ -502,7 +513,7 @@ mod test {
         tx_kernel_test.body.add_kernel(coinbase_kernel2);
 
         // test catches that coinbase count on the utxo is wrong
-        assert_eq!(
+        assert!(matches!(
             tx.body.check_coinbase_output(
                 block_reward,
                 rules.consensus_constants(0).coinbase_lock_height(),
@@ -510,9 +521,9 @@ mod test {
                 42
             ),
             Err(TransactionError::MoreThanOneCoinbase)
-        );
+        ));
         // test catches that coinbase count on the kernel is wrong
-        assert_eq!(
+        assert!(matches!(
             tx_kernel_test.body.check_coinbase_output(
                 block_reward,
                 rules.consensus_constants(0).coinbase_lock_height(),
@@ -520,19 +531,18 @@ mod test {
                 42
             ),
             Err(TransactionError::MoreThanOneCoinbase)
-        );
+        ));
         // testing that "block" is still valid
-        assert_eq!(
-            tx.body.validate_internal_consistency(
+        tx.body
+            .validate_internal_consistency(
                 &BlindingFactor::default(),
                 &PrivateKey::default(),
                 false,
                 block_reward,
                 &factories,
                 None,
-                Some(u64::MAX)
-            ),
-            Ok(())
-        );
+                u64::MAX,
+            )
+            .unwrap();
     }
 }

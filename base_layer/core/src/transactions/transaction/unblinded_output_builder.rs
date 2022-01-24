@@ -23,9 +23,12 @@
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey};
 use tari_crypto::script::{ExecutionStack, TariScript};
 
-use crate::transactions::{
-    tari_amount::MicroTari,
-    transaction::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
+use crate::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -34,6 +37,7 @@ pub struct UnblindedOutputBuilder {
     spending_key: BlindingFactor,
     pub features: OutputFeatures,
     pub script: Option<TariScript>,
+    covenant: Covenant,
     input_data: Option<ExecutionStack>,
     script_private_key: Option<PrivateKey>,
     sender_offset_public_key: Option<PublicKey>,
@@ -49,6 +53,7 @@ impl UnblindedOutputBuilder {
             spending_key,
             features: OutputFeatures::default(),
             script: None,
+            covenant: Covenant::default(),
             input_data: None,
             script_private_key: None,
             sender_offset_public_key: None,
@@ -74,6 +79,7 @@ impl UnblindedOutputBuilder {
             &self.features,
             &sender_offset_public_key,
             &public_nonce_commitment,
+            &self.covenant,
         )?;
         self.metadata_signature = Some(metadata_partial);
         self.metadata_signed_by_receiver = true;
@@ -89,6 +95,7 @@ impl UnblindedOutputBuilder {
                 .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
             &self.features,
             sender_offset_private_key,
+            &self.covenant,
         )?;
         self.metadata_signature = Some(metadata_sig);
         self.metadata_signed_by_sender = true;
@@ -106,27 +113,23 @@ impl UnblindedOutputBuilder {
                 "Cannot build output because it has not been signed by the sender".to_string(),
             ));
         }
-        let ub = UnblindedOutput {
-            value: self.value,
-            spending_key: self.spending_key,
-            features: self.features,
-            script: self
-                .script
+        let ub = UnblindedOutput::new_current_version(
+            self.value,
+            self.spending_key,
+            self.features,
+            self.script
                 .ok_or_else(|| TransactionError::ValidationError("script must be set".to_string()))?,
-            input_data: self
-                .input_data
+            self.input_data
                 .ok_or_else(|| TransactionError::ValidationError("input_data must be set".to_string()))?,
-            script_private_key: self
-                .script_private_key
+            self.script_private_key
                 .ok_or_else(|| TransactionError::ValidationError("script_private_key must be set".to_string()))?,
-            sender_offset_public_key: self
-                .sender_offset_public_key
+            self.sender_offset_public_key
                 .ok_or_else(|| TransactionError::ValidationError("sender_offset_public_key must be set".to_string()))?,
-            metadata_signature: self
-                .metadata_signature
+            self.metadata_signature
                 .ok_or_else(|| TransactionError::ValidationError("metadata_signature must be set".to_string()))?,
-            script_lock_height: 0,
-        };
+            0,
+            self.covenant,
+        );
         Ok(ub)
     }
 

@@ -27,6 +27,7 @@ pub struct Table<'t, 's> {
     titles: Option<Vec<&'t str>>,
     rows: Vec<Vec<String>>,
     delim_str: &'s str,
+    is_row_count_enabled: bool,
 }
 
 impl<'t, 's> Table<'t, 's> {
@@ -35,11 +36,17 @@ impl<'t, 's> Table<'t, 's> {
             titles: None,
             rows: Vec::new(),
             delim_str: "|",
+            is_row_count_enabled: false,
         }
     }
 
     pub fn set_titles(&mut self, titles: Vec<&'t str>) {
         self.titles = Some(titles);
+    }
+
+    pub fn enable_row_count(&mut self) -> &mut Self {
+        self.is_row_count_enabled = true;
+        self
     }
 
     pub fn add_row(&mut self, row: Vec<String>) {
@@ -55,11 +62,16 @@ impl<'t, 's> Table<'t, 's> {
             self.render_rows(out)?;
             out.write_all(b"\n")?;
         }
+        if self.is_row_count_enabled {
+            out.write_all(format!("\n{} row(s)\n", self.rows.len()).as_bytes())?;
+        }
         Ok(())
     }
 
     pub fn print_stdout(&self) {
-        self.render(&mut io::stdout()).unwrap();
+        let mut stdout = io::stdout();
+        self.render(&mut stdout).unwrap();
+        stdout.flush().unwrap();
     }
 
     fn col_width(&self, idx: usize) -> usize {

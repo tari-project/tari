@@ -201,6 +201,8 @@ pub enum TransactionEvent {
         is_valid: bool,
     },
     TransactionValidationStateChanged(OperationId),
+    TransactionValidationCompleted(OperationId),
+    TransactionValidationFailed(OperationId),
     Error(String),
 }
 
@@ -262,6 +264,12 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionValidationStateChanged(operation_id) => {
                 write!(f, "Transaction validation state changed: {}", operation_id)
+            },
+            TransactionEvent::TransactionValidationCompleted(operation_id) => {
+                write!(f, "Transaction validation completed: {}", operation_id)
+            },
+            TransactionEvent::TransactionValidationFailed(operation_id) => {
+                write!(f, "Transaction validation failed: {}", operation_id)
             },
         }
     }

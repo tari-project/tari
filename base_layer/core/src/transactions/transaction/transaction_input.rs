@@ -45,11 +45,16 @@ use tari_crypto::{
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
 
-use crate::transactions::transaction::{
-    transaction_output::TransactionOutput,
-    OutputFeatures,
-    TransactionError,
-    UnblindedOutput,
+use super::{TransactionInputVersion, TransactionOutputVersion};
+use crate::{
+    consensus::ToConsensusBytes,
+    covenants::Covenant,
+    transactions::transaction::{
+        transaction_output::TransactionOutput,
+        OutputFeatures,
+        TransactionError,
+        UnblindedOutput,
+    },
 };
 
 /// A transaction input.
@@ -57,6 +62,7 @@ use crate::transactions::transaction::{
 /// Primarily a reference to an output being spent by the transaction.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionInput {
+    pub version: TransactionInputVersion,
     /// Either the hash of TransactionOutput that this Input is spending or its data
     pub spent_output: SpentOutput,
     /// The script input data, if any
@@ -67,38 +73,67 @@ pub struct TransactionInput {
 
 /// An input for a transaction that spends an existing output
 impl TransactionInput {
+    pub fn new(
+        version: TransactionInputVersion,
+        spent_output: SpentOutput,
+        input_data: ExecutionStack,
+        script_signature: ComSignature,
+    ) -> TransactionInput {
+        TransactionInput {
+            version,
+            spent_output,
+            input_data,
+            script_signature,
+        }
+    }
+
+    pub fn new_current_version(
+        spent_output: SpentOutput,
+        input_data: ExecutionStack,
+        script_signature: ComSignature,
+    ) -> TransactionInput {
+        TransactionInput::new(
+            TransactionInputVersion::get_current_version(),
+            spent_output,
+            input_data,
+            script_signature,
+        )
+    }
+
     /// Create a new Transaction Input with just a reference hash of the spent output
     pub fn new_with_output_hash(
         output_hash: HashOutput,
         input_data: ExecutionStack,
         script_signature: ComSignature,
     ) -> TransactionInput {
-        TransactionInput {
-            spent_output: SpentOutput::OutputHash(output_hash),
-            input_data,
-            script_signature,
-        }
+        TransactionInput::new_current_version(SpentOutput::OutputHash(output_hash), input_data, script_signature)
     }
 
     /// Create a new Transaction Input with just a reference hash of the spent output
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_output_data(
+        version: TransactionInputVersion,
         features: OutputFeatures,
         commitment: Commitment,
         script: TariScript,
         input_data: ExecutionStack,
         script_signature: ComSignature,
         sender_offset_public_key: PublicKey,
+        covenant: Covenant,
     ) -> TransactionInput {
-        TransactionInput {
-            spent_output: SpentOutput::OutputData {
+        TransactionInput::new(
+            version,
+            SpentOutput::OutputData {
                 features,
                 commitment,
                 script,
                 sender_offset_public_key,
+                covenant,
+                version: TransactionOutputVersion::get_current_version(),
             },
             input_data,
             script_signature,
-        }
+        )
     }
 
     /// Populate the spent output data fields
@@ -108,16 +143,20 @@ impl TransactionInput {
         commitment: Commitment,
         script: TariScript,
         sender_offset_public_key: PublicKey,
+        covenant: Covenant,
+        version: TransactionOutputVersion,
     ) {
         self.spent_output = SpentOutput::OutputData {
             features,
             commitment,
             script,
             sender_offset_public_key,
+            covenant,
+            version,
         };
     }
 
-    pub fn build_script_challenge(
+    pub(super) fn build_script_challenge(
         nonce_commitment: &Commitment,
         script: &TariScript,
         input_data: &ExecutionStack,
@@ -148,6 +187,13 @@ impl TransactionInput {
         }
     }
 
+    pub fn features_mut(&mut self) -> Result<&mut OutputFeatures, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref mut features, .. } => Ok(features),
+        }
+    }
+
     pub fn script(&self) -> Result<&TariScript, TransactionError> {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
@@ -162,6 +208,13 @@ impl TransactionInput {
                 ref sender_offset_public_key,
                 ..
             } => Ok(sender_offset_public_key),
+        }
+    }
+
+    pub fn covenant(&self) -> Result<&Covenant, TransactionError> {
+        match self.spent_output {
+            SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
+            SpentOutput::OutputData { ref covenant, .. } => Ok(covenant),
         }
     }
 
@@ -261,11 +314,15 @@ impl TransactionInput {
                 ref commitment,
                 ref script,
                 ref features,
+                ref covenant,
+                version,
                 ..
             } => HashDigest::new()
                 .chain(features.to_consensus_bytes())
                 .chain(commitment.as_bytes())
                 .chain(script.as_bytes())
+                .chain(covenant.to_consensus_bytes())
+                .chain((version as u8).to_le_bytes())
                 .finalize()
                 .to_vec(),
         }
@@ -284,15 +341,19 @@ impl TransactionInput {
                 ref commitment,
                 ref script,
                 ref sender_offset_public_key,
+                ref covenant,
+                version,
             } => Ok(HashDigest::new()
                 .chain(features.to_consensus_bytes())
-                .chain(commitment.as_bytes())
+                .chain(commitment.to_consensus_bytes())
                 .chain(script.as_bytes())
-                .chain(sender_offset_public_key.as_bytes())
-                .chain(self.script_signature.u().as_bytes())
-                .chain(self.script_signature.v().as_bytes())
-                .chain(self.script_signature.public_nonce().as_bytes())
+                .chain(sender_offset_public_key.to_consensus_bytes())
+                .chain(self.script_signature.u().to_consensus_bytes())
+                .chain(self.script_signature.v().to_consensus_bytes())
+                .chain(self.script_signature.public_nonce().to_consensus_bytes())
                 .chain(self.input_data.as_bytes())
+                .chain(covenant.to_consensus_bytes())
+                .chain((version as u8).to_le_bytes())
                 .finalize()
                 .to_vec()),
         }
@@ -309,14 +370,15 @@ impl TransactionInput {
 
     /// Return a clone of this Input into its compact form
     pub fn to_compact(&self) -> Self {
-        Self {
-            spent_output: match &self.spent_output {
+        Self::new(
+            self.version,
+            match &self.spent_output {
                 SpentOutput::OutputHash(h) => SpentOutput::OutputHash(h.clone()),
                 SpentOutput::OutputData { .. } => SpentOutput::OutputHash(self.output_hash()),
             },
-            input_data: self.input_data.clone(),
-            script_signature: self.script_signature.clone(),
-        }
+            self.input_data.clone(),
+            self.script_signature.clone(),
+        )
     }
 }
 
@@ -329,9 +391,10 @@ impl Display for TransactionInput {
                 ref script,
                 ref features,
                 ref sender_offset_public_key,
+                ..
             } => write!(
                 fmt,
-                "{} [{:?}], Script hash: ({}), Offset_Pubkey: ({})",
+                "{} [{:?}], Script: ({}), Offset_Pubkey: ({})",
                 commitment.to_hex(),
                 features,
                 script,
@@ -372,5 +435,8 @@ pub enum SpentOutput {
         commitment: Commitment,
         script: TariScript,
         sender_offset_public_key: PublicKey,
+        /// The transaction covenant
+        covenant: Covenant,
+        version: TransactionOutputVersion,
     },
 }

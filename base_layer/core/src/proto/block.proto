@@ -59,7 +59,10 @@ message Block {
 // A new block message. This is the message that is propagated around the network. It contains the
 // minimal information required to identify and optionally request the full block.
 message NewBlock {
-    bytes block_hash = 1;
+    BlockHeader header = 1;
+    tari.types.TransactionKernel coinbase_kernel = 2;
+    tari.types.TransactionOutput coinbase_output = 3;
+    repeated bytes kernel_excess_sigs = 4;
 }
 
 // The representation of a historical block in the blockchain. It is essentially identical to a protocol-defined

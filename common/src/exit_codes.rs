@@ -11,7 +11,7 @@ pub enum ExitCodes {
     InterfaceError,
     #[error("The application exited. {0}")]
     WalletError(String),
-    #[error("The wallet was not able to start the GRPC server. {0}")]
+    #[error("The application was not able to start the GRPC server. {0}")]
     GrpcError(String),
     #[error("The application did not accept the command input: {0}")]
     InputError(String),
@@ -21,19 +21,19 @@ pub enum ExitCodes {
     IOError(String),
     #[error("Recovery failed: {0}")]
     RecoveryError(String),
-    #[error("The wallet exited because of an internal network error: {0}")]
+    #[error("The application exited because of an internal network error: {0}")]
     NetworkError(String),
-    #[error("The wallet exited because it received a message it could not interpret: {0}")]
+    #[error("The application exited because it received a message it could not interpret: {0}")]
     ConversionError(String),
     #[error("Your password was incorrect.")]
     IncorrectPassword,
-    #[error("Your application is encrypted but no password was provided.")]
+    #[error("Your wallet is encrypted but no password was provided.")]
     NoPassword,
     #[error("The application encountered a database error: {0}")]
     DatabaseError(String),
     #[error("Tor connection is offline")]
     TorOffline,
-    #[error("Database is in inconsistent state: {0}")]
+    #[error("Database is in an inconsistent state!: {0}")]
     DbInconsistentState(String),
 }
 
@@ -70,10 +70,9 @@ impl ExitCodes {
                 eprintln!("If you are unsure of what to do, use the following command to start the Tor proxy:");
                 eprintln!(
                     "tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport \
-                     127.0.0.1:9051 --log \"notice stdout\" --clientuseipv6 1",
+                     127.0.0.1:9051 --log \"warn stdout\" --clientuseipv6 1",
                 );
             },
-
             e => {
                 eprintln!("{}", e);
             },
@@ -92,6 +91,18 @@ impl From<super::ConfigError> for ExitCodes {
 impl From<crate::ConfigurationError> for ExitCodes {
     fn from(err: crate::ConfigurationError) -> Self {
         Self::ConfigError(err.to_string())
+    }
+}
+
+impl From<multiaddr::Error> for ExitCodes {
+    fn from(err: multiaddr::Error) -> Self {
+        Self::ConfigError(err.to_string())
+    }
+}
+
+impl From<std::io::Error> for ExitCodes {
+    fn from(err: std::io::Error) -> Self {
+        Self::IOError(err.to_string())
     }
 }
 

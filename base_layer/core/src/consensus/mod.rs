@@ -30,7 +30,16 @@ mod consensus_manager;
 pub use consensus_manager::{ConsensusManager, ConsensusManagerBuilder, ConsensusManagerError};
 
 mod consensus_encoding;
-pub use consensus_encoding::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusEncodingWrapper};
+#[cfg(test)]
+pub(crate) use consensus_encoding::test::check_consensus_encoding_correctness;
+pub use consensus_encoding::{
+    ConsensusDecoding,
+    ConsensusEncoding,
+    ConsensusEncodingSized,
+    MaxSizeBytes,
+    MaxSizeVec,
+    ToConsensusBytes,
+};
 
 mod network;
 pub use network::NetworkConsensus;

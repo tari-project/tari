@@ -16,6 +16,7 @@ members = [
     "dan_layer/core",
     "dan_layer/storage_sqlite",
     "common_sqlite",
+    "infrastructure/libtor",
     "infrastructure/metrics",
     "infrastructure/shutdown",
     "infrastructure/storage",
@@ -36,7 +37,6 @@ members = [
 #
 #[profile.release]
 #debug = true
-
 
 # Shutdown when panicking so we can see the error, specifically for the wallet
 [profile.release]

@@ -25,12 +25,14 @@ import "types.proto";
 package tari.rpc;
 
 service ValidatorNode {
+    rpc GetIdentity(GetIdentityRequest) returns (GetIdentityResponse);
     rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
     rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
 //    rpc ExecuteInstruction(ExecuteInstructionRequest) returns (ExecuteInstructionResponse);
     rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
     rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
 }
+
 
 message GetMetadataRequest {
     // empty

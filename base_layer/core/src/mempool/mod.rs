@@ -47,10 +47,6 @@ pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolServ
 #[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 
-// public modules
-#[cfg(feature = "base_node")]
-pub mod async_mempool;
-
 // Public re-exports
 #[cfg(feature = "base_node")]
 pub use error::MempoolError;
@@ -71,6 +67,7 @@ pub use service::{MempoolServiceError, MempoolServiceInitializer, OutboundMempoo
 #[cfg(feature = "base_node")]
 mod sync_protocol;
 use core::fmt::{Display, Error, Formatter};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
@@ -92,15 +89,15 @@ impl Display for StatsResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         write!(
             fmt,
-            "Mempool stats: Total transactions: {}, Unconfirmed: {}, Published: {}, Total Weight: {}",
+            "Mempool stats: Total transactions: {}, Unconfirmed: {}, Published: {}, Total Weight: {}g",
             self.total_txs, self.unconfirmed_txs, self.reorg_txs, self.total_weight
         )
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct StateResponse {
-    pub unconfirmed_pool: Vec<Transaction>,
+    pub unconfirmed_pool: Vec<Arc<Transaction>>,
     pub reorg_pool: Vec<Signature>,
 }
 
@@ -159,10 +156,4 @@ impl Display for TxStorageResponse {
         };
         fmt.write_str(storage)
     }
-}
-
-/// Events that can be published on state changes of the Mempool
-#[derive(Debug, Clone)]
-pub enum MempoolStateEvent {
-    Updated,
 }

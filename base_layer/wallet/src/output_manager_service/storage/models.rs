@@ -122,8 +122,8 @@ pub enum SpendingPriority {
 impl From<u32> for SpendingPriority {
     fn from(value: u32) -> Self {
         match value {
-            100 => SpendingPriority::HtlcSpendAsap,
-            500 => SpendingPriority::Normal,
+            0 => SpendingPriority::Normal,
+            1 => SpendingPriority::HtlcSpendAsap,
             _ => SpendingPriority::Unknown,
         }
     }
@@ -132,8 +132,8 @@ impl From<u32> for SpendingPriority {
 impl From<SpendingPriority> for u32 {
     fn from(value: SpendingPriority) -> Self {
         match value {
-            SpendingPriority::HtlcSpendAsap => 100,
-            SpendingPriority::Normal | SpendingPriority::Unknown => 500,
+            SpendingPriority::Normal | SpendingPriority::Unknown => 0,
+            SpendingPriority::HtlcSpendAsap => 1,
         }
     }
 }

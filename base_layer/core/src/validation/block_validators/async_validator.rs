@@ -155,6 +155,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             AggregateBody::new_sorted_unchecked(inputs_result.inputs, outputs_result.outputs, kernels_result.kernels),
         );
 
+        helpers::validate_covenants(&block)?;
+
         Ok(block)
     }
 
@@ -276,6 +278,8 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                                 output.commitment,
                                 output.script,
                                 output.sender_offset_public_key,
+                                output.covenant,
+                                output.version,
                             );
                         },
                     }

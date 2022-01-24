@@ -39,11 +39,7 @@ use super::{
     manager::ConnectivityStatus,
     ConnectivitySelection,
 };
-use crate::{
-    connection_manager::{ConnectionDirection, ConnectionManagerError},
-    peer_manager::NodeId,
-    PeerConnection,
-};
+use crate::{connection_manager::ConnectionManagerError, peer_manager::NodeId, PeerConnection};
 
 const LOG_TARGET: &str = "comms::connectivity::requester";
 
@@ -57,7 +53,6 @@ pub enum ConnectivityEvent {
     PeerConnectFailed(NodeId),
     PeerBanned(NodeId),
     PeerOffline(NodeId),
-    PeerConnectionWillClose(NodeId, ConnectionDirection),
 
     ConnectivityStateInitialized,
     ConnectivityStateOnline(usize),
@@ -74,9 +69,6 @@ impl fmt::Display for ConnectivityEvent {
             PeerConnectFailed(node_id) => write!(f, "PeerConnectFailed({})", node_id),
             PeerBanned(node_id) => write!(f, "PeerBanned({})", node_id),
             PeerOffline(node_id) => write!(f, "PeerOffline({})", node_id),
-            PeerConnectionWillClose(node_id, direction) => {
-                write!(f, "PeerConnectionWillClose({}, {})", node_id, direction)
-            },
             ConnectivityStateInitialized => write!(f, "ConnectivityStateInitialized"),
             ConnectivityStateOnline(n) => write!(f, "ConnectivityStateOnline({})", n),
             ConnectivityStateDegraded(n) => write!(f, "ConnectivityStateDegraded({})", n),

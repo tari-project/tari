@@ -22,13 +22,12 @@
 
 use std::{fmt, fmt::Formatter};
 
-use serde::{Deserialize, Serialize};
 use tari_common_types::waiting_requests::RequestKey;
 
 use crate::mempool::{StateResponse, StatsResponse, TxStorageResponse};
 
 /// API Response enum for Mempool responses.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub enum MempoolResponse {
     Stats(StatsResponse),
     State(StateResponse),
@@ -47,7 +46,7 @@ impl fmt::Display for MempoolResponse {
 }
 
 /// Response type for a received MempoolService requests
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 pub struct MempoolServiceResponse {
     pub request_key: RequestKey,
     pub response: MempoolResponse,

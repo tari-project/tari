@@ -21,14 +21,14 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    fmt::{Display, Error, Formatter},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use log::*;
 use strum_macros::Display;
 use tari_common_types::types::{BlockHash, HashOutput, PublicKey};
-use tari_comms::peer_manager::NodeId;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
@@ -37,81 +37,56 @@ use crate::{
     base_node::comms_interface::{
         error::CommsInterfaceError,
         local_interface::BlockEventSender,
+        FetchMempoolTransactionsResponse,
         NodeCommsRequest,
         NodeCommsResponse,
         OutboundNodeCommsInterface,
     },
-    blocks::{Block, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, PrunedOutput},
+    blocks::{Block, BlockBuilder, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
-    mempool::{async_mempool, Mempool},
+    mempool::Mempool,
     proof_of_work::{Difficulty, PowAlgorithm},
-    transactions::transaction::TransactionKernel,
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
 const MAX_HEADERS_PER_RESPONSE: u32 = 100;
+const MAX_REQUEST_BY_BLOCK_HASHES: usize = 100;
+const MAX_REQUEST_BY_KERNEL_EXCESS_SIGS: usize = 100;
+const MAX_REQUEST_BY_UTXO_HASHES: usize = 100;
 
 /// Events that can be published on the Validated Block Event Stream
 /// Broadcast is to notify subscribers if this is a valid propagated block event
 #[derive(Debug, Clone, Display)]
 pub enum BlockEvent {
-    ValidBlockAdded(Arc<Block>, BlockAddResult, Broadcast),
-    AddBlockFailed(Arc<Block>, Broadcast),
+    ValidBlockAdded(Arc<Block>, BlockAddResult),
+    AddBlockFailed(Arc<Block>),
     BlockSyncComplete(Arc<ChainBlock>),
     BlockSyncRewind(Vec<Arc<ChainBlock>>),
 }
 
-/// Used to notify if the block event is for a propagated block.
-#[derive(Debug, Clone, Copy)]
-pub struct Broadcast(bool);
-
-impl Broadcast {
-    #[inline]
-    pub fn is_true(&self) -> bool {
-        self.0
-    }
-}
-
-#[allow(clippy::identity_op)]
-impl Display for Broadcast {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "Broadcast[{}]", self.0)
-    }
-}
-
-impl From<Broadcast> for bool {
-    fn from(v: Broadcast) -> Self {
-        v.0
-    }
-}
-
-impl From<bool> for Broadcast {
-    fn from(v: bool) -> Self {
-        Broadcast(v)
-    }
-}
-
 /// The InboundNodeCommsInterface is used to handle all received inbound requests from remote nodes.
-pub struct InboundNodeCommsHandlers<T> {
+pub struct InboundNodeCommsHandlers<B> {
     block_event_sender: BlockEventSender,
-    blockchain_db: AsyncBlockchainDb<T>,
+    blockchain_db: AsyncBlockchainDb<B>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
     new_block_request_semaphore: Arc<Semaphore>,
     outbound_nci: OutboundNodeCommsInterface,
+    connectivity: ConnectivityRequester,
 }
 
-impl<T> InboundNodeCommsHandlers<T>
-where T: BlockchainBackend + 'static
+impl<B> InboundNodeCommsHandlers<B>
+where B: BlockchainBackend + 'static
 {
     /// Construct a new InboundNodeCommsInterface.
     pub fn new(
         block_event_sender: BlockEventSender,
-        blockchain_db: AsyncBlockchainDb<T>,
+        blockchain_db: AsyncBlockchainDb<B>,
         mempool: Mempool,
         consensus_manager: ConsensusManager,
         outbound_nci: OutboundNodeCommsInterface,
+        connectivity: ConnectivityRequester,
     ) -> Self {
         Self {
             block_event_sender,
@@ -120,6 +95,7 @@ where T: BlockchainBackend + 'static
             consensus_manager,
             new_block_request_semaphore: Arc::new(Semaphore::new(1)),
             outbound_nci,
+            connectivity,
         }
     }
 
@@ -134,7 +110,17 @@ where T: BlockchainBackend + 'static
                 let headers = self.blockchain_db.fetch_chain_headers(range).await?;
                 Ok(NodeCommsResponse::BlockHeaders(headers))
             },
-            NodeCommsRequest::FetchHeadersWithHashes(block_hashes) => {
+            NodeCommsRequest::FetchHeadersByHashes(block_hashes) => {
+                if block_hashes.len() > MAX_REQUEST_BY_BLOCK_HASHES {
+                    return Err(CommsInterfaceError::InvalidRequest {
+                        request: "FetchHeadersByHashes",
+                        details: format!(
+                            "Exceeded maximum block hashes request (max: {}, got:{})",
+                            MAX_REQUEST_BY_BLOCK_HASHES,
+                            block_hashes.len()
+                        ),
+                    });
+                }
                 let mut block_headers = Vec::with_capacity(block_hashes.len());
                 for block_hash in block_hashes {
                     let block_hex = block_hash.to_hex();
@@ -267,7 +253,17 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithKernels(excess_sigs) => {
+            NodeCommsRequest::FetchBlocksByKernelExcessSigs(excess_sigs) => {
+                if excess_sigs.len() > MAX_REQUEST_BY_KERNEL_EXCESS_SIGS {
+                    return Err(CommsInterfaceError::InvalidRequest {
+                        request: "FetchBlocksByKernelExcessSigs",
+                        details: format!(
+                            "Exceeded maximum number of kernel excess sigs in request (max: {}, got:{})",
+                            MAX_REQUEST_BY_KERNEL_EXCESS_SIGS,
+                            excess_sigs.len()
+                        ),
+                    });
+                }
                 let mut blocks = Vec::with_capacity(excess_sigs.len());
                 for sig in excess_sigs {
                     let sig_hex = sig.get_signature().to_hex();
@@ -293,7 +289,17 @@ where T: BlockchainBackend + 'static
                 }
                 Ok(NodeCommsResponse::HistoricalBlocks(blocks))
             },
-            NodeCommsRequest::FetchBlocksWithUtxos(commitments) => {
+            NodeCommsRequest::FetchBlocksByUtxos(commitments) => {
+                if commitments.len() > MAX_REQUEST_BY_UTXO_HASHES {
+                    return Err(CommsInterfaceError::InvalidRequest {
+                        request: "FetchBlocksByUtxos",
+                        details: format!(
+                            "Exceeded maximum number of utxo hashes in request (max: {}, got:{})",
+                            MAX_REQUEST_BY_UTXO_HASHES,
+                            commitments.len()
+                        ),
+                    });
+                }
                 let mut blocks = Vec::with_capacity(commitments.len());
                 for commitment in commitments {
                     let commitment_hex = commitment.to_hex();
@@ -341,7 +347,13 @@ where T: BlockchainBackend + 'static
                     request.max_weight
                 };
 
-                let transactions = async_mempool::retrieve(self.mempool.clone(), asking_weight)
+                debug!(
+                    target: LOG_TARGET,
+                    "Fetching transactions with a maximum weight of {} for the template", asking_weight
+                );
+                let transactions = self
+                    .mempool
+                    .retrieve(asking_weight)
                     .await?
                     .into_iter()
                     .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
@@ -350,7 +362,7 @@ where T: BlockchainBackend + 'static
                 debug!(
                     target: LOG_TARGET,
                     "Adding {} transaction(s) to new block template",
-                    transactions.len()
+                    transactions.len(),
                 );
 
                 let prev_hash = header.prev_hash.clone();
@@ -364,13 +376,23 @@ where T: BlockchainBackend + 'static
                 );
                 debug!(
                     target: LOG_TARGET,
-                    "New block template requested at height {}", block_template.header.height,
+                    "New block template requested at height {}, weight: {}",
+                    block_template.header.height,
+                    block_template.body.calculate_weight(constants.transaction_weight())
                 );
                 trace!(target: LOG_TARGET, "{}", block_template);
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
                 let block = self.blockchain_db.prepare_new_block(block_template).await?;
+                let constants = self.consensus_manager.consensus_constants(block.header.height);
+                debug!(
+                    target: LOG_TARGET,
+                    "Prepared new block from template (hash: {}, weight: {}, {})",
+                    block.hash().to_hex(),
+                    block.body.calculate_weight(constants.transaction_weight()),
+                    block.body.to_counts_string()
+                );
                 Ok(NodeCommsResponse::NewBlock {
                     success: true,
                     error: None,
@@ -378,20 +400,14 @@ where T: BlockchainBackend + 'static
                 })
             },
             NodeCommsRequest::FetchKernelByExcessSig(signature) => {
-                let mut kernels = Vec::<TransactionKernel>::new();
-
-                match self.blockchain_db.fetch_kernel_by_excess_sig(signature).await {
-                    Ok(kernel) => match kernel {
-                        None => (),
-                        Some((kernel, _kernel_hash)) => {
-                            kernels.push(kernel);
-                        },
-                    },
+                let kernels = match self.blockchain_db.fetch_kernel_by_excess_sig(signature).await {
+                    Ok(Some((kernel, _))) => vec![kernel],
+                    Ok(None) => vec![],
                     Err(err) => {
                         error!(target: LOG_TARGET, "Could not fetch kernel {}", err.to_string());
                         return Err(err.into());
                     },
-                }
+                };
 
                 Ok(NodeCommsResponse::TransactionKernels(kernels))
             },
@@ -455,6 +471,15 @@ where T: BlockchainBackend + 'static
                     output: Box::new(output),
                 })
             },
+            NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
+                let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
+                Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
+                    FetchMempoolTransactionsResponse {
+                        transactions,
+                        not_found,
+                    },
+                ))
+            },
         }
     }
 
@@ -467,7 +492,7 @@ where T: BlockchainBackend + 'static
         new_block: NewBlock,
         source_peer: NodeId,
     ) -> Result<(), CommsInterfaceError> {
-        let NewBlock { block_hash } = new_block;
+        let block_hash = new_block.header.hash();
 
         if self.blockchain_db.inner().is_add_block_disabled() {
             info!(
@@ -482,7 +507,9 @@ where T: BlockchainBackend + 'static
         // As multiple NewBlock requests arrive from propagation, this semaphore prevents multiple requests to nodes for
         // the same full block. The first request that succeeds will stop the node from requesting the block from any
         // other node (block_exists is true).
-        let _permit = self.new_block_request_semaphore.acquire().await;
+        // Arc clone to satisfy the borrow checker
+        let semaphore = self.new_block_request_semaphore.clone();
+        let _permit = semaphore.acquire().await.unwrap();
 
         if self.blockchain_db.block_exists(block_hash.clone()).await? {
             debug!(
@@ -495,41 +522,145 @@ where T: BlockchainBackend + 'static
 
         debug!(
             target: LOG_TARGET,
-            "Block with hash `{}` is unknown. Requesting it from peer `{}`.",
+            "Block with hash `{}` is unknown. Constructing block from known mempool transactions / requesting missing \
+             transactions from peer '{}'.",
             block_hash.to_hex(),
-            source_peer.short_str()
+            source_peer
         );
-        let mut block = self
+
+        let block = self.reconcile_block(source_peer.clone(), new_block).await?;
+        self.handle_block(block, Some(source_peer)).await?;
+
+        Ok(())
+    }
+
+    async fn reconcile_block(
+        &mut self,
+        source_peer: NodeId,
+        new_block: NewBlock,
+    ) -> Result<Arc<Block>, CommsInterfaceError> {
+        let NewBlock {
+            header,
+            coinbase_kernel,
+            coinbase_output,
+            kernel_excess_sigs: excess_sigs,
+        } = new_block;
+
+        let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
+        let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
+
+        let mut builder = BlockBuilder::new(header.version)
+            .with_coinbase_utxo(coinbase_output, coinbase_kernel)
+            .with_transactions(known_transactions);
+
+        if missing_excess_sigs.is_empty() {
+            debug!(
+                target: LOG_TARGET,
+                "All transactions for block #{} ({}) found in mempool",
+                header.height,
+                header.hash().to_hex()
+            );
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Requesting {} unknown transaction(s) from peer '{}'.",
+                missing_excess_sigs.len(),
+                source_peer
+            );
+
+            let FetchMempoolTransactionsResponse {
+                transactions,
+                not_found,
+            } = self
+                .outbound_nci
+                .request_transactions_by_excess_sig(source_peer.clone(), missing_excess_sigs)
+                .await?;
+
+            // Add returned transactions to unconfirmed pool
+            if !transactions.is_empty() {
+                self.mempool.insert_all(&transactions).await?;
+            }
+
+            if !not_found.is_empty() {
+                let block_hash = header.hash();
+                warn!(
+                    target: LOG_TARGET,
+                    "Peer {} was not able to return all transactions for block #{} ({}). {} transaction(s) not found. \
+                     Requesting full block.",
+                    source_peer,
+                    header.height,
+                    block_hash.to_hex(),
+                    not_found.len()
+                );
+
+                let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+                return Ok(block);
+            }
+
+            builder = builder.with_transactions(
+                transactions
+                    .into_iter()
+                    .map(|tx| Arc::try_unwrap(tx).unwrap_or_else(|tx| (*tx).clone()))
+                    .collect(),
+            );
+        }
+
+        // NB: Add the header last because `with_transactions` etc updates the current header, but we have the final one
+        // already
+        builder = builder.with_header(header);
+
+        Ok(Arc::new(builder.build()))
+    }
+
+    async fn request_full_block_from_peer(
+        &mut self,
+        source_peer: NodeId,
+        block_hash: BlockHash,
+    ) -> Result<Arc<Block>, CommsInterfaceError> {
+        let mut historical_block = self
             .outbound_nci
-            .request_blocks_with_hashes_from_peer(vec![block_hash], Some(source_peer.clone()))
+            .request_blocks_by_hashes_from_peer(vec![block_hash], Some(source_peer.clone()))
             .await?;
 
-        match block.pop() {
+        return match historical_block.pop() {
             Some(block) => {
-                self.handle_block(Arc::new(block.try_into_block()?), true.into(), Some(source_peer))
-                    .await?;
-                Ok(())
+                let block = Arc::new(block.try_into_block()?);
+                Ok(block)
             },
             None => {
-                // TODO: #banheuristic - peer propagated block hash for which it could not return the full block
+                if let Err(e) = self
+                    .connectivity
+                    .ban_peer_until(
+                        source_peer.clone(),
+                        Duration::from_secs(100),
+                        format!("Peer {} failed to return the block that was requested.", source_peer),
+                    )
+                    .await
+                {
+                    error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                }
+
                 debug!(
                     target: LOG_TARGET,
-                    "Peer `{}` failed to return the block that was requested.",
-                    source_peer.short_str()
+                    "Peer `{}` failed to return the block that was requested.", source_peer
                 );
                 Err(CommsInterfaceError::InvalidPeerResponse(format!(
                     "Invalid response from peer `{}`: Peer failed to provide the block that was propagated",
-                    source_peer.short_str()
+                    source_peer
                 )))
             },
-        }
+        };
     }
 
     /// Handle inbound blocks from remote nodes and local services.
+    ///
+    /// ## Arguments
+    /// block - the block to store
+    /// new_block_msg - propagate this new block message
+    /// source_peer - the peer that sent this new block message, or None if the block was generated by a local miner
     pub async fn handle_block(
-        &self,
+        &mut self,
         block: Arc<Block>,
-        broadcast: Broadcast,
         source_peer: Option<NodeId>,
     ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
@@ -544,12 +675,19 @@ where T: BlockchainBackend + 'static
                 .map(|p| format!("remote peer: {}", p))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        trace!(target: LOG_TARGET, "Block: {}", block);
+        let timer = Instant::now();
         let add_block_result = self.blockchain_db.add_block(block.clone()).await;
         // Create block event on block event stream
         match add_block_result {
             Ok(block_add_result) => {
-                trace!(target: LOG_TARGET, "Block event created: {}", block_add_result);
+                debug!(
+                    target: LOG_TARGET,
+                    "Block #{} ({}) added ({}) to blockchain in {:.2?}",
+                    block_height,
+                    block_hash.to_hex(),
+                    block_add_result,
+                    timer.elapsed()
+                );
 
                 let should_propagate = match &block_add_result {
                     BlockAddResult::Ok(_) => true,
@@ -560,30 +698,47 @@ where T: BlockchainBackend + 'static
 
                 self.blockchain_db.cleanup_orphans().await?;
 
-                self.publish_block_event(BlockEvent::ValidBlockAdded(block, block_add_result, broadcast));
+                self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));
 
-                if should_propagate && broadcast.is_true() {
-                    info!(
+                if should_propagate {
+                    debug!(
                         target: LOG_TARGET,
                         "Propagate block ({}) to network.",
                         block_hash.to_hex()
                     );
                     let exclude_peers = source_peer.into_iter().collect();
-                    let new_block = NewBlock::new(block_hash.clone());
-                    self.outbound_nci.propagate_block(new_block, exclude_peers).await?;
+                    let new_block_msg = NewBlock::from(&*block);
+                    self.outbound_nci.propagate_block(new_block_msg, exclude_peers).await?;
                 }
                 Ok(block_hash)
             },
-            Err(e) => {
+
+            Err(e @ ChainStorageError::ValidationError { .. }) => {
                 warn!(
                     target: LOG_TARGET,
-                    "Block #{} ({}) validation failed: {:?}",
-                    block_height,
-                    block_hash.to_hex(),
+                    "Peer {} sent an invalid header: {}",
+                    source_peer
+                        .as_ref()
+                        .map(ToString::to_string)
+                        .unwrap_or_else(|| "<local request>".to_string()),
                     e
                 );
-                self.publish_block_event(BlockEvent::AddBlockFailed(block, broadcast));
-                Err(CommsInterfaceError::ChainStorageError(e))
+                if let Some(source_peer) = source_peer {
+                    if let Err(e) = self
+                        .connectivity
+                        .ban_peer(source_peer, format!("Peer propagated invalid block: {}", e))
+                        .await
+                    {
+                        error!(target: LOG_TARGET, "Failed to ban peer: {}", e);
+                    }
+                }
+                self.publish_block_event(BlockEvent::AddBlockFailed(block));
+                Err(e.into())
+            },
+
+            Err(e) => {
+                self.publish_block_event(BlockEvent::AddBlockFailed(block));
+                Err(e.into())
             },
         }
     }
@@ -614,7 +769,7 @@ where T: BlockchainBackend + 'static
     }
 }
 
-impl<T> Clone for InboundNodeCommsHandlers<T> {
+impl<B> Clone for InboundNodeCommsHandlers<B> {
     fn clone(&self) -> Self {
         Self {
             block_event_sender: self.block_event_sender.clone(),
@@ -623,6 +778,7 @@ impl<T> Clone for InboundNodeCommsHandlers<T> {
             consensus_manager: self.consensus_manager.clone(),
             new_block_request_semaphore: self.new_block_request_semaphore.clone(),
             outbound_nci: self.outbound_nci.clone(),
+            connectivity: self.connectivity.clone(),
         }
     }
 }

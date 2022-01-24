@@ -34,6 +34,6 @@ pub enum NetworkDiscoveryError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("No sync peers available")]
     NoSyncPeers,
-    #[error("Sync peer sent invalid peer")]
+    #[error("Sync peer sent invalid peer: {0}")]
     PeerValidationError(#[from] PeerValidatorError),
 }

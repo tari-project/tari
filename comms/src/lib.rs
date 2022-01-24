@@ -62,7 +62,7 @@ pub mod utils;
 pub mod test_utils;
 
 //---------------------------------- Re-exports --------------------------------------------//
-// Rather than requiring dependant crates to import dependencies for use with `tari_comms` we re-export them here.
+// Rather than requiring dependent crates to import dependencies for use with `tari_comms` we re-export them here.
 
 pub mod multiaddr {
     // Re-export so that client code does not have to have multiaddr as a dependency

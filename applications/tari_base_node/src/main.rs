@@ -49,7 +49,7 @@
 /// ```
 /// tor --allow-missing-torrc --ignore-missing-torrc \
 ///  --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 \
-///  --log "notice stdout" --clientuseipv6 1
+///  --log "warn stdout" --clientuseipv6 1
 /// ```
 ///
 /// For the first run
@@ -118,13 +118,18 @@ use tari_app_utilities::{
     initialization::init_configuration,
     utilities::setup_runtime,
 };
+#[cfg(all(unix, feature = "libtor"))]
+use tari_common::CommsTransport;
 use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
 use tari_comms::{
     peer_manager::PeerFeatures,
     tor::HiddenServiceControllerError,
     utils::multiaddr::multiaddr_to_socketaddr,
+    NodeIdentity,
 };
 use tari_core::chain_storage::ChainStorageError;
+#[cfg(all(unix, feature = "libtor"))]
+use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
@@ -154,45 +159,78 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitCodes> {
-    let (bootstrap, node_config, _) = init_configuration(ApplicationType::BaseNode)?;
+    #[allow(unused_mut)] // config isn't mutated on windows
+    let (bootstrap, mut config, _) = init_configuration(ApplicationType::BaseNode)?;
+    debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
 
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", node_config);
+    // Load or create the Node identity
+    let node_identity = setup_node_identity(
+        &config.base_node_identity_file,
+        &config.public_address,
+        bootstrap.create_id,
+        PeerFeatures::COMMUNICATION_NODE,
+    )?;
+
+    // Exit if create_id or init arguments were run
+    if bootstrap.create_id {
+        info!(
+            target: LOG_TARGET,
+            "Base node's node ID created at '{}'. Done.",
+            config.base_node_identity_file.to_string_lossy(),
+        );
+        return Ok(());
+    }
+
+    if bootstrap.init {
+        info!(target: LOG_TARGET, "Default configuration created. Done.");
+        return Ok(());
+    }
+
+    // The shutdown trigger for the system
+    let shutdown = Shutdown::new();
 
     // Set up the Tokio runtime
-    let rt = setup_runtime(&node_config).map_err(|e| {
-        error!(target: LOG_TARGET, "{}", e);
-        ExitCodes::UnknownError(e)
-    })?;
+    let runtime = setup_runtime(&config)?;
 
-    rt.block_on(run_node(node_config.into(), bootstrap))?;
+    // Run our own Tor instance, if configured
+    // This is currently only possible on linux/macos
+    #[cfg(all(unix, feature = "libtor"))]
+    if config.base_node_use_libtor && matches!(config.comms_transport, CommsTransport::TorHiddenService { .. }) {
+        let tor = Tor::initialize()?;
+        config.comms_transport = tor.update_comms_transport(config.comms_transport)?;
+        runtime.spawn(tor.run(shutdown.to_signal()));
+        debug!(
+            target: LOG_TARGET,
+            "Updated Tor comms transport: {:?}", config.comms_transport
+        );
+    }
+
+    // Run the base node
+    runtime.block_on(run_node(node_identity, config.into(), bootstrap, shutdown))?;
+
     // Shutdown and send any traces
     global::shutdown_tracer_provider();
+
     Ok(())
 }
 
 /// Sets up the base node and runs the cli_loop
-async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) -> Result<(), ExitCodes> {
-    // This is the main and only shutdown trigger for the system.
-    let shutdown = Shutdown::new();
-
+async fn run_node(
+    node_identity: Arc<NodeIdentity>,
+    config: Arc<GlobalConfig>,
+    bootstrap: ConfigBootstrap,
+    shutdown: Shutdown,
+) -> Result<(), ExitCodes> {
     if bootstrap.tracing_enabled {
         enable_tracing();
     }
-
-    // Load or create the Node identity
-    let node_identity = setup_node_identity(
-        &node_config.base_node_identity_file,
-        &node_config.public_address,
-        bootstrap.create_id,
-        PeerFeatures::COMMUNICATION_NODE,
-    )?;
 
     #[cfg(feature = "metrics")]
     {
         metrics::install(
             ApplicationType::BaseNode,
             &node_identity,
-            &node_config,
+            &config,
             &bootstrap,
             shutdown.to_signal(),
         );
@@ -201,33 +239,18 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
 
-    // Exit if create_id or init arguments were run
-    if bootstrap.create_id {
-        info!(
-            target: LOG_TARGET,
-            "Base node's node ID created at '{}'. Done.",
-            node_config.base_node_identity_file.to_string_lossy(),
-        );
-        return Ok(());
-    }
-
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&node_config)?;
-        recovery::run_recovery(&node_config)
+        recovery::initiate_recover_db(&config)?;
+        recovery::run_recovery(&config)
             .await
             .map_err(|e| ExitCodes::RecoveryError(e.to_string()))?;
         return Ok(());
     };
 
-    if bootstrap.init {
-        info!(target: LOG_TARGET, "Default configuration created. Done.");
-        return Ok(());
-    }
-
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(
-        node_config.clone(),
+        config.clone(),
         node_identity,
         shutdown.to_signal(),
         bootstrap.clean_orphans_db,
@@ -254,7 +277,7 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
         ExitCodes::UnknownError(err.to_string())
     })?;
 
-    if let Some(ref base_node_config) = node_config.base_node_config {
+    if let Some(ref base_node_config) = config.base_node_config {
         if let Some(ref address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
@@ -279,10 +302,10 @@ async fn run_node(node_config: Arc<GlobalConfig>, bootstrap: ConfigBootstrap) ->
 
         task::spawn(cli_loop(parser, shutdown));
     }
-    if !node_config.force_sync_peers.is_empty() {
+    if !config.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
-            "Force Sync Peers have been set! This node will only sync to the nodes in this set"
+            "Force Sync Peers have been set! This node will only sync to the nodes in this set."
         );
     }
 

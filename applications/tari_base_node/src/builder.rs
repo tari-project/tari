@@ -215,7 +215,10 @@ async fn build_node_context(
     cleanup_orphans_at_startup: bool,
 ) -> Result<BaseNodeContext, anyhow::Error> {
     //---------------------------------- Blockchain --------------------------------------------//
-
+    debug!(
+        target: LOG_TARGET,
+        "Building base node context for {}  network", config.network
+    );
     let rules = ConsensusManager::builder(config.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
@@ -232,6 +235,7 @@ async fn build_node_context(
         orphan_storage_capacity: config.orphan_storage_capacity,
         pruning_horizon: config.pruning_horizon,
         pruning_interval: config.pruned_mode_cleanup_interval,
+        track_reorgs: config.blockchain_track_reorgs,
     };
     let blockchain_db = BlockchainDatabase::new(
         backend,
@@ -250,7 +254,7 @@ async fn build_node_context(
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
-    let mempool = Mempool::new(MempoolConfig::default(), rules.clone(), Arc::new(mempool_validator));
+    let mempool = Mempool::new(MempoolConfig::default(), rules.clone(), Box::new(mempool_validator));
 
     //---------------------------------- Base Node  --------------------------------------------//
     debug!(target: LOG_TARGET, "Creating base node state machine.");

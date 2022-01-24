@@ -27,6 +27,7 @@ use crate::{
         DbValue,
         HorizonData,
         MmrTree,
+        Reorg,
         UtxoMinedInfo,
     },
     transactions::transaction::{TransactionInput, TransactionKernel},
@@ -203,4 +204,7 @@ pub trait BlockchainBackend: Send + Sync {
 
     /// Check if a block hash is in the bad block list
     fn bad_block_exists(&self, block_hash: HashOutput) -> Result<bool, ChainStorageError>;
+
+    /// Fetches all tracked reorgs
+    fn fetch_all_reorgs(&self) -> Result<Vec<Reorg>, ChainStorageError>;
 }

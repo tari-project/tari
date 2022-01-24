@@ -386,9 +386,13 @@ mod add_block {
         let (blocks, outputs) = add_many_chained_blocks(5, &db);
 
         let prev_block = blocks.last().unwrap();
-
-        let (txns, tx_outputs) =
-            schema_to_transaction(&[txn_schema!(from: vec![outputs[0].clone()], to: vec![500 * T])]);
+        // Used to help identify the output we're interrogating in this test
+        let features = OutputFeatures::with_maturity(1);
+        let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
+            from: vec![outputs[0].clone()],
+            to: vec![500 * T],
+            features: features
+        )]);
         let mut prev_utxo = tx_outputs[0].clone();
 
         let (block, _) = create_next_block(&db, prev_block, txns);
@@ -402,11 +406,19 @@ mod add_block {
             to_outputs: vec![prev_utxo.clone()],
             fee: 5.into(),
             lock_height: 0,
-            features: Default::default(),
+            features,
             script: tari_crypto::script![Nop],
+            covenant: Default::default(),
             input_data: None,
         }]);
-        let commitment_hex = txns[0].body.outputs()[0].commitment.to_hex();
+        let commitment_hex = txns[0]
+            .body
+            .outputs()
+            .iter()
+            .find(|o| o.features.maturity == 1)
+            .unwrap()
+            .commitment
+            .to_hex();
 
         let (block, _) = create_next_block(&db, &prev_block, txns);
         let err = db.add_block(block.clone()).unwrap_err();
@@ -421,8 +433,11 @@ mod add_block {
         let block = db.add_block(block).unwrap().assert_added();
         let prev_block = block.to_arc_block();
 
-        // Different maturity so that the output hash is different in txo_hash_to_index_db
-        prev_utxo.features = OutputFeatures::with_maturity(1);
+        // Different metadata so that the output hash is different in txo_hash_to_index_db
+        prev_utxo.features = OutputFeatures {
+            metadata: vec![1],
+            ..Default::default()
+        };
         // Now we can reuse a commitment
         let (txns, _) = schema_to_transaction(&[TransactionSchema {
             from: vec![outputs[1].clone()],
@@ -432,6 +447,7 @@ mod add_block {
             lock_height: 0,
             features: Default::default(),
             script: tari_crypto::script![Nop],
+            covenant: Default::default(),
             input_data: None,
         }]);
 
@@ -501,7 +517,7 @@ mod fetch_total_size_stats {
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
             stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
-            3
+            4003
         );
     }
 }
@@ -551,14 +567,14 @@ mod fetch_header_containing_utxo_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        assert_eq!(genesis.block().body.outputs().len(), 1);
-        // let mut mmr_position = 0;
-        // genesis.block().body.outputs().iter().for_each(|_| {
-        //     let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
-        //     assert_eq!(header.height(), 0);
-        //     mmr_position += 1;
-        // });
-        let err = db.fetch_header_containing_utxo_mmr(2).unwrap_err();
+        assert_eq!(genesis.block().body.outputs().len(), 4001);
+        let mut mmr_position = 0;
+        genesis.block().body.outputs().iter().for_each(|_| {
+            let header = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap();
+            assert_eq!(header.height(), 0);
+            mmr_position += 1;
+        });
+        let err = db.fetch_header_containing_utxo_mmr(4002).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 

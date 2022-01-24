@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{error::CollectiblesError, storage::StorageError};
+use diesel::result::Error;
 use prost::{DecodeError, EncodeError};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::HexError;
@@ -69,9 +70,22 @@ impl Status {
 
 impl From<StorageError> for Status {
   fn from(source: StorageError) -> Self {
-    Self::Internal {
-      code: 501,
-      message: format!("Internal storage error:{}", source),
+    match source {
+      StorageError::DieselError { source } => match source {
+        Error::NotFound => Self::NotFound {
+          code: 404,
+          message: format!("Not found:{}", source),
+          entity: "Unknown".to_string(),
+        },
+        _ => Self::Internal {
+          code: 502,
+          message: format!("Internal diesel storage error:{}", source),
+        },
+      },
+      _ => Self::Internal {
+        code: 501,
+        message: format!("Internal storage error:{}", source),
+      },
     }
   }
 }

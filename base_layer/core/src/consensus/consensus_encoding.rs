@@ -20,19 +20,36 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+mod bytes;
+mod crypto;
+mod generic;
+mod integers;
+mod script;
+mod vec;
+
 use std::io;
+
+pub use vec::MaxSizeVec;
+
+pub use self::bytes::MaxSizeBytes;
+use crate::common::byte_counter::ByteCounter;
 
 /// Abstracts the ability of a type to canonically encode itself for the purposes of consensus
 pub trait ConsensusEncoding {
-    /// Encode to the given writer returning the number of bytes writter.
-    /// If writing to this Writer is infallible, this implementation must always succeed.
+    /// Encode to the given writer returning the number of bytes written.
+    /// If writing to this Writer is infallible, this implementation MUST always succeed.
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error>;
 }
 
 pub trait ConsensusEncodingSized: ConsensusEncoding {
     /// The return value MUST be the exact byte size of the implementing type
     /// and SHOULD be implemented without allocations.
-    fn consensus_encode_exact_size(&self) -> usize;
+    fn consensus_encode_exact_size(&self) -> usize {
+        let mut byte_counter = ByteCounter::new();
+        self.consensus_encode(&mut byte_counter)
+            .expect("ByteCounter is infallible");
+        byte_counter.get()
+    }
 }
 
 /// Abstracts the ability of a type to be decoded from canonical consensus bytes
@@ -41,39 +58,32 @@ pub trait ConsensusDecoding: Sized {
     fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error>;
 }
 
-pub struct ConsensusEncodingWrapper<'a, T> {
-    inner: &'a T,
+pub trait ToConsensusBytes {
+    fn to_consensus_bytes(&self) -> Vec<u8>;
 }
 
-impl<'a, T> ConsensusEncodingWrapper<'a, T> {
-    pub fn wrap(inner: &'a T) -> Self {
-        Self { inner }
+impl<T: ConsensusEncoding + ConsensusEncodingSized + ?Sized> ToConsensusBytes for T {
+    fn to_consensus_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(self.consensus_encode_exact_size());
+        // Vec's write impl is infallible, as per the ConsensusEncoding contract, consensus_encode is infallible
+        self.consensus_encode(&mut buf).expect("unreachable panic");
+        buf
     }
 }
 
-// TODO: move traits and implement consensus encoding for TariScript
-//       for now, this wrapper will do that job
-mod tariscript_impl {
-    use tari_crypto::script::TariScript;
-
+#[cfg(test)]
+pub mod test {
     use super::*;
-    use crate::common::byte_counter::ByteCounter;
 
-    impl<'a> ConsensusEncoding for ConsensusEncodingWrapper<'a, TariScript> {
-        fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-            let bytes = self.inner.as_bytes();
-            writer.write_all(&bytes)?;
-            Ok(bytes.len())
-        }
-    }
-
-    impl<'a> ConsensusEncodingSized for ConsensusEncodingWrapper<'a, TariScript> {
-        fn consensus_encode_exact_size(&self) -> usize {
-            let mut counter = ByteCounter::new();
-            // TODO: consensus_encode_exact_size must be cheap to run
-            // unreachable panic: ByteCounter is infallible
-            self.consensus_encode(&mut counter).expect("unreachable");
-            counter.get()
-        }
+    /// Test utility function that checks the correctness of the ConsensusEncoding, ConsensusEncodingSized,
+    /// ConsensusDecoding implementations
+    pub fn check_consensus_encoding_correctness<T>(subject: T) -> Result<(), io::Error>
+    where T: ConsensusEncoding + ConsensusEncodingSized + ConsensusDecoding + Eq + std::fmt::Debug {
+        let mut buf = Vec::new();
+        subject.consensus_encode(&mut buf)?;
+        assert_eq!(buf.len(), subject.consensus_encode_exact_size());
+        let decoded = T::consensus_decode(&mut buf.as_slice())?;
+        assert_eq!(decoded, subject);
+        Ok(())
     }
 }

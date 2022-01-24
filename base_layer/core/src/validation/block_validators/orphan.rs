@@ -28,8 +28,14 @@ use crate::{
     consensus::ConsensusManager,
     transactions::CryptoFactories,
     validation::{
-        helpers,
-        helpers::{check_accounting_balance, check_block_weight, check_coinbase_output, check_sorting_and_duplicates},
+        helpers::{
+            check_accounting_balance,
+            check_block_weight,
+            check_coinbase_output,
+            check_kernel_lock_height,
+            check_maturity,
+            check_sorting_and_duplicates,
+        },
         OrphanValidation,
         ValidationError,
     },
@@ -68,7 +74,12 @@ impl OrphanValidation for OrphanBlockValidator {
         }
 
         let block_id = if cfg!(debug_assertions) {
-            format!("block #{} ({})", height, block.hash().to_hex())
+            format!(
+                "block #{} {} ({})",
+                height,
+                block.hash().to_hex(),
+                block.body.to_counts_string()
+            )
         } else {
             format!("block #{}", height)
         };
@@ -82,7 +93,7 @@ impl OrphanValidation for OrphanBlockValidator {
             "Checking duplicate inputs and outputs on {}",
             block_id
         );
-        check_sorting_and_duplicates(block)?;
+        check_sorting_and_duplicates(&block.body)?;
         trace!(
             target: LOG_TARGET,
             "SV - No duplicate inputs / outputs for {} ",
@@ -90,8 +101,8 @@ impl OrphanValidation for OrphanBlockValidator {
         );
 
         // Check that the inputs are are allowed to be spent
-        helpers::check_maturity(height, block.body.inputs())?;
-        helpers::check_kernel_lock_height(height, block.body.kernels())?;
+        check_maturity(height, block.body.inputs())?;
+        check_kernel_lock_height(height, block.body.kernels())?;
         trace!(target: LOG_TARGET, "SV - Output constraints are ok for {} ", &block_id);
         check_coinbase_output(block, &self.rules, &self.factories)?;
         trace!(target: LOG_TARGET, "SV - Coinbase output is ok for {} ", &block_id);

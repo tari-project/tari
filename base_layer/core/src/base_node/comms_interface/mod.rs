@@ -24,13 +24,13 @@ mod comms_request;
 pub use comms_request::{GetNewBlockTemplateRequest, MmrStateRequest, NodeCommsRequest};
 
 mod comms_response;
-pub use comms_response::NodeCommsResponse;
+pub use comms_response::{FetchMempoolTransactionsResponse, NodeCommsResponse};
 
 mod error;
 pub use error::CommsInterfaceError;
 
 mod inbound_handlers;
-pub use inbound_handlers::{BlockEvent, Broadcast, InboundNodeCommsHandlers};
+pub use inbound_handlers::{BlockEvent, InboundNodeCommsHandlers};
 
 mod local_interface;
 pub use local_interface::{BlockEventReceiver, BlockEventSender, LocalNodeCommsInterface};

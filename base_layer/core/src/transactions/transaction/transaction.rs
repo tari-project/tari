@@ -87,7 +87,7 @@ impl Transaction {
         factories: &CryptoFactories,
         reward: Option<MicroTari>,
         prev_header: Option<HashOutput>,
-        height: Option<u64>,
+        height: u64,
     ) -> Result<(), TransactionError> {
         let reward = reward.unwrap_or_else(|| 0 * uT);
         self.body.validate_internal_consistency(
@@ -172,12 +172,12 @@ impl Add for Transaction {
 
 impl Display for Transaction {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str("-------------- Transaction --------------\n")?;
-        fmt.write_str("--- Offset ---\n")?;
-        fmt.write_str(&format!("{}\n", self.offset.to_hex()))?;
-        fmt.write_str("--- Script Offset ---\n")?;
-        fmt.write_str(&format!("{}\n", self.script_offset.to_hex()))?;
-        fmt.write_str("---  Body  ---\n")?;
-        fmt.write_str(&format!("{}\n", self.body))
+        writeln!(fmt, "-------------- Transaction --------------")?;
+        writeln!(fmt, "--- Offset ---")?;
+        writeln!(fmt, "{}", self.offset.to_hex())?;
+        writeln!(fmt, "--- Script Offset ---")?;
+        writeln!(fmt, "{}", self.script_offset.to_hex())?;
+        writeln!(fmt, "---  Body  ---")?;
+        writeln!(fmt, "{}", self.body)
     }
 }

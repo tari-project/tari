@@ -383,6 +383,7 @@ The script offset provides a proof that every script public key \\( K\_{Si} \\) 
 
 ## Sender Offset Keypair
 
+[sender offset key]: #sender-offset-keypair
 
 The sender offset private - public keypair, (\\( k\_{Oi} \\),\\( K\_{Oi} \\)), is used by the sender of an output to
 lock all its metadata by virtue of a [sender metadata signature].

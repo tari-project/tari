@@ -24,6 +24,8 @@ message TransactionKernel {
     // The signature proving the excess is a valid public key, which signs
     // the transaction fee.
     Signature excess_sig = 7;
+    // Version
+    uint32 version = 8;
 }
 
 // A transaction input.
@@ -44,6 +46,10 @@ message TransactionInput {
     bytes sender_offset_public_key = 7;
     // The hash of the output this input is spending
     bytes output_hash = 8;
+    // The serialised covenant
+    bytes covenant = 9;
+    // Version
+    uint32 version = 10;
 }
 
 // Output for a transaction, defining the new ownership of coins that are being transferred. The commitment is a
@@ -62,8 +68,10 @@ message TransactionOutput {
     bytes sender_offset_public_key = 5;
     // UTXO signature with the script offset private key, k_O
     ComSignature metadata_signature = 6;
-    // Numbering 7-8 taken
-
+    // The serialised covenant
+    bytes covenant = 7;
+    // Version
+    uint32 version = 8;
 }
 
 // Options for UTXO's
@@ -85,6 +93,8 @@ message OutputFeatures {
     MintNonFungibleFeatures mint_non_fungible = 7;
 
     SideChainCheckpointFeatures sidechain_checkpoint = 8;
+    // Version
+    uint32 version = 9;
 }
 
 message AssetOutputFeatures {

@@ -22,33 +22,48 @@
 
 use std::convert::{From, TryFrom, TryInto};
 
-use tari_common_types::types::HashOutput;
+use tari_common_types::types::{HashOutput, PrivateKey};
+use tari_utilities::ByteArray;
 
 use crate::{
-    base_node::comms_interface as ci,
-    proto::base_node::{base_node_service_request::Request as ProtoNodeCommsRequest, BlockHeights, HashOutputs},
+    base_node::comms_interface::NodeCommsRequest,
+    proto::{base_node as proto, base_node::base_node_service_request::Request as ProtoNodeCommsRequest},
 };
 
 //---------------------------------- BaseNodeRequest --------------------------------------------//
-impl TryInto<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
+impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
-    fn try_into(self) -> Result<ci::NodeCommsRequest, Self::Error> {
+    fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
         use ProtoNodeCommsRequest::*;
         let request = match self {
-            FetchBlocksByHash(block_hashes) => ci::NodeCommsRequest::FetchBlocksByHash(block_hashes.outputs),
+            FetchBlocksByHash(block_hashes) => NodeCommsRequest::FetchBlocksByHash(block_hashes.outputs),
+            FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
+                let excess_sigs = excess_sigs
+                    .excess_sigs
+                    .into_iter()
+                    .map(|bytes| PrivateKey::from_bytes(&bytes).map_err(|_| "Malformed excess sig".to_string()))
+                    .collect::<Result<_, _>>()?;
+
+                NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs }
+            },
         };
         Ok(request)
     }
 }
 
-impl TryFrom<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
+impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
-    fn try_from(request: ci::NodeCommsRequest) -> Result<Self, Self::Error> {
-        use ci::NodeCommsRequest::*;
+    fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
+        use NodeCommsRequest::*;
         match request {
             FetchBlocksByHash(block_hashes) => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(block_hashes.into())),
+            FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(
+                ProtoNodeCommsRequest::FetchMempoolTransactionsByExcessSigs(proto::ExcessSigs {
+                    excess_sigs: excess_sigs.into_iter().map(|sig| sig.to_vec()).collect(),
+                }),
+            ),
             e => Err(format!("{} request is not supported", e)),
         }
     }
@@ -56,13 +71,13 @@ impl TryFrom<ci::NodeCommsRequest> for ProtoNodeCommsRequest {
 
 //---------------------------------- Wrappers --------------------------------------------//
 
-impl From<Vec<HashOutput>> for HashOutputs {
+impl From<Vec<HashOutput>> for proto::HashOutputs {
     fn from(outputs: Vec<HashOutput>) -> Self {
         Self { outputs }
     }
 }
 
-impl From<Vec<u64>> for BlockHeights {
+impl From<Vec<u64>> for proto::BlockHeights {
     fn from(heights: Vec<u64>) -> Self {
         Self { heights }
     }

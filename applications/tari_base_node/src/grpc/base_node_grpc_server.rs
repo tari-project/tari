@@ -36,11 +36,7 @@ use tari_app_utilities::consts;
 use tari_common_types::types::{Commitment, PublicKey, Signature};
 use tari_comms::{Bytes, CommsNode};
 use tari_core::{
-    base_node::{
-        comms_interface::{Broadcast, CommsInterfaceError},
-        LocalNodeCommsInterface,
-        StateMachineHandle,
-    },
+    base_node::{comms_interface::CommsInterfaceError, LocalNodeCommsInterface, StateMachineHandle},
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, PrunedOutput},
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
@@ -513,7 +509,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         const ASSET_METADATA_TEMPLATE_ID: u32 = 1;
                         if asset.template_ids_implemented.contains(&ASSET_METADATA_TEMPLATE_ID) {
                             // TODO: move to a better location, or better yet, have the grpc caller split the metadata
-                            let m = String::from_utf8(output.features.metadata.clone()).unwrap();
+                            let m = String::from_utf8(Vec::from(&output.features.metadata[1..])).unwrap();
                             let mut m = m
                                 .as_str()
                                 .split('|')
@@ -722,7 +718,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let mut handler = self.node_service.clone();
         let block_hash = handler
-            .submit_block(block, Broadcast::from(true))
+            .submit_block(block)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

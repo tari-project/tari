@@ -33,11 +33,11 @@ use tari_comms::peer_manager::NodeId;
 use tari_comms_dht::{
     domain_message::OutboundDomainMessage,
     envelope::NodeDestination,
-    outbound::{OutboundEncryption, OutboundMessageRequester, SendMessageParams},
+    outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester, SendMessageParams},
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::reply_channel::RequestContext;
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{
     sync::{
         mpsc,
@@ -49,13 +49,7 @@ use tokio::{
 
 use crate::{
     base_node::{
-        comms_interface::{
-            Broadcast,
-            CommsInterfaceError,
-            InboundNodeCommsHandlers,
-            NodeCommsRequest,
-            NodeCommsResponse,
-        },
+        comms_interface::{CommsInterfaceError, InboundNodeCommsHandlers, NodeCommsRequest, NodeCommsResponse},
         service::error::BaseNodeServiceError,
         state_machine_service::states::StateInfo,
         StateMachineHandle,
@@ -158,7 +152,7 @@ where B: BlockchainBackend + 'static
         SInRes: Stream<Item = DomainMessage<proto::BaseNodeServiceResponse>>,
         SBlockIn: Stream<Item = DomainMessage<NewBlock>>,
         SLocalReq: Stream<Item = RequestContext<NodeCommsRequest, Result<NodeCommsResponse, CommsInterfaceError>>>,
-        SLocalBlock: Stream<Item = RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>>,
+        SLocalBlock: Stream<Item = RequestContext<Block, Result<BlockHash, CommsInterfaceError>>>,
     {
         let outbound_request_stream = streams.outbound_request_stream.fuse();
         pin_mut!(outbound_request_stream);
@@ -208,7 +202,7 @@ where B: BlockchainBackend + 'static
 
                 // Incoming block messages from the Comms layer
                 Some(block_msg) = inbound_block_stream.next() => {
-                    self.spawn_handle_incoming_block(block_msg).await;
+                    self.spawn_handle_incoming_block(block_msg);
                 }
 
                 // Incoming local request messages from the LocalNodeCommsInterface and other local services
@@ -310,7 +304,7 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    async fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
+    fn spawn_handle_incoming_block(&self, new_block: DomainMessage<NewBlock>) {
         // Determine if we are bootstrapped
         let status_watch = self.state_machine_handle.get_status_info_watch();
 
@@ -318,7 +312,7 @@ where B: BlockchainBackend + 'static
             debug!(
                 target: LOG_TARGET,
                 "Propagated block `{}` from peer `{}` not processed while busy with initial sync.",
-                new_block.inner.block_hash.to_hex(),
+                new_block.inner().header.hash().to_hex(),
                 new_block.source_peer.node_id.short_str(),
             );
             return;
@@ -357,14 +351,11 @@ where B: BlockchainBackend + 'static
         });
     }
 
-    fn spawn_handle_local_block(
-        &self,
-        block_context: RequestContext<(Block, Broadcast), Result<BlockHash, CommsInterfaceError>>,
-    ) {
-        let inbound_nch = self.inbound_nch.clone();
+    fn spawn_handle_local_block(&self, block_context: RequestContext<Block, Result<BlockHash, CommsInterfaceError>>) {
+        let mut inbound_nch = self.inbound_nch.clone();
         task::spawn(async move {
-            let ((block, broadcast), reply_tx) = block_context.split();
-            let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), broadcast, None).await);
+            let (block, reply_tx) = block_context.split();
+            let result = reply_tx.send(inbound_nch.handle_block(Arc::new(block), None).await);
 
             if let Err(e) = result {
                 error!(
@@ -583,7 +574,7 @@ async fn handle_outbound_block(
     new_block: NewBlock,
     exclude_peers: Vec<NodeId>,
 ) -> Result<(), CommsInterfaceError> {
-    outbound_message_service
+    let result = outbound_message_service
         .flood(
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
@@ -593,7 +584,13 @@ async fn handle_outbound_block(
                 shared_protos::core::NewBlock::from(new_block),
             ),
         )
-        .await?;
+        .await;
+    if let Err(e) = result {
+        return match e {
+            DhtOutboundError::NoMessagesQueued => Ok(()),
+            _ => Err(e.into()),
+        };
+    }
     Ok(())
 }
 
@@ -640,15 +637,13 @@ async fn handle_incoming_block<B: BlockchainBackend + 'static>(
     debug!(
         target: LOG_TARGET,
         "New candidate block with hash `{}` received from `{}`.",
-        new_block.block_hash.to_hex(),
+        new_block.header.hash().to_hex(),
         source_peer.node_id.short_str()
     );
 
     inbound_nch
         .handle_new_block_message(new_block, source_peer.node_id)
         .await?;
-
-    // TODO - retain peer info for stats and potential banning for sending invalid blocks
 
     Ok(())
 }

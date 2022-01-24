@@ -162,7 +162,7 @@ where
 
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
         use DialerRequest::*;
-        trace!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
+        debug!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
         match request {
             Dial(peer, reply_tx) => {
                 self.handle_dial_peer_request(pending_dials, peer, reply_tx);
@@ -198,9 +198,6 @@ where
         let node_id = dial_state.peer().node_id.clone();
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).inc();
 
-        let removed = self.cancel_signals.remove(&node_id);
-        drop(removed);
-
         match &dial_result {
             Ok(conn) => {
                 debug!(target: LOG_TARGET, "Successfully dialed peer '{}'", node_id);
@@ -219,16 +216,19 @@ where
 
         metrics::pending_connections(Some(&node_id), ConnectionDirection::Outbound).dec();
 
-        if self.pending_dial_requests.contains_key(&node_id) {
-            self.reply_to_pending_requests(&node_id, dial_result.clone());
-        }
-
-        if dial_state.send_reply(dial_result).is_err() {
+        if dial_state.send_reply(dial_result.clone()).is_err() {
             warn!(
                 target: LOG_TARGET,
                 "Reply oneshot was closed before dial response for peer '{}' was sent", node_id
             );
         }
+
+        if self.pending_dial_requests.contains_key(&node_id) {
+            self.reply_to_pending_requests(&node_id, dial_result);
+        }
+
+        // Drop cancel signal
+        let _ = self.cancel_signals.remove(&node_id);
     }
 
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {
@@ -267,6 +267,10 @@ where
         reply_tx: Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ) {
         if self.is_pending_dial(&peer.node_id) {
+            debug!(
+                target: LOG_TARGET,
+                "Dial to peer '{}' already pending - adding to wait queue", peer.node_id
+            );
             if let Some(reply_tx) = reply_tx {
                 let entry = self.pending_dial_requests.entry(peer.node_id).or_insert_with(Vec::new);
                 entry.push(reply_tx);

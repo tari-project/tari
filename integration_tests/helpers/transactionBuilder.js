@@ -32,6 +32,41 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
+  featuresToConsensusBytes(features) {
+    // base_layer\core\src\transactions\transaction\output_features.rs
+    const bufFromOpt = (opt, encoding = "hex") =>
+      opt
+        ? Buffer.concat([
+            Buffer.from([1]),
+            encoding ? Buffer.from(opt, encoding) : opt,
+          ])
+        : Buffer.from([0]);
+
+    // Add length byte to unique id - note this only works until 128 bytes (TODO: varint encoding)
+    let unique_id = features.unique_id
+      ? Buffer.concat([
+          Buffer.from([features.unique_id.length]),
+          features.unique_id,
+        ])
+      : null;
+
+    return Buffer.concat([
+      Buffer.from([0]),
+      Buffer.from([parseInt(features.maturity)]),
+      Buffer.from([features.flags]),
+      bufFromOpt(features.parent_public_key, "hex"),
+      bufFromOpt(unique_id, false),
+      // TODO: AssetOutputFeatures
+      bufFromOpt(null),
+      // TODO: MintNonFungibleFeatures
+      bufFromOpt(null),
+      // TODO: SideChainCheckpointFeatures
+      bufFromOpt(null),
+      // TODO: metadata (len is 0)
+      Buffer.from([0]),
+    ]);
+  }
+
   buildMetaChallenge(
     script,
     features,
@@ -42,22 +77,18 @@ class TransactionBuilder {
     const KEY = null; // optional key
     const OUTPUT_LENGTH = 32; // bytes
     const context = blake2bInit(OUTPUT_LENGTH, KEY);
-    const buff_nonce = Buffer.from(publicNonce, "hex");
-    const buff_key = Buffer.from(scriptOffsetPublicKey, "hex");
-    let flags = Buffer.alloc(1);
-    flags[0] = features.flags;
-    let features_buffer = Buffer.concat([
-      flags,
-      toLittleEndian(parseInt(features.maturity), 64),
-      toLittleEndian(features.metadata.length, 64),
-      new Uint8Array(features.metadata),
-      new Uint8Array([0, 0, 0, 0, 0]),
-    ]);
-    blake2bUpdate(context, buff_nonce);
+    const buf_nonce = Buffer.from(publicNonce, "hex");
+    const script_offset_public_key = Buffer.from(scriptOffsetPublicKey, "hex");
+    const features_buffer = this.featuresToConsensusBytes(features);
+
+    // base_layer/core/src/transactions/transaction/transaction_output.rs
+    blake2bUpdate(context, buf_nonce);
     blake2bUpdate(context, script);
     blake2bUpdate(context, features_buffer);
-    blake2bUpdate(context, buff_key);
+    blake2bUpdate(context, script_offset_public_key);
     blake2bUpdate(context, commitment);
+    // Empty covenant is 0 bytes
+    // blake2bUpdate(context, covenant_bytes);
     const final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
@@ -69,9 +100,9 @@ class TransactionBuilder {
     public_key,
     commitment
   ) {
-    var KEY = null; // optional key
-    var OUTPUT_LENGTH = 32; // bytes
-    var context = blake2bInit(OUTPUT_LENGTH, KEY);
+    let KEY = null; // optional key
+    let OUTPUT_LENGTH = 32; // bytes
+    let context = blake2bInit(OUTPUT_LENGTH, KEY);
     let buff_publicNonce = Buffer.from(publicNonce, "hex");
     let buff_public_key = Buffer.from(public_key, "hex");
     blake2bUpdate(context, buff_publicNonce);
@@ -84,15 +115,10 @@ class TransactionBuilder {
   }
 
   hashOutput(features, commitment, script, sender_offset_public_key) {
-    var KEY = null; // optional key
-    var OUTPUT_LENGTH = 32; // bytes
-    var context = blake2bInit(OUTPUT_LENGTH, KEY);
-    let flags = Buffer.alloc(1);
-    flags[0] = features.flags;
-    let features_buffer = Buffer.concat([
-      flags,
-      toLittleEndian(parseInt(features.maturity), 64),
-    ]);
+    let KEY = null; // optional key
+    let OUTPUT_LENGTH = 32; // bytes
+    let context = blake2bInit(OUTPUT_LENGTH, KEY);
+    const features_buffer = this.featuresToConsensusBytes(features);
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, commitment);
     blake2bUpdate(context, script);
@@ -165,18 +191,20 @@ class TransactionBuilder {
     });
   }
 
-  addOutput(amount) {
-    const outputFeatures = {
+  addOutput(amount, features = {}) {
+    const outputFeatures = Object.assign({
       flags: 0,
       maturity: 0,
       metadata: [],
       // In case any of these change, update the buildMetaChallenge function
-      unique_id: null,
+      unique_id: features.unique_id
+        ? Buffer.from(features.unique_id, "utf8")
+        : null,
       parent_public_key: null,
       asset: null,
       mint_non_fungible: null,
       sidechain_checkpoint: null,
-    };
+    });
     let key = Math.floor(Math.random() * 500000000000 + 1);
     let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
     let scriptKey = Math.floor(Math.random() * 500000000000 + 1);

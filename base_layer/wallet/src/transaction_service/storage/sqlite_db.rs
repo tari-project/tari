@@ -77,75 +77,10 @@ pub struct TransactionServiceSqliteDatabase {
 
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        let mut new_self = Self {
+        Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
-        };
-
-        // TODO: Remove this call for the next #testnet_reset
-        match new_self.add_transaction_signature_for_legacy_transactions() {
-            Ok(count) => {
-                if count > 0 {
-                    info!(
-                        target: LOG_TARGET,
-                        "Updated transaction signatures for {} legacy transactions", count
-                    );
-                }
-            },
-            Err(e) => warn!(
-                target: LOG_TARGET,
-                "Legacy transaction signatures could not be updated: {:?}", e
-            ),
-        };
-
-        new_self
-    }
-
-    // TODO: Remove this function for the next #testnet_reset
-    fn add_transaction_signature_for_legacy_transactions(&mut self) -> Result<u32, TransactionStorageError> {
-        let conn = self.database_connection.get_pooled_connection()?;
-        let txs_sql = completed_transactions::table
-            .filter(
-                completed_transactions::transaction_signature_nonce
-                    .eq(completed_transactions::transaction_signature_key),
-            )
-            .load::<CompletedTransactionSql>(&*conn)?;
-
-        let mut count = 0u32;
-        if !txs_sql.is_empty() {
-            info!(
-                target: LOG_TARGET,
-                "Updating transaction signatures for {} legacy transactions...",
-                txs_sql.len()
-            );
-            for mut tx_sql in txs_sql {
-                self.decrypt_if_necessary(&mut tx_sql)?;
-                let tx = CompletedTransaction::try_from(tx_sql.clone())?;
-                let (transaction_signature_nonce, transaction_signature_key) =
-                    if let Some(transaction_signature) = tx.transaction.first_kernel_excess_sig() {
-                        (
-                            Some(transaction_signature.get_public_nonce().as_bytes().to_vec()),
-                            Some(transaction_signature.get_signature().as_bytes().to_vec()),
-                        )
-                    } else {
-                        (
-                            Some(Signature::default().get_public_nonce().as_bytes().to_vec()),
-                            Some(Signature::default().get_signature().as_bytes().to_vec()),
-                        )
-                    };
-                tx_sql.update(
-                    UpdateCompletedTransactionSql {
-                        transaction_signature_nonce,
-                        transaction_signature_key,
-                        ..Default::default()
-                    },
-                    &conn,
-                )?;
-                count += 1;
-            }
         }
-
-        Ok(count)
     }
 
     fn insert(&self, kvp: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
@@ -1277,6 +1212,14 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         }
         Ok(sender_info)
     }
+
+    fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &conn)?
+            .into_iter()
+            .map(|ct| CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from))
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -1714,6 +1657,17 @@ impl CompletedTransactionSql {
             .load::<CompletedTransactionSql>(conn)?)
     }
 
+    pub fn index_by_status_and_cancelled(
+        status: TransactionStatus,
+        cancelled: bool,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        Ok(completed_transactions::table
+            .filter(completed_transactions::cancelled.eq(cancelled as i32))
+            .filter(completed_transactions::status.eq(status as i32))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
     pub fn index_coinbase_at_block_height(
         block_height: i64,
         conn: &SqliteConnection,
@@ -2037,9 +1991,13 @@ impl UnconfirmedTransactionInfoSql {
                 completed_transactions::coinbase_block_height,
             ))
             .filter(
-                completed_transactions::mined_height
-                    .is_null()
-                    .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+                completed_transactions::status
+                    .ne(TransactionStatus::Imported as i32)
+                    .and(
+                        completed_transactions::mined_height
+                            .is_null()
+                            .or(completed_transactions::status.eq(TransactionStatus::MinedUnconfirmed as i32)),
+                    ),
             )
             .filter(completed_transactions::cancelled.eq(false as i32))
             .order_by(completed_transactions::tx_id)
@@ -2064,14 +2022,17 @@ mod test {
         transaction::{TransactionDirection, TransactionStatus, TxId},
         types::{HashDigest, PrivateKey, PublicKey, Signature},
     };
-    use tari_core::transactions::{
-        tari_amount::MicroTari,
-        test_helpers::{create_unblinded_output, TestParams},
-        transaction::{OutputFeatures, Transaction},
-        transaction_protocol::sender::TransactionSenderMessage,
-        CryptoFactories,
-        ReceiverTransactionProtocol,
-        SenderTransactionProtocol,
+    use tari_core::{
+        covenants::Covenant,
+        transactions::{
+            tari_amount::MicroTari,
+            test_helpers::{create_unblinded_output, TestParams},
+            transaction::{OutputFeatures, Transaction},
+            transaction_protocol::sender::TransactionSenderMessage,
+            CryptoFactories,
+            ReceiverTransactionProtocol,
+            SenderTransactionProtocol,
+        },
     };
     use tari_crypto::{
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
@@ -2143,13 +2104,14 @@ mod test {
                 PrivateKey::random(&mut OsRng),
                 Default::default(),
                 PrivateKey::random(&mut OsRng),
+                Covenant::default(),
             )
             .with_change_script(script!(Nop), ExecutionStack::default(), PrivateKey::random(&mut OsRng));
 
-        let mut stp = builder.build::<HashDigest>(&factories, None, Some(u64::MAX)).unwrap();
+        let mut stp = builder.build::<HashDigest>(&factories, None, u64::MAX).unwrap();
 
         let outbound_tx1 = OutboundTransaction {
-            tx_id: 1.into(),
+            tx_id: 1u64.into(),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: stp.get_fee_amount().unwrap(),
@@ -2164,7 +2126,7 @@ mod test {
         };
 
         let outbound_tx2 = OutboundTransactionSql::try_from(OutboundTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             fee: stp.get_fee_amount().unwrap(),
@@ -2205,7 +2167,7 @@ mod test {
         );
 
         let inbound_tx1 = InboundTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp.clone(),
@@ -2218,7 +2180,7 @@ mod test {
             last_send_timestamp: None,
         };
         let inbound_tx2 = InboundTransaction {
-            tx_id: 3.into(),
+            tx_id: 3u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
             receiver_protocol: rtp,
@@ -2260,7 +2222,7 @@ mod test {
         );
 
         let completed_tx1 = CompletedTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2281,7 +2243,7 @@ mod test {
             mined_in_block: None,
         };
         let completed_tx2 = CompletedTransaction {
-            tx_id: 3.into(),
+            tx_id: 3u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2411,7 +2373,7 @@ mod test {
         assert!(CompletedTransactionSql::find_by_cancelled(completed_tx1.tx_id, true, &conn).is_ok());
 
         let coinbase_tx1 = CompletedTransaction {
-            tx_id: 101.into(),
+            tx_id: 101u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2433,7 +2395,7 @@ mod test {
         };
 
         let coinbase_tx2 = CompletedTransaction {
-            tx_id: 102.into(),
+            tx_id: 102u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2455,7 +2417,7 @@ mod test {
         };
 
         let coinbase_tx3 = CompletedTransaction {
-            tx_id: 103.into(),
+            tx_id: 103u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount,
@@ -2515,7 +2477,7 @@ mod test {
         let cipher = Aes256Gcm::new(key);
 
         let inbound_tx = InboundTransaction {
-            tx_id: 1.into(),
+            tx_id: 1u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
@@ -2537,7 +2499,7 @@ mod test {
         assert_eq!(inbound_tx, decrypted_inbound_tx);
 
         let outbound_tx = OutboundTransaction {
-            tx_id: 2.into(),
+            tx_id: 2u64.into(),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
             fee: MicroTari::from(10),
@@ -2561,7 +2523,7 @@ mod test {
         assert_eq!(outbound_tx, decrypted_outbound_tx);
 
         let completed_tx = CompletedTransaction {
-            tx_id: 3.into(),
+            tx_id: 3u64.into(),
             source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             amount: MicroTari::from(100),
@@ -2619,7 +2581,7 @@ mod test {
             embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
 
             let inbound_tx = InboundTransaction {
-                tx_id: 1.into(),
+                tx_id: 1u64.into(),
                 source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),
                 receiver_protocol: ReceiverTransactionProtocol::new_placeholder(),
@@ -2635,7 +2597,7 @@ mod test {
             inbound_tx_sql.commit(&conn).unwrap();
 
             let outbound_tx = OutboundTransaction {
-                tx_id: 2.into(),
+                tx_id: 2u64.into(),
                 destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),
                 fee: MicroTari::from(10),
@@ -2652,7 +2614,7 @@ mod test {
             outbound_tx_sql.commit(&conn).unwrap();
 
             let completed_tx = CompletedTransaction {
-                tx_id: 3.into(),
+                tx_id: 3u64.into(),
                 source_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 destination_public_key: PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
                 amount: MicroTari::from(100),

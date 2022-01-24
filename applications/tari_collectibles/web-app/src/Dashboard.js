@@ -20,11 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import { Container, Grid, Button } from "@mui/material";
+import {Container, Grid } from "@mui/material";
 import React from "react";
 import { AssetCard, Spinner } from "./components";
 import binding from "./binding";
 import { toHexString } from "./helpers";
+import {Link} from "react-router-dom";
 
 // const explorerUrl = (blockHash) => `https:://explore.tari.com/block/${blockHash.toString("hex")}`;
 
@@ -40,21 +41,20 @@ class DashboardContent extends React.Component {
   }
 
   async componentDidMount() {
+    console.log("Dashboard loaded");
     this.setState({
       isLoading: true,
     });
 
     try {
       let outputs = await binding.command_assets_list_registered_assets(0, 100);
+      console.log(outputs);
       this.setState({
-        // TODO: Fetch asset metadata from somewhere
         assets: outputs.map((o) => ({
-          name: toHexString(o.unique_id),
-          description: `Asset registration at block #${
-            o.mined_height
-          } (${toHexString(o.mined_in_block)})`,
-          public_key: o.asset_public_key ? toHexString(o.asset_public_key) : "",
-          image_url: "https://source.unsplash.com/random",
+          name: o.name,
+          description: o.description,
+          public_key: toHexString(o.unique_id),
+          image_url: o.image_url || "asset-no-img.png"
         })),
         isLoading: false,
       });
@@ -75,12 +75,11 @@ class DashboardContent extends React.Component {
 
     return this.state.assets.map((asset) => {
       const actions = (
-        <Button
-          size="small"
-          to={`/view/${(asset.unique_id || "").toString("hex")}`}
+        <Link
+          to={`/accounts/${(asset.public_key || "").toString("hex")}`}
         >
           View
-        </Button>
+        </Link>
       );
 
       return (

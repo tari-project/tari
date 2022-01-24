@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The Tari validator node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.10.1"
+version = "0.25.0"
 edition = "2018"
 
 [dependencies]
@@ -50,5 +50,4 @@ serde_json = "1.0.64"
 tari_test_utils = "0.8.1"
 
 [build-dependencies]
-tonic-build = "0.6.2"
 tari_common = { path = "../../common", features = ["build"] }

@@ -28,7 +28,6 @@ use tari_comms_dht::Dht;
 use tari_p2p::{
     comms_connector::{PeerMessage, SubscriptionFactory},
     domain_message::DomainMessage,
-    services::utils::{map_decode, ok_or_skip_result},
     tari_message::TariMessageType,
 };
 use tari_service_framework::{
@@ -38,13 +37,12 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 use crate::{
     base_node::{comms_interface::LocalNodeCommsInterface, StateMachineHandle},
     mempool::{
         mempool::Mempool,
-        proto as mempool_proto,
         service::{
             inbound_handlers::MempoolInboundHandlers,
             local_service::LocalMempoolService,
@@ -52,7 +50,6 @@ use crate::{
             service::{MempoolService, MempoolStreams},
             MempoolHandle,
         },
-        MempoolServiceConfig,
     },
     proto,
     transactions::transaction::Transaction,
@@ -63,39 +60,17 @@ const SUBSCRIPTION_LABEL: &str = "Mempool";
 
 /// Initializer for the Mempool service and service future.
 pub struct MempoolServiceInitializer {
-    inbound_message_subscription_factory: Arc<SubscriptionFactory>,
     mempool: Mempool,
-    config: MempoolServiceConfig,
+    inbound_message_subscription_factory: Arc<SubscriptionFactory>,
 }
 
 impl MempoolServiceInitializer {
     /// Create a new MempoolServiceInitializer from the inbound message subscriber.
-    pub fn new(
-        config: MempoolServiceConfig,
-        mempool: Mempool,
-        inbound_message_subscription_factory: Arc<SubscriptionFactory>,
-    ) -> Self {
+    pub fn new(mempool: Mempool, inbound_message_subscription_factory: Arc<SubscriptionFactory>) -> Self {
         Self {
-            inbound_message_subscription_factory,
             mempool,
-            config,
+            inbound_message_subscription_factory,
         }
-    }
-
-    /// Get a stream for inbound Mempool service request messages
-    fn inbound_request_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceRequest>> {
-        self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::MempoolRequest, SUBSCRIPTION_LABEL)
-            .map(map_decode::<mempool_proto::MempoolServiceRequest>)
-            .filter_map(ok_or_skip_result)
-    }
-
-    /// Get a stream for inbound Mempool service response messages
-    fn inbound_response_stream(&self) -> impl Stream<Item = DomainMessage<mempool_proto::MempoolServiceResponse>> {
-        self.inbound_message_subscription_factory
-            .get_subscription(TariMessageType::MempoolResponse, SUBSCRIPTION_LABEL)
-            .map(map_decode::<mempool_proto::MempoolServiceResponse>)
-            .filter_map(ok_or_skip_result)
     }
 
     /// Create a stream of 'New Transaction` messages
@@ -141,8 +116,6 @@ async fn extract_transaction(msg: Arc<PeerMessage>) -> Option<DomainMessage<Tran
 impl ServiceInitializer for MempoolServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         // Create streams for receiving Mempool service requests and response messages from comms
-        let inbound_request_stream = self.inbound_request_stream();
-        let inbound_response_stream = self.inbound_response_stream();
         let inbound_transaction_stream = self.inbound_transaction_stream();
 
         // Connect MempoolOutboundServiceHandle to MempoolService
@@ -151,19 +124,10 @@ impl ServiceInitializer for MempoolServiceInitializer {
         context.register_handle(mempool_handle);
 
         let (outbound_tx_sender, outbound_tx_stream) = mpsc::unbounded_channel();
-        let (outbound_request_sender_service, outbound_request_stream) = reply_channel::unbounded();
         let (local_request_sender_service, local_request_stream) = reply_channel::unbounded();
-        let (mempool_state_event_publisher, _) = broadcast::channel(100);
-        let outbound_mp_interface =
-            OutboundMempoolServiceInterface::new(outbound_request_sender_service, outbound_tx_sender);
-        let local_mp_interface =
-            LocalMempoolService::new(local_request_sender_service, mempool_state_event_publisher.clone());
-        let config = self.config;
-        let inbound_handlers = MempoolInboundHandlers::new(
-            mempool_state_event_publisher,
-            self.mempool.clone(),
-            outbound_mp_interface.clone(),
-        );
+        let outbound_mp_interface = OutboundMempoolServiceInterface::new(outbound_tx_sender);
+        let local_mp_interface = LocalMempoolService::new(local_request_sender_service);
+        let inbound_handlers = MempoolInboundHandlers::new(self.mempool.clone(), outbound_mp_interface.clone());
 
         // Register handle to OutboundMempoolServiceInterface before waiting for handles to be ready
         context.register_handle(outbound_mp_interface);
@@ -175,16 +139,14 @@ impl ServiceInitializer for MempoolServiceInitializer {
             let base_node = handles.expect_handle::<LocalNodeCommsInterface>();
 
             let streams = MempoolStreams {
-                outbound_request_stream,
                 outbound_tx_stream,
-                inbound_request_stream,
-                inbound_response_stream,
                 inbound_transaction_stream,
                 local_request_stream,
                 block_event_stream: base_node.get_block_event_stream(),
                 request_receiver,
             };
-            MempoolService::new(outbound_message_service, inbound_handlers, config, state_machine).start(streams)
+            debug!(target: LOG_TARGET, "Mempool service started");
+            MempoolService::new(outbound_message_service, inbound_handlers, state_machine).start(streams)
         });
 
         Ok(())

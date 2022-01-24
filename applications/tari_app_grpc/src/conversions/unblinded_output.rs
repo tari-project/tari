@@ -23,7 +23,14 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{PrivateKey, PublicKey};
-use tari_core::transactions::{tari_amount::MicroTari, transaction::UnblindedOutput};
+use tari_core::{
+    consensus::{ConsensusDecoding, ToConsensusBytes},
+    covenants::Covenant,
+    transactions::{
+        tari_amount::MicroTari,
+        transaction::{TransactionOutputVersion, UnblindedOutput},
+    },
+};
 use tari_crypto::script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
 
@@ -45,6 +52,7 @@ impl From<UnblindedOutput> for grpc::UnblindedOutput {
                 signature_v: Vec::from(output.metadata_signature.v().as_bytes()),
             }),
             script_lock_height: output.script_lock_height,
+            covenant: output.covenant.to_consensus_bytes(),
         }
     }
 }
@@ -78,8 +86,11 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        Ok(Self {
-            value: MicroTari::from(output.value),
+        let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
+
+        Ok(Self::new(
+            TransactionOutputVersion::try_from(0u8)?,
+            MicroTari::from(output.value),
             spending_key,
             features,
             script,
@@ -87,7 +98,8 @@ impl TryFrom<grpc::UnblindedOutput> for UnblindedOutput {
             script_private_key,
             sender_offset_public_key,
             metadata_signature,
-            script_lock_height: output.script_lock_height,
-        })
+            output.script_lock_height,
+            covenant,
+        ))
     }
 }

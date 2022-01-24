@@ -22,7 +22,10 @@
 
 //! Impls for transaction proto
 
-use std::convert::{TryFrom, TryInto};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
 use tari_crypto::{
@@ -32,6 +35,8 @@ use tari_crypto::{
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
+    consensus::{ConsensusDecoding, ToConsensusBytes},
+    covenants::Covenant,
     proto,
     transactions::{
         aggregated_body::AggregateBody,
@@ -41,13 +46,17 @@ use crate::{
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
+            OutputFeaturesVersion,
             OutputFlags,
             SideChainCheckpointFeatures,
             TemplateParameter,
             Transaction,
             TransactionInput,
+            TransactionInputVersion,
             TransactionKernel,
+            TransactionKernelVersion,
             TransactionOutput,
+            TransactionOutputVersion,
         },
     },
 };
@@ -72,14 +81,17 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
             .try_into()
             .map_err(|err: ByteArrayError| err.to_string())?;
 
-        Ok(Self {
-            features: KernelFeatures::from_bits(kernel.features as u8)
+        Ok(TransactionKernel::new(
+            TransactionKernelVersion::try_from(
+                u8::try_from(kernel.version).map_err(|_| "Invalid version: overflowed u8")?,
+            )?,
+            KernelFeatures::from_bits(kernel.features as u8)
                 .ok_or_else(|| "Invalid or unrecognised kernel feature flag".to_string())?,
+            MicroTari::from(kernel.fee),
+            kernel.lock_height,
             excess,
             excess_sig,
-            fee: MicroTari::from(kernel.fee),
-            lock_height: kernel.lock_height,
-        })
+        ))
     }
 }
 
@@ -91,6 +103,7 @@ impl From<TransactionKernel> for proto::types::TransactionKernel {
             excess_sig: Some(kernel.excess_sig.into()),
             fee: kernel.fee.into(),
             lock_height: kernel.lock_height,
+            version: kernel.version as u32,
         }
     }
 }
@@ -119,12 +132,16 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
 
             Ok(TransactionInput::new_with_output_data(
+                TransactionInputVersion::try_from(
+                    u8::try_from(input.version).map_err(|_| "Invalid version: overflowed u8")?,
+                )?,
                 features,
                 commitment,
                 TariScript::from_bytes(input.script.as_slice()).map_err(|err| format!("{:?}", err))?,
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
+                Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -146,13 +163,10 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
         if input.is_compact() {
             let output_hash = input.output_hash();
             Ok(Self {
-                features: None,
-                commitment: None,
-                script: Vec::new(),
                 input_data: input.input_data.as_bytes(),
                 script_signature: Some(input.script_signature.into()),
-                sender_offset_public_key: Vec::new(),
                 output_hash,
+                ..Default::default()
             })
         } else {
             Ok(Self {
@@ -182,6 +196,11 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                     .as_bytes()
                     .to_vec(),
                 output_hash: Vec::new(),
+                covenant: input
+                    .covenant()
+                    .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
+                    .to_consensus_bytes(),
+                version: input.version as u32,
             })
         }
     }
@@ -215,14 +234,20 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        Ok(Self {
+        let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
+
+        Ok(Self::new(
+            TransactionOutputVersion::try_from(
+                u8::try_from(output.version).map_err(|_| "Invalid version: overflowed u8")?,
+            )?,
             features,
             commitment,
-            proof: BulletRangeProof(output.range_proof),
+            BulletRangeProof(output.range_proof),
             script,
             sender_offset_public_key,
             metadata_signature,
-        })
+            covenant,
+        ))
     }
 }
 
@@ -235,6 +260,8 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             script: output.script.as_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
+            covenant: output.covenant.to_consensus_bytes(),
+            version: output.version as u32,
         }
     }
 }
@@ -256,23 +283,26 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             Some(PublicKey::from_bytes(features.parent_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?)
         };
 
-        Ok(Self {
-            flags: OutputFlags::from_bits(features.flags as u8)
+        Ok(OutputFeatures::new(
+            OutputFeaturesVersion::try_from(
+                u8::try_from(features.version).map_err(|_| "Invalid version: overflowed u8")?,
+            )?,
+            OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
-            maturity: features.maturity,
-            metadata: features.metadata,
+            features.maturity,
+            features.metadata,
             unique_id,
             parent_public_key,
-            asset: match features.asset {
+            match features.asset {
                 Some(a) => Some(a.try_into()?),
                 None => None,
             },
-            mint_non_fungible: match features.mint_non_fungible {
+            match features.mint_non_fungible {
                 Some(m) => Some(m.try_into()?),
                 None => None,
             },
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
-        })
+            features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
+        ))
     }
 }
 
@@ -290,6 +320,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+            version: features.version as u32,
         }
     }
 }
@@ -457,5 +488,20 @@ impl TryFrom<Transaction> for proto::types::Transaction {
             body: Some(tx.body.try_into()?),
             script_offset: Some(tx.script_offset.into()),
         })
+    }
+}
+
+impl TryFrom<Arc<Transaction>> for proto::types::Transaction {
+    type Error = String;
+
+    fn try_from(tx: Arc<Transaction>) -> Result<Self, Self::Error> {
+        match Arc::try_unwrap(tx) {
+            Ok(tx) => Ok(tx.try_into()?),
+            Err(tx) => Ok(Self {
+                offset: Some(tx.offset.clone().into()),
+                body: Some(tx.body.clone().try_into()?),
+                script_offset: Some(tx.script_offset.clone().into()),
+            }),
+        }
     }
 }
