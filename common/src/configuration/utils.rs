@@ -37,23 +37,20 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
 
 /// Installs a new configuration file template, copied from the application type's preset and written to the given path.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn config_installer(app_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+pub fn config_installer(_app_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+    // Use the same config file so that all the settings are easier to find, and easier to
+    // support users over chat channels
     let common = include_str!("../../config/presets/common.toml");
-
-    use ApplicationType::*;
-    let app = match app_type {
-        BaseNode => include_str!("../../config/presets/base_node.toml"),
-        ConsoleWallet => include_str!("../../config/presets/console_wallet.toml"),
-        MiningNode => include_str!("../../config/presets/mining_node.toml"),
-        MergeMiningProxy => include_str!("../../config/presets/merge_mining_proxy.toml"),
-        StratumTranscoder => include_str!("../../config/presets/stratum_transcoder.toml"),
-        ValidatorNode => include_str!("../../config/presets/validator_node.toml"),
-    };
-    let add = match app_type {
-        MiningNode => include_str!("../../config/presets/validator_node.toml"),
-        _ => "",
-    };
-    let source = [common, app, add].join("\n");
+    let source = [
+        common,
+        include_str!("../../config/presets/base_node.toml"),
+        include_str!("../../config/presets/console_wallet.toml"),
+        include_str!("../../config/presets/mining_node.toml"),
+        include_str!("../../config/presets/merge_mining_proxy.toml"),
+        include_str!("../../config/presets/stratum_transcoder.toml"),
+        include_str!("../../config/presets/validator_node.toml"),
+    ]
+    .join("\n");
 
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
