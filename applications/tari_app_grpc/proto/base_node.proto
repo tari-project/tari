@@ -63,6 +63,8 @@ service BaseNode {
     rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
     // Get the base node sync information
     rpc GetSyncInfo(Empty) returns (SyncInfoResponse);
+    // Get the base node sync information
+    rpc GetSyncProgress(Empty) returns (SyncProgressResponse);
     // Get the base node tip information
     rpc GetTipInfo(Empty) returns (TipInfoResponse);
     // Search for blocks containing the specified kernels
@@ -314,6 +316,21 @@ message SyncInfoResponse {
     uint64 tip_height = 1;
     uint64 local_height = 2;
     repeated bytes peer_node_id = 3;
+}
+
+message SyncProgressResponse {
+    uint64 tip_height = 1;
+    uint64 local_height = 2;
+    SyncState state = 3;
+}
+
+enum SyncState {
+    STARTUP = 0;
+    HEADER_STARTING = 1;
+    HEADER = 2;
+    BLOCK_STARTING = 3;
+    BLOCK = 4;
+    DONE = 5;
 }
 
 // This is the message that is returned for a miner after it asks for a new block.

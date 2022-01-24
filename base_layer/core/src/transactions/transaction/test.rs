@@ -260,7 +260,11 @@ fn check_timelocks() {
 
 #[test]
 fn test_validate_internal_consistency() {
-    let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4);
+    let features = OutputFeatures {
+        unique_id: Some(b"abc".to_vec()),
+        ..Default::default()
+    };
+    let (tx, _, _) = test_helpers::create_tx(5000.into(), 3.into(), 1, 2, 1, 4, features);
 
     let factories = CryptoFactories::default();
     assert!(tx
@@ -271,7 +275,7 @@ fn test_validate_internal_consistency() {
 #[test]
 #[allow(clippy::identity_op)]
 fn check_cut_through() {
-    let (tx, _, outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2);
+    let (tx, _, outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default());
 
     assert_eq!(tx.body.inputs().len(), 2);
     assert_eq!(tx.body.outputs().len(), 2);
@@ -323,7 +327,7 @@ fn check_cut_through() {
 
 #[test]
 fn check_duplicate_inputs_outputs() {
-    let (tx, _, _outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2);
+    let (tx, _, _outputs) = test_helpers::create_tx(50000000.into(), 3.into(), 1, 2, 1, 2, Default::default());
     assert!(!tx.body.contains_duplicated_outputs());
     assert!(!tx.body.contains_duplicated_inputs());
 
@@ -442,8 +446,8 @@ mod output_features {
         let features = OutputFeatures::with_maturity(0);
         let mut buf = Vec::new();
         let written = features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 3);
-        assert_eq!(written, 3);
+        assert_eq!(buf.len(), 9);
+        assert_eq!(written, 9);
     }
 
     #[test]
@@ -451,17 +455,17 @@ mod output_features {
         let features = OutputFeatures::create_coinbase(u64::MAX);
         let known_size = features.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size);
-        assert_eq!(known_size, 12);
+        assert_eq!(known_size, 18);
         let written = features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 12);
-        assert_eq!(written, 12);
+        assert_eq!(buf.len(), 18);
+        assert_eq!(written, 18);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features, decoded_features);
     }
 
     #[test]
     fn consensus_decode_bad_flags() {
-        let data = [0x00u8, 0x00, 0x02];
+        let data = [0x00u8, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
         // Assert the flag data is preserved
         assert_eq!(features.flags.bits() & 0x02, 0x02);
@@ -538,8 +542,8 @@ mod validate_internal_consistency {
         //---------------------------------- Case2 - PASS --------------------------------------------//
         features.parent_public_key = Some(PublicKey::default());
         let hash = Challenge::new()
-            .chain(PublicKey::default().as_bytes())
-            .chain(&unique_id)
+            .chain(Some(PublicKey::default()).to_consensus_bytes())
+            .chain(Some(unique_id.clone()).to_consensus_bytes())
             .finalize();
 
         let covenant = covenant!(fields_hashed_eq(@fields(@field::features_parent_public_key, @field::features_unique_id), @hash(hash.into())));

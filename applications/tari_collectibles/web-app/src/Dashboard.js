@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import {Container, Grid, Button } from "@mui/material";
+import {Container, Grid } from "@mui/material";
 import React from "react";
 import { AssetCard, Spinner } from "./components";
 import binding from "./binding";
@@ -41,6 +41,7 @@ class DashboardContent extends React.Component {
   }
 
   async componentDidMount() {
+    console.log("Dashboard loaded");
     this.setState({
       isLoading: true,
     });

@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari full base node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.24.0"
+version = "0.25.1"
 edition = "2018"
 
 [dependencies]
@@ -16,6 +16,7 @@ tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_libtor = { path = "../../infrastructure/libtor" }
 tari_mmr = { path = "../../base_layer/mmr", features=["native_bitmap"] }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_service_framework = { path = "../../base_layer/service_framework" }
@@ -57,6 +58,6 @@ default = ["metrics"]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_p2p/avx2", "tari_comms/avx2", "tari_comms_dht/avx2"]
 metrics = ["warp", "reqwest", "tari_metrics",  "tari_comms/metrics"]
 safe = []
-libtor = ["tari_common/libtor"]
+libtor = ["tari_libtor/libtor"]
 
 

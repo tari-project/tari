@@ -1,6 +1,6 @@
 [package]
 name = "tari_console_wallet"
-version = "0.24.0"
+version = "0.25.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
 
@@ -12,6 +12,7 @@ tari_app_utilities = { path = "../tari_app_utilities" }
 tari_comms = { path = "../../comms" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_common_types = { path = "../../base_layer/common_types" }
+tari_libtor = { path = "../../infrastructure/libtor" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
@@ -57,5 +58,5 @@ features = ["crossterm"]
 
 [features]
 avx2 = ["tari_core/avx2", "tari_crypto/avx2", "tari_wallet/avx2", "tari_comms/avx2", "tari_comms_dht/avx2", "tari_p2p/avx2", "tari_key_manager/avx2"]
-libtor = ["tari_common/libtor"]
+libtor = ["tari_libtor/libtor"]
 

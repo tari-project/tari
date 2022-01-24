@@ -81,8 +81,6 @@
 #[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;
 pub mod exit_codes;
-#[cfg(all(unix, feature = "libtor"))]
-pub mod tor;
 #[macro_use]
 mod logging;
 pub mod configuration;

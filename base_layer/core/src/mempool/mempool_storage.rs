@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use log::*;
 use tari_common_types::types::{PrivateKey, Signature};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::Block,
@@ -130,7 +130,13 @@ impl MempoolStorage {
 
     /// Update the Mempool based on the received published block.
     pub fn process_published_block(&mut self, published_block: &Block) -> Result<(), MempoolError> {
-        trace!(target: LOG_TARGET, "Mempool processing new block: {}", published_block);
+        debug!(
+            target: LOG_TARGET,
+            "Mempool processing new block: #{} ({}) {}",
+            published_block.header.height,
+            published_block.header.hash().to_hex(),
+            published_block.body.to_counts_string()
+        );
         // Move published txs to ReOrgPool and discard double spends
         let removed_transactions = self
             .unconfirmed_pool
@@ -141,6 +147,7 @@ impl MempoolStorage {
         self.unconfirmed_pool.compact();
         self.reorg_pool.compact();
 
+        debug!(target: LOG_TARGET, "{}", self.stats());
         Ok(())
     }
 
@@ -203,7 +210,7 @@ impl MempoolStorage {
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into the given weight
     pub fn retrieve(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        let results = self.unconfirmed_pool.highest_priority_txs(total_weight)?;
+        let results = self.unconfirmed_pool.fetch_highest_priority_txs(total_weight)?;
         self.insert_txs(results.transactions_to_insert)?;
         Ok(results.retrieved_transactions)
     }

@@ -17,19 +17,35 @@ jobs:
     steps:
       # Checkout the code
       - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-20
+          override: true
+      - name: Install cross
+        run: |
+          curl -L https://github.com/cross-rs/cross/releases/download/v0.2.1/cross-v0.2.1-x86_64-unknown-linux-gnu.tar.gz | tar xvz
       # Build and package the libraries
       - name: Build libwallet
         id: build-libwallet
-        uses: tari-project/action-buildlibs@v0.3.3
-        with:
-          platforms: "x86_64-linux-android;aarch64-linux-android;armv7-linux-androideabi"
-          level: "24"
+        env:
+          CFLAGS: "-DMDB_USE_ROBUST=0"
+          # todo: once determined if this 32bit arm build is still required
+          # then make necessary changes to tari comms (metrics fully optional)
+          # cross build --target=armv7-linux-androideabi -p tari_wallet_ffi --release
+        run: |
+          ./cross build --target=x86_64-linux-android -p tari_wallet_ffi --release
+          ./cross build --target=aarch64-linux-android -p tari_wallet_ffi --release
+          ls -alht target/x86_64-linux-android/release/
+          ls -alht target/aarch64-linux-android/release/
+          mkdir "$GITHUB_WORKSPACE/libwallet"
+          cp target/x86_64-linux-android/release/libtari_wallet_ffi.a "$GITHUB_WORKSPACE/libwallet/libtari_wallet_ffi.x86.a"
+          cp target/aarch64-linux-android/release/libtari_wallet_ffi.a "$GITHUB_WORKSPACE/libwallet/libtari_wallet_ffi.aarch64.a"
       # Upload artifacts to Github
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
         with:
-          name: libwallet-android
-          path: ${{ github.workspace }}/libwallet/
+          name: libwallet
+          path: ${{ github.workspace }}/libwallet
       # Copy tarballs to S3
       - name: Sync to S3
         if: ${{ startsWith(github.ref, 'refs/tags/v') }}
@@ -67,7 +83,7 @@ jobs:
           mkdir -p MobileWallet/TariLib/
           cd base_layer/wallet_ffi
           mv ios.config build.config
-          ./mobile_build.sh
+          ./mobile_build.sh || exit 1
           ls -alht $GITHUB_WORKSPACE/MobileWallet/TariLib/
       - name: Upload artifacts
         uses: actions/upload-artifact@v2
@@ -75,15 +91,15 @@ jobs:
           name: libwallet-ios
           path: ${{ github.workspace }}/MobileWallet/TariLib/
 
-      # "Error: Container action is only supported on Linux"
-      # - name: Sync to S3
-      #   uses: jakejarvis/s3-sync-action@v0.5.1
-      #   with:
-      #     args: --acl public-read --follow-symlinks
-      #   env:
-      #     AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
-      #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      #     AWS_REGION: "us-east-1" # optional: defaults to us-east-1
-      #     SOURCE_DIR: "$GITHUB_WORKSPACE/MobileWallet/TariLib/"
-      #     DEST_DIR: "libwallet-ios"
+  # "Error: Container action is only supported on Linux"
+  # - name: Sync to S3
+  #   uses: jakejarvis/s3-sync-action@v0.5.1
+  #   with:
+  #     args: --acl public-read --follow-symlinks
+  #   env:
+  #     AWS_S3_BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+  #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #     AWS_REGION: "us-east-1" # optional: defaults to us-east-1
+  #     SOURCE_DIR: "$GITHUB_WORKSPACE/MobileWallet/TariLib/"
+  #     DEST_DIR: "libwallet-ios"

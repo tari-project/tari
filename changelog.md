@@ -1,5 +1,44 @@
 # Changelog
 
+
+### [0.25.1](https://github.com/tari-project/tari/compare/v0.25.0...v0.25.1) (2022-01-24)
+
+
+### Features
+
+* add icon to mining node ([#3555](https://github.com/tari-project/tari/issues/3555)) ([4551a90](https://github.com/tari-project/tari/commit/4551a9033aff8a22ab3f5cf1c2c4a65534dcb743))
+* add sync progress grpc ([#3722](https://github.com/tari-project/tari/issues/3722)) ([d47ad5e](https://github.com/tari-project/tari/commit/d47ad5ec165b23fbf17d791ba63f8a49419075f8))
+* validator node shows its public key on startup ([#3734](https://github.com/tari-project/tari/issues/3734)) ([fc7da51](https://github.com/tari-project/tari/commit/fc7da511999d407cf38294dc3e68bb5c99af12a1))
+* **validator:** add grpc identity rpc ([#3731](https://github.com/tari-project/tari/issues/3731)) ([6d2a4a4](https://github.com/tari-project/tari/commit/6d2a4a402be8120a66d4dd7b23adfe00bdf9434e))
+
+
+### Bug Fixes
+
+* prevent key leaking through derive debug impl ([#3735](https://github.com/tari-project/tari/issues/3735)) ([12a90e6](https://github.com/tari-project/tari/commit/12a90e6b8781d1d4de02e1374b2e3277d132d44c))
+
+## [0.25.0](https://github.com/tari-project/tari/compare/v0.24.0...v0.25.0) (2022-01-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* don't include duplicate unique ID in same block template (#3713)
+* reinstate 2 min blocks for dibbler (#3720)
+
+### Features
+
+* add command line arguments support to collectibles ([#3714](https://github.com/tari-project/tari/issues/3714)) ([696f2ef](https://github.com/tari-project/tari/commit/696f2ef9571875701fb72501dc6879a0d7b2d05d))
+* **base_node:** base node keeps track of historical reorgs ([#3718](https://github.com/tari-project/tari/issues/3718)) ([79ffdec](https://github.com/tari-project/tari/commit/79ffdec110d73b6256e48fba28a4cc16778e7c75))
+
+
+### Bug Fixes
+
+* **collectibles:** fix setup and unlock ([#3724](https://github.com/tari-project/tari/issues/3724)) ([f98596d](https://github.com/tari-project/tari/commit/f98596d780cafc35ee8968d4fcb5900d85f94a11))
+* **collectibles:** various ui fixes ([#3726](https://github.com/tari-project/tari/issues/3726)) ([1cc51a9](https://github.com/tari-project/tari/commit/1cc51a9494f78e810cf0b393a7ae354f47074616))
+* **comms:** ensure signature challenge is constructed consistently ([#3725](https://github.com/tari-project/tari/issues/3725)) ([e5173b7](https://github.com/tari-project/tari/commit/e5173b7425849847d08e4133979622586df5d736))
+* don't include duplicate unique ID in same block template ([#3713](https://github.com/tari-project/tari/issues/3713)) ([b501771](https://github.com/tari-project/tari/commit/b5017718a71b51a220c660d34b476d71aa3fc04e))
+* put libtor behind optional feature flag ([#3717](https://github.com/tari-project/tari/issues/3717)) ([e850cf0](https://github.com/tari-project/tari/commit/e850cf076b1803afe1fddcbcbe21dfaf92e6b103))
+* reinstate 2 min blocks for dibbler ([#3720](https://github.com/tari-project/tari/issues/3720)) ([3c5890d](https://github.com/tari-project/tari/commit/3c5890d231d1d329f93707977a618c6bdf0dcb5d))
+
 ## [0.24.0](https://github.com/tari-project/tari/compare/v0.23.0...v0.24.0) (2022-01-18)
 
 

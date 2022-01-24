@@ -99,6 +99,7 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes
     )?;
     let db_factory = SqliteDbFactory::new(&config);
     let mempool_service = MempoolServiceHandle::default();
+
     info!(
         target: LOG_TARGET,
         "Node starting with pub key: {}, node_id: {}",
@@ -128,11 +129,17 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes
         db_factory.clone(),
     );
 
-    let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> =
-        ValidatorNodeGrpcServer::new(db_factory.clone(), asset_processor, asset_proxy);
+    let grpc_server: ValidatorNodeGrpcServer<DefaultServiceSpecification> = ValidatorNodeGrpcServer::new(
+        node_identity.as_ref().clone(),
+        db_factory.clone(),
+        asset_processor,
+        asset_proxy,
+    );
     let grpc_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 18144);
 
     task::spawn(run_grpc(grpc_server, grpc_addr, shutdown.to_signal()));
+    println!("🚀 Validator node started!");
+    println!("{}", node_identity);
     run_dan_node(
         shutdown.to_signal(),
         config,
