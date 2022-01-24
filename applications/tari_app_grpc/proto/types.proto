@@ -411,3 +411,11 @@ message SoftwareUpdate {
     string sha = 3;
     string download_url = 4;
 }
+
+message GetIdentityRequest { }
+
+message GetIdentityResponse {
+    bytes public_key = 1;
+    string public_address = 2;
+    bytes node_id = 3;
+}

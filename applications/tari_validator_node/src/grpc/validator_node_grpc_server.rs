@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use tari_app_grpc::tari_rpc as rpc;
 use tari_common_types::types::PublicKey;
+use tari_comms::NodeIdentity;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::TemplateId,
@@ -30,6 +31,7 @@ use tari_dan_core::{
 use tonic::{Request, Response, Status};
 
 pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> {
+    node_identity: NodeIdentity,
     db_factory: TServiceSpecification::DbFactory,
     asset_processor: TServiceSpecification::AssetProcessor,
     asset_proxy: TServiceSpecification::AssetProxy,
@@ -37,11 +39,13 @@ pub struct ValidatorNodeGrpcServer<TServiceSpecification: ServiceSpecification> 
 
 impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServiceSpecification> {
     pub fn new(
+        node_identity: NodeIdentity,
         db_factory: TServiceSpecification::DbFactory,
         asset_processor: TServiceSpecification::AssetProcessor,
         asset_proxy: TServiceSpecification::AssetProxy,
     ) -> Self {
         Self {
+            node_identity,
             db_factory,
             asset_processor,
             asset_proxy,
@@ -53,6 +57,18 @@ impl<TServiceSpecification: ServiceSpecification> ValidatorNodeGrpcServer<TServi
 impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_server::ValidatorNode
     for ValidatorNodeGrpcServer<TServiceSpecification>
 {
+    async fn get_identity(
+        &self,
+        _request: tonic::Request<rpc::GetIdentityRequest>,
+    ) -> Result<tonic::Response<rpc::GetIdentityResponse>, tonic::Status> {
+        let response = rpc::GetIdentityResponse {
+            public_key: self.node_identity.public_key().to_vec(),
+            public_address: self.node_identity.public_address().to_string(),
+            node_id: self.node_identity.node_id().to_vec(),
+        };
+        Ok(Response::new(response))
+    }
+
     async fn get_token_data(
         &self,
         request: tonic::Request<rpc::GetTokenDataRequest>,
