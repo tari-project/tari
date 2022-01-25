@@ -315,6 +315,12 @@ impl ConsensusConstants {
         }]
     }
 
+    /// *
+    /// Dibbler testnet has the following characteristics:
+    /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
+    /// * 21 billion tXTR with a 3-year half-life
+    /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
+    /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn dibbler() -> Vec<Self> {
         let mut algos = HashMap::new();
         // sha3/monero to 40/60 split
@@ -461,5 +467,41 @@ impl ConsensusConstantsBuilder {
 
     pub fn build(self) -> ConsensusConstants {
         self.consensus
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        consensus::{
+            emission::{Emission, EmissionSchedule},
+            ConsensusConstants,
+        },
+        transactions::tari_amount::uT,
+    };
+    use crate::transactions::tari_amount::T;
+
+    #[test]
+    fn dibbler_schedule() {
+        let dibbler = ConsensusConstants::dibbler();
+        let schedule = EmissionSchedule::new(
+            dibbler[0].emission_initial,
+            dibbler[0].emission_decay,
+            dibbler[0].emission_tail,
+        );
+        let reward = schedule.block_reward(0);
+        assert_eq!(reward, 18_462_816_327 * uT);
+        assert_eq!(schedule.supply_at_block(0), reward);
+        let three_years = 365 * 24 * 30 * 3;
+        assert_eq!(schedule.supply_at_block(three_years), 10_500_682_498_903_652 * uT); // Around 10.5 billion
+        let mut rewards = schedule.iter().skip(3_574_174);
+        // Tail emission starts after block 3,574,175
+        let (block_num, reward, supply) = rewards.next().unwrap();
+        assert_eq!(block_num, 3_574_175);
+        assert_eq!(reward, 800_000_598 * uT);
+        assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
+        let (_, reward, _) = rewards.next().unwrap();
+        assert_eq!(reward, dibbler[0].emission_tail);
+
     }
 }
