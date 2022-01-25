@@ -90,14 +90,14 @@ Done! All transactions monitored to Broadcast stage.
 Split one or more unspent transaction outputs into many.
 Creates a transaction that must be mined before the new outputs can be spent.
 
-`tari_console_wallet --command "coin-split <amount per coin> <number of coins>"`
+`tari_console_wallet --command "coin-split <amount per coin> <number of coins> <fee per gram(default 5µT)>"`
 
 example:
 
 ```
 $ tari_console_wallet --command "coin-split 10000 9"
 
-1. coin-split 10000 µT 9
+1. coin-split 10000 µT 9 5 µT
 
 Coin split succeeded
 Monitoring 1 sent transactions to Broadcast stage...
