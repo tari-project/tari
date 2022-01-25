@@ -11,11 +11,11 @@
 
 # GRPC address of base node
 # Default: value from `base_node.grpc_base_node_address`
-#base_node_grpc_address = "127.0.0.1:18142"
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # GRPC address of console wallet
 # Default: value from `wallet.grpc_address`
-#wallet_grpc_address = "127.0.0.1:18143"
+#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
 
 # Start mining only when base node is bootstrapped
 # and current block height is on the tip of network

@@ -148,6 +148,8 @@ pub struct GlobalConfig {
     pub console_wallet_use_libtor: bool,
     pub merge_mining_config: Option<MergeMiningConfig>,
     pub blockchain_track_reorgs: bool,
+    pub node_grpc_server_address: Option<Multiaddr>,
+    pub wallet_grpc_server_address: Option<Multiaddr>,
 }
 
 impl GlobalConfig {
@@ -337,8 +339,7 @@ fn convert_node_config(
         .transpose()?;
 
     let mut base_node_config = None;
-    // TODO: Create Mining node config, do the same for below
-    if application == ApplicationType::BaseNode || application == ApplicationType::MiningNode {
+    if application == ApplicationType::BaseNode {
         let mut bn_config = BaseNodeConfig::default();
         // GPRC enabled
         let key = "base_node.grpc_enabled";
@@ -362,8 +363,7 @@ fn convert_node_config(
     }
 
     let mut wallet_config = None;
-    // TODO: Create Mining node config, do the same for above
-    if application == ApplicationType::ConsoleWallet || application == ApplicationType::MiningNode {
+    if application == ApplicationType::ConsoleWallet {
         let mut config = WalletConfig::default();
         // GPRC enabled
         let key = "wallet.grpc_enabled";
@@ -730,13 +730,13 @@ fn convert_node_config(
         _ => None,
     };
 
-    let key = config_string("stratum_transcoder", net_str, "transcoder_host_address");
+    let key = "stratum_transcoder.transcoder_host_address";
     let transcoder_host_address = cfg
-        .get_str(&key)
-        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))
+        .get_str(key)
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
         .and_then(|addr| {
             addr.parse::<SocketAddr>()
-                .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
+                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
         })?;
 
     let key = config_string("merge_mining_proxy", net_str, "wait_for_initial_sync_at_startup");
@@ -793,6 +793,55 @@ fn convert_node_config(
 
     let metrics = MetricsConfig::from_config(&cfg)?;
     let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(&cfg, net_str);
+
+    let mut node_grpc_server = None;
+    let mut wallet_grpc_server = None;
+    if application == ApplicationType::StratumTranscoder {
+        dbg!("hello from trancoder");
+        let key = "stratum_transcoder.base_node_grpc_address";
+        let pie = cfg.get_str(key);
+        dbg!(&pie);
+        node_grpc_server = Some(
+            pie.map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
+                .and_then(|addr| {
+                    addr.parse::<Multiaddr>()
+                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
+                })?,
+        );
+        dbg!("hello from walle");
+        let key = "stratum_transcoder.wallet_grpc_address";
+        wallet_grpc_server = Some(
+            cfg.get_str(key)
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
+                .and_then(|addr| {
+                    addr.parse::<Multiaddr>()
+                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
+                })?,
+        );
+        dbg!("done");
+    }
+
+    if application == ApplicationType::MiningNode {
+        let key = "mining_node.base_node_grpc_address";
+        node_grpc_server = Some(
+            cfg.get_str(key)
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
+                .and_then(|addr| {
+                    addr.parse::<Multiaddr>()
+                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
+                })?,
+        );
+
+        let key = "mining_node.wallet_grpc_address";
+        wallet_grpc_server = Some(
+            cfg.get_str(key)
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
+                .and_then(|addr| {
+                    addr.parse::<Multiaddr>()
+                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
+                })?,
+        );
+    }
 
     Ok(GlobalConfig {
         autoupdate_check_interval,
@@ -880,6 +929,8 @@ fn convert_node_config(
         console_wallet_use_libtor,
         merge_mining_config,
         blockchain_track_reorgs,
+        node_grpc_server_address: node_grpc_server,
+        wallet_grpc_server_address: wallet_grpc_server,
     })
 }
 

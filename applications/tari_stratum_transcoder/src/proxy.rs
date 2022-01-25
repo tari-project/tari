@@ -36,6 +36,7 @@ use jsonrpc::error::StandardError;
 use serde_json as json;
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::GetCoinbaseRequest};
 use tari_common::{configuration::Network, GlobalConfig};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::blocks::{Block, NewBlockTemplate};
 use tari_utilities::{hex::Hex, message_format::MessageFormat};
 use tracing::{debug, error};
@@ -63,16 +64,23 @@ pub struct StratumTranscoderProxyConfig {
 impl TryFrom<GlobalConfig> for StratumTranscoderProxyConfig {
     type Error = std::io::Error;
 
-    fn try_from(_config: GlobalConfig) -> Result<Self, Self::Error> {
-        todo!("fix")
-        // let grpc_base_node_address = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
-        // let grpc_console_wallet_address = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
-        // Ok(Self {
-        //     network: config.network,
-        //     grpc_base_node_address,
-        //     grpc_console_wallet_address,
-        //     transcoder_host_address: config.transcoder_host_address,
-        // })
+    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
+        let grpc_base_node_address = multiaddr_to_socketaddr(
+            &config
+                .node_grpc_server_address
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Missing base_node GRPC address"))?,
+        )?;
+        let grpc_console_wallet_address = multiaddr_to_socketaddr(
+            &config
+                .wallet_grpc_server_address
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Missing wallet GRPC address"))?,
+        )?;
+        Ok(Self {
+            network: config.network,
+            grpc_base_node_address,
+            grpc_console_wallet_address,
+            transcoder_host_address: config.transcoder_host_address,
+        })
     }
 }
 

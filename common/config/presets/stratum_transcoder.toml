@@ -9,3 +9,10 @@
 # Address of the tari_stratum_transcoder application
 transcoder_host_address = "127.0.0.1:7879"
 
+# GRPC address of base node
+# Default: value from `base_node.grpc_base_node_address`
+base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# GRPC address of console wallet
+# Default: value from `wallet.grpc_address`
+wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"

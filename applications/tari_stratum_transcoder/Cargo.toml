@@ -14,6 +14,7 @@ envlog = ["env_logger"]
 [dependencies]
 tari_comms = { path = "../../comms" }
 tari_app_grpc = { path = "../tari_app_grpc" }
+tari_app_utilities = { path = "../tari_app_utilities"}
 tari_common = { path = "../../common" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }

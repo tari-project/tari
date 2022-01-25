@@ -36,17 +36,14 @@ use std::convert::{Infallible, TryFrom};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{StratumTranscoderProxyConfig, StratumTranscoderProxyService};
-use structopt::StructOpt;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes};
 use tokio::time::Duration;
 
-use crate::error::StratumTranscoderProxyError;
-
 #[tokio::main]
-async fn main() -> Result<(), StratumTranscoderProxyError> {
-    let config = initialize()?;
-
+async fn main() -> Result<(), ExitCodes> {
+    let (_, config, _) = init_configuration(ApplicationType::StratumTranscoder)?;
     let config = StratumTranscoderProxyConfig::try_from(config)?;
     let addr = config.transcoder_host_address;
     let client = reqwest::Client::builder()
@@ -54,18 +51,25 @@ async fn main() -> Result<(), StratumTranscoderProxyError> {
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(25)
         .build()
-        .map_err(StratumTranscoderProxyError::ReqwestError)?;
+        .map_err(|e| ExitCodes::UnknownError(e.to_string()))?;
     let base_node_client =
-        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address)).await?;
+        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address))
+            .await
+            .map_err(|e| ExitCodes::UnknownError(e.to_string()))?;
     let wallet_client =
-        grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
+        grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address))
+            .await
+            .map_err(|e| ExitCodes::UnknownError(e.to_string()))?;
     let miningcore_service = StratumTranscoderProxyService::new(config, client, base_node_client, wallet_client);
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(miningcore_service.clone())));
 
     match Server::try_bind(&addr) {
         Ok(builder) => {
             println!("Listening on {}...", addr);
-            builder.serve(service).await?;
+            builder
+                .serve(service)
+                .await
+                .map_err(|e| ExitCodes::UnknownError(e.to_string()))?;
             Ok(())
         },
         Err(err) => {
@@ -75,28 +79,7 @@ async fn main() -> Result<(), StratumTranscoderProxyError> {
             println!("[pools][self-select]' config setting that can be found  in 'config/xmrig_config_***.json' or");
             println!("'<xmrig folder>/config.json'.");
             println!();
-            Err(err.into())
+            Err(ExitCodes::UnknownError(err.to_string()))
         },
     }
-}
-
-/// Loads the configuration and sets up logging
-fn initialize() -> Result<GlobalConfig, StratumTranscoderProxyError> {
-    // Parse and validate command-line arguments
-    let mut bootstrap = ConfigBootstrap::from_args();
-    // Check and initialize configuration files
-    let application_type = ApplicationType::StratumTranscoder;
-    bootstrap.init_dirs(application_type)?;
-
-    // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    #[cfg(feature = "envlog")]
-    let _ = env_logger::try_init();
-    // Initialise the logger
-    #[cfg(not(feature = "envlog"))]
-    bootstrap.initialize_logging()?;
-
-    let cfg = GlobalConfig::convert_from(application_type, cfg, bootstrap.network)?;
-    Ok(cfg)
 }
