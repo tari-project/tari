@@ -23,6 +23,8 @@
 // Portions of this file were originally copyrighted (c) 2018 The Grin Developers, issued under the Apache License,
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
+use std::io;
+
 use serde::{Deserialize, Serialize};
 use tari_crypto::{range_proof::RangeProofError, script::ScriptError, signatures::CommitmentSignatureError};
 use thiserror::Error;
@@ -66,10 +68,18 @@ pub enum TransactionError {
     MissingTransactionInputData,
     #[error("Error executing covenant: {0}")]
     CovenantError(String),
+    #[error("Consensus encoding error: {0}")]
+    ConsensusEncodingError(String),
 }
 
 impl From<CovenantError> for TransactionError {
     fn from(err: CovenantError) -> Self {
         TransactionError::CovenantError(err.to_string())
+    }
+}
+
+impl From<io::Error> for TransactionError {
+    fn from(err: io::Error) -> Self {
+        TransactionError::ConsensusEncodingError(err.to_string())
     }
 }

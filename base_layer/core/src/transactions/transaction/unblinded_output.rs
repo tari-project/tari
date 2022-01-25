@@ -261,7 +261,7 @@ impl UnblindedOutput {
     // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
-        transaction::hash_output(&self.features, &commitment, &self.script, &self.covenant, self.version)
+        transaction::hash_output(self.version, &self.features, &commitment, &self.script, &self.covenant).to_vec()
     }
 }
 

@@ -23,6 +23,7 @@
 use std::{
     io,
     io::{Error, Read, Write},
+    ops::Deref,
 };
 
 use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
@@ -56,7 +57,7 @@ impl<const MAX: usize> From<MaxSizeBytes<MAX>> for Vec<u8> {
 }
 
 impl<const MAX: usize> ConsensusDecoding for MaxSizeBytes<MAX> {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let len = reader.read_varint()?;
         if len > MAX {
             return Err(io::Error::new(
@@ -67,6 +68,20 @@ impl<const MAX: usize> ConsensusDecoding for MaxSizeBytes<MAX> {
         let mut bytes = vec![0u8; len];
         reader.read_exact(&mut bytes)?;
         Ok(Self { inner: bytes })
+    }
+}
+
+impl<const MAX: usize> AsRef<[u8]> for MaxSizeBytes<MAX> {
+    fn as_ref(&self) -> &[u8] {
+        &self.inner
+    }
+}
+
+impl<const MAX: usize> Deref for MaxSizeBytes<MAX> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 
@@ -100,7 +115,7 @@ impl<const N: usize> ConsensusEncodingSized for [u8; N] {
 }
 
 impl<const N: usize> ConsensusDecoding for [u8; N] {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let mut buf = [0u8; N];
         reader.read_exact(&mut buf)?;
         Ok(buf)

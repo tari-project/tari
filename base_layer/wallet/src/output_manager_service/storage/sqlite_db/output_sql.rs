@@ -30,7 +30,6 @@ use tari_common_types::{
     types::{ComSignature, Commitment, PrivateKey, PublicKey},
 };
 use tari_core::{
-    consensus::ConsensusDecoding,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -563,7 +562,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
                 })?,
             ),
             o.script_lock_height as u64,
-            Covenant::consensus_decode(&mut o.covenant.as_slice()).map_err(|e| {
+            Covenant::from_bytes(&o.covenant).map_err(|e| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create Covenant from stored bytes ({}), They might be encrypted", e

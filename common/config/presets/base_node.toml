@@ -30,7 +30,7 @@ grpc_enabled = true
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
-track_reorgs = false
+track_reorgs = true
 
 
 # Configuration options for testnet dibbler

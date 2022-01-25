@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,45 +20,33 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    io,
-    io::{Read, Write},
-};
+use std::{io, io::Read};
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
-
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct MintNonFungibleFeatures {
-    pub asset_public_key: PublicKey,
-    pub asset_owner_commitment: Commitment,
-    // pub proof_of_ownership: ComSignature
+pub struct LimitedBytesReader<R> {
+    byte_limit: usize,
+    num_read: usize,
+    inner: R,
 }
 
-impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.asset_public_key.consensus_encode(writer)?;
-        written += self.asset_owner_commitment.consensus_encode(writer)?;
-        Ok(written)
+impl<R: Read> LimitedBytesReader<R> {
+    pub fn new(byte_limit: usize, reader: R) -> Self {
+        Self {
+            byte_limit,
+            num_read: 0,
+            inner: reader,
+        }
     }
 }
-
-impl ConsensusEncodingSized for MintNonFungibleFeatures {
-    fn consensus_encode_exact_size(&self) -> usize {
-        PublicKey::key_length() * 2
-    }
-}
-
-impl ConsensusDecoding for MintNonFungibleFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let asset_public_key = PublicKey::consensus_decode(reader)?;
-        let asset_owner_commitment = Commitment::consensus_decode(reader)?;
-        Ok(Self {
-            asset_public_key,
-            asset_owner_commitment,
-        })
+impl<R: Read> Read for LimitedBytesReader<R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        self.num_read += read;
+        if self.num_read > self.byte_limit {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Read more bytes than the maximum ({})", self.byte_limit),
+            ));
+        }
+        Ok(read)
     }
 }
