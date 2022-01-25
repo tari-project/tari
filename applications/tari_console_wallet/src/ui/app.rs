@@ -130,6 +130,10 @@ impl<B: Backend> App<B> {
         }
     }
 
+    pub fn on_backtab(&mut self) {
+        self.tabs.previous();
+    }
+
     pub fn on_up(&mut self) {
         self.tabs.on_up(&mut self.app_state);
     }

@@ -122,6 +122,7 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitCode
                 (KeyCode::Backspace, _) => app.on_backspace(),
                 (KeyCode::Enter, _) => app.on_key('\n'),
                 (KeyCode::Tab, _) => app.on_key('\t'),
+                (KeyCode::BackTab, _) => app.on_backtab(),
                 (KeyCode::F(10), _) => app.on_f10(),
                 _ => {},
             },
