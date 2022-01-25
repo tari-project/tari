@@ -610,7 +610,7 @@ mod fetch_header_containing_kernel_mmr {
         //     assert_eq!(header.height(), 0);
         //     mmr_position += 1;
         // });
-        let err = db.fetch_header_containing_kernel_mmr(2).unwrap_err();
+        let err = db.fetch_header_containing_kernel_mmr(3).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
