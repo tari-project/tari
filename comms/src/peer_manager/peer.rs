@@ -266,13 +266,14 @@ impl Peer {
         self.banned_until.as_ref().filter(|dt| *dt > &Utc::now().naive_utc())
     }
 
-    /// Marks the peer as offline
-    pub fn set_offline(&mut self, is_offline: bool) {
+    /// Marks the peer as offline if true, or not offline if false
+    pub fn set_offline(&mut self, is_offline: bool) -> &mut Self {
         if is_offline {
             self.offline_at = Some(Utc::now().naive_utc());
         } else {
             self.offline_at = None;
         }
+        self
     }
 
     /// This will store metadata inside of the metadata field in the peer.
@@ -284,6 +285,28 @@ impl Peer {
     /// This will return the value in the metadata field. It will return None if the key is not present
     pub fn get_metadata(&self, key: u8) -> Option<&Vec<u8>> {
         self.metadata.get(&key)
+    }
+
+    /// Set the identity signature of the peer. WARNING: It is up to the caller to ensure that the signature is valid.
+    pub fn set_valid_identity_signature(&mut self, signature: IdentitySignature) -> &mut Self {
+        self.identity_signature = Some(signature);
+        self
+    }
+
+    /// Update the peer's addresses. This call will invalidate the identity signature.
+    pub fn update_addresses(&mut self, addresses: Vec<Multiaddr>) -> &mut Self {
+        self.addresses.update_addresses(addresses);
+        self.identity_signature = None;
+        self
+    }
+
+    /// Update the peer's features. This call will invalidate the identity signature if the features differ.
+    pub fn set_features(&mut self, features: PeerFeatures) -> &mut Self {
+        if self.features != features {
+            self.features = features;
+            self.identity_signature = None;
+        }
+        self
     }
 
     pub fn to_short_string(&self) -> String {
