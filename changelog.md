@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.26.0](https://github.com/tari-project/tari/compare/v0.25.1...v0.26.0) (2022-01-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* generate new dibbler genesis block (#3742)
+* **core:** add missing consensus encoding length byte rangeproof & covenants (#3730)
+
+### Bug Fixes
+
+* **core:** add missing consensus encoding length byte rangeproof & covenants ([#3730](https://github.com/tari-project/tari/issues/3730)) ([d56da1a](https://github.com/tari-project/tari/commit/d56da1aa86e0854c4d51635c45d82135393dfbea))
+* ensure that features are set when syncing peers ([#3745](https://github.com/tari-project/tari/issues/3745)) ([8efd2e4](https://github.com/tari-project/tari/commit/8efd2e4960e9c3de2ce3c9ff7e077aae6c4da11a))
+* move config to one file ([9f9a46c](https://github.com/tari-project/tari/commit/9f9a46c8dd0b7975764bed4f2fecdcb943d763a6))
+
 
 ### [0.25.1](https://github.com/tari-project/tari/compare/v0.25.0...v0.25.1) (2022-01-24)
 

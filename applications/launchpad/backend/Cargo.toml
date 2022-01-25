@@ -1,6 +1,6 @@
 [package]
 name = "tari_launchpad"
-version = "0.25.1"
+version = "0.26.0"
 description = "The Tari Launcher"
 authors = ["The Tari Development Community"]
 license = ""
@@ -14,8 +14,8 @@ build = "src/build.rs"
 tauri-build = { version = "1.0.0-beta.4" }
 
 [dependencies]
-tari_app_utilities = { version = "^0.25", path = "../../tari_app_utilities" }
-tari_comms = { version = "^0.25", path = "../../../comms" }
+tari_app_utilities = { version = "^0.26", path = "../../tari_app_utilities" }
+tari_comms = { version = "^0.26", path = "../../../comms" }
 bollard = "0.11.0"
 config = "0.11.0"
 env_logger = "0.9.0"
