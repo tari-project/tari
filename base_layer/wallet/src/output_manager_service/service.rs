@@ -680,7 +680,9 @@ where
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+                OutputFeatures::default().consensus_encode_exact_size() +
+                    script![Nop].consensus_encode_exact_size() +
+                    Covenant::new().consensus_encode_exact_size(),
             );
 
         let utxo_selection = self

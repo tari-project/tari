@@ -59,7 +59,7 @@ impl ConsensusDecoding for SideChainCheckpointFeatures {
         let merkle_root = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
 
         const MAX_COMMITTEE_KEYS: usize = 50;
-        let committee = <MaxSizeVec<PublicKey, MAX_COMMITTEE_KEYS> as ConsensusDecoding>::consensus_decode(reader)?;
+        let committee = MaxSizeVec::<PublicKey, MAX_COMMITTEE_KEYS>::consensus_decode(reader)?;
 
         Ok(Self {
             merkle_root,

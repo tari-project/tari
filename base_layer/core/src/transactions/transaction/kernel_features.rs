@@ -20,7 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::{Error, Write};
+
 use serde::{Deserialize, Serialize};
+
+use crate::consensus::{ConsensusEncoding, ConsensusEncodingSized};
 
 bitflags! {
     /// Options for a kernel's structure or use.
@@ -35,5 +39,18 @@ bitflags! {
 impl KernelFeatures {
     pub fn create_coinbase() -> KernelFeatures {
         KernelFeatures::COINBASE_KERNEL
+    }
+}
+
+impl ConsensusEncoding for KernelFeatures {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        writer.write_all(&[self.bits][..])?;
+        Ok(1)
+    }
+}
+
+impl ConsensusEncodingSized for KernelFeatures {
+    fn consensus_encode_exact_size(&self) -> usize {
+        1
     }
 }
