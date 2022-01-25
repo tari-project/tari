@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Read, Write};
+use std::{
+    io,
+    io::{Read, Write},
+};
 
 use integer_encoding::{VarIntReader, VarIntWriter};
 use serde::{Deserialize, Serialize};
@@ -35,7 +38,7 @@ pub struct TemplateParameter {
 }
 
 impl ConsensusEncoding for TemplateParameter {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut written = writer.write_varint(self.template_id)?;
         written += writer.write_varint(self.template_data_version)?;
         written += self.template_data.consensus_encode(writer)?;
@@ -46,11 +49,11 @@ impl ConsensusEncoding for TemplateParameter {
 impl ConsensusEncodingSized for TemplateParameter {}
 
 impl ConsensusDecoding for TemplateParameter {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let template_id = reader.read_varint()?;
         let template_data_version = reader.read_varint()?;
         const MAX_TEMPLATE_DATA_LEN: usize = 1024;
-        let template_data = <MaxSizeBytes<MAX_TEMPLATE_DATA_LEN> as ConsensusDecoding>::consensus_decode(reader)?;
+        let template_data = MaxSizeBytes::<MAX_TEMPLATE_DATA_LEN>::consensus_decode(reader)?;
 
         Ok(Self {
             template_id,

@@ -130,10 +130,7 @@ mod test {
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::{from_hex, Hex};
 
-    use crate::{
-        consensus::{ConsensusDecoding, ToConsensusBytes},
-        covenants::{arguments::CovenantArg, filters::CovenantFilter, token::CovenantToken, Covenant},
-    };
+    use crate::covenants::{arguments::CovenantArg, filters::CovenantFilter, token::CovenantToken, Covenant};
 
     #[test]
     fn simple() {
@@ -149,7 +146,7 @@ mod test {
     fn fields() {
         let covenant =
             covenant!(and(identity(), fields_preserved(@fields(@field::commitment, @field::sender_offset_public_key))));
-        assert_eq!(covenant.to_consensus_bytes().to_hex(), "21203108020002");
+        assert_eq!(covenant.to_bytes().to_hex(), "21203108020002");
     }
 
     #[test]
@@ -159,7 +156,7 @@ mod test {
         let mut hash = [0u8; 32];
         hash.copy_from_slice(hash_vec.as_slice());
         let covenant = covenant!(output_hash_eq(@hash(hash)));
-        assert_eq!(covenant.to_consensus_bytes().to_hex(), format!("3001{}", hash_str));
+        assert_eq!(covenant.to_bytes().to_hex(), format!("3001{}", hash_str));
 
         let covenant = covenant!(and(
             identity(),
@@ -169,7 +166,7 @@ mod test {
             )
         ));
         assert_eq!(
-            covenant.to_consensus_bytes().to_hex(),
+            covenant.to_bytes().to_hex(),
             "21202220310153563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd"
         );
     }
@@ -180,7 +177,7 @@ mod test {
             identity(),
             and(identity(), and(not(identity(),), and(identity(), identity())))
         ));
-        assert_eq!(covenant.to_consensus_bytes().to_hex(), "23202120212420212020");
+        assert_eq!(covenant.to_bytes().to_hex(), "23202120212420212020");
         let h = from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
         let mut hash = [0u8; 32];
         hash.copy_from_slice(h.as_slice());
@@ -195,7 +192,7 @@ mod test {
             field_eq(@field::features_maturity, @uint(42))
         ));
         assert_eq!(
-            covenant.to_consensus_bytes().to_hex(),
+            covenant.to_bytes().to_hex(),
             "21222032080200090153563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd330706062a"
         );
     }
@@ -204,7 +201,7 @@ mod test {
     fn covenant() {
         let bytes = vec![0xba, 0xda, 0x55];
         let covenant = covenant!(field_eq(@field::covenant, @covenant(and(field_eq(@field::features_unique_id, @bytes(bytes), identity())))));
-        assert_eq!(covenant.to_consensus_bytes().to_hex(), "330703050a213307070903bada5520");
+        assert_eq!(covenant.to_bytes().to_hex(), "330703050a213307070903bada5520");
     }
 
     #[test]
@@ -220,7 +217,7 @@ mod test {
         let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pk)) Else CheckHeightVerify(100) PushPubKey(Box::new(sender_pk)) EndIf);
         let covenant = covenant!(field_eq(@field::script, @script(script.clone())));
 
-        let decoded = Covenant::consensus_decode(&mut covenant.to_consensus_bytes().as_slice()).unwrap();
+        let decoded = Covenant::from_bytes(&covenant.to_bytes()).unwrap();
         assert_eq!(covenant, decoded);
         unpack_enum!(CovenantArg::TariScript(decoded_script) = decoded.tokens()[2].as_arg().unwrap());
         assert_eq!(script, *decoded_script);

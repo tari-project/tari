@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -21,44 +21,34 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    io,
-    io::{Read, Write},
+    io::{Error, Read, Write},
+    mem,
 };
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    transactions::tari_amount::MicroTari,
+};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
+const U64_SIZE: usize = mem::size_of::<u64>();
 
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct MintNonFungibleFeatures {
-    pub asset_public_key: PublicKey,
-    pub asset_owner_commitment: Commitment,
-    // pub proof_of_ownership: ComSignature
-}
-
-impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.asset_public_key.consensus_encode(writer)?;
-        written += self.asset_owner_commitment.consensus_encode(writer)?;
-        Ok(written)
+impl ConsensusEncoding for MicroTari {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        writer.write_all(&self.0.to_le_bytes()[..])?;
+        Ok(U64_SIZE)
     }
 }
 
-impl ConsensusEncodingSized for MintNonFungibleFeatures {
+impl ConsensusEncodingSized for MicroTari {
     fn consensus_encode_exact_size(&self) -> usize {
-        PublicKey::key_length() * 2
+        U64_SIZE
     }
 }
 
-impl ConsensusDecoding for MintNonFungibleFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let asset_public_key = PublicKey::consensus_decode(reader)?;
-        let asset_owner_commitment = Commitment::consensus_decode(reader)?;
-        Ok(Self {
-            asset_public_key,
-            asset_owner_commitment,
-        })
+impl ConsensusDecoding for MicroTari {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let mut buf = [0u8; U64_SIZE];
+        reader.read_exact(&mut buf)?;
+        Ok(u64::from_le_bytes(buf).into())
     }
 }
