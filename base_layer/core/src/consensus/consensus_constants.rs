@@ -352,7 +352,7 @@ impl ConsensusConstants {
             emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
+            faucet_value: (10 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
         }]
@@ -479,7 +479,6 @@ mod test {
         },
         transactions::tari_amount::uT,
     };
-    use crate::transactions::tari_amount::T;
 
     #[test]
     fn dibbler_schedule() {
@@ -502,6 +501,5 @@ mod test {
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
         let (_, reward, _) = rewards.next().unwrap();
         assert_eq!(reward, dibbler[0].emission_tail);
-
     }
 }

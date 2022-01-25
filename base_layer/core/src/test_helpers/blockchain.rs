@@ -41,7 +41,7 @@ use tari_utilities::Hashable;
 use super::{create_block, mine_to_difficulty};
 use crate::{
     blocks::{
-        genesis_block::get_dibbler_genesis_block,
+        genesis_block::get_genesis_block,
         Block,
         BlockAccumulatedData,
         BlockHeader,
@@ -83,11 +83,14 @@ use crate::{
     },
 };
 
-/// Create a new blockchain database containing no blocks.
+/// Create a new blockchain database containing the genesis block
 pub fn create_new_blockchain() -> BlockchainDatabase<TempDatabase> {
-    let network = Network::LocalNet;
+    create_new_blockchain_with_network(Network::LocalNet)
+}
+
+pub fn create_new_blockchain_with_network(network: Network) -> BlockchainDatabase<TempDatabase> {
     let consensus_constants = ConsensusConstantsBuilder::new(network).build();
-    let genesis = get_dibbler_genesis_block();
+    let genesis = get_genesis_block(network);
     let consensus_manager = ConsensusManager::builder(network)
         .add_consensus_constants(consensus_constants)
         .with_block(genesis)
