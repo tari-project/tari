@@ -469,8 +469,10 @@ fn parse_coin_split(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, Pa
         .next()
         .ok_or_else(|| ParseError::Empty("split_count".to_string()))?;
     let num_splits = num_splits.parse::<u64>()?;
-
+    let fee_per_gram = args.next().unwrap_or("5");
     parsed_args.push(ParsedArgument::Int(num_splits));
+    let fee_per_gram = MicroTari::from_str(fee_per_gram)?;
+    parsed_args.push(ParsedArgument::Amount(fee_per_gram));
     Ok(parsed_args)
 }
 

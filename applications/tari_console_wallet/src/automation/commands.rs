@@ -260,8 +260,13 @@ pub async fn coin_split(
         _ => Err(CommandError::Argument),
     }?;
 
+    let fee_per_gram = match args[2] {
+        Amount(s) => Ok(s),
+        _ => Err(CommandError::Argument),
+    }?;
+
     let (tx_id, tx, amount) = output_service
-        .create_coin_split(amount_per_split, num_splits as usize, MicroTari(100), None)
+        .create_coin_split(amount_per_split, num_splits as usize, fee_per_gram, None)
         .await?;
     transaction_service
         .submit_transaction(tx_id, tx, amount, "Coin split".into())
