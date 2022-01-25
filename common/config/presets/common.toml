@@ -119,8 +119,6 @@ dns_seeds_use_dnssec = false
 [common.dibbler]
 dns_seeds =["seeds.dibbler.tari.com"]
 peer_seeds = [
-    "d426f9d8af3257753ab6bfd5e6dd6a22003f5dd29283a13028dcdee4f2b0c00d::/onion3/sn2wi53oxgls7nwji5tfdn5px2raiz3h6qvfoa4zyaqtyag4smc5p6id:18141",
-    "721e9da488302e69523bca1a9cdcbd2419dddda11698a1e8c6c7bd619659ff21::/onion3/qw4ymrzbanbcr3wwlesxbot72iayd7xdjcrtnacbwgk637vfon47hqad:18141",
     # 333388d1cbe3e2bd17453d052f
     "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
     # 555575715a49fc242d756e52ca
