@@ -46,8 +46,8 @@ pub enum UtxoScannerError {
     UtxoScanningError(String),
     #[error("Hex conversion error: {0}")]
     HexError(#[from] HexError),
-    #[error("Error converting a type")]
-    ConversionError,
+    #[error("Error converting a type: {0}")]
+    ConversionError(String),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("UTXO Import error: `{0}`")]

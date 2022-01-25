@@ -20,9 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io};
-
-use integer_encoding::VarIntWriter;
+use std::io;
 
 use crate::covenants::token::CovenantToken;
 
@@ -46,20 +44,11 @@ impl<'a> CovenantTokenEncoder<'a> {
 
 pub(super) trait CovenentWriteExt: io::Write {
     fn write_u8_fixed(&mut self, v: u8) -> Result<usize, io::Error>;
-    fn write_variable_length_bytes(&mut self, buf: &[u8]) -> Result<usize, io::Error>;
 }
 
 impl<W: io::Write> CovenentWriteExt for W {
     fn write_u8_fixed(&mut self, v: u8) -> Result<usize, io::Error> {
         self.write_all(&[v])?;
         Ok(1)
-    }
-
-    fn write_variable_length_bytes(&mut self, buf: &[u8]) -> Result<usize, io::Error> {
-        let len = u16::try_from(buf.len()).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-        let mut written = self.write_varint(len)?;
-        written += buf.len();
-        self.write_all(buf)?;
-        Ok(written)
     }
 }

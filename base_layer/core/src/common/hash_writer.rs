@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,45 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    io,
-    io::{Read, Write},
-};
+use std::io::Write;
 
-use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::keys::PublicKey as PublicKeyTrait;
+use digest::{consts::U32, Digest, FixedOutput, Update};
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
-
-#[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct MintNonFungibleFeatures {
-    pub asset_public_key: PublicKey,
-    pub asset_owner_commitment: Commitment,
-    // pub proof_of_ownership: ComSignature
+pub struct HashWriter<H> {
+    digest: H,
 }
 
-impl ConsensusEncoding for MintNonFungibleFeatures {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = self.asset_public_key.consensus_encode(writer)?;
-        written += self.asset_owner_commitment.consensus_encode(writer)?;
-        Ok(written)
+impl<H: Digest> HashWriter<H> {
+    pub fn new(digest: H) -> Self {
+        Self { digest }
     }
 }
 
-impl ConsensusEncodingSized for MintNonFungibleFeatures {
-    fn consensus_encode_exact_size(&self) -> usize {
-        PublicKey::key_length() * 2
+impl<H> HashWriter<H>
+where H: FixedOutput<OutputSize = U32>
+{
+    pub fn finalize(self) -> [u8; 32] {
+        self.digest.finalize_fixed().into()
     }
 }
 
-impl ConsensusDecoding for MintNonFungibleFeatures {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let asset_public_key = PublicKey::consensus_decode(reader)?;
-        let asset_owner_commitment = Commitment::consensus_decode(reader)?;
-        Ok(Self {
-            asset_public_key,
-            asset_owner_commitment,
-        })
+impl<H: Update> Write for HashWriter<H> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.digest.update(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }

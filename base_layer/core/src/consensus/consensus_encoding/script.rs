@@ -20,11 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Write};
+use std::{
+    io,
+    io::{Read, Write},
+};
 
 use tari_crypto::script::{ExecutionStack, TariScript};
 
-use crate::consensus::{ConsensusEncoding, ConsensusEncodingSized};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 
 impl ConsensusEncoding for TariScript {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
@@ -32,7 +35,22 @@ impl ConsensusEncoding for TariScript {
     }
 }
 
+/// TODO: implement zero-alloc ConsensusEncodingSized for TariScript
 impl ConsensusEncodingSized for TariScript {}
+
+impl ConsensusDecoding for TariScript {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        const MAX_SCRIPT_SIZE: usize = 4096;
+        let script_bytes = MaxSizeBytes::<MAX_SCRIPT_SIZE>::consensus_decode(reader)?;
+        let script = TariScript::from_bytes(&script_bytes).map_err(|err| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Failed to deserialize bytes: {}", err),
+            )
+        })?;
+        Ok(script)
+    }
+}
 
 impl ConsensusEncoding for ExecutionStack {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
@@ -41,3 +59,13 @@ impl ConsensusEncoding for ExecutionStack {
 }
 
 impl ConsensusEncodingSized for ExecutionStack {}
+
+impl ConsensusDecoding for ExecutionStack {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        const MAX_STACK_SIZE: usize = 4096;
+        let bytes = MaxSizeBytes::<MAX_STACK_SIZE>::consensus_decode(reader)?;
+        let stack =
+            ExecutionStack::from_bytes(&bytes).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+        Ok(stack)
+    }
+}

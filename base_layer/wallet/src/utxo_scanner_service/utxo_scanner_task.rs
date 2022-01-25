@@ -264,7 +264,7 @@ where TBackend: WalletBackend + 'static
         let tip_info = client.get_tip_info().await?;
         let chain_height = tip_info.metadata.map(|m| m.height_of_longest_chain()).unwrap_or(0);
         let end_header = client.get_header_by_height(chain_height).await?;
-        let end_header = BlockHeader::try_from(end_header).map_err(|_| UtxoScannerError::ConversionError)?;
+        let end_header = BlockHeader::try_from(end_header).map_err(UtxoScannerError::ConversionError)?;
 
         Ok(end_header)
     }
@@ -300,7 +300,7 @@ where TBackend: WalletBackend + 'static
             if sb.height <= current_tip_height {
                 if found_scanned_block.is_none() {
                     let header = BlockHeader::try_from(client.get_header_by_height(sb.height).await?)
-                        .map_err(|_| UtxoScannerError::ConversionError)?;
+                        .map_err(UtxoScannerError::ConversionError)?;
                     let header_hash = header.hash();
                     if header_hash != sb.header_hash {
                         missing_scanned_blocks.push(sb.clone());
@@ -326,7 +326,7 @@ where TBackend: WalletBackend + 'static
             } else {
                 // If we are not at the tip scanning should resume from the next header in the chain
                 let next_header = BlockHeader::try_from(client.get_header_by_height(sb.height + 1).await?)
-                    .map_err(|_| UtxoScannerError::ConversionError)?;
+                    .map_err(UtxoScannerError::ConversionError)?;
                 let next_header_hash = next_header.hash();
                 (sb.height + 1, next_header_hash)
             };
@@ -421,7 +421,7 @@ where TBackend: WalletBackend + 'static
             let outputs = response
                 .outputs
                 .into_iter()
-                .map(|utxo| TransactionOutput::try_from(utxo).map_err(|_| UtxoScannerError::ConversionError))
+                .map(|utxo| TransactionOutput::try_from(utxo).map_err(UtxoScannerError::ConversionError))
                 .collect::<Result<Vec<_>, _>>()?;
 
             total_scanned += outputs.len();
@@ -622,7 +622,7 @@ where TBackend: WalletBackend + 'static
             },
         };
         let header = client.get_header_by_height(block_height).await?;
-        let header = BlockHeader::try_from(header).map_err(|_| UtxoScannerError::ConversionError)?;
+        let header = BlockHeader::try_from(header).map_err(UtxoScannerError::ConversionError)?;
         let header_hash = header.hash();
         info!(
             target: LOG_TARGET,

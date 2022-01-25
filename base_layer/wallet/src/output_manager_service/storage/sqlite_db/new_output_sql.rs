@@ -58,6 +58,7 @@ pub struct NewOutputSql {
     pub received_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
     pub features_json: String,
+    pub covenant: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -97,6 +98,7 @@ impl NewOutputSql {
                     reason: format!("Could not parse features from JSON:{}", s),
                 }
             })?,
+            covenant: output.unblinded_output.covenant.to_bytes(),
         })
     }
 
@@ -144,6 +146,7 @@ impl From<OutputSql> for NewOutputSql {
             received_in_tx_id: o.received_in_tx_id,
             coinbase_block_height: o.coinbase_block_height,
             features_json: o.features_json,
+            covenant: o.covenant,
         }
     }
 }
