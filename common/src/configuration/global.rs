@@ -797,18 +797,15 @@ fn convert_node_config(
     let mut node_grpc_server = None;
     let mut wallet_grpc_server = None;
     if application == ApplicationType::StratumTranscoder {
-        dbg!("hello from trancoder");
         let key = "stratum_transcoder.base_node_grpc_address";
-        let pie = cfg.get_str(key);
-        dbg!(&pie);
         node_grpc_server = Some(
-            pie.map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
+            cfg.get_str(key)
+                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
                 .and_then(|addr| {
                     addr.parse::<Multiaddr>()
                         .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
                 })?,
         );
-        dbg!("hello from walle");
         let key = "stratum_transcoder.wallet_grpc_address";
         wallet_grpc_server = Some(
             cfg.get_str(key)
@@ -818,7 +815,6 @@ fn convert_node_config(
                         .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
                 })?,
         );
-        dbg!("done");
     }
 
     if application == ApplicationType::MiningNode {
