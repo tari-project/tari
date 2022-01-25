@@ -479,7 +479,6 @@ mod test {
         },
         transactions::tari_amount::uT,
     };
-    use crate::transactions::tari_amount::T;
 
     #[test]
     fn dibbler_schedule() {
@@ -502,6 +501,5 @@ mod test {
         assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
         let (_, reward, _) = rewards.next().unwrap();
         assert_eq!(reward, dibbler[0].emission_tail);
-
     }
 }
