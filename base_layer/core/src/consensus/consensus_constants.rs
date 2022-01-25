@@ -348,7 +348,7 @@ impl ConsensusConstants {
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
             emission_initial: 18_462_816_327 * uT,
-            emission_decay: &DIBBLER_PARAMS,
+            emission_decay: &DIBBLER_DECAY_PARAMS,
             emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
@@ -395,7 +395,7 @@ impl ConsensusConstants {
 }
 
 static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
-const DIBBLER_PARAMS: [u64; 11] = [21u64, 22, 23, 25, 26, 37, 38, 39, 41, 45, 49];
+const DIBBLER_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
@@ -479,13 +479,14 @@ mod test {
         },
         transactions::tari_amount::uT,
     };
+    use crate::transactions::tari_amount::T;
 
     #[test]
     fn dibbler_schedule() {
         let dibbler = ConsensusConstants::dibbler();
         let schedule = EmissionSchedule::new(
             dibbler[0].emission_initial,
-            &dibbler[0].emission_decay,
+            dibbler[0].emission_decay,
             dibbler[0].emission_tail,
         );
         let reward = schedule.block_reward(0);
@@ -493,5 +494,14 @@ mod test {
         assert_eq!(schedule.supply_at_block(0), reward);
         let three_years = 365 * 24 * 30 * 3;
         assert_eq!(schedule.supply_at_block(three_years), 10_500_682_498_903_652 * uT); // Around 10.5 billion
+        let mut rewards = schedule.iter().skip(3_574_174);
+        // Tail emission starts after block 3,574,175
+        let (block_num, reward, supply) = rewards.next().unwrap();
+        assert_eq!(block_num, 3_574_175);
+        assert_eq!(reward, 800_000_598 * uT);
+        assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
+        let (_, reward, _) = rewards.next().unwrap();
+        assert_eq!(reward, dibbler[0].emission_tail);
+
     }
 }
