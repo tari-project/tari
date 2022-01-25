@@ -103,9 +103,13 @@ impl<'a> PeerValidator<'a> {
                 }
 
                 debug!(target: LOG_TARGET, "Updating peer `{}`", new_peer.node_id);
-                current_peer.addresses.update_addresses(new_peer.addresses.into_vec());
-                current_peer.identity_signature = new_peer.identity_signature;
-                current_peer.set_offline(false);
+                current_peer
+                    .update_addresses(new_peer.addresses.into_vec())
+                    .set_features(new_peer.features)
+                    .set_offline(false);
+                if let Some(sig) = new_peer.identity_signature {
+                    current_peer.set_valid_identity_signature(sig);
+                }
                 self.peer_manager.add_peer(current_peer).await?;
 
                 Ok(false)
