@@ -315,6 +315,12 @@ impl ConsensusConstants {
         }]
     }
 
+    /// *
+    /// Dibbler testnet has the following characteristics:
+    /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
+    /// * 21 billion tXTR with a 3-year half-life
+    /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
+    /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn dibbler() -> Vec<Self> {
         let mut algos = HashMap::new();
         // sha3/monero to 40/60 split
@@ -332,7 +338,7 @@ impl ConsensusConstants {
         });
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 6,
+            coinbase_lock_height: 360,
             blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -341,9 +347,9 @@ impl ConsensusConstants {
             // weightings
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
+            emission_initial: 18_462_816_327 * uT,
+            emission_decay: &DIBBLER_PARAMS,
+            emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
             faucet_value: (5000 * 4000) * T,
@@ -389,6 +395,7 @@ impl ConsensusConstants {
 }
 
 static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
+const DIBBLER_PARAMS: [u64; 11] = [21u64, 22, 23, 25, 26, 37, 38, 39, 41, 45, 49];
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
@@ -460,5 +467,31 @@ impl ConsensusConstantsBuilder {
 
     pub fn build(self) -> ConsensusConstants {
         self.consensus
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        consensus::{
+            emission::{Emission, EmissionSchedule},
+            ConsensusConstants,
+        },
+        transactions::tari_amount::uT,
+    };
+
+    #[test]
+    fn dibbler_schedule() {
+        let dibbler = ConsensusConstants::dibbler();
+        let schedule = EmissionSchedule::new(
+            dibbler[0].emission_initial,
+            &dibbler[0].emission_decay,
+            dibbler[0].emission_tail,
+        );
+        let reward = schedule.block_reward(0);
+        assert_eq!(reward, 18_462_816_327 * uT);
+        assert_eq!(schedule.supply_at_block(0), reward);
+        let three_years = 365 * 24 * 30 * 3;
+        assert_eq!(schedule.supply_at_block(three_years), 10_500_682_498_903_652 * uT); // Around 10.5 billion
     }
 }

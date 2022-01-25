@@ -84,7 +84,7 @@ impl EmissionSchedule {
     /// (1-k)*n (to 1/2^64 precision).
     ///
     /// None - If k is not a valid floating point number less than one.
-    pub fn decay_params(k: &str) -> Option<Vec<u8>> {
+    pub fn decay_params(k: &str) -> Option<Vec<u64>> {
         // Convert string into a vector of digits. e.g. 0.9635 -> [9,6,3,5]
         fn frac_vec(n: &str) -> Option<Vec<u8>> {
             if !n.starts_with("0.") {
@@ -132,6 +132,7 @@ impl EmissionSchedule {
         if exact {
             result.push(index - 1);
         }
+        let result = result.into_iter().map(|i| i as u64).collect();
         Some(result)
     }
 
