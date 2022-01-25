@@ -332,7 +332,7 @@ impl ConsensusConstants {
         });
         vec![ConsensusConstants {
             effective_from_height: 0,
-            coinbase_lock_height: 6,
+            coinbase_lock_height: 360,
             blockchain_version: 2,
             future_time_limit: 540,
             difficulty_block_window: 90,
@@ -341,12 +341,12 @@ impl ConsensusConstants {
             // weightings
             max_block_transaction_weight: 127_795,
             median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
+            emission_initial: 18_462_816_327 * uT,
+            emission_decay: &DIBBLER_DECAY_PARAMS,
+            emission_tail: 800 * T,
             max_randomx_seed_height: u64::MAX,
             proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
+            faucet_value: (10 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
         }]
@@ -389,6 +389,7 @@ impl ConsensusConstants {
 }
 
 static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
+const DIBBLER_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
