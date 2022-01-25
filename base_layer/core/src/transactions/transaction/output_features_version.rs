@@ -1,6 +1,7 @@
 use std::{
     convert::{TryFrom, TryInto},
-    io::{Error, ErrorKind, Read, Write},
+    io,
+    io::{ErrorKind, Read, Write},
 };
 
 use serde::{Deserialize, Serialize};
@@ -35,7 +36,7 @@ impl TryFrom<u8> for OutputFeaturesVersion {
 }
 
 impl ConsensusEncoding for OutputFeaturesVersion {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         writer.write_all(&[self.as_u8()])?;
         Ok(1)
     }
@@ -48,12 +49,12 @@ impl ConsensusEncodingSized for OutputFeaturesVersion {
 }
 
 impl ConsensusDecoding for OutputFeaturesVersion {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
         let mut buf = [0u8; 1];
         reader.read_exact(&mut buf)?;
         let version = buf[0]
             .try_into()
-            .map_err(|_| Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
+            .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
         Ok(version)
     }
 }

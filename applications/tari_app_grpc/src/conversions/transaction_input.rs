@@ -24,7 +24,6 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
-    consensus::{ConsensusDecoding, ToConsensusBytes},
     covenants::Covenant,
     transactions::transaction::{TransactionInput, TransactionInputVersion},
 };
@@ -55,7 +54,7 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
 
             let sender_offset_public_key =
                 PublicKey::from_bytes(input.sender_offset_public_key.as_bytes()).map_err(|err| format!("{:?}", err))?;
-            let covenant = Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?;
+            let covenant = Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?;
 
             Ok(TransactionInput::new_with_output_data(
                 TransactionInputVersion::try_from(
@@ -129,7 +128,7 @@ impl TryFrom<TransactionInput> for grpc::TransactionInput {
                 covenant: input
                     .covenant()
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
-                    .to_consensus_bytes(),
+                    .to_bytes(),
                 version: input.version as u32,
             })
         }

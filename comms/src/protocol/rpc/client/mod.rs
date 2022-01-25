@@ -815,9 +815,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     }
 
     fn next_request_id(&mut self) -> u16 {
-        let next_id = self.next_request_id;
+        let mut next_id = self.next_request_id;
         // request_id is allowed to wrap around back to 0
         self.next_request_id = self.next_request_id.wrapping_add(1);
+        // We dont want request id of zero because that is the default for varint on protobuf, so it is possible for the
+        // entire message to be zero bytes (WriteZero IO error)
+        if next_id == 0 {
+            next_id += 1;
+            self.next_request_id += 1;
+        }
         next_id
     }
 

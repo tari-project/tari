@@ -20,13 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, io::Read};
+use std::{
+    io,
+    io::{Error, Read, Write},
+};
 
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_common_types::types::{ComSignature, Commitment, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_utilities::ByteArray;
 
-use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 
 //---------------------------------- PublicKey --------------------------------------------//
 
@@ -87,7 +90,7 @@ impl ConsensusEncoding for Commitment {
 
 impl ConsensusEncodingSized for Commitment {
     fn consensus_encode_exact_size(&self) -> usize {
-        32
+        PublicKey::key_length()
     }
 }
 
@@ -131,5 +134,53 @@ impl ConsensusDecoding for Signature {
         reader.read_exact(&mut buf)?;
         let sig = PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
         Ok(Signature::new(pub_nonce, sig))
+    }
+}
+
+//---------------------------------- RangeProof --------------------------------------------//
+
+impl ConsensusEncoding for RangeProof {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        self.0.consensus_encode(writer)
+    }
+}
+
+impl ConsensusEncodingSized for RangeProof {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.0.consensus_encode_exact_size()
+    }
+}
+
+impl ConsensusDecoding for RangeProof {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        const MAX_RANGEPROOF_SIZE: usize = 1024;
+        let bytes = MaxSizeBytes::<MAX_RANGEPROOF_SIZE>::consensus_decode(reader)?;
+        Ok(Self(bytes.into()))
+    }
+}
+
+//---------------------------------- Commitment Signature --------------------------------------------//
+
+impl ConsensusEncoding for ComSignature {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        let mut written = self.u().consensus_encode(writer)?;
+        written += self.v().consensus_encode(writer)?;
+        written += self.public_nonce().consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusEncodingSized for ComSignature {
+    fn consensus_encode_exact_size(&self) -> usize {
+        PrivateKey::key_length() * 2 + PublicKey::key_length()
+    }
+}
+
+impl ConsensusDecoding for ComSignature {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let u = PrivateKey::consensus_decode(reader)?;
+        let v = PrivateKey::consensus_decode(reader)?;
+        let nonce = Commitment::consensus_decode(reader)?;
+        Ok(ComSignature::new(nonce, u, v))
     }
 }
