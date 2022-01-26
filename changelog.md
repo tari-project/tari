@@ -1,5 +1,20 @@
 # Changelog
 
+### [0.26.1](https://github.com/tari-project/tari/compare/v0.26.0...v0.26.1) (2022-01-26)
+
+
+### Features
+
+* **collectibles:** add form validation error when committee not set ([#3750](https://github.com/tari-project/tari/issues/3750)) ([dfdaf4b](https://github.com/tari-project/tari/commit/dfdaf4bbff36d78f51dd222fabc504e60171a627))
+* **console-wallet:** shift+tab to go to prev tab ([#3748](https://github.com/tari-project/tari/issues/3748)) ([9725f5f](https://github.com/tari-project/tari/commit/9725f5fb6fd53a4c72d2f4f0f7d23d6f150e79e3))
+* show error if IPFS upload fails ([#3746](https://github.com/tari-project/tari/issues/3746)) ([b58cf4c](https://github.com/tari-project/tari/commit/b58cf4c29b903bc4db172a6f93ce67ef2848f7f9))
+
+
+### Bug Fixes
+
+* properly decrypt imported faux tx when reading from db ([#3754](https://github.com/tari-project/tari/issues/3754)) ([997b74b](https://github.com/tari-project/tari/commit/997b74b36221abbcb7f107eca0b78eaccb6aea87))
+* use of branch seed in key manager ([#3751](https://github.com/tari-project/tari/issues/3751)) ([ec92919](https://github.com/tari-project/tari/commit/ec92919cad2487307a583362684194d5066c1403))
+
 ## [0.26.0](https://github.com/tari-project/tari/compare/v0.25.1...v0.26.0) (2022-01-25)
 
 
