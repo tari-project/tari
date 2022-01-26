@@ -22,8 +22,7 @@
 
 use std::{convert::Infallible, net::SocketAddr, string::FromUtf8Error};
 
-use log::*;
-use tari_metrics::{Encoder, Registry, TextEncoder};
+use prometheus::{Encoder, Registry, TextEncoder};
 use tokio::{task, task::JoinError};
 use warp::{reject::Reject, Filter, Rejection, Reply};
 
@@ -34,7 +33,7 @@ pub async fn start(listen_addr: SocketAddr, registry: Registry) {
         .and(with(registry))
         .and_then(metrics_text_handler);
 
-    info!(target: LOG_TARGET, "Metrics server started on {}", listen_addr);
+    log::info!(target: LOG_TARGET, "Metrics server started on {}", listen_addr);
     let routes = route.with(warp::log("metrics_server"));
     warp::serve(routes).run(listen_addr).await;
 }
@@ -59,7 +58,7 @@ fn with<T: Clone + Send>(t: T) -> impl Filter<Extract = (T,), Error = Infallible
 #[derive(Debug, thiserror::Error)]
 enum Error {
     #[error("Failed to encode: {0}")]
-    PrometheusEncodeFailed(#[from] tari_metrics::Error),
+    PrometheusEncodeFailed(#[from] prometheus::Error),
     #[error("Failed to encode: {0}")]
     FromUtf8(#[from] FromUtf8Error),
     #[error("Failed to spawn blocking thread: {0}")]

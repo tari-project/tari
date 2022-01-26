@@ -98,7 +98,7 @@ use tokio::{
 };
 
 use crate::{
-    mempool::{proto, Mempool, MempoolServiceConfig},
+    mempool::{metrics, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
     transactions::transaction::Transaction,
 };
@@ -483,6 +483,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             }
         }
 
+        let stats = self.mempool.stats().await;
+        metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
+        metrics::reorg_pool_size().set(stats.reorg_txs as i64);
+
         Ok(())
     }
 
@@ -513,6 +517,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
 
         let stored_result = self.mempool.insert(Arc::new(txn)).await?;
         if stored_result.is_stored() {
+            metrics::inbound_transactions(Some(&self.peer_node_id)).inc();
             debug!(
                 target: LOG_TARGET,
                 "Inserted transaction `{}` from peer `{}`",
@@ -520,9 +525,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                 self.peer_node_id.short_str()
             );
         } else {
+            metrics::rejected_inbound_transactions(Some(&self.peer_node_id)).inc();
             debug!(
                 target: LOG_TARGET,
-                "Did not store new transaction `{}` in mempool", excess_sig_hex,
+                "Did not store new transaction `{}` in mempool: {}", excess_sig_hex, stored_result
             )
         }
 
