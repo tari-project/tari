@@ -3,7 +3,7 @@ name = "tari_stratum_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency miningcore C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.26.0"
+version = "0.26.1"
 edition = "2018"
 
 [dependencies]
