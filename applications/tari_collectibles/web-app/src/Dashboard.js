@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import {Container, Grid } from "@mui/material";
+import { Container, Grid } from "@mui/material";
 import React from "react";
 import { AssetCard, Spinner } from "./components";
 import binding from "./binding";
 import { toHexString } from "./helpers";
-import {Link} from "react-router-dom";
+import { Link } from "react-router-dom";
 
 // const explorerUrl = (blockHash) => `https:://explore.tari.com/block/${blockHash.toString("hex")}`;
 
@@ -54,7 +54,7 @@ class DashboardContent extends React.Component {
           name: o.name,
           description: o.description,
           public_key: toHexString(o.unique_id),
-          image_url: o.image_url || "asset-no-img.png"
+          image_url: o.image_url || "asset-no-img.png",
         })),
         isLoading: false,
       });
@@ -75,9 +75,7 @@ class DashboardContent extends React.Component {
 
     return this.state.assets.map((asset) => {
       const actions = (
-        <Link
-          to={`/accounts/${(asset.public_key || "").toString("hex")}`}
-        >
+        <Link to={`/accounts/${(asset.public_key || "").toString("hex")}`}>
           View
         </Link>
       );

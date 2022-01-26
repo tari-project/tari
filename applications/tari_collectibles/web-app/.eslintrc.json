@@ -1,0 +1,36 @@
+{
+  "extends": ["eslint:recommended", "plugin:prettier/recommended"],
+  "plugins": ["prettier", "@babel"],
+  "env": {
+    "browser": true,
+    "commonjs": true,
+    "node": true,
+    "es2021": true
+  },
+  "parser": "@babel/eslint-parser", // Tell ESLint that you want to use the @babel/eslint-parser.
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "allowImportExportEverywhere": false,
+    "ecmaFeatures": {
+      "globalReturn": false
+    },
+    "requireConfigFile": false
+  },
+  "rules": {
+    "no-undef": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_"
+      }
+    ],
+    "prettier/prettier": [
+      "error",
+      {
+        "doubleQuote": true,
+        "endOfLine": "auto"
+      }
+    ]
+  }
+}

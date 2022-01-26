@@ -59,33 +59,50 @@ async function command_asset_create_initial_checkpoint(assetPubKey, committee) {
 }
 
 async function command_asset_wallets_get_latest_address(assetPublicKey) {
-  return await invoke("asset_wallets_get_latest_address", { assetPublicKey});
+  return await invoke("asset_wallets_get_latest_address", { assetPublicKey });
 }
 
 async function command_asset_wallets_create_address(assetPublicKey) {
-  return await invoke("asset_wallets_create_address", { assetPublicKey});
+  return await invoke("asset_wallets_create_address", { assetPublicKey });
 }
 
-async function command_asset_wallets_send_to(assetPublicKey, amount, toAddress) {
-  return await invoke("asset_wallets_send_to", {assetPublicKey, amount, toAddress});
+async function command_asset_wallets_send_to(
+  assetPublicKey,
+  amount,
+  toAddress
+) {
+  return await invoke("asset_wallets_send_to", {
+    assetPublicKey,
+    amount,
+    toAddress,
+  });
 }
 
 async function command_next_asset_public_key() {
   return await invoke("next_asset_public_key", {});
 }
 
-
 async function command_tip004_mint_token(assetPublicKey, token) {
-  return await invoke("tip004_mint_token", {assetPublicKey, token});
+  return await invoke("tip004_mint_token", { assetPublicKey, token });
 }
 
 async function command_tip004_list_tokens(assetPublicKey) {
-  return await invoke("tip004_list_tokens", {assetPublicKey});
+  return await invoke("tip004_list_tokens", { assetPublicKey });
 }
 
-async function command_tip721_transfer_from(assetPublicKey, fromAddressId, sendToAddress, tokenId) {
+async function command_tip721_transfer_from(
+  assetPublicKey,
+  fromAddressId,
+  sendToAddress,
+  tokenId
+) {
   console.log(fromAddressId, sendToAddress, tokenId);
-  return await invoke("tip721_transfer_from", {assetPublicKey,  fromAddressId, sendToAddress, tokenId});
+  return await invoke("tip721_transfer_from", {
+    assetPublicKey,
+    fromAddressId,
+    sendToAddress,
+    tokenId,
+  });
 }
 
 async function command_wallets_create(passphrase, name) {
@@ -117,7 +134,7 @@ async function command_create_db() {
 }
 
 async function command_asset_wallets_get_balance(assetPublicKey) {
-  return await invoke("asset_wallets_get_balance", {assetPublicKey});
+  return await invoke("asset_wallets_get_balance", { assetPublicKey });
 }
 
 const commands = {
