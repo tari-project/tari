@@ -1217,7 +1217,12 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::Imported, false, &conn)?
             .into_iter()
-            .map(|ct| CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from))
+            .map(|mut ct: CompletedTransactionSql| {
+                if let Err(e) = self.decrypt_if_necessary(&mut ct) {
+                    return Err(e);
+                }
+                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+            })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 }
