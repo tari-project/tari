@@ -52,6 +52,7 @@ class Create extends React.Component {
             image: "",
             cid: "",
             error: "",
+            ipfsUploadError: null,
             isSaving: false,
             tip001: true,
             tip002: false,
@@ -73,17 +74,21 @@ class Create extends React.Component {
     }
 
     componentDidMount() {
-        this.cleanup = appWindow.listen("tauri://file-drop", this.dropFile);
+        this.cleanup = appWindow.listen("tauri://file-drop", (obj) => this.dropFile(obj));
         console.log("didmount");
-
     }
 
-    dropFile = async ({payload}) => {
+    async dropFile({payload}) {
         if (payload.length > 0) {
-            // only use the first file if multiple are dropped
-            this.addFileToIPFS(payload[0]);
+            try {
+                // only use the first file if multiple are dropped
+                let cid = await this.addFileToIPFS(payload[0]);
+                this.setState({cid, ipfsUploadError: null});
+            } catch (e) {
+                this.setState({ipfsUploadError: e.toString()});
+            }
         }
-    };
+    }
 
     componentWillUnmount() {
         if (this.cleanup) {
@@ -143,14 +148,14 @@ class Create extends React.Component {
                 description,
                 image,
                 templateIds,
-                templateParameters
+                templateParameters,
             );
 
             // TODO: How to create the initial checkpoint?
             if (this.state.tip003) {
                 let res = await binding.command_asset_create_initial_checkpoint(
                     publicKey,
-                    this.state.tip003Data.committee
+                    this.state.tip003Data.committee,
                 );
 
                 console.log(res);
@@ -212,11 +217,7 @@ class Create extends React.Component {
     };
 
     onDeleteCommitteeMember = (index) => {
-        let committee = this.state.tip003Data.committee.filter(function (
-            _,
-            i,
-            arr
-        ) {
+        let committee = this.state.tip003Data.committee.filter(function (_, i, arr) {
             return i !== parseInt(index);
         });
         let tip003Data = {...this.state.tip003Data, ...{committee}};
@@ -233,11 +234,20 @@ class Create extends React.Component {
     selectFile = async () => {
         const filePath = await dialog.open({
             filters: [
-                {name: "image types", extensions: ["png", "jpg", "jpeg", "gif"]}, // TODO more formats
+                {
+                    name: "image types",
+                    extensions: ["png", "jpg", "jpeg", "gif"],
+                }, // TODO more formats
             ],
             multiple: false,
         });
-        await this.addFileToIPFS(filePath);
+        try {
+            let cid = await this.addFileToIPFS(filePath);
+            console.info("IPFS cid: ", cid);
+            this.setState({cid, ipfsUploadError: null});
+        } catch (e) {
+            this.setState({ipfsUploadError: e.toString()});
+        }
     };
 
     addFileToIPFS = async (filePath) => {
@@ -246,50 +256,63 @@ class Create extends React.Component {
         // unfortunately the ipfs http /add api doesn't play nicely with the tauri http client
         // resulting in "file argument 'path' is required"
         // so we'll shell out to the ipfs command
-        let cid = "";
-        try {
-            const command = new Command("ipfs", ["add", "-Q", filePath]);
+
+        const command = new Command("ipfs", ["add", "-Q", filePath]);
+        await command.spawn();
+
+        let cid = await new Promise((resolve, reject) => {
             let processing = false;
+            let cid;
+            command.on("close", (data) => {
+                if (data.code === 0) {
+                    resolve(cid);
+                }
+            });
             command.stdout.on("data", (line) => {
                 if (!processing) {
                     processing = true;
                     cid = line;
-                    const cp = new Command("ipfs", [
-                        "files",
-                        "cp",
-                        `/ipfs/${cid}`,
-                        `/${name}`,
-                    ]);
-                    cp.spawn();
-                    this.setState({cid});
                 }
             });
-            command.stderr.on("data", (line) => {
-                console.error("error: ", line);
+            command.on("error", (line) => {
+                reject(new Error(line));
             });
-            const child = command.spawn();
-            return child;
+        });
 
-            // console.log("command", command);
-            // const { success, output, error } = commandOutput(command);
-            // if (success) {
-            //   const cid = output;
-            //   console.log("cid", cid);
-            //   const command = await runCommand("ipfs", [
-            //     "files",
-            //     "cp",
-            //     `/ipfs/${cid}`,
-            //     `/${name}`,
-            //   ]);
-            //   const { error } = commandOutput(command);
-            //   if (error) console.error("error: ", error);
-            // } else {
-            //   console.error("error: ", error);
-            // }
-        } catch (e) {
-            // todo: display error
-            console.error("catch error: ", e);
-        }
+        const cp = new Command("ipfs", ["files", "cp", `/ipfs/${cid}`, `/${name}`]);
+        await cp.spawn();
+
+        await new Promise((resolve, reject) => {
+            cp.on("close", (data) => {
+                if (data.code === 0) {
+                    resolve(null);
+                } else {
+                    reject("IPFS command exited with code ", data.code);
+                }
+            });
+
+            cp.stderr.on("data", (line) => {
+                reject(new Error(`${line}. Ensure that IPFS is running.`));
+            });
+        });
+
+        return cid;
+        // console.log("command", command);
+        // const { success, output, error } = commandOutput(command);
+        // if (success) {
+        //   const cid = output;
+        //   console.log("cid", cid);
+        //   const command = await runCommand("ipfs", [
+        //     "files",
+        //     "cp",
+        //     `/ipfs/${cid}`,
+        //     `/${name}`,
+        //   ]);
+        //   const { error } = commandOutput(command);
+        //   if (error) console.error("error: ", error);
+        // } else {
+        //   console.error("error: ", error);
+        // }
     };
 
     render() {
@@ -302,15 +325,12 @@ class Create extends React.Component {
                     {this.state.error ? (
                         <Alert severity="error">{this.state.error}</Alert>
                     ) : (
-                        <span/>
+                        <span />
                     )}
                     <Typography variant="h4">Templates Implemented</Typography>
                     <FormControlLabel
                         control={
-                            <Switch
-                                onChange={this.onTip001Changed}
-                                checked={this.state.tip001}
-                            />
+                            <Switch onChange={this.onTip001Changed} checked={this.state.tip001} />
                         }
                         label="001 Metadata (required)"
                     />
@@ -351,6 +371,7 @@ class Create extends React.Component {
                             cid={this.state.cid}
                             setCid={(cid) => this.setState({cid})}
                             image={this.state.image}
+                            error={this.state.ipfsUploadError}
                         />
                     </FormGroup>
                     <FormGroup>
@@ -458,8 +479,7 @@ class Create extends React.Component {
                     </Button>
                 </Stack>
             </Container>
-        )
-            ;
+        );
     }
 }
 
@@ -491,59 +511,59 @@ const ImageUrl = ({setImage}) => {
     );
 };
 
-const ImageUpload = ({selectFile}) => {
+const ImageUpload = ({selectFile, error}) => {
     return (
         <div>
             <p>Select an image, or drag and drop an image onto this window</p>
             <Button onClick={selectFile}>Click to Select Image</Button>
+
+            {error ? <Alert severity="error">{error}</Alert> : <span />}
         </div>
     );
 };
 
-const ImageSelector = ({cid, image, selectFile, setImage, setCid}) => {
+const ImageSelector = ({cid, image, selectFile, setImage, setCid, error}) => {
     const [mode, setMode] = useState("");
 
     if (image) {
         return (
             <div>
-                <img src={image} alt="" width="200px"/>
-                <br/>
+                <img src={image} alt="" width="200px" />
+                <br />
                 <p onClick={() => setImage("")}>Change</p>
             </div>
         );
     }
     if (cid) {
-        return <IpfsImage cid={cid} setCid={setCid}/>;
+        return <IpfsImage cid={cid} setCid={setCid} />;
     }
 
     let display;
 
     switch (mode) {
         case "url":
-            display = <ImageUrl setImage={setImage}/>;
+            display = <ImageUrl setImage={setImage} error={error} />;
             break;
         case "upload":
-            display = <ImageUpload selectFile={selectFile}/>;
+            display = <ImageUpload selectFile={selectFile} error={error} />;
             break;
         default:
-            display = <ImageSwitch setMode={(m) => setMode(m)}/>;
+            display = <ImageSwitch setMode={setMode} />;
     }
 
     return display;
 };
 
-const IpfsImage = ({cid, setCid}) => {
+const IpfsImage = ({cid, setCid, error}) => {
     const [src, setSrc] = useState("");
+    const [httpError, setHttpError] = useState(null);
 
     useMemo(async () => {
         try {
-            const response = await fetch(
-                `http://localhost:5001/api/v0/cat?arg=${cid}`,
-                {
-                    method: "POST",
-                    responseType: ResponseType.Binary,
-                }
-            );
+            const response = await fetch(`http://localhost:5001/api/v0/cat?arg=${cid}`, {
+                method: "POST",
+                responseType: ResponseType.Binary,
+            });
             const typedArray = Uint8Array.from(response.data);
             const blob = new Blob([typedArray.buffer]);
             const reader = new FileReader();
@@ -551,17 +571,24 @@ const IpfsImage = ({cid, setCid}) => {
             reader.onerror = () => console.error("error");
             reader.readAsDataURL(blob);
         } catch (e) {
-            // handle error
-            console.error(e);
+            setHttpError(e);
         }
     }, [cid]);
 
     if (src) {
         return (
             <div>
-                <img src={src} alt="" width="200px"/>
-                <br/>
+                <img src={src} alt="" width="200px" />
+                <br />
                 <p onClick={() => setCid("")}>Change</p>
+            </div>
+        );
+    }
+
+    if (error || httpError) {
+        return (
+            <div>
+                <Alert severity="error">{error || httpError}</Alert>
             </div>
         );
     }
