@@ -819,24 +819,22 @@ fn convert_node_config(
 
     if application == ApplicationType::MiningNode {
         let key = "mining_node.base_node_grpc_address";
-        node_grpc_server = Some(
-            cfg.get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
-                })?,
-        );
+        node_grpc_server = match cfg.get_str(key) {
+            Ok(v) => Some(
+                v.parse::<Multiaddr>()
+                    .map_err(|e| ConfigurationError::new(key, Some(v), &e.to_string()))?,
+            ),
+            _ => None,
+        };
 
         let key = "mining_node.wallet_grpc_address";
-        wallet_grpc_server = Some(
-            cfg.get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
-                })?,
-        );
+        wallet_grpc_server = match cfg.get_str(key) {
+            Ok(v) => Some(
+                v.parse::<Multiaddr>()
+                    .map_err(|e| ConfigurationError::new(key, Some(v), &e.to_string()))?,
+            ),
+            _ => None,
+        };
     }
 
     Ok(GlobalConfig {

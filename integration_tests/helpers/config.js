@@ -153,6 +153,10 @@ function createEnv(
     [`TARI_BASE_NODE__GRPC_ADDRESS`]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
     [`TARI_WALLET__GRPC_ADDRESS`]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
 
+    
+    [`TARI_MINING_NODE__BASE_NODE_GRPC_ADDRESS`]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
+    [`TARI_MINING_NODE__WALLET_GRPC_ADDRESS`]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
+
     ["TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_ADDRESS"]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
     ["TARI_MERGE_MINING_PROXY__WALLET_GRPC_ADDRESS"]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
     [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,
