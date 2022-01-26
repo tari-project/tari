@@ -404,18 +404,19 @@ where
             .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
             .await?;
 
+        let commitment_hex = unblinded_output
+            .as_transaction_input(&self.factories.commitment)?
+            .commitment()
+            .map_err(WalletError::TransactionError)?
+            .to_hex();
+
         self.output_manager_service
-            .add_unvalidated_output(tx_id, unblinded_output.clone(), None)
+            .add_unvalidated_output(tx_id, unblinded_output, None)
             .await?;
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet",
-            unblinded_output
-                .as_transaction_input(&self.factories.commitment)?
-                .commitment()
-                .map_err(WalletError::TransactionError)?
-                .to_hex()
+            "UTXO (Commitment: {}) imported into wallet", commitment_hex
         );
 
         Ok(tx_id)

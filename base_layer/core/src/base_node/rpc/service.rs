@@ -35,7 +35,7 @@ use crate::{
         state_machine_service::states::StateInfo,
         StateMachineHandle,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
     proto::{
@@ -341,23 +341,37 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
     async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus> {
         let message = request.into_message();
-        let db = self.db();
-        let mut res = Vec::with_capacity(message.output_hashes.len());
-        for UtxoMinedInfo {
-            output,
-            mmr_position,
-            mined_height: height,
-            header_hash,
-        } in (db
-            .fetch_utxos_and_mined_info(message.output_hashes)
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
-        .into_iter()
-        .flatten()
-        {
-            res.push((output, mmr_position, height, header_hash));
+        if message.output_hashes.is_empty() {
+            return Err(RpcStatus::bad_request("Empty output hashes"));
+        }
+        const MAX_ALLOWED_QUERY_SIZE: usize = 512;
+        if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(format!(
+                "Exceeded maximum allowed query hashes. Max: {}",
+                MAX_ALLOWED_QUERY_SIZE
+            )));
         }
 
+        let db = self.db();
+
+        debug!(
+            target: LOG_TARGET,
+            "Querying {} UTXO(s) for mined state",
+            message.output_hashes.len(),
+        );
+
+        let mined_info_resp = db
+            .fetch_utxos_and_mined_info(message.output_hashes)
+            .await
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let num_mined = mined_info_resp.iter().filter(|opt| opt.is_some()).count();
+        debug!(
+            target: LOG_TARGET,
+            "Found {} mined and {} unmined UTXO(s)",
+            num_mined,
+            mined_info_resp.len() - num_mined
+        );
         let metadata = self
             .db
             .get_chain_metadata()
@@ -367,20 +381,19 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(UtxoQueryResponses {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().clone(),
-            responses: res
+            responses: mined_info_resp
                 .into_iter()
-                .map(
-                    |(output, mmr_position, mined_height, mined_in_block)| UtxoQueryResponse {
-                        mmr_position: mmr_position.into(),
-                        mined_height,
-                        mined_in_block,
-                        output_hash: output.hash(),
-                        output: match output {
-                            PrunedOutput::Pruned { .. } => None,
-                            PrunedOutput::NotPruned { output } => Some(output.into()),
-                        },
+                .flatten()
+                .map(|utxo| UtxoQueryResponse {
+                    mmr_position: utxo.mmr_position.into(),
+                    mined_height: utxo.mined_height,
+                    mined_in_block: utxo.header_hash,
+                    output_hash: utxo.output.hash(),
+                    output: match utxo.output {
+                        PrunedOutput::Pruned { .. } => None,
+                        PrunedOutput::NotPruned { output } => Some(output.into()),
                     },
-                )
+                })
                 .collect(),
         }))
     }
