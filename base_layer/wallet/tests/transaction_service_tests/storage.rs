@@ -619,7 +619,7 @@ async fn import_tx_and_read_it_from_db() {
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
             TxId::from(1),
-            Box::new(transaction.clone()),
+            Box::new(transaction),
         )))
         .unwrap();
 
