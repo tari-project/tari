@@ -68,6 +68,8 @@ class Create extends React.Component {
                 committee: [],
             },
             newCommitteePubKey: "",
+            isValid: false,
+            saveErrors: [],
         };
 
         this.cleanup = null;
@@ -97,6 +99,10 @@ class Create extends React.Component {
     }
 
     save = async () => {
+        const isValid = await this.validate();
+        if (!isValid) {
+            return;
+        }
         this.setState({isSaving: true});
         let {name, description, image} = this.state;
         try {
@@ -212,6 +218,7 @@ class Create extends React.Component {
         console.log(committee);
         this.setState({
             tip003Data,
+            saveErrors: [],
             newCommitteePubKey: "",
         });
     };
@@ -224,6 +231,19 @@ class Create extends React.Component {
 
         this.setState({tip003Data});
     };
+
+    async validate() {
+        const {tip003, tip003Data} = this.state;
+        const saveErrors = [];
+
+        if (tip003 && tip003Data.committee.length === 0) {
+            saveErrors.push("Must add at least one committee member");
+        }
+        await this.setState({
+            saveErrors,
+        });
+        return saveErrors.length === 0;
+    }
 
     onImageChanged = (e) => {
         this.setState({
@@ -477,6 +497,16 @@ class Create extends React.Component {
                     <Button onClick={this.save} disabled={this.state.isSaving}>
                         Save
                     </Button>
+
+                    {this.state.saveErrors.length > 0 ? (
+                        <div>
+                            {this.state.saveErrors.map((e) => (
+                                <Alert severity="error">{e.toString()}</Alert>
+                            ))}
+                        </div>
+                    ) : (
+                        <span />
+                    )}
                 </Stack>
             </Container>
         );

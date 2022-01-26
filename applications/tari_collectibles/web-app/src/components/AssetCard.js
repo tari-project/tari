@@ -20,35 +20,35 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-import {
-  Card,
-  CardActions,
-  CardContent,
-  CardMedia,
-  Typography,
-} from "@mui/material";
+import React from "react";
+import propTypes from "prop-types";
+import {Card, CardActions, CardContent, CardMedia, Typography} from "@mui/material";
 
-export default function AssetCard({ asset, heading, style, actions }) {
-  style = style || {
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-  };
-  return (
-    <Card sx={style}>
-      <CardMedia
-        component="img"
-        sx={{ pb: "5%" }}
-        image={asset.image_url}
-        alt="random"
-      />
-      <CardContent sx={{ flexGrox: 1 }}>
-        <Typography gutterBottom variant="h5" component="h2">
-          {heading || asset.name}
-        </Typography>
-        <Typography>{asset.description}</Typography>
-      </CardContent>
-      {actions ? <CardActions>{actions}</CardActions> : <span />}
-    </Card>
-  );
+function AssetCard({asset, heading, style, actions}) {
+    style = style || {
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+    };
+    return (
+        <Card sx={style}>
+            <CardMedia component="img" sx={{pb: "5%"}} image={asset.image_url} alt="random" />
+            <CardContent sx={{flexGrox: 1}}>
+                <Typography gutterBottom variant="h5" component="h2">
+                    {heading || asset.name}
+                </Typography>
+                <Typography>{asset.description}</Typography>
+            </CardContent>
+            {actions ? <CardActions>{actions}</CardActions> : <span />}
+        </Card>
+    );
 }
+
+AssetCard.propTypes = {
+    asset: propTypes.object.isRequired,
+    heading: propTypes.string,
+    style: propTypes.object,
+    actions: propTypes.object,
+};
+
+export default AssetCard;

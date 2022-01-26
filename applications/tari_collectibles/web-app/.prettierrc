@@ -3,5 +3,7 @@
   "trailingComma": "all",
   "printWidth": 100,
   "tabWidth": 4,
-  "bracketSpacing": false
+  "bracketSpacing": false,
+  "singleQuote": false,
+  "jsxSingleQuote": false
 }
