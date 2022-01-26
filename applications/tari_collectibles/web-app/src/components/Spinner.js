@@ -20,12 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 import React from "react";
-import {CircularProgress, Box} from "@mui/material";
+import { CircularProgress, Box } from "@mui/material";
 
 export default function CircularIndeterminate() {
-    return (
-        <Box sx={{display: "flex"}}>
-            <CircularProgress />
-        </Box>
-    );
+  return (
+    <Box sx={{ display: "flex" }}>
+      <CircularProgress />
+    </Box>
+  );
 }

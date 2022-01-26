@@ -22,33 +22,44 @@
 
 import React from "react";
 import propTypes from "prop-types";
-import {Card, CardActions, CardContent, CardMedia, Typography} from "@mui/material";
+import {
+  Card,
+  CardActions,
+  CardContent,
+  CardMedia,
+  Typography,
+} from "@mui/material";
 
-function AssetCard({asset, heading, style, actions}) {
-    style = style || {
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-    };
-    return (
-        <Card sx={style}>
-            <CardMedia component="img" sx={{pb: "5%"}} image={asset.image_url} alt="random" />
-            <CardContent sx={{flexGrox: 1}}>
-                <Typography gutterBottom variant="h5" component="h2">
-                    {heading || asset.name}
-                </Typography>
-                <Typography>{asset.description}</Typography>
-            </CardContent>
-            {actions ? <CardActions>{actions}</CardActions> : <span />}
-        </Card>
-    );
+function AssetCard({ asset, heading, style, actions }) {
+  style = style || {
+    height: "100%",
+    display: "flex",
+    flexDirection: "column",
+  };
+  return (
+    <Card sx={style}>
+      <CardMedia
+        component="img"
+        sx={{ pb: "5%" }}
+        image={asset.image_url}
+        alt="random"
+      />
+      <CardContent sx={{ flexGrox: 1 }}>
+        <Typography gutterBottom variant="h5" component="h2">
+          {heading || asset.name}
+        </Typography>
+        <Typography>{asset.description}</Typography>
+      </CardContent>
+      {actions ? <CardActions>{actions}</CardActions> : <span />}
+    </Card>
+  );
 }
 
 AssetCard.propTypes = {
-    asset: propTypes.object.isRequired,
-    heading: propTypes.string,
-    style: propTypes.object,
-    actions: propTypes.object,
+  asset: propTypes.object.isRequired,
+  heading: propTypes.string,
+  style: propTypes.object,
+  actions: propTypes.object,
 };
 
 export default AssetCard;
