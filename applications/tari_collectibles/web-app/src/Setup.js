@@ -26,12 +26,13 @@ import {
   TextField,
   Stack,
   Typography,
-  FormGroup, Alert,
+  FormGroup,
+  Alert,
 } from "@mui/material";
 import React, { useState, useEffect } from "react";
 import { Spinner } from "./components";
 import binding from "./binding";
-import {withRouter, useParams, useHistory} from "react-router-dom";
+import { withRouter, useParams, useHistory } from "react-router-dom";
 
 // const chunk = (arr, len) => {
 //   const chunks = [];
@@ -126,8 +127,7 @@ const CreateWallet = ({ setAuthenticated }) => {
       const wallet = await binding.command_wallets_create(password, "main");
       console.log("wallet", wallet);
       setWallet(wallet);
-    }
-    catch(err) {
+    } catch (err) {
       setError(err.message);
     }
   };
@@ -138,11 +138,7 @@ const CreateWallet = ({ setAuthenticated }) => {
         Create new wallet
       </Typography>
       <Stack>
-        {error ? (
-            <Alert severity="error">{error}</Alert>
-        ) : (
-            <span />
-        )}
+        {error ? <Alert severity="error">{error}</Alert> : <span />}
         <FormGroup>
           <TextField
             id="password"
@@ -228,7 +224,7 @@ const OpenWallet = ({ setAuthenticated }) => {
 
 const Setup = ({ setAuthenticated }) => {
   const [loading, setLoading] = useState(true);
-const history= useHistory();
+  const history = useHistory();
   useEffect(() => {
     binding
       .command_wallets_list()
@@ -251,7 +247,7 @@ const history= useHistory();
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4, py: 8 }}>
-      <CreateWallet setAuthenticated={setAuthenticated } />
+      <CreateWallet setAuthenticated={setAuthenticated} />
     </Container>
   );
 };
