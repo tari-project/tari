@@ -603,14 +603,14 @@ mod fetch_header_containing_kernel_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        assert_eq!(genesis.block().body.kernels().len(), 1);
+        assert_eq!(genesis.block().body.kernels().len(), 2);
         // let mut mmr_position = 0;
         // genesis.block().body.kernels().iter().for_each(|_| {
         //     let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
         //     assert_eq!(header.height(), 0);
         //     mmr_position += 1;
         // });
-        let err = db.fetch_header_containing_kernel_mmr(2).unwrap_err();
+        let err = db.fetch_header_containing_kernel_mmr(3).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
