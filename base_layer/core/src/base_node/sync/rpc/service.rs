@@ -352,7 +352,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         Ok(Response::new(header.into()))
     }
 
-    #[instrument(skip(self), err)]
+    #[instrument(level="debug", skip(self), err)]
     async fn find_chain_split(
         &self,
         request: Request<FindChainSplitRequest>,
