@@ -1049,6 +1049,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let acquire_lock = start.elapsed();
         let tx = completed_transactions::table
             .filter(completed_transactions::mined_height.is_not_null())
+            .filter(completed_transactions::mined_height.gt(0))
             .order_by(completed_transactions::mined_height.desc())
             .first::<CompletedTransactionSql>(&*conn)
             .optional()?;
