@@ -252,7 +252,7 @@ where
                         .kernels()
                         .first()
                         .map(|k| k.excess.to_hex())
-                        .unwrap_or("{No Kernel found}".to_string()),
+                        .unwrap_or_else(|| "{No Kernel found}".to_string()),
                     self.operation_id
                 );
                 self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
