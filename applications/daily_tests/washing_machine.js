@@ -363,7 +363,7 @@ function* transactionGenerator(options) {
 function createGrpcWallet(baseNode, opts = {}, excludeTestEnvars = true) {
   let process = new WalletProcess("sender", excludeTestEnvars, {
     transport: "tor",
-    network: "weatherwax",
+    network: "dibbler",
     num_confirmations: 0,
     ...opts,
   });

@@ -4,7 +4,7 @@ const path = require("path");
 const helpers = require("./helpers");
 const BaseNodeProcess = require("integration_tests/helpers/baseNodeProcess");
 
-const NETWORK = "WEATHERWAX";
+const NETWORK = "DIBBLER";
 
 const SyncType = {
   Archival: "Archival",
