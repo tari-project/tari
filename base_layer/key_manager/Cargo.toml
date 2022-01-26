@@ -41,4 +41,4 @@ sha2 = "0.9.8"
 [features]
 avx2 = ["tari_crypto/avx2"]
 js = ["getrandom/js", "js-sys"]
-wasm = ["wasm-bindgen"]
+wasm = ["wasm-bindgen", "js"]

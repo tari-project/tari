@@ -148,7 +148,9 @@ pub fn derive_key(key_manager: &JsValue, key_index: u64) -> JsValue {
 
 /// Parse a T from a JsValue
 fn parse<T>(js: &JsValue) -> Result<T, JsValue>
-where T: for<'a> Deserialize<'a> {
+where
+    T: for<'a> Deserialize<'a>,
+{
     match JsValue::into_serde::<T>(js) {
         Ok(t) => Ok(t),
         Err(e) => {
@@ -190,7 +192,7 @@ mod test {
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
             next_key.k.to_hex(),
-            "5a14f1205cfeb10d53af46e82b70e8832a544206f524b404e7a346148532910a".to_string()
+            "5c06999ed20e18bbb76245826141f8ae8700a648d87ec4da5a2a7507ce4b5f0e".to_string()
         )
     }
 
