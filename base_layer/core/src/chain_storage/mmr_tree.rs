@@ -27,7 +27,6 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
 pub enum MmrTree {
     Utxo,
-    Input,
     Kernel,
     Witness,
 }
@@ -36,7 +35,6 @@ impl Display for MmrTree {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             MmrTree::Utxo => f.write_str("UTXO"),
-            MmrTree::Input => f.write_str("Input"),
             MmrTree::Kernel => f.write_str("Kernel"),
             MmrTree::Witness => f.write_str("Witness"),
         }

@@ -553,7 +553,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.kernel_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: MmrTree::Kernel.to_string(),
+            kind: "Kernel",
         }));
     };
     if header.kernel_mmr_size != mmr_roots.kernel_mmr_size {
@@ -579,7 +579,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.output_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: MmrTree::Utxo.to_string(),
+            kind: "Utxo",
         }));
     };
     if header.witness_mr != mmr_roots.witness_mr {
@@ -589,7 +589,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             header.hash().to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: MmrTree::Witness.to_string(),
+            kind: "Witness",
         }));
     };
     if header.output_mmr_size != mmr_roots.output_mmr_size {
@@ -615,7 +615,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_roots.input_mr.to_hex()
         );
         return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
-            kind: MmrTree::Input.to_string(),
+            kind: "Input",
         }));
     }
     Ok(())
