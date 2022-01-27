@@ -33,6 +33,12 @@ import {
 import binding from "./binding";
 
 class NewAccount extends React.Component {
+  static get propTypes() {
+    return {
+      history: PropTypes.any,
+    };
+  }
+
   constructor(props) {
     super(props);
 

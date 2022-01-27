@@ -41,8 +41,15 @@ import { dialog } from "@tauri-apps/api";
 import { Command } from "@tauri-apps/api/shell";
 import { fetch, ResponseType } from "@tauri-apps/api/http";
 import protobuf from "protobufjs";
+import PropTypes from "prop-types";
 
 class Create extends React.Component {
+  static get propTypes() {
+    return {
+      history: PropTypes.any,
+    };
+  }
+
   constructor(props) {
     super(props);
 
@@ -461,7 +468,7 @@ class Create extends React.Component {
             <List>
               {this.state.tip003Data.committee.map((item, index) => {
                 return (
-                  <ListItem>
+                  <ListItem key={index}>
                     <ListItemText primary={item}></ListItemText>
                   </ListItem>
                 );
@@ -509,8 +516,10 @@ class Create extends React.Component {
 
           {this.state.saveErrors.length > 0 ? (
             <div>
-              {this.state.saveErrors.map((e) => (
-                <Alert severity="error">{e.toString()}</Alert>
+              {this.state.saveErrors.map((e, index) => (
+                <Alert key={index} severity="error">
+                  {e.toString()}
+                </Alert>
               ))}
             </div>
           ) : (
@@ -529,6 +538,10 @@ const ImageSwitch = ({ setMode }) => {
       <Button onClick={() => setMode("upload")}>Upload file to IPFS</Button>
     </div>
   );
+};
+
+ImageSwitch.propTypes = {
+  setMode: PropTypes.func.isRequired,
 };
 
 const ImageUrl = ({ setImage }) => {
@@ -550,6 +563,10 @@ const ImageUrl = ({ setImage }) => {
   );
 };
 
+ImageUrl.propTypes = {
+  setImage: PropTypes.func.isRequired,
+};
+
 const ImageUpload = ({ selectFile, error }) => {
   return (
     <div>
@@ -559,6 +576,11 @@ const ImageUpload = ({ selectFile, error }) => {
       {error ? <Alert severity="error">{error}</Alert> : <span />}
     </div>
   );
+};
+
+ImageUpload.propTypes = {
+  selectFile: PropTypes.any,
+  error: PropTypes.any,
 };
 
 const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
@@ -591,6 +613,15 @@ const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
   }
 
   return display;
+};
+
+ImageSelector.propTypes = {
+  cid: PropTypes.any,
+  image: PropTypes.any,
+  selectFile: PropTypes.any,
+  setImage: PropTypes.any,
+  setCid: PropTypes.any,
+  error: PropTypes.any,
 };
 
 const IpfsImage = ({ cid, setCid, error }) => {
@@ -636,6 +667,12 @@ const IpfsImage = ({ cid, setCid, error }) => {
   }
 
   return <p>ipfs image loading...</p>;
+};
+
+IpfsImage.propTypes = {
+  error: PropTypes.any,
+  setCid: PropTypes.any,
+  cid: PropTypes.any,
 };
 
 export default withRouter(Create);

@@ -37,8 +37,15 @@ import binding from "./binding";
 import protobuf from "protobufjs";
 import StarIcon from "@mui/icons-material/Star";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
+import PropTypes from "prop-types";
 
 class AccountDashboard extends React.Component {
+  static get propTypes() {
+    return {
+      match: PropTypes.any,
+    };
+  }
+
   constructor(props) {
     super(props);
 
@@ -300,7 +307,7 @@ class AccountDashboard extends React.Component {
                 <Grid container spacing={2}>
                   {this.state.tip721Data.tokens.map((token) => {
                     return (
-                      <Grid item xs={2}>
+                      <Grid item xs={2} key={token.tokenId}>
                         <Paper>
                           <Container>
                             <Stack spacing={2}>

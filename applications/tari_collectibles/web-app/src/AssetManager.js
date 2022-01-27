@@ -150,6 +150,11 @@ const AssetDefinition = (props) => {
   );
 };
 
+AssetDefinition.propTypes = {
+  assetPubKey: PropTypes.string.isRequired,
+  assetDefinition: PropTypes.any,
+};
+
 AssetManagerContent.propTypes = {
   assetPubKey: PropTypes.string,
 };

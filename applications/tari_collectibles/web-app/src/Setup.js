@@ -33,6 +33,7 @@ import React, { useState, useEffect } from "react";
 import { Spinner } from "./components";
 import binding from "./binding";
 import { withRouter, useParams, useHistory } from "react-router-dom";
+import PropTypes from "prop-types";
 
 // const chunk = (arr, len) => {
 //   const chunks = [];
@@ -171,6 +172,10 @@ const CreateWallet = ({ setAuthenticated }) => {
   );
 };
 
+CreateWallet.propTypes = {
+  setAuthenticated: PropTypes.func.isRequired,
+};
+
 const OpenWallet = ({ setAuthenticated }) => {
   const { id } = useParams();
   const [password, setPassword] = useState("");
@@ -222,6 +227,10 @@ const OpenWallet = ({ setAuthenticated }) => {
   );
 };
 
+OpenWallet.propTypes = {
+  setAuthenticated: PropTypes.func.isRequired,
+};
+
 const Setup = ({ setAuthenticated }) => {
   const [loading, setLoading] = useState(true);
   const history = useHistory();
@@ -250,6 +259,10 @@ const Setup = ({ setAuthenticated }) => {
       <CreateWallet setAuthenticated={setAuthenticated} />
     </Container>
   );
+};
+
+Setup.propTypes = {
+  setAuthenticated: PropTypes.func.isRequired,
 };
 
 const UnlockWallet = withRouter(OpenWallet);
