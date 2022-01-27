@@ -46,15 +46,12 @@ impl<B: Backend> Component<B> for Balance {
         f.render_widget(block, area);
 
         let balance = app_state.get_balance();
-
+        let time_locked = balance.time_locked_balance.unwrap_or_else(|| MicroTari::from(0u64));
         let available_balance = Spans::from(vec![
             Span::styled("Available:", Style::default().fg(Color::Magenta)),
             Span::raw(" "),
-            Span::raw(format!("{}", balance.available_balance)),
-            Span::raw(format!(
-                " (Time Locked: {})",
-                balance.time_locked_balance.unwrap_or_else(|| MicroTari::from(0u64))
-            )),
+            Span::raw(format!("{}", balance.available_balance.saturating_sub(time_locked))),
+            Span::raw(format!(" (Time Locked: {})", time_locked)),
         ]);
         let incoming_balance = Spans::from(vec![
             Span::styled("Pending Incoming:", Style::default().fg(Color::Magenta)),
