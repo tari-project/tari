@@ -11,6 +11,7 @@ ADD common common
 ADD common_sqlite common_sqlite
 ADD comms comms
 ADD infrastructure infrastructure
+ADD dan_layer dan_layer
 ADD meta meta
 ADD Cargo.lock .
 ADD rust-toolchain.toml .
@@ -47,10 +48,10 @@ RUN apt update && apt -y install \
 
 RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
 
-RUN mkdir -p "/var/tari/base_node/weatherwax" &&
-  mkdir -p "/var/tari/base_node/igor" &&
-  mkdir -p "/var/tari/base_node/mainnet" &&
-  chown -R tari.tari "/var/tari/base_node"
+RUN mkdir -p "/var/tari/base_node/weatherwax" \
+    && mkdir -p "/var/tari/base_node/igor" \
+    && mkdir -p "/var/tari/base_node/mainnet" \
+    && chown -R tari.tari "/var/tari/base_node"
 
 RUN mkdir /blockchain && chown tari.tari /blockchain && chmod 777 /blockchain
 USER tari
