@@ -544,16 +544,6 @@ pub fn check_not_duplicate_txo<B: BlockchainBackend>(
 }
 
 pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(), ValidationError> {
-    if header.input_mr != mmr_roots.input_mr {
-        warn!(
-            target: LOG_TARGET,
-            "Block header input merkle root in {} do not match calculated root. Expected: {}, Actual:{}",
-            header.hash().to_hex(),
-            header.input_mr.to_hex(),
-            mmr_roots.input_mr.to_hex()
-        );
-        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
-    }
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
             target: LOG_TARGET,
@@ -562,7 +552,9 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             header.kernel_mr.to_hex(),
             mmr_roots.kernel_mr.to_hex()
         );
-        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: MmrTree::Kernel.to_string(),
+        }));
     };
     if header.kernel_mmr_size != mmr_roots.kernel_mmr_size {
         warn!(
@@ -586,7 +578,9 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             header.output_mr.to_hex(),
             mmr_roots.output_mr.to_hex()
         );
-        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: MmrTree::Utxo.to_string(),
+        }));
     };
     if header.witness_mr != mmr_roots.witness_mr {
         warn!(
@@ -594,7 +588,9 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             "Block header witness MMR roots in {} do not match calculated roots",
             header.hash().to_hex()
         );
-        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots));
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: MmrTree::Witness.to_string(),
+        }));
     };
     if header.output_mmr_size != mmr_roots.output_mmr_size {
         warn!(
@@ -608,6 +604,18 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
             mmr_tree: MmrTree::Utxo.to_string(),
             expected: mmr_roots.output_mmr_size,
             actual: header.output_mmr_size,
+        }));
+    }
+    if header.input_mr != mmr_roots.input_mr {
+        warn!(
+            target: LOG_TARGET,
+            "Block header input merkle root in {} do not match calculated root. Header.input_mr: {}, Calculated: {}",
+            header.hash().to_hex(),
+            header.input_mr.to_hex(),
+            mmr_roots.input_mr.to_hex()
+        );
+        return Err(ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots {
+            kind: MmrTree::Input.to_string(),
         }));
     }
     Ok(())

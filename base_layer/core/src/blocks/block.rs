@@ -63,8 +63,8 @@ pub enum BlockValidationError {
     InvalidInput,
     #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
-    #[error("Mismatched MMR roots")]
-    MismatchedMmrRoots,
+    #[error("Mismatched {kind} MMR roots")]
+    MismatchedMmrRoots { kind: String },
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
     MismatchedMmrSize {
         mmr_tree: String,

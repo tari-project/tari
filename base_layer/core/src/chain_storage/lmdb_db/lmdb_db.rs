@@ -2020,6 +2020,9 @@ impl BlockchainBackend for LMDBDatabase {
                 //  lmdb_len(&txn, &self.utxo)
                 unimplemented!("Need to get rangeproof mmr size")
             },
+            MmrTree::Input => {
+                unimplemented!("Need to get input mmr size")
+            },
         }
     }
 

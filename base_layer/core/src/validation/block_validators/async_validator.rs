@@ -263,10 +263,9 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
             for input in inputs.iter_mut() {
                 // Read the spent_output for this compact input
                 if input.is_compact() {
-                    let output_mined_info = match db.fetch_output(&input.output_hash())? {
-                        None => return Err(ValidationError::TransactionInputSpentOutputMissing),
-                        Some(o) => o,
-                    };
+                    let output_mined_info = db
+                        .fetch_output(&input.output_hash())?
+                        .ok_or(ValidationError::TransactionInputSpentOutputMissing)?;
 
                     match output_mined_info.output {
                         PrunedOutput::Pruned { .. } => {
@@ -479,7 +478,6 @@ impl<B: BlockchainBackend + 'static> BlockSyncBodyValidation for BlockValidator<
         let constants = self.rules.consensus_constants(block.header.height);
         helpers::check_block_weight(&block, constants)?;
         trace!(target: LOG_TARGET, "SV - Block weight is ok for {} ", &block_id);
-
         let block = self.validate_block_body(block).await?;
 
         trace!(target: LOG_TARGET, "SV - accounting balance correct for {}", &block_id);

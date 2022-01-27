@@ -108,12 +108,8 @@ impl ConsensusDecoding for Commitment {
 
 impl ConsensusEncoding for Signature {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let pub_nonce = self.get_public_nonce().as_bytes();
-        let mut written = pub_nonce.len();
-        writer.write_all(pub_nonce)?;
-        let sig = self.get_signature().as_bytes();
-        written += sig.len();
-        writer.write_all(sig)?;
+        let mut written = self.get_public_nonce().consensus_encode(writer)?;
+        written += self.get_signature().consensus_encode(writer)?;
         Ok(written)
     }
 }
@@ -126,13 +122,8 @@ impl ConsensusEncodingSized for Signature {
 
 impl ConsensusDecoding for Signature {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
-        let mut buf = [0u8; 32];
-        reader.read_exact(&mut buf)?;
-        let pub_nonce =
-            PublicKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-        let mut buf = [0u8; 32];
-        reader.read_exact(&mut buf)?;
-        let sig = PrivateKey::from_bytes(&buf[..]).map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
+        let pub_nonce = PublicKey::consensus_decode(reader)?;
+        let sig = PrivateKey::consensus_decode(reader)?;
         Ok(Signature::new(pub_nonce, sig))
     }
 }
@@ -182,5 +173,65 @@ impl ConsensusDecoding for ComSignature {
         let v = PrivateKey::consensus_decode(reader)?;
         let nonce = Commitment::consensus_decode(reader)?;
         Ok(ComSignature::new(nonce, u, v))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use rand::{rngs::OsRng, RngCore};
+    use tari_crypto::range_proof::RangeProofService;
+
+    use super::*;
+    use crate::{consensus::check_consensus_encoding_correctness, transactions::CryptoFactories};
+
+    mod keys {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let (_, subject) = PublicKey::random_keypair(&mut OsRng);
+            check_consensus_encoding_correctness(subject).unwrap();
+            let (subject, _) = PublicKey::random_keypair(&mut OsRng);
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
+    }
+
+    mod commitment {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let (_, p) = PublicKey::random_keypair(&mut OsRng);
+            let subject = Commitment::from_public_key(&p);
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
+    }
+
+    mod signature {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let (k, p) = PublicKey::random_keypair(&mut OsRng);
+            let subject = Signature::new(p, k);
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
+    }
+
+    mod range_proof {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let k = PrivateKey::random(&mut OsRng);
+            let subject = RangeProof::from_bytes(
+                &CryptoFactories::default()
+                    .range_proof
+                    .construct_proof(&k, OsRng.next_u64())
+                    .unwrap(),
+            )
+            .unwrap();
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
     }
 }

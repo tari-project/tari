@@ -377,11 +377,13 @@ impl Display for TransactionInput {
                 ..
             } => write!(
                 fmt,
-                "{} [{:?}], Script: ({}), Offset_Pubkey: ({})",
+                "{} [{:?}], Script: ({}), Offset_Pubkey: ({}), Input Hash: {}, Output: {}",
                 commitment.to_hex(),
                 features,
                 script,
-                sender_offset_public_key.to_hex()
+                sender_offset_public_key.to_hex(),
+                self.canonical_hash().expect("unreachable: output data exists").to_hex(),
+                self.output_hash().to_hex()
             ),
         }
     }

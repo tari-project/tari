@@ -20,16 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    fmt::{Display, Error, Formatter},
-};
+use std::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Copy)]
 pub enum MmrTree {
     Utxo,
+    Input,
     Kernel,
     Witness,
 }
@@ -37,22 +35,10 @@ pub enum MmrTree {
 impl Display for MmrTree {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
-            MmrTree::Witness => f.write_str("Witness"),
             MmrTree::Utxo => f.write_str("UTXO"),
+            MmrTree::Input => f.write_str("Input"),
             MmrTree::Kernel => f.write_str("Kernel"),
-        }
-    }
-}
-
-impl TryFrom<i32> for MmrTree {
-    type Error = String;
-
-    fn try_from(v: i32) -> Result<Self, Self::Error> {
-        match v {
-            0 => Ok(MmrTree::Utxo),
-            1 => Ok(MmrTree::Kernel),
-            2 => Ok(MmrTree::Witness),
-            _ => Err("Invalid MmrTree".into()),
+            MmrTree::Witness => f.write_str("Witness"),
         }
     }
 }
