@@ -11,5 +11,7 @@ EXPOSE 9050
 EXPOSE 9051
 ENV dockerfile_version=$VERSION
 
+COPY ./torrc /etc/tor/torrc
+
 USER tor
 CMD /usr/bin/tor -f /etc/tor/torrc
