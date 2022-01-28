@@ -31,6 +31,7 @@ import {
   Typography,
 } from "@mui/material";
 import binding from "./binding";
+import PropTypes from "prop-types";
 
 class NewAccount extends React.Component {
   constructor(props) {
@@ -43,11 +44,11 @@ class NewAccount extends React.Component {
     };
   }
 
-  onAssetPublicKeyChanged = (e) => {
+  onAssetPublicKeyChanged(e){
     this.setState({ assetPublicKey: e.target.value });
   };
 
-  onSave = async (e) => {
+  async onSave(e){
     e.preventDefault();
     console.log(this.state.assetPublicKey);
     this.setState({ isSaving: true, error: null });
@@ -93,6 +94,10 @@ class NewAccount extends React.Component {
       </Container>
     );
   }
+}
+
+NewAccount.propTypes = {
+  history: PropTypes.object
 }
 
 export default withRouter(NewAccount);

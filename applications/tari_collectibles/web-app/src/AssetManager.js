@@ -78,6 +78,7 @@ class AssetManagerContent extends React.Component {
   }
 }
 
+
 const AssetDefinition = (props) => {
   const { assetPubKey, assetDefinition } = props;
   const [msg, setMsg] = useState("");
@@ -149,6 +150,15 @@ const AssetDefinition = (props) => {
     </div>
   );
 };
+
+AssetDefinition.propTypes = {
+  assetPubKey: PropTypes.string,
+  assetDefinition: PropTypes.shape({
+    templateIds: PropTypes.array
+
+  })
+
+}
 
 AssetManagerContent.propTypes = {
   assetPubKey: PropTypes.string,
