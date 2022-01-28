@@ -130,20 +130,20 @@ impl TransactionInput {
     /// Populate the spent output data fields
     pub fn add_output_data(
         &mut self,
+        version: TransactionOutputVersion,
         features: OutputFeatures,
         commitment: Commitment,
         script: TariScript,
         sender_offset_public_key: PublicKey,
         covenant: Covenant,
-        version: TransactionOutputVersion,
     ) {
         self.spent_output = SpentOutput::OutputData {
+            version,
             features,
             commitment,
             script,
             sender_offset_public_key,
             covenant,
-            version,
         };
     }
 

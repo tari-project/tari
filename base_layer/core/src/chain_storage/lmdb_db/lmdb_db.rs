@@ -1013,12 +1013,12 @@ impl LMDBDatabase {
                 },
                 PrunedOutput::NotPruned { output } => {
                     input.add_output_data(
+                        output.version,
                         output.features,
                         output.commitment,
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.version,
                     );
                 },
             }
