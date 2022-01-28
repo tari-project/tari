@@ -1,5 +1,13 @@
 # Changelog
 
+
+### [0.27.2](https://github.com/tari-project/tari/compare/v0.27.1...v0.27.2) (2022-01-28)
+
+
+### Bug Fixes
+
+* **ffi:** fix bad access ([#3772](https://github.com/tari-project/tari/issues/3772)) ([2a41f22](https://github.com/tari-project/tari/commit/2a41f22fbbe0981f6520fe8975de2db97b75f383))
+
 ## [0.27.0](https://github.com/tari-project/tari/compare/v0.26.0...v0.27.0) (2022-01-28)
 
 
