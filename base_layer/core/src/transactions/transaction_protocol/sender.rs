@@ -902,7 +902,7 @@ mod test {
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features.clone(), PrivateKey::random(&mut OsRng), Covenant::default())
+            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features, PrivateKey::random(&mut OsRng), Covenant::default())
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
@@ -918,7 +918,7 @@ mod test {
 
         // Receiver gets message, deserializes it etc, and creates his response
         let mut bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
         alice
             .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
             .unwrap();
@@ -968,7 +968,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features.clone(),
+                features,
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -993,8 +993,7 @@ mod test {
         let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -1049,7 +1048,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features.clone(),
+                features,
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1061,8 +1060,7 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
         match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
@@ -1181,7 +1179,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features.clone(),
+                features,
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1205,8 +1203,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
 
         // Alice gets message back, deserializes it, etc
         alice
