@@ -109,7 +109,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::PublicKey,
+    types::{Commitment, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -871,6 +871,109 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+
+/// ------------------------------- Commitment Signature ---------------------------------------///
+
+/// Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
+///
+/// ## Arguments
+/// `public_nonce_bytes` - The public nonce signature component as a ByteVector
+/// `u_bytes` - The u signature component as a ByteVector
+/// `v_bytes` - The v signature component as a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariCommitmentSignature` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```commitment_signature_destroy``` function must be called when finished with a TariCommitmentSignature to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn commitment_signature_create_from_bytes(
+    public_nonce_bytes: *mut ByteVector,
+    u_bytes: *mut ByteVector,
+    v_bytes: *mut ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCommitmentSignature {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if public_nonce_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_nonce_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    if u_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("u_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    if v_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("v_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let nonce = match Commitment::from_bytes(&(*public_nonce_bytes).0) {
+        Ok(nonce) => nonce,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a nonce commitment from bytes: {:?}", e
+            );
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let u = match TariPrivateKey::from_bytes(&(*u_bytes).0) {
+        Ok(u) => u,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a Public Key (u) from bytes: {:?}", e
+            );
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let v = match TariPrivateKey::from_bytes(&(*v_bytes).0) {
+        Ok(u) => u,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a Public Key (v) from bytes: {:?}", e
+            );
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let sig = TariCommitmentSignature::new(nonce, u, v);
+    Box::into_raw(Box::new(sig))
+}
+
+/// Frees memory for a TariCommitmentSignature
+///
+/// ## Arguments
+/// `com_sig` - The pointer to a TariCommitmentSignature
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn commitment_signature_destroy(com_sig: *mut TariCommitmentSignature) {
+    if !com_sig.is_null() {
+        Box::from_raw(com_sig);
     }
 }
 
