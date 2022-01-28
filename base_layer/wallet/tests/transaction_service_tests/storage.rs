@@ -323,7 +323,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, true, 10, [0u8; 16].to_vec(), 5, true))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, true, 10, [0u8; 16].to_vec(), 5, true, false))
         .unwrap();
 
     assert_eq!(
@@ -551,7 +551,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(unmined_txs.len(), 4);
 
     runtime
-        .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id))
+        .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id, false))
         .unwrap();
 
     let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions_info()).unwrap();
@@ -605,14 +605,15 @@ async fn import_tx_and_read_it_from_db() {
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            PrivateKey::default(),
-            PrivateKey::default(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
         ),
         TransactionStatus::Imported,
         "message".to_string(),
         Utc::now().naive_utc(),
         TransactionDirection::Inbound,
         Some(0),
+        Some(5),
     );
 
     sqlite_db
@@ -622,8 +623,76 @@ async fn import_tx_and_read_it_from_db() {
         )))
         .unwrap();
 
-    let db_tx = sqlite_db.fetch_imported_transactions().unwrap();
+    let transaction = CompletedTransaction::new(
+        TxId::from(2),
+        PublicKey::default(),
+        PublicKey::default(),
+        MicroTari::from(100000),
+        MicroTari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        TransactionStatus::FauxUnconfirmed,
+        "message".to_string(),
+        Utc::now().naive_utc(),
+        TransactionDirection::Inbound,
+        Some(0),
+        Some(6),
+    );
 
+    sqlite_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            TxId::from(2),
+            Box::new(transaction),
+        )))
+        .unwrap();
+
+    let transaction = CompletedTransaction::new(
+        TxId::from(3),
+        PublicKey::default(),
+        PublicKey::default(),
+        MicroTari::from(100000),
+        MicroTari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        TransactionStatus::FauxConfirmed,
+        "message".to_string(),
+        Utc::now().naive_utc(),
+        TransactionDirection::Inbound,
+        Some(0),
+        Some(7),
+    );
+
+    sqlite_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            TxId::from(3),
+            Box::new(transaction),
+        )))
+        .unwrap();
+
+    let db_tx = sqlite_db.fetch_imported_transactions().unwrap();
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1));
+    assert_eq!(db_tx.first().unwrap().mined_height, 5);
+
+    let db_tx = sqlite_db.fetch_unconfirmed_faux_transactions().unwrap();
+    assert_eq!(db_tx.len(), 1);
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(2));
+    assert_eq!(db_tx.first().unwrap().mined_height, 6);
+
+    let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(10).unwrap();
+    assert_eq!(db_tx.len(), 0);
+    let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(4).unwrap();
+    assert_eq!(db_tx.len(), 1);
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3));
+    assert_eq!(db_tx.first().unwrap().mined_height, 7);
 }

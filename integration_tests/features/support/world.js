@@ -638,7 +638,7 @@ BeforeAll({ timeout: 2400000 }, async function () {
   const wallet = new WalletProcess("compile");
   console.log("Compiling wallet...");
   await wallet.init();
-  await wallet.compile();
+  // await wallet.compile();
 
   const mmProxy = new MergeMiningProxyProcess(
     "compile",
@@ -675,7 +675,7 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.compile();
 
   console.log("Compiling wallet FFI...");
-  await InterfaceFFI.compile();
+  // await InterfaceFFI.compile();
   console.log("Finished compilation.");
   console.log("Loading FFI interface..");
   await InterfaceFFI.init();

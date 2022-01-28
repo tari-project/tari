@@ -479,13 +479,17 @@ Then(
 );
 
 Then(
-  "ffi wallet {word} detects {word} {int} ffi transactions to be Broadcast",
+  "ffi wallet {word} detects {word} {int} ffi transactions to be {word}",
   { timeout: 125 * 1000 },
-  async function (walletName, comparison, amount) {
+  async function (walletName, comparison, amount, status) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const atLeast = "AT_LEAST";
     const exactly = "EXACTLY";
     expect(comparison === atLeast || comparison === exactly).to.equal(true);
+    const broadcast = "TRANSACTION_STATUS_BROADCAST";
+    const scannedUnconfirmed = "TRANSACTION_STATUS_FAUX_UNCONFIRMED";
+    const scannedConfirmed = "TRANSACTION_STATUS_FAUX_CONFIRMED";
+    expect(status === broadcast || status === scannedUnconfirmed || status === scannedConfirmed).to.equal(true);
     const wallet = this.getWallet(walletName);
 
     console.log("\n");
@@ -496,27 +500,56 @@ Then(
         comparison +
         " " +
         amount +
-        " broadcast transaction(s)"
+        " " +
+        status +
+        " transaction(s)"
     );
 
-    await waitForIterate(
+      await waitForIterate(
       () => {
-        return wallet.getCounters().broadcast >= amount;
+        switch (status) {
+            case broadcast:
+                return wallet.getCounters().broadcast >= amount;
+                break;
+            case scannedUnconfirmed:
+                return wallet.getCounters().scannedUnconfirmed >= amount;
+                break;
+            case scannedConfirmed:
+                return wallet.getCounters().scanned >= amount;
+                break;
+            default:
+                expect(expr).to.equal("please add this<< TransactionStatus");;
+        }
       },
       true,
       1000,
       120
     );
 
-    if (!(wallet.getCounters().broadcast >= amount)) {
+    let amountOfCallbacks;
+      switch (status) {
+          case broadcast:
+              amountOfCallbacks = wallet.getCounters().broadcast;
+              break;
+          case scannedUnconfirmed:
+              amountOfCallbacks =  wallet.getCounters().scannedUnconfirmed;
+              break;
+          case scannedConfirmed:
+              amountOfCallbacks =  wallet.getCounters().scanned;
+              break;
+          default:
+              expect(expr).to.equal("please add this<< TransactionStatus");;
+      }
+
+    if (!(amountOfCallbacks >= amount)) {
       console.log("Counter not adequate!");
     } else {
       console.log(wallet.getCounters());
     }
     if (comparison === atLeast) {
-      expect(wallet.getCounters().broadcast >= amount).to.equal(true);
+      expect(amountOfCallbacks >= amount).to.equal(true);
     } else {
-      expect(wallet.getCounters().broadcast === amount).to.equal(true);
+      expect(amountOfCallbacks === amount).to.equal(true);
     }
   }
 );

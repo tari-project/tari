@@ -98,6 +98,8 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             Pending => grpc::TransactionStatus::Pending,
             Coinbase => grpc::TransactionStatus::Coinbase,
             Rejected => grpc::TransactionStatus::Rejected,
+            FauxUnconfirmed => grpc::TransactionStatus::ScannedUnconfirmed,
+            FauxConfirmed => grpc::TransactionStatus::ScannedConfirmed,
         }
     }
 }

@@ -145,15 +145,18 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
-        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20 via one-sided transactions
+        Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And mining node MINER mines 2 blocks
         Then all nodes are at height 22
-        And mining node MINER mines 2 blocks
-        Then all nodes are at height 24
-        And mining node MINER mines 6 blocks
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_UNCONFIRMED and valid/
+        And mining node MINER mines 5 blocks
+        Then all nodes are at height 27
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_CONFIRMED and valid/
+#        And mining node MINER mines 6 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
         Then I wait for ffi wallet FFI_WALLET to receive 2 mined
         And I stop ffi wallet FFI_WALLET

@@ -61,6 +61,7 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
+use tari_common_types::types::BlockHash;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -358,16 +359,16 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.resources.master_key_manager.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
+            OutputManagerRequest::ScanForRecoverableOutputs {outputs, tx_id} => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs)
+            .scan_and_recover_outputs(outputs, tx_id)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs(outputs) => self
-                .scan_outputs_for_one_sided_payments(outputs)
+            OutputManagerRequest::ScanOutputs {outputs, tx_id} => self
+                .scan_outputs_for_one_sided_payments(outputs, tx_id)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
@@ -422,9 +423,22 @@ where
         }
     }
 
-    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
         let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
-        Ok(outputs.into_iter().map(|uo| uo.status).collect())
+        let statuses = outputs.into_iter().map(|uo| uo.status).collect();
+        let mined_heights = outputs.into_iter().map(|uo| uo.mined_height).collect();
+        let mined_height: Option<u64> = if let Some(height) = mined_heights.iter().min() {
+            Some(*height)
+        } else {
+            None
+        };
+        let block_hashes = outputs.into_iter().map(|uo| uo.mined_in_block).collect();
+        let block_hash: Option<BlockHash> = if let Some(hash) = block_hashes.iter().min() {
+            Some(*hash)
+        } else {
+            None
+        };
+        Ok((statuses, mined_height, block_hash))
     }
 
     async fn claim_sha_atomic_swap_with_hash(
@@ -1893,6 +1907,7 @@ where
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
@@ -1945,7 +1960,7 @@ where
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    match self.resources.db.add_unspent_output(db_output).await {
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                         Ok(_) => {
                             rewound_outputs.push(rewound_output);
                         },

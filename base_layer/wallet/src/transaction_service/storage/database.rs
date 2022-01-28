@@ -22,6 +22,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
@@ -31,7 +32,7 @@ use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;
@@ -132,9 +133,10 @@ pub trait TransactionBackend: Send + Sync + Clone {
         mined_in_block: BlockHash,
         num_confirmations: u64,
         is_confirmed: bool,
+        is_faux: bool,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
-    fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn set_transaction_as_unmined(&self, tx_id: TxId, is_faux: bool) -> Result<(), TransactionStorageError>;
     /// Reset optional 'mined height' and 'mined in block' fields to nothing
     fn mark_all_transactions_as_unvalidated(&self) -> Result<(), TransactionStorageError>;
     /// Light weight method to retrieve pertinent transaction sender info for all pending inbound transactions
@@ -142,6 +144,8 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_confirmed_faux_transactions_from_height(&self, height: u64) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -442,6 +446,27 @@ where T: TransactionBackend + 'static
         Ok(t)
     }
 
+    pub async fn get_unconfirmed_faux_transactions(
+        &self,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let t = tokio::task::spawn_blocking(move || db_clone.fetch_unconfirmed_faux_transactions())
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
+    }
+
+    pub async fn get_confirmed_faux_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let t = tokio::task::spawn_blocking(move || db_clone.fetch_confirmed_faux_transactions_from_height(height))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
+    }
+
     pub async fn fetch_last_mined_transaction(&self) -> Result<Option<CompletedTransaction>, TransactionStorageError> {
         self.db.fetch_last_mined_transaction()
     }
@@ -702,7 +727,8 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn add_utxo_import_transaction(
+    /// Faux transaction added to the database with imported status
+    pub async fn add_utxo_import_transaction_with_status(
         &self,
         tx_id: TxId,
         amount: MicroTari,
@@ -710,6 +736,8 @@ where T: TransactionBackend + 'static
         comms_public_key: CommsPublicKey,
         message: String,
         maturity: Option<u64>,
+        import_status: ImportStatus,
+        current_height: Option<u64>,
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
@@ -724,11 +752,12 @@ where T: TransactionBackend + 'static
                 BlindingFactor::default(),
                 BlindingFactor::default(),
             ),
-            TransactionStatus::Imported,
+            TransactionStatus::try_from(import_status)?,
             message,
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
             maturity,
+            current_height,
         );
 
         let db_clone = self.db.clone();
@@ -792,9 +821,13 @@ where T: TransactionBackend + 'static
         Ok(())
     }
 
-    pub async fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn set_transaction_as_unmined(
+        &self,
+        tx_id: TxId,
+        is_faux: bool,
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.set_transaction_as_unmined(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.set_transaction_as_unmined(tx_id, is_faux))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
@@ -816,6 +849,7 @@ where T: TransactionBackend + 'static
         mined_in_block: BlockHash,
         num_confirmations: u64,
         is_confirmed: bool,
+        is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
@@ -826,6 +860,7 @@ where T: TransactionBackend + 'static
                 mined_in_block,
                 num_confirmations,
                 is_confirmed,
+                is_faux,
             )
         })
         .await

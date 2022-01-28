@@ -34,6 +34,7 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::hex::Hex,
 };
+use tari_common_types::transaction::TxId;
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
@@ -73,6 +74,7 @@ where TBackend: OutputManagerBackend + 'static
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
@@ -133,7 +135,7 @@ where TBackend: OutputManagerBackend + 'static
                 Some(proof),
             )?;
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output(db_output).await {
+            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         info!(

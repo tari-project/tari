@@ -26,7 +26,7 @@ use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
-    transaction::TxId,
+    transaction::{ImportStatus, TxId},
     types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -385,6 +385,7 @@ where
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
         covenant: Covenant,
+        import_status: ImportStatus,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -401,7 +402,15 @@ where
 
         let tx_id = self
             .transaction_service
-            .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
+            .import_utxo_with_status(
+                amount,
+                source_public_key.clone(),
+                message,
+                Some(features.maturity),
+                import_status.clone(),
+                None,
+                None,
+            )
             .await?;
 
         let commitment_hex = unblinded_output
@@ -416,7 +425,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet", commitment_hex
+            "UTXO (Commitment: {}) imported into wallet as '{:?}'", commitment_hex, import_status
         );
 
         Ok(tx_id)
@@ -430,14 +439,18 @@ where
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
+        import_status: ImportStatus,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
-            .import_utxo(
+            .import_utxo_with_status(
                 unblinded_output.value,
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
+                import_status.clone(),
+                None,
+                None,
             )
             .await?;
 
@@ -447,12 +460,13 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet",
+            "UTXO (Commitment: {}) imported into wallet as '{:?}'",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
-                .to_hex()
+                .to_hex(),
+            import_status
         );
 
         Ok(tx_id)

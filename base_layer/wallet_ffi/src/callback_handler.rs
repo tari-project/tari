@@ -40,6 +40,8 @@
 //! `callback_transaction_mined` - This will be called when a Broadcast transaction is detected as mined via a base
 //! node request
 //!
+//! `callback_faux_transaction_confirmed` - This will be called when a one-sided transaction is detected as mined
+//!
 //! `callback_discovery_process_complete` - This will be called when a `send_transacion(..)` call is made to a peer
 //! whose address is not known and a discovery process must be conducted. The outcome of the discovery process is
 //! relayed via this callback
@@ -80,6 +82,8 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
+    callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut CompletedTransaction),
+    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(u64, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
@@ -118,6 +122,8 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
+        callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_direct_send_result: unsafe extern "C" fn(u64, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
@@ -150,6 +156,14 @@ where TBackend: TransactionBackend + 'static
         info!(
             target: LOG_TARGET,
             "TransactionMinedUnconfirmedCallback -> Assigning Fn: {:?}", callback_transaction_mined_unconfirmed
+        );
+        info!(
+            target: LOG_TARGET,
+            "FauxTransactionConfirmedCallback -> Assigning Fn: {:?}", callback_faux_transaction_confirmed
+        );
+        info!(
+            target: LOG_TARGET,
+            "FauxTransactionUnconfirmedCallback -> Assigning Fn: {:?}", callback_faux_transaction_unconfirmed
         );
         info!(
             target: LOG_TARGET,
@@ -191,6 +205,8 @@ where TBackend: TransactionBackend + 'static
             callback_transaction_broadcast,
             callback_transaction_mined,
             callback_transaction_mined_unconfirmed,
+            callback_faux_transaction_confirmed,
+            callback_faux_transaction_unconfirmed,
             callback_direct_send_result,
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
@@ -262,6 +278,14 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
                                     self.trigger_balance_refresh().await;
                                 },
+                                TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _} => {
+                                    self.receive_faux_transaction_confirmed_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                    self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations).await;
+                                    self.trigger_balance_refresh().await;
+                                },
                                 TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
                                     self.trigger_balance_refresh().await;
                                 },
@@ -272,7 +296,7 @@ where TBackend: TransactionBackend + 'static
                                     self.transaction_validation_complete_event(request_key.as_u64(), false);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
-                                TransactionEvent::TransactionImported(_tx_id) |
+                                TransactionEvent::TransactionImported(_tx_id)|
                                 TransactionEvent::TransactionCompletedImmediately(_tx_id)
                                 => {
                                     self.trigger_balance_refresh().await;
@@ -493,11 +517,43 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Mined callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Mined Unconfirmed callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_transaction_mined_unconfirmed)(boxing, confirmations);
+                }
+            },
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    async fn receive_faux_transaction_confirmed_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id).await {
+            Ok(tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Calling Received Faux Transaction Confirmed callback function for TxId: {}", tx_id
+                );
+                let boxing = Box::into_raw(Box::new(tx));
+                unsafe {
+                    (self.callback_faux_transaction_confirmed)(boxing);
+                }
+            },
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    async fn receive_faux_transaction_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
+        match self.db.get_completed_transaction(tx_id).await {
+            Ok(tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Calling Received Faux Transaction Unconfirmed callback function for TxId: {}", tx_id
+                );
+                let boxing = Box::into_raw(Box::new(tx));
+                unsafe {
+                    (self.callback_faux_transaction_unconfirmed)(boxing, confirmations);
                 }
             },
             Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),

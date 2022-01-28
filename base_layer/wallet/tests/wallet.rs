@@ -45,8 +45,10 @@
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
+use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    transaction::{ImportStatus, TransactionStatus},
     types::{PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -55,11 +57,14 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    test_helpers::{create_unblinded_output, TestParams},
-    transaction::OutputFeatures,
-    CryptoFactories,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        test_helpers::{create_unblinded_output, TestParams},
+        transaction::OutputFeatures,
+        CryptoFactories,
+    },
 };
 use tari_crypto::{
     inputs,
@@ -97,11 +102,7 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::sleep};
-
 pub mod support;
-use support::{comms_and_services::get_next_memory_address, utils::make_input};
-use tari_common_types::transaction::TransactionStatus;
-use tari_core::covenants::Covenant;
 use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
@@ -755,42 +756,99 @@ async fn test_import_utxo() {
     let features = OutputFeatures::create_coinbase(50);
 
     let p = TestParams::new();
-    let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
+    let utxo_1 = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
+    let utxo_2 = create_unblinded_output(script.clone(), features.clone(), p.clone(), 30000 * uT);
+    let utxo_3 = create_unblinded_output(script.clone(), features.clone(), p.clone(), 40000 * uT);
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
 
-    let tx_id = alice_wallet
+    let tx_id_1 = alice_wallet
         .import_utxo(
-            utxo.value,
-            &utxo.spending_key,
+            utxo_1.value,
+            &utxo_1.spending_key,
+            script.clone(),
+            input.clone(),
+            base_node_identity.public_key(),
+            features.clone(),
+            "Testing".to_string(),
+            utxo_1.metadata_signature.clone(),
+            &p.script_private_key,
+            &p.sender_offset_public_key,
+            0,
+            Covenant::default(),
+            ImportStatus::Imported,
+        )
+        .await
+        .unwrap();
+    let tx_id_2 = alice_wallet
+        .import_utxo(
+            utxo_2.value,
+            &utxo_2.spending_key,
+            script.clone(),
+            input.clone(),
+            base_node_identity.public_key(),
+            features.clone(),
+            "Testing".to_string(),
+            utxo_2.metadata_signature.clone(),
+            &p.script_private_key,
+            &p.sender_offset_public_key,
+            0,
+            Covenant::default(),
+            ImportStatus::ScannedUnconfirmed,
+        )
+        .await
+        .unwrap();
+    let tx_id_3 = alice_wallet
+        .import_utxo(
+            utxo_3.value,
+            &utxo_3.spending_key,
             script,
             input,
             base_node_identity.public_key(),
             features,
             "Testing".to_string(),
-            utxo.metadata_signature.clone(),
+            utxo_3.metadata_signature.clone(),
             &p.script_private_key,
             &p.sender_offset_public_key,
             0,
             Covenant::default(),
+            ImportStatus::ScannedConfirmed,
         )
         .await
         .unwrap();
 
     let balance = alice_wallet.output_manager_service.get_balance().await.unwrap();
 
-    assert_eq!(balance.pending_incoming_balance, 20000 * uT);
+    assert_eq!(balance.pending_incoming_balance, 90000 * uT);
 
-    let completed_tx = alice_wallet
+    let completed_tx_1 = alice_wallet
         .transaction_service
         .get_completed_transactions()
         .await
         .unwrap()
-        .remove(&tx_id)
+        .remove(&tx_id_1)
+        .expect("Tx should be in collection");
+    let completed_tx_2 = alice_wallet
+        .transaction_service
+        .get_completed_transactions()
+        .await
+        .unwrap()
+        .remove(&tx_id_2)
+        .expect("Tx should be in collection");
+    let completed_tx_3 = alice_wallet
+        .transaction_service
+        .get_completed_transactions()
+        .await
+        .unwrap()
+        .remove(&tx_id_3)
         .expect("Tx should be in collection");
 
-    assert_eq!(completed_tx.amount, 20000 * uT);
-    assert_eq!(completed_tx.status, TransactionStatus::Imported);
+    assert_eq!(completed_tx_1.amount, 20000 * uT);
+    assert_eq!(completed_tx_1.status, TransactionStatus::Imported);
+    assert_eq!(completed_tx_2.amount, 30000 * uT);
+    assert_eq!(completed_tx_2.status, TransactionStatus::FauxUnconfirmed);
+    assert_eq!(completed_tx_3.amount, 40000 * uT);
+    assert_eq!(completed_tx_3.status, TransactionStatus::FauxConfirmed);
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
     let outputs = db.fetch_outputs_by_tx_id(tx_id).await.unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));

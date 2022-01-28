@@ -95,7 +95,7 @@ impl TransactionServiceMock {
         info!(target: LOG_TARGET, "Handling Request: {}", request);
 
         match request {
-            TransactionServiceRequest::ImportUtxo(_, _, _, _) => {
+            TransactionServiceRequest::ImportUtxoWithStatus(_, _, _, _, _, , _) => {
                 let _ = reply_tx
                     .send(Ok(TransactionServiceResponse::UtxoImported(TxId::from(42))))
                     .map_err(|e| {
