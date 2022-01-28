@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.27.0](https://github.com/tari-project/tari/compare/v0.26.0...v0.27.0) (2022-01-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ffi:** Add commitment_signature_create and destroy (#3768)
+* **ffi:** add features, metadata_signature and sender_offset_public_key to import_utxo (#3767)
+
+### Features
+
+* **collectibles:** add form validation error when committee not set ([#3750](https://github.com/tari-project/tari/issues/3750)) ([dfdaf4b](https://github.com/tari-project/tari/commit/dfdaf4bbff36d78f51dd222fabc504e60171a627))
+* **console-wallet:** shift+tab to go to prev tab ([#3748](https://github.com/tari-project/tari/issues/3748)) ([9725f5f](https://github.com/tari-project/tari/commit/9725f5fb6fd53a4c72d2f4f0f7d23d6f150e79e3))
+* **explorer:** better view on mempool ([#3763](https://github.com/tari-project/tari/issues/3763)) ([caa2837](https://github.com/tari-project/tari/commit/caa28374d53b618b335eba014c96fb7f8c7df0dd))
+* **ffi:** Add commitment_signature_create and destroy ([#3768](https://github.com/tari-project/tari/issues/3768)) ([2df8193](https://github.com/tari-project/tari/commit/2df8193f0ff32bfbc65cb2962ff89bc2c56f75d1))
+* **ffi:** add features, metadata_signature and sender_offset_public_key to import_utxo ([#3767](https://github.com/tari-project/tari/issues/3767)) ([7d8aa69](https://github.com/tari-project/tari/commit/7d8aa69f081a23def2457d1402ea291aabe37bb5))
+* show error if IPFS upload fails ([#3746](https://github.com/tari-project/tari/issues/3746)) ([b58cf4c](https://github.com/tari-project/tari/commit/b58cf4c29b903bc4db172a6f93ce67ef2848f7f9))
+* update the available balance in console wallet ([#3760](https://github.com/tari-project/tari/issues/3760)) ([d3edfe5](https://github.com/tari-project/tari/commit/d3edfe5daa2ab5f1a54835fcae1427349f8c50c2))
+
+
+### Bug Fixes
+
+* fix attempting to validate faux transaction ([#3758](https://github.com/tari-project/tari/issues/3758)) ([7de1b23](https://github.com/tari-project/tari/commit/7de1b23fbe8f1a477db126a4d47014647e632a93))
+* fix cucumber test for standard recovery ([#3757](https://github.com/tari-project/tari/issues/3757)) ([1d58977](https://github.com/tari-project/tari/commit/1d58977c011f66c80763b7f6369ee9756298080e))
+* properly decrypt imported faux tx when reading from db ([#3754](https://github.com/tari-project/tari/issues/3754)) ([997b74b](https://github.com/tari-project/tari/commit/997b74b36221abbcb7f107eca0b78eaccb6aea87))
+* use of branch seed in key manager ([#3751](https://github.com/tari-project/tari/issues/3751)) ([ec92919](https://github.com/tari-project/tari/commit/ec92919cad2487307a583362684194d5066c1403))
+
 ### [0.26.1](https://github.com/tari-project/tari/compare/v0.26.0...v0.26.1) (2022-01-26)
 
 

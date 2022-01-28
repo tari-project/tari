@@ -435,7 +435,7 @@ pub fn check_input_is_utxo<B: BlockchainBackend>(db: &B, input: &TransactionInpu
                          inconsistency!",
                         output_hash.to_hex()
                     );
-                    return Err(ValidationError::BlockError(BlockValidationError::InvalidInput));
+                    return Err(ValidationError::UnknownInput);
                 },
             }
 
