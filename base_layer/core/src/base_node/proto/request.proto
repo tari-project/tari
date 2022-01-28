@@ -1,7 +1,6 @@
 syntax = "proto3";
 
 import "block.proto";
-import "mmr_tree.proto";
 import "types.proto";
 
 package tari.base_node;
@@ -42,10 +41,6 @@ message FetchHeadersAfter {
     bytes stopping_hash = 2;
 }
 
-message FetchMmrNodeCount {
-    MmrTree tree = 1;
-    uint64 height = 2;
-}
 
 message NewBlockTemplateRequest{
     uint64 algo = 1;

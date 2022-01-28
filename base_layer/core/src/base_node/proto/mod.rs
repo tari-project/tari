@@ -24,8 +24,6 @@ mod chain_metadata;
 pub mod wallet_rpc;
 
 #[cfg(feature = "base_node")]
-mod mmr_tree;
-#[cfg(feature = "base_node")]
 mod request;
 #[cfg(feature = "base_node")]
 mod response;

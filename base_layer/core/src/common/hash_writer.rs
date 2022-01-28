@@ -52,3 +52,30 @@ impl<H: Update> Write for HashWriter<H> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use rand::{rngs::OsRng, RngCore};
+    use tari_common_types::types::HashDigest;
+
+    use super::*;
+
+    #[test]
+    fn it_updates_the_digest_state() {
+        let mut writer = HashWriter::new(HashDigest::new());
+        let mut data = [0u8; 1024];
+        OsRng.fill_bytes(&mut data);
+
+        // Even if data is streamed in chunks, the preimage and therefore the resulting hash are the same
+        writer.write_all(&data[0..256]).unwrap();
+        writer.write_all(&data[256..500]).unwrap();
+        writer.write_all(&data[500..1024]).unwrap();
+        let hash = writer.finalize();
+        let empty: [u8; 32] = Update::chain(HashDigest::new(), [0u8; 1024]).finalize_fixed().into();
+        assert_ne!(hash, empty);
+
+        let mut writer = HashWriter::new(HashDigest::new());
+        writer.write_all(&data).unwrap();
+        assert_eq!(writer.finalize(), hash);
+    }
+}
