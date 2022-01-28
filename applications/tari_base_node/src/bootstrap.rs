@@ -193,7 +193,7 @@ where B: BlockchainBackend + 'static
                 identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity()).map_err(
                     |e| {
                         anyhow!(
-                            "Failed to save node identity - {}: {:?}",
+                            "Failed to save node identity - {:?}: {:?}",
                             config.base_node_identity_file,
                             e
                         )
@@ -204,7 +204,7 @@ where B: BlockchainBackend + 'static
         if let Some(hs) = comms.hidden_service() {
             identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity()).map_err(|e| {
                 anyhow!(
-                    "Failed to save tor identity - {}: {:?}",
+                    "Failed to save tor identity - {:?}: {:?}",
                     config.base_node_tor_identity_file,
                     e
                 )
