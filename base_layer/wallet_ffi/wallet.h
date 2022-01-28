@@ -170,6 +170,19 @@ struct TariPrivateKey *private_key_from_hex(const char *hex, int *error_out);
 // Frees memory for a TariPrivateKey
 void private_key_destroy(struct TariPrivateKey *pk);
 
+/// -------------------------------- Commitment Signature  --------------------------------------------- ///
+
+// Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
+struct TariCommitmentSignature *commitment_signature_create_from_bytes(
+    struct ByteVector *public_nonce_bytes,
+    struct ByteVector *u_bytes,
+    struct ByteVector *v_bytes,
+    int *error_out
+);
+
+// Frees memory for a TariCommitmentSignature
+void commitment_signature_destroy(struct TariCommitmentSignature *com_sig);
+
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
 struct TariSeedWords *seed_words_create();
