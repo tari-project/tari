@@ -53,6 +53,10 @@ struct TariPublicKey;
 
 struct TariPublicKeys;
 
+struct TariCommitmentSignature;
+
+struct TariOutputFeatures;
+
 struct TariContacts;
 
 struct TariContact;
@@ -573,7 +577,17 @@ struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct T
 
 // Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
 // event.
-unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int *error_out);
+unsigned long long wallet_import_utxo(
+    struct TariWallet *wallet,
+    unsigned long long amount,
+    struct TariPrivateKey *spending_key,
+    struct TariPublicKey *source_public_key,
+    struct TariOutputFeatures *features,
+    struct TariCommitmentSignature *metadata_signature,
+    struct TariPublicKey *sender_offset_public_key,
+    const char *message,
+    int *error_out
+);
 
 // This function will tell the wallet to query the set base node to confirm the status of unspent transaction outputs (UTXOs).
 unsigned long long wallet_start_txo_validation(struct TariWallet *wallet, int *error_out);

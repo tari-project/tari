@@ -109,7 +109,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComSignature, PublicKey},
+    types::PublicKey,
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -181,10 +181,13 @@ mod tasks;
 const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariTransportType = tari_p2p::transport::TransportType;
-pub type TariPublicKey = tari_comms::types::CommsPublicKey;
-pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
+pub type TariPublicKey = tari_common_types::types::PublicKey;
+pub type TariPrivateKey = tari_common_types::types::PrivateKey;
+pub type TariOutputFeatures = tari_core::transactions::transaction::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
+pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
 pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariCovenant = tari_core::covenants::Covenant;
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -4811,10 +4814,13 @@ pub unsafe extern "C" fn wallet_import_utxo(
     amount: c_ulonglong,
     spending_key: *mut TariPrivateKey,
     source_public_key: *mut TariPublicKey,
+    features: *mut TariOutputFeatures,
+    metadata_signature: *mut TariCommitmentSignature,
+    sender_offset_public_key: *mut TariPublicKey,
+    script_private_key: *mut TariPrivateKey,
+    covenant: *mut TariCovenant,
     message: *const c_char,
     error_out: *mut c_int,
-    /* TODO: Update this interface to add the metadata signature, script private key and script offset public keys
-     * here. */
 ) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4834,6 +4840,31 @@ pub unsafe extern "C" fn wallet_import_utxo(
         error = LibWalletError::from(InterfaceError::NullError("source_public_key".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
+    }
+
+    if metadata_signature.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("metadata_signature".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if sender_offset_public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("sender_offset_public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if script_private_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("script_private_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if features.is_null() {
+        *features = OutputFeatures::with_maturity(0);
+    }
+    if covenant.is_null() {
+        *covenant = Covenant::default();
     }
 
     let message_string;
@@ -4870,13 +4901,13 @@ pub unsafe extern "C" fn wallet_import_utxo(
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        OutputFeatures::default(),
+        (*features).clone(),
         message_string,
-        ComSignature::default(),
+        (*metadata_signature).clone(),
         &(*spending_key).clone(),
-        &Default::default(),
+        &(*sender_offset_public_key).clone(),
         0,
-        Covenant::default(),
+        (*covenant).clone(),
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
