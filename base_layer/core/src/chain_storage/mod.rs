@@ -55,7 +55,7 @@ mod db_transaction;
 pub use db_transaction::{DbKey, DbTransaction, DbValue, WriteOperation};
 
 mod mmr_tree;
-pub use mmr_tree::*;
+pub use mmr_tree::MmrTree;
 
 mod error;
 pub use error::{ChainStorageError, Optional, OrNotFound};

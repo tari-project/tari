@@ -374,6 +374,8 @@ where B: BlockchainBackend + 'static
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
                 );
+
+                debug!(target: LOG_TARGET, "New template block: {}", block_template);
                 debug!(
                     target: LOG_TARGET,
                     "New block template requested at height {}, weight: {}",
@@ -384,6 +386,7 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
+                debug!(target: LOG_TARGET, "Prepared block: {}", block_template);
                 let block = self.blockchain_db.prepare_new_block(block_template).await?;
                 let constants = self.consensus_manager.consensus_constants(block.header.height);
                 debug!(
@@ -665,6 +668,7 @@ where B: BlockchainBackend + 'static
     ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
+
         info!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
@@ -675,6 +679,7 @@ where B: BlockchainBackend + 'static
                 .map(|p| format!("remote peer: {}", p))
                 .unwrap_or_else(|| "local services".to_string())
         );
+        debug!(target: LOG_TARGET, "Incoming block: {}", block);
         let timer = Instant::now();
         let add_block_result = self.blockchain_db.add_block(block.clone()).await;
         // Create block event on block event stream
