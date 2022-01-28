@@ -4963,12 +4963,16 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    if features.is_null() {
-        *features = OutputFeatures::with_maturity(0);
-    }
-    if covenant.is_null() {
-        *covenant = Covenant::default();
-    }
+    let features = if features.is_null() {
+        OutputFeatures::with_maturity(0)
+    } else {
+        (*features).clone()
+    };
+    let covenant = if covenant.is_null() {
+        Covenant::default()
+    } else {
+        (*covenant).clone()
+    };
 
     let message_string;
     if !message.is_null() {
@@ -5004,13 +5008,13 @@ pub unsafe extern "C" fn wallet_import_utxo(
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        (*features).clone(),
+        features,
         message_string,
         (*metadata_signature).clone(),
         &(*spending_key).clone(),
         &(*sender_offset_public_key).clone(),
         0,
-        (*covenant).clone(),
+        covenant,
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
@@ -6351,6 +6355,30 @@ mod test {
             public_key_destroy(pk_emoji);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
+        }
+    }
+
+    #[test]
+    fn test_comm_sig_create() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let (u, _) = PublicKey::random_keypair(&mut OsRng);
+            let u_bytes = Box::into_raw(Box::new(ByteVector(u.to_vec())));
+            let (v, nonce) = PublicKey::random_keypair(&mut OsRng);
+            let v_bytes = Box::into_raw(Box::new(ByteVector(v.to_vec())));
+            let nonce_bytes = Box::into_raw(Box::new(ByteVector(nonce.to_vec())));
+
+            let sig = commitment_signature_create_from_bytes(nonce_bytes, u_bytes, v_bytes, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*(*sig).public_nonce(), Commitment::from_public_key(&nonce));
+            assert_eq!(*(*sig).u(), u);
+            assert_eq!(*(*sig).v(), v);
+
+            commitment_signature_destroy(sig);
+            byte_vector_destroy(nonce_bytes);
+            byte_vector_destroy(u_bytes);
+            byte_vector_destroy(v_bytes);
         }
     }
 
