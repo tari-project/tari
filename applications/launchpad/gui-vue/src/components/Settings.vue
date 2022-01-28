@@ -4,7 +4,7 @@
     <o-field label="Tari network">
       <div>
         <select v-model="$store.state.settings.tariNetwork">
-          <option value="weatherwax">Weatherwax</option>
+          <option value="dibbler">Dibbler</option>
           <option value="igor">Igor</option>
           <option value="mainnet">Mainnet</option>
         </select>

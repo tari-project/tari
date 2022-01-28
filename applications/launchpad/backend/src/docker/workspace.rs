@@ -137,7 +137,7 @@ impl Workspaces {
 ///      ├── config
 ///      │   ├── config.toml
 ///      │   ├── log4rs.yml
-///      │   └── weatherwax
+///      │   └── dibbler
 ///      │       ├── base_node_tor.json
 ///      │       ├── tari_base_node_id.json
 ///      │       └── tari_console_wallet_id.json
@@ -248,7 +248,7 @@ impl TariWorkspace {
     /// Bootstraps a node identity for the container, typically a base node or wallet instance. If an identity file
     /// already exists at the canonical path location, it is loaded and returned instead.
     ///
-    /// The canonical path is defined as `{root_path}/config/{network}/{image_type}_id.json`
+    /// The canonical path is defined as `{root_path}/{image_type}/config/{network}/{image_type}_id.json`
     pub fn create_or_load_identity(
         &self,
         root_path: &str,

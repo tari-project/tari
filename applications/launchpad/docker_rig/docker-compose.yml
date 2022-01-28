@@ -26,7 +26,7 @@ services:
       WAIT_FOR_TOR: ${WAIT_FOR_TOR:-0}
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_BASE_NODE__DIBBLER__TOR_CONTROL_AUTH: "password=${TOR_CONTROL_AUTH:-tari}"
-      TARI_BASE_NODE__DIBBLER__DATA_DIR: "/blockchain/weatherwax"
+      TARI_BASE_NODE__DIBBLER__DATA_DIR: "/blockchain/dibbler"
       TARI_BASE_NODE__IGOR__DATA_DIR: "/blockchain/igor"
       TARI_BASE_NODE__MAINNET__DATA_DIR: "/blockchain/mainnet"
       TARI_BASE_NODE__DIBBLER__TOR_CONTROL_ADDRESS: "/dns4/tor/tcp/9051"
@@ -63,7 +63,7 @@ services:
       SHELL: "/bin/bash"
       TERM: "linux"
       TARI_WALLET_PASSWORD: ${TARI_WALLET_PASSWORD:-tari}
-      TARI_NETWORK: ${TARI_NETWORK:-weatherwax}
+      TARI_NETWORK: ${TARI_NETWORK:-dibbler}
       TARI_WALLET__DIBBLER__TOR_CONTROL_AUTH: "password=${TOR_CONTROL_AUTH:-tari}"
       TARI_WALLET__DIBBLER__TOR_CONTROL_ADDRESS: "/dns4/tor/tcp/9051"
       TARI_WALLET__DIBBLER__TOR_SOCKS_ADDRESS_OVERRIDE: "/dns4/tor/tcp/9050"

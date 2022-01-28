@@ -143,7 +143,7 @@ impl From<LogOutput> for LogMessage {
 /// Supported networks for the launchpad
 #[derive(Serialize, Debug, Deserialize, Clone, Copy)]
 pub enum TariNetwork {
-    Weatherwax,
+    Dibbler,
     Igor,
     Mainnet,
 }
@@ -151,7 +151,7 @@ pub enum TariNetwork {
 impl TariNetwork {
     pub fn lower_case(&self) -> &'static str {
         match self {
-            Self::Weatherwax => "weatherwax",
+            Self::Dibbler => "dibbler",
             Self::Igor => "igor",
             Self::Mainnet => "mainnet",
         }
@@ -159,17 +159,17 @@ impl TariNetwork {
 
     pub fn upper_case(&self) -> &'static str {
         match self {
-            Self::Weatherwax => "WEATHERWAX",
+            Self::Dibbler => "DIBBLER",
             Self::Igor => "IGOR",
             Self::Mainnet => "MAINNET",
         }
     }
 }
 
-/// Default network is Weatherwax. This will change after mainnet launch
+/// Default network is Dibbler. This will change after mainnet launch
 impl Default for TariNetwork {
     fn default() -> Self {
-        Self::Weatherwax
+        Self::Dibbler
     }
 }
 
@@ -178,7 +178,7 @@ impl TryFrom<&str> for TariNetwork {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
-            "weatherwax" => Ok(TariNetwork::Weatherwax),
+            "dibbler" => Ok(TariNetwork::Dibbler),
             "igor" => Ok(TariNetwork::Igor),
             "mainnet" => Ok(TariNetwork::Mainnet),
             _ => Err(DockerWrapperError::UnsupportedNetwork),

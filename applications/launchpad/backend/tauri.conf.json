@@ -6,7 +6,7 @@
   "build": {
     "distDir": "../gui-vue/dist",
     "devPath": "http://localhost:8080",
-    "beforeDevCommand": "cd ../gui-vue && npm run start",
+    "beforeDevCommand": "cp assets/* ../../../target/debug/assets/ && cd ../gui-vue && npm run serve",
     "beforeBuildCommand": "cd ../gui-vue && npm run build"
   },
   "tauri": {

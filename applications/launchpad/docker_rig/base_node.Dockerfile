@@ -48,7 +48,7 @@ RUN apt update && apt -y install \
 
 RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
 
-RUN mkdir -p "/var/tari/base_node/weatherwax" \
+RUN mkdir -p "/var/tari/base_node/dibbler" \
     && mkdir -p "/var/tari/base_node/igor" \
     && mkdir -p "/var/tari/base_node/mainnet" \
     && chown -R tari.tari "/var/tari/base_node"
