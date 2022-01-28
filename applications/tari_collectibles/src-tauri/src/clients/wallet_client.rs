@@ -100,6 +100,7 @@ impl WalletClient {
     asset_public_key: String,
     merkle_root: Vec<u8>,
     committee: Vec<String>,
+    checkpoint_interval: u32,
   ) -> Result<grpc::CreateInitialAssetCheckpointResponse, CollectiblesError> {
     let inner = self.inner.as_mut().unwrap();
     let request = grpc::CreateInitialAssetCheckpointRequest {
@@ -109,6 +110,7 @@ impl WalletClient {
         .iter()
         .map(|s| Vec::from_hex(s).unwrap())
         .collect(),
+      checkpoint_interval,
     };
     let result = inner
       .create_initial_asset_checkpoint(request)

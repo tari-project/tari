@@ -660,6 +660,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 &asset_public_key,
                 message.merkle_root.as_slice(),
                 committee_public_keys.as_slice(),
+                message.checkpoint_interval,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -697,6 +698,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 message.unique_id.as_slice(),
                 message.merkle_root.as_slice(),
                 committee_public_keys.as_slice(),
+                message.checkpoint_interval,
             )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;

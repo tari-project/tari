@@ -55,12 +55,14 @@ pub enum AssetManagerRequest {
         asset_public_key: Box<PublicKey>,
         merkle_root: Vec<u8>,
         committee_public_keys: Vec<PublicKey>,
+        checkpoint_interval: u32,
     },
     CreateFollowOnCheckpoint {
         asset_public_key: Box<PublicKey>,
         unique_id: Vec<u8>,
         merkle_root: Vec<u8>,
         committee_public_keys: Vec<PublicKey>,
+        checkpoint_interval: u32,
     },
 }
 

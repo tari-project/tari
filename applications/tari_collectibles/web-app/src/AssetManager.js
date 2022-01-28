@@ -54,10 +54,12 @@ class AssetManagerContent extends React.Component {
     console.log("registration:", registration);
     let assetDefinition = {
       public_key: assetPubKey,
-      initialCommittee: registration.initialCommitee,
-      checkpointUniqueId: registration.checkpointUniqueId,
-      template_parameters: registration.features.template_parameters,
-      templateIds: registration.features.template_ids_implemented,
+      initialCommittee: registration?.initialCommitee,
+      checkpointUniqueId: registration?.checkpointUniqueId,
+      template_parameters: registration?.features?.template_parameters,
+      templateIds: registration?.features?.template_ids_implemented,
+      checkpoint_interval:
+        registration?.features?.sidechain_checkpoint?.checkpoint_interval,
     };
     this.setState({ loading: false, assetDefinition });
   }

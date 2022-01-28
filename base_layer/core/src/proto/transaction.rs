@@ -406,7 +406,12 @@ impl TryFrom<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointF
             .into_iter()
             .map(|c| PublicKey::from_bytes(&c).map_err(|err| format!("{:?}", err)))
             .collect::<Result<_, _>>()?;
-        Ok(Self { merkle_root, committee })
+        let checkpoint_interval = value.checkpoint_interval;
+        Ok(Self {
+            merkle_root,
+            committee,
+            checkpoint_interval,
+        })
     }
 }
 
@@ -415,6 +420,7 @@ impl From<SideChainCheckpointFeatures> for proto::types::SideChainCheckpointFeat
         Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
             committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+            checkpoint_interval: value.checkpoint_interval,
         }
     }
 }

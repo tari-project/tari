@@ -51,10 +51,15 @@ async function command_assets_get_registration(assetPubKey) {
   return await invoke("assets_get_registration", { assetPubKey });
 }
 
-async function command_asset_create_initial_checkpoint(assetPubKey, committee) {
+async function command_asset_create_initial_checkpoint(
+  assetPubKey,
+  committee,
+  checkpointInterval
+) {
   return await invoke("assets_create_initial_checkpoint", {
     assetPubKey,
     committee,
+    checkpointInterval,
   });
 }
 

@@ -40,6 +40,7 @@ pub struct AssetDefinition {
     pub checkpoint_unique_id: Vec<u8>,
     pub initial_state: InitialState,
     pub template_parameters: Vec<TemplateParameter>,
+    pub checkpoint_interval: u32,
 }
 
 impl Default for AssetDefinition {
@@ -52,6 +53,7 @@ impl Default for AssetDefinition {
             phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],
+            checkpoint_interval: 100,
         }
     }
 }

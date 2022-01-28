@@ -161,6 +161,7 @@ impl From<SideChainCheckpointFeatures> for grpc::SideChainCheckpointFeatures {
         Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
             committee: value.committee.iter().map(|c| c.as_bytes().to_vec()).collect(),
+            checkpoint_interval: value.checkpoint_interval,
         }
     }
 }
@@ -180,6 +181,7 @@ impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures 
         Ok(Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
             committee,
+            checkpoint_interval: value.checkpoint_interval,
         })
     }
 }

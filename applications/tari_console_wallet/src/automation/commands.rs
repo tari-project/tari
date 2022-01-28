@@ -877,9 +877,11 @@ pub async fn command_runner(
                     })
                     .collect::<Result<_, _>>()?;
 
+                let checkpoint_interval = 100;
+
                 let mut asset_manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = asset_manager
-                    .create_initial_asset_checkpoint(&public_key, &merkle_root, &committee)
+                    .create_initial_asset_checkpoint(&public_key, &merkle_root, &committee, checkpoint_interval)
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(

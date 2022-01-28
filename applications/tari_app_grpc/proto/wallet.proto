@@ -253,6 +253,7 @@ message CreateInitialAssetCheckpointRequest {
     bytes asset_public_key = 1;
     bytes merkle_root = 2;
     repeated bytes committee = 3;
+    uint32 checkpoint_interval = 4;
 }
 
 message CreateInitialAssetCheckpointResponse {
@@ -264,6 +265,7 @@ message CreateFollowOnAssetCheckpointRequest {
     bytes unique_id = 2;
     bytes merkle_root = 3;
     repeated bytes next_committee = 4;
+    uint32 checkpoint_interval = 5;
 }
 
 message CreateFollowOnAssetCheckpointResponse {

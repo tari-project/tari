@@ -170,7 +170,8 @@ class Create extends React.Component {
       if (this.state.tip003) {
         let res = await binding.command_asset_create_initial_checkpoint(
           publicKey,
-          this.state.tip003Data.committee
+          this.state.tip003Data.committee,
+          3
         );
 
         console.log(res);

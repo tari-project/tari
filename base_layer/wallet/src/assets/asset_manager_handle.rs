@@ -76,6 +76,7 @@ impl AssetManagerHandle {
         public_key: &PublicKey,
         merkle_root: &[u8],
         committee_public_keys: &[PublicKey],
+        checkpoint_interval: u32,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
@@ -83,6 +84,7 @@ impl AssetManagerHandle {
                 asset_public_key: Box::new(public_key.clone()),
                 merkle_root: merkle_root.to_vec(),
                 committee_public_keys: committee_public_keys.to_vec(),
+                checkpoint_interval,
             })
             .await??
         {
@@ -100,6 +102,7 @@ impl AssetManagerHandle {
         unique_id: &[u8],
         merkle_root: &[u8],
         committee_public_keys: &[PublicKey],
+        checkpoint_interval: u32,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
@@ -108,6 +111,7 @@ impl AssetManagerHandle {
                 merkle_root: merkle_root.to_vec(),
                 unique_id: unique_id.to_vec(),
                 committee_public_keys: committee_public_keys.to_vec(),
+                checkpoint_interval,
             })
             .await??
         {

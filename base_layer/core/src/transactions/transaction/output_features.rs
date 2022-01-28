@@ -184,6 +184,7 @@ impl OutputFeatures {
         merkle_root: Vec<u8>,
         committee: Vec<PublicKey>,
         is_initial: bool,
+        checkpoint_interval: u32,
     ) -> OutputFeatures {
         Self {
             flags: if is_initial {
@@ -191,7 +192,11 @@ impl OutputFeatures {
             } else {
                 OutputFlags::SIDECHAIN_CHECKPOINT
             },
-            sidechain_checkpoint: Some(SideChainCheckpointFeatures { merkle_root, committee }),
+            sidechain_checkpoint: Some(SideChainCheckpointFeatures {
+                merkle_root,
+                committee,
+                checkpoint_interval,
+            }),
             parent_public_key: Some(parent_public_key),
             unique_id: Some(unique_id),
             ..Default::default()
@@ -319,6 +324,7 @@ mod test {
             sidechain_checkpoint: Some(SideChainCheckpointFeatures {
                 merkle_root: vec![1u8; 32],
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
+                checkpoint_interval: 100,
             }),
         }
     }

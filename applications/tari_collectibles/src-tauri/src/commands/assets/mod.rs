@@ -233,6 +233,7 @@ pub(crate) async fn assets_list_registered_assets(
 pub(crate) async fn assets_create_initial_checkpoint(
   asset_pub_key: String,
   committee: Vec<String>,
+  checkpoint_interval: u32,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
@@ -243,7 +244,7 @@ pub(crate) async fn assets_create_initial_checkpoint(
   client.connect().await?;
 
   client
-    .create_initial_asset_checkpoint(asset_pub_key, root, committee)
+    .create_initial_asset_checkpoint(asset_pub_key, root, committee, checkpoint_interval)
     .await
     .unwrap();
 

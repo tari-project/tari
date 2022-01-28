@@ -153,6 +153,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         asset_pub_key: PublicKey,
         merkle_root: Vec<u8>,
         committee_pub_keys: Vec<PublicKey>,
+        checkpoint_interval: u32,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
@@ -164,6 +165,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                     merkle_root,
                     committee_pub_keys.clone(),
                     true,
+                    checkpoint_interval,
                 ),
             )
             .await?;
@@ -201,6 +203,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         unique_id: Vec<u8>,
         merkle_root: Vec<u8>,
         committee_pub_keys: Vec<PublicKey>,
+        checkpoint_interval: u32,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
@@ -212,6 +215,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                     merkle_root,
                     committee_pub_keys.clone(),
                     false,
+                    checkpoint_interval,
                 ),
             )
             .await?;

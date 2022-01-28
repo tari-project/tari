@@ -58,6 +58,7 @@ impl WalletClient for GrpcWalletClient {
         checkpoint_unique_id: &[u8],
         state_root: &StateRoot,
         next_committee: Vec<CommsPublicKey>,
+        checkpoint_interval: u32,
     ) -> Result<(), DigitalAssetError> {
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -72,6 +73,7 @@ impl WalletClient for GrpcWalletClient {
             unique_id: Vec::from(checkpoint_unique_id),
             merkle_root: state_root.as_bytes().to_vec(),
             next_committee: next_committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+            checkpoint_interval,
         };
 
         let res = inner

@@ -34,5 +34,6 @@ pub trait WalletClient {
         checkpoint_unique_id: &[u8],
         state_root: &StateRoot,
         next_committee: Vec<CommsPublicKey>,
+        checkpoint_interval: u32,
     ) -> Result<(), DigitalAssetError>;
 }

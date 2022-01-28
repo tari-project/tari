@@ -34,6 +34,7 @@ pub struct SideChainCheckpointFeatures {
     // TODO: This should be fixed size [u8;32]
     pub merkle_root: Vec<u8>,
     pub committee: Vec<PublicKey>,
+    pub checkpoint_interval: u32,
 }
 
 impl ConsensusEncoding for SideChainCheckpointFeatures {
@@ -44,13 +45,15 @@ impl ConsensusEncoding for SideChainCheckpointFeatures {
         writer.write_all(&self.merkle_root[0..32])?;
         let mut written = 32;
         written += self.committee.consensus_encode(writer)?;
+        written += 4;
+        writer.write_all(&self.checkpoint_interval.to_le_bytes())?;
         Ok(written)
     }
 }
 
 impl ConsensusEncodingSized for SideChainCheckpointFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
-        32 + self.committee.len().required_space() + self.committee.len() * PublicKey::key_length()
+        32 + self.committee.len().required_space() + self.committee.len() * PublicKey::key_length() + 4
     }
 }
 
@@ -61,9 +64,12 @@ impl ConsensusDecoding for SideChainCheckpointFeatures {
         const MAX_COMMITTEE_KEYS: usize = 50;
         let committee = MaxSizeVec::<PublicKey, MAX_COMMITTEE_KEYS>::consensus_decode(reader)?;
 
+        let checkpoint_interval = u32::consensus_decode(reader)?;
+
         Ok(Self {
             merkle_root,
             committee: committee.into(),
+            checkpoint_interval,
         })
     }
 }
@@ -80,6 +86,7 @@ mod test {
         let subject = SideChainCheckpointFeatures {
             merkle_root: vec![1u8; 32],
             committee: iter::repeat_with(PublicKey::default).take(50).collect(),
+            checkpoint_interval: 100,
         };
 
         check_consensus_encoding_correctness(subject).unwrap();
@@ -90,6 +97,7 @@ mod test {
         let subject = SideChainCheckpointFeatures {
             merkle_root: vec![1u8; 32],
             committee: iter::repeat_with(PublicKey::default).take(51).collect(),
+            checkpoint_interval: 100,
         };
 
         let err = check_consensus_encoding_correctness(subject).unwrap_err();
@@ -101,6 +109,7 @@ mod test {
         let subject = SideChainCheckpointFeatures {
             merkle_root: vec![1u8; 31],
             committee: vec![],
+            checkpoint_interval: 100,
         };
 
         let err = check_consensus_encoding_correctness(subject).unwrap_err();
