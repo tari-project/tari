@@ -16,7 +16,7 @@
     <div id="v-model-select">
       <select v-model="options.tari_network">
         <option disabled value="">Please select one</option>
-        <option value="weatherwax">Weatherwax</option>
+        <option value="dibbler">Dibbler</option>
         <option value="mainnet">Mainnet</option>
       </select>
       <span>Selected: {{ options.tari_network }}</span>

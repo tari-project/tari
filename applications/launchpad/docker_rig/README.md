@@ -11,7 +11,7 @@ Contributions for  `quick_start.bat` are welcomed.
 2. Set up some environment variables:
   - `DATA_FOLDER` (required). The path to store the Tari configuration files and logs. You can create multiple
      network setups, each in their own sandbox.
-  - `TARI_NETWORK` (optional). Default=weatherwax. Specify the Tari network to connect to.
+  - `TARI_NETWORK` (optional). Default=dibbler. Specify the Tari network to connect to.
   - `START_TOR` (optional). Default=1. Whether we should start a Tor instance
   - `START_BASE_NODE` (optional). Default=1. Whether we should start a base node instance
   - `START_WALLET` (optional). Default=1. Whether we should start a wallet instance (GRPC only)
@@ -20,7 +20,7 @@ Contributions for  `quick_start.bat` are welcomed.
   - `START_MONERO_MM` (optional). Default=1. Whether we should start merge-mining on Monero.
 
   - `TARI_WALLET_PASSWORD` (optional). Highly recommended. Default: tari. The password for your Tari wallet.
-  - `TARI_WALLET__WEATHERWAX__TOR_CONTROL_AUTH` (optional). Default: tari. The password for the Tor control auth.
+  - `TARI_WALLET__DIBBLER__TOR_CONTROL_AUTH` (optional). Default: tari. The password for the Tor control auth.
   - `TARI_MONERO_WALLET_ADDRESS` (optional). Though you'll donate funds to some random address if you don't set it.
 
 ## Quick Start
@@ -106,7 +106,7 @@ drwxr-xr-x user user 192 B Mon Nov  1 13:01:36 2021   log/
 drwxr-xr-x user user 192 B Mon Nov  1 12:56:17 2021   ./         
 drwxr-xr-x user user 288 B Wed Nov  3 15:56:53 2021   ../        
 drwxr-xr-x user user 256 B Wed Nov  3 15:23:19 2021   log/       
-drwxr-xr-x user user 128 B Wed Nov  3 15:54:10 2021   weatherwax/
+drwxr-xr-x user user 128 B Wed Nov  3 15:54:10 2021   dibbler/
 
 ./wallet/log:
 .rw-r--r-- user user 564.2 KB Wed Nov  3 15:54:20 2021   core.log   
@@ -136,7 +136,7 @@ This isn't a big drawback, since you seldom want or need to access the raw block
 [still accessible](#accessing-blockchain-data). But **ensure that you reserve enough space to store the Tari, and optionally,
 Monero blockchains inside the Docker VM**.
 
-* TODO - Multi-network sandboxing. Sandboxing currently doesn't work across different networks (e.g. weatherwax and mainnet). This should be fixed soon.
+* TODO - Multi-network sandboxing. Sandboxing currently doesn't work across different networks (e.g. dibbler and mainnet). This should be fixed soon.
 
 * Local MoneroD support. The merge-miner proxy doesn't actually use the local MoneroD container if it is running. This
   is left as a TODO for the UI version.

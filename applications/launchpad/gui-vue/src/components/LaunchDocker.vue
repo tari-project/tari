@@ -149,7 +149,7 @@ export default {
   data() {
     const options = {
       root_folder: "/tmp/tari",
-      tari_network: "weatherwax",
+      tari_network: "dibbler",
       has_base_node: true,
       has_wallet: false,
       has_sha3_miner: false,
