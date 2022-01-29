@@ -30,6 +30,7 @@ use crate::{
     base_node::comms_interface::BlockEvent,
     chain_storage::BlockAddResult,
     mempool::{
+        metrics,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
         TxStorageResponse,
@@ -69,7 +70,7 @@ impl MempoolInboundHandlers {
                     "Transaction ({}) submitted using request.",
                     tx.body.kernels()[0].excess_sig.get_signature().to_hex(),
                 );
-                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, vec![]).await?))
+                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
             },
         }
     }
@@ -89,15 +90,15 @@ impl MempoolInboundHandlers {
                 .map(|p| format!("remote peer: {}", p))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        let exclude_peers = source_peer.into_iter().collect();
-        self.submit_transaction(tx, exclude_peers).await.map(|_| ())
+        self.submit_transaction(tx, source_peer).await?;
+        Ok(())
     }
 
     /// Submits a transaction to the mempool and propagate valid transactions.
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
-        exclude_peers: Vec<NodeId>,
+        source_peer: Option<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
 
@@ -117,6 +118,13 @@ impl MempoolInboundHandlers {
         let tx = Arc::new(tx);
         match self.mempool.insert(tx.clone()).await {
             Ok(tx_storage) => {
+                if tx_storage.is_stored() {
+                    metrics::inbound_transactions(source_peer.as_ref()).inc();
+                } else {
+                    metrics::rejected_inbound_transactions(source_peer.as_ref()).inc();
+                }
+                self.update_pool_size_metrics().await;
+
                 debug!(
                     target: LOG_TARGET,
                     "Transaction inserted into mempool: {}, pool: {}.", kernel_excess_sig, tx_storage
@@ -127,12 +135,20 @@ impl MempoolInboundHandlers {
                         target: LOG_TARGET,
                         "Propagate transaction ({}) to network.", kernel_excess_sig,
                     );
-                    self.outbound_nmi.propagate_tx(tx, exclude_peers).await?;
+                    self.outbound_nmi
+                        .propagate_tx(tx, source_peer.into_iter().collect())
+                        .await?;
                 }
                 Ok(tx_storage)
             },
             Err(e) => Err(MempoolServiceError::MempoolError(e)),
         }
+    }
+
+    async fn update_pool_size_metrics(&self) {
+        let stats = self.mempool.stats().await;
+        metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
+        metrics::reorg_pool_size().set(stats.reorg_txs as i64);
     }
 
     /// Handle inbound block events from the local base node service.
@@ -161,6 +177,8 @@ impl MempoolInboundHandlers {
             },
             AddBlockFailed(_) => {},
         }
+
+        self.update_pool_size_metrics().await;
 
         Ok(())
     }

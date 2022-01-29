@@ -1,3 +1,6 @@
+#[cfg(feature = "server")]
+pub mod server;
+
 use std::sync::{Arc, RwLock};
 
 use once_cell::sync::Lazy;
@@ -7,7 +10,6 @@ pub use prometheus::{
     proto,
     Counter,
     CounterVec,
-    Encoder,
     Error,
     Gauge,
     GaugeVec,
@@ -20,7 +22,6 @@ pub use prometheus::{
     IntGauge,
     IntGaugeVec,
     Registry,
-    TextEncoder,
 };
 
 static DEFAULT_REGISTRY: Lazy<Arc<RwLock<Registry>>> = Lazy::new(|| Arc::new(RwLock::new(Registry::default())));
