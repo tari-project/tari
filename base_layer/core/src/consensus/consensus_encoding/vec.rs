@@ -26,13 +26,20 @@ use integer_encoding::VarIntReader;
 
 use crate::consensus::ConsensusDecoding;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MaxSizeVec<T, const MAX: usize> {
     inner: Vec<T>,
 }
 
+impl<T, const MAX: usize> MaxSizeVec<T, MAX> {
+    pub fn into_vec(self) -> Vec<T> {
+        self.inner
+    }
+}
+
 impl<T, const MAX: usize> From<MaxSizeVec<T, MAX>> for Vec<T> {
     fn from(value: MaxSizeVec<T, MAX>) -> Self {
-        value.inner
+        value.into_vec()
     }
 }
 
@@ -63,5 +70,11 @@ impl<T: ConsensusDecoding, const MAX: usize> ConsensusDecoding for MaxSizeVec<T,
             elems.push(elem)
         }
         Ok(Self { inner: elems })
+    }
+}
+
+impl<T: PartialEq, const MAX: usize> PartialEq<Vec<T>> for MaxSizeVec<T, MAX> {
+    fn eq(&self, other: &Vec<T>) -> bool {
+        self.inner.eq(other)
     }
 }

@@ -1,4 +1,15 @@
 <a href="/">Back</a>
+{{#with this.tx }}
+<h3>Meta</h3>
+<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<thead>
+<tr><th>Offset</th></tr>
+</thead>
+<tbody>
+<tr>
+<td>{{hex this.offset}}</td></tr>
+</tbody>
+</table>
 <h3>Inputs</h3>
 <table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
   <thead>
@@ -13,7 +24,7 @@
     </tr>
   </thead>
   <tbody>
-    {{#each this.inputs}}
+    {{#each this.body.inputs}}
       <tr>
         <td><i>Flags</i><br />
           {{features.flags}}<hr /><i>Maturity</i><br />
@@ -48,7 +59,7 @@
     </tr>
   </thead>
   <tbody>
-    {{#each this.outputs}}
+    {{#each this.body.outputs}}
       <tr>
         <td><i>Flags</i><br />
           {{features.flags}}<hr /><i>Maturity</i><br />
@@ -84,7 +95,7 @@
     </tr>
   </thead>
   <tbody>
-    {{#each this.kernels}}
+    {{#each this.body.kernels}}
       <tr>
         <td>{{features}}</td>
         <td>{{fee}}</td>
@@ -98,3 +109,4 @@
     {{/each}}
   </tbody>
 </table>
+{{/with}}

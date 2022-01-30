@@ -69,3 +69,30 @@ impl ConsensusDecoding for ExecutionStack {
         Ok(stack)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_common_types::types::PublicKey;
+    use tari_crypto::{inputs, script};
+
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    mod tari_script {
+        use super::*;
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let subject = script![Nop];
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
+    }
+
+    mod execution_stack {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let subject = inputs![PublicKey::default()];
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
+    }
+}

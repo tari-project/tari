@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,47 +19,44 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::time::{Duration, Instant};
 
-import React from "react";
-import propTypes from "prop-types";
-import {
-  Card,
-  CardActions,
-  CardContent,
-  CardMedia,
-  Typography,
-} from "@mui/material";
+use log::*;
+use prometheus::{Encoder, TextEncoder};
+use reqwest::{Client, Url};
+use tokio::{time, time::MissedTickBehavior};
 
-function AssetCard({ asset, heading, style, actions }) {
-  style = style || {
-    height: "100%",
-    display: "flex",
-    flexDirection: "column",
-  };
-  return (
-    <Card sx={style}>
-      <CardMedia
-        component="img"
-        sx={{ pb: "5%" }}
-        image={asset.image_url}
-        alt="random"
-      />
-      <CardContent sx={{ flexGrox: 1 }}>
-        <Typography gutterBottom variant="h5" component="h2">
-          {heading || asset.name}
-        </Typography>
-        <Typography>{asset.description}</Typography>
-      </CardContent>
-      {actions ? <CardActions>{actions}</CardActions> : <span />}
-    </Card>
-  );
+use crate::Registry;
+
+const LOG_TARGET: &str = "base_node::metrics::push";
+
+pub async fn start(endpoint: Url, push_interval: Duration, registry: Registry) {
+    let mut interval = time::interval(push_interval);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    loop {
+        interval.tick().await;
+
+        if let Err(err) = push_metrics(&registry, endpoint.clone()).await {
+            error!(target: LOG_TARGET, "{}", err);
+        }
+    }
 }
 
-AssetCard.propTypes = {
-  asset: propTypes.object.isRequired,
-  heading: propTypes.string,
-  style: propTypes.object,
-  actions: propTypes.object,
-};
-
-export default AssetCard;
+async fn push_metrics(registry: &Registry, endpoint: Url) -> Result<(), anyhow::Error> {
+    let client = Client::new();
+    let timer = Instant::now();
+    let encoder = TextEncoder::new();
+    let mut buffer = Vec::new();
+    let metrics = registry.gather();
+    encoder.encode(&metrics, &mut buffer)?;
+    let raw_metrics_data = String::from_utf8(buffer)?;
+    client.post(endpoint).body(raw_metrics_data).send().await?;
+    debug!(
+        target: LOG_TARGET,
+        "POSTed {} metrics in {:.2?}",
+        metrics.len(),
+        timer.elapsed()
+    );
+    Ok(())
+}
