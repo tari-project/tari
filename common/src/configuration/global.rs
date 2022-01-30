@@ -91,7 +91,6 @@ pub struct GlobalConfig {
     pub dns_seeds_name_server: DnsNameServer,
     pub dns_seeds_use_dnssec: bool,
     pub peer_db_path: PathBuf,
-    pub num_mining_threads: usize,
     pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
     pub console_wallet_db_file: PathBuf,
@@ -136,12 +135,7 @@ pub struct GlobalConfig {
     pub auto_ping_interval: u64,
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
-    pub mine_on_tip_only: bool,
-    pub validate_tip_timeout_sec: u64,
     pub validator_node: Option<ValidatorNodeConfig>,
-    pub mining_pool_address: String,
-    pub mining_wallet_address: String,
-    pub mining_worker_name: String,
     pub base_node_bypass_range_proof_verification: bool,
     pub metrics: MetricsConfig,
     pub base_node_use_libtor: bool,
@@ -747,15 +741,6 @@ fn convert_node_config(
     let key = config_string("merge_mining_proxy", net_str, "proxy_submit_to_origin");
     let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
 
-    let key = "mining_node.num_mining_threads";
-    let num_mining_threads = optional(cfg.get_int(key))?.unwrap_or(1) as usize;
-
-    let key = "mining_node.mine_on_tip_only";
-    let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
-
-    let key = "mining_node.validate_tip_timeout_sec";
-    let validate_tip_timeout_sec = optional(cfg.get_int(key))?.unwrap_or(0) as u64;
-
     // Auto update
     let key = config_string("common", net_str, "auto_update.check_interval");
     let autoupdate_check_interval = optional(cfg.get_int(&key))?.and_then(|secs| {
@@ -778,18 +763,6 @@ fn convert_node_config(
 
     let key = config_string("common", net_str, "auto_update.hashes_sig_url");
     let autoupdate_hashes_sig_url = optional(cfg.get_str(&key))?.unwrap_or_default();
-
-    let key = "mining_node.mining_pool_address";
-    let mining_pool_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());
-    let key = "mining_node.mining_wallet_address";
-    let mining_wallet_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());
-    let key = "mining_node.mining_worker_name";
-    let mining_worker_name = cfg
-        .get_str(key)
-        .unwrap_or_else(|_| "".to_string())
-        .chars()
-        .filter(|c| c.is_alphanumeric())
-        .collect::<String>();
 
     let metrics = MetricsConfig::from_config(&cfg)?;
     let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(&cfg, net_str);
@@ -823,7 +796,6 @@ fn convert_node_config(
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
         peer_db_path,
-        num_mining_threads,
         base_node_tor_identity_file,
         wallet_db_file,
         console_wallet_db_file,
@@ -868,12 +840,7 @@ fn convert_node_config(
         auto_ping_interval,
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
-        mine_on_tip_only,
-        validate_tip_timeout_sec,
         validator_node: ValidatorNodeConfig::convert_if_present(cfg)?,
-        mining_pool_address,
-        mining_wallet_address,
-        mining_worker_name,
         base_node_bypass_range_proof_verification,
         metrics,
         base_node_use_libtor,

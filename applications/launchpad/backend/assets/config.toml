@@ -103,6 +103,8 @@ tor_onion_port = 18141
 num_mining_threads=1
 base_node_grpc_address = "/ip4/base_node/tcp/18142"
 wallet_grpc_address = "/ip4/wallet/tcp/18143"
+base_node_addr = "/ip4/base_node/tcp/18142"
+wallet_addr = "/ip4/wallet/tcp/18143"
 mine_on_tip_only = true
 
 [merge_mining_proxy.dibbler]

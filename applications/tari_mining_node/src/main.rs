@@ -84,11 +84,8 @@ fn main() {
 }
 
 async fn main_inner() -> Result<(), ExitCodes> {
-    let (bootstrap, global, cfg) = init_configuration(ApplicationType::MiningNode)?;
-    let mut config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-    config.validate_tip_timeout_sec = global.validate_tip_timeout_sec;
-    config.mining_worker_name = global.mining_worker_name.clone();
-    config.mining_pool_address = global.mining_pool_address.clone();
+    let (bootstrap, _global, cfg) = init_configuration(ApplicationType::MiningNode)?;
+    let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET_FILE, "{:?}", bootstrap);
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
 
@@ -154,11 +151,6 @@ async fn main_inner() -> Result<(), ExitCodes> {
         }
         Ok(())
     } else {
-        config.mine_on_tip_only = global.mine_on_tip_only;
-        debug!(
-            target: LOG_TARGET_FILE,
-            "mine_on_tip_only is {}", config.mine_on_tip_only
-        );
         let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(ExitCodes::grpc)?;
 
         let mut blocks_found: u64 = 0;
