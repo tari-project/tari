@@ -170,6 +170,9 @@ jobs:
           toolchain: stable
           profile: minimal
           override: true
+      - name: rustup show
+        run: |
+          rustup show
       - name: cargo build
         uses: actions-rs/cargo@v1
         with:
