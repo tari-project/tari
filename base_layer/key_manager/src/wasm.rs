@@ -148,9 +148,7 @@ pub fn derive_key(key_manager: &JsValue, key_index: u64) -> JsValue {
 
 /// Parse a T from a JsValue
 fn parse<T>(js: &JsValue) -> Result<T, JsValue>
-where
-    T: for<'a> Deserialize<'a>,
-{
+where T: for<'a> Deserialize<'a> {
     match JsValue::into_serde::<T>(js) {
         Ok(t) => Ok(t),
         Err(e) => {
