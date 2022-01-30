@@ -185,9 +185,9 @@ impl LaunchpadConfig {
         let mut mounts = Vec::with_capacity(2);
         if general {
             #[cfg(not(target_os = "linux"))]
-            let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
+                let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
             #[cfg(target_os = "linux")]
-            let host = self.data_directory.to_string_lossy().to_string();
+                let host = self.data_directory.to_string_lossy().to_string();
             let mount = Mount {
                 target: Some("/var/tari".to_string()),
                 source: Some(host),
@@ -360,9 +360,24 @@ impl LaunchpadConfig {
         ]
     }
 
+    fn base_node_tor_config(&self, env: &mut Vec<String>) {
+        env.append(&mut vec![
+            format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
+                self.tari_network.upper_case(),
+                self.tor_control_password
+            ),
+            format!("TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189", self.tari_network.upper_case()),
+            format!("TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050", self.tari_network.upper_case()),
+            format!("TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051", self.tari_network.upper_case()),
+        ]);
+    }
+
     /// Generate the vector of ENVAR strings for the docker environment
     fn base_node_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        self.base_node_tor_config(&mut env);
         if let Some(base_node) = &self.base_node {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", base_node.delay.as_secs()),
@@ -371,26 +386,8 @@ impl LaunchpadConfig {
                     self.tari_network.upper_case(),
                     self.tari_network.lower_case()
                 ),
-                format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
-                    self.tari_network.upper_case(),
-                    self.tor_control_password
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
-                    self.tari_network.upper_case()
-                ),
                 format!(
                     "TARI_BASE_NODE__{}__TCP_LISTENER_ADDRESS=/dns4/base_node/tcp/18189",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
                     self.tari_network.upper_case()
                 ),
                 format!("TARI_BASE_NODE__{}__GRPC_ENABLED=1", self.tari_network.upper_case()),
@@ -451,6 +448,7 @@ impl LaunchpadConfig {
 
     fn sha3_miner_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        self.base_node_tor_config(&mut env);
         if let Some(config) = &self.sha3_miner {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
@@ -458,6 +456,11 @@ impl LaunchpadConfig {
                 "APP_EXEC: tari_mining_node".to_string(),
                 format!("TARI_MINING_NODE__NUM_MINING_THREADS: {}", config.num_mining_threads),
                 "TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1".to_string(),
+                // This setting should be made obsolete soon:
+                format!(
+                    "TARI_BASE_NODE__{}__BASE_NODE_GRPC_ADDRESS=/dns4/base_node/tcp/18142",
+                    self.tari_network.upper_case()
+                ),
                 format!(
                     "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=/dns4/base_node/tcp/18142",
                     self.tari_network.upper_case()
@@ -470,6 +473,7 @@ impl LaunchpadConfig {
 
     fn mm_proxy_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        self.base_node_tor_config(&mut env);
         if let Some(config) = &self.mm_proxy {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
