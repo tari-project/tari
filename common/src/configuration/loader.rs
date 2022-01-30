@@ -193,7 +193,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
 /// let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you soon".to_string());
 /// ```
-pub trait ConfigLoader: ConfigPath + for<'de> serde::de::Deserialize<'de> {
+pub trait ConfigLoader: ConfigPath + Sized {
     /// Try to load configuration from supplied Config by `main_key_prefix()`
     /// with values overloaded from `overload_key_prefix()`.
     ///
@@ -201,12 +201,16 @@ pub trait ConfigLoader: ConfigPath + for<'de> serde::de::Deserialize<'de> {
     /// - `#[serde(default="value")]` field attribute
     /// - value defined in Config::set_default()
     /// For automated inheritance of Default values use DefaultConfigLoader.
+    fn load_from(config: &Config) -> Result<Self, ConfigurationError>;
+}
+impl<C> ConfigLoader for C
+where C: ConfigPath + for<'de> serde::de::Deserialize<'de>
+{
     fn load_from(config: &Config) -> Result<Self, ConfigurationError> {
         let merger = Self::merge_subconfig(config)?;
         Ok(merger.get(Self::main_key_prefix())?)
     }
 }
-impl<C> ConfigLoader for C where C: ConfigPath + for<'de> serde::de::Deserialize<'de> {}
 
 /// Configuration loader based on ConfigPath selectors with Defaults
 ///
@@ -239,13 +243,17 @@ impl<C> ConfigLoader for C where C: ConfigPath + for<'de> serde::de::Deserialize
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, MyNodeConfig::default().welcome_message);
 /// ```
-pub trait DefaultConfigLoader:
-    ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Deserialize<'de>
-{
+pub trait DefaultConfigLoader: ConfigPath + Sized {
     /// Try to load configuration from supplied Config by `main_key_prefix()`
     /// with values overloaded from `overload_key_prefix()`.
     ///
     /// Default values will be taken from Default impl for struct
+    fn load_from(config: &Config) -> Result<Self, ConfigurationError>;
+}
+
+impl<C> DefaultConfigLoader for C
+where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Deserialize<'de>
+{
     fn load_from(config: &Config) -> Result<Self, ConfigurationError> {
         let default = <Self as Default>::default();
         let buf = serde_json::to_string(&default)?;
@@ -255,8 +263,6 @@ pub trait DefaultConfigLoader:
         Ok(merger.get(Self::main_key_prefix())?)
     }
 }
-impl<C> DefaultConfigLoader for C where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Deserialize<'de>
-{}
 
 //-------------------------------------      Configuration errors      --------------------------------------//
 

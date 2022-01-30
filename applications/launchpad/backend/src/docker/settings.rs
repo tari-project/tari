@@ -185,9 +185,9 @@ impl LaunchpadConfig {
         let mut mounts = Vec::with_capacity(2);
         if general {
             #[cfg(not(target_os = "linux"))]
-                let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
+            let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
             #[cfg(target_os = "linux")]
-                let host = self.data_directory.to_string_lossy().to_string();
+            let host = self.data_directory.to_string_lossy().to_string();
             let mount = Mount {
                 target: Some("/var/tari".to_string()),
                 source: Some(host),
@@ -368,9 +368,18 @@ impl LaunchpadConfig {
                 self.tari_network.upper_case(),
                 self.tor_control_password
             ),
-            format!("TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189", self.tari_network.upper_case()),
-            format!("TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050", self.tari_network.upper_case()),
-            format!("TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051", self.tari_network.upper_case()),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
+                self.tari_network.upper_case()
+            ),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
+                self.tari_network.upper_case()
+            ),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
+                self.tari_network.upper_case()
+            ),
         ]);
     }
 

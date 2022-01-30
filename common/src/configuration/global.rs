@@ -43,7 +43,6 @@ use crate::{
         bootstrap::ApplicationType,
         name_server::DnsNameServer,
         BaseNodeConfig,
-        MergeMiningConfig,
         Network,
         ValidatorNodeConfig,
         WalletConfig,
@@ -127,9 +126,7 @@ pub struct GlobalConfig {
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
     pub transcoder_host_address: SocketAddr,
-    pub proxy_submit_to_origin: bool,
     pub force_sync_peers: Vec<String>,
-    pub wait_for_initial_sync_at_startup: bool,
     pub max_randomx_vms: usize,
     pub console_wallet_notify_file: Option<PathBuf>,
     pub auto_ping_interval: u64,
@@ -140,7 +137,6 @@ pub struct GlobalConfig {
     pub metrics: MetricsConfig,
     pub base_node_use_libtor: bool,
     pub console_wallet_use_libtor: bool,
-    pub merge_mining_config: Option<MergeMiningConfig>,
     pub blockchain_track_reorgs: bool,
 }
 
@@ -646,84 +642,6 @@ fn convert_node_config(
             .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
     );
 
-    let merge_mining_config = match application {
-        ApplicationType::MergeMiningProxy => {
-            let key = "merge_mining_proxy.monerod_url";
-            let mut monerod_url: Vec<String> = cfg
-                .get_array(key)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|v| {
-                    v.into_str()
-                        .map_err(|err| ConfigurationError::new(key, None, &err.to_string()))
-                })
-                .collect::<Result<_, _>>()?;
-
-            // default to stagenet on empty
-            if monerod_url.is_empty() {
-                monerod_url = vec![
-                    "http://stagenet.xmr-tw.org:38081".to_string(),
-                    "http://singapore.node.xmr.pm:38081".to_string(),
-                    "http://xmr-lux.boldsuck.org:38081".to_string(),
-                    "http://monero-stagenet.exan.tech:38081".to_string(),
-                ];
-            }
-
-            let key = "merge_mining_proxy.monerod_use_auth";
-            let monerod_use_auth = cfg
-                .get_bool(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
-
-            let key = "merge_mining_proxy.monerod_username";
-            let monerod_username = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
-
-            let key = "merge_mining_proxy.monerod_password";
-            let monerod_password = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
-
-            let key = "merge_mining_proxy.proxy_host_address";
-            let proxy_host_address = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<SocketAddr>()
-                        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                })?;
-
-            let key = "merge_mining_proxy.base_node_grpc_address";
-            let base_node_grpc_address = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
-                })?;
-
-            let key = "merge_mining_proxy.wallet_grpc_address";
-            let wallet_grpc_address = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
-                })?;
-
-            Some(MergeMiningConfig {
-                monerod_url,
-                monerod_use_auth,
-                monerod_username,
-                monerod_password,
-                proxy_host_address,
-                base_node_grpc_address,
-                wallet_grpc_address,
-            })
-        },
-        _ => None,
-    };
-
     let key = config_string("stratum_transcoder", net_str, "transcoder_host_address");
     let transcoder_host_address = cfg
         .get_str(&key)
@@ -732,14 +650,6 @@ fn convert_node_config(
             addr.parse::<SocketAddr>()
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })?;
-
-    let key = config_string("merge_mining_proxy", net_str, "wait_for_initial_sync_at_startup");
-    let wait_for_initial_sync_at_startup = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?;
-
-    let key = config_string("merge_mining_proxy", net_str, "proxy_submit_to_origin");
-    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
 
     // Auto update
     let key = config_string("common", net_str, "auto_update.check_interval");
@@ -832,9 +742,7 @@ fn convert_node_config(
         wallet_balance_enquiry_cooldown_period,
         prevent_fee_gt_amount,
         transcoder_host_address,
-        proxy_submit_to_origin,
         force_sync_peers,
-        wait_for_initial_sync_at_startup,
         max_randomx_vms,
         console_wallet_notify_file,
         auto_ping_interval,
@@ -845,7 +753,6 @@ fn convert_node_config(
         metrics,
         base_node_use_libtor,
         console_wallet_use_libtor,
-        merge_mining_config,
         blockchain_track_reorgs,
     })
 }

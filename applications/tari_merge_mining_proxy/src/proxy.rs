@@ -22,9 +22,7 @@
 
 use std::{
     cmp,
-    convert::TryFrom,
     future::Future,
-    net::SocketAddr,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -42,8 +40,6 @@ use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common::{configuration::Network, GlobalConfig};
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
@@ -52,6 +48,7 @@ use crate::{
     block_template_data::BlockTemplateRepository,
     block_template_protocol::{BlockTemplateProtocol, MoneroMiningData},
     common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
+    config::MergeMiningProxyConfig,
     error::MmProxyError,
 };
 
@@ -60,46 +57,6 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
-
-#[derive(Debug, Clone)]
-pub struct MergeMiningProxyConfig {
-    pub network: Network,
-    pub monerod_url: Vec<String>,
-    pub monerod_username: String,
-    pub monerod_password: String,
-    pub monerod_use_auth: bool,
-    pub grpc_base_node_address: SocketAddr,
-    pub grpc_console_wallet_address: SocketAddr,
-    pub proxy_host_address: SocketAddr,
-    pub proxy_submit_to_origin: bool,
-    pub wait_for_initial_sync_at_startup: bool,
-}
-
-impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
-    type Error = String;
-
-    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
-        let merge_mining_config = config
-            .merge_mining_config
-            .ok_or_else(|| "Merge mining config settings are missing".to_string())?;
-        let grpc_base_node_address = multiaddr_to_socketaddr(&merge_mining_config.base_node_grpc_address)
-            .map_err(|e| format!("Invalid base_node_grpc_address: {}", e))?;
-        let grpc_console_wallet_address = multiaddr_to_socketaddr(&merge_mining_config.wallet_grpc_address)
-            .map_err(|e| format!("Invalid wallet_grpc_address: {}", e))?;
-        Ok(Self {
-            network: config.network,
-            monerod_url: merge_mining_config.monerod_url.clone(),
-            monerod_username: merge_mining_config.monerod_username,
-            monerod_password: merge_mining_config.monerod_password,
-            monerod_use_auth: merge_mining_config.monerod_use_auth,
-            grpc_base_node_address,
-            grpc_console_wallet_address,
-            proxy_host_address: merge_mining_config.proxy_host_address,
-            proxy_submit_to_origin: config.proxy_submit_to_origin,
-            wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
-        })
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyService {

@@ -31,36 +31,30 @@
 mod block_template_data;
 mod block_template_protocol;
 mod common;
+mod config;
 mod error;
 mod proxy;
 
 #[cfg(test)]
 mod test;
 
-use std::convert::{Infallible, TryFrom};
+use std::convert::Infallible;
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
-use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
+use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{configuration::bootstrap::ApplicationType, ConfigLoader};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
 
-use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
+use crate::{block_template_data::BlockTemplateRepository, config::MergeMiningProxyConfig, error::MmProxyError};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
-
-    let config = match MergeMiningProxyConfig::try_from(config) {
-        Ok(c) => c,
-        Err(msg) => {
-            eprintln!("Invalid config: {}", msg);
-            return Ok(());
-        },
-    };
-    let addr = config.proxy_host_address;
+    let (_, _global, cfg) = init_configuration(ApplicationType::MergeMiningProxy)?;
+    let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
@@ -73,6 +67,7 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Connecting to wallet at {}", config.grpc_console_wallet_address);
     let wallet_client =
         grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
+    let addr = multiaddr_to_socketaddr(&config.proxy_host_address)?;
     let xmrig_service = MergeMiningProxyService::new(
         config,
         client,

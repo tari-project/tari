@@ -49,10 +49,9 @@ mod validator_node_config;
 mod wallet_config;
 pub mod writer;
 
-//re-export config crate
-pub use config;
-
+// re-export config crate
 pub use base_node_config::BaseNodeConfig;
+pub use config;
 pub use merge_mining_config::MergeMiningConfig;
 pub use validator_node_config::ValidatorNodeConfig;
 pub use wallet_config::WalletConfig;
