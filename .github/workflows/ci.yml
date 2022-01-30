@@ -173,7 +173,7 @@ jobs:
       - name: cargo build
         uses: actions-rs/cargo@v1
         with:
-          command: build
+          command: check
           args: --release --all-targets
   test:
     name: test
@@ -221,4 +221,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release
+          args: --release --all-targets
