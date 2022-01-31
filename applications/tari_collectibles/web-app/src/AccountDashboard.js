@@ -37,6 +37,7 @@ import binding from "./binding";
 import protobuf from "protobufjs";
 import StarIcon from "@mui/icons-material/Star";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
+import PropTypes from "prop-types";
 
 class AccountDashboard extends React.Component {
   constructor(props) {
@@ -128,7 +129,7 @@ class AccountDashboard extends React.Component {
     }
   }
 
-  refreshBalance = async () => {
+  async refreshBalance() {
     this.setState({ error: null });
     let balance = await binding.command_asset_wallets_get_balance(
       this.state.assetPublicKey
@@ -138,7 +139,7 @@ class AccountDashboard extends React.Component {
     return balance;
   };
 
-  refresh721 = async () => {
+  async refresh721() {
     let tip721Data = {};
     let tokens = await binding.command_tip004_list_tokens(
       this.state.assetPublicKey
@@ -156,7 +157,7 @@ class AccountDashboard extends React.Component {
     return tip721Data;
   };
 
-  onGenerateReceiveAddress = async () => {
+  async onGenerateReceiveAddress() {
     try {
       this.setState({ error: null });
       let receiveAddress = await binding.command_asset_wallets_create_address(
@@ -170,14 +171,15 @@ class AccountDashboard extends React.Component {
     }
   };
 
-  onSendToChanged = async (e) => {
+  async onSendToChanged(e) {
     this.setState({ sendToAddress: e.target.value });
   };
 
-  onSendToAmountChanged = async (e) => {
+  async onSendToAmountChanged(e) {
     this.setState({ sendToAmount: parseInt(e.target.value) });
   };
-  onSend = async () => {
+
+  async onSend(){
     try {
       this.setState({ error: "" });
       let result = await binding.command_asset_wallets_send_to(
@@ -196,12 +198,12 @@ class AccountDashboard extends React.Component {
       this.setState({ error: err.message });
     }
   };
-  openTip721SendDraft = async (tokenId) => {
+  async openTip721SendDraft(tokenId) {
     this.setState({
       tip721SendDraftId: tokenId,
     });
   };
-  on721Send = async (fromAddressId, tokenId) => {
+  async on721Send(fromAddressId, tokenId) {
     try {
       this.setState({ error: "" });
       let result = await binding.command_tip721_transfer_from(
@@ -220,7 +222,7 @@ class AccountDashboard extends React.Component {
     }
   };
 
-  onSaveToFavorites = async () => {
+  async onSaveToFavorites(){
     try {
       await binding.command_asset_wallets_create(this.state.assetPublicKey);
       await this.reload();
@@ -300,7 +302,7 @@ class AccountDashboard extends React.Component {
                 <Grid container spacing={2}>
                   {this.state.tip721Data.tokens.map((token) => {
                     return (
-                      <Grid item xs={2}>
+                      <Grid item xs={2} key={token}>
                         <Paper>
                           <Container>
                             <Stack spacing={2}>
@@ -356,6 +358,14 @@ class AccountDashboard extends React.Component {
       </Container>
     );
   }
+}
+
+AccountDashboard.propTypes = {
+  match: PropTypes.shape({
+    params: PropTypes.shape({
+      assetPubKey: PropTypes.string,
+    }),
+  }).isRequired,
 }
 
 export default withRouter(AccountDashboard);

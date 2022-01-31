@@ -19,6 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 import React, { useState, useMemo } from "react";
 import {
   Alert,
@@ -41,6 +42,7 @@ import { dialog } from "@tauri-apps/api";
 import { Command } from "@tauri-apps/api/shell";
 import { fetch, ResponseType } from "@tauri-apps/api/http";
 import protobuf from "protobufjs";
+import PropTypes from "prop-types";
 
 class Create extends React.Component {
   constructor(props) {
@@ -100,7 +102,7 @@ class Create extends React.Component {
     }
   }
 
-  save = async () => {
+  async save() {
     const isValid = await this.validate();
     if (!isValid) {
       return;
@@ -180,17 +182,17 @@ class Create extends React.Component {
     this.setState({ isSaving: false });
   };
 
-  onNameChanged = (e) => {
+  async onNameChanged(e){
     this.setState({ name: e.target.value });
   };
 
-  onTipCheckboxChanged = (e, tip) => {
+  onTipCheckboxChanged(e, tip){
     let obj = {};
     obj[tip] = e.target.checked;
     this.setState(obj);
   };
 
-  onTip002DataChanged = (field, e) => {
+  onTip002DataChanged(field, e){
     let tip002Data = {};
     tip002Data[field] = e.target.value;
     tip002Data = { ...this.state.tip002Data, ...tip002Data };
@@ -201,19 +203,19 @@ class Create extends React.Component {
   //   this.setState({ numberInitialTokens: e.target.value });
   // };
 
-  onDescriptionChanged = (e) => {
+  onDescriptionChanged(e){
     this.setState({
       description: e.target.value,
     });
   };
 
-  onNewCommitteePubKeyChanged = (e) => {
+  onNewCommitteePubKeyChanged(e){
     this.setState({
       newCommitteePubKey: e.target.value,
     });
   };
 
-  onAddCommitteeMember = () => {
+  onAddCommitteeMember(){
     let committee = [...this.state.tip003Data.committee];
     committee.push(this.state.newCommitteePubKey);
     let tip003Data = { ...this.state.tip003Data, ...{ committee: committee } };
@@ -225,7 +227,7 @@ class Create extends React.Component {
     });
   };
 
-  onDeleteCommitteeMember = (index) => {
+  onDeleteCommitteeMember(index){
     let committee = this.state.tip003Data.committee.filter(function (
       _,
       i,
@@ -251,13 +253,13 @@ class Create extends React.Component {
     return saveErrors.length === 0;
   }
 
-  onImageChanged = (e) => {
+  onImageChanged(e){
     this.setState({
       image: e.target.value,
     });
   };
 
-  selectFile = async () => {
+  async selectFile (){
     const filePath = await dialog.open({
       filters: [
         {
@@ -276,7 +278,7 @@ class Create extends React.Component {
     }
   };
 
-  addFileToIPFS = async (filePath) => {
+  async addFileToIPFS(filePath) {
     const parts = filePath.split("/");
     const name = parts[parts.length - 1];
     // unfortunately the ipfs http /add api doesn't play nicely with the tauri http client
@@ -461,7 +463,7 @@ class Create extends React.Component {
             <List>
               {this.state.tip003Data.committee.map((item, index) => {
                 return (
-                  <ListItem>
+                  <ListItem key={item}>
                     <ListItemText primary={item}></ListItemText>
                   </ListItem>
                 );
@@ -510,7 +512,7 @@ class Create extends React.Component {
           {this.state.saveErrors.length > 0 ? (
             <div>
               {this.state.saveErrors.map((e) => (
-                <Alert severity="error">{e.toString()}</Alert>
+                <Alert key={e.toString()} severity="error">{e.toString()}</Alert>
               ))}
             </div>
           ) : (
@@ -522,6 +524,10 @@ class Create extends React.Component {
   }
 }
 
+Create.propTypes = {
+  history : PropTypes.object
+}
+
 const ImageSwitch = ({ setMode }) => {
   return (
     <div>
@@ -530,6 +536,10 @@ const ImageSwitch = ({ setMode }) => {
     </div>
   );
 };
+
+ImageSwitch.propTypes = {
+  setMode: PropTypes.func
+}
 
 const ImageUrl = ({ setImage }) => {
   const [url, setUrl] = useState("");
@@ -550,6 +560,10 @@ const ImageUrl = ({ setImage }) => {
   );
 };
 
+ImageUrl.propTypes = {
+  setImage : PropTypes.func
+}
+
 const ImageUpload = ({ selectFile, error }) => {
   return (
     <div>
@@ -560,6 +574,11 @@ const ImageUpload = ({ selectFile, error }) => {
     </div>
   );
 };
+
+ImageUpload.propTypes = {
+  selectFile : PropTypes.func,
+  error: PropTypes.string
+}
 
 const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
   const [mode, setMode] = useState("");
@@ -592,6 +611,15 @@ const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
 
   return display;
 };
+
+ImageSelector.propTypes = {
+  cid : PropTypes.string,
+  image: PropTypes.string,
+  selectFile: PropTypes.func,
+  setImage: PropTypes.func,
+  setCid: PropTypes.func,
+  error: PropTypes.string
+}
 
 const IpfsImage = ({ cid, setCid, error }) => {
   const [src, setSrc] = useState("");
@@ -637,5 +665,11 @@ const IpfsImage = ({ cid, setCid, error }) => {
 
   return <p>ipfs image loading...</p>;
 };
+
+IpfsImage.propTypes = {
+  cid: PropTypes.string,
+  setCid: PropTypes.func,
+  error: PropTypes.string
+}
 
 export default withRouter(Create);

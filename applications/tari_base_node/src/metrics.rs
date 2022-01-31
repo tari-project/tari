@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,17 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod builder;
-mod push;
-mod server;
-
 use std::collections::HashMap;
 
-use builder::MetricsBuilder;
 use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
 use tari_comms::NodeIdentity;
-use tari_metrics::Registry;
+use tari_metrics::{server::MetricsServerBuilder, Registry};
 use tari_shutdown::ShutdownSignal;
+use tokio::task;
 
 pub fn install(
     application: ApplicationType,
@@ -42,7 +38,8 @@ pub fn install(
     let metrics_registry = create_metrics_registry(application, identity);
     tari_metrics::set_default_registry(metrics_registry);
 
-    let mut metrics = MetricsBuilder::new();
+    let mut metrics = MetricsServerBuilder::new();
+
     if let Some(addr) = bootstrap
         .metrics_server_bind_addr
         .as_ref()
@@ -50,6 +47,7 @@ pub fn install(
     {
         metrics = metrics.with_scrape_server(addr);
     }
+
     if let Some(endpoint) = bootstrap
         .metrics_push_endpoint
         .as_ref()
@@ -58,7 +56,8 @@ pub fn install(
         // http://localhost:9091/metrics/job/base-node
         metrics = metrics.with_push_gateway(endpoint);
     }
-    metrics.spawn_services(shutdown);
+
+    task::spawn(metrics.start(shutdown));
 }
 
 fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity) -> Registry {
@@ -67,6 +66,5 @@ fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity
     labels.insert("node_role".to_string(), identity.features().as_role_str().to_string());
     labels.insert("node_id".to_string(), identity.node_id().to_string());
     labels.insert("node_public_key".to_string(), identity.public_key().to_string());
-
-    tari_metrics::Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
+    Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
 }

@@ -896,9 +896,9 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
 /// prevent a memory leak
 #[no_mangle]
 pub unsafe extern "C" fn commitment_signature_create_from_bytes(
-    public_nonce_bytes: *mut ByteVector,
-    u_bytes: *mut ByteVector,
-    v_bytes: *mut ByteVector,
+    public_nonce_bytes: *const ByteVector,
+    u_bytes: *const ByteVector,
+    v_bytes: *const ByteVector,
     error_out: *mut c_int,
 ) -> *mut TariCommitmentSignature {
     let mut error = 0;
@@ -919,7 +919,7 @@ pub unsafe extern "C" fn commitment_signature_create_from_bytes(
         return ptr::null_mut();
     }
 
-    let nonce = match Commitment::from_bytes(&(*public_nonce_bytes).0) {
+    let nonce = match Commitment::from_bytes(&(*public_nonce_bytes).0.clone()) {
         Ok(nonce) => nonce,
         Err(e) => {
             error!(
@@ -931,24 +931,24 @@ pub unsafe extern "C" fn commitment_signature_create_from_bytes(
             return ptr::null_mut();
         },
     };
-    let u = match TariPrivateKey::from_bytes(&(*u_bytes).0) {
+    let u = match TariPrivateKey::from_bytes(&(*u_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Public Key (u) from bytes: {:?}", e
+                "Error creating a Private Key (u) from bytes: {:?}", e
             );
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
     };
-    let v = match TariPrivateKey::from_bytes(&(*v_bytes).0) {
+    let v = match TariPrivateKey::from_bytes(&(*v_bytes).0.clone()) {
         Ok(u) => u,
         Err(e) => {
             error!(
                 target: LOG_TARGET,
-                "Error creating a Public Key (v) from bytes: {:?}", e
+                "Error creating a Private Key (v) from bytes: {:?}", e
             );
             error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
@@ -5011,7 +5011,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         features,
         message_string,
         (*metadata_signature).clone(),
-        &(*spending_key).clone(),
+        &(*script_private_key).clone(),
         &(*sender_offset_public_key).clone(),
         0,
         covenant,

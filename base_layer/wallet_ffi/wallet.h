@@ -55,6 +55,8 @@ struct TariPublicKeys;
 
 struct TariCommitmentSignature;
 
+struct TariCovenant;
+
 struct TariOutputFeatures;
 
 struct TariContacts;
@@ -598,6 +600,8 @@ unsigned long long wallet_import_utxo(
     struct TariOutputFeatures *features,
     struct TariCommitmentSignature *metadata_signature,
     struct TariPublicKey *sender_offset_public_key,
+    struct TariPrivateKey *script_private_key,
+    struct TariCovenant *covenant,
     const char *message,
     int *error_out
 );
