@@ -22,9 +22,12 @@
 
 use crate::error::CollectiblesError;
 use futures::StreamExt;
+use log::debug;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::PublicKey;
 use tari_utilities::ByteArray;
+
+const LOG_TARGET: &str = "collectibles::base";
 
 pub struct BaseNodeClient {
   client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
@@ -79,7 +82,7 @@ impl BaseNodeClient {
     let request = grpc::GetAssetMetadataRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
     };
-    dbg!(&request);
+    debug!(target: LOG_TARGET, "request {:?}", request);
     let response = client
       .get_asset_metadata(request)
       .await
@@ -88,7 +91,7 @@ impl BaseNodeClient {
         request: "get_asset_metadata".to_string(),
         source: s,
       })?;
-    dbg!(&response);
+    debug!(target: LOG_TARGET, "response {:?}", response);
     Ok(response)
   }
 

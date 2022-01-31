@@ -67,6 +67,7 @@ use crate::{
     initialize_logging,
     logging,
     DEFAULT_BASE_NODE_LOG_CONFIG,
+    DEFAULT_COLLECTIBLES_LOG_CONFIG,
     DEFAULT_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
     DEFAULT_MINING_NODE_LOG_CONFIG,
@@ -275,6 +276,12 @@ impl ConfigBootstrap {
                         Some(&self.base_path),
                     ))
                 },
+                ApplicationType::Collectibles => {
+                    self.log_config = normalize_path(dir_utils::default_path(
+                        DEFAULT_COLLECTIBLES_LOG_CONFIG,
+                        Some(&self.base_path),
+                    ))
+                },
             }
         }
 
@@ -356,6 +363,7 @@ pub enum ApplicationType {
     MiningNode,
     StratumTranscoder,
     ValidatorNode,
+    Collectibles,
 }
 
 impl ApplicationType {
@@ -368,6 +376,7 @@ impl ApplicationType {
             MiningNode => "Tari Mining Node",
             ValidatorNode => "Digital Assets Network Validator Node",
             StratumTranscoder => "Tari Stratum Transcoder",
+            Collectibles => "Tari Collectibles",
         }
     }
 
@@ -380,6 +389,7 @@ impl ApplicationType {
             MiningNode => "miner",
             StratumTranscoder => "stratum-transcoder",
             ValidatorNode => "validator-node",
+            Collectibles => "collectibles",
         }
     }
 }

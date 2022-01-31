@@ -4,6 +4,10 @@
   windows_subsystem = "windows"
 )]
 
+use log::error;
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::configuration::bootstrap::ApplicationType;
+
 use crate::app_state::ConcurrentAppState;
 
 #[macro_use]
@@ -19,12 +23,13 @@ mod error;
 mod models;
 mod providers;
 mod schema;
-mod settings;
 mod status;
 mod storage;
 
 fn main() {
-  let state = ConcurrentAppState::new();
+  #[allow(unused_mut)] // config isn't mutated on windows
+  let (bootstrap, mut config, _) = init_configuration(ApplicationType::Collectibles).unwrap();
+  let state = ConcurrentAppState::new(bootstrap.base_path, config.collectibles_config.unwrap());
 
   tauri::Builder::default()
     .manage(state)

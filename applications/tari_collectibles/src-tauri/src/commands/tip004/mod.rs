@@ -29,11 +29,14 @@ use crate::{
     Tip721TokensTableGateway,
   },
 };
+use log::debug;
 use prost::Message;
 use tari_common_types::types::PublicKey;
 use tari_dan_common_types::proto::tips::tip004;
 use tari_utilities::{hex::Hex, ByteArray};
 use uuid::Uuid;
+
+const LOG_TARGET: &str = "collectibles::tip004";
 
 #[tauri::command]
 pub(crate) async fn tip004_mint_token(
@@ -96,7 +99,7 @@ pub(crate) async fn tip004_list_tokens(
         args.encode_to_vec(),
       )
       .await?;
-    dbg!(&result);
+    debug!(target: LOG_TARGET, "{:?}", result);
     db.tip721_tokens().delete_all_for_address(address.id, &tx)?;
     if !result.is_empty() {
       let balance_of: tip004::BalanceOfResponse = Message::decode(&*result)?;

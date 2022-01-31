@@ -20,9 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use crate::error::CollectiblesError;
+use log::debug;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::PublicKey;
 use tari_utilities::ByteArray;
+
+const LOG_TARGET: &str = "collectibles::validator_node";
 
 pub trait ValidatorNodeClient {}
 
@@ -57,7 +60,7 @@ impl GrpcValidatorNodeClient {
       method,
       args,
     };
-    dbg!(&req);
+    debug!(target: LOG_TARGET, "{:?}", req);
     let response = self
       .client
       .invoke_read_method(req)
@@ -71,7 +74,7 @@ impl GrpcValidatorNodeClient {
           request: "invoke_read_method".to_string(),
         }
       })?;
-    dbg!(&response);
+    debug!(target: LOG_TARGET, "{:?}", response);
     Ok(response.result)
   }
 

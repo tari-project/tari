@@ -24,19 +24,20 @@ use crate::{
   clients::{BaseNodeClient, GrpcValidatorNodeClient, WalletClient},
   error::CollectiblesError,
   providers::ConcreteKeyManagerProvider,
-  settings::Settings,
   storage::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
     StorageError,
   },
 };
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
+use tari_app_utilities::initialization::init_configuration;
+use tari_common::configuration::{bootstrap::ApplicationType, CollectiblesConfig};
 use tauri::async_runtime::RwLock;
 use uuid::Uuid;
 
 pub struct AppState {
-  config: Settings,
+  config: CollectiblesConfig,
   db_factory: SqliteDbFactory,
   current_wallet_id: Option<Uuid>,
 }
@@ -47,27 +48,38 @@ pub struct ConcurrentAppState {
 }
 
 impl ConcurrentAppState {
-  pub fn new() -> Self {
-    let settings = Settings::new();
-    let db_factory = SqliteDbFactory::new(settings.data_dir.as_path());
+  pub fn new(base_path: PathBuf, config: CollectiblesConfig) -> Self {
+    let db_factory = SqliteDbFactory::new(base_path.as_path());
 
     Self {
       inner: Arc::new(RwLock::new(AppState {
+        config,
         db_factory,
-        config: settings,
         current_wallet_id: None,
       })),
     }
   }
 
   pub async fn create_wallet_client(&self) -> WalletClient {
-    WalletClient::new(self.inner.read().await.config.wallet_grpc_address.clone())
+    WalletClient::new(
+      self
+        .inner
+        .read()
+        .await
+        .config
+        .wallet_grpc_address
+        .clone()
+        .to_string(),
+    )
   }
 
   pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, CollectiblesError> {
     let lock = self.inner.read().await;
-    let client =
-      BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
+    let client = BaseNodeClient::connect(format!(
+      "http://{}",
+      lock.config.base_node_grpc_address.to_string()
+    ))
+    .await?;
     Ok(client)
   }
 

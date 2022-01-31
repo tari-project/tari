@@ -35,12 +35,15 @@ use crate::{
   },
 };
 
+use log::debug;
 use tari_app_grpc::tari_rpc::{self};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, ByteArray};
 use uuid::Uuid;
+
+const LOG_TARGET: &str = "collectibles::assets";
 
 #[tauri::command]
 pub(crate) async fn assets_create(
@@ -259,7 +262,7 @@ pub(crate) async fn assets_get_registration(
   let asset_pub_key = PublicKey::from_hex(&asset_pub_key)?;
   let asset = client.get_asset_metadata(&asset_pub_key).await?;
 
-  dbg!(&asset);
+  debug!(target: LOG_TARGET, "{:?}", asset);
   let features = asset.features.unwrap();
   let serializer = V1AssetMetadataSerializer {};
   let metadata = serializer.deserialize(&features.metadata[1..]);
