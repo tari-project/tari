@@ -21,7 +21,7 @@ Feature: Wallet FFI
         And I want to get emoji id of ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+    @broken
     Scenario: As a client I want to be able to restore my ffi wallet from seed words
         Given I have a base node BASE
         And I have wallet SPECTATOR connected to base node BASE

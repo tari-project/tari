@@ -39,6 +39,8 @@ pub mod chain_metadata_service;
 pub mod comms_interface;
 #[cfg(feature = "base_node")]
 pub use comms_interface::LocalNodeCommsInterface;
+#[cfg(feature = "base_node")]
+mod metrics;
 
 #[cfg(feature = "base_node")]
 pub mod service;

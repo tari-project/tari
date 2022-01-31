@@ -716,7 +716,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)))?;
         let block_height = block.header.height;
-        debug!(
+        debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
+        info!(
             target: LOG_TARGET,
             "Received SubmitBlock #{} request from client", block_height
         );

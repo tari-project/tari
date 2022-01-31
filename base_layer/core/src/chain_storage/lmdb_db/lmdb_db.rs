@@ -1013,12 +1013,12 @@ impl LMDBDatabase {
                 },
                 PrunedOutput::NotPruned { output } => {
                     input.add_output_data(
+                        output.version,
                         output.features,
                         output.commitment,
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.version,
                     );
                 },
             }
@@ -2015,11 +2015,7 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
         match tree {
             MmrTree::Kernel => Ok(lmdb_len(&txn, &self.kernels_db)? as u64),
-            MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
-            MmrTree::Witness => {
-                //  lmdb_len(&txn, &self.utxo)
-                unimplemented!("Need to get rangeproof mmr size")
-            },
+            MmrTree::Witness | MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
         }
     }
 

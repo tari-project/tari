@@ -139,7 +139,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 Err(BlockSyncError::ValidationError(err)) => {
                     match &err {
                         ValidationError::BlockHeaderError(_) => {},
-                        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots) |
+                        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots { .. }) |
                         ValidationError::BadBlockFound { .. } |
                         ValidationError::BlockError(BlockValidationError::MismatchedMmrSize { .. }) => {
                             let num_cleared = self.db.clear_all_pending_headers().await?;

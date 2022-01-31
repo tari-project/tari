@@ -380,6 +380,11 @@ class InterfaceFFI {
           this.ulonglong,
           this.ptr,
           this.ptr,
+          this.ptr,
+          this.ptr,
+          this.ptr,
+          this.ptr,
+          this.ptr,
           this.string,
           this.intPtr,
         ],
@@ -1440,6 +1445,9 @@ class InterfaceFFI {
     amount,
     spending_key_ptr,
     source_public_key_ptr,
+    features_ptr,
+    metadata_signature_ptr,
+    sender_offset_public_key_ptr,
     message
   ) {
     let error = this.initError();
@@ -1448,6 +1456,13 @@ class InterfaceFFI {
       amount,
       spending_key_ptr,
       source_public_key_ptr,
+      features_ptr,
+      metadata_signature_ptr,
+      sender_offset_public_key_ptr,
+      // script_private_key
+      spending_key_ptr,
+      // default Covenant
+      null,
       message,
       error
     );

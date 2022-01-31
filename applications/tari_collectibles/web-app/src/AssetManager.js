@@ -21,7 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 import React, { useState } from "react";
-import {Box, Button, Container, FormGroup, TextField, Typography} from "@mui/material";
+import {
+  Box,
+  Button,
+  Container,
+  FormGroup,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { useParams, withRouter } from "react-router-dom";
 import PropTypes from "prop-types";
 import binding from "./binding";
@@ -50,7 +57,7 @@ class AssetManagerContent extends React.Component {
       initialCommittee: registration.initialCommitee,
       checkpointUniqueId: registration.checkpointUniqueId,
       template_parameters: registration.features.template_parameters,
-      templateIds: registration.features.template_ids_implemented
+      templateIds: registration.features.template_ids_implemented,
     };
     this.setState({ loading: false, assetDefinition });
   }
@@ -71,17 +78,17 @@ class AssetManagerContent extends React.Component {
   }
 }
 
+
 const AssetDefinition = (props) => {
-  const { assetPubKey, assetDefinition} = props;
+  const { assetPubKey, assetDefinition } = props;
   const [msg, setMsg] = useState("");
   const [tip004MintTokenName, setTip004MintTokenName] = useState("Token1");
   let tip004 = false;
   let tip721 = false;
   if (assetDefinition.templateIds) {
-  tip004 = assetDefinition.templateIds.includes(4);
-  tip721 = assetDefinition.templateIds.includes(721);
-
-}
+    tip004 = assetDefinition.templateIds.includes(4);
+    tip721 = assetDefinition.templateIds.includes(721);
+  }
   const contents = JSON.stringify(assetDefinition, null, 2);
   async function save() {
     const filename = `${assetPubKey}.json`;
@@ -101,7 +108,7 @@ const AssetDefinition = (props) => {
   async function mint() {
     try {
       await binding.command_tip004_mint_token(assetPubKey, tip004MintTokenName);
-    }catch(err) {
+    } catch (err) {
       console.error(err);
       setMsg(`Error: ${err.message}`);
     }
@@ -117,23 +124,41 @@ const AssetDefinition = (props) => {
         Save asset definition file
       </Button>
 
-      { tip721 ? (
+      {tip721 ? (
         <Container>
-          { tip004 ? (
-              <FormGroup>
-                <Typography>Mint a token</Typography>
-                <TextField id="tip004Name" label="Name/Description" value={tip004MintTokenName} onChange={(e) => setTip004MintTokenName(e.target.value)}></TextField>
-                <Button id="mint" onClick={mint}>Mint</Button>
-              </FormGroup>
-          ) : "" }
-          <div>
-            TODO: get tokens
-          </div>
+          {tip004 ? (
+            <FormGroup>
+              <Typography>Mint a token</Typography>
+              <TextField
+                id="tip004Name"
+                label="Name/Description"
+                value={tip004MintTokenName}
+                onChange={(e) => setTip004MintTokenName(e.target.value)}
+              ></TextField>
+              <Button id="mint" onClick={mint}>
+                Mint
+              </Button>
+            </FormGroup>
+          ) : (
+            ""
+          )}
+          <div>TODO: get tokens</div>
         </Container>
-      ): ""}
+      ) : (
+        ""
+      )}
     </div>
   );
 };
+
+AssetDefinition.propTypes = {
+  assetPubKey: PropTypes.string,
+  assetDefinition: PropTypes.shape({
+    templateIds: PropTypes.array
+
+  })
+
+}
 
 AssetManagerContent.propTypes = {
   assetPubKey: PropTypes.string,

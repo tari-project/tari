@@ -6,35 +6,34 @@ var router = express.Router()
 /* GET home page. */
 router.get("/", async function (req, res) {
   try {
-  let client = createClient()
-  let from = parseInt(req.query.from || 0)
-  let limit = parseInt(req.query.limit || "20")
+    let client = createClient()
+    let from = parseInt(req.query.from || 0)
+    let limit = parseInt(req.query.limit || "20")
 
     let tipInfo = await client.getTipInfo({})
 
-    console.log("Getting headers")
-  // Algo split
-  let last100Headers = await client.listHeaders({
+    // Algo split
+    let last100Headers = await client.listHeaders({
       from_height: 0,
       num_headers: 101,
     })
-  let monero = [0, 0, 0, 0]
-  let sha = [0, 0, 0, 0]
+    let monero = [0, 0, 0, 0]
+    let sha = [0, 0, 0, 0]
 
-    console.log(last100Headers)
+    // console.log(last100Headers)
 
-  for (let i = 0; i < last100Headers.length - 1; i++) {
-    let arr = last100Headers[i].pow.pow_algo === "0" ? monero : sha
-    if (i < 10) {
-      arr[0] += 1
-    }
-    if (i < 20) {
-      arr[1] += 1
-    }
-    if (i < 50) {
-      arr[2] += 1
-    }
-    arr[3] += 1
+    for (let i = 0; i < last100Headers.length - 1; i++) {
+      let arr = last100Headers[i].pow.pow_algo === "0" ? monero : sha
+      if (i < 10) {
+        arr[0] += 1
+      }
+      if (i < 20) {
+        arr[1] += 1
+      }
+      if (i < 50) {
+        arr[2] += 1
+      }
+      arr[3] += 1
     }
     const algoSplit = {
       monero10: monero[0],
@@ -47,7 +46,7 @@ router.get("/", async function (req, res) {
       sha100: sha[3],
     }
 
-  console.log(algoSplit)
+    // console.log(algoSplit)
     // Get one more header than requested so we can work out the difference in MMR_size
     let headers = await client.listHeaders({
       from_height: from,
@@ -75,6 +74,7 @@ router.get("/", async function (req, res) {
     // --  mempool
     let mempool = await client.getMempoolTransactions({})
 
+    console.log(mempool)
     for (let i = 0; i < mempool.length; i++) {
       let sum = 0
       for (let j = 0; j < mempool[i].transaction.body.kernels.length; j++) {
@@ -83,25 +83,24 @@ router.get("/", async function (req, res) {
       mempool[i].transaction.body.total_fees = sum
     }
     res.render("index", {
-    title: "Blocks",
-    tipInfo: tipInfo,
-    mempool: mempool,
-    headers: headers,
-    pows: { 0: "Monero", 2: "SHA" },
-    nextPage: firstHeight - limit,
-    prevPage: firstHeight + limit,
-    limit: limit,
-    from: from,
-    algoSplit: algoSplit,
-    blockTimes: getBlockTimes(last100Headers),
-    moneroTimes: getBlockTimes(last100Headers, "0"),
-    shaTimes: getBlockTimes(last100Headers, "1"),
-  })
-
-} catch (error) {
-  res.status(500)
-  res.render("error", { error: error })
-}
+      title: "Blocks",
+      tipInfo: tipInfo,
+      mempool: mempool,
+      headers: headers,
+      pows: { 0: "Monero", 2: "SHA" },
+      nextPage: firstHeight - limit,
+      prevPage: firstHeight + limit,
+      limit: limit,
+      from: from,
+      algoSplit: algoSplit,
+      blockTimes: getBlockTimes(last100Headers),
+      moneroTimes: getBlockTimes(last100Headers, "0"),
+      shaTimes: getBlockTimes(last100Headers, "1"),
+    })
+  } catch (error) {
+    res.status(500)
+    res.render("error", { error: error })
+  }
 })
 
 function getBlockTimes(last100Headers, algo) {

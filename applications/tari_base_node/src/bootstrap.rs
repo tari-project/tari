@@ -184,13 +184,25 @@ where B: BlockchainBackend + 'static
         match transport_type {
             TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
-                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-                    .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
+                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity()).map_err(
+                    |e| {
+                        anyhow!(
+                            "Failed to save node identity - {:?}: {:?}",
+                            config.base_node_identity_file,
+                            e
+                        )
+                    },
+                )?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
-                .map_err(|e| anyhow!("Failed to save tor identity: {:?}", e))?;
+            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity()).map_err(|e| {
+                anyhow!(
+                    "Failed to save tor identity - {:?}: {:?}",
+                    config.base_node_tor_identity_file,
+                    e
+                )
+            })?;
         }
 
         handles.register(comms);
