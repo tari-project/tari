@@ -17,11 +17,11 @@ peer_seeds = [
     "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
 ]
 
-dns_seeds =["seeds.igor.tari.com"]
+dns_seeds = ["seeds.igor.tari.com"]
 dns_seeds_use_dnssec = false
 
 [common.dibbler]
-dns_seeds =["seeds.dibbler.tari.com"]
+dns_seeds = ["seeds.dibbler.tari.com"]
 peer_seeds = [
     "721e9da488302e69523bca1a9cdcbd2419dddda11698a1e8c6c7bd619659ff21::/onion3/qw4ymrzbanbcr3wwlesxbot72iayd7xdjcrtnacbwgk637vfon47hqad:18141",
     # 333388d1cbe3e2bd17453d052f
@@ -58,7 +58,7 @@ tor_control_auth = "password=tari"
 tor_forward_address = "/dns4/base_node/tcp/18189"
 tcp_listener_address = "/dns4/base_node/tcp/18189"
 tor_socks_address_override = "/dns4/tor/tcp/9050"
-tor_control_address = "/ip4/tor/tcp/9051"
+tor_control_address = "/dns4/tor/tcp/9051"
 grpc_enabled = true
 grpc_base_node_address = "0.0.0.0:18142"
 
@@ -90,22 +90,30 @@ tor_onion_port = 18141
 # Overidden in Tauri environment variables for ALL networks
 transport = "tor"
 tor_control_auth = "password=tari"
-tor_control_address = "/ip4/tor/tcp/9051"
+tor_control_address = "/dns4/tor/tcp/9051"
 tor_socks_address_override = ""
 tor_forward_address = ""
-tcp_listener_address= ""
+tcp_listener_address = ""
 
 [wallet.igor]
 use_libtor = false
 tor_onion_port = 18141
 
 [mining_node]
-num_mining_threads=1
-base_node_grpc_address = "/ip4/base_node/tcp/18142"
-wallet_grpc_address = "/ip4/wallet/tcp/18143"
-base_node_addr = "/ip4/base_node/tcp/18142"
-wallet_addr = "/ip4/wallet/tcp/18143"
+num_mining_threads = 1
+base_node_grpc_address = "/dns4/base_node/tcp/18142"
+wallet_grpc_address = "/dns4/wallet/tcp/18143"
+base_node_addr = "/dns4/base_node/tcp/18142"
+wallet_addr = "/dns4/wallet/tcp/18143"
 mine_on_tip_only = true
+
+[merge_mining_proxy]
+#network = "dibbler"
+grpc_base_node_address = "/dns4/base_node/tcp/18142"
+grpc_console_wallet_address = "/dns4/wallet/tcp/18143"
+proxy_host_address = "/dns4/mm_proxy/tcp/18081"
+proxy_submit_to_origin = true
+wait_for_initial_sync_at_startup = true
 
 [merge_mining_proxy.dibbler]
 monerod_url = [ # stagenet
@@ -115,9 +123,9 @@ monerod_url = [ # stagenet
     "http://xmr-lux.boldsuck.org:38081",
     "http://singapore.node.xmr.pm:38081",
 ]
-proxy_host_address = "/ip4/mm_proxy/tcp/7878"
-
-[merge_mining_proxy]
+monerod_username = ""
+monerod_password = ""
+monerod_use_auth = false
 
 [stratum_transcoder]
 transcoder_host_address = "127.0.0.1:7879"

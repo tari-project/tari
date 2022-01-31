@@ -282,19 +282,13 @@ impl LaunchpadConfig {
     }
 
     fn xmrig_cmd(&self) -> Vec<String> {
-        let address = match &self.xmrig {
-            Some(config) => config.monero_mining_address.as_str(),
-            None => DEFAULT_MINING_ADDRESS,
-        };
-        let address = format!("--user={}", address);
         let args = vec![
             "--url=mm_proxy:18081",
-            address.as_str(),
+            "--user=${TARI_MONERO_WALLET_ADDRESS}",
             "--coin=monero",
             "--daemon",
             "--log-file=/var/tari/xmrig/xmrig.log",
             "--verbose",
-            // "--background"
         ];
         args.into_iter().map(String::from).collect()
     }
@@ -449,8 +443,15 @@ impl LaunchpadConfig {
 
     fn xmrig_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        let address = match &self.xmrig {
+            Some(config) => config.monero_mining_address.as_str(),
+            None => DEFAULT_MINING_ADDRESS,
+        };
         if let Some(config) = &self.xmrig {
-            env.append(&mut vec![format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9)]);
+            env.append(&mut vec![
+                format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9),
+                format!("TARI_MONERO_WALLET_ADDRESS={}", address)
+            ]);
         }
         env
     }

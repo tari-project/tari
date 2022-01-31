@@ -45,28 +45,32 @@ use hyper::{service::make_service_fn, Server};
 use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigLoader};
+use tari_common::{configuration::bootstrap::ApplicationType, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
+use log::*;
 
 use crate::{block_template_data::BlockTemplateRepository, config::MergeMiningProxyConfig, error::MmProxyError};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let (_, _global, cfg) = init_configuration(ApplicationType::MergeMiningProxy)?;
-    let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
+    let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    debug!("Configuration: {:?}", config);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(25)
         .build()
         .map_err(MmProxyError::ReqwestError)?;
-    println!("Connecting to base node at {}", config.grpc_base_node_address);
+    let base_node = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
+    info!("Connecting to base node at {}", base_node);
     let base_node_client =
-        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address)).await?;
-    println!("Connecting to wallet at {}", config.grpc_console_wallet_address);
+        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
+    let wallet = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
+    info!("Connecting to wallet at {}", wallet);
     let wallet_client =
-        grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
+        grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
     let addr = multiaddr_to_socketaddr(&config.proxy_host_address)?;
     let xmrig_service = MergeMiningProxyService::new(
         config,
@@ -79,11 +83,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match Server::try_bind(&addr) {
         Ok(builder) => {
-            println!("Listening on {}...", addr);
+            info!("Listening on {}...", addr);
             builder.serve(service).await?;
             Ok(())
         },
         Err(err) => {
+            error!("Fatal: Cannot bind to '{}'.", addr);
             println!("Fatal: Cannot bind to '{}'.", addr);
             println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
             println!("'proxy_host_address' in 'config/config.toml' and for the applicable XMRig '[pools][url]' or");

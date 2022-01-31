@@ -21,12 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::net::SocketAddr;
-
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::config::Config, ConfigurationError, NetworkConfigPath};
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
+use tari_common::{NetworkConfigPath};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MergeMiningProxyConfig {
