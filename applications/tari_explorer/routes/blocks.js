@@ -26,10 +26,9 @@ var express = require("express");
 var router = express.Router();
 
 router.get("/:height", async function (req, res) {
-  let client = createClient();
-  let height = req.params.height;
-
   try {
+    let client = createClient();
+    let height = parseInt(req.params.height);
     let block = await client.getBlocks({ heights: [height] });
 
     if (!block || block.length === 0) {
@@ -37,13 +36,27 @@ router.get("/:height", async function (req, res) {
       res.render("404", { message: `Block at height ${height} not found` });
       return;
     }
+
+    let tipInfo = await client.getTipInfo({});
+    let tipHeight = parseInt(tipInfo.metadata.height_of_longest_chain);
+
+    let prevHeight = height - 1;
+    let prevLink = `/blocks/${prevHeight}`;
+    if (height === 0) prevLink = null;
+
+    let nextHeight = height + 1;
+    let nextLink = `/blocks/${nextHeight}`;
+    if (height === tipHeight) nextLink = null;
+
     // console.log(block);
     res.render("blocks", {
       title: `Block at height: ${block[0].block.header.height}`,
       header: block[0].block.header,
       height,
-      prevHeight: parseInt(height) - 1,
-      nextHeight: parseInt(height) + 1,
+      prevLink,
+      prevHeight,
+      nextLink,
+      nextHeight,
       block: block[0].block,
       pows: { 0: "Monero", 1: "SHA-3" },
     });
