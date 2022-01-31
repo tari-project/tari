@@ -20,38 +20,37 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var { createClient } = require('../baseNodeClient')
+var { createClient } = require("../baseNodeClient");
 
-var express = require("express")
-var router = express.Router()
+var express = require("express");
+var router = express.Router();
 
 router.get("/:height", async function (req, res) {
-  let client = createClient()
-  let height = req.params.height
+  let client = createClient();
+  let height = req.params.height;
 
   try {
-    let block = await client.getBlocks({ heights: [height] })
+    let block = await client.getBlocks({ heights: [height] });
 
     if (!block || block.length === 0) {
       res.status(404);
-      res.render('404', { message: `Block at height ${height} not found`});
+      res.render("404", { message: `Block at height ${height} not found` });
       return;
     }
-    console.log(block)
-    console.log(block[0].block.body.outputs[0])
-    res.render('blocks', {
+    console.log(block);
+    console.log(block[0].block.body.outputs[0]);
+    res.render("blocks", {
       title: `Block at height:${block[0].block.header.height}`,
       height: height,
       prevHeight: parseInt(height) - 1,
       nextHeight: parseInt(height) + 1,
       block: block[0].block,
-      pows: { '0': 'Monero', '2': 'SHA' }
-    })
-
+      pows: { 0: "Monero", 2: "SHA" },
+    });
   } catch (error) {
-    res.status(500)
-    res.render('error', { error: error })
+    res.status(500);
+    res.render("error", { error: error });
   }
-})
+});
 
-module.exports = router
+module.exports = router;
