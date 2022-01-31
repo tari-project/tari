@@ -23,7 +23,7 @@
 
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_common::{NetworkConfigPath};
+use tari_common::NetworkConfigPath;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MergeMiningProxyConfig {

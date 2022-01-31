@@ -450,7 +450,7 @@ impl LaunchpadConfig {
         if let Some(config) = &self.xmrig {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9),
-                format!("TARI_MONERO_WALLET_ADDRESS={}", address)
+                format!("TARI_MONERO_WALLET_ADDRESS={}", address),
             ]);
         }
         env

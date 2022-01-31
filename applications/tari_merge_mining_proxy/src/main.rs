@@ -42,13 +42,13 @@ use std::convert::Infallible;
 
 use futures::future;
 use hyper::{service::make_service_fn, Server};
+use log::*;
 use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{configuration::bootstrap::ApplicationType, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
-use log::*;
 
 use crate::{block_template_data::BlockTemplateRepository, config::MergeMiningProxyConfig, error::MmProxyError};
 
@@ -65,12 +65,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .map_err(MmProxyError::ReqwestError)?;
     let base_node = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
     info!("Connecting to base node at {}", base_node);
-    let base_node_client =
-        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
+    let base_node_client = grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
     let wallet = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
     info!("Connecting to wallet at {}", wallet);
-    let wallet_client =
-        grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
+    let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
     let addr = multiaddr_to_socketaddr(&config.proxy_host_address)?;
     let xmrig_service = MergeMiningProxyService::new(
         config,
@@ -84,6 +82,7 @@ async fn main() -> Result<(), anyhow::Error> {
     match Server::try_bind(&addr) {
         Ok(builder) => {
             info!("Listening on {}...", addr);
+            println!("Listening on {}...", addr);
             builder.serve(service).await?;
             Ok(())
         },

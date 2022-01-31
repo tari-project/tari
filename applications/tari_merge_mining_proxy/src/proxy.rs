@@ -101,7 +101,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             let bytes = match proxy::read_body_until_end(request.body_mut()).await {
                 Ok(b) => b,
                 Err(err) => {
-                    eprintln!("Method: Unknown, Failed to read request: {:?}", err);
+                    warn!("Method: Unknown, Failed to read request: {:?}", err);
                     let resp = proxy::json_response(
                         StatusCode::BAD_REQUEST,
                         &json_rpc::standard_error_response(
@@ -119,8 +119,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Error handling request: {:?}", err);
-                    eprintln!("Method: {}, Failed to handle request: {:?}", method_name, err);
+                    error!(target: LOG_TARGET, "Method "{}" failed handling request: {:?}", method_name, err);
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
@@ -370,7 +369,6 @@ impl InnerService {
                     self.config.wait_for_initial_sync_at_startup,
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
-                println!("{}", msg);
                 if self.config.wait_for_initial_sync_at_startup {
                     return Err(MmProxyError::MissingDataError(msg));
                 }
@@ -380,9 +378,8 @@ impl InnerService {
                     "Initial base node sync achieved. Ready to mine at height #{}",
                     metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
                 );
-                debug!(target: LOG_TARGET, "{}", msg);
-                println!("{}", msg);
-                println!("Listening on {}...", self.config.proxy_host_address);
+                info!(target: LOG_TARGET, "{}", msg);
+                info!("Listening on {}...", self.config.proxy_host_address);
             }
         }
 
@@ -749,7 +746,7 @@ impl InnerService {
                         "Monerod returned an error: {}",
                         monerod_resp.status()
                     );
-                    println!(
+                    debug!(
                         "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
                         method_name,
                         monerod_status,
@@ -759,7 +756,7 @@ impl InnerService {
                 }
 
                 let response = self.get_proxy_response(request, monerod_resp).await?;
-                println!(
+                debug!(
                     "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
                     method_name,
                     monerod_status,
