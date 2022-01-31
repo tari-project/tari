@@ -50,3 +50,20 @@ macro_rules! consensus_encoding_varint_impl {
 consensus_encoding_varint_impl!(u16);
 consensus_encoding_varint_impl!(u32);
 consensus_encoding_varint_impl!(u64);
+
+#[cfg(test)]
+mod test {
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let subject = u16::MAX;
+        check_consensus_encoding_correctness(subject).unwrap();
+
+        let subject = u32::MAX;
+        check_consensus_encoding_correctness(subject).unwrap();
+
+        let subject = u64::MAX;
+        check_consensus_encoding_correctness(subject).unwrap();
+    }
+}

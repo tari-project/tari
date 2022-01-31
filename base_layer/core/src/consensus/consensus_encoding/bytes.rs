@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     io,
     io::{Error, Read, Write},
     ops::Deref,
@@ -53,6 +54,17 @@ pub struct MaxSizeBytes<const MAX: usize> {
 impl<const MAX: usize> From<MaxSizeBytes<MAX>> for Vec<u8> {
     fn from(value: MaxSizeBytes<MAX>) -> Self {
         value.inner
+    }
+}
+
+impl<const MAX: usize> TryFrom<Vec<u8>> for MaxSizeBytes<MAX> {
+    type Error = Vec<u8>;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        if value.len() > MAX {
+            return Err(value);
+        }
+        Ok(MaxSizeBytes { inner: value })
     }
 }
 
@@ -119,5 +131,25 @@ impl<const N: usize> ConsensusDecoding for [u8; N] {
         let mut buf = [0u8; N];
         reader.read_exact(&mut buf)?;
         Ok(buf)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use rand::{rngs::OsRng, RngCore};
+
+    use super::*;
+    use crate::consensus::{check_consensus_encoding_correctness, ToConsensusBytes};
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let mut subject = [0u8; 1024];
+        OsRng.fill_bytes(&mut subject);
+        check_consensus_encoding_correctness(subject).unwrap();
+
+        // Get vec encoding with length byte
+        let encoded = subject.to_vec().to_consensus_bytes();
+        let decoded = MaxSizeBytes::<1024>::consensus_decode(&mut encoded.as_slice()).unwrap();
+        assert_eq!(*decoded, *subject.as_slice());
     }
 }

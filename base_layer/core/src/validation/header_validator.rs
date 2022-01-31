@@ -7,7 +7,12 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::AchievedTargetDifficulty,
     validation::{
-        helpers::{check_header_timestamp_greater_than_median, check_pow_data, check_timestamp_ftl},
+        helpers::{
+            check_header_timestamp_greater_than_median,
+            check_not_bad_block,
+            check_pow_data,
+            check_timestamp_ftl,
+        },
         DifficultyCalculator,
         HeaderValidation,
         ValidationError,
@@ -79,6 +84,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         );
         check_pow_data(header, &self.rules, backend)?;
         let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(backend, header)?;
+        check_not_bad_block(backend, &header.hash())?;
 
         trace!(
             target: LOG_TARGET,

@@ -57,6 +57,7 @@ use tari_core::{
     },
 };
 use tari_crypto::{inputs, script};
+use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
 use crate::helpers::{
@@ -246,10 +247,9 @@ async fn inputs_are_not_malleable() {
     let err = validator.validate_body(block).await.unwrap_err();
 
     // All validations pass, except the Input MMR.
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots)
-    ));
+    unpack_enum!(ValidationError::BlockError(err) = err);
+    unpack_enum!(BlockValidationError::MismatchedMmrRoots { kind } = err);
+    assert_eq!(kind, "Input");
 }
 
 #[test]

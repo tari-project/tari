@@ -83,3 +83,35 @@ impl<T: ConsensusEncodingSized> ConsensusEncodingSized for Vec<T> {}
 
 // Important: No ConsensusDecode impl for Vec<T> because the implementer needs to manually ensure there is a maximum
 // number of elements that can be decoded to prevent unbounded allocation.
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::consensus::{check_consensus_encoding_correctness, MaxSizeVec};
+
+    mod option {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let subject = Option::<u32>::None;
+            check_consensus_encoding_correctness(subject).unwrap();
+            let subject = Some(123u32);
+            check_consensus_encoding_correctness(subject).unwrap();
+        }
+    }
+
+    mod vec {
+        use super::*;
+
+        #[test]
+        fn it_encodes_and_decodes_correctly() {
+            let subject = vec![vec![1u32, 2, 3], vec![1u32, 3, 2]];
+            let mut buf = Vec::new();
+            subject.consensus_encode(&mut buf).unwrap();
+            assert_eq!(buf.len(), subject.consensus_encode_exact_size());
+            let v = MaxSizeVec::<MaxSizeVec<u32, 10>, 100>::consensus_decode(&mut buf.as_slice()).unwrap();
+            assert_eq!(v.into_vec(), subject);
+        }
+    }
+}
