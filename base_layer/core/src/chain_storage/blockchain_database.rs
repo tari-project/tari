@@ -214,9 +214,9 @@ where B: BlockchainBackend
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
         };
+        let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
-            let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
             blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
             let body = &genesis_block.block().body;
@@ -230,6 +230,20 @@ where B: BlockchainBackend
             txn.set_horizon_data(kernel_sum, utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
+        } else if !blockchain_db.block_exists(genesis_block.accumulated_data().hash.clone())? {
+            // Check the genesis block in the DB.
+            error!(
+                target: LOG_TARGET,
+                "Genesis block in database does not match the supplied genesis block in the code! Hash in the code \
+                 {:?}, hash in the database {:?}",
+                blockchain_db.fetch_chain_header(0)?.hash(),
+                genesis_block.accumulated_data().hash
+            );
+            return Err(ChainStorageError::CorruptedDatabase(
+                "Genesis block in database does not match the supplied genesis block in the code! Please delete and \
+                 resync your blockchain database."
+                    .into(),
+            ));
         }
         if cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
