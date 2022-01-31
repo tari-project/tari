@@ -30,7 +30,7 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::{OutputFeatures, TransactionOutput},
+    transaction::TransactionOutput,
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -53,18 +53,12 @@ impl SingleReceiverTransactionProtocol {
         sender_info: &SD,
         nonce: SK,
         spending_key: SK,
-        features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
     ) -> Result<RD, TPE> {
         SingleReceiverTransactionProtocol::validate_sender_data(sender_info)?;
-        let output = SingleReceiverTransactionProtocol::build_output(
-            sender_info,
-            &spending_key,
-            features,
-            factories,
-            rewind_data,
-        )?;
+        let output =
+            SingleReceiverTransactionProtocol::build_output(sender_info, &spending_key, factories, rewind_data)?;
         let public_nonce = PublicKey::from_secret_key(&nonce);
         let public_spending_key = PublicKey::from_secret_key(&spending_key);
         let e = build_challenge(&(&sender_info.public_nonce + &public_nonce), &sender_info.metadata);
@@ -89,7 +83,6 @@ impl SingleReceiverTransactionProtocol {
     fn build_output(
         sender_info: &SD,
         spending_key: &SK,
-        features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
     ) -> Result<TransactionOutput, TPE> {
@@ -111,18 +104,20 @@ impl SingleReceiverTransactionProtocol {
                 .construct_proof(spending_key, sender_info.amount.into())?
         };
 
+        let sender_features = sender_info.features.clone();
+
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             &sender_info.amount,
             &spending_key.clone(),
             &sender_info.script,
-            &sender_info.features,
+            &sender_features,
             &sender_info.sender_offset_public_key,
             &sender_info.public_commitment_nonce,
             &sender_info.covenant,
         )?;
 
         let output = TransactionOutput::new_current_version(
-            features,
+            sender_features,
             commitment,
             RangeProof::from_bytes(&proof)
                 .map_err(|_| TPE::RangeProofError(RangeProofError::ProofConstructionError))?,
@@ -169,8 +164,8 @@ mod test {
     fn zero_amount_fails() {
         let factories = CryptoFactories::default();
         let info = SingleRoundSenderData::default();
-        let (r, k, of) = generate_output_parms();
-        match SingleReceiverTransactionProtocol::create(&info, r, k, of, &factories, None) {
+        let (r, k, _) = generate_output_parms();
+        match SingleReceiverTransactionProtocol::create(&info, r, k, &factories, None) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),
             Err(_) => panic!("Protocol fails for the wrong reason"),
@@ -201,13 +196,13 @@ mod test {
             public_nonce: pub_rs.clone(),
             metadata: m.clone(),
             message: "".to_string(),
-            features: of.clone(),
+            features: of,
             script,
             sender_offset_public_key,
             public_commitment_nonce,
             covenant: Default::default(),
         };
-        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), of, &factories, None).unwrap();
+        let prot = SingleReceiverTransactionProtocol::create(&info, r, k.clone(), &factories, None).unwrap();
         assert_eq!(prot.tx_id.as_u64(), 500, "tx_id is incorrect");
         // Check the signature
         assert_eq!(prot.public_spend_key, pubkey, "Public key is incorrect");
