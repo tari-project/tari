@@ -1,24 +1,24 @@
 <h3>Tip</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
     <thead>
     <tr>
         <th>Chain height</th>
         <th>Best block</th>
-        <th>Pruning horizon</th>
+        <th>Pruned height</th>
     </tr>
     </thead>
     <tbody>
     <tr>
         <td>{{this.tipInfo.metadata.height_of_longest_chain}}</td>
         <td>{{hex this.tipInfo.metadata.best_block}}</td>
-        <td>{{this.tipInfo.metadata.pruning_horizon}}</td>
+        <td>{{this.tipInfo.metadata.pruned_height}}</td>
     </tr>
     </tbody>
 </table>
 <br />
 
 <h3>Proof of work split</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
     <thead>
     <tr>
         <th rowspan="2">&nbsp;</th>
@@ -42,7 +42,7 @@
         <td>{{this.algoSplit.monero100}} {{percentbar this.algoSplit.monero100 this.algoSplit.sha100}}</td>
     </tr>
     <tr>
-        <th>Sha3</th>
+        <th>SHA-3</th>
 
         <td>{{this.algoSplit.sha10}}  {{percentbar this.algoSplit.sha10 this.algoSplit.monero10}}</td>
         <td>{{this.algoSplit.sha20}}  {{percentbar this.algoSplit.sha20 this.algoSplit.monero20}}</td>
@@ -53,7 +53,7 @@
 </table>
 <br />
 
-<table width="100%">
+<table class="noborder">
   <tr>
     <td>
       <h3>Block times (minutes)</h3>
@@ -83,7 +83,7 @@
 <br />
 
 <h2>{{title}}</h2>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
     <thead>
     <tr>
         <th>Height</th>
@@ -123,7 +123,7 @@
 <br />
 
 <h2>Mempool</h2>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
     <thead>
     <tr>
         <th>Excess</th>
@@ -137,7 +137,7 @@
     {{#each mempool}}
         {{#with this.transaction.body}}
             <tr>
-                <td><a href="/mempool/{{json this}}">{{#each this.kernels}}<span>{{hex this.excess_sig.signature}}</span>{{/each}}</a></td>
+                <td><a href="/mempool/{{#each this.kernels}}{{hex this.excess_sig.signature}}+{{/each}}">{{#each this.kernels}}<span>{{hex this.excess_sig.signature}}</span>{{/each}}</a></td>
                 <td>{{this.total_fees}}</td>
                 <td>{{this.outputs.length}}</td>
                 <td>{{this.kernels.length}}</td>

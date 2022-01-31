@@ -109,7 +109,7 @@ use rand::rngs::OsRng;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
-    types::{ComSignature, PublicKey},
+    types::{Commitment, PublicKey},
 };
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -181,10 +181,13 @@ mod tasks;
 const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariTransportType = tari_p2p::transport::TransportType;
-pub type TariPublicKey = tari_comms::types::CommsPublicKey;
-pub type TariPrivateKey = tari_comms::types::CommsSecretKey;
+pub type TariPublicKey = tari_common_types::types::PublicKey;
+pub type TariPrivateKey = tari_common_types::types::PrivateKey;
+pub type TariOutputFeatures = tari_core::transactions::transaction::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
+pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
 pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariCovenant = tari_core::covenants::Covenant;
 
 pub struct TariContacts(Vec<TariContact>);
 
@@ -868,6 +871,109 @@ pub unsafe extern "C" fn private_key_from_hex(key: *const c_char, error_out: *mu
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+
+/// ------------------------------- Commitment Signature ---------------------------------------///
+
+/// Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
+///
+/// ## Arguments
+/// `public_nonce_bytes` - The public nonce signature component as a ByteVector
+/// `u_bytes` - The u signature component as a ByteVector
+/// `v_bytes` - The v signature component as a ByteVector
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `TariCommitmentSignature` - Returns a commitment signature. Note that it will be ptr::null_mut() if any argument is
+/// null or if there was an error with the contents of bytes
+///
+/// # Safety
+/// The ```commitment_signature_destroy``` function must be called when finished with a TariCommitmentSignature to
+/// prevent a memory leak
+#[no_mangle]
+pub unsafe extern "C" fn commitment_signature_create_from_bytes(
+    public_nonce_bytes: *const ByteVector,
+    u_bytes: *const ByteVector,
+    v_bytes: *const ByteVector,
+    error_out: *mut c_int,
+) -> *mut TariCommitmentSignature {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if public_nonce_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_nonce_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    if u_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("u_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    if v_bytes.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("v_bytes".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+
+    let nonce = match Commitment::from_bytes(&(*public_nonce_bytes).0.clone()) {
+        Ok(nonce) => nonce,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a nonce commitment from bytes: {:?}", e
+            );
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let u = match TariPrivateKey::from_bytes(&(*u_bytes).0.clone()) {
+        Ok(u) => u,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a Private Key (u) from bytes: {:?}", e
+            );
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+    let v = match TariPrivateKey::from_bytes(&(*v_bytes).0.clone()) {
+        Ok(u) => u,
+        Err(e) => {
+            error!(
+                target: LOG_TARGET,
+                "Error creating a Private Key (v) from bytes: {:?}", e
+            );
+            error = LibWalletError::from(e).code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
+
+    let sig = TariCommitmentSignature::new(nonce, u, v);
+    Box::into_raw(Box::new(sig))
+}
+
+/// Frees memory for a TariCommitmentSignature
+///
+/// ## Arguments
+/// `com_sig` - The pointer to a TariCommitmentSignature
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn commitment_signature_destroy(com_sig: *mut TariCommitmentSignature) {
+    if !com_sig.is_null() {
+        Box::from_raw(com_sig);
     }
 }
 
@@ -4811,10 +4917,13 @@ pub unsafe extern "C" fn wallet_import_utxo(
     amount: c_ulonglong,
     spending_key: *mut TariPrivateKey,
     source_public_key: *mut TariPublicKey,
+    features: *mut TariOutputFeatures,
+    metadata_signature: *mut TariCommitmentSignature,
+    sender_offset_public_key: *mut TariPublicKey,
+    script_private_key: *mut TariPrivateKey,
+    covenant: *mut TariCovenant,
     message: *const c_char,
     error_out: *mut c_int,
-    /* TODO: Update this interface to add the metadata signature, script private key and script offset public keys
-     * here. */
 ) -> c_ulonglong {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -4835,6 +4944,35 @@ pub unsafe extern "C" fn wallet_import_utxo(
         ptr::swap(error_out, &mut error as *mut c_int);
         return 0;
     }
+
+    if metadata_signature.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("metadata_signature".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if sender_offset_public_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("sender_offset_public_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    if script_private_key.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("script_private_key".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    let features = if features.is_null() {
+        OutputFeatures::with_maturity(0)
+    } else {
+        (*features).clone()
+    };
+    let covenant = if covenant.is_null() {
+        Covenant::default()
+    } else {
+        (*covenant).clone()
+    };
 
     let message_string;
     if !message.is_null() {
@@ -4870,13 +5008,13 @@ pub unsafe extern "C" fn wallet_import_utxo(
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        OutputFeatures::default(),
+        features,
         message_string,
-        ComSignature::default(),
-        &(*spending_key).clone(),
-        &Default::default(),
+        (*metadata_signature).clone(),
+        &(*script_private_key).clone(),
+        &(*sender_offset_public_key).clone(),
         0,
-        Covenant::default(),
+        covenant,
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
@@ -6217,6 +6355,30 @@ mod test {
             public_key_destroy(pk_emoji);
             byte_vector_destroy(public_bytes);
             byte_vector_destroy(private_bytes);
+        }
+    }
+
+    #[test]
+    fn test_comm_sig_create() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let (u, _) = PublicKey::random_keypair(&mut OsRng);
+            let u_bytes = Box::into_raw(Box::new(ByteVector(u.to_vec())));
+            let (v, nonce) = PublicKey::random_keypair(&mut OsRng);
+            let v_bytes = Box::into_raw(Box::new(ByteVector(v.to_vec())));
+            let nonce_bytes = Box::into_raw(Box::new(ByteVector(nonce.to_vec())));
+
+            let sig = commitment_signature_create_from_bytes(nonce_bytes, u_bytes, v_bytes, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(*(*sig).public_nonce(), Commitment::from_public_key(&nonce));
+            assert_eq!(*(*sig).u(), u);
+            assert_eq!(*(*sig).v(), v);
+
+            commitment_signature_destroy(sig);
+            byte_vector_destroy(nonce_bytes);
+            byte_vector_destroy(u_bytes);
+            byte_vector_destroy(v_bytes);
         }
     }
 

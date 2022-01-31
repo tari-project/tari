@@ -1019,7 +1019,7 @@ where B: BlockchainBackend
     /// pruning horizon, it will return Ok<None>
     pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_block_with_utxo(&*db, commitment)
+        fetch_block_with_utxo(&*db, &commitment)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
@@ -1432,12 +1432,12 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
                 PrunedOutput::Pruned { .. } => Ok(compact_input),
                 PrunedOutput::NotPruned { output } => {
                     compact_input.add_output_data(
+                        output.version,
                         output.features,
                         output.commitment,
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.version,
                     );
                     Ok(compact_input)
                 },
@@ -1527,11 +1527,14 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
 
 fn fetch_block_with_utxo<T: BlockchainBackend>(
     db: &T,
-    commitment: Commitment,
+    commitment: &Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-    let output = db.fetch_output(&commitment.to_vec())?;
+    let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
     match output {
-        Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash),
+        Some(hash) => match db.fetch_output(&hash)? {
+            Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash),
+            None => Ok(None),
+        },
         None => Ok(None),
     }
 }

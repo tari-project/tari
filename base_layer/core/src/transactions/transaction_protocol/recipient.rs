@@ -30,7 +30,7 @@ use tari_common_types::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::{OutputFeatures, TransactionOutput},
+    transaction::TransactionOutput,
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -110,13 +110,12 @@ impl ReceiverTransactionProtocol {
         info: TransactionSenderMessage,
         nonce: PrivateKey,
         spending_key: PrivateKey,
-        features: OutputFeatures,
         factories: &CryptoFactories,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
             TransactionSenderMessage::Single(v) => {
-                ReceiverTransactionProtocol::single_round(nonce, spending_key, features, &v, factories, None)
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, None)
             },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
@@ -129,20 +128,14 @@ impl ReceiverTransactionProtocol {
         info: TransactionSenderMessage,
         nonce: PrivateKey,
         spending_key: PrivateKey,
-        features: OutputFeatures,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
     ) -> ReceiverTransactionProtocol {
         let state = match info {
             TransactionSenderMessage::None => RecipientState::Failed(TransactionProtocolError::InvalidStateError),
-            TransactionSenderMessage::Single(v) => ReceiverTransactionProtocol::single_round(
-                nonce,
-                spending_key,
-                features,
-                &v,
-                factories,
-                Some(rewind_data),
-            ),
+            TransactionSenderMessage::Single(v) => {
+                ReceiverTransactionProtocol::single_round(nonce, spending_key, &v, factories, Some(rewind_data))
+            },
             TransactionSenderMessage::Multiple => Self::multi_round(),
         };
         ReceiverTransactionProtocol { state }
@@ -178,12 +171,11 @@ impl ReceiverTransactionProtocol {
     fn single_round(
         nonce: PrivateKey,
         key: PrivateKey,
-        features: OutputFeatures,
         data: &SD,
         factories: &CryptoFactories,
         rewind_data: Option<&RewindData>,
     ) -> RecipientState {
-        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, features, factories, rewind_data);
+        let signer = SingleReceiverTransactionProtocol::create(data, nonce, key, factories, rewind_data);
         match signer {
             Ok(signed_data) => RecipientState::Finalized(Box::new(signed_data)),
             Err(e) => RecipientState::Failed(e),
@@ -252,7 +244,7 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m.clone(),
             message: "".to_string(),
-            features: features.clone(),
+            features,
             script,
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
@@ -260,8 +252,7 @@ mod test {
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
         let pubkey = PublicKey::from_secret_key(&p.spend_key);
-        let receiver =
-            ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), features, &factories);
+        let receiver = ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
         assert_eq!(data.tx_id.as_u64(), 15);
@@ -300,7 +291,7 @@ mod test {
             public_nonce: PublicKey::from_secret_key(&p.change_spend_key), // any random key will do
             metadata: m,
             message: "".to_string(),
-            features: features.clone(),
+            features,
             script,
             sender_offset_public_key: p.sender_offset_public_key,
             public_commitment_nonce: p.sender_public_commitment_nonce,
@@ -316,7 +307,6 @@ mod test {
             sender_info,
             p.nonce.clone(),
             p.spend_key.clone(),
-            features,
             &factories,
             &rewind_data,
         );

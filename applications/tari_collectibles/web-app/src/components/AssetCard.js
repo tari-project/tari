@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+import React from "react";
+import propTypes from "prop-types";
 import {
   Card,
   CardActions,
@@ -28,7 +30,7 @@ import {
   Typography,
 } from "@mui/material";
 
-export default function AssetCard({ asset, heading, style, actions }) {
+function AssetCard({ asset, heading, style, actions }) {
   style = style || {
     height: "100%",
     display: "flex",
@@ -52,3 +54,12 @@ export default function AssetCard({ asset, heading, style, actions }) {
     </Card>
   );
 }
+
+AssetCard.propTypes = {
+  asset: propTypes.object.isRequired,
+  heading: propTypes.string,
+  style: propTypes.object,
+  actions: propTypes.object,
+};
+
+export default AssetCard;

@@ -150,7 +150,7 @@ depending on the choices you make when prompted:
     environment variable (hint: type `path` in a command console to verify).
 
 - Tor Services
-  - Donwload 
+  - Download 
     [Tor Windows Expert Bundle](https://www.torproject.org/download/tor/).
   - Extract to local path, e.g. `%USERPROFILE%\.tor_services`.
   - Add the path to the Tari environment variable, e.g. type 

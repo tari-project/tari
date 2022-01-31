@@ -101,6 +101,7 @@ fn add_many_chained_blocks(
 }
 
 mod fetch_blocks {
+
     use super::*;
 
     #[test]

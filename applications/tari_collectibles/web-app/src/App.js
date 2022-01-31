@@ -60,7 +60,7 @@ import Setup, { UnlockWallet } from "./Setup";
 import { useEffect, useState } from "react";
 import binding from "./binding";
 import { Spinner } from "./components";
-import { listen } from '@tauri-apps/api/event'
+import { listen } from "@tauri-apps/api/event";
 
 const mdTheme = createTheme({
   palette: {
@@ -85,6 +85,11 @@ function IconButtonLink(props) {
       {icon}
     </IconButton>
   );
+}
+
+IconButtonLink.propTypes = {
+  icon: PropTypes.element.isRequired,
+  to:PropTypes.string.isRequired
 }
 
 function ListItemLink(props) {
@@ -116,11 +121,26 @@ const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect( () => {
+  useEffect(() => {
     async function inner() {
       console.log("refreshing accounts");
       setError("");
       binding
+        .command_asset_wallets_list()
+        .then((accounts) => {
+          console.log("accounts", accounts);
+          setAccounts(accounts);
+        })
+        .catch((e) => {
+          // todo error handling
+          console.error("accounts_list error:", e);
+          setError(e.message);
+        });
+
+      await listen("asset_wallets::updated", (event) => {
+        console.log("accounts have changed");
+        setError("");
+        binding
           .command_asset_wallets_list()
           .then((accounts) => {
             console.log("accounts", accounts);
@@ -131,31 +151,10 @@ const AccountsMenu = (props) => {
             console.error("accounts_list error:", e);
             setError(e.message);
           });
-
-
-      await listen("asset_wallets::updated", event => {
-            console.log("accounts have changed");
-            setError("");
-            binding
-                .command_asset_wallets_list()
-                .then((accounts) => {
-                  console.log("accounts", accounts);
-                  setAccounts(accounts);
-                })
-                .catch((e) => {
-                  // todo error handling
-                  console.error("accounts_list error:", e);
-                  setError(e.message);
-                });
-          }
-      );
+      });
     }
     inner();
   }, [props.walletId]);
-
-
-
-
 
   // todo: hide accounts when not authenticated
   return (
@@ -174,11 +173,11 @@ const AccountsMenu = (props) => {
           My Assets
         </ListItem>
       </ListSubheader>
-      { error ? <ListItem>{error}</ListItem> : ""}
+      {error ? <ListItem>{error}</ListItem> : ""}
       <List>
         {accounts.map((item) => {
           return (
-            <ListItemLink
+            <ListItemLink key={item.name}
               primary={item.name || item.assetPublicKey}
               to={`/accounts/${item.asset_public_key}`}
             ></ListItemLink>
@@ -188,6 +187,11 @@ const AccountsMenu = (props) => {
     </div>
   );
 };
+
+
+AccountsMenu.propTypes = {
+  walletId: PropTypes.string
+}
 
 // only allow access to a Protected Route if the wallet is unlocked
 const ProtectedRoute = ({ authenticated, path, children }) => {
@@ -216,7 +220,6 @@ function App() {
       .command_create_db()
       .then((r) => setLoading(false))
       .catch((e) => console.error(e));
-
   }, []);
   if (loading) return <Spinner />;
 
@@ -301,13 +304,15 @@ function App() {
                   />
                 </Route>
                 <Route path="/unlock">
-                  <Setup setAuthenticated={(id, password) => {
-                    setWalletId(id);
-                    setPassword(password);
-                    setAuthenticated(true);
-                  }}/>
+                  <Setup
+                    setAuthenticated={(id, password) => {
+                      setWalletId(id);
+                      setPassword(password);
+                      setAuthenticated(true);
+                    }}
+                  />
                 </Route>
-                <ProtectedRoute path="/"  authenticated={authenticated} >
+                <ProtectedRoute path="/" authenticated={authenticated}>
                   <Dashboard />
                 </ProtectedRoute>
               </Switch>

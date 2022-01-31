@@ -52,7 +52,7 @@ use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
     transaction_service::storage::{
-        database::{TransactionBackend, TransactionDatabase},
+        database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
         models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
         sqlite_db::TransactionServiceSqliteDatabase,
     },
@@ -169,7 +169,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
-        OutputFeatures::default(),
         &factories,
     );
 
@@ -582,4 +581,49 @@ pub fn test_transaction_service_sqlite_db_encrypted() {
     let cipher = Aes256Gcm::new(key);
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, Some(cipher)));
+}
+
+#[tokio::test]
+async fn import_tx_and_read_it_from_db() {
+    let db_name = format!("{}.sqlite3", random::string(8));
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
+
+    let key = GenericArray::from_slice(b"an example very very secret key.");
+    let cipher = Aes256Gcm::new(key);
+    let sqlite_db = TransactionServiceSqliteDatabase::new(connection, Some(cipher));
+
+    let transaction = CompletedTransaction::new(
+        TxId::from(1),
+        PublicKey::default(),
+        PublicKey::default(),
+        MicroTari::from(100000),
+        MicroTari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::default(),
+            PrivateKey::default(),
+        ),
+        TransactionStatus::Imported,
+        "message".to_string(),
+        Utc::now().naive_utc(),
+        TransactionDirection::Inbound,
+        Some(0),
+    );
+
+    sqlite_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            TxId::from(1),
+            Box::new(transaction),
+        )))
+        .unwrap();
+
+    let db_tx = sqlite_db.fetch_imported_transactions().unwrap();
+
+    assert_eq!(db_tx.len(), 1);
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1));
 }

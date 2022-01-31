@@ -53,6 +53,12 @@ struct TariPublicKey;
 
 struct TariPublicKeys;
 
+struct TariCommitmentSignature;
+
+struct TariCovenant;
+
+struct TariOutputFeatures;
+
 struct TariContacts;
 
 struct TariContact;
@@ -165,6 +171,19 @@ struct TariPrivateKey *private_key_from_hex(const char *hex, int *error_out);
 
 // Frees memory for a TariPrivateKey
 void private_key_destroy(struct TariPrivateKey *pk);
+
+/// -------------------------------- Commitment Signature  --------------------------------------------- ///
+
+// Creates a TariCommitmentSignature from `u`, `v` and `public_nonce` ByteVectors
+struct TariCommitmentSignature *commitment_signature_create_from_bytes(
+    struct ByteVector *public_nonce_bytes,
+    struct ByteVector *u_bytes,
+    struct ByteVector *v_bytes,
+    int *error_out
+);
+
+// Frees memory for a TariCommitmentSignature
+void commitment_signature_destroy(struct TariCommitmentSignature *com_sig);
 
 /// -------------------------------- Seed Words  -------------------------------------------------- ///
 // Create an empty instance of TariSeedWords
@@ -573,7 +592,19 @@ struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct T
 
 // Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
 // event.
-unsigned long long wallet_import_utxo(struct TariWallet *wallet, unsigned long long amount, struct TariPrivateKey *spending_key, struct TariPublicKey *source_public_key, const char *message, int *error_out);
+unsigned long long wallet_import_utxo(
+    struct TariWallet *wallet,
+    unsigned long long amount,
+    struct TariPrivateKey *spending_key,
+    struct TariPublicKey *source_public_key,
+    struct TariOutputFeatures *features,
+    struct TariCommitmentSignature *metadata_signature,
+    struct TariPublicKey *sender_offset_public_key,
+    struct TariPrivateKey *script_private_key,
+    struct TariCovenant *covenant,
+    const char *message,
+    int *error_out
+);
 
 // This function will tell the wallet to query the set base node to confirm the status of unspent transaction outputs (UTXOs).
 unsigned long long wallet_start_txo_validation(struct TariWallet *wallet, int *error_out);
