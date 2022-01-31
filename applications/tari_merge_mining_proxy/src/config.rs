@@ -27,6 +27,7 @@ use tari_common::NetworkConfigPath;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MergeMiningProxyConfig {
+    // pub network: String,
     pub monerod_url: Vec<String>,
     pub monerod_username: String,
     pub monerod_password: String,
@@ -41,6 +42,7 @@ pub struct MergeMiningProxyConfig {
 impl Default for MergeMiningProxyConfig {
     fn default() -> Self {
         Self {
+            // network: "dibbler".to_string(),
             monerod_url: vec![],
             monerod_username: "".to_string(),
             monerod_password: "".to_string(),

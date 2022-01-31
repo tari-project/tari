@@ -62,8 +62,6 @@ use std::{
 
 use config::Config;
 
-use crate::configuration::Network;
-
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
 /// Load struct from config's main section and subsection override
@@ -146,13 +144,10 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     /// were omitted, `subkey` would be 1, and if `network` were set to `baz`, `subkey` would be 3.
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
         let network_key = Self::network_config_key();
-        let network_val: Option<String> = config.get_str(network_key.as_str()).ok();
-        if let Some(s) = network_val {
-            let network: Network = s.parse()?;
-            Ok(Some(format!("{}.{}", Self::main_key_prefix(), network)))
-        } else {
-            Ok(None)
-        }
+        let network_val: Option<String> = config.get_str(network_key.as_str())
+            .ok()
+            .map(|network| format!("{}.{}", Self::main_key_prefix(), network));
+        Ok(network_val)
     }
 }
 

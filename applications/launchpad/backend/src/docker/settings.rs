@@ -444,8 +444,8 @@ impl LaunchpadConfig {
     fn xmrig_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
         let address = match &self.xmrig {
-            Some(config) => config.monero_mining_address.as_str(),
-            None => DEFAULT_MINING_ADDRESS,
+            Some(config) if config.monero_mining_address.len() > 12 => config.monero_mining_address.as_str(),
+            _ => DEFAULT_MINING_ADDRESS,
         };
         if let Some(config) = &self.xmrig {
             env.append(&mut vec![

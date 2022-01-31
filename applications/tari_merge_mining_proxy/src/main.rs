@@ -51,12 +51,13 @@ use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
 
 use crate::{block_template_data::BlockTemplateRepository, config::MergeMiningProxyConfig, error::MmProxyError};
+const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let (_, _global, cfg) = init_configuration(ApplicationType::MergeMiningProxy)?;
     let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-    debug!("Configuration: {:?}", config);
+    debug!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
@@ -64,10 +65,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
     let base_node = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
-    info!("Connecting to base node at {}", base_node);
+    info!(target: LOG_TARGET, "Connecting to base node at {}", base_node);
     let base_node_client = grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
     let wallet = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
-    info!("Connecting to wallet at {}", wallet);
+    info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet);
     let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
     let addr = multiaddr_to_socketaddr(&config.proxy_host_address)?;
     let xmrig_service = MergeMiningProxyService::new(
@@ -81,13 +82,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     match Server::try_bind(&addr) {
         Ok(builder) => {
-            info!("Listening on {}...", addr);
+            info!(target: LOG_TARGET, "Listening on {}...", addr);
             println!("Listening on {}...", addr);
             builder.serve(service).await?;
             Ok(())
         },
         Err(err) => {
-            error!("Fatal: Cannot bind to '{}'.", addr);
+            error!(target: LOG_TARGET, "Fatal: Cannot bind to '{}'.", addr);
             println!("Fatal: Cannot bind to '{}'.", addr);
             println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
             println!("'proxy_host_address' in 'config/config.toml' and for the applicable XMRig '[pools][url]' or");

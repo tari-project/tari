@@ -77,23 +77,23 @@ base_node_tor_identity_file = "/var/tari/base_node/config/igor/tari_base_node_to
 [mempool.igor]
 
 [wallet]
+network = "dibbler"
 wallet_db_file = "wallet/wallet.dat"
 console_wallet_db_file = "wallet/console-wallet.dat"
 grpc_enabled = true
 grpc_address = "/ip4/0.0.0.0/tcp/18143"
 password = "tari"
-
-[wallet.dibbler]
-use_libtor = false
-tor_onion_port = 18141
-
-# Overidden in Tauri environment variables for ALL networks
+# The following are overridden in Tauri environment variables for ALL networks - so just here for informational purposes
 transport = "tor"
 tor_control_auth = "password=tari"
 tor_control_address = "/dns4/tor/tcp/9051"
 tor_socks_address_override = ""
 tor_forward_address = ""
 tcp_listener_address = ""
+
+[wallet.dibbler]
+use_libtor = false
+tor_onion_port = 18141
 
 [wallet.igor]
 use_libtor = false
@@ -108,7 +108,7 @@ wallet_addr = "/dns4/wallet/tcp/18143"
 mine_on_tip_only = true
 
 [merge_mining_proxy]
-#network = "dibbler"
+network = "dibbler"
 grpc_base_node_address = "/dns4/base_node/tcp/18142"
 grpc_console_wallet_address = "/dns4/wallet/tcp/18143"
 proxy_host_address = "/dns4/mm_proxy/tcp/18081"
@@ -116,16 +116,23 @@ proxy_submit_to_origin = true
 wait_for_initial_sync_at_startup = true
 
 [merge_mining_proxy.dibbler]
-monerod_url = [ # stagenet
-    "http://stagenet.xmr-tw.org:38081",
-    "http://stagenet.community.xmr.to:38081",
-    "http://monero-stagenet.exan.tech:38081",
-    "http://xmr-lux.boldsuck.org:38081",
-    "http://singapore.node.xmr.pm:38081",
-]
+#monerod_url = [ # stagenet
+#    "http://stagenet.xmr-tw.org:38081",
+#    "http://stagenet.community.xmr.to:38081",
+#    "http://monero-stagenet.exan.tech:38081",
+#    "http://xmr-lux.boldsuck.org:38081",
+#    "http://singapore.node.xmr.pm:38081",
+#]
 monerod_username = ""
 monerod_password = ""
 monerod_use_auth = false
+
+[merge_mining_proxy.local]
+grpc_base_node_address = "/ip4/127.0.0.1/tcp/18142"
+grpc_console_wallet_address = "/ip4/127.0.0.1/tcp/18143"
+proxy_host_address = "/ip4/127.0.0.1/tcp/18081"
+proxy_submit_to_origin = false
+wait_for_initial_sync_at_startup = true
 
 [stratum_transcoder]
 transcoder_host_address = "127.0.0.1:7879"

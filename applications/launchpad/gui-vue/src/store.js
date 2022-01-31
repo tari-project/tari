@@ -5,7 +5,7 @@ import CBuffer from 'CBuffer';
 
 const settings = {
     walletPassword: "tari",
-    moneroMiningAddress: "",
+    moneroMiningAddress: "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48",
     numMiningThreads: 1,
     tariNetwork: "dibbler",
     rootFolder: "/tmp/dibbler",

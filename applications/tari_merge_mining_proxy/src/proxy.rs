@@ -101,7 +101,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             let bytes = match proxy::read_body_until_end(request.body_mut()).await {
                 Ok(b) => b,
                 Err(err) => {
-                    warn!("Method: Unknown, Failed to read request: {:?}", err);
+                    warn!(target: LOG_TARGET, "Method: Unknown, Failed to read request: {:?}", err);
                     let resp = proxy::json_response(
                         StatusCode::BAD_REQUEST,
                         &json_rpc::standard_error_response(
@@ -119,7 +119,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Method "{}" failed handling request: {:?}", method_name, err);
+                    error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", method_name, err);
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
