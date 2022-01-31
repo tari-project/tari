@@ -20,38 +20,50 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var { createClient } = require('../baseNodeClient')
+var { createClient } = require("../baseNodeClient");
 
-var express = require("express")
-var router = express.Router()
+var express = require("express");
+var router = express.Router();
 
 router.get("/:height", async function (req, res) {
-  let client = createClient()
-  let height = req.params.height
-
   try {
-    let block = await client.getBlocks({ heights: [height] })
+    let client = createClient();
+    let height = parseInt(req.params.height);
+    let block = await client.getBlocks({ heights: [height] });
 
     if (!block || block.length === 0) {
       res.status(404);
-      res.render('404', { message: `Block at height ${height} not found`});
+      res.render("404", { message: `Block at height ${height} not found` });
       return;
     }
-    console.log(block)
-    console.log(block[0].block.body.outputs[0])
-    res.render('blocks', {
-      title: `Block at height:${block[0].block.header.height}`,
-      height: height,
-      prevHeight: parseInt(height) - 1,
-      nextHeight: parseInt(height) + 1,
+
+    let tipInfo = await client.getTipInfo({});
+    let tipHeight = parseInt(tipInfo.metadata.height_of_longest_chain);
+
+    let prevHeight = height - 1;
+    let prevLink = `/blocks/${prevHeight}`;
+    if (height === 0) prevLink = null;
+
+    let nextHeight = height + 1;
+    let nextLink = `/blocks/${nextHeight}`;
+    if (height === tipHeight) nextLink = null;
+
+    // console.log(block);
+    res.render("blocks", {
+      title: `Block at height: ${block[0].block.header.height}`,
+      header: block[0].block.header,
+      height,
+      prevLink,
+      prevHeight,
+      nextLink,
+      nextHeight,
       block: block[0].block,
-      pows: { '0': 'Monero', '2': 'SHA' }
-    })
-
+      pows: { 0: "Monero", 1: "SHA-3" },
+    });
   } catch (error) {
-    res.status(500)
-    res.render('error', { error: error })
+    res.status(500);
+    res.render("error", { error: error });
   }
-})
+});
 
-module.exports = router
+module.exports = router;
