@@ -26,7 +26,7 @@ var express = require("express");
 var router = express.Router();
 
 /* GET home page. */
-router.get("/:asset_public_key", async function (req, res, next) {
+router.get("/:asset_public_key", async function (req, res) {
   let baseNodeClient = createBaseNodeClient();
   // let validatorNodeClient = createValidatorNodeClient()
   let asset_public_key = req.params.asset_public_key;

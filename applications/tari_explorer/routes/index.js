@@ -82,21 +82,22 @@ router.get("/", async function (req, res) {
       }
       mempool[i].transaction.body.total_fees = sum;
     }
-    res.render("index", {
+    const result = {
       title: "Blocks",
-      tipInfo: tipInfo,
-      mempool: mempool,
-      headers: headers,
-      pows: { 0: "Monero", 2: "SHA" },
+      tipInfo,
+      mempool,
+      headers,
+      pows: { 0: "Monero", 1: "SHA-3" },
       nextPage: firstHeight - limit,
       prevPage: firstHeight + limit,
-      limit: limit,
-      from: from,
-      algoSplit: algoSplit,
+      limit,
+      from,
+      algoSplit,
       blockTimes: getBlockTimes(last100Headers),
       moneroTimes: getBlockTimes(last100Headers, "0"),
       shaTimes: getBlockTimes(last100Headers, "1"),
-    });
+    };
+    res.render("index", result);
   } catch (error) {
     res.status(500);
     res.render("error", { error: error });

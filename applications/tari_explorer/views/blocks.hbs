@@ -5,8 +5,73 @@
   <a href="/blocks/{{nextHeight}}">Block {{nextHeight}} &gt;</a>
 </p>
 <br />
+<h3>Header</h3>
+<table>
+  <tr>
+    <th>Hash</th>
+    <td>{{hex this.header.hash}}</td>
+  </tr>
+  <tr>
+    <th>Proof of Work</th>
+    <td>{{lookup this.pows this.header.pow.pow_algo}}</td>
+  </tr>
+  <tr>
+    <th>Height</th>
+    <td>{{this.header.height}}</td>
+  </tr>
+  <tr>
+    <th>Version</th>
+    <td>{{this.header.version}}</td>
+  </tr>
+  <tr>
+    <th>Timestamp</th>
+    <td>{{timestamp this.header.timestamp}}</td>
+  </tr>
+  <tr>
+    <th>Previous Hash</th>
+    <td>{{hex this.header.prev_hash}}</td>
+  </tr>
+  <tr>
+    <th>Nonce</th>
+    <td>{{this.header.nonce}}</td>
+  </tr>
+  <tr>
+    <th>Output Merkle Root</th>
+    <td>{{hex this.header.output_mr}}</td>
+  </tr>
+  <tr>
+    <th>Witness Merkle Root</th>
+    <td>{{hex this.header.witness_mr}}</td>
+  </tr>
+  <tr>
+    <th>Kernel Merkle Root</th>
+    <td>{{hex this.header.kernel_mr}}</td>
+  </tr>
+  <tr>
+    <th>Input Merkle Root</th>
+    <td>{{hex this.header.input_mr}}</td>
+  </tr>
+  <tr>
+    <th>Kernel MMR Size</th>
+    <td>{{this.header.kernel_mmr_size}}</td>
+  </tr>
+  <tr>
+    <th>Output MMR Size</th>
+    <td>{{this.header.output_mmr_size}}</td>
+  </tr>
+  <tr>
+    <th>Total Kernel Offset</th>
+    <td>{{hex this.header.total_kernel_offset}}</td>
+  </tr>
+  <tr>
+    <th>Total Script Offset</th>
+    <td>{{hex this.header.total_script_offset}}</td>
+  </tr>
+</table>
+
+<br />
 <h3>Kernels</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
   <thead>
     <tr>
       <th>Hash</th>
@@ -34,38 +99,40 @@
 
 <br />
 <h3>Outputs</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
   <thead>
     <tr>
       <th>Hash</th>
       <th>Commitment</th>
       <th>Flags</th>
       <th>Maturity</th>
-        <td>Parent PK</td>
-        <th>Unique Id</th>
-        <th>Other Features</th>
-        <th>Script</th>
+      <th>Parent PK</th>
+      <th>Unique Id</th>
+      <th>Other Features</th>
+      <th>Script</th>
     </tr>
   </thead>
   <tbody>
     {{#each this.block.body.outputs}}
-     <tr>
-         <td>{{hex hash}}</td>
-         <td>{{hex commitment}}</td>
-         <td>{{features.flags}}</td>
-         <td>{{features.maturity}}</td>
-         <td><a href="/assets/{{ hex features.parent_public_key }}">{{ hex features.parent_public_key }}</a></td>
-         <td>{{ hex features.unique_id}}</td>
-         <td>{{ json features }}</td>
-         <td>{{hex script}}</td>
-     </tr>
+      <tr>
+        <td>{{hex hash}}</td>
+        <td>{{hex commitment}}</td>
+        <td>{{features.flags}}</td>
+        <td>{{features.maturity}}</td>
+        <td><a href="/assets/{{hex features.parent_public_key}}">{{hex
+              features.parent_public_key
+            }}</a></td>
+        <td>{{hex features.unique_id}}</td>
+        <td>{{json features}}</td>
+        <td>{{hex script}}</td>
+      </tr>
     {{/each}}
   </tbody>
 </table>
 
 <br />
 <h3>Spent Inputs</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+<table>
   <thead>
     <tr>
       <th>Hash</th>

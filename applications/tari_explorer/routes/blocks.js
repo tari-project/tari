@@ -37,15 +37,15 @@ router.get("/:height", async function (req, res) {
       res.render("404", { message: `Block at height ${height} not found` });
       return;
     }
-    console.log(block);
-    console.log(block[0].block.body.outputs[0]);
+    // console.log(block);
     res.render("blocks", {
-      title: `Block at height:${block[0].block.header.height}`,
-      height: height,
+      title: `Block at height: ${block[0].block.header.height}`,
+      header: block[0].block.header,
+      height,
       prevHeight: parseInt(height) - 1,
       nextHeight: parseInt(height) + 1,
       block: block[0].block,
-      pows: { 0: "Monero", 2: "SHA" },
+      pows: { 0: "Monero", 1: "SHA-3" },
     });
   } catch (error) {
     res.status(500);
