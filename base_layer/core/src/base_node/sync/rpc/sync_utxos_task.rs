@@ -54,7 +54,7 @@ where B: BlockchainBackend + 'static
     ) -> Result<(), RpcStatus> {
         let start_header = self
             .db
-            .fetch_header_containing_utxo_mmr(request.start + 1)
+            .fetch_header_containing_utxo_mmr(request.start)
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);

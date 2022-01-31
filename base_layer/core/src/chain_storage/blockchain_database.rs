@@ -449,11 +449,6 @@ where B: BlockchainBackend
         Ok(chain_header)
     }
 
-    // TODO: this method is actually off by one. It returns the highest header where the kernel_mmr_count is <=
-    // mmr_position, but should probably only be <.
-    // E.g. if mmr_position == 2, it will return a header where kernel_mmr_count == 2, but this is
-    // confusing because mmr_position ==2 actually would be in the next header
-    // Either the caller needs to be updated or this method needs to be renamed
     pub fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_header_containing_kernel_mmr(mmr_position)
