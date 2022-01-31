@@ -1,15 +1,15 @@
-var express = require("express")
-const { createClient } = require("../baseNodeClient")
-var router = express.Router()
+var express = require("express");
+const { createClient } = require("../baseNodeClient");
+var router = express.Router();
 
 /* GET mempool page. */
 router.get("/:excessSigs", async function (req, res) {
   try {
-    let client = createClient()
-    let txId = req.params.excessSigs.split("+")
-    console.log(txId)
-    let mempool = await client.getMempoolTransactions({})
-    let tx = null
+    let client = createClient();
+    let txId = req.params.excessSigs.split("+");
+    console.log(txId);
+    let mempool = await client.getMempoolTransactions({});
+    let tx = null;
     for (let i = 0; i < mempool.length; i++) {
       for (let j = 0; j < mempool[i].transaction.body.kernels.length; j++) {
         for (let k = 0; k < txId.length; k++) {
@@ -19,30 +19,30 @@ router.get("/:excessSigs", async function (req, res) {
               mempool[i].transaction.body.kernels[j].excess_sig.signature
             ).toString("hex")
           ) {
-            tx = mempool[i].transaction
-            break
+            tx = mempool[i].transaction;
+            break;
           }
         }
         if (tx) {
-          break
+          break;
         }
       }
     }
 
     if (!tx) {
-      res.status(404)
-      res.render("error", { error: "Tx not found" })
-      return
+      res.status(404);
+      res.render("error", { error: "Tx not found" });
+      return;
     }
-    console.log(tx)
-    console.log("===============")
+    console.log(tx);
+    console.log("===============");
     res.render("Mempool", {
       tx,
-    })
+    });
   } catch (error) {
-    res.status(500)
-    res.render("error", { error: error })
+    res.status(500);
+    res.render("error", { error: error });
   }
-})
+});
 
-module.exports = router
+module.exports = router;

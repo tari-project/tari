@@ -20,37 +20,37 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var { createClient } = require("../baseNodeClient")
+var { createClient } = require("../baseNodeClient");
 
-var express = require("express")
-var router = express.Router()
+var express = require("express");
+var router = express.Router();
 
 router.get("/", async function (req, res) {
-  let client = createClient()
+  let client = createClient();
   let commitments = (
     req.query.comm ||
     req.query.commitment ||
     req.query.c ||
     ""
-  ).split(",")
+  ).split(",");
 
   if (commitments.length === 0) {
-    res.status(404)
-    return
+    res.status(404);
+    return;
   }
-  let hexCommitments = []
+  let hexCommitments = [];
   for (let i = 0; i < commitments.length; i++) {
-    hexCommitments.push(Buffer.from(commitments[i], "hex"))
+    hexCommitments.push(Buffer.from(commitments[i], "hex"));
   }
-  console.log(hexCommitments)
+  console.log(hexCommitments);
   let result = await client.searchUtxos({
     hexCommitments,
-  })
+  });
 
-  console.log(result)
+  console.log(result);
   res.render("search", {
     items: result,
-  })
-})
+  });
+});
 
-module.exports = router
+module.exports = router;
