@@ -6,17 +6,30 @@
 #![deny(unreachable_patterns)]
 #![deny(unknown_lints)]
 
-use std::{fs::File, io::Write};
+use std::{
+    fs::File,
+    io::{stdout, Write},
+};
 
 use serde::Serialize;
 use tari_common_types::types::{Commitment, PrivateKey};
-use tari_core::transactions::{
-    tari_amount::{MicroTari, T},
-    test_helpers,
-    transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
-    CryptoFactories,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::{MicroTari, T},
+        test_helpers,
+        test_helpers::generate_keys,
+        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        CryptoFactories,
+    },
 };
-use tari_crypto::{script, tari_utilities::hex::Hex};
+use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
+    range_proof::RangeProofService,
+    script,
+    script::TariScript,
+    tari_utilities::hex::Hex,
+};
 use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;
@@ -63,8 +76,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task::spawn(async move {
             let result = task::spawn_blocking(move || {
                 let script = script!(Nop);
-                let (utxo, key, _) = test_helpers::create_utxo(value, &fc, feature, &script, &Default::default());
+                let (utxo, key, _) = create_utxo(value, &fc, feature, script, Covenant::default());
                 print!(".");
+                let _ = stdout().flush();
                 (utxo, key, value)
             })
             .await
@@ -136,4 +150,38 @@ impl Iterator for UTXOFeatures {
         let f = OutputFeatures::with_maturity(0);
         Some(f)
     }
+}
+
+/// Create a new UTXO for the specified value and return the output and spending key
+fn create_utxo(
+    value: MicroTari,
+    factories: &CryptoFactories,
+    features: OutputFeatures,
+    script: TariScript,
+    covenant: Covenant,
+) -> (TransactionOutput, PrivateKey, PrivateKey) {
+    let keys = generate_keys();
+    let offset_keys = generate_keys();
+    let commitment = factories.commitment.commit_value(&keys.k, value.into());
+    let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
+    let metadata_sig = TransactionOutput::create_final_metadata_signature(
+        &value,
+        &keys.k,
+        &script,
+        &features,
+        &offset_keys.k,
+        &covenant,
+    )
+    .unwrap();
+
+    let utxo = TransactionOutput::new_current_version(
+        features,
+        commitment,
+        proof.into(),
+        script,
+        offset_keys.pk,
+        metadata_sig,
+        covenant,
+    );
+    (utxo, keys.k, offset_keys.k)
 }
