@@ -77,6 +77,7 @@ class Create extends React.Component {
     this.cleanup = null;
   }
 
+
   componentDidMount() {
     this.cleanup = appWindow.listen("tauri://file-drop", (obj) =>
       this.dropFile(obj)
@@ -102,7 +103,7 @@ class Create extends React.Component {
     }
   }
 
-  async save() {
+  save = async () => {
     const isValid = await this.validate();
     if (!isValid) {
       return;
@@ -182,17 +183,17 @@ class Create extends React.Component {
     this.setState({ isSaving: false });
   };
 
-  async onNameChanged(e){
+  onNameChanged = (e) => {
     this.setState({ name: e.target.value });
   };
 
-  onTipCheckboxChanged(e, tip){
+  onTipCheckboxChanged = (e, tip) => {
     let obj = {};
     obj[tip] = e.target.checked;
     this.setState(obj);
   };
 
-  onTip002DataChanged(field, e){
+  onTip002DataChanged = (field, e) => {
     let tip002Data = {};
     tip002Data[field] = e.target.value;
     tip002Data = { ...this.state.tip002Data, ...tip002Data };
@@ -203,19 +204,19 @@ class Create extends React.Component {
   //   this.setState({ numberInitialTokens: e.target.value });
   // };
 
-  onDescriptionChanged(e){
+  onDescriptionChanged = (e) => {
     this.setState({
       description: e.target.value,
     });
   };
 
-  onNewCommitteePubKeyChanged(e){
+  onNewCommitteePubKeyChanged = (e) => {
     this.setState({
       newCommitteePubKey: e.target.value,
     });
   };
 
-  onAddCommitteeMember(){
+  onAddCommitteeMember = () => {
     let committee = [...this.state.tip003Data.committee];
     committee.push(this.state.newCommitteePubKey);
     let tip003Data = { ...this.state.tip003Data, ...{ committee: committee } };
@@ -227,7 +228,7 @@ class Create extends React.Component {
     });
   };
 
-  onDeleteCommitteeMember(index){
+  onDeleteCommitteeMember = (index) => {
     let committee = this.state.tip003Data.committee.filter(function (
       _,
       i,
@@ -253,13 +254,13 @@ class Create extends React.Component {
     return saveErrors.length === 0;
   }
 
-  onImageChanged(e){
+  onImageChanged = (e) => {
     this.setState({
       image: e.target.value,
     });
   };
 
-  async selectFile (){
+  selectFile = async () => {
     const filePath = await dialog.open({
       filters: [
         {
@@ -278,7 +279,7 @@ class Create extends React.Component {
     }
   };
 
-  async addFileToIPFS(filePath) {
+  addFileToIPFS = async (filePath) => {
     const parts = filePath.split("/");
     const name = parts[parts.length - 1];
     // unfortunately the ipfs http /add api doesn't play nicely with the tauri http client
