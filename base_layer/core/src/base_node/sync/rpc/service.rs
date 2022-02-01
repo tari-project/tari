@@ -435,7 +435,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let db = self.db();
 
         let start_header = db
-            .fetch_header_containing_kernel_mmr(req.start + 1)
+            .fetch_header_containing_kernel_mmr(req.start)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .into_header();

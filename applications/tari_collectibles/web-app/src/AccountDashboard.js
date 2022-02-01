@@ -129,7 +129,7 @@ class AccountDashboard extends React.Component {
     }
   }
 
-  async refreshBalance() {
+  refreshBalance = async () => {
     this.setState({ error: null });
     let balance = await binding.command_asset_wallets_get_balance(
       this.state.assetPublicKey
@@ -139,7 +139,7 @@ class AccountDashboard extends React.Component {
     return balance;
   };
 
-  async refresh721() {
+  refresh721 = async () => {
     let tip721Data = {};
     let tokens = await binding.command_tip004_list_tokens(
       this.state.assetPublicKey
@@ -157,7 +157,7 @@ class AccountDashboard extends React.Component {
     return tip721Data;
   };
 
-  async onGenerateReceiveAddress() {
+  onGenerateReceiveAddress = async () => {
     try {
       this.setState({ error: null });
       let receiveAddress = await binding.command_asset_wallets_create_address(
@@ -171,15 +171,14 @@ class AccountDashboard extends React.Component {
     }
   };
 
-  async onSendToChanged(e) {
+  onSendToChanged = async (e) => {
     this.setState({ sendToAddress: e.target.value });
   };
 
-  async onSendToAmountChanged(e) {
+  onSendToAmountChanged = async (e) => {
     this.setState({ sendToAmount: parseInt(e.target.value) });
   };
-
-  async onSend(){
+  onSend = async () => {
     try {
       this.setState({ error: "" });
       let result = await binding.command_asset_wallets_send_to(
@@ -198,12 +197,12 @@ class AccountDashboard extends React.Component {
       this.setState({ error: err.message });
     }
   };
-  async openTip721SendDraft(tokenId) {
+  openTip721SendDraft = async (tokenId) => {
     this.setState({
       tip721SendDraftId: tokenId,
     });
   };
-  async on721Send(fromAddressId, tokenId) {
+  on721Send = async (fromAddressId, tokenId) => {
     try {
       this.setState({ error: "" });
       let result = await binding.command_tip721_transfer_from(
@@ -222,7 +221,7 @@ class AccountDashboard extends React.Component {
     }
   };
 
-  async onSaveToFavorites(){
+  onSaveToFavorites = async () => {
     try {
       await binding.command_asset_wallets_create(this.state.assetPublicKey);
       await this.reload();

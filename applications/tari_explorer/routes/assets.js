@@ -20,40 +20,40 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var { createClient: createBaseNodeClient } = require('../baseNodeClient')
+var { createClient: createBaseNodeClient } = require("../baseNodeClient");
 
-var express = require('express')
-var router = express.Router()
+var express = require("express");
+var router = express.Router();
 
 /* GET home page. */
-router.get('/:asset_public_key', async function (req, res, next) {
-  let baseNodeClient = createBaseNodeClient()
+router.get("/:asset_public_key", async function (req, res) {
+  let baseNodeClient = createBaseNodeClient();
   // let validatorNodeClient = createValidatorNodeClient()
-  let asset_public_key = req.params.asset_public_key
+  let asset_public_key = req.params.asset_public_key;
 
   try {
-    let tokens = await baseNodeClient.getTokens({ asset_public_key:  Buffer.from(asset_public_key, "hex") })
-    console.log(tokens)
+    let tokens = await baseNodeClient.getTokens({
+      asset_public_key: Buffer.from(asset_public_key, "hex"),
+    });
+    console.log(tokens);
 
     if (!tokens || tokens.length === 0) {
       res.status(404);
-      res.render('404', { message: `No tokens for asset found`});
+      res.render("404", { message: `No tokens for asset found` });
       return;
     }
 
     // let headers = validatorNodeClient.listHeaders({ from_height: 0, num_headers: 101 })
 
-    res.render('assets', {
+    res.render("assets", {
       title: `Asset with pub key: ${asset_public_key}`,
       tokens: tokens,
       // headers
-    })
-
-
+    });
   } catch (error) {
-    res.status(500)
-    res.render('error', { error: error })
+    res.status(500);
+    res.render("error", { error: error });
   }
-})
+});
 
-module.exports = router
+module.exports = router;
