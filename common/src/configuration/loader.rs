@@ -24,7 +24,7 @@
 //!
 //! Tari is using config crate which allows to extend config file with application level configs.
 //! To allow deriving configuration from a Config via [`ConfigLoader`] trait application configuration
-//! struct should implements [`Deserialize`][serde::Deserialize] and [`NetworkConfigPath`] traits.
+//! struct should implements [`Deserialize`][serde::Deserialize] and [`SubConfigPath`] traits.
 //!
 //! [`ConfigLoader::load_from`] logic will include automated overloading of parameters from [application.{network}]
 //! subsection, where network is specified in `application.network` parameter.
@@ -37,19 +37,19 @@
 //! ```
 //! # use config::Config;
 //! # use serde::{Deserialize};
-//! # use tari_common::{NetworkConfigPath, ConfigLoader};
+//! # use tari_common::{SubConfigPath, ConfigLoader};
 //! #[derive(Deserialize)]
 //! struct MyNodeConfig {
 //!     welcome_message: String,
 //! }
-//! impl NetworkConfigPath for MyNodeConfig {
+//! impl SubConfigPath for MyNodeConfig {
 //!     fn main_key_prefix() -> &'static str {
 //!         "my_node"
 //!     }
 //! }
 //!
 //! # let mut config = Config::new();
-//! config.set("my_node.network", "weatherwax");
+//! config.set("my_node.override_from", "weatherwax");
 //! config.set("my_node.weatherwax.welcome_message", "nice to see you at unseen");
 //! let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 //! assert_eq!(my_config.welcome_message, "nice to see you at unseen");
@@ -98,22 +98,33 @@ pub trait ConfigPath {
     }
 }
 
-/// Load struct from config's main section and network subsection override
+/// Load struct from config's main section and subsection override
 ///
-/// Network subsection will be chosen based on `network` key value
+/// The subsection will be chosen based on `config` key value
 /// from the main section defined in this trait.
 ///
-/// Wrong network value will result in Error
-pub trait NetworkConfigPath {
+/// So for example
+///
+/// ```toml
+/// [section]
+/// config = "local"
+///
+/// [section.local]
+/// selected = true
+///
+/// [section.remote]
+/// selected = false
+/// ```
+pub trait SubConfigPath {
     /// Main configuration section
     fn main_key_prefix() -> &'static str;
-    /// Path for `network` key in config
-    fn network_config_key() -> String {
-        let main = <Self as NetworkConfigPath>::main_key_prefix();
-        format!("{}.network", main)
+    /// Path for `override_from` key in config
+    fn subconfig_key() -> String {
+        let main = <Self as SubConfigPath>::main_key_prefix();
+        format!("{}.override_from", main)
     }
 }
-impl<C: NetworkConfigPath> ConfigPath for C {
+impl<C: SubConfigPath> ConfigPath for C {
     /// Returns the string representing the top level configuration category.
     /// For example, in the following TOML file, options for `main_key_prefix` would be `MainKeyOne` or `MainKeyTwo`:
     /// ```toml
@@ -123,7 +134,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     ///   subkey2=1
     /// ```
     fn main_key_prefix() -> &'static str {
-        <Self as NetworkConfigPath>::main_key_prefix()
+        <Self as SubConfigPath>::main_key_prefix()
     }
 
     /// Loads the desired subsection from the config file into the provided `config` and merges the results. The
@@ -143,8 +154,9 @@ impl<C: NetworkConfigPath> ConfigPath for C {
     /// the result after calling `merge_config` would have the struct's `subkey` value set to 2. If `network`
     /// were omitted, `subkey` would be 1, and if `network` were set to `baz`, `subkey` would be 3.
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
-        let network_key = Self::network_config_key();
-        let network_val: Option<String> = config.get_str(network_key.as_str())
+        let subconfig_key = Self::subconfig_key();
+        let network_val: Option<String> = config
+            .get_str(subconfig_key.as_str())
             .ok()
             .map(|network| format!("{}.{}", Self::main_key_prefix(), network));
         Ok(network_val)
@@ -156,7 +168,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
 /// ```
 /// # use config::Config;
 /// # use serde::{Deserialize};
-/// use tari_common::{ConfigLoader, NetworkConfigPath};
+/// use tari_common::{ConfigLoader, SubConfigPath};
 ///
 /// #[derive(Deserialize)]
 /// struct MyNodeConfig {
@@ -171,7 +183,7 @@ impl<C: NetworkConfigPath> ConfigPath for C {
 /// fn bye() -> String {
 ///     "bye bye".into()
 /// }
-/// impl NetworkConfigPath for MyNodeConfig {
+/// impl SubConfigPath for MyNodeConfig {
 ///     fn main_key_prefix() -> &'static str {
 ///         "my_node"
 ///     }
@@ -183,8 +195,8 @@ impl<C: NetworkConfigPath> ConfigPath for C {
 /// let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, welcome());
-/// // Overloading from network subsection as we use NetworkConfigPath
-/// config.set("my_node.network", "mainnet");
+/// // Overloading from network subsection as we use SubConfigPath
+/// config.set("my_node.override_from", "mainnet");
 /// let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you soon".to_string());
 /// ```
@@ -212,7 +224,7 @@ where C: ConfigPath + for<'de> serde::de::Deserialize<'de>
 /// ```
 /// use config::Config;
 /// use serde::{Deserialize, Serialize};
-/// use tari_common::{DefaultConfigLoader, NetworkConfigPath};
+/// use tari_common::{DefaultConfigLoader, SubConfigPath};
 ///
 /// #[derive(Serialize, Deserialize)]
 /// struct MyNodeConfig {
@@ -227,7 +239,7 @@ where C: ConfigPath + for<'de> serde::de::Deserialize<'de>
 ///         }
 ///     }
 /// }
-/// impl NetworkConfigPath for MyNodeConfig {
+/// impl SubConfigPath for MyNodeConfig {
 ///     fn main_key_prefix() -> &'static str {
 ///         "my_node"
 ///     }
@@ -339,7 +351,7 @@ mod test {
 
     use super::*;
 
-    // test NetworkConfigPath both with Default and withou Default
+    // test SubConfigPath both with Default and without Default
     #[derive(Serialize, Deserialize)]
     struct SubTari {
         monero: String,
@@ -362,7 +374,7 @@ mod test {
     fn serde_default_string() -> String {
         "ispublic".into()
     }
-    impl NetworkConfigPath for SuperTari {
+    impl SubConfigPath for SuperTari {
         fn main_key_prefix() -> &'static str {
             "crypto"
         }
@@ -389,7 +401,7 @@ mod test {
         // [ ] crypto.mainnet, [X] crypto = "istari", [X] Default
         assert_eq!(crypto.over.monero, "istari");
 
-        config.set("crypto.network", "mainnet")?;
+        config.set("crypto.override_from", "mainnet")?;
         // network = mainnet
         let crypto = <SuperTari as DefaultConfigLoader>::load_from(&config)?;
         // [X] crypto.mainnet = "isnottaritoo", [X] crypto, [X] Default
@@ -398,9 +410,6 @@ mod test {
         assert_eq!(crypto.bitcoin, "isnottaritoo");
         // [ ] crypto.mainnet, [X] crypto = "istari", [X] Default
         assert_eq!(crypto.over.monero, "istari");
-
-        config.set("crypto.network", "wrong_network")?;
-        assert!(<SuperTari as DefaultConfigLoader>::load_from(&config).is_err());
 
         Ok(())
     }
@@ -421,7 +430,7 @@ mod test {
         assert!(<SuperTari as ConfigLoader>::load_from(&config).is_err());
 
         // network = mainnet
-        config.set("crypto.network", "mainnet")?;
+        config.set("crypto.override_from", "mainnet")?;
         let crypto = <SuperTari as ConfigLoader>::load_from(&config)?;
         // [X] crypto.mainnet = "isnottaritoo", [X] crypto, [X] Default
         assert_eq!(crypto.within.monero, "isnottaritoo");

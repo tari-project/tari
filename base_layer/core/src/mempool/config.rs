@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common::NetworkConfigPath;
+use tari_common::SubConfigPath;
 
 use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
@@ -32,7 +32,7 @@ pub struct MempoolConfig {
     pub reorg_pool: ReorgPoolConfig,
 }
 
-impl NetworkConfigPath for MempoolConfig {
+impl SubConfigPath for MempoolConfig {
     fn main_key_prefix() -> &'static str {
         "mempool"
     }
@@ -57,7 +57,7 @@ impl Default for MempoolServiceConfig {
     }
 }
 
-impl NetworkConfigPath for MempoolServiceConfig {
+impl SubConfigPath for MempoolServiceConfig {
     fn main_key_prefix() -> &'static str {
         "mempool_service"
     }
@@ -93,8 +93,8 @@ mod test {
             .expect("Could not set ''");
 
         config
-            .set("mempool.network", "mainnet")
-            .expect("Could not set 'network'");
+            .set("mempool.override_from", "mainnet")
+            .expect("Could not set 'override_from'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
@@ -104,10 +104,5 @@ mod test {
             my_config.reorg_pool.expiry_height,
             ReorgPoolConfig::default().expiry_height
         );
-
-        config
-            .set("mempool.network", "wrong_network")
-            .expect("Could not set 'network'");
-        assert!(MempoolConfig::load_from(&config).is_err());
     }
 }

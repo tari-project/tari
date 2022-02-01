@@ -9,7 +9,7 @@
 //!     ConfigLoader,
 //!     ConfigPath,
 //!     ConfigurationError,
-//!     NetworkConfigPath,
+//!     SubConfigPath,
 //! };
 //! use toml::value::Value;
 //!
@@ -31,7 +31,7 @@
 //!     port: u16,
 //!     address: String,
 //! }
-//! impl NetworkConfigPath for MyNodeConfig {
+//! impl SubConfigPath for MyNodeConfig {
 //!     fn main_key_prefix() -> &'static str {
 //!         "my_node"
 //!     }
@@ -45,7 +45,7 @@
 //! };
 //! // Merging configs into resulting structure, accounting preset network params
 //! let mut config = Config::new();
-//! config.set(&MyNodeConfig::network_config_key(), "weatherwax");
+//! config.set(&MyNodeConfig::subconfig_key(), "weatherwax");
 //! main_config.merge_into(&mut config).unwrap();
 //! node_config.merge_into(&mut config).unwrap();
 //!
@@ -57,7 +57,7 @@
 //! name = "test_server"
 //!
 //! [my_node]
-//! network = "weatherwax"
+//! override_from = "weatherwax"
 //!
 //! [my_node.weatherwax]
 //! address = "localhost"

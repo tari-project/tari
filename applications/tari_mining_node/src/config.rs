@@ -40,7 +40,7 @@ use std::{str::FromStr, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
-use tari_common::NetworkConfigPath;
+use tari_common::SubConfigPath;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,7 +61,7 @@ pub enum ProofOfWork {
     Sha3,
 }
 
-impl NetworkConfigPath for MinerConfig {
+impl SubConfigPath for MinerConfig {
     fn main_key_prefix() -> &'static str {
         "mining_node"
     }

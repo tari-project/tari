@@ -23,7 +23,7 @@
 
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_common::NetworkConfigPath;
+use tari_common::SubConfigPath;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct MergeMiningProxyConfig {
@@ -56,7 +56,7 @@ impl Default for MergeMiningProxyConfig {
     }
 }
 
-impl NetworkConfigPath for MergeMiningProxyConfig {
+impl SubConfigPath for MergeMiningProxyConfig {
     fn main_key_prefix() -> &'static str {
         "merge_mining_proxy"
     }
@@ -73,17 +73,17 @@ mod test {
         let s = format!(
             r#"
 [common]
-  network = "foo"
+  baz = "foo"
 [merge_mining_proxy]
-  network = "{}"
+  override_from = "{}"
   monerod_username = "cmot"
   grpc_console_wallet_address = "/dns4/wallet/tcp/9000"
-[merge_mining_proxy.igor]
+[merge_mining_proxy.config_a]
   monerod_url = [ "http://network.a.org" ]
   monerod_password = "password_igor"
   grpc_base_node_address = "/dns4/base_node_a/tcp/8080"
   grpc_console_wallet_address = "/dns4/wallet_a/tcp/9000"
-[merge_mining_proxy.dibbler]
+[merge_mining_proxy.config_b]
   proxy_submit_to_origin = false
  monerod_url = [ "http://network.b.org" ]
   monerod_password = "password_dibbler"
@@ -98,7 +98,7 @@ mod test {
 
     #[test]
     fn merge_mining_proxy_configuration() {
-        let cfg = get_config("dibbler");
+        let cfg = get_config("config_b");
         let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.b.org".to_string()]);
         assert_eq!(config.proxy_submit_to_origin, false);
@@ -113,7 +113,7 @@ mod test {
             "/dns4/wallet/tcp/9000"
         );
 
-        let cfg = get_config("igor");
+        let cfg = get_config("config_a");
         let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.a.org".to_string()]);
         assert_eq!(config.proxy_submit_to_origin, true);

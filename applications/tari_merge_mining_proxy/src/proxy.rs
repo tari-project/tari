@@ -119,7 +119,10 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Method \"{}\" failed handling request: {:?}", method_name, err);
+                    error!(
+                        target: LOG_TARGET,
+                        "Method \"{}\" failed handling request: {:?}", method_name, err
+                    );
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
