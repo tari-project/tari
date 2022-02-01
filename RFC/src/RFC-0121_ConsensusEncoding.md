@@ -58,7 +58,7 @@ signature challenges used in base-layer consensus.
 
 ## Description
 
-A Tari base node must validate each block containing a [block header] as well as set of [transaction input]s, [transaction outputs] and [transaction kernel]s,
+A Tari base node must validate each block containing a [block header] as well as set of transaction inputs, transaction outputs and transaction kernels,
 each containing a number of fields pertinent to their function within the [base layer]. The data contained within these structures need to be consistently encoded
 (represented as bytes) across platforms and implementations so that the network can agree on a single correct state.
 
@@ -108,7 +108,7 @@ to indicate that the value is provided followed by the encoding of the value.
 
 #### Ristretto Keys
 
-`RistrettoPublicKey` and `RistrettoSecretKey` types defined in the `tari_crypto` crate both have 32-byte canonical formats
+`RistrettoPublicKey` and `RistrettoPrivateKey` types defined in the `tari_crypto` crate both have 32-byte canonical formats
 and are encoded as a 32-byte fixed array.
 
 The [`tari_crypto`](https://github.com/tari-project/tari-crypto) Rust crate provides an FFI interface that allows
@@ -122,7 +122,7 @@ A commitment is a [RistrettoPublicKey] and so has identical encoding.
 
 See the [TLU on Schnorr Signatures](https://tlu.tarilabs.com/cryptography/introduction-schnorr-signatures)
 
-A scnorr signature tuple is `<R, s>` where `R` is a [RistrettoPublicKey] and `s` is a the signature scalar wrapped in [RistrettoPrivateKey].
+A Schnorr signature tuple is `<R, s>` where `R` is a [RistrettoPublicKey] and `s` is a the signature scalar wrapped in [RistrettoPrivateKey].
 
 The encoding is fixed at 64-bytes:
 
@@ -187,8 +187,8 @@ The block hash pre-image is constructed by first constructing the merge mining h
 7. `witness_mr` - fixed 32-bytes
 8. `kernel_mr` - fixed 32-bytes
 9. `kernel_mmr_size` - `u64` converted to a fixed 8-byte array (little endian)
-10. `total_kernel_offset` - 32-byte Scalar, see [RistrettoSecretKey]
-11. `total_script_offset` - 32-byte Scalar, see [RistrettoSecretKey]
+10. `total_kernel_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
+11. `total_script_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
 
 This pre-image is hashed and block hash is constructed, in order, as follows:
 
@@ -200,7 +200,7 @@ This pre-image is hashed and block hash is constructed, in order, as follows:
 #### Output Features 
 [Output Features]: #output-metadata-and-features "Output Features"
 
-```rust
+```rust,ignore
 pub struct OutputFeatures {
   pub version: OutputFeaturesVersion,
   pub maturity: u64,
@@ -245,7 +245,7 @@ Output features consensus encoding is defined as follows (in order):
 #### Transaction Output
 [Transaction Output]: #transaction-output "Transaction Output"
 
-```rust
+```rust,ignore
 pub struct TransactionOutput {
     pub version: u8,
     pub features: OutputFeatures,
@@ -294,7 +294,7 @@ See [Metadata Signature](./Glossary.md#metadata-signature) for details.
 The following struct represents the full transaction input data for reference. The actual input struct does not duplicate the output data
 to optimise storage and transmission of the input. 
 
-```rust
+```rust,ignore
 pub struct TransactionInput {
   pub version: u8,
   pub input_data: ExecutionStack,
@@ -344,3 +344,4 @@ The script challenge is constructed as follows:
 [OutputFeatures]: #output-features
 [Commitment]: #commitment
 [fixed sized array]: #fixed-size-arrays
+[block header]: Glossary.md#block-header
