@@ -65,7 +65,7 @@ pub(crate) async fn tip004_mint_token(
   let result = client
     .invoke_method(asset_public_key, 4, "mint".to_string(), bytes)
     .await?;
-  dbg!(&result);
+  debug!(target: LOG_TARGET, "result {:?}", result);
   Ok(())
 }
 
@@ -99,7 +99,7 @@ pub(crate) async fn tip004_list_tokens(
         args.encode_to_vec(),
       )
       .await?;
-    debug!(target: LOG_TARGET, "{:?}", result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     db.tip721_tokens().delete_all_for_address(address.id, &tx)?;
     if !result.is_empty() {
       let balance_of: tip004::BalanceOfResponse = Message::decode(&*result)?;

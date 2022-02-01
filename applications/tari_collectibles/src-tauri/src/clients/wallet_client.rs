@@ -79,7 +79,7 @@ impl WalletClient {
         source: error,
       }
     })?;
-    dbg!(&result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner().public_key.to_hex())
   }
 
@@ -94,7 +94,7 @@ impl WalletClient {
         source,
       }
     })?;
-    debug!(target: LOG_TARGET, "{:?}", result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner())
   }
 
@@ -120,7 +120,7 @@ impl WalletClient {
         request: "create_initial_asset_checkpoint".to_string(),
         source,
       })?;
-    debug!(target: LOG_TARGET, "{:?}", &result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner())
   }
 }

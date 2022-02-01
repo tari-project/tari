@@ -31,8 +31,7 @@ use crate::{
 };
 use std::{path::PathBuf, sync::Arc};
 
-use tari_app_utilities::initialization::init_configuration;
-use tari_common::configuration::{bootstrap::ApplicationType, CollectiblesConfig};
+use tari_common::configuration::CollectiblesConfig;
 use tauri::async_runtime::RwLock;
 use uuid::Uuid;
 

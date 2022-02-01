@@ -106,7 +106,7 @@ impl BaseNodeClient {
       unique_ids: vec![vec![3u8; 32]],
     };
 
-    dbg!(&request);
+    debug!(target: LOG_TARGET, "request {:?}", request);
     let mut stream = client
       .get_tokens(request)
       .await
@@ -120,7 +120,7 @@ impl BaseNodeClient {
       if i > 10 {
         break;
       }
-      dbg!(&response);
+      debug!(target: LOG_TARGET, "response {:?}", response);
       let features = response
         .map_err(|status| format!("Got an error status from GRPC:{}", status))?
         .features;

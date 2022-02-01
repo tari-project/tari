@@ -1,10 +1,10 @@
 # A sample log configuration file for running in release mode. By default, this configuration splits up log messages to
 # three destinations:
 #    * Console: For log messages with level INFO and higher
-#    * log/base-node/network.log: INFO-level logs related to the comms crate. This file will be quite busy since there
+#    * log/collectibles/network.log: INFO-level logs related to the comms crate. This file will be quite busy since there
 #      are lots of P2P debug messages, and so this traffic is segregated from the application log messages
-#    * log/base-node/base_layer.log: Non-comms related INFO-level messages and higher are logged into this file
-#    * log/base-node/other.log: Third-party crates' messages will be logged here at an ERROR level
+#    * log/collectibles/base_layer.log: Non-comms related INFO-level messages and higher are logged into this file
+#    * log/collectibles/other.log: Third-party crates' messages will be logged here at an ERROR level
 #
 #  See https://docs.rs/log4rs/0.8.3/log4rs/encode/pattern/index.html for deciphering the log pattern. The log format
 #  used in this sample configuration prints messages as:
@@ -24,7 +24,7 @@ appenders:
   # An appender named "network" that writes to a file with a custom pattern encoder
   network:
     kind: rolling_file
-    path: "log/base-node/network.log"
+    path: "log/collectibles/network.log"
     policy:
       kind: compound
       trigger:
@@ -34,14 +34,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/network.{}.log"
+        pattern: "log/collectibles/network.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
     kind: rolling_file
-    path: "log/base-node/base_layer.log"
+    path: "log/collectibles/base_layer.log"
     policy:
       kind: compound
       trigger:
@@ -51,14 +51,14 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/base_layer.{}.log"
+        pattern: "log/collectibles/base_layer.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] [{X(node-public-key)},{X(node-id)}] {l:5} {m}{n}"
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
     kind: rolling_file
-    path: "log/base-node/other.log"
+    path: "log/collectibles/other.log"
     policy:
       kind: compound
       trigger:
@@ -68,7 +68,7 @@ appenders:
         kind: fixed_window
         base: 1
         count: 5
-        pattern: "log/base-node/other.{}.log"
+        pattern: "log/collectibles/other.{}.log"
     encoder:
       pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
 

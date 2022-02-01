@@ -4,7 +4,6 @@
   windows_subsystem = "windows"
 )]
 
-use log::error;
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
 

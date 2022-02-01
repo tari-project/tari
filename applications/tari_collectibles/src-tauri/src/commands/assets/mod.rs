@@ -99,14 +99,17 @@ pub(crate) async fn assets_create(
     image: Some(image),
     committee: None,
   };
-  dbg!(&asset_row);
+  debug!(target: LOG_TARGET, "asset_row {:?}", asset_row);
   db.assets().insert(&asset_row, &transaction)?;
   let asset_wallet_row = AssetWalletRow {
     id: Uuid::new_v4(),
     asset_id,
     wallet_id,
   };
-  dbg!(&asset_wallet_row);
+  debug!(
+    target: LOG_TARGET,
+    "asset_wallet_row {:?}", asset_wallet_row
+  );
   db.asset_wallets().insert(&asset_wallet_row, &transaction)?;
   let address = AddressRow {
     id: Uuid::new_v4(),
@@ -115,7 +118,7 @@ pub(crate) async fn assets_create(
     public_key: asset_public_key,
     key_manager_path: key_manager_path.clone(),
   };
-  dbg!(&address);
+  debug!(target: LOG_TARGET, "address {:?}", address);
   db.addresses().insert(&address, &transaction)?;
   if template_ids.contains(&2) {
     let row = Tip002AddressRow {
@@ -262,7 +265,7 @@ pub(crate) async fn assets_get_registration(
   let asset_pub_key = PublicKey::from_hex(&asset_pub_key)?;
   let asset = client.get_asset_metadata(&asset_pub_key).await?;
 
-  debug!(target: LOG_TARGET, "{:?}", asset);
+  debug!(target: LOG_TARGET, "asset {:?}", asset);
   let features = asset.features.unwrap();
   let serializer = V1AssetMetadataSerializer {};
   let metadata = serializer.deserialize(&features.metadata[1..]);

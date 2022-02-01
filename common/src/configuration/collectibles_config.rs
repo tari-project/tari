@@ -55,7 +55,6 @@ impl CollectiblesConfig {
             Ok(s) => s,
             Err(_e) => {
                 // dbg!(e);
-                println!("{}:{}", file!(), line!());
                 return Ok(None);
             },
         };
