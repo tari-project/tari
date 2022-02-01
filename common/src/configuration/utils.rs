@@ -49,6 +49,7 @@ pub fn config_installer(_app_type: ApplicationType, path: &Path) -> Result<(), s
         include_str!("../../config/presets/merge_mining_proxy.toml"),
         include_str!("../../config/presets/stratum_transcoder.toml"),
         include_str!("../../config/presets/validator_node.toml"),
+        include_str!("../../config/presets/collectibles.toml"),
     ]
     .join("\n");
 
