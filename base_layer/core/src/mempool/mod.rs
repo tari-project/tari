@@ -110,7 +110,7 @@ impl Display for StateResponse {
         for tx in &self.unconfirmed_pool {
             writeln!(
                 fmt,
-                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes, {}",
+                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
                 tx.first_kernel_excess_sig()
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "N/A".to_string()),
@@ -119,22 +119,6 @@ impl Display for StateResponse {
                 tx.body.kernels().len(),
                 tx.body.inputs().len(),
                 tx.body.sum_metadata_size(),
-                tx.body
-                    .inputs()
-                    .iter()
-                    .map(|i| {
-                        let sopk = i
-                            .sender_offset_public_key()
-                            .map(|s| s.to_hex())
-                            .unwrap_or_else(|_| "<None>".to_string());
-                        let commit = i
-                            .commitment()
-                            .map(|s| s.to_hex())
-                            .unwrap_or_else(|_| "<None>".to_string());
-                        format!("c: {}, sopk: {}", commit, sopk)
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", "),
             )?;
         }
         writeln!(fmt, "--- Reorg Pool ---")?;
