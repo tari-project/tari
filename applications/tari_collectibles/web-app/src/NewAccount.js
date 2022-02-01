@@ -44,11 +44,11 @@ class NewAccount extends React.Component {
     };
   }
 
-  onAssetPublicKeyChanged(e){
+  onAssetPublicKeyChanged = (e) => {
     this.setState({ assetPublicKey: e.target.value });
   };
 
-  async onSave(e){
+  onSave = async (e) => {
     e.preventDefault();
     console.log(this.state.assetPublicKey);
     this.setState({ isSaving: true, error: null });

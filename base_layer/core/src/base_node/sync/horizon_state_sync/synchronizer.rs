@@ -262,10 +262,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             latency.unwrap_or_default().as_millis()
         );
 
-        let mut current_header = self
-            .db()
-            .fetch_header_containing_kernel_mmr(local_num_kernels + 1)
-            .await?;
+        let mut current_header = self.db().fetch_header_containing_kernel_mmr(local_num_kernels).await?;
         let req = SyncKernelsRequest {
             start: local_num_kernels,
             end_header_hash: to_header.hash(),
@@ -433,7 +430,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             include_pruned_utxos: true,
         };
 
-        let mut current_header = self.db().fetch_header_containing_utxo_mmr(start + 1).await?;
+        let mut current_header = self.db().fetch_header_containing_utxo_mmr(start).await?;
         let mut output_stream = client.sync_utxos(req).await?;
 
         debug!(
