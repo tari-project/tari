@@ -2,7 +2,6 @@ syntax = "proto3";
 
 import "transaction.proto";
 import "block.proto";
-import "mmr_tree.proto";
 
 package tari.base_node;
 

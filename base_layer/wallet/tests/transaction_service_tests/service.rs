@@ -1430,7 +1430,6 @@ fn test_accepting_unknown_tx_id_and_malformed_reply() {
         sender_message.try_into().unwrap(),
         params.nonce,
         params.spend_key,
-        OutputFeatures::default(),
         &factories,
     );
 
@@ -2997,13 +2996,8 @@ fn test_restarting_transaction_protocols() {
     let tx_id = msg.tx_id;
 
     let sender_info = TransactionSenderMessage::Single(Box::new(msg.clone()));
-    let receiver_protocol = ReceiverTransactionProtocol::new(
-        sender_info,
-        alice.nonce.clone(),
-        alice.spend_key,
-        OutputFeatures::default(),
-        &factories,
-    );
+    let receiver_protocol =
+        ReceiverTransactionProtocol::new(sender_info, alice.nonce.clone(), alice.spend_key, &factories);
 
     let alice_reply = receiver_protocol.get_signed_data().unwrap().clone();
 
@@ -4415,7 +4409,6 @@ fn test_resend_on_startup() {
         tx_sender_msg,
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
-        OutputFeatures::default(),
         &factories,
     );
 

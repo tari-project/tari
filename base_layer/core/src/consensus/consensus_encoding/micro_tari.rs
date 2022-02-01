@@ -52,3 +52,15 @@ impl ConsensusDecoding for MicroTari {
         Ok(u64::from_le_bytes(buf).into())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_and_decodes_correctly() {
+        let subject = MicroTari::from(u64::MAX);
+        check_consensus_encoding_correctness(subject).unwrap();
+    }
+}

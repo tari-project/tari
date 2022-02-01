@@ -214,9 +214,9 @@ where B: BlockchainBackend
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
         };
+        let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
         if is_empty {
             info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
-            let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
             blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
             let body = &genesis_block.block().body;
@@ -230,6 +230,20 @@ where B: BlockchainBackend
             txn.set_horizon_data(kernel_sum, utxo_sum);
             blockchain_db.write(txn)?;
             blockchain_db.store_pruning_horizon(config.pruning_horizon)?;
+        } else if !blockchain_db.block_exists(genesis_block.accumulated_data().hash.clone())? {
+            // Check the genesis block in the DB.
+            error!(
+                target: LOG_TARGET,
+                "Genesis block in database does not match the supplied genesis block in the code! Hash in the code \
+                 {:?}, hash in the database {:?}",
+                blockchain_db.fetch_chain_header(0)?.hash(),
+                genesis_block.accumulated_data().hash
+            );
+            return Err(ChainStorageError::CorruptedDatabase(
+                "Genesis block in database does not match the supplied genesis block in the code! Please delete and \
+                 resync your blockchain database."
+                    .into(),
+            ));
         }
         if cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
@@ -449,11 +463,6 @@ where B: BlockchainBackend
         Ok(chain_header)
     }
 
-    // TODO: this method is actually off by one. It returns the highest header where the kernel_mmr_count is <=
-    // mmr_position, but should probably only be <.
-    // E.g. if mmr_position == 2, it will return a header where kernel_mmr_count == 2, but this is
-    // confusing because mmr_position ==2 actually would be in the next header
-    // Either the caller needs to be updated or this method needs to be renamed
     pub fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_header_containing_kernel_mmr(mmr_position)
@@ -1024,7 +1033,7 @@ where B: BlockchainBackend
     /// pruning horizon, it will return Ok<None>
     pub fn fetch_block_with_utxo(&self, commitment: Commitment) -> Result<Option<HistoricalBlock>, ChainStorageError> {
         let db = self.db_read_access()?;
-        fetch_block_with_utxo(&*db, commitment)
+        fetch_block_with_utxo(&*db, &commitment)
     }
 
     /// Returns true if this block exists in the chain, or is orphaned.
@@ -1437,12 +1446,12 @@ fn fetch_block<T: BlockchainBackend>(db: &T, height: u64) -> Result<HistoricalBl
                 PrunedOutput::Pruned { .. } => Ok(compact_input),
                 PrunedOutput::NotPruned { output } => {
                     compact_input.add_output_data(
+                        output.version,
                         output.features,
                         output.commitment,
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.version,
                     );
                     Ok(compact_input)
                 },
@@ -1532,11 +1541,14 @@ fn fetch_block_with_kernel<T: BlockchainBackend>(
 
 fn fetch_block_with_utxo<T: BlockchainBackend>(
     db: &T,
-    commitment: Commitment,
+    commitment: &Commitment,
 ) -> Result<Option<HistoricalBlock>, ChainStorageError> {
-    let output = db.fetch_output(&commitment.to_vec())?;
+    let output = db.fetch_unspent_output_hash_by_commitment(commitment)?;
     match output {
-        Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash),
+        Some(hash) => match db.fetch_output(&hash)? {
+            Some(mined_info) => fetch_block_by_hash(db, mined_info.header_hash),
+            None => Ok(None),
+        },
         None => Ok(None),
     }
 }

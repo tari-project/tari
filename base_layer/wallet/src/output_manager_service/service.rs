@@ -691,7 +691,6 @@ where
             sender_message.clone(),
             nonce,
             spending_key,
-            single_round_sender_data.features.clone(),
             &self.resources.factories,
             self.resources.master_key_manager.rewind_data(),
         );

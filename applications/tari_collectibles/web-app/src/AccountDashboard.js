@@ -37,6 +37,7 @@ import binding from "./binding";
 import protobuf from "protobufjs";
 import StarIcon from "@mui/icons-material/Star";
 import StarOutlineIcon from "@mui/icons-material/StarOutline";
+import PropTypes from "prop-types";
 
 class AccountDashboard extends React.Component {
   constructor(props) {
@@ -300,7 +301,7 @@ class AccountDashboard extends React.Component {
                 <Grid container spacing={2}>
                   {this.state.tip721Data.tokens.map((token) => {
                     return (
-                      <Grid item xs={2}>
+                      <Grid item xs={2} key={token}>
                         <Paper>
                           <Container>
                             <Stack spacing={2}>
@@ -356,6 +357,14 @@ class AccountDashboard extends React.Component {
       </Container>
     );
   }
+}
+
+AccountDashboard.propTypes = {
+  match: PropTypes.shape({
+    params: PropTypes.shape({
+      assetPubKey: PropTypes.string,
+    }),
+  }).isRequired,
 }
 
 export default withRouter(AccountDashboard);

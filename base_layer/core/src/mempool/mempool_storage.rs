@@ -83,13 +83,13 @@ impl MempoolStorage {
         );
         match self.validator.validate(&tx) {
             Ok(()) => {
-                let weight = self.get_transaction_weight(0);
+                let weight = self.get_transaction_weighting(0);
                 self.unconfirmed_pool.insert(tx, None, &weight)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
             },
             Err(ValidationError::UnknownInputs(dependent_outputs)) => {
                 if self.unconfirmed_pool.contains_all_outputs(&dependent_outputs) {
-                    let weight = self.get_transaction_weight(0);
+                    let weight = self.get_transaction_weighting(0);
                     self.unconfirmed_pool.insert(tx, Some(dependent_outputs), &weight)?;
                     Ok(TxStorageResponse::UnconfirmedPool)
                 } else {
@@ -116,7 +116,7 @@ impl MempoolStorage {
         }
     }
 
-    fn get_transaction_weight(&self, height: u64) -> TransactionWeight {
+    fn get_transaction_weighting(&self, height: u64) -> TransactionWeight {
         *self.rules.consensus_constants(height).transaction_weight()
     }
 
@@ -275,12 +275,12 @@ impl MempoolStorage {
 
     /// Gathers and returns the stats of the Mempool.
     pub fn stats(&self) -> StatsResponse {
-        let weight = self.get_transaction_weight(0);
+        let weighting = self.get_transaction_weighting(0);
         StatsResponse {
             total_txs: self.len(),
             unconfirmed_txs: self.unconfirmed_pool.len(),
             reorg_txs: self.reorg_pool.len(),
-            total_weight: self.unconfirmed_pool.calculate_weight(&weight),
+            total_weight: self.unconfirmed_pool.calculate_weight(&weighting),
         }
     }
 

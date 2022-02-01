@@ -19,6 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 import React, { useState, useMemo } from "react";
 import {
   Alert,
@@ -41,6 +42,7 @@ import { dialog } from "@tauri-apps/api";
 import { Command } from "@tauri-apps/api/shell";
 import { fetch, ResponseType } from "@tauri-apps/api/http";
 import protobuf from "protobufjs";
+import PropTypes from "prop-types";
 
 class Create extends React.Component {
   constructor(props) {
@@ -74,6 +76,7 @@ class Create extends React.Component {
 
     this.cleanup = null;
   }
+
 
   componentDidMount() {
     this.cleanup = appWindow.listen("tauri://file-drop", (obj) =>
@@ -461,7 +464,7 @@ class Create extends React.Component {
             <List>
               {this.state.tip003Data.committee.map((item, index) => {
                 return (
-                  <ListItem>
+                  <ListItem key={item}>
                     <ListItemText primary={item}></ListItemText>
                   </ListItem>
                 );
@@ -510,7 +513,7 @@ class Create extends React.Component {
           {this.state.saveErrors.length > 0 ? (
             <div>
               {this.state.saveErrors.map((e) => (
-                <Alert severity="error">{e.toString()}</Alert>
+                <Alert key={e.toString()} severity="error">{e.toString()}</Alert>
               ))}
             </div>
           ) : (
@@ -522,6 +525,10 @@ class Create extends React.Component {
   }
 }
 
+Create.propTypes = {
+  history : PropTypes.object
+}
+
 const ImageSwitch = ({ setMode }) => {
   return (
     <div>
@@ -530,6 +537,10 @@ const ImageSwitch = ({ setMode }) => {
     </div>
   );
 };
+
+ImageSwitch.propTypes = {
+  setMode: PropTypes.func
+}
 
 const ImageUrl = ({ setImage }) => {
   const [url, setUrl] = useState("");
@@ -550,6 +561,10 @@ const ImageUrl = ({ setImage }) => {
   );
 };
 
+ImageUrl.propTypes = {
+  setImage : PropTypes.func
+}
+
 const ImageUpload = ({ selectFile, error }) => {
   return (
     <div>
@@ -560,6 +575,11 @@ const ImageUpload = ({ selectFile, error }) => {
     </div>
   );
 };
+
+ImageUpload.propTypes = {
+  selectFile : PropTypes.func,
+  error: PropTypes.string
+}
 
 const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
   const [mode, setMode] = useState("");
@@ -592,6 +612,15 @@ const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
 
   return display;
 };
+
+ImageSelector.propTypes = {
+  cid : PropTypes.string,
+  image: PropTypes.string,
+  selectFile: PropTypes.func,
+  setImage: PropTypes.func,
+  setCid: PropTypes.func,
+  error: PropTypes.string
+}
 
 const IpfsImage = ({ cid, setCid, error }) => {
   const [src, setSrc] = useState("");
@@ -637,5 +666,11 @@ const IpfsImage = ({ cid, setCid, error }) => {
 
   return <p>ipfs image loading...</p>;
 };
+
+IpfsImage.propTypes = {
+  cid: PropTypes.string,
+  setCid: PropTypes.func,
+  error: PropTypes.string
+}
 
 export default withRouter(Create);

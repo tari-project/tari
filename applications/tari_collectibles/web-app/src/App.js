@@ -87,6 +87,11 @@ function IconButtonLink(props) {
   );
 }
 
+IconButtonLink.propTypes = {
+  icon: PropTypes.element.isRequired,
+  to:PropTypes.string.isRequired
+}
+
 function ListItemLink(props) {
   const { icon, primary, to } = props;
 
@@ -172,7 +177,7 @@ const AccountsMenu = (props) => {
       <List>
         {accounts.map((item) => {
           return (
-            <ListItemLink
+            <ListItemLink key={item.name}
               primary={item.name || item.assetPublicKey}
               to={`/accounts/${item.asset_public_key}`}
             ></ListItemLink>
@@ -182,6 +187,11 @@ const AccountsMenu = (props) => {
     </div>
   );
 };
+
+
+AccountsMenu.propTypes = {
+  walletId: PropTypes.string
+}
 
 // only allow access to a Protected Route if the wallet is unlocked
 const ProtectedRoute = ({ authenticated, path, children }) => {

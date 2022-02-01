@@ -45,6 +45,8 @@ pub use rpc::create_mempool_rpc_service;
 #[cfg(feature = "base_node")]
 pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
 #[cfg(feature = "base_node")]
+mod metrics;
+#[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 
 // Public re-exports
@@ -103,11 +105,12 @@ pub struct StateResponse {
 
 impl Display for StateResponse {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        fmt.write_str("----------------- Mempool -----------------\n")?;
-        fmt.write_str("--- Unconfirmed Pool ---\n")?;
+        writeln!(fmt, "----------------- Mempool -----------------")?;
+        writeln!(fmt, "--- Unconfirmed Pool ---")?;
         for tx in &self.unconfirmed_pool {
-            fmt.write_str(&format!(
-                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes\n",
+            writeln!(
+                fmt,
+                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
                 tx.first_kernel_excess_sig()
                     .map(|sig| sig.get_signature().to_hex())
                     .unwrap_or_else(|| "N/A".to_string()),
@@ -115,12 +118,12 @@ impl Display for StateResponse {
                 tx.body.outputs().len(),
                 tx.body.kernels().len(),
                 tx.body.inputs().len(),
-                tx.body.sum_metadata_size()
-            ))?;
+                tx.body.sum_metadata_size(),
+            )?;
         }
-        fmt.write_str("--- Reorg Pool ---\n")?;
+        writeln!(fmt, "--- Reorg Pool ---")?;
         for excess_sig in &self.reorg_pool {
-            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
+            writeln!(fmt, "    {}", excess_sig.get_signature().to_hex())?;
         }
         Ok(())
     }

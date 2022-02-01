@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -19,38 +19,44 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::time::{Duration, Instant};
 
-var { createClient } = require("../baseNodeClient");
+use log::*;
+use prometheus::{Encoder, TextEncoder};
+use reqwest::{Client, Url};
+use tokio::{time, time::MissedTickBehavior};
 
-var express = require("express");
-var router = express.Router();
+use crate::Registry;
 
-router.get("/", async function (req, res) {
-  let client = createClient();
-  let commitments = (
-    req.query.comm ||
-    req.query.commitment ||
-    req.query.c ||
-    ""
-  ).split(",");
+const LOG_TARGET: &str = "base_node::metrics::push";
 
-  if (commitments.length === 0) {
-    res.status(404);
-    return;
-  }
-  let hexCommitments = [];
-  for (let i = 0; i < commitments.length; i++) {
-    hexCommitments.push(Buffer.from(commitments[i], "hex"));
-  }
-  console.log(hexCommitments);
-  let result = await client.searchUtxos({
-    hexCommitments,
-  });
+pub async fn start(endpoint: Url, push_interval: Duration, registry: Registry) {
+    let mut interval = time::interval(push_interval);
+    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-  console.log(result);
-  res.render("search", {
-    items: result,
-  });
-});
+    loop {
+        interval.tick().await;
 
-module.exports = router;
+        if let Err(err) = push_metrics(&registry, endpoint.clone()).await {
+            error!(target: LOG_TARGET, "{}", err);
+        }
+    }
+}
+
+async fn push_metrics(registry: &Registry, endpoint: Url) -> Result<(), anyhow::Error> {
+    let client = Client::new();
+    let timer = Instant::now();
+    let encoder = TextEncoder::new();
+    let mut buffer = Vec::new();
+    let metrics = registry.gather();
+    encoder.encode(&metrics, &mut buffer)?;
+    let raw_metrics_data = String::from_utf8(buffer)?;
+    client.post(endpoint).body(raw_metrics_data).send().await?;
+    debug!(
+        target: LOG_TARGET,
+        "POSTed {} metrics in {:.2?}",
+        metrics.len(),
+        timer.elapsed()
+    );
+    Ok(())
+}

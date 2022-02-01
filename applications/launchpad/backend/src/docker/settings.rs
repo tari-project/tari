@@ -109,7 +109,7 @@ impl MmProxyConfig {
 pub struct LaunchpadConfig {
     /// The directory to use for config, id files and logs
     pub data_directory: PathBuf,
-    /// The Tri network to use. Default = weatherwax
+    /// The Tri network to use. Default = dibbler
     pub tari_network: TariNetwork,
     /// The tor control password to share among containers.
     pub tor_control_password: String,
@@ -255,11 +255,12 @@ impl LaunchpadConfig {
     }
 
     /// Returns the canonical path to the id files. The canonical path is defined as
-    /// `{root_path}/config/{network}/{image_type}_id.json`
+    /// `{root_path}/{image_data_folder}/config/{network}/{image_type}_id.json`
     pub fn id_path(&self, root_path: &str, image_type: ImageType) -> Option<PathBuf> {
         match image_type {
             ImageType::BaseNode | ImageType::Wallet => Some(
                 PathBuf::from(root_path)
+                    .join(image_type.data_folder())
                     .join("config")
                     .join(self.tari_network.lower_case())
                     .join(format!("{}_id.json", image_type.image_name())),
@@ -366,14 +367,15 @@ impl LaunchpadConfig {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", base_node.delay.as_secs()),
                 format!(
+                    "TARI_COMMON__{}__DATA_DIR=/blockchain/{}",
+                    self.tari_network.upper_case(),
+                    self.tari_network.lower_case()
+                ),
+                format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
+                format!(
                     "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
                     self.tari_network.upper_case(),
                     self.tor_control_password
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__DATA_DIR=/blockchain/{}",
-                    self.tari_network.upper_case(),
-                    self.tari_network.lower_case()
                 ),
                 format!(
                     "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
@@ -412,6 +414,7 @@ impl LaunchpadConfig {
                 "SHELL=/bin/bash".to_string(),
                 "TERM=linux".to_string(),
                 format!("TARI_WALLET_PASSWORD={}", config.password),
+                format!("TARI_WALLET__{}__TRANSPORT=tor", self.tari_network.upper_case()),
                 format!(
                     "TARI_WALLET__{}__TOR_CONTROL_AUTH=password={}",
                     self.tari_network.upper_case(),
@@ -433,11 +436,6 @@ impl LaunchpadConfig {
                     "TARI_WALLET__{}__TCP_LISTENER_ADDRESS=/dns4/wallet/tcp/18188",
                     self.tari_network.upper_case()
                 ),
-                format!(
-                    "TARI_BASE_NODE__{}__GRPC_CONSOLE_WALLET_ADDRESS=0.0.0.0:18143",
-                    self.tari_network.upper_case()
-                ),
-                "TARI_WALLET__GRPC_ADDRESS=0.0.0.0:18143".to_string(),
             ]);
         }
         env

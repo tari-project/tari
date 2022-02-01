@@ -1013,12 +1013,12 @@ impl LMDBDatabase {
                 },
                 PrunedOutput::NotPruned { output } => {
                     input.add_output_data(
+                        output.version,
                         output.features,
                         output.commitment,
                         output.script,
                         output.sender_offset_public_key,
                         output.covenant,
-                        output.version,
                     );
                 },
             }
@@ -1738,6 +1738,9 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn fetch_header_containing_kernel_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let txn = self.read_transaction()?;
+        // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg
+        // is an index starting from 0
+        let mmr_position = mmr_position + 1;
 
         let height = lmdb_first_after::<_, u64>(&txn, &self.kernel_mmr_size_index, &mmr_position.to_be_bytes())?
             .ok_or_else(|| ChainStorageError::ValueNotFound {
@@ -1773,6 +1776,9 @@ impl BlockchainBackend for LMDBDatabase {
     // TODO: Can be merged with the method above
     fn fetch_header_containing_utxo_mmr(&self, mmr_position: u64) -> Result<ChainHeader, ChainStorageError> {
         let txn = self.read_transaction()?;
+        // LMDB returns the height at the position, so we have to offset the position by 1 so that the mmr_position arg
+        // is an index starting from 0
+        let mmr_position = mmr_position + 1;
 
         let (height, _hash) =
             lmdb_first_after::<_, (u64, Vec<u8>)>(&txn, &self.output_mmr_size_index, &mmr_position.to_be_bytes())?
@@ -2015,11 +2021,7 @@ impl BlockchainBackend for LMDBDatabase {
         let txn = self.read_transaction()?;
         match tree {
             MmrTree::Kernel => Ok(lmdb_len(&txn, &self.kernels_db)? as u64),
-            MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
-            MmrTree::Witness => {
-                //  lmdb_len(&txn, &self.utxo)
-                unimplemented!("Need to get rangeproof mmr size")
-            },
+            MmrTree::Witness | MmrTree::Utxo => Ok(lmdb_len(&txn, &self.utxos_db)? as u64),
         }
     }
 

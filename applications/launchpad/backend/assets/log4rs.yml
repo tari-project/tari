@@ -75,7 +75,7 @@ loggers:
       - core
     additive: false
   base_node::app:
-    level: info
+    level: debug
     appenders:
       - core
     additive: false

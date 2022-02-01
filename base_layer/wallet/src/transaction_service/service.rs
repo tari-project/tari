@@ -939,7 +939,6 @@ where
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key.clone(),
-            OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
         );
@@ -1104,7 +1103,6 @@ where
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key,
-            OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
         );

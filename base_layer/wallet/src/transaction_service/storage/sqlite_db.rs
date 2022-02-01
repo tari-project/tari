@@ -2168,7 +2168,6 @@ mod test {
             TransactionSenderMessage::Single(Box::new(stp.build_single_round_message().unwrap())),
             PrivateKey::random(&mut OsRng),
             PrivateKey::random(&mut OsRng),
-            OutputFeatures::default(),
             &factories,
         );
 

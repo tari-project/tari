@@ -20,24 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{
+    future::Future,
     net::{SocketAddr, ToSocketAddrs},
     time::Duration,
 };
 
+use futures::{future, FutureExt};
 use reqwest::{IntoUrl, Url};
-use tari_shutdown::ShutdownSignal;
-use tokio::task;
 
-use super::{push, server};
+use super::{pull, push};
 
 #[derive(Debug, Clone)]
-pub struct MetricsBuilder {
+pub struct MetricsServerBuilder {
     listener_addr: Option<SocketAddr>,
     push_endpoint: Option<Url>,
     push_interval: Duration,
 }
 
-impl MetricsBuilder {
+impl MetricsServerBuilder {
     pub fn new() -> Self {
         Default::default()
     }
@@ -58,24 +58,25 @@ impl MetricsBuilder {
         self
     }
 
-    pub fn spawn_services(self, shutdown: ShutdownSignal) {
-        let registry = tari_metrics::get_default_registry();
+    pub async fn start(self, shutdown: impl Future<Output = ()> + Send) {
+        let registry = crate::get_default_registry();
 
+        let mut tasks = vec![];
         if let Some(listener_addr) = self.listener_addr {
-            task::spawn(
-                shutdown
-                    .clone()
-                    .select(Box::pin(server::start(listener_addr, registry.clone()))),
-            );
+            tasks.push(pull::start(listener_addr, registry.clone()).boxed());
         }
 
         if let Some(endpoint) = self.push_endpoint {
-            task::spawn(shutdown.select(Box::pin(push::start(endpoint, self.push_interval, registry))));
+            tasks.push(push::start(endpoint, self.push_interval, registry).boxed());
+        }
+
+        if !tasks.is_empty() {
+            future::select(shutdown.boxed(), future::join_all(tasks)).await;
         }
     }
 }
 
-impl Default for MetricsBuilder {
+impl Default for MetricsServerBuilder {
     fn default() -> Self {
         Self {
             listener_addr: None,

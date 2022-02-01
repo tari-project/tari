@@ -1,7 +1,6 @@
 syntax = "proto3";
 
 import "google/protobuf/wrappers.proto";
-import "block.proto";
 import "chain_metadata.proto";
 import "types.proto";
 import "transaction.proto";

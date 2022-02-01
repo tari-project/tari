@@ -209,6 +209,29 @@ async fn it_limits_the_script_byte_size() {
     assert!(matches!(err, ValidationError::TariScriptExceedsMaxSize { .. }));
 }
 
+#[tokio::test]
+async fn it_rejects_invalid_input_metadata() {
+    let rules = ConsensusManager::builder(Network::LocalNet)
+        .add_consensus_constants(
+            ConsensusConstantsBuilder::new(Network::LocalNet)
+                .with_coinbase_lockheight(0)
+                .build(),
+        )
+        .build();
+    let (mut blockchain, validator) = setup_with_rules(rules);
+
+    let (_, coinbase_a) = blockchain.add_next_tip("A", Default::default());
+
+    let mut schema1 = txn_schema!(from: vec![coinbase_a], to: vec![50 * T, 12 * T]);
+    schema1.from[0].sender_offset_public_key = Default::default();
+    let (txs, _) = schema_to_transaction(&[schema1]);
+    let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+    let (block, _) = blockchain.create_next_tip(BlockSpec::new().with_transactions(txs).finish());
+
+    let err = validator.validate_block_body(block.block().clone()).await.unwrap_err();
+    assert!(matches!(err, ValidationError::UnknownInputs(_)));
+}
+
 mod unique_id {
     use tari_common_types::types::PublicKey;
 
@@ -356,5 +379,39 @@ mod unique_id {
         let schema = txn_schema!(from: vec![asset_output], to: vec![5 * T], fee: 5.into(), lock: 0, features: features);
         let (block, _) = create_block(&blockchain, "2", schema);
         validator.validate_block_body(block.block().clone()).await.unwrap();
+    }
+}
+
+mod body_only {
+    use super::*;
+    use crate::validation::{block_validators::BodyOnlyValidator, PostOrphanBodyValidation};
+
+    #[test]
+    fn it_rejects_invalid_input_metadata() {
+        let rules = ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let validator = BodyOnlyValidator::new(rules);
+
+        let (_, coinbase_a) = blockchain.add_next_tip("A", Default::default());
+
+        let mut schema1 = txn_schema!(from: vec![coinbase_a], to: vec![50 * T, 12 * T]);
+        schema1.from[0].sender_offset_public_key = Default::default();
+        let (txs, _) = schema_to_transaction(&[schema1]);
+        let txs = txs.into_iter().map(|t| Arc::try_unwrap(t).unwrap()).collect::<Vec<_>>();
+        let (block, _) = blockchain.create_next_tip(BlockSpec::new().with_transactions(txs).finish());
+
+        let metadata = blockchain.db().get_chain_metadata().unwrap();
+
+        let db = blockchain.db().db_read_access().unwrap();
+        let err = validator
+            .validate_body_for_valid_orphan(&*db, &block, &metadata)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::UnknownInputs(_)));
     }
 }
