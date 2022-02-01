@@ -43,6 +43,7 @@ use crate::{
         bootstrap::ApplicationType,
         name_server::DnsNameServer,
         BaseNodeConfig,
+        CollectiblesConfig,
         MergeMiningConfig,
         Network,
         ValidatorNodeConfig,
@@ -148,6 +149,7 @@ pub struct GlobalConfig {
     pub console_wallet_use_libtor: bool,
     pub merge_mining_config: Option<MergeMiningConfig>,
     pub blockchain_track_reorgs: bool,
+    pub collectibles_config: Option<CollectiblesConfig>,
 }
 
 impl GlobalConfig {
@@ -870,7 +872,7 @@ fn convert_node_config(
         flood_ban_max_msg_count,
         mine_on_tip_only,
         validate_tip_timeout_sec,
-        validator_node: ValidatorNodeConfig::convert_if_present(cfg)?,
+        validator_node: ValidatorNodeConfig::convert_if_present(cfg.clone())?,
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
@@ -880,6 +882,7 @@ fn convert_node_config(
         console_wallet_use_libtor,
         merge_mining_config,
         blockchain_track_reorgs,
+        collectibles_config: CollectiblesConfig::convert_if_present(cfg)?,
     })
 }
 
