@@ -92,6 +92,7 @@ pub enum OutputManagerRequest {
     CancelTransaction(TxId),
     GetSpentOutputs,
     GetUnspentOutputs,
+    GetUnspentAmounts,
     GetInvalidOutputs,
     GetSeedWords,
     ValidateUtxos,
@@ -146,6 +147,7 @@ impl fmt::Display for OutputManagerRequest {
             CancelTransaction(v) => write!(f, "CancelTransaction ({})", v),
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
+            GetUnspentAmounts => write!(f, "GetUnspentAmounts"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
             GetSeedWords => write!(f, "GetSeedWords"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
@@ -208,6 +210,7 @@ pub enum OutputManagerResponse {
     TransactionCancelled,
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
+    UnspentAmounts(Vec<u64>),
     InvalidOutputs(Vec<UnblindedOutput>),
     SeedWords(Vec<String>),
     BaseNodePublicKeySet,
@@ -530,6 +533,14 @@ impl OutputManagerHandle {
     pub async fn get_unspent_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetUnspentOutputs).await?? {
             OutputManagerResponse::UnspentOutputs(s) => Ok(s),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Sorted from lowest value to highest
+    pub async fn get_unspent_amounts(&mut self) -> Result<Vec<u64>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetUnspentAmounts).await?? {
+            OutputManagerResponse::UnspentAmounts(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -314,6 +314,24 @@ where
                     .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
+            OutputManagerRequest::GetUnspentAmounts => {
+                let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
+                    Ok(metadata) => metadata.map(|m| m.height_of_longest_chain()),
+                    Err(_) => None,
+                };
+                let outputs = self
+                    .fetch_unspent_outputs()
+                    .await?
+                    .into_iter()
+                    .filter(|v| {
+                        v.unblinded_output.value.as_u64() > 0 &&
+                            v.unblinded_output.features.maturity <=
+                                current_tip_for_time_lock_calculation.unwrap_or(0)
+                    })
+                    .map(|v| v.unblinded_output.value.as_u64())
+                    .collect();
+                Ok(OutputManagerResponse::UnspentAmounts(outputs))
+            },
             OutputManagerRequest::GetSeedWords => self
                 .resources
                 .master_key_manager
