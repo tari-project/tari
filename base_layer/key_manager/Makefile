@@ -1,19 +1,17 @@
-.PHONY: test
+toolchain=nightly-2021-11-20
 
+.phony: test
 test:
-	wasm-pack test --node --features js
+	rustup run $(toolchain) wasm-pack test --node --features wasm
 
-.PHONY: build
-
+.phony: build
 build:
-	wasm-pack build --target bundler . -- --features js
+	rustup run $(toolchain) wasm-pack build --target bundler . -- --features wasm
 
-.PHONY: install
-
+.phony: install
 install:
-	wasm-pack build --out-dir=../../applications/tari_web_extension/src/key_manager/ --target bundler . -- --features js
+	rustup run $(toolchain) wasm-pack build --out-dir=../../applications/tari_web_extension/src/key_manager/ --target bundler . -- --features wasm
 
-.PHONY: web
-
+.phony: web
 web:
-	wasm-pack build --target web . -- --features js
+	rustup run $(toolchain) wasm-pack build --target web . -- --features wasm
