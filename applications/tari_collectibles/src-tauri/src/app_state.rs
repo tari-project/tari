@@ -74,11 +74,8 @@ impl ConcurrentAppState {
 
   pub async fn connect_base_node_client(&self) -> Result<BaseNodeClient, CollectiblesError> {
     let lock = self.inner.read().await;
-    let client = BaseNodeClient::connect(format!(
-      "http://{}",
-      lock.config.base_node_grpc_address.to_string()
-    ))
-    .await?;
+    let client =
+      BaseNodeClient::connect(format!("http://{}", lock.config.base_node_grpc_address)).await?;
     Ok(client)
   }
 

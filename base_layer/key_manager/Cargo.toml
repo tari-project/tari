@@ -32,7 +32,7 @@ serde_json = "1.0.39"
 thiserror = "1.0.26"
 strum_macros = "0.22"
 strum = { version = "0.22", features = ["derive"] }
-wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"] }
+wasm-bindgen = { version = "0.2", features = ["serde-serialize", "nightly"], optional = true }
 wasm-bindgen-test = "0.3.28"
 
 [dev-dependencies]
@@ -41,3 +41,4 @@ sha2 = "0.9.8"
 [features]
 avx2 = ["tari_crypto/avx2"]
 js = ["getrandom/js", "js-sys"]
+wasm = ["wasm-bindgen", "js"]
