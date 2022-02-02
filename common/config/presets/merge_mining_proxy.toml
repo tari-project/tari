@@ -4,47 +4,52 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-[merge_mining_proxy.dibbler]
+[merge_mining_proxy]
 
-# URL to monerod
-monerod_url = [ # stagenet
-    "http://stagenet.xmr-tw.org:38081",
-    "http://stagenet.community.xmr.to:38081",
-    "http://monero-stagenet.exan.tech:38081",
-    "http://xmr-lux.boldsuck.org:38081",
-    "http://singapore.node.xmr.pm:38081",
-]
-#monerod_url = [ # mainnet
-#    "http://18.132.124.81:18081",
-#    "http://xmr.support:18081",
-#    "http://node1.xmr-tw.org:18081",
-#    "http://xmr.nthrow.nyc:18081",
-#]
+# Address of the tari_merge_mining_proxy application. (default = "127.0.0.1:7878")
+#proxy_host_address = "/ip4/127.0.0.1/tcp/7878"
 
-# Address of the tari_merge_mining_proxy application
-proxy_host_address = "127.0.0.1:7878"
+# GRPC address of base node. (default = "/ip4/127.0.0.1/tcp/18142")
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
+
+# GRPC address of console wallet. (default = "/ip4/127.0.0.1/tcp/18143")
+#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
 # (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
 # merged mining, there is no sense in submitting the solution to the Monero blockchain as the
 # pool does that, then this setting should be "false". (default = true).
-proxy_submit_to_origin = true
-
-# If authentication is being used for curl
-monerod_use_auth = false
-
-# Username for curl
-monerod_username = ""
-
-# Password for curl
-monerod_password = ""
+#proxy_submit_to_origin = true
 
 # The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
 
-[merge_mining_proxy]
-monerod_use_auth = false
-monerod_username = ""
-monerod_password = ""
+[merge_mining_proxy.dibbler]
+
+# URL to monerod  (default = stagenet)
+#monerod_url = [ # stagenet
+#    "http://stagenet.xmr-tw.org:38081",
+#    "http://stagenet.community.xmr.to:38081",
+#    "http://monero-stagenet.exan.tech:38081",
+#    "http://xmr-lux.boldsuck.org:38081",
+#    "http://singapore.node.xmr.pm:38081",
+#]
+#monerod_url = [ # mainnet
+#    "http://xmr.support:18081",
+#    "http://node1.xmr-tw.org:18081",
+#    "http://xmr.nthrow.nyc:18081",
+#    "http://node.xmrig.com:18081",
+#    "http://monero.exan.tech:18081",
+#    "http://18.132.124.81:18081",
+#]
+
+# If authentication is being used for curl. (default = false).
+#monerod_use_auth = false
+
+# Username for curl. (default = "").
+#monerod_username = ""
+
+# Password for curl. (default = "").
+#monerod_password = ""

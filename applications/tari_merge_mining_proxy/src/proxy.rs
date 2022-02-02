@@ -23,6 +23,7 @@
 use std::{
     cmp,
     convert::TryFrom,
+    fmt::{Display, Error, Formatter},
     future::Future,
     net::SocketAddr,
     pin::Pin,
@@ -82,6 +83,8 @@ impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
         let merge_mining_config = config
             .merge_mining_config
             .ok_or_else(|| "Merge mining config settings are missing".to_string())?;
+        let proxy_host_address = multiaddr_to_socketaddr(&merge_mining_config.proxy_host_address)
+            .map_err(|e| format!("Invalid proxy_host_address: {}", e))?;
         let grpc_base_node_address = multiaddr_to_socketaddr(&merge_mining_config.base_node_grpc_address)
             .map_err(|e| format!("Invalid base_node_grpc_address: {}", e))?;
         let grpc_console_wallet_address = multiaddr_to_socketaddr(&merge_mining_config.wallet_grpc_address)
@@ -94,10 +97,32 @@ impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
             monerod_use_auth: merge_mining_config.monerod_use_auth,
             grpc_base_node_address,
             grpc_console_wallet_address,
-            proxy_host_address: merge_mining_config.proxy_host_address,
-            proxy_submit_to_origin: config.proxy_submit_to_origin,
-            wait_for_initial_sync_at_startup: config.wait_for_initial_sync_at_startup,
+            proxy_host_address,
+            proxy_submit_to_origin: merge_mining_config.proxy_submit_to_origin,
+            wait_for_initial_sync_at_startup: merge_mining_config.wait_for_initial_sync_at_startup,
         })
+    }
+}
+
+impl Display for MergeMiningProxyConfig {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        writeln!(
+            f,
+            "Configuration:\n  network ({})\n  proxy_host_address ({})\n  grpc_base_node_address ({})\n  \
+             grpc_console_wallet_address ({})\n  proxy_submit_to_origin ({})\n  wait_for_initial_sync_at_startup \
+             ({})\n  monerod_url ({:?})\n  monerod_password ({})\n  monerod_username ({})\n  monerod_use_auth ({})",
+            self.network,
+            self.proxy_host_address,
+            self.grpc_base_node_address,
+            self.grpc_console_wallet_address,
+            self.proxy_submit_to_origin,
+            self.wait_for_initial_sync_at_startup,
+            self.monerod_url,
+            self.monerod_password,
+            self.monerod_username,
+            self.monerod_use_auth
+        )?;
+        Ok(())
     }
 }
 
@@ -114,6 +139,7 @@ impl MergeMiningProxyService {
         wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
         block_templates: BlockTemplateRepository,
     ) -> Self {
+        debug!(target: LOG_TARGET, "Config: {:?}", config);
         Self {
             inner: InnerService {
                 config,
@@ -305,6 +331,12 @@ impl InnerService {
                     if !self.config.proxy_submit_to_origin {
                         // self-select related, do not change.
                         json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
+                        trace!(
+                            target: LOG_TARGET,
+                            "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
+                            self.config.proxy_submit_to_origin,
+                            json_resp
+                        );
                     } else {
                         json_resp = json_rpc::success_response(
                             request["id"].as_i64(),
@@ -348,7 +380,12 @@ impl InnerService {
             self.block_templates.remove_outdated().await;
         }
 
-        debug!(target: LOG_TARGET, "Sending submit_block response {}", json_resp);
+        debug!(
+            target: LOG_TARGET,
+            "Sending submit_block response (proxy_submit_to_origin({})): {}",
+            self.config.proxy_submit_to_origin,
+            json_resp
+        );
         Ok(proxy::into_response(parts, &json_resp))
     }
 
@@ -605,20 +642,41 @@ impl InnerService {
             }
         }
 
-        for monerod_url in self.config.monerod_url.iter() {
-            let uri = format!("{}{}", monerod_url, uri.path()).parse::<Url>()?;
-            match reqwest::get(uri.clone()).await {
-                Ok(_) => {
-                    let mut lock = self.last_available_server.write().expect("Write lock should not fail");
-                    *lock = Some(monerod_url.to_string());
-                    info!(target: LOG_TARGET, "Monerod server available: {:?}", uri.clone());
-                    return Ok(uri);
-                },
-                Err(_) => {
-                    warn!(target: LOG_TARGET, "Monerod server unavailable: {:?}", uri);
-                    continue;
-                },
+        let current_url = {
+            let lock = self
+                .last_available_server
+                .read()
+                .expect("Read lock should not fail")
+                .clone();
+            match lock {
+                Some(url) => url,
+                None => "".to_string(),
             }
+        };
+        let mut iter = self.config.monerod_url.iter();
+        let _ = iter.find(|&x| x == &current_url);
+        let mut count = 0;
+        loop {
+            count += 1;
+            if count > self.config.monerod_url.len() * 2 {
+                break;
+            }
+            if let Some(next_url) = iter.next() {
+                let uri = format!("{}{}", next_url, uri.path()).parse::<Url>()?;
+                match reqwest::get(uri.clone()).await {
+                    Ok(_) => {
+                        let mut lock = self.last_available_server.write().expect("Write lock should not fail");
+                        *lock = Some(next_url.to_string());
+                        info!(target: LOG_TARGET, "Monerod server available: {:?}", uri.clone());
+                        return Ok(uri);
+                    },
+                    Err(_) => {
+                        warn!(target: LOG_TARGET, "Monerod server unavailable: {:?}", uri);
+                    },
+                }
+            } else {
+                iter = self.config.monerod_url.iter();
+            };
         }
 
         Err(MmProxyError::ServersUnavailable)
@@ -666,12 +724,19 @@ impl InnerService {
         let body: Bytes = request.body().clone();
         let json = json::from_slice::<json::Value>(&body[..]).unwrap_or_default();
         if let Some(method) = json["method"].as_str() {
+            trace!(target: LOG_TARGET, "json[\"method\"]: {}", method);
             match method {
                 "submitblock" | "submit_block" => {
                     submit_block = true;
                 },
                 _ => {},
             }
+            trace!(
+                target: LOG_TARGET,
+                "submitblock({}), proxy_submit_to_origin({})",
+                submit_block,
+                self.config.proxy_submit_to_origin
+            );
         }
 
         let json_response;
