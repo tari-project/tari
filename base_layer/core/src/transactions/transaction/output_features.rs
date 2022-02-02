@@ -29,7 +29,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::types::{Commitment, FixedHash, PublicKey};
 use tari_utilities::ByteArray;
 
 use super::OutputFeaturesVersion;
@@ -181,7 +181,7 @@ impl OutputFeatures {
     pub fn for_checkpoint(
         parent_public_key: PublicKey,
         unique_id: Vec<u8>,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee: Vec<PublicKey>,
         is_initial: bool,
     ) -> OutputFeatures {
@@ -317,7 +317,7 @@ mod test {
                 asset_owner_commitment: Default::default(),
             }),
             sidechain_checkpoint: Some(SideChainCheckpointFeatures {
-                merkle_root: vec![1u8; 32],
+                merkle_root: [1u8; 32],
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
             }),
         }
