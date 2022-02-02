@@ -318,9 +318,9 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     // txs per second
     let txps = args.next().ok_or_else(|| ParseError::Empty("Txs/s".to_string()))?;
     let txps = txps.parse::<f64>().map_err(ParseError::Float)?;
-    if txps > 25.0 {
-        println!("Maximum transaction rate is 25/sec");
-        return Err(ParseError::Invalid("Maximum transaction rate is 25/sec".to_string()));
+    if txps > 2500.0 {
+        println!("Maximum transaction rate is 2500/sec");
+        return Err(ParseError::Invalid("Maximum transaction rate is 2500/sec".to_string()));
     }
     parsed_args.push(ParsedArgument::Float(txps));
 

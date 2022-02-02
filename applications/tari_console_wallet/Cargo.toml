@@ -22,6 +22,7 @@ tari_utilities = "0.3.0"
 sha2 = "0.9.5"
 digest = "0.9.0"
 chrono = { version = "0.4.19", default-features = false }
+console-subscriber = "0.1.1"
 bitflags = "1.2.1"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
 crossterm = { version = "0.17" }

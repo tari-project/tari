@@ -79,9 +79,8 @@ mod unblinded_output_builder;
 #[cfg(test)]
 mod test;
 
-// Tx_weight(inputs(12,500), outputs(500), kernels(1)) = 126,510 still well enough below block weight of 127,795
 pub const MAX_TRANSACTION_INPUTS: usize = 12_500;
-pub const MAX_TRANSACTION_OUTPUTS: usize = 500;
+pub const MAX_TRANSACTION_OUTPUTS: usize = 2000;
 pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//

@@ -71,6 +71,7 @@ pub mod wallet_modes;
 
 /// Application entry point
 fn main() {
+    // console_subscriber::init();
     match main_inner() {
         Ok(_) => process::exit(0),
         Err(exit_code) => {
