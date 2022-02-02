@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -34,13 +35,16 @@ use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 use crate::{
-    base_node::comms_interface::{
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+    base_node::{
+        comms_interface::{
+            error::CommsInterfaceError,
+            local_interface::BlockEventSender,
+            FetchMempoolTransactionsResponse,
+            NodeCommsRequest,
+            NodeCommsResponse,
+            OutboundNodeCommsInterface,
+        },
+        metrics,
     },
     blocks::{Block, BlockBuilder, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError, PrunedOutput},
@@ -552,6 +556,8 @@ where B: BlockchainBackend + 'static
         let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
+        metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
+
         let mut builder = BlockBuilder::new(header.version)
             .with_coinbase_utxo(coinbase_output, coinbase_kernel)
             .with_transactions(known_transactions);
@@ -596,6 +602,7 @@ where B: BlockchainBackend + 'static
                     not_found.len()
                 );
 
+                metrics::compact_block_full_misses(header.height).inc();
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
             }
@@ -703,6 +710,7 @@ where B: BlockchainBackend + 'static
 
                 self.blockchain_db.cleanup_orphans().await?;
 
+                self.update_block_result_metrics(&block_add_result);
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));
 
                 if should_propagate {
@@ -719,6 +727,7 @@ where B: BlockchainBackend + 'static
             },
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
+                metrics::rejected_blocks(block.header.height, &block.hash()).inc();
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} sent an invalid header: {}",
@@ -742,6 +751,7 @@ where B: BlockchainBackend + 'static
             },
 
             Err(e) => {
+                metrics::rejected_blocks(block.header.height, &block.hash()).inc();
                 self.publish_block_event(BlockEvent::AddBlockFailed(block));
                 Err(e.into())
             },
@@ -751,6 +761,23 @@ where B: BlockchainBackend + 'static
     fn publish_block_event(&self, event: BlockEvent) {
         if let Err(event) = self.block_event_sender.send(Arc::new(event)) {
             debug!(target: LOG_TARGET, "No event subscribers. Event {} dropped.", event.0)
+        }
+    }
+
+    fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) {
+        match block_add_result {
+            BlockAddResult::Ok(ref block) => {
+                metrics::target_difficulty(block.height())
+                    .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+            },
+            BlockAddResult::ChainReorg { added, removed } => {
+                let fork_height = added.last().map(|b| b.height() - 1).unwrap_or_default();
+                metrics::reorg(fork_height, added.len(), removed.len()).inc();
+            },
+            BlockAddResult::OrphanBlock => {
+                metrics::orphaned_blocks().inc();
+            },
+            _ => {},
         }
     }
 

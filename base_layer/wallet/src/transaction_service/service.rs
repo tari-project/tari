@@ -939,7 +939,6 @@ where
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key.clone(),
-            OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
         );
@@ -996,7 +995,12 @@ where
             .get_fee_amount()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
         self.output_manager_service
-            .add_output_with_tx_id(tx_id, unblinded_output, Some(SpendingPriority::HtlcSpendAsap))
+            .add_rewindable_output_with_tx_id(
+                tx_id,
+                unblinded_output,
+                Some(SpendingPriority::HtlcSpendAsap),
+                Some(rewind_data),
+            )
             .await?;
         self.submit_transaction(
             transaction_broadcast_join_handles,
@@ -1099,7 +1103,6 @@ where
             sender_message,
             PrivateKey::random(&mut OsRng),
             spend_key,
-            OutputFeatures::default(),
             &self.resources.factories,
             &rewind_data,
         );

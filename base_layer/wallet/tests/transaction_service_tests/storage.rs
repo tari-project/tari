@@ -169,7 +169,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
-        OutputFeatures::default(),
         &factories,
     );
 

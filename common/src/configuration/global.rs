@@ -43,6 +43,7 @@ use crate::{
         bootstrap::ApplicationType,
         name_server::DnsNameServer,
         BaseNodeConfig,
+        CollectiblesConfig,
         Network,
         ValidatorNodeConfig,
         WalletConfig,
@@ -138,6 +139,7 @@ pub struct GlobalConfig {
     pub base_node_use_libtor: bool,
     pub console_wallet_use_libtor: bool,
     pub blockchain_track_reorgs: bool,
+    pub collectibles_config: Option<CollectiblesConfig>,
 }
 
 impl GlobalConfig {
@@ -754,6 +756,7 @@ fn convert_node_config(
         base_node_use_libtor,
         console_wallet_use_libtor,
         blockchain_track_reorgs,
+        collectibles_config: CollectiblesConfig::convert_if_present(cfg)?,
     })
 }
 

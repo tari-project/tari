@@ -575,7 +575,7 @@ mod fetch_header_containing_utxo_mmr {
             assert_eq!(header.height(), 0);
             mmr_position += 1;
         });
-        let err = db.fetch_header_containing_utxo_mmr(4002).unwrap_err();
+        let err = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
@@ -586,12 +586,16 @@ mod fetch_header_containing_utxo_mmr {
         let _ = add_many_chained_blocks(5, &db);
         let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
 
+        let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs - 1).unwrap();
+        assert_eq!(header.height(), 0);
+
         for i in 1..=5 {
-            let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs + i).unwrap();
-            assert_eq!(header.height(), i);
+            let index = num_genesis_outputs + i - 1;
+            let header = db.fetch_header_containing_utxo_mmr(index).unwrap();
+            assert_eq!(header.height(), i, "Incorrect header for MMR index = {}", index);
         }
         let err = db
-            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5 + 1)
+            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5)
             .unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
@@ -605,13 +609,13 @@ mod fetch_header_containing_kernel_mmr {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
         assert_eq!(genesis.block().body.kernels().len(), 2);
-        // let mut mmr_position = 0;
-        // genesis.block().body.kernels().iter().for_each(|_| {
-        //     let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
-        //     assert_eq!(header.height(), 0);
-        //     mmr_position += 1;
-        // });
-        let err = db.fetch_header_containing_kernel_mmr(3).unwrap_err();
+        let mut mmr_position = 0;
+        genesis.block().body.kernels().iter().for_each(|_| {
+            let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
+            assert_eq!(header.height(), 0);
+            mmr_position += 1;
+        });
+        let err = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
@@ -627,22 +631,22 @@ mod fetch_header_containing_kernel_mmr {
         db.add_block(block).unwrap();
         let _ = add_many_chained_blocks(3, &db);
 
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels - 1).unwrap();
         assert_eq!(header.height(), 0);
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + 1).unwrap();
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
         assert_eq!(header.height(), 1);
 
-        for i in 2..=3 {
+        for i in 1..=2 {
             let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
             assert_eq!(header.height(), 2);
         }
-        for i in 4..=6 {
+        for i in 3..=5 {
             let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
-            assert_eq!(header.height(), i - 1);
+            assert_eq!(header.height(), i);
         }
 
         let err = db
-            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 6 + 1)
+            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 6)
             .unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }

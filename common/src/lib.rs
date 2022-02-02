@@ -102,5 +102,6 @@ pub const DEFAULT_WALLET_LOG_CONFIG: &str = "config/log4rs_console_wallet.yml";
 pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "config/log4rs_merge_mining_proxy.yml";
 pub const DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG: &str = "config/log4rs_miningcore_transcoder.yml";
 pub const DEFAULT_MINING_NODE_LOG_CONFIG: &str = "config/log4rs_mining_node.yml";
+pub const DEFAULT_COLLECTIBLES_LOG_CONFIG: &str = "config/log4rs_collectibles.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

@@ -1,4 +1,4 @@
-// Copyright 2019. The Tari Project
+// Copyright 2021. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,48 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! The Tari base node implementation.
-//!
-//! Base nodes are the key pieces of infrastructure that maintain the security and integrity of the Tari
-//! cryptocurrency. The role of the base node is to provide the following services:
-//! * New transaction validation
-//! * New block validation
-//! * Chain synchronisation service
-//! * A gRPC API exposing metrics and data about the blockchain state
-//!
-//! More details about the implementation are presented in
-//! [RFC-0111](https://rfc.tari.com/RFC-0111_BaseNodeArchitecture.html).
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-#[cfg(feature = "base_node")]
-pub mod chain_metadata_service;
+use config::Config;
+use serde::Deserialize;
 
-#[cfg(feature = "base_node")]
-pub mod comms_interface;
-#[cfg(feature = "base_node")]
-pub use comms_interface::LocalNodeCommsInterface;
-#[cfg(feature = "base_node")]
-mod metrics;
+use crate::ConfigurationError;
 
-#[cfg(feature = "base_node")]
-pub mod service;
+#[derive(Debug, Clone, Deserialize)]
+pub struct CollectiblesConfig {
+    #[serde(default = "default_validator_node_grpc_address")]
+    pub validator_node_grpc_address: SocketAddr,
+    #[serde(default = "default_base_node_grpc_address")]
+    pub base_node_grpc_address: SocketAddr,
+    #[serde(default = "default_wallet_grpc_address")]
+    pub wallet_grpc_address: SocketAddr,
+}
 
-#[cfg(feature = "base_node")]
-pub mod state_machine_service;
-#[cfg(feature = "base_node")]
-pub use state_machine_service::{BaseNodeStateMachine, BaseNodeStateMachineConfig, StateMachineHandle};
+fn default_validator_node_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144)
+}
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod sync;
+fn default_base_node_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18142)
+}
 
-#[cfg(feature = "base_node")]
-pub use sync::{
-    rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService},
-    BlockSyncConfig,
-    SyncValidators,
-};
+fn default_wallet_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18143)
+}
 
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod proto;
-
-#[cfg(any(feature = "base_node", feature = "base_node_proto"))]
-pub mod rpc;
+impl CollectiblesConfig {
+    pub fn convert_if_present(cfg: Config) -> Result<Option<CollectiblesConfig>, ConfigurationError> {
+        let section: Self = match cfg.get("collectibles") {
+            Ok(s) => s,
+            Err(_e) => {
+                // dbg!(e);
+                return Ok(None);
+            },
+        };
+        Ok(Some(section))
+    }
+}

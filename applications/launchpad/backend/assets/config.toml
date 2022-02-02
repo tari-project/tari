@@ -50,19 +50,15 @@ network = "dibbler"
 db_type = "lmdb"
 flood_ban_max_msg_count = 10000
 allow_test_addresses = false
-use_libtor = false
 base_node_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
 base_node_tor_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_tor.json"
-
-# -- These values are overridden by envars in the Tauri code for EVERY network
+# -------------- Transport configuration --------------
 transport = "tor"
 tor_control_auth = "password=tari"
 tor_forward_address = "/dns4/base_node/tcp/18189"
 tcp_listener_address = "/dns4/base_node/tcp/18189"
 tor_socks_address_override = "/dns4/tor/tcp/9050"
 tor_control_address = "/dns4/tor/tcp/9051"
-grpc_enabled = true
-grpc_base_node_address = "0.0.0.0:18142"
 
 
 [base_node.igor]

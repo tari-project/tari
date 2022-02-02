@@ -6417,7 +6417,6 @@ dependencies = [
  "opentelemetry",
  "opentelemetry-jaeger",
  "regex",
- "reqwest",
  "rustyline",
  "rustyline-derive",
  "strum 0.22.0",
@@ -6443,7 +6442,6 @@ dependencies = [
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber 0.2.25",
- "warp",
 ]
 
 [[package]]
@@ -6474,6 +6472,7 @@ dependencies = [
  "diesel",
  "diesel_migrations",
  "futures 0.3.19",
+ "log",
  "prost",
  "prost-types",
  "rand 0.8.4",
@@ -6481,6 +6480,8 @@ dependencies = [
  "serde_json",
  "structopt",
  "tari_app_grpc",
+ "tari_app_utilities",
+ "tari_common",
  "tari_common_types",
  "tari_crypto",
  "tari_dan_common_types",
@@ -6490,6 +6491,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "thiserror",
+ "tokio 1.15.0",
  "tonic",
  "uuid",
 ]
@@ -6716,13 +6718,13 @@ dependencies = [
  "futures 0.3.19",
  "hex",
  "integer-encoding 3.0.2",
- "lazy_static 1.4.0",
  "lmdb-zero",
  "log",
  "log-mdc",
  "monero",
  "newtype-ops",
  "num-format",
+ "once_cell",
  "prost",
  "prost-types",
  "rand 0.8.4",
@@ -6737,6 +6739,7 @@ dependencies = [
  "tari_comms_dht",
  "tari_comms_rpc_macros",
  "tari_crypto",
+ "tari_metrics",
  "tari_mmr",
  "tari_p2p",
  "tari_service_framework",
@@ -6947,8 +6950,15 @@ dependencies = [
 name = "tari_metrics"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "futures 0.3.19",
+ "log",
  "once_cell",
  "prometheus",
+ "reqwest",
+ "thiserror",
+ "tokio 1.15.0",
+ "warp",
 ]
 
 [[package]]

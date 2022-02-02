@@ -19,26 +19,27 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-var {createClient: createValidatorNodeClient} = require('../validatorNodeClient')
+var {
+  createClient: createValidatorNodeClient,
+} = require("../validatorNodeClient");
 
-var express = require('express')
-var router = express.Router()
+var express = require("express");
+var router = express.Router();
 
 router.get("/", async function (req, res) {
-    try {
-        let client = createValidatorNodeClient();
-        let metadata = await client.getMetadata();
-        console.log(metadata);
+  try {
+    let client = createValidatorNodeClient();
+    let metadata = await client.getMetadata();
+    console.log(metadata);
 
-        res.render('validator', {
-            title: `Validator node`,
-            sidechains: metadata.sidechains
-        })
-
-    } catch (error) {
-        res.status(500)
-        res.render('error', {error: error})
-    }
+    res.render("validator", {
+      title: `Validator node`,
+      sidechains: metadata.sidechains,
+    });
+  } catch (error) {
+    res.status(500);
+    res.render("error", { error: error });
+  }
 });
 
-module.exports = router
+module.exports = router;

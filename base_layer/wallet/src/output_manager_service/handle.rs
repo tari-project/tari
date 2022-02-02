@@ -32,7 +32,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
-        transaction_protocol::sender::TransactionSenderMessage,
+        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
@@ -57,6 +57,7 @@ pub enum OutputManagerRequest {
     GetBalance,
     AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),
     AddOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
+    AddRewindableOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>, Option<RewindData>)),
     AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
@@ -127,6 +128,7 @@ impl fmt::Display for OutputManagerRequest {
             GetBalance => write!(f, "GetBalance"),
             AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
             AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
+            AddRewindableOutputWithTxId((t, v, _, _)) => write!(f, "AddRewindableOutputWithTxId ({}: {})", t, v.value),
             AddUnvalidatedOutput((t, v, _)) => {
                 write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value)
             },
@@ -307,6 +309,28 @@ impl OutputManagerHandle {
                 tx_id,
                 Box::new(output),
                 spend_priority,
+            )))
+            .await??
+        {
+            OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    pub async fn add_rewindable_output_with_tx_id(
+        &mut self,
+        tx_id: TxId,
+        output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
+        custom_rewind_data: Option<RewindData>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddRewindableOutputWithTxId((
+                tx_id,
+                Box::new(output),
+                spend_priority,
+                custom_rewind_data,
             )))
             .await??
         {
