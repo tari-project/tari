@@ -20,7 +20,6 @@ const { waitFor, sleep, consoleLogBalance } = require("../../helpers/util");
 const { PaymentType } = require("../../helpers/types");
 const { expect } = require("chai");
 const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
-// const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
 
 class CustomWorld {
   constructor({ attach, parameters }) {
@@ -675,12 +674,12 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
-  // console.log("Compiling wallet FFI...");
-  // await InterfaceFFI.compile();
-  // console.log("Finished compilation.");
-  // console.log("Loading FFI interface..");
-  // await InterfaceFFI.init();
-  // console.log("FFI interface loaded.");
+  console.log("Compiling wallet FFI...");
+  await InterfaceFFI.compile();
+  console.log("Finished compilation.");
+  console.log("Loading FFI interface..");
+  await InterfaceFFI.init();
+  console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");
 });
