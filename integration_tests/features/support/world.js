@@ -593,6 +593,31 @@ class CustomWorld {
     }
     expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
   }
+
+  async all_nodes_are_at_height(height) {
+    await waitFor(
+      async () => {
+        let result = true;
+        await this.forEachClientAsync(async (client, name) => {
+          await waitFor(
+            async () => await client.getTipHeight(),
+            height,
+            5 * height * 1000 /* 5 seconds per block */
+          );
+          const currTip = await client.getTipHeight();
+          console.log(
+            `Node ${name} is at tip: ${currTip} (should be ${height})`
+          );
+          result = result && currTip == height;
+        });
+        return result;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
+  }
 }
 
 setWorldConstructor(CustomWorld);
@@ -650,12 +675,12 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 
-  console.log("Compiling wallet FFI...");
-  await InterfaceFFI.compile();
-  console.log("Finished compilation.");
-  console.log("Loading FFI interface..");
-  await InterfaceFFI.init();
-  console.log("FFI interface loaded.");
+  // console.log("Compiling wallet FFI...");
+  // await InterfaceFFI.compile();
+  // console.log("Finished compilation.");
+  // console.log("Loading FFI interface..");
+  // await InterfaceFFI.init();
+  // console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");
 });

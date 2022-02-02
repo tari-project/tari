@@ -120,6 +120,8 @@ pub enum OutputManagerError {
     },
     #[error("Invalid message received:{0}")]
     InvalidMessageError(String),
+    #[error("Operation not support on this Key Manager branch")]
+    KeyManagerBranchNotSupported,
 }
 
 #[derive(Debug, Error)]
