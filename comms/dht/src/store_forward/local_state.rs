@@ -41,9 +41,9 @@ impl SafLocalState {
 
     pub fn register_inflight_request(&mut self, peer: NodeId) {
         match self.inflight_saf_requests.entry(peer) {
-            Entry::Occupied(entry) => {
+            Entry::Occupied(mut entry) => {
                 let (count, _) = *entry.get();
-                entry.replace_entry((count + 1, Instant::now()));
+                *entry.get_mut() = (count + 1, Instant::now());
             },
             Entry::Vacant(entry) => {
                 entry.insert((1, Instant::now()));
@@ -53,11 +53,11 @@ impl SafLocalState {
 
     pub fn mark_infight_response_received(&mut self, peer: NodeId) -> Option<Duration> {
         match self.inflight_saf_requests.entry(peer) {
-            Entry::Occupied(entry) => {
+            Entry::Occupied(mut entry) => {
                 let (count, ts) = *entry.get();
                 let reduced_count = count - 1;
                 if reduced_count > 0 {
-                    entry.replace_entry((reduced_count, ts));
+                    *entry.get_mut() = (reduced_count, ts);
                 } else {
                     entry.remove();
                 }
