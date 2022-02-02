@@ -41,6 +41,7 @@ pub mod loader;
 mod network;
 pub use network::Network;
 mod base_node_config;
+mod collectibles_config;
 mod merge_mining_config;
 pub mod name_server;
 pub mod seconds;
@@ -50,6 +51,7 @@ mod wallet_config;
 pub mod writer;
 
 pub use base_node_config::BaseNodeConfig;
+pub use collectibles_config::CollectiblesConfig;
 pub use merge_mining_config::MergeMiningConfig;
 pub use validator_node_config::ValidatorNodeConfig;
 pub use wallet_config::WalletConfig;
