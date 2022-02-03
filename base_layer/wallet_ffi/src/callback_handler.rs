@@ -54,6 +54,7 @@ use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    connectivity_service::OnlineStatus,
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -66,6 +67,7 @@ use tari_wallet::{
         },
     },
 };
+use tokio::sync::watch;
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -85,6 +87,7 @@ where TBackend: TransactionBackend + 'static
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
+    callback_connectivity_status: unsafe extern "C" fn(u64),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
@@ -93,6 +96,7 @@ where TBackend: TransactionBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
     balance_cache: Balance,
+    connectivity_status_watch: watch::Receiver<OnlineStatus>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -107,6 +111,7 @@ where TBackend: TransactionBackend + 'static
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
+        connectivity_status_watch: watch::Receiver<OnlineStatus>,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
@@ -120,6 +125,7 @@ where TBackend: TransactionBackend + 'static
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
         callback_saf_messages_received: unsafe extern "C" fn(),
+        callback_connectivity_status: unsafe extern "C" fn(u64),
     ) -> Self {
         info!(
             target: LOG_TARGET,
@@ -173,6 +179,10 @@ where TBackend: TransactionBackend + 'static
             target: LOG_TARGET,
             "SafMessagesReceivedCallback -> Assigning Fn:  {:?}", callback_saf_messages_received
         );
+        info!(
+            target: LOG_TARGET,
+            "ConnectivityStatusCallback -> Assigning Fn:  {:?}", callback_connectivity_status
+        );
 
         Self {
             callback_received_transaction,
@@ -188,6 +198,7 @@ where TBackend: TransactionBackend + 'static
             callback_balance_updated,
             callback_transaction_validation_complete,
             callback_saf_messages_received,
+            callback_connectivity_status,
             db,
             transaction_service_event_stream,
             output_manager_service_event_stream,
@@ -196,6 +207,7 @@ where TBackend: TransactionBackend + 'static
             shutdown_signal: Some(shutdown_signal),
             comms_public_key,
             balance_cache: Balance::zero(),
+            connectivity_status_watch,
         }
     }
 
@@ -302,6 +314,11 @@ where TBackend: TransactionBackend + 'static
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
                     }
                 }
+                Ok(_) = self.connectivity_status_watch.changed() => {
+                    let status  = *self.connectivity_status_watch.borrow();
+                    trace!(target: LOG_TARGET, "Connectivity status change detected: {:?}", status);
+                    self.connectivity_status_changed(status);
+                },
                  _ = shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
                     break;
@@ -514,6 +531,16 @@ where TBackend: TransactionBackend + 'static
         debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
         unsafe {
             (self.callback_saf_messages_received)();
+        }
+    }
+
+    fn connectivity_status_changed(&mut self, status: OnlineStatus) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Connectivity Status changed callback function"
+        );
+        unsafe {
+            (self.callback_connectivity_status)(status as u64);
         }
     }
 }

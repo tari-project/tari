@@ -478,6 +478,13 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
+/// `callback_connectivity_status` -  This callback is called when the status of connection to the set base node changes.
+/// it will return an enum encoded as an integer as follows:
+/// pub enum OnlineStatus {
+///     Connecting,     // 0
+///     Online,         // 1
+///     Offline,        // 2
+/// }
 /// `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
 /// that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
 /// `error_out` - Pointer to an int which will be modified
@@ -515,6 +522,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, bool),
                                  void (*callback_saf_message_received)(),
+                                 void (*callback_connectivity_status)(unsigned long long),
                                  bool *recovery_in_progress,
                                  int *error_out);
 
