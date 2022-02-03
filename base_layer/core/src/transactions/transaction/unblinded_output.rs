@@ -218,6 +218,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
+        range_proof: Option<&RangeProof>,
     ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
@@ -227,16 +228,19 @@ impl UnblindedOutput {
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
 
-        let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
-            &self.spending_key,
-            self.value.into(),
-            &rewind_data.rewind_key,
-            &rewind_data.rewind_blinding_key,
-            &rewind_data.proof_message,
-        )?;
-
-        let proof = RangeProof::from_bytes(&proof_bytes)
-            .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?;
+        let proof = if let Some(proof) = range_proof {
+            proof.clone()
+        } else {
+            let proof_bytes = factories.range_proof.construct_proof_with_rewind_key(
+                &self.spending_key,
+                self.value.into(),
+                &rewind_data.rewind_key,
+                &rewind_data.rewind_blinding_key,
+                &rewind_data.proof_message,
+            )?;
+            RangeProof::from_bytes(&proof_bytes)
+                .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?
+        };
 
         let output = TransactionOutput::new_current_version(
             self.features.clone(),

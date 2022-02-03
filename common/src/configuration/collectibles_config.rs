@@ -20,50 +20,44 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-var { createClient } = require("../baseNodeClient");
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
-var express = require("express");
-var router = express.Router();
+use config::Config;
+use serde::Deserialize;
 
-router.get("/:height", async function (req, res) {
-  try {
-    let client = createClient();
-    let height = parseInt(req.params.height);
-    let block = await client.getBlocks({ heights: [height] });
+use crate::ConfigurationError;
 
-    if (!block || block.length === 0) {
-      res.status(404);
-      res.render("404", { message: `Block at height ${height} not found` });
-      return;
+#[derive(Debug, Clone, Deserialize)]
+pub struct CollectiblesConfig {
+    #[serde(default = "default_validator_node_grpc_address")]
+    pub validator_node_grpc_address: SocketAddr,
+    #[serde(default = "default_base_node_grpc_address")]
+    pub base_node_grpc_address: SocketAddr,
+    #[serde(default = "default_wallet_grpc_address")]
+    pub wallet_grpc_address: SocketAddr,
+}
+
+fn default_validator_node_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144)
+}
+
+fn default_base_node_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18142)
+}
+
+fn default_wallet_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18143)
+}
+
+impl CollectiblesConfig {
+    pub fn convert_if_present(cfg: Config) -> Result<Option<CollectiblesConfig>, ConfigurationError> {
+        let section: Self = match cfg.get("collectibles") {
+            Ok(s) => s,
+            Err(_e) => {
+                // dbg!(e);
+                return Ok(None);
+            },
+        };
+        Ok(Some(section))
     }
-
-    let tipInfo = await client.getTipInfo({});
-    let tipHeight = parseInt(tipInfo.metadata.height_of_longest_chain);
-
-    let prevHeight = height - 1;
-    let prevLink = `/blocks/${prevHeight}`;
-    if (height === 0) prevLink = null;
-
-    let nextHeight = height + 1;
-    let nextLink = `/blocks/${nextHeight}`;
-    if (height === tipHeight) nextLink = null;
-
-    // console.log(block);
-    res.render("blocks", {
-      title: `Block at height: ${block[0].block.header.height}`,
-      header: block[0].block.header,
-      height,
-      prevLink,
-      prevHeight,
-      nextLink,
-      nextHeight,
-      block: block[0].block,
-      pows: { 0: "Monero", 1: "SHA-3" },
-    });
-  } catch (error) {
-    res.status(500);
-    res.render("error", { error: error });
-  }
-});
-
-module.exports = router;
+}

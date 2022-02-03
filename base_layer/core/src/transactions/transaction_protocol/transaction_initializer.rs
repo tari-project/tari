@@ -503,7 +503,7 @@ impl SenderTransactionInitializer {
             .iter()
             .map(|o| {
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    o.as_rewindable_transaction_output(factories, rewind_data)
+                    o.as_rewindable_transaction_output(factories, rewind_data, None)
                 } else {
                     o.as_transaction_output(factories)
                 }
@@ -527,7 +527,7 @@ impl SenderTransactionInitializer {
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
                 // TODO: Should proof be verified?
-                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data) {
+                match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, None) {
                     Ok(o) => o,
                     Err(e) => {
                         return self.build_err(e.to_string().as_str());

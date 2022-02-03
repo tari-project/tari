@@ -398,7 +398,7 @@ fn test_output_rewinding() {
         ..Default::default()
     });
     let output = unblinded_output
-        .as_rewindable_transaction_output(&factories, &rewind_data)
+        .as_rewindable_transaction_output(&factories, &rewind_data, None)
         .unwrap();
 
     assert!(matches!(
