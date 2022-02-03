@@ -41,8 +41,9 @@ use crate::{commands::AppState, docker::create_workspace_folders, error::Launche
 pub fn create_new_workspace(app: AppHandle<Wry>, root_path: String) -> Result<(), String> {
     let config = app.config();
     let package_info = &app.state::<AppState>().package_info;
-    let _ = create_workspace_folders(root_path.as_str()).map_err(|e| e.chained_message());
     let path = Path::new(&root_path);
+    debug!("Creating workspace at {}", path);
+    let _ = create_workspace_folders(root_path.as_str()).map_err(|e| e.chained_message());
     copy_config_file(path, config.as_ref(), package_info, "log4rs.yml").map_err(|e| e.chained_message())?;
     copy_config_file(path, config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
     info!("Workspace at {} complete!", root_path);

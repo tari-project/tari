@@ -4,25 +4,20 @@
 #                                                                                                                      #
 ########################################################################################################################
 
-[merge_mining_proxy.dibbler]
-
-# URL to monerod
+[merge_mining_proxy]
+config = "dibbler"
 monerod_url = [ # stagenet
-    "http://stagenet.xmr-tw.org:38081",
-    "http://stagenet.community.xmr.to:38081",
-    "http://monero-stagenet.exan.tech:38081",
-    "http://xmr-lux.boldsuck.org:38081",
-    "http://singapore.node.xmr.pm:38081",
+"http://stagenet.xmr-tw.org:38081",
+"http://stagenet.community.xmr.to:38081",
+"http://monero-stagenet.exan.tech:38081",
+"http://xmr-lux.boldsuck.org:38081",
+"http://singapore.node.xmr.pm:38081",
 ]
-#monerod_url = [ # mainnet
-#    "http://18.132.124.81:18081",
-#    "http://xmr.support:18081",
-#    "http://node1.xmr-tw.org:18081",
-#    "http://xmr.nthrow.nyc:18081",
-#]
+grpc_base_node_address = "/ip4/127.0.0.1/tcp/18142"
+grpc_console_wallet_address = "/ip4/127.0.0.1/tcp/18143"
 
 # Address of the tari_merge_mining_proxy application
-proxy_host_address = "127.0.0.1:7878"
+proxy_host_address = "/ip4/127.0.0.1/tcp/18081"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
 # (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
@@ -30,21 +25,17 @@ proxy_host_address = "127.0.0.1:7878"
 # pool does that, then this setting should be "false". (default = true).
 proxy_submit_to_origin = true
 
-# If authentication is being used for curl
-monerod_use_auth = false
-
-# Username for curl
-monerod_username = ""
-
-# Password for curl
-monerod_password = ""
-
 # The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
 # or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
 # accepted. (Default value = true; will wait for base node initial sync).
 #wait_for_initial_sync_at_startup = true
 
-[merge_mining_proxy]
-monerod_use_auth = false
+# Monero auth params
 monerod_username = ""
 monerod_password = ""
+monerod_use_auth = false
+
+[merge_mining_proxy.dibbler]
+# Put any network specific settings here
+
+

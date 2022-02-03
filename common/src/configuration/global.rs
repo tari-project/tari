@@ -750,13 +750,13 @@ fn convert_node_config(
         auto_ping_interval,
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
-        validator_node: ValidatorNodeConfig::convert_if_present(cfg)?,
+        validator_node: ValidatorNodeConfig::convert_if_present(&cfg)?,
         base_node_bypass_range_proof_verification,
         metrics,
         base_node_use_libtor,
         console_wallet_use_libtor,
         blockchain_track_reorgs,
-        collectibles_config: CollectiblesConfig::convert_if_present(cfg)?,
+        collectibles_config: CollectiblesConfig::convert_if_present(&cfg)?,
     })
 }
 
