@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{Display, Error, Formatter};
+
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::{PrivateKey, PublicKey};
@@ -41,13 +43,31 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::master_key_manager";
-
-const KEY_MANAGER_COINBASE_BRANCH_KEY: &str = "coinbase";
-const KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY: &str = "coinbase_script";
-const KEY_MANAGER_SCRIPT_BRANCH_KEY: &str = "script";
-const KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY: &str = "recovery_viewonly";
-const KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY: &str = "recovery_blinding";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
+
+#[derive(Clone, Copy)]
+pub enum KeyManagerBranch {
+    Spend,
+    SpendScript,
+    Coinbase,
+    CoinbaseScript,
+    RecoveryViewOnly,
+    RecoveryBlinding,
+}
+
+impl Display for KeyManagerBranch {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let response = match self {
+            KeyManagerBranch::Spend => "",
+            KeyManagerBranch::SpendScript => "script",
+            KeyManagerBranch::Coinbase => "coinbase",
+            KeyManagerBranch::CoinbaseScript => "coinbase_script",
+            KeyManagerBranch::RecoveryViewOnly => "recovery_viewonly",
+            KeyManagerBranch::RecoveryBlinding => "recovery_blinding",
+        };
+        fmt.write_str(response)
+    }
+}
 
 pub(crate) struct MasterKeyManager<TBackend> {
     utxo_key_manager: Mutex<KeyManager<PrivateKey, KeyDigest>>,
@@ -67,7 +87,7 @@ where TBackend: OutputManagerBackend + 'static
             None => {
                 let starting_state = KeyManagerState {
                     seed: master_seed,
-                    branch_seed: "".to_string(),
+                    branch_seed: KeyManagerBranch::Spend.to_string(),
                     primary_key_index: 0,
                 };
                 db.set_key_manager_state(starting_state.clone()).await?;
@@ -89,32 +109,32 @@ where TBackend: OutputManagerBackend + 'static
 
         let utxo_script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
             key_manager_state.seed.clone(),
-            KEY_MANAGER_SCRIPT_BRANCH_KEY.to_string(),
+            KeyManagerBranch::SpendScript.to_string(),
             key_manager_state.primary_key_index,
         );
 
         let coinbase_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
             key_manager_state.seed.clone(),
-            KEY_MANAGER_COINBASE_BRANCH_KEY.to_string(),
+            KeyManagerBranch::Coinbase.to_string(),
             0,
         );
 
         let coinbase_script_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
             key_manager_state.seed.clone(),
-            KEY_MANAGER_COINBASE_SCRIPT_BRANCH_KEY.to_string(),
+            KeyManagerBranch::CoinbaseScript.to_string(),
             0,
         );
 
         let rewind_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
             key_manager_state.seed.clone(),
-            KEY_MANAGER_RECOVERY_VIEWONLY_BRANCH_KEY.to_string(),
+            KeyManagerBranch::RecoveryViewOnly.to_string(),
             0,
         );
         let rewind_key = rewind_key_manager.derive_key(0)?.k;
 
         let rewind_blinding_key_manager = KeyManager::<PrivateKey, KeyDigest>::from(
             key_manager_state.seed,
-            KEY_MANAGER_RECOVERY_BLINDING_BRANCH_KEY.to_string(),
+            KeyManagerBranch::RecoveryBlinding.to_string(),
             0,
         );
         let rewind_blinding_key = rewind_blinding_key_manager.derive_key(0)?.k;
@@ -158,6 +178,12 @@ where TBackend: OutputManagerBackend + 'static
         Ok(script_key.k)
     }
 
+    pub async fn get_coinbase_script_key_at_index(&self, index: u64) -> Result<PrivateKey, OutputManagerError> {
+        let skm = self.coinbase_script_key_manager.lock().await;
+        let script_key = skm.derive_key(index)?;
+        Ok(script_key.k)
+    }
+
     pub async fn get_coinbase_spend_and_script_key_for_height(
         &self,
         height: u64,
@@ -185,14 +211,19 @@ where TBackend: OutputManagerBackend + 'static
         }
     }
 
-    /// Search the current key manager key chain to find the index of the specified key.
-    pub async fn find_utxo_key_index(&self, key: PrivateKey) -> Result<u64, OutputManagerError> {
-        let utxo_key_manager = self.utxo_key_manager.lock().await;
-        let current_index = (*utxo_key_manager).key_index();
+    /// Search the specified branch key manager key chain to find the index of the specified key.
+    pub async fn find_key_index(&self, key: PrivateKey, branch: KeyManagerBranch) -> Result<u64, OutputManagerError> {
+        let key_manager = match branch {
+            KeyManagerBranch::Spend => self.utxo_key_manager.lock().await,
+            KeyManagerBranch::Coinbase => self.coinbase_key_manager.lock().await,
+            _ => return Err(OutputManagerError::KeyManagerBranchNotSupported),
+        };
+
+        let current_index = (*key_manager).key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if (*utxo_key_manager).derive_key(i)?.k == key {
-                trace!(target: LOG_TARGET, "Key found in Key Chain at index {}", i);
+            if (*key_manager).derive_key(i)?.k == key {
+                trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }
         }
@@ -201,7 +232,7 @@ where TBackend: OutputManagerBackend + 'static
     }
 
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
-    pub async fn update_current_index_if_higher(&self, index: u64) -> Result<(), OutputManagerError> {
+    pub async fn update_current_spend_key_index_if_higher(&self, index: u64) -> Result<(), OutputManagerError> {
         let mut utxo_key_manager = self.utxo_key_manager.lock().await;
         let mut utxo_script_key_manager = self.utxo_script_key_manager.lock().await;
         let current_index = (*utxo_key_manager).key_index();
