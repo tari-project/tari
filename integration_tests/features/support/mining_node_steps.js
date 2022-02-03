@@ -104,6 +104,36 @@ Given(
 );
 
 Given(
+  /I have individual mining nodes connected to each wallet and (?:base|seed) node (.*)/,
+  async function (node) {
+    let walletNames = Object.keys(this.wallets);
+    const promises = [];
+    for (let i = 0; i < walletNames.length; i++) {
+      let name = "Miner_" + String(i).padStart(2, "0");
+      promises.push(this.createMiningNode(name, node, walletNames[i]));
+    }
+    await Promise.all(promises);
+  }
+);
+
+Given(
+  /I have each mining node mine (\d+) blocks?$/,
+  { timeout: 1200 * 1000 }, // Must allow many blocks to be mined; dynamic time out below limits actual time
+  async function (numBlocks) {
+    let miningNodes = Object.keys(this.miners);
+    for (let i = 0; i < miningNodes.length; i++) {
+      console.log("MN", miningNodes[i]);
+      const miningNode = this.getMiningNode(miningNodes[i]);
+      await miningNode.init(numBlocks, null, 1, i + 2, false, null);
+      await withTimeout(
+        (10 + parseInt(numBlocks * miningNodes.length) * 1) * 1000,
+        await miningNode.startNew()
+      );
+    }
+  }
+);
+
+Given(
   /I have mine-before-tip mining node (.*) connected to base node (.*) and wallet (.*)/,
   function (miner, node, wallet) {
     const baseNode = this.getNode(node);
