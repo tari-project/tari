@@ -104,3 +104,15 @@ pub fn rejected_blocks(height: u64, hash: &[u8]) -> IntCounter {
 
     METER.with_label_values(&[&height.to_string(), &to_hex(hash)])
 }
+
+pub fn active_sync_peers() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "base_node::sync::active_peers",
+            "Number of active peers syncing from this node",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
