@@ -223,12 +223,14 @@ impl UnconfirmedPool {
                 }
             }
         }
-        // we need to remove all transactions that need to be rechecked.
-        debug!(
-            target: LOG_TARGET,
-            "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
-            transactions_to_remove_and_recheck.len()
-        );
+        if !transactions_to_remove_and_recheck.is_empty() {
+            // we need to remove all transactions that need to be rechecked.
+            debug!(
+                target: LOG_TARGET,
+                "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
+                transactions_to_remove_and_recheck.len()
+            );
+        }
         for (tx_key, _) in &transactions_to_remove_and_recheck {
             self.remove_transaction(*tx_key);
         }

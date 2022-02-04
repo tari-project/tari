@@ -6540,6 +6540,7 @@ dependencies = [
  "rand 0.8.4",
  "serde 1.0.135",
  "tari_crypto",
+ "tari_utilities",
  "thiserror",
  "tokio 1.15.0",
 ]
