@@ -1,4 +1,4 @@
-//  Copyright 2019 The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,24 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_service_framework::reply_channel::TransportChannelError;
-use thiserror::Error;
-use tokio::task::JoinError;
+use tari_utilities::ByteArrayError;
 
-use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transactions::transaction::TransactionError};
-
-#[derive(Debug, Error)]
-pub enum MempoolError {
-    #[error("Unconfirmed pool error: `{0}`")]
-    UnconfirmedPoolError(#[from] UnconfirmedPoolError),
-    #[error("Transaction error: `{0}`")]
-    TransactionError(#[from] TransactionError),
-    #[error("Internal reply channel error: `{0}`")]
-    TransportChannelError(#[from] TransportChannelError),
-    #[error("The transaction did not contain any kernels")]
-    TransactionNoKernels,
-    #[error("Mempool lock poisoned. This indicates that the mempool has panicked while holding a RwLockGuard.")]
-    RwLockPoisonError,
-    #[error(transparent)]
-    BlockingTaskError(#[from] JoinError),
+pub fn copy_into_fixed_array<T: Default + Copy, const SZ: usize>(elems: &[T]) -> Result<[T; SZ], ByteArrayError> {
+    if elems.len() != SZ {
+        return Err(ByteArrayError::IncorrectLength);
+    }
+    let mut buf = [T::default(); SZ];
+    buf.copy_from_slice(&elems[0..SZ]);
+    Ok(buf)
 }

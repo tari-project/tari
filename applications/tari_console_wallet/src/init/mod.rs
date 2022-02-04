@@ -374,8 +374,9 @@ pub async fn init_wallet(
         auxilary_tcp_listener_address: None,
         datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
+        max_concurrent_inbound_tasks: 10,
+        max_concurrent_outbound_tasks: 10,
+        outbound_buffer_size: 10,
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,

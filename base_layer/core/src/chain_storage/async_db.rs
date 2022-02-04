@@ -387,7 +387,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn prune_output_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
+    pub fn prune_outputs_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
         self.transaction.prune_outputs_at_positions(positions);
         self
     }

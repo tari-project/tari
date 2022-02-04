@@ -282,14 +282,14 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                 biased;
 
                 _ = self.shutdown_signal.wait() => {
-                     debug!(
-                        target: LOG_TARGET,
-                        "{} Yamux connection shutdown", self.connection
-                    );
                     let mut control = self.connection.control();
                     if let Err(err) = control.close().await {
                         error!(target: LOG_TARGET, "Failed to close yamux connection: {}", err);
                     }
+                    debug!(
+                        target: LOG_TARGET,
+                        "{} Yamux connection has closed", self.connection
+                    );
                     break
                 }
 
@@ -300,7 +300,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                             if self.sender.send(stream).await.is_err() {
                                 debug!(
                                     target: LOG_TARGET,
-                                    "{} Incoming peer substream task is shutting down because the internal stream sender channel \
+                                    "{} Incoming peer substream task is stopping because the internal stream sender channel \
                                      was closed",
                                     self.connection
                                 );
@@ -310,7 +310,7 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                         Ok(None) =>{
                             debug!(
                                 target: LOG_TARGET,
-                                "{} Incoming peer substream completed. IncomingWorker exiting",
+                                "{} Incoming peer substream ended.",
                                 self.connection
                             );
                             break;
@@ -334,8 +334,6 @@ where TSocket: futures::AsyncRead + futures::AsyncWrite + Unpin + Send + 'static
                 }
             }
         }
-
-        debug!(target: LOG_TARGET, "Incoming peer substream task is shutting down");
     }
 }
 

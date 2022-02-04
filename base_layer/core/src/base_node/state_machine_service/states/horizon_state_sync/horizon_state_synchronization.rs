@@ -49,7 +49,14 @@ use crate::{
         sync::{rpc, SyncPeer},
     },
     blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, ChainStorageError, MmrTree, PrunedOutput},
+    chain_storage::{
+        async_db::AsyncBlockchainDb,
+        BlockchainBackend,
+        ChainStorageError,
+        DbTransaction,
+        MmrTree,
+        PrunedOutput,
+    },
     proto::base_node::{
         sync_utxo as proto_sync_utxo,
         sync_utxos_response::UtxoOrDeleted,
@@ -697,84 +704,89 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
 
+        let height = header.height();
         let bitmap = self.take_final_bitmap();
-        let mut txn = self.db().write_transaction();
-        let mut utxo_mmr_position = 0;
-        let mut prune_positions = vec![];
+        let db = self.db().inner().clone();
+        task::spawn_blocking(move || {
+            let mut txn = DbTransaction::new();
+            let mut utxo_mmr_position = 0;
+            let mut prune_positions = vec![];
 
-        for h in 0..=header.height() {
-            let curr_header = self.db().fetch_chain_header(h).await?;
+            for h in 0..=height {
+                let curr_header = db.fetch_chain_header(h)?;
 
-            trace!(
-                target: LOG_TARGET,
-                "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
-                curr_header.height(),
-                curr_header.header().output_mmr_size,
-                prev_mmr,
-                curr_header.header().output_mmr_size - 1
-            );
-            let (utxos, _) = self.db().fetch_utxos_in_block(curr_header.hash().clone(), None).await?;
-            trace!(
-                target: LOG_TARGET,
-                "Fetching kernels from db: height:{}, header.kernel_mmr:{}, prev_mmr:{}, end:{}",
-                curr_header.height(),
-                curr_header.header().kernel_mmr_size,
-                prev_kernel_mmr,
-                curr_header.header().kernel_mmr_size - 1
-            );
-
-            trace!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
-            let mut prune_counter = 0;
-            for u in utxos {
-                match u {
-                    PrunedOutput::NotPruned { output } => {
-                        if bitmap.contains(utxo_mmr_position) {
-                            debug!(
-                                target: LOG_TARGET,
-                                "Found output that needs pruning at height: {} position: {}", h, utxo_mmr_position
-                            );
-                            prune_positions.push(utxo_mmr_position);
-                            prune_counter += 1;
-                        } else {
-                            pruned_utxo_sum = &output.commitment + &pruned_utxo_sum;
-                        }
-                    },
-                    _ => {
-                        prune_counter += 1;
-                    },
-                }
-                utxo_mmr_position += 1;
-            }
-            if prune_counter > 0 {
-                trace!(target: LOG_TARGET, "Pruned {} outputs", prune_counter);
-            }
-            prev_mmr = curr_header.header().output_mmr_size;
-
-            let kernels = self.db().fetch_kernels_in_block(curr_header.hash().clone()).await?;
-            trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
-            for k in kernels {
-                pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
-            }
-            prev_kernel_mmr = curr_header.header().kernel_mmr_size;
-
-            if h % 1000 == 0 {
-                debug!(
+                trace!(
                     target: LOG_TARGET,
-                    "Final Validation: {:.2}% complete. Height: {}, mmr_position: {} ",
-                    (h as f32 / header.height() as f32) * 100.0,
-                    h,
-                    utxo_mmr_position,
+                    "Fetching utxos from db: height:{}, header.output_mmr:{}, prev_mmr:{}, end:{}",
+                    curr_header.height(),
+                    curr_header.header().output_mmr_size,
+                    prev_mmr,
+                    curr_header.header().output_mmr_size - 1
                 );
+                let (utxos, _) = db.fetch_utxos_in_block(curr_header.hash().clone(), None)?;
+                trace!(
+                    target: LOG_TARGET,
+                    "Fetching kernels from db: height:{}, header.kernel_mmr:{}, prev_mmr:{}, end:{}",
+                    curr_header.height(),
+                    curr_header.header().kernel_mmr_size,
+                    prev_kernel_mmr,
+                    curr_header.header().kernel_mmr_size - 1
+                );
+
+                trace!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
+                let mut prune_counter = 0;
+                for u in utxos {
+                    match u {
+                        PrunedOutput::NotPruned { output } => {
+                            if bitmap.contains(utxo_mmr_position) {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Found output that needs pruning at height: {} position: {}", h, utxo_mmr_position
+                                );
+                                prune_positions.push(utxo_mmr_position);
+                                prune_counter += 1;
+                            } else {
+                                pruned_utxo_sum = &output.commitment + &pruned_utxo_sum;
+                            }
+                        },
+                        _ => {
+                            prune_counter += 1;
+                        },
+                    }
+                    utxo_mmr_position += 1;
+                }
+                if prune_counter > 0 {
+                    trace!(target: LOG_TARGET, "Pruned {} outputs", prune_counter);
+                }
+                prev_mmr = curr_header.header().output_mmr_size;
+
+                let kernels = db.fetch_kernels_in_block(curr_header.hash().clone())?;
+                trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
+                for k in kernels {
+                    pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
+                }
+                prev_kernel_mmr = curr_header.header().kernel_mmr_size;
+
+                if h % 1000 == 0 {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Final Validation: {:.2}% complete. Height: {}, mmr_position: {} ",
+                        (h as f32 / height as f32) * 100.0,
+                        h,
+                        utxo_mmr_position,
+                    );
+                }
             }
-        }
 
-        if !prune_positions.is_empty() {
-            debug!(target: LOG_TARGET, "Pruning {} spent outputs", prune_positions.len());
-            txn.prune_output_at_positions(prune_positions);
-            txn.commit().await?;
-        }
+            if !prune_positions.is_empty() {
+                debug!(target: LOG_TARGET, "Pruning {} spent outputs", prune_positions.len());
+                txn.prune_outputs_at_positions(prune_positions);
+                db.write(txn)?;
+            }
 
-        Ok((pruned_utxo_sum, pruned_kernel_sum))
+            Ok((pruned_utxo_sum, pruned_kernel_sum))
+        })
+        .await?
     }
 
     #[inline]
