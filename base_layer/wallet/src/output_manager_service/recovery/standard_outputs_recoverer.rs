@@ -37,6 +37,7 @@ use tari_crypto::{
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
+    master_key_manager::KeyManagerBranch,
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
@@ -164,18 +165,30 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         output: &mut UnblindedOutput,
     ) -> Result<(), OutputManagerError> {
-        let found_index = self
-            .master_key_manager
-            .find_utxo_key_index(output.spending_key.clone())
-            .await?;
+        let script_key = if output.features.is_coinbase() {
+            let found_index = self
+                .master_key_manager
+                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Coinbase)
+                .await?;
 
-        self.master_key_manager
-            .update_current_index_if_higher(found_index)
-            .await?;
+            self.master_key_manager
+                .get_coinbase_script_key_at_index(found_index)
+                .await?
+        } else {
+            let found_index = self
+                .master_key_manager
+                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Spend)
+                .await?;
 
-        let script_private_key = self.master_key_manager.get_script_key_at_index(found_index).await?;
-        output.input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-        output.script_private_key = script_private_key;
+            self.master_key_manager
+                .update_current_spend_key_index_if_higher(found_index)
+                .await?;
+
+            self.master_key_manager.get_script_key_at_index(found_index).await?
+        };
+
+        output.input_data = inputs!(PublicKey::from_secret_key(&script_key));
+        output.script_private_key = script_key;
         Ok(())
     }
 }

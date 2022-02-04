@@ -38,6 +38,8 @@ use tari_crypto::{
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
+pub type FixedHash = [u8; BLOCK_HASH_LENGTH];
+
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
