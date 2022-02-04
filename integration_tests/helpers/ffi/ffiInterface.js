@@ -1216,6 +1216,7 @@ class InterfaceFFI {
       callback_balance_updated,
       callback_transaction_validation_complete,
       callback_saf_message_received,
+      callback_connectivity_status,
       recovery_in_progress,
       error
     );
