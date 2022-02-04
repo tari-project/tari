@@ -330,7 +330,7 @@ monerod_url = [ # stagenet
 #]
 
 # Address of the tari_merge_mining_proxy application
-proxy_host_address = "127.0.0.1:7878"
+proxy_host_address = "127.0.0.1:18081"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
 # (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool

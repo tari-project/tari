@@ -49,7 +49,7 @@ impl Default for MergeMiningProxyConfig {
             monerod_use_auth: false,
             grpc_base_node_address: "/ip4/127.0.0.1/tcp/18142".parse().unwrap(),
             grpc_console_wallet_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
-            proxy_host_address: "/ip4/127.0.0.1/tcp/7878".parse().unwrap(),
+            proxy_host_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             proxy_submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
         }

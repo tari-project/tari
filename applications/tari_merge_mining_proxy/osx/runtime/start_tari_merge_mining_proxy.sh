@@ -27,7 +27,7 @@ echo "${exe_path}/tari_merge_mining_proxy" --config="${config_path}/config.toml"
 chmod +x $exe_path/tari_merge_mining_proxy_command.sh
 
 ping -c 3 localhost > /dev/null
-mm_running=$(lsof -nP -iTCP:7878)
+mm_running=$(lsof -nP -iTCP:18081)
 if [ -z "${mm_running}" ]
 then
     echo Spawning Merge Mining Proxy into new terminal..
