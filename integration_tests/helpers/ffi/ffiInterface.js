@@ -291,6 +291,7 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -1165,6 +1166,9 @@ class InterfaceFFI {
       fn
     );
   }
+  static createCallbackConnectivityStatus(fn) {
+    return ffi.Callback(this.void, [this.ulonglong], fn);
+  }
   //endregion
 
   static walletCreate(
@@ -1186,7 +1190,8 @@ class InterfaceFFI {
     callback_txo_validation_complete,
     callback_balance_updated,
     callback_transaction_validation_complete,
-    callback_saf_message_received
+    callback_saf_message_received,
+    callback_connectivity_status
   ) {
     let error = this.initError();
     let recovery_in_progress = this.initBool();
