@@ -209,6 +209,10 @@ impl OutputFeatures {
     pub fn is_non_fungible_burn(&self) -> bool {
         self.flags.contains(OutputFlags::BURN_NON_FUNGIBLE)
     }
+
+    pub fn is_coinbase(&self) -> bool {
+        self.flags.contains(OutputFlags::COINBASE_OUTPUT)
+    }
 }
 
 impl ConsensusEncoding for OutputFeatures {
