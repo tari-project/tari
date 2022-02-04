@@ -20,14 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::Display;
+use std::{fmt::Display, time::Instant};
 
 use futures::future::Either;
 use log::*;
-use tokio::{runtime, sync::mpsc};
+use tokio::sync::mpsc;
 use tower::{Service, ServiceExt};
 
 use crate::{
+    bounded_executor::OptionallyBoundedExecutor,
     message::OutboundMessage,
     pipeline::builder::OutboundPipelineConfig,
     protocol::messaging::MessagingRequest,
@@ -37,7 +38,7 @@ const LOG_TARGET: &str = "comms::pipeline::outbound";
 
 pub struct Outbound<TPipeline, TItem> {
     /// Executor used to spawn a pipeline for each received item on the stream
-    executor: runtime::Handle,
+    executor: OptionallyBoundedExecutor,
     /// Outbound pipeline configuration containing the pipeline and it's in and out streams
     config: OutboundPipelineConfig<TItem, TPipeline>,
     /// Request sender for Messaging
@@ -52,7 +53,7 @@ where
     TPipeline::Future: Send,
 {
     pub fn new(
-        executor: runtime::Handle,
+        executor: OptionallyBoundedExecutor,
         config: OutboundPipelineConfig<TItem, TPipeline>,
         messaging_request_tx: mpsc::Sender<MessagingRequest>,
     ) -> Self {
@@ -64,6 +65,7 @@ where
     }
 
     pub async fn run(mut self) {
+        let mut current_id = 0;
         loop {
             let either = tokio::select! {
                 next = self.config.in_receiver.recv() => Either::Left(next),
@@ -72,12 +74,41 @@ where
             match either {
                 // Pipeline IN received a message. Spawn a new task for the pipeline
                 Either::Left(Some(msg)) => {
-                    let pipeline = self.config.pipeline.clone();
-                    self.executor.spawn(async move {
-                        if let Err(err) = pipeline.oneshot(msg).await {
-                            error!(target: LOG_TARGET, "Outbound pipeline returned an error: '{}'", err);
+                    let num_available = self.executor.num_available();
+                    if let Some(max_available) = self.executor.max_available() {
+                        // Only emit this message if there is any concurrent usage
+                        if num_available < max_available {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Outbound pipeline usage: {}/{}",
+                                max_available - num_available,
+                                max_available
+                            );
                         }
-                    });
+                    }
+                    let pipeline = self.config.pipeline.clone();
+                    let id = current_id;
+                    current_id = (current_id + 1) % u64::MAX;
+
+                    self.executor
+                        .spawn(async move {
+                            let timer = Instant::now();
+                            trace!(target: LOG_TARGET, "Start outbound pipeline {}", id);
+                            if let Err(err) = pipeline.oneshot(msg).await {
+                                error!(
+                                    target: LOG_TARGET,
+                                    "Outbound pipeline {} returned an error: '{}'", id, err
+                                );
+                            }
+
+                            trace!(
+                                target: LOG_TARGET,
+                                "Finished outbound pipeline {} in {:.2?}",
+                                id,
+                                timer.elapsed()
+                            );
+                        })
+                        .await;
                 },
                 // Pipeline IN channel closed
                 Either::Left(None) => {
@@ -144,7 +175,7 @@ mod test {
         let executor = Handle::current();
 
         let pipeline = Outbound::new(
-            executor.clone(),
+            executor.clone().into(),
             OutboundPipelineConfig {
                 in_receiver,
                 out_receiver: out_rx,

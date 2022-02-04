@@ -273,7 +273,7 @@ impl Display for BlockHeader {
         )?;
         writeln!(
             fmt,
-            "Merkle roots:\nInputs: {},\n Outputs: {} ({})\nWitness: {}\nKernels: {} ({})\n",
+            "Merkle roots:\nInputs: {},\nOutputs: {} ({})\nWitness: {}\nKernels: {} ({})\n",
             self.input_mr.to_hex(),
             self.output_mr.to_hex(),
             self.output_mmr_size,
