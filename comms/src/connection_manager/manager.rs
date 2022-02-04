@@ -424,6 +424,13 @@ where
             },
 
             PeerConnected(conn) => {
+                if conn.direction().is_inbound() {
+                    // Notify the dialer that we have an inbound connection, so that is can resolve any pending dials.
+                    let _ = self
+                        .dialer_tx
+                        .send(DialerRequest::NotifyNewInboundConnection(conn.clone()))
+                        .await;
+                }
                 metrics::successful_connections(conn.peer_node_id(), conn.direction()).inc();
                 self.publish_event(PeerConnected(conn));
             },

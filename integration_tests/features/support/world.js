@@ -20,7 +20,6 @@ const { waitFor, sleep, consoleLogBalance } = require("../../helpers/util");
 const { PaymentType } = require("../../helpers/types");
 const { expect } = require("chai");
 const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
-// const InterfaceFFI = require("../../helpers/ffi/ffiInterface");
 
 class CustomWorld {
   constructor({ attach, parameters }) {
@@ -592,6 +591,31 @@ class CustomWorld {
       console.log("Balance not adequate!");
     }
     expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
+  }
+
+  async all_nodes_are_at_height(height) {
+    await waitFor(
+      async () => {
+        let result = true;
+        await this.forEachClientAsync(async (client, name) => {
+          await waitFor(
+            async () => await client.getTipHeight(),
+            height,
+            5 * height * 1000 /* 5 seconds per block */
+          );
+          const currTip = await client.getTipHeight();
+          console.log(
+            `Node ${name} is at tip: ${currTip} (should be ${height})`
+          );
+          result = result && currTip == height;
+        });
+        return result;
+      },
+      true,
+      600 * 1000,
+      5 * 1000,
+      5
+    );
   }
 }
 
