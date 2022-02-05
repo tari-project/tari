@@ -27,7 +27,7 @@ sha2 = "0.9.5"
 path-clean = "0.1.0"
 tari_storage = { version = "^0.27", path = "../infrastructure/storage"}
 
-anyhow = { version = "1.0", optional = true }
+anyhow = { version = "1.0.53", optional = true }
 git2 = { version = "0.8", optional = true }
 prost-build = { version = "0.9.0", optional = true }
 toml = { version = "0.5", optional = true }
@@ -37,4 +37,4 @@ tempfile = "3.1.0"
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.27", path = "../infrastructure/test_utils"}
-anyhow = "1.0"
+anyhow = "1.0.53"
