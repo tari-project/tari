@@ -29,12 +29,14 @@ import {
   FormGroup,
   List,
   ListItem,
+  ListItemIcon,
   ListItemText,
   Stack,
   Switch,
   TextField,
   Typography,
 } from "@mui/material";
+import { DeleteForever } from "@mui/icons-material";
 import binding from "./binding";
 import { withRouter } from "react-router-dom";
 import { appWindow } from "@tauri-apps/api/window";
@@ -70,13 +72,13 @@ class Create extends React.Component {
         committee: [],
       },
       newCommitteePubKey: "",
+      committeeEditorError: null,
       isValid: false,
       saveErrors: [],
     };
 
     this.cleanup = null;
   }
-
 
   componentDidMount() {
     this.cleanup = appWindow.listen("tauri://file-drop", (obj) =>
@@ -217,14 +219,28 @@ class Create extends React.Component {
   };
 
   onAddCommitteeMember = () => {
+    let pubKey = this.state.newCommitteePubKey;
+    if (!pubKey) return;
+    pubKey = pubKey.trim();
+    if (!pubKey) return;
+    if (this.state.tip003Data.committee.includes(pubKey)) {
+      this.setState({ committeeEditorError: "Public key already added!" });
+      return;
+    }
+
     let committee = [...this.state.tip003Data.committee];
-    committee.push(this.state.newCommitteePubKey);
-    let tip003Data = { ...this.state.tip003Data, ...{ committee: committee } };
+    committee.push(pubKey);
+    let tip003Data = {
+      ...this.state.tip003Data,
+      ...{ committee: committee },
+    };
     console.log(committee);
+
     this.setState({
       tip003Data,
       saveErrors: [],
       newCommitteePubKey: "",
+      committeeEditorError: null,
     });
   };
 
@@ -376,7 +392,7 @@ class Create extends React.Component {
               value={this.state.publicKey}
               disabled
               style={{ "-webkit-text-fill-color": "#ddd" }}
-            ></TextField>
+            />
             <TextField
               id="name"
               label="Name"
@@ -385,7 +401,7 @@ class Create extends React.Component {
               value={this.state.name}
               onChange={this.onNameChanged}
               disabled={this.state.isSaving || !this.state.tip001}
-            ></TextField>
+            />
             <TextField
               id="description"
               label="Description"
@@ -394,7 +410,7 @@ class Create extends React.Component {
               value={this.state.description}
               onChange={this.onDescriptionChanged}
               disabled={this.state.isSaving || !this.state.tip001}
-            ></TextField>
+            />
 
             <p>Image</p>
             <ImageSelector
@@ -425,7 +441,7 @@ class Create extends React.Component {
               value={this.state.tip002.symbol}
               onChange={(e) => this.onTip002DataChanged("symbol", e)}
               disabled={this.state.isSaving || !this.state.tip002}
-            ></TextField>
+            />
 
             <TextField
               id="tip002_total_supply"
@@ -436,7 +452,7 @@ class Create extends React.Component {
               type="number"
               onChange={(e) => this.onTip002DataChanged("totalSupply", e)}
               disabled={this.state.isSaving || !this.state.tip002}
-            ></TextField>
+            />
 
             <TextField
               id="tip002_decimals"
@@ -446,7 +462,7 @@ class Create extends React.Component {
               value={this.state.tip002.decimals}
               onChange={(e) => this.onTip002DataChanged("decimals", e)}
               disabled={this.state.isSaving || !this.state.tip002}
-            ></TextField>
+            />
           </FormGroup>
           <FormGroup>
             <FormControlLabel
@@ -460,30 +476,15 @@ class Create extends React.Component {
               label="003 Sidechain with committees"
             />
           </FormGroup>
-          <FormGroup>
-            <List>
-              {this.state.tip003Data.committee.map((item, index) => {
-                return (
-                  <ListItem key={item}>
-                    <ListItemText primary={item}></ListItemText>
-                  </ListItem>
-                );
-              })}
-            </List>
-            <TextField
-              label="Validator node public key"
-              id="newCommitteePubKey"
-              value={this.state.newCommitteePubKey}
-              onChange={this.onNewCommitteePubKeyChanged}
-              disabled={this.state.isSaving || !this.state.tip003}
-            ></TextField>
-            <Button
-              onClick={this.onAddCommitteeMember}
-              disabled={this.state.isSaving || !this.state.tip003}
-            >
-              Add
-            </Button>
-          </FormGroup>
+          <CommitteeEditor
+            members={this.state.tip003Data.committee}
+            onNewCommitteePubKeyChanged={this.onNewCommitteePubKeyChanged}
+            newCommitteePubKey={this.state.newCommitteePubKey}
+            onAddCommitteeMember={this.onAddCommitteeMember}
+            onDeleteCommitteeMember={this.onDeleteCommitteeMember}
+            disabled={this.state.isSaving || !this.state.tip003}
+            error={this.state.committeeEditorError}
+          />
           <FormGroup>
             <FormControlLabel
               control={
@@ -513,7 +514,9 @@ class Create extends React.Component {
           {this.state.saveErrors.length > 0 ? (
             <div>
               {this.state.saveErrors.map((e) => (
-                <Alert key={e.toString()} severity="error">{e.toString()}</Alert>
+                <Alert key={e.toString()} severity="error">
+                  {e.toString()}
+                </Alert>
               ))}
             </div>
           ) : (
@@ -526,8 +529,8 @@ class Create extends React.Component {
 }
 
 Create.propTypes = {
-  history : PropTypes.object
-}
+  history: PropTypes.object,
+};
 
 const ImageSwitch = ({ setMode }) => {
   return (
@@ -539,8 +542,8 @@ const ImageSwitch = ({ setMode }) => {
 };
 
 ImageSwitch.propTypes = {
-  setMode: PropTypes.func
-}
+  setMode: PropTypes.func,
+};
 
 const ImageUrl = ({ setImage }) => {
   const [url, setUrl] = useState("");
@@ -555,15 +558,15 @@ const ImageUrl = ({ setImage }) => {
         color="primary"
         value={url}
         onChange={(e) => setUrl(e.target.value)}
-      ></TextField>
+      />
       <Button onClick={() => setImage(url)}>Save</Button>
     </div>
   );
 };
 
 ImageUrl.propTypes = {
-  setImage : PropTypes.func
-}
+  setImage: PropTypes.func,
+};
 
 const ImageUpload = ({ selectFile, error }) => {
   return (
@@ -577,9 +580,9 @@ const ImageUpload = ({ selectFile, error }) => {
 };
 
 ImageUpload.propTypes = {
-  selectFile : PropTypes.func,
-  error: PropTypes.string
-}
+  selectFile: PropTypes.func,
+  error: PropTypes.string,
+};
 
 const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
   const [mode, setMode] = useState("");
@@ -614,13 +617,13 @@ const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
 };
 
 ImageSelector.propTypes = {
-  cid : PropTypes.string,
+  cid: PropTypes.string,
   image: PropTypes.string,
   selectFile: PropTypes.func,
   setImage: PropTypes.func,
   setCid: PropTypes.func,
-  error: PropTypes.string
-}
+  error: PropTypes.string,
+};
 
 const IpfsImage = ({ cid, setCid, error }) => {
   const [src, setSrc] = useState("");
@@ -670,7 +673,63 @@ const IpfsImage = ({ cid, setCid, error }) => {
 IpfsImage.propTypes = {
   cid: PropTypes.string,
   setCid: PropTypes.func,
-  error: PropTypes.string
-}
+  error: PropTypes.string,
+};
+
+const CommitteeEditor = ({
+  members,
+  disabled,
+  onAddCommitteeMember,
+  onDeleteCommitteeMember,
+  onNewCommitteePubKeyChanged,
+  newCommitteePubKey,
+  error,
+}) => {
+  return (
+    <FormGroup>
+      <List>
+        {members.map((item, index) => {
+          return (
+            <ListItem
+              key={item}
+              button
+              component="a"
+              onClick={() =>
+                onDeleteCommitteeMember && onDeleteCommitteeMember(index)
+              }
+              disabled={disabled}
+            >
+              <ListItemText primary={item} />
+              <ListItemIcon>
+                <DeleteForever />
+              </ListItemIcon>
+            </ListItem>
+          );
+        })}
+      </List>
+      <TextField
+        label="Validator node public key"
+        id="newCommitteePubKey"
+        value={newCommitteePubKey}
+        onChange={onNewCommitteePubKeyChanged}
+        disabled={disabled}
+      />
+      <Button onClick={onAddCommitteeMember} disabled={disabled}>
+        Add
+      </Button>
+      {error ? <Alert severity="warning">{error}</Alert> : <span />}
+    </FormGroup>
+  );
+};
+
+CommitteeEditor.propTypes = {
+  members: PropTypes.array.isRequired,
+  disabled: PropTypes.bool,
+  onAddCommitteeMember: PropTypes.func,
+  onDeleteCommitteeMember: PropTypes.func,
+  onNewCommitteePubKeyChanged: PropTypes.func,
+  newCommitteePubKey: PropTypes.string,
+  error: PropTypes.string,
+};
 
 export default withRouter(Create);
