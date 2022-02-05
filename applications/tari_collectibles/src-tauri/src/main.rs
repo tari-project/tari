@@ -3,6 +3,8 @@
   windows_subsystem = "windows"
 )]
 
+use std::error::Error;
+
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::configuration::bootstrap::ApplicationType;
 
@@ -24,12 +26,14 @@ mod schema;
 mod status;
 mod storage;
 
-fn main() {
-  #[allow(unused_mut)] // config isn't mutated on windows
-  let (bootstrap, mut config, _) = init_configuration(ApplicationType::Collectibles).unwrap();
-  let state = ConcurrentAppState::new(bootstrap.base_path, config.collectibles_config.unwrap());
+fn main() -> Result<(), Box<dyn Error>> {
+  let (bootstrap, config, _) = init_configuration(ApplicationType::Collectibles)?;
+  let state = ConcurrentAppState::new(
+    bootstrap.base_path,
+    config.collectibles_config.unwrap_or_default(),
+  );
 
-  tauri::Builder::default()
+  let result = tauri::Builder::default()
     .manage(state)
     .invoke_handler(tauri::generate_handler![
       commands::create_db,
@@ -53,6 +57,7 @@ fn main() {
       commands::wallets::wallets_unlock,
       commands::wallets::wallets_seed_words,
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .run(tauri::generate_context!())?;
+
+  Ok(result)
 }

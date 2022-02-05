@@ -18,7 +18,7 @@ tari_shutdown = { version = "^0.27", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.27", path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 
-anyhow = "1.0.32"
+anyhow = "1.0.53"
 bitflags = "1.2.0"
 bytes = "0.5"
 chacha20 = "0.7.1"
