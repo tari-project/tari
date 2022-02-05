@@ -139,6 +139,7 @@ use tari_p2p::{
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
+    connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     storage::{
@@ -3260,6 +3261,13 @@ unsafe fn init_logging(
 /// `callback_saf_message_received` - The callback function pointer that will be called when the Dht has determined that
 /// is has connected to enough of its neighbours to be confident that it has received any SAF messages that were waiting
 /// for it.
+/// `callback_connectivity_status` -  This callback is called when the status of connection to the set base node
+/// changes. it will return an enum encoded as an integer as follows:
+/// pub enum OnlineStatus {
+///     Connecting,     // 0
+///     Online,         // 1
+///     Offline,        // 2
+/// }
 /// `recovery_in_progress` - Pointer to an bool which will be modified to indicate if there is an outstanding recovery
 /// that should be completed or not to an error code should one occur, may not be null. Functions as an out parameter.
 /// `error_out` - Pointer to an int which will be modified
@@ -3292,6 +3300,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
+    callback_connectivity_status: unsafe extern "C" fn(u64),
     recovery_in_progress: *mut bool,
     error_out: *mut c_int,
 ) -> *mut TariWallet {
@@ -3483,6 +3492,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.dht_service.subscribe_dht_events(),
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
+                w.wallet_connectivity.get_connectivity_status_watch(),
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -3496,6 +3506,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
+                callback_connectivity_status,
             );
 
             runtime.spawn(callback_handler.start());
@@ -6199,6 +6210,10 @@ mod test {
         // assert!(true); //optimized out by compiler
     }
 
+    unsafe extern "C" fn connectivity_status_callback(_status: u64) {
+        // assert!(true); //optimized out by compiler
+    }
+
     const NETWORK_STRING: &str = "dibbler";
 
     #[test]
@@ -6571,6 +6586,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6607,6 +6623,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6709,6 +6726,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6756,6 +6774,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6786,6 +6805,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6811,6 +6831,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6857,6 +6878,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -6932,6 +6954,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -7138,6 +7161,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
@@ -7192,6 +7216,7 @@ mod test {
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
+                connectivity_status_callback,
                 recovery_in_progress_ptr,
                 error_ptr,
             );
