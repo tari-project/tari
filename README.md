@@ -17,7 +17,7 @@ Only the first four applications will be discussed in this README (see [wallet-a
 
 ### Download
 
-[Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/>. This is the easiest way to run a Tari node, but you're
+[Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run a Tari node, but you're
 essentially trusting the person that built and uploaded them that nothing untoward has happened.
 
 Hashes of the binaries are available alongside the downloads.
