@@ -149,14 +149,14 @@ Given the following data and types:
 {
   // Type: Fixed array of 5 bytes
   short_id: [1,2,3,4,5],
-  // Type: variable length string
-  name: "Case",
+  // Type: variable length bytes
+  name: Buffer.from("Case"),
   // Type: unsigned integer
   age: 40,
   // Type: struct
   details: {
-      // Type: variable length string
-      kind: "Hacker"
+      // Type: variable length bytes
+      kind: Buffer.from("Hacker"),
   },
   // Type: nullable varint
   dob: null
