@@ -25,7 +25,6 @@ use std::{convert::TryFrom, net::Ipv6Addr};
 use log::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 
-use super::types::ConnectionDirection;
 use crate::{
     connection_manager::error::ConnectionManagerError,
     multiaddr::{Multiaddr, Protocol},
@@ -50,17 +49,11 @@ pub async fn perform_identity_exchange<
 >(
     socket: &mut TSocket,
     node_identity: &NodeIdentity,
-    direction: ConnectionDirection,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
 ) -> Result<PeerIdentityMsg, ConnectionManagerError> {
-    debug!(
-        target: LOG_TARGET,
-        "{} socket opened to peer. Performing identity exchange.", direction
-    );
-
     let peer_identity =
-        protocol::identity_exchange(node_identity, direction, our_supported_protocols, network_info, socket).await?;
+        protocol::identity_exchange(node_identity, our_supported_protocols, network_info, socket).await?;
 
     Ok(peer_identity)
 }

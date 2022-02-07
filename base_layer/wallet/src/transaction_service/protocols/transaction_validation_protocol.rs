@@ -104,7 +104,7 @@ where
             .for_protocol(self.operation_id.as_u64())?;
 
         self.check_for_reorgs(&mut *base_node_wallet_client).await?;
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
@@ -122,7 +122,7 @@ where
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
                 .await
                 .for_protocol(self.operation_id.as_u64())?;
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Base node returned {} as mined and {} as unmined (Operation ID: {})",
                 mined.len(),
@@ -130,7 +130,7 @@ where
                 self.operation_id
             );
             for (mined_tx, mined_height, mined_in_block, num_confirmations) in &mined {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
                     mined_tx.tx_id,
@@ -152,7 +152,7 @@ where
                     // Treat coinbases separately
                     if unmined_tx.is_coinbase() {
                         if unmined_tx.coinbase_block_height.unwrap_or_default() <= tip_height {
-                            info!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Updated coinbase {} as abandoned (Operation ID: {})",
                                 unmined_tx.tx_id,
@@ -167,7 +167,7 @@ where
                             .await?;
                             state_changed = true;
                         } else {
-                            info!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Coinbase not found, but it is for a block that is not yet in the chain. Coinbase \
                                  height: {}, tip height:{} (Operation ID: {})",
@@ -177,7 +177,7 @@ where
                             );
                         }
                     } else {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
                         );
@@ -208,7 +208,7 @@ where
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<(), TransactionServiceProtocolError> {
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Checking last mined transactions to see if the base node has re-orged (Operation ID: {})",
             self.operation_id
@@ -259,7 +259,7 @@ where
                     .await?;
                 self.publish_event(TransactionEvent::TransactionValidationStateChanged(op_id));
             } else {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Last mined transaction is still in the block chain according to base node (Operation ID: {}).",
                     self.operation_id
@@ -294,7 +294,7 @@ where
         }
 
         if batch_signatures.is_empty() {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "No transactions needed to query with the base node (Operation ID: {})", self.operation_id
             );
