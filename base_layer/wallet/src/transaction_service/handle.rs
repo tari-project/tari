@@ -76,7 +76,13 @@ pub enum TransactionServiceRequest {
     SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
     ImportUtxoWithStatus {
-        amount: MicroTari, source_public_key: CommsPublicKey, message: String, maturity: Option<u64>, import_status: ImportStatus, tx_id: Option<TxId>, current_height: Option<u64>
+        amount: MicroTari,
+        source_public_key: CommsPublicKey,
+        message: String,
+        maturity: Option<u64>,
+        import_status: ImportStatus,
+        tx_id: Option<TxId>,
+        current_height: Option<u64>,
     },
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
@@ -128,7 +134,15 @@ impl fmt::Display for TransactionServiceRequest {
                 f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
-            Self::ImportUtxoWithStatus {amount, source_public_key, message, maturity, import_status, tx_id, current_height } => f.write_str(&format!(
+            Self::ImportUtxoWithStatus {
+                amount,
+                source_public_key,
+                message,
+                maturity,
+                import_status,
+                tx_id,
+                current_height,
+            } => f.write_str(&format!(
                 "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?})",
                 source_public_key,
                 amount,
@@ -266,12 +280,12 @@ impl fmt::Display for TransactionEvent {
             } => {
                 write!(
                     f,
-                    "TransactionScannedUnconfirmed for {} with num confirmations: {}. is_valid: {}",
+                    "FauxTransactionUnconfirmed for {} with num confirmations: {}. is_valid: {}",
                     tx_id, num_confirmations, is_valid
                 )
             },
             TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid } => {
-                write!(f, "TransactionScanned for {}. is_valid: {}", tx_id, is_valid)
+                write!(f, "FauxTransactionConfirmed for {}. is_valid: {}", tx_id, is_valid)
             },
             TransactionEvent::TransactionMined { tx_id, is_valid } => {
                 write!(f, "TransactionMined for {}. is_valid: {}", tx_id, is_valid)
@@ -556,7 +570,7 @@ impl TransactionServiceHandle {
         maturity: Option<u64>,
         import_status: ImportStatus,
         tx_id: Option<TxId>,
-        current_height: Option<u64>
+        current_height: Option<u64>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle

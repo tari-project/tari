@@ -274,8 +274,8 @@ const char *completed_transaction_get_message(struct TariCompletedTransaction *t
 // |   5 | Coinbase           |
 // |   6 | MinedConfirmed     |
 // |   7 | Rejected           |
-// |   8 | ScannedUnconfirmed |
-// |   9 | ScannedConfirmed   |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int completed_transaction_get_status(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
@@ -357,8 +357,8 @@ unsigned long long pending_outbound_transaction_get_timestamp(struct TariPending
 // |   5 | Coinbase           |
 // |   6 | MinedConfirmed     |
 // |   7 | Rejected           |
-// |   8 | ScannedUnconfirmed |
-// |   9 | ScannedConfirmed   |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int pending_outbound_transaction_get_status(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingOutboundTactions
@@ -404,8 +404,8 @@ unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingI
 // |   5 | Coinbase           |
 // |   6 | MinedConfirmed     |
 // |   7 | Rejected           |
-// |   8 | ScannedUnconfirmed |
-// |   9 | ScannedConfirmed   |
+// |   8 | FauxUnconfirmed |
+// |   9 | FauxConfirmed   |
 int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingInboundTransaction

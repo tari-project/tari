@@ -88,10 +88,10 @@ class Wallet {
       broadcast: this.transactionBroadcast,
       finalized: this.transactionFinalized,
       minedUnconfirmed: this.transactionMinedUnconfirmed,
-      scannedUnconfirmed: this.transactionFauxUnconfirmed,
+      fauxUnconfirmed: this.transactionFauxUnconfirmed,
       cancelled: this.transactionCancelled,
       mined: this.transactionMined,
-      scanned: this.transactionFauxConfirmed,
+      fauxConfirmed: this.transactionFauxConfirmed,
       saf: this.transactionSafMessageReceived,
     };
   }
@@ -128,7 +128,9 @@ class Wallet {
         this.onTransactionMinedUnconfirmed
       );
     this.callback_faux_transaction_confirmed =
-      InterfaceFFI.createCallbackFauxTransactionConfirmed(this.onFauxTransactionConfirmed);
+      InterfaceFFI.createCallbackFauxTransactionConfirmed(
+        this.onFauxTransactionConfirmed
+      );
     this.callback_faux_transaction_unconfirmed =
       InterfaceFFI.createCallbackFauxTransactionUnconfirmed(
         this.onFauxTransactionUnconfirmed

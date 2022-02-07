@@ -1165,13 +1165,13 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(())
     }
 
-    fn set_transaction_as_unmined(&self, tx_id: TxId, is_faux: bool) -> Result<(), TransactionStorageError> {
+    fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         match CompletedTransactionSql::find(tx_id, &conn) {
             Ok(v) => {
-                v.set_as_unmined(&conn, is_faux)?;
+                v.set_as_unmined(&conn)?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
                 return Err(TransactionStorageError::ValueNotFound(DbKey::CompletedTransaction(
@@ -1245,17 +1245,25 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 
-    fn fetch_confirmed_faux_transactions_from_height(&self, height: u64) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+    fn fetch_confirmed_faux_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
-        CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(TransactionStatus::FauxConfirmed, false, height as i64, &conn)?
-            .into_iter()
-            .map(|mut ct: CompletedTransactionSql| {
-                if let Err(e) = self.decrypt_if_necessary(&mut ct) {
-                    return Err(e);
-                }
-                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
-            })
-            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+        CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+            TransactionStatus::FauxConfirmed,
+            false,
+            height as i64,
+            &conn,
+        )?
+        .into_iter()
+        .map(|mut ct: CompletedTransactionSql| {
+            if let Err(e) = self.decrypt_if_necessary(&mut ct) {
+                return Err(e);
+            }
+            CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 }
 
@@ -1714,7 +1722,7 @@ impl CompletedTransactionSql {
         Ok(completed_transactions::table
             .filter(completed_transactions::cancelled.eq(cancelled as i32))
             .filter(completed_transactions::status.eq(status as i32))
-            .filter(completed_transactions::coinbase_block_height.ge(block_height))
+            .filter(completed_transactions::mined_height.ge(block_height))
             .load::<CompletedTransactionSql>(conn)?)
     }
 
@@ -1794,10 +1802,10 @@ impl CompletedTransactionSql {
         Ok(())
     }
 
-    pub fn set_as_unmined(&self, conn: &SqliteConnection, is_faux: bool) -> Result<(), TransactionStorageError> {
+    pub fn set_as_unmined(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         let status = if self.coinbase_block_height.is_some() {
             Some(TransactionStatus::Coinbase as i32)
-        } else if is_faux {
+        } else if self.status == TransactionStatus::FauxConfirmed as i32 {
             Some(TransactionStatus::FauxUnconfirmed as i32)
         } else if self.status == TransactionStatus::Broadcast as i32 {
             Some(TransactionStatus::Broadcast as i32)
@@ -2052,8 +2060,8 @@ impl UnconfirmedTransactionInfoSql {
             .filter(
                 completed_transactions::status
                     .ne(TransactionStatus::Imported as i32)
-                    .ne(TransactionStatus::FauxUnconfirmed as i32)
-                    .ne(TransactionStatus::FauxConfirmed as i32)
+                    .and(completed_transactions::status.ne(TransactionStatus::FauxUnconfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::FauxConfirmed as i32))
                     .and(
                         completed_transactions::mined_height
                             .is_null()

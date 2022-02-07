@@ -70,15 +70,15 @@ try {
     }
   );
   // callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
-  const txScanned = ffi.Callback("void", ["pointer"], function (ptr) {
-    console.log("txScanned: ", ptr);
+  const txFauxConfirmed = ffi.Callback("void", ["pointer"], function (ptr) {
+    console.log("txFauxConfirmed: ", ptr);
   });
   // callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-  const txScannedUnconfirmed = ffi.Callback(
+  const txFauxUnconfirmed = ffi.Callback(
       "void",
       ["pointer"],
       function (ptr, confirmations) {
-        console.log("txScannedUnconfirmed: ", ptr, confirmations);
+        console.log("txFauxUnconfirmed: ", ptr, confirmations);
       }
   );
   // callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
@@ -124,8 +124,8 @@ try {
     txBroadcast,
     txMined,
     txMinedUnconfirmed,
-    txScanned,
-    txScannedUnconfirmed,
+    txFauxConfirmed,
+    txFauxUnconfirmed,
     directSendResult,
     safResult,
     txCancelled,

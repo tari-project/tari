@@ -551,7 +551,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert_eq!(unmined_txs.len(), 4);
 
     runtime
-        .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id, false))
+        .block_on(db.set_transaction_as_unmined(completed_txs[0].tx_id))
         .unwrap();
 
     let unmined_txs = runtime.block_on(db.fetch_unconfirmed_transactions_info()).unwrap();
@@ -596,7 +596,7 @@ async fn import_tx_and_read_it_from_db() {
     let sqlite_db = TransactionServiceSqliteDatabase::new(connection, Some(cipher));
 
     let transaction = CompletedTransaction::new(
-        TxId::from(1),
+        TxId::from(1u64),
         PublicKey::default(),
         PublicKey::default(),
         MicroTari::from(100000),
@@ -618,13 +618,13 @@ async fn import_tx_and_read_it_from_db() {
 
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-            TxId::from(1),
+            TxId::from(1u64),
             Box::new(transaction),
         )))
         .unwrap();
 
     let transaction = CompletedTransaction::new(
-        TxId::from(2),
+        TxId::from(2u64),
         PublicKey::default(),
         PublicKey::default(),
         MicroTari::from(100000),
@@ -646,13 +646,13 @@ async fn import_tx_and_read_it_from_db() {
 
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-            TxId::from(2),
+            TxId::from(2u64),
             Box::new(transaction),
         )))
         .unwrap();
 
     let transaction = CompletedTransaction::new(
-        TxId::from(3),
+        TxId::from(3u64),
         PublicKey::default(),
         PublicKey::default(),
         MicroTari::from(100000),
@@ -674,7 +674,7 @@ async fn import_tx_and_read_it_from_db() {
 
     sqlite_db
         .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
-            TxId::from(3),
+            TxId::from(3u64),
             Box::new(transaction),
         )))
         .unwrap();
@@ -682,17 +682,17 @@ async fn import_tx_and_read_it_from_db() {
     let db_tx = sqlite_db.fetch_imported_transactions().unwrap();
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1));
-    assert_eq!(db_tx.first().unwrap().mined_height, 5);
+    assert_eq!(db_tx.first().unwrap().mined_height, Some(5));
 
     let db_tx = sqlite_db.fetch_unconfirmed_faux_transactions().unwrap();
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(2));
-    assert_eq!(db_tx.first().unwrap().mined_height, 6);
+    assert_eq!(db_tx.first().unwrap().mined_height, Some(6));
 
     let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(10).unwrap();
     assert_eq!(db_tx.len(), 0);
     let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(4).unwrap();
     assert_eq!(db_tx.len(), 1);
     assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3));
-    assert_eq!(db_tx.first().unwrap().mined_height, 7);
+    assert_eq!(db_tx.first().unwrap().mined_height, Some(7));
 }

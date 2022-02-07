@@ -73,7 +73,6 @@ use tari_app_grpc::{
     },
 };
 use tari_common_types::{
-    transaction::ImportStatus,
     array::copy_into_fixed_array,
     types::{BlockHash, PublicKey, Signature},
 };
@@ -592,12 +591,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         for o in unblinded_outputs.iter() {
             tx_ids.push(
                 wallet
-                    .import_unblinded_utxo(
-                        o.clone(),
-                        &CommsPublicKey::default(),
-                        "Imported via gRPC".to_string(),
-                        ImportStatus::Imported,
-                    )
+                    .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
                     .into(),

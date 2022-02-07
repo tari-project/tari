@@ -160,7 +160,6 @@ impl CompletedTransaction {
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
         mined_height: Option<u64>,
-
     ) -> Self {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()

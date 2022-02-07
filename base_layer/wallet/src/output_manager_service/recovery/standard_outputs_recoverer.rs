@@ -24,7 +24,10 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
+use tari_common_types::{
+    transaction::TxId,
+    types::{PrivateKey, PublicKey, RangeProof},
+};
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
     CryptoFactories,
@@ -34,7 +37,6 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::hex::Hex,
 };
-use tari_common_types::transaction::TxId;
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},

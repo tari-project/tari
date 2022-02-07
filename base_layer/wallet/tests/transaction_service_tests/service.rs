@@ -908,7 +908,7 @@ fn recover_one_sided_transaction() {
         let outputs = completed_tx.transaction.body.outputs().clone();
 
         let unblinded = bob_oms
-            .scan_outputs_for_one_sided_payments(outputs.clone(),  TxId::new_random())
+            .scan_outputs_for_one_sided_payments(outputs.clone(), TxId::new_random())
             .await
             .unwrap();
         // Bob should be able to claim 1 output.
@@ -916,7 +916,10 @@ fn recover_one_sided_transaction() {
         assert_eq!(value, unblinded[0].value);
 
         // Should ignore already existing outputs
-        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs,  TxId::new_random()).await.unwrap();
+        let unblinded = bob_oms
+            .scan_outputs_for_one_sided_payments(outputs, TxId::new_random())
+            .await
+            .unwrap();
         assert!(unblinded.is_empty());
     });
 }
@@ -5411,7 +5414,7 @@ fn test_update_faux_tx_on_oms_validation() {
             alice_ts_interface.base_node_identity.public_key().clone(),
             "one-sided 1".to_string(),
             None,
-            ImportStatus::ScannedUnconfirmed,
+            ImportStatus::FauxUnconfirmed,
             None,
             None,
         ))
@@ -5422,7 +5425,7 @@ fn test_update_faux_tx_on_oms_validation() {
             alice_ts_interface.base_node_identity.public_key().clone(),
             "one-sided 2".to_string(),
             None,
-            ImportStatus::ScannedConfirmed,
+            ImportStatus::FauxConfirmed,
             None,
             None,
         ))
@@ -5457,27 +5460,27 @@ fn test_update_faux_tx_on_oms_validation() {
             if let WalletTransaction::Completed(tx) = &transaction {
                 assert_eq!(tx.status, TransactionStatus::FauxUnconfirmed);
             } else {
-                panic!("Should find a complete ScannedUnconfirmed transaction");
+                panic!("Should find a complete FauxUnconfirmed transaction");
             }
         }
         if tx_id == tx_id_3 {
             if let WalletTransaction::Completed(tx) = &transaction {
                 assert_eq!(tx.status, TransactionStatus::FauxConfirmed);
             } else {
-                panic!("Should find a complete ScannedConfirmed transaction");
+                panic!("Should find a complete FauxConfirmed transaction");
             }
         }
     }
 
-    // This will only change the status of the imported transaction
+    // This will change the status of the imported transaction
     alice_ts_interface
         .output_manager_service_event_publisher
         .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
         .unwrap();
 
     let mut found_imported = false;
-    let mut found_scanned_unconfirmed = false;
-    let mut found_scanned_confirmed = false;
+    let mut found_faux_unconfirmed = false;
+    let mut found_faux_confirmed = false;
     for _ in 0..20 {
         runtime.block_on(async { sleep(Duration::from_secs(1)).await });
         for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
@@ -5486,23 +5489,23 @@ fn test_update_faux_tx_on_oms_validation() {
                 .unwrap()
                 .unwrap();
             if let WalletTransaction::Completed(tx) = transaction {
-                if tx_id == tx_id_1 && tx.status == TransactionStatus::MinedConfirmed {
+                if tx_id == tx_id_1 && tx.status == TransactionStatus::FauxUnconfirmed && !found_imported {
                     found_imported = true;
                 }
-                if tx_id == tx_id_2 && tx.status == TransactionStatus::FauxUnconfirmed {
-                    found_scanned_unconfirmed = true;
+                if tx_id == tx_id_2 && tx.status == TransactionStatus::FauxUnconfirmed && !found_faux_unconfirmed {
+                    found_faux_unconfirmed = true;
                 }
-                if tx_id == tx_id_3 && tx.status == TransactionStatus::FauxConfirmed {
-                    found_scanned_confirmed = true;
+                if tx_id == tx_id_3 && tx.status == TransactionStatus::FauxConfirmed && !found_faux_confirmed {
+                    found_faux_confirmed = true;
                 }
             }
         }
-        if found_imported && found_scanned_unconfirmed && found_scanned_confirmed {
+        if found_imported && found_faux_unconfirmed && found_faux_confirmed {
             break;
         }
     }
     assert!(
-        found_imported && found_scanned_unconfirmed && found_scanned_confirmed,
+        found_imported && found_faux_unconfirmed && found_faux_confirmed,
         "Should have found the updated statuses"
     );
 }

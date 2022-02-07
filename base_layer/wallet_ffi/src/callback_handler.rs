@@ -40,7 +40,11 @@
 //! `callback_transaction_mined` - This will be called when a Broadcast transaction is detected as mined via a base
 //! node request
 //!
-//! `callback_faux_transaction_confirmed` - This will be called when a one-sided transaction is detected as mined
+//! `callback_faux_transaction_confirmed` - This will be called when an imported output, recovered output or one-sided
+//!  transaction is detected as mined
+//!
+//! `callback_faux_transaction_unconfirmed` - This will be called when a recovered output or one-sided transaction is
+//! freshly imported or when an imported transaction transitions from Imported to FauxUnconfirmed
 //!
 //! `callback_discovery_process_complete` - This will be called when a `send_transacion(..)` call is made to a peer
 //! whose address is not known and a discovery process must be conducted. The outcome of the discovery process is

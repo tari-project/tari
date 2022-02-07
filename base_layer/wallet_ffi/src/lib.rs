@@ -108,7 +108,7 @@ use log4rs::{
 use rand::rngs::OsRng;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
-    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
+    transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{Commitment, PublicKey},
 };
 use tari_comms::{
@@ -3232,8 +3232,8 @@ unsafe fn init_logging(
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called when a Broadcast transaction is detected as mined but not yet confirmed.
-/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be called
-/// when a one-sided transaction is detected as mined AND confirmed.
+/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be
+/// called when a one-sided transaction is detected as mined AND confirmed.
 /// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This
 /// will be called when a one-sided transaction is detected as mined but not yet confirmed.
 /// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
@@ -5035,7 +5035,6 @@ pub unsafe extern "C" fn wallet_import_utxo(
         &(*sender_offset_public_key).clone(),
         0,
         covenant,
-        ImportStatus::Imported,
     )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)

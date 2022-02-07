@@ -33,6 +33,23 @@ pub enum TransactionStatus {
     FauxConfirmed,
 }
 
+impl TransactionStatus {
+    pub fn is_faux(&self) -> bool {
+        match self {
+            TransactionStatus::Completed => false,
+            TransactionStatus::Broadcast => false,
+            TransactionStatus::MinedUnconfirmed => false,
+            TransactionStatus::Imported => true,
+            TransactionStatus::Pending => false,
+            TransactionStatus::Coinbase => false,
+            TransactionStatus::MinedConfirmed => false,
+            TransactionStatus::Rejected => false,
+            TransactionStatus::FauxUnconfirmed => true,
+            TransactionStatus::FauxConfirmed => true,
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 #[error("Invalid TransactionStatus: {code}")]
 pub struct TransactionConversionError {
@@ -77,22 +94,20 @@ impl Display for TransactionStatus {
             TransactionStatus::Pending => write!(f, "Pending"),
             TransactionStatus::Coinbase => write!(f, "Coinbase"),
             TransactionStatus::Rejected => write!(f, "Rejected"),
-            TransactionStatus::FauxUnconfirmed => write!(f, "ScannedUnconfirmed"),
-            TransactionStatus::FauxConfirmed => write!(f, "ScannedConfirmed"),
+            TransactionStatus::FauxUnconfirmed => write!(f, "FauxUnconfirmed"),
+            TransactionStatus::FauxConfirmed => write!(f, "FauxConfirmed"),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ImportStatus {
-    /// This is an invalid transaction import status that will result in an error
-    Invalid,
     /// This transaction import status is used when importing a spendable UTXO
     Imported,
     /// This transaction import status is used when a one-sided transaction has been scanned but is unconfirmed
-    ScannedUnconfirmed,
+    FauxUnconfirmed,
     /// This transaction import status is used when a one-sided transaction has been scanned and confirmed
-    ScannedConfirmed,
+    FauxConfirmed,
 }
 
 impl TryFrom<ImportStatus> for TransactionStatus {
@@ -101,9 +116,8 @@ impl TryFrom<ImportStatus> for TransactionStatus {
     fn try_from(value: ImportStatus) -> Result<Self, Self::Error> {
         match value {
             ImportStatus::Imported => Ok(TransactionStatus::Imported),
-            ImportStatus::ScannedUnconfirmed => Ok(TransactionStatus::FauxUnconfirmed),
-            ImportStatus::ScannedConfirmed => Ok(TransactionStatus::FauxConfirmed),
-            _ => Err(TransactionConversionError { code: i32::MAX }),
+            ImportStatus::FauxUnconfirmed => Ok(TransactionStatus::FauxUnconfirmed),
+            ImportStatus::FauxConfirmed => Ok(TransactionStatus::FauxConfirmed),
         }
     }
 }
@@ -114,16 +128,10 @@ impl TryFrom<TransactionStatus> for ImportStatus {
     fn try_from(value: TransactionStatus) -> Result<Self, Self::Error> {
         match value {
             TransactionStatus::Imported => Ok(ImportStatus::Imported),
-            TransactionStatus::FauxUnconfirmed => Ok(ImportStatus::ScannedUnconfirmed),
-            TransactionStatus::FauxConfirmed => Ok(ImportStatus::ScannedConfirmed),
+            TransactionStatus::FauxUnconfirmed => Ok(ImportStatus::FauxUnconfirmed),
+            TransactionStatus::FauxConfirmed => Ok(ImportStatus::FauxConfirmed),
             _ => Err(TransactionConversionError { code: i32::MAX }),
         }
-    }
-}
-
-impl Default for ImportStatus {
-    fn default() -> Self {
-        ImportStatus::Invalid
     }
 }
 

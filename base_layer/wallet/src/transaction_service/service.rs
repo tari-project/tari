@@ -34,7 +34,7 @@ use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
-    transaction::{ImportStatus, TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
@@ -68,7 +68,6 @@ use tokio::{
     sync::{mpsc, mpsc::Sender, oneshot},
     task::JoinHandle,
 };
-use tari_common_types::chain_metadata::ChainMetadata;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
@@ -654,7 +653,15 @@ where
                 tx_id,
                 current_height,
             } => self
-                .add_utxo_import_transaction_with_status(amount, source_public_key, message, maturity, import_status, tx_id, current_height)
+                .add_utxo_import_transaction_with_status(
+                    amount,
+                    source_public_key,
+                    message,
+                    maturity,
+                    import_status,
+                    tx_id,
+                    current_height,
+                )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
@@ -757,10 +764,13 @@ where
         if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
             let db = self.db.clone();
             let output_manager_handle = self.output_manager_service.clone();
-            let metadata = self.wallet_db.get_chain_metadata().await?;
+            let metadata = match self.wallet_db.get_chain_metadata().await {
+                Ok(data) => data,
+                Err(_) => None,
+            };
             let tip_height = match metadata {
+                Some(val) => val.height_of_longest_chain(),
                 None => 0u64,
-                Some(v) => v.height_of_longest_chain(),
             };
             tokio::spawn(check_faux_transactions(output_manager_handle, db, tip_height));
         }
@@ -2050,11 +2060,7 @@ where
         tx_id: Option<TxId>,
         current_height: Option<u64>,
     ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = if let Some(id) = tx_id {
-            id
-        } else {
-            TxId::new_random();
-        };
+        let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db
             .add_utxo_import_transaction_with_status(
                 tx_id,
@@ -2068,18 +2074,13 @@ where
             )
             .await?;
         let transaction_event = match import_status {
-            ImportStatus::Invalid => {
-                return Err(TransactionServiceError::ConversionError(TransactionConversionError {
-                    code: i32::MAX,
-                }))
-            },
             ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
-            ImportStatus::ScannedUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
+            ImportStatus::FauxUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
                 tx_id,
                 num_confirmations: 0,
                 is_valid: true,
             },
-            ImportStatus::ScannedConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
+            ImportStatus::FauxConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
         };
         let _ = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
             trace!(

@@ -96,7 +96,10 @@ impl OutputManagerServiceMock {
     ) {
         info!(target: LOG_TARGET, "Handling Request: {}", request);
         match request {
-            OutputManagerRequest::ScanForRecoverableOutputs {outputs: _to, tx_id: _tx_id} => {
+            OutputManagerRequest::ScanForRecoverableOutputs {
+                outputs: requested_outputs,
+                tx_id: _tx_id,
+            } => {
                 let lock = acquire_lock!(self.state.recoverable_outputs);
                 let outputs = (*lock)
                     .clone()
@@ -117,7 +120,10 @@ impl OutputManagerServiceMock {
                         e
                     });
             },
-            OutputManagerRequest::ScanOutputs {outputs: _to, tx_id: _tx_id} => {
+            OutputManagerRequest::ScanOutputs {
+                outputs: _to,
+                tx_id: _tx_id,
+            } => {
                 let lock = acquire_lock!(self.state.one_sided_payments);
                 let outputs = (*lock).clone();
                 let _ = reply_tx

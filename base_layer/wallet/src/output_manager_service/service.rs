@@ -29,7 +29,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -61,7 +61,6 @@ use tari_crypto::{
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
-use tari_common_types::types::BlockHash;
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
@@ -359,7 +358,7 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.resources.master_key_manager.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::ScanForRecoverableOutputs {outputs, tx_id} => StandardUtxoRecoverer::new(
+            OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
@@ -367,7 +366,7 @@ where
             .scan_and_recover_outputs(outputs, tx_id)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs {outputs, tx_id} => self
+            OutputManagerRequest::ScanOutputs { outputs, tx_id } => self
                 .scan_outputs_for_one_sided_payments(outputs, tx_id)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
@@ -416,29 +415,36 @@ where
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
-            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => self
-                .get_output_status_by_tx_id(tx_id)
-                .await
-                .map(OutputManagerResponse::OutputStatusesByTxId),
+            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
+                let (statuses, mined_height, block_hash) = self.get_output_status_by_tx_id(tx_id).await?;
+                Ok(OutputManagerResponse::OutputStatusesByTxId {
+                    statuses,
+                    mined_height,
+                    block_hash,
+                })
+            },
         }
     }
 
-    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
+    async fn get_output_status_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
         let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
-        let statuses = outputs.into_iter().map(|uo| uo.status).collect();
-        let mined_heights = outputs.into_iter().map(|uo| uo.mined_height).collect();
-        let mined_height: Option<u64> = if let Some(height) = mined_heights.iter().min() {
-            Some(*height)
-        } else {
-            None
-        };
-        let block_hashes = outputs.into_iter().map(|uo| uo.mined_in_block).collect();
-        let block_hash: Option<BlockHash> = if let Some(hash) = block_hashes.iter().min() {
-            Some(*hash)
-        } else {
-            None
-        };
-        Ok((statuses, mined_height, block_hash))
+        let statuses = outputs.clone().into_iter().map(|uo| uo.status).collect();
+        // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
+        // mined heights)
+        let (mut last_height, mut max_mined_height, mut block_hash) = (0u64, None, None);
+        let _ = outputs.iter().map(|uo| {
+            if let Some(height) = uo.mined_height {
+                if last_height < height {
+                    last_height = height;
+                    max_mined_height = uo.mined_height;
+                    block_hash = uo.mined_in_block.clone();
+                }
+            }
+        });
+        Ok((statuses, max_mined_height, block_hash))
     }
 
     async fn claim_sha_atomic_swap_with_hash(

@@ -385,7 +385,6 @@ where
         sender_offset_public_key: &PublicKey,
         script_lock_height: u64,
         covenant: Covenant,
-        import_status: ImportStatus,
     ) -> Result<TxId, WalletError> {
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
@@ -407,7 +406,7 @@ where
                 source_public_key.clone(),
                 message,
                 Some(features.maturity),
-                import_status.clone(),
+                ImportStatus::Imported,
                 None,
                 None,
             )
@@ -425,7 +424,8 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as '{:?}'", commitment_hex, import_status
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'", commitment_hex
+
         );
 
         Ok(tx_id)
@@ -439,7 +439,6 @@ where
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
-        import_status: ImportStatus,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
@@ -448,7 +447,7 @@ where
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
-                import_status.clone(),
+                ImportStatus::Imported,
                 None,
                 None,
             )
@@ -460,13 +459,12 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as '{:?}'",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
                 .to_hex(),
-            import_status
         );
 
         Ok(tx_id)
