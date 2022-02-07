@@ -25,7 +25,7 @@ use tari_common_types::types::PublicKey;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{BaseLayerMetadata, BaseLayerOutput},
+    models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
 };
 
 #[async_trait]
@@ -38,4 +38,9 @@ pub trait BaseNodeClient {
         asset_public_key: PublicKey,
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
+
+    async fn get_assets_for_dan_node(
+        &mut self,
+        dan_node_public_key: PublicKey,
+    ) -> Result<Vec<AssetDefinition>, DigitalAssetError>;
 }
