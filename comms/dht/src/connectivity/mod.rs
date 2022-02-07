@@ -266,8 +266,11 @@ impl DhtConnectivity {
             self.connectivity
                 .ban_peer_until(
                     peer,
-                    self.config.ban_duration,
-                    "Exceeded maximum message rate".to_string(),
+                    self.config.ban_duration_short,
+                    format!(
+                        "Exceeded maximum message rate. Config: {}/{:#?}. Rate: {:.2} m/s",
+                        self.config.flood_ban_max_msg_count, self.config.flood_ban_timespan, mps
+                    ),
                 )
                 .await?;
         }
