@@ -1,10 +1,11 @@
 use std::fmt;
+
 use thiserror::Error;
 
 #[derive(Debug, Clone, Error)]
 pub struct ExitError {
-    exit_code: ExitCode,
-    details: Option<String>,
+    pub exit_code: ExitCode,
+    pub details: Option<String>,
 }
 
 impl ExitError {
@@ -68,7 +69,7 @@ impl ExitCode {
 }
 
 /// Enum to show failure information
-#[derive(Debug, Clone, Error)]
+#[derive(Debug, Clone, Copy, Error)]
 pub enum ExitCode {
     #[error("There is an error in the configuration.")]
     ConfigError = 101,

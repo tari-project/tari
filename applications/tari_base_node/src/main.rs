@@ -120,7 +120,12 @@ use tari_app_utilities::{
 };
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
-use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCodes, ExitError},
+    ConfigBootstrap,
+    GlobalConfig,
+};
 use tari_comms::{
     peer_manager::PeerFeatures,
     tor::HiddenServiceControllerError,
@@ -146,19 +151,18 @@ const LOG_TARGET: &str = "base_node::app";
 
 /// Application entry point
 fn main() {
-    if let Err(exit_code) = main_inner() {
-        exit_code.eprint_details();
+    if let Err(err) = main_inner() {
+        let exit_code = err.exit_code;
+        eprintln!("{}", exit_code.hint());
         error!(
             target: LOG_TARGET,
-            "Exiting with code ({}): {:?}",
-            exit_code.as_i32(),
-            exit_code
+            "Exiting with code ({}): {:?}", exit_code as i32, err
         );
-        process::exit(exit_code.as_i32());
+        process::exit(exit_code as i32);
     }
 }
 
-fn main_inner() -> Result<(), ExitCodes> {
+fn main_inner() -> Result<(), ExitError> {
     #[allow(unused_mut)] // config isn't mutated on windows
     let (bootstrap, mut config, _) = init_configuration(ApplicationType::BaseNode)?;
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
@@ -220,7 +224,7 @@ async fn run_node(
     config: Arc<GlobalConfig>,
     bootstrap: ConfigBootstrap,
     shutdown: Shutdown,
-) -> Result<(), ExitCodes> {
+) -> Result<(), ExitError> {
     if bootstrap.tracing_enabled {
         enable_tracing();
     }
