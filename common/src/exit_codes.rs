@@ -9,8 +9,18 @@ pub struct ExitError {
 }
 
 impl ExitError {
-    pub fn new(exit_code: ExitCode, details: Option<String>) -> Self {
+    pub fn new(exit_code: ExitCode, details: impl ToString) -> Self {
+        let details = Some(details.to_string());
         Self { exit_code, details }
+    }
+}
+
+impl From<ExitCode> for ExitError {
+    fn from(exit_code: ExitCode) -> Self {
+        Self {
+            exit_code,
+            details: None,
+        }
     }
 }
 
@@ -25,22 +35,22 @@ impl From<ExitCodes> for ExitError {
     fn from(codes: ExitCodes) -> Self {
         use ExitCodes::*;
         match codes {
-            ConfigError(s) => Self::new(ExitCode::ConfigError, Some(s)),
-            UnknownError(s) => Self::new(ExitCode::UnknownError, Some(s)),
-            InterfaceError => Self::new(ExitCode::InterfaceError, None),
-            WalletError(s) => Self::new(ExitCode::WalletError, Some(s)),
-            GrpcError(s) => Self::new(ExitCode::GrpcError, Some(s)),
-            InputError(s) => Self::new(ExitCode::InputError, Some(s)),
-            CommandError(s) => Self::new(ExitCode::CommandError, Some(s)),
-            IOError(s) => Self::new(ExitCode::IOError, Some(s)),
-            RecoveryError(s) => Self::new(ExitCode::RecoveryError, Some(s)),
-            NetworkError(s) => Self::new(ExitCode::NetworkError, Some(s)),
-            ConversionError(s) => Self::new(ExitCode::ConversionError, Some(s)),
-            IncorrectPassword => Self::new(ExitCode::IncorrectOrEmptyPassword, None),
-            NoPassword => Self::new(ExitCode::IncorrectOrEmptyPassword, None),
-            TorOffline => Self::new(ExitCode::TorOffline, None),
-            DatabaseError(s) => Self::new(ExitCode::DatabaseError, Some(s)),
-            DbInconsistentState(s) => Self::new(ExitCode::DbInconsistentState, Some(s)),
+            ConfigError(s) => Self::new(ExitCode::ConfigError, s),
+            UnknownError(s) => Self::new(ExitCode::UnknownError, s),
+            InterfaceError => Self::from(ExitCode::InterfaceError),
+            WalletError(s) => Self::new(ExitCode::WalletError, s),
+            GrpcError(s) => Self::new(ExitCode::GrpcError, s),
+            InputError(s) => Self::new(ExitCode::InputError, s),
+            CommandError(s) => Self::new(ExitCode::CommandError, s),
+            IOError(s) => Self::new(ExitCode::IOError, s),
+            RecoveryError(s) => Self::new(ExitCode::RecoveryError, s),
+            NetworkError(s) => Self::new(ExitCode::NetworkError, s),
+            ConversionError(s) => Self::new(ExitCode::ConversionError, s),
+            IncorrectPassword => Self::from(ExitCode::IncorrectOrEmptyPassword),
+            NoPassword => Self::from(ExitCode::IncorrectOrEmptyPassword),
+            TorOffline => Self::from(ExitCode::TorOffline),
+            DatabaseError(s) => Self::new(ExitCode::DatabaseError, s),
+            DbInconsistentState(s) => Self::new(ExitCode::DbInconsistentState, s),
         }
     }
 }

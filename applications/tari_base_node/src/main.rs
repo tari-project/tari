@@ -248,7 +248,7 @@ async fn run_node(
         recovery::initiate_recover_db(&config)?;
         recovery::run_recovery(&config)
             .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, Some(e.to_string())))?;
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
     };
 
@@ -263,30 +263,29 @@ async fn run_node(
     .map_err(|err| {
         for boxed_error in err.chain() {
             if let Some(HiddenServiceControllerError::TorControlPortOffline) = boxed_error.downcast_ref() {
-                return ExitError::new(ExitCode::TorOffline, None);
+                return ExitCode::TorOffline.into();
             }
             if let Some(ChainStorageError::DatabaseResyncRequired(reason)) = boxed_error.downcast_ref() {
                 return ExitError::new(
                     ExitCode::DbInconsistentState,
-                    Some(format!("You may need to resync your database because {}", reason)),
+                    format!("You may need to resync your database because {}", reason),
                 );
             }
 
             // todo: find a better way to do this
             if boxed_error.to_string().contains("Invalid force sync peer") {
                 println!("Please check your force sync peers configuration");
-                return ExitError::new(ExitCode::ConfigError, Some(boxed_error.to_string()));
+                return ExitError::new(ExitCode::ConfigError, boxed_error);
             }
         }
-        ExitError::new(ExitCode::UnknownError, Some(err.to_string()))
+        ExitError::new(ExitCode::UnknownError, err)
     })?;
 
     if let Some(ref base_node_config) = config.base_node_config {
         if let Some(ref address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr = multiaddr_to_socketaddr(address)
-                .map_err(|e| ExitError::new(ExitCode::ConfigError, Some(e.to_string())))?;
+            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
             task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
         }
     }
