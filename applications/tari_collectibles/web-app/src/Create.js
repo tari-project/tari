@@ -156,6 +156,11 @@ class Create extends React.Component {
         templateIds.push(721);
       }
 
+      let outputs = await binding.command_asset_wallets_get_unspent_amounts();
+
+      if (outputs.length <= 1) {
+        throw { message: "You need at least two unspent outputs" };
+      }
       let publicKey = await binding.command_assets_create(
         name,
         description,

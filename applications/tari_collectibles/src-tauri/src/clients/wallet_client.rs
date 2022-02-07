@@ -123,4 +123,19 @@ impl WalletClient {
     debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner())
   }
+
+  pub async fn get_unspent_amounts(
+    &mut self,
+  ) -> Result<grpc::GetUnspentAmountsResponse, CollectiblesError> {
+    let inner = self.inner.as_mut().unwrap();
+    let request = grpc::Empty {};
+    let result = inner.get_unspent_amounts(request).await.map_err(|source| {
+      CollectiblesError::ClientRequestError {
+        request: "get_unspent_amounts".to_string(),
+        source,
+      }
+    })?;
+    debug!(target: LOG_TARGET, "result {:?}", result);
+    Ok(result.into_inner())
+  }
 }
