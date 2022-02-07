@@ -21,7 +21,9 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 syntax = "proto3";
 
-package tari.p2p.validator_node;
+package tari.dan.validator_node;
+
+import "common.proto";
 
 service ValidatorNode {
   rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
@@ -64,4 +66,15 @@ message InvokeMethodRequest{
 message InvokeMethodResponse {
   bytes result = 1;
   Status status = 2;
+}
+
+message GetBlocksRequest {
+  bytes asset_public_key = 1;
+  bytes start_hash = 2;
+  bytes end_hash = 3;
+}
+
+
+message GetBlocksResponse {
+  tari.dan.common.SideChainBlock block = 1;
 }

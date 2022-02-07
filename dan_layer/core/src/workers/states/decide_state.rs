@@ -189,7 +189,7 @@ where
                         if &n != m_node {
                             unimplemented!("Nodes did not match");
                         }
-                        Some(m_node.clone())
+                        Some(*m_node)
                     } else {
                         Some(n)
                     }
@@ -236,7 +236,7 @@ where
 
             payload_provider.remove_payload(justify.node_hash()).await?;
             unit_of_work.commit_node(justify.node_hash())?;
-            info!(target: LOG_TARGET, "Committed node: {}", justify.node_hash().0.to_hex());
+            info!(target: LOG_TARGET, "Committed node: {}", justify.node_hash().to_hex());
             Ok(Some(ConsensusWorkerStateEvent::Decided))
         } else {
             warn!(target: LOG_TARGET, "received non justify message");

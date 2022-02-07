@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,4 +20,57 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod dan;
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Formatter},
+};
+
+use tari_utilities::hex::{Hex, HexError};
+
+use crate::fixed_hash::{FixedHash, FixedHashSizeError};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TreeNodeHash(FixedHash);
+
+impl TreeNodeHash {
+    pub fn zero() -> Self {
+        Self(FixedHash::zero())
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+impl<T: Into<FixedHash>> From<T> for TreeNodeHash {
+    fn from(hash: T) -> Self {
+        Self(hash.into())
+    }
+}
+
+impl TryFrom<Vec<u8>> for TreeNodeHash {
+    type Error = FixedHashSizeError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let hash = FixedHash::try_from(value)?;
+        Ok(Self(hash))
+    }
+}
+
+impl Hex for TreeNodeHash {
+    fn from_hex(hex: &str) -> Result<Self, HexError>
+    where Self: Sized {
+        let hash = FixedHash::from_hex(hex)?;
+        Ok(Self(hash))
+    }
+
+    fn to_hex(&self) -> String {
+        self.0.to_hex()
+    }
+}
+
+impl Display for TreeNodeHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_hex())
+    }
+}

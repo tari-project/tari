@@ -23,14 +23,14 @@
 mod service_impl;
 
 pub use service_impl::ValidatorNodeRpcServiceImpl;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_dan_core::{
     services::{AssetProcessor, MempoolService},
     storage::DbFactory,
 };
 
-use super::proto::validator_node as proto;
+use crate::p2p::proto::validator_node as proto;
 
 #[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
 pub trait ValidatorNodeRpcService: Send + Sync + 'static {
@@ -51,6 +51,12 @@ pub trait ValidatorNodeRpcService: Send + Sync + 'static {
         &self,
         request: Request<proto::InvokeMethodRequest>,
     ) -> Result<Response<proto::InvokeMethodResponse>, RpcStatus>;
+
+    #[rpc(method = 4)]
+    async fn get_sidechain_blocks(
+        &self,
+        request: Request<proto::GetBlocksRequest>,
+    ) -> Result<Streaming<proto::GetBlocksResponse>, RpcStatus>;
 }
 
 pub fn create_validator_node_rpc_service<

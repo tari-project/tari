@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
+use digest::{Digest, FixedOutput};
 use tari_crypto::common::Blake256;
 
 use crate::models::{Payload, StateRoot, TreeNodeHash};
@@ -40,7 +40,7 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
             parent,
             payload,
             state_root,
-            hash: TreeNodeHash(vec![]),
+            hash: TreeNodeHash::zero(),
             height,
         };
         s.hash = s.calculate_hash();
@@ -49,9 +49,9 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
 
     pub fn genesis(payload: TPayload) -> HotStuffTreeNode<TPayload> {
         let mut s = Self {
-            parent: TreeNodeHash(vec![0u8; 32]),
+            parent: TreeNodeHash::zero(),
             payload,
-            hash: TreeNodeHash(vec![]),
+            hash: TreeNodeHash::zero(),
             state_root: StateRoot::default(),
             height: 0,
         };
@@ -70,11 +70,11 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
 
     pub fn calculate_hash(&self) -> TreeNodeHash {
         let result = Blake256::new()
-            .chain(self.parent.0.as_slice())
+            .chain(self.parent.as_bytes())
             .chain(self.payload.consensus_hash())
             .chain(self.height.to_le_bytes())
-            .finalize();
-        TreeNodeHash(result.to_vec())
+            .finalize_fixed();
+        result.into()
     }
 
     pub fn hash(&self) -> &TreeNodeHash {

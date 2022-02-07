@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_dan_core::{
-    models::{HotStuffTreeNode, SidechainMetadata, TariDanPayload},
-    storage::{chain::ChainDbUnitOfWork, ChainStorageService, StorageError},
-};
+use crate::{models::TreeNodeHash, storage::chain::DbNode};
 
-pub struct SqliteStorageService {}
+#[derive(Debug, Clone)]
+pub struct Node {
+    hash: TreeNodeHash,
+    parent: TreeNodeHash,
+    height: u32,
+    is_committed: bool,
+}
 
-// TODO: this has no references to Sqlite, so may be worth moving to dan_layer.core
-
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
+impl Node {
+    pub fn new(hash: TreeNodeHash, parent: TreeNodeHash, height: u32, is_committed: bool) -> Node {
+        Self {
+            hash,
+            parent,
+            height,
+            is_committed,
+        }
     }
 
-    async fn add_node<TUnitOfWork: ChainDbUnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(*node.hash(), instruction.clone())?;
-        }
-        db.add_node(*node.hash(), *node.parent(), node.height())?;
-        Ok(())
+    pub fn hash(&self) -> &TreeNodeHash {
+        &self.hash
+    }
+
+    pub fn parent(&self) -> &TreeNodeHash {
+        &self.parent
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn is_committed(&self) -> bool {
+        self.is_committed
+    }
+}
+
+impl From<DbNode> for Node {
+    fn from(db_node: DbNode) -> Self {
+        Node::new(db_node.hash, db_node.parent, db_node.height, db_node.is_committed)
     }
 }

@@ -95,7 +95,7 @@ impl DanNode {
 
         let mut tasks = vec![];
         for asset in asset_definitions {
-            let node_identitiy = node_identity.as_ref().clone();
+            let node_identity = node_identity.as_ref().clone();
             let mempool = mempool_service.clone();
             let handles = handles.clone();
             let subscription_factory = subscription_factory.clone();
@@ -103,19 +103,16 @@ impl DanNode {
             let dan_config = dan_config.clone();
             let db_factory = db_factory.clone();
 
-            tasks.push(task::spawn(async move {
-                DanNode::start_asset_worker(
-                    asset,
-                    node_identitiy,
-                    mempool,
-                    handles,
-                    subscription_factory,
-                    shutdown,
-                    dan_config,
-                    db_factory,
-                )
-                .await
-            }));
+            tasks.push(task::spawn(DanNode::start_asset_worker(
+                asset,
+                node_identity,
+                mempool,
+                handles,
+                subscription_factory,
+                shutdown,
+                dan_config,
+                db_factory,
+            )));
         }
 
         if tasks.is_empty() {

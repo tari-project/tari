@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -31,17 +31,20 @@ use tari_dan_core::models::{
     HotStuffTreeNode,
     Instruction,
     InstructionSet,
+    Node,
     QuorumCertificate,
+    SideChainBlock,
     Signature,
     StateRoot,
     TariDanPayload,
+    TemplateId,
     TreeNodeHash,
     ViewId,
 };
 
-use crate::p2p::proto::dan as dan_proto;
+use crate::p2p::proto;
 
-impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
+impl From<HotStuffMessage<TariDanPayload>> for proto::consensus::HotStuffMessage {
     fn from(source: HotStuffMessage<TariDanPayload>) -> Self {
         Self {
             message_type: source.message_type().as_u8() as i32,
@@ -49,13 +52,18 @@ impl From<HotStuffMessage<TariDanPayload>> for dan_proto::HotStuffMessage {
             justify: source.justify().map(|j| j.clone().into()),
             partial_sig: source.partial_sig().map(|s| s.clone().into()),
             view_number: source.view_number().as_u64(),
-            node_hash: source.node_hash().map(|s| s.0.clone()).unwrap_or_default(),
+            node_hash: source
+                .node_hash()
+                .copied()
+                .unwrap_or_else(TreeNodeHash::zero)
+                .as_bytes()
+                .to_vec(),
             asset_public_key: source.asset_public_key().to_vec(),
         }
     }
 }
 
-impl From<HotStuffTreeNode<TariDanPayload>> for dan_proto::HotStuffTreeNode {
+impl From<HotStuffTreeNode<TariDanPayload>> for proto::consensus::HotStuffTreeNode {
     fn from(source: HotStuffTreeNode<TariDanPayload>) -> Self {
         Self {
             parent: Vec::from(source.parent().as_bytes()),
@@ -66,7 +74,7 @@ impl From<HotStuffTreeNode<TariDanPayload>> for dan_proto::HotStuffTreeNode {
     }
 }
 
-impl From<QuorumCertificate> for dan_proto::QuorumCertificate {
+impl From<QuorumCertificate> for proto::consensus::QuorumCertificate {
     fn from(source: QuorumCertificate) -> Self {
         Self {
             message_type: source.message_type().as_u8() as i32,
@@ -77,13 +85,13 @@ impl From<QuorumCertificate> for dan_proto::QuorumCertificate {
     }
 }
 
-impl From<Signature> for dan_proto::Signature {
+impl From<Signature> for proto::consensus::Signature {
     fn from(_s: Signature) -> Self {
         Self {}
     }
 }
 
-impl From<TariDanPayload> for dan_proto::TariDanPayload {
+impl From<TariDanPayload> for proto::consensus::TariDanPayload {
     fn from(source: TariDanPayload) -> Self {
         let (instruction_set, checkpoint) = source.destruct();
         Self {
@@ -93,23 +101,15 @@ impl From<TariDanPayload> for dan_proto::TariDanPayload {
     }
 }
 
-impl From<CheckpointData> for dan_proto::CheckpointData {
+impl From<CheckpointData> for proto::consensus::CheckpointData {
     fn from(_source: CheckpointData) -> Self {
         Self {}
     }
 }
-impl From<InstructionSet> for dan_proto::InstructionSet {
-    fn from(source: InstructionSet) -> Self {
-        Self {
-            instructions: source.instructions().iter().map(|i| i.into()).collect(),
-        }
-    }
-}
 
-impl From<&Instruction> for dan_proto::Instruction {
+impl From<&Instruction> for proto::common::Instruction {
     fn from(source: &Instruction) -> Self {
         Self {
-            asset_public_key: Vec::from(source.asset_id().as_bytes()),
             template_id: source.template_id() as u32,
             method: source.method().to_string(),
             args: Vec::from(source.args()),
@@ -117,14 +117,14 @@ impl From<&Instruction> for dan_proto::Instruction {
     }
 }
 
-impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
+impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
     type Error = String;
 
-    fn try_from(value: dan_proto::HotStuffMessage) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::consensus::HotStuffMessage) -> Result<Self, Self::Error> {
         let node_hash = if value.node_hash.is_empty() {
             None
         } else {
-            Some(TreeNodeHash(value.node_hash))
+            Some(TreeNodeHash::try_from(value.node_hash).map_err(|err| err.to_string())?)
         };
         Ok(Self::new(
             ViewId(value.view_number),
@@ -139,28 +139,28 @@ impl TryFrom<dan_proto::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
     }
 }
 
-impl TryFrom<dan_proto::QuorumCertificate> for QuorumCertificate {
+impl TryFrom<proto::consensus::QuorumCertificate> for QuorumCertificate {
     type Error = String;
 
-    fn try_from(value: dan_proto::QuorumCertificate) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::consensus::QuorumCertificate) -> Result<Self, Self::Error> {
         Ok(Self::new(
             HotStuffMessageType::try_from(value.message_type as u8)?,
             ViewId(value.view_number),
-            TreeNodeHash(value.node_hash),
+            TreeNodeHash::try_from(value.node_hash).map_err(|err| err.to_string())?,
             value.signature.map(|s| s.try_into()).transpose()?,
         ))
     }
 }
 
-impl TryFrom<dan_proto::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
+impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
     type Error = String;
 
-    fn try_from(value: dan_proto::HotStuffTreeNode) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::consensus::HotStuffTreeNode) -> Result<Self, Self::Error> {
         if value.parent.is_empty() {
             return Err("parent not provided".to_string());
         }
         Ok(Self::new(
-            TreeNodeHash(value.parent),
+            TreeNodeHash::try_from(value.parent).map_err(|err| err.to_string())?,
             value
                 .payload
                 .map(|p| p.try_into())
@@ -172,45 +172,48 @@ impl TryFrom<dan_proto::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
     }
 }
 
-impl TryFrom<dan_proto::Signature> for Signature {
+impl TryFrom<proto::consensus::Signature> for Signature {
     type Error = String;
 
-    fn try_from(_value: dan_proto::Signature) -> Result<Self, Self::Error> {
+    fn try_from(_value: proto::consensus::Signature) -> Result<Self, Self::Error> {
         Ok(Self {})
     }
 }
 
-impl TryFrom<dan_proto::InstructionSet> for InstructionSet {
+impl TryFrom<proto::common::InstructionSet> for InstructionSet {
     type Error = String;
 
-    fn try_from(value: dan_proto::InstructionSet) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::common::InstructionSet) -> Result<Self, Self::Error> {
         let instructions: Vec<Instruction> = value
             .instructions
             .into_iter()
             .map(|i| i.try_into())
             .collect::<Result<_, String>>()?;
-        Ok(Self::from_slice(&instructions))
+        Ok(Self::from_vec(instructions))
     }
 }
 
-impl TryFrom<dan_proto::Instruction> for Instruction {
-    type Error = String;
-
-    fn try_from(value: dan_proto::Instruction) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            PublicKey::from_bytes(&value.asset_public_key)
-                .map_err(|e| format!("asset_id was not a valid public key: {}", e))?,
-            value.template_id.into(),
-            value.method,
-            value.args,
-        ))
+impl From<InstructionSet> for proto::common::InstructionSet {
+    fn from(value: InstructionSet) -> Self {
+        Self {
+            instructions: value.instructions().iter().map(Into::into).collect(),
+        }
     }
 }
 
-impl TryFrom<dan_proto::TariDanPayload> for TariDanPayload {
+impl TryFrom<proto::common::Instruction> for Instruction {
     type Error = String;
 
-    fn try_from(value: dan_proto::TariDanPayload) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::common::Instruction) -> Result<Self, Self::Error> {
+        let template_id = TemplateId::try_from(value.template_id).map_err(|err| err.to_string())?;
+        Ok(Self::new(template_id, value.method, value.args))
+    }
+}
+
+impl TryFrom<proto::consensus::TariDanPayload> for TariDanPayload {
+    type Error = String;
+
+    fn try_from(value: proto::consensus::TariDanPayload) -> Result<Self, Self::Error> {
         let instruction_set = value
             .instruction_set
             .ok_or_else(|| "Instructions were not present".to_string())?
@@ -221,10 +224,31 @@ impl TryFrom<dan_proto::TariDanPayload> for TariDanPayload {
     }
 }
 
-impl TryFrom<dan_proto::CheckpointData> for CheckpointData {
+impl TryFrom<proto::consensus::CheckpointData> for CheckpointData {
     type Error = String;
 
-    fn try_from(_value: dan_proto::CheckpointData) -> Result<Self, Self::Error> {
+    fn try_from(_value: proto::consensus::CheckpointData) -> Result<Self, Self::Error> {
         Ok(Self::default())
+    }
+}
+
+impl From<SideChainBlock> for proto::common::SideChainBlock {
+    fn from(block: SideChainBlock) -> Self {
+        let (node, instructions) = block.destruct();
+        Self {
+            node: Some(node.into()),
+            instructions: Some(instructions.into()),
+        }
+    }
+}
+
+impl From<Node> for proto::common::Node {
+    fn from(node: Node) -> Self {
+        Self {
+            hash: node.hash().as_bytes().to_vec(),
+            parent: node.parent().as_bytes().to_vec(),
+            height: node.height(),
+            is_committed: node.is_committed(),
+        }
     }
 }

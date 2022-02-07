@@ -22,6 +22,7 @@
 #![allow(clippy::too_many_arguments)]
 mod digital_assets_error;
 pub use digital_assets_error::DigitalAssetError;
+pub mod fixed_hash;
 pub mod models;
 pub mod services;
 pub mod storage;

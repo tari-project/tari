@@ -23,6 +23,7 @@ tari_storage = { path = "../../infrastructure/storage" }
 tari_core = {path = "../../base_layer/core"}
 tari_dan_core = {path = "../../dan_layer/core"}
 tari_dan_storage_sqlite = {path = "../../dan_layer/storage_sqlite"}
+tari_dan_common_types = {path = "../../dan_layer/common_types"}
 tari_common_types = {path = "../../base_layer/common_types"}
 
 anyhow = "1.0.53"

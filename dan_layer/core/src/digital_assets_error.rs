@@ -24,7 +24,7 @@ use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
 use tari_comms_dht::DhtDiscoveryError;
 use thiserror::Error;
 
-use crate::storage::StorageError;
+use crate::{models::ModelError, storage::StorageError};
 
 #[derive(Debug, Error)]
 pub enum DigitalAssetError {
@@ -76,6 +76,8 @@ pub enum DigitalAssetError {
     DhtDiscoveryError(#[from] DhtDiscoveryError),
     #[error("Fatal error: {0}")]
     FatalError(String),
+    #[error(transparent)]
+    ModelError(#[from] ModelError),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

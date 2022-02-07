@@ -22,7 +22,8 @@
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tari_common::build::ProtobufCompiler::new()
-        .proto_paths(&["proto/p2p"])
+        .proto_paths(&["proto/dan"])
+        .include_paths(&["proto/dan"])
         .emit_rerun_if_changed_directives()
         .compile()
         .unwrap();

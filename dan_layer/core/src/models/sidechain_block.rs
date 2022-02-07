@@ -20,14 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::Instruction;
+use crate::models::{InstructionSet, Node};
 
-pub struct Block {
-    instructions: Vec<Instruction>,
+#[derive(Debug)]
+pub struct SideChainBlock {
+    node: Node,
+    instructions: InstructionSet,
 }
 
-impl Block {
-    pub fn new() -> Self {
-        Self { instructions: vec![] }
+impl SideChainBlock {
+    pub fn new(node: Node, instructions: InstructionSet) -> Self {
+        Self { node, instructions }
+    }
+
+    pub fn node(&self) -> &Node {
+        &self.node
+    }
+
+    pub fn instructions(&self) -> &InstructionSet {
+        &self.instructions
+    }
+
+    pub fn destruct(self) -> (Node, InstructionSet) {
+        (self.node, self.instructions)
     }
 }

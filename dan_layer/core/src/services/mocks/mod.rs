@@ -33,6 +33,7 @@ use tari_core::transactions::transaction::TemplateParameter;
 use super::CommitteeManager;
 use crate::{
     digital_assets_error::DigitalAssetError,
+    fixed_hash::FixedHash,
     models::{
         AssetDefinition,
         BaseLayerMetadata,
@@ -72,17 +73,17 @@ impl MempoolService for MockMempoolService {
 
     async fn reserve_instruction_in_block(
         &mut self,
-        _instruction_hash: &[u8],
-        _block_hash: Vec<u8>,
+        _instruction_hash: &FixedHash,
+        _block_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn remove_all_in_block(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn remove_all_in_block(&mut self, _block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn release_reservations(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn release_reservations(&mut self, _block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 

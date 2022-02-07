@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use log::*;
+use tari_utilities::hex::Hex;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
@@ -97,9 +98,18 @@ where TBaseNodeClient: BaseNodeClient
         committee_manager.read_from_checkpoint(last_checkpoint)?;
 
         if !committee_manager.current_committee()?.contains(node_id) {
+            info!(
+                target: LOG_TARGET,
+                "Validator node not part of committee for asset public key '{}'",
+                asset_definition.public_key.to_hex()
+            );
             return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
         }
-
+        info!(
+            target: LOG_TARGET,
+            "Validator node is a committee member for asset public key '{}'",
+            asset_definition.public_key.to_hex()
+        );
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
         let chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
@@ -132,7 +142,7 @@ where TBaseNodeClient: BaseNodeClient
             }
             info!(target: LOG_TARGET, "Saving genesis node");
             let node = HotStuffTreeNode::genesis(payload_provider.create_genesis_payload());
-            let genesis_qc = QuorumCertificate::genesis(node.hash().clone());
+            let genesis_qc = QuorumCertificate::genesis(*node.hash());
             chain_storage_service.add_node(&node, tx.clone()).await?;
             tx.commit_node(node.hash())?;
             debug!(target: LOG_TARGET, "Setting locked QC");

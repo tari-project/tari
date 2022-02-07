@@ -75,7 +75,7 @@ impl OutboundService<CommsPublicKey, TariDanPayload> for TariCommsOutboundServic
             return Ok(());
         }
 
-        let inner = proto::dan::HotStuffMessage::from(message);
+        let inner = proto::consensus::HotStuffMessage::from(message);
         let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
 
         self.outbound_message_requester

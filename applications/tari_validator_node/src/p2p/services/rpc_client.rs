@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
+use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::{
     connection_manager::ConnectionManagerError,
@@ -37,7 +38,8 @@ use tari_dan_core::{
 };
 
 use crate::p2p::{proto::validator_node as proto, rpc};
-// const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
+
+const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
 
 pub struct TariCommsValidatorNodeRpcClient {
     connectivity: ConnectivityRequester,
@@ -93,6 +95,10 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        debug!(
+            target: LOG_TARGET,
+            r#"Invoking read method "{}" for asset '{}'"#, method, asset_public_key
+        );
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeReadMethodRequest {
@@ -117,6 +123,10 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        debug!(
+            target: LOG_TARGET,
+            r#"Invoking method "{}" for asset '{}'"#, method, asset_public_key
+        );
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeMethodRequest {
@@ -126,11 +136,16 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             args,
         };
         let response = client.invoke_method(request).await?;
-        Ok(if response.result.is_empty() {
-            None
+
+        debug!(
+            target: LOG_TARGET,
+            "Validator node '{}' returned status '{}' for asset '{}'", self.address, response.status, asset_public_key
+        );
+        if response.result.is_empty() {
+            Ok(None)
         } else {
-            Some(response.result)
-        })
+            Ok(Some(response.result))
+        }
     }
 }
 
