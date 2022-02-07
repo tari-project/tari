@@ -21,10 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{collections::HashMap, path::PathBuf, time::Duration};
+use std::{collections::HashMap, ffi::OsStr, path, path::PathBuf, time::Duration};
 
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
@@ -109,7 +110,7 @@ impl MmProxyConfig {
 pub struct LaunchpadConfig {
     /// The directory to use for config, id files and logs
     pub data_directory: PathBuf,
-    /// The Tri network to use. Default = dibbler
+    /// The Tari network to use. Default = dibbler
     pub tari_network: TariNetwork,
     /// The tor control password to share among containers.
     pub tor_control_password: String,
@@ -184,10 +185,33 @@ impl LaunchpadConfig {
     fn build_mounts(&self, blockchain: bool, general: bool, volume_name: String) -> Vec<Mount> {
         let mut mounts = Vec::with_capacity(2);
         if general {
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "windows")]
+            let host = format!(
+                "//{}",
+                self.data_directory
+                    .iter()
+                    .filter_map(|part| {
+                        dbg!(part);
+                        if part == OsStr::new(&path::MAIN_SEPARATOR.to_string()) {
+                            None
+                        } else {
+                            let drive = Regex::new(r"(?P<letter>[A-Za-z]):").unwrap();
+                            let part = part.to_string_lossy().to_string();
+                            if drive.is_match(part.as_str()) {
+                                Some(drive.replace(part.as_str(), "$letter").to_lowercase())
+                            } else {
+                                Some(part)
+                            }
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join("/")
+            );
+            #[cfg(target_os = "macos")]
             let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
             #[cfg(target_os = "linux")]
             let host = self.data_directory.to_string_lossy().to_string();
+            dbg!(&host);
             let mount = Mount {
                 target: Some("/var/tari".to_string()),
                 source: Some(host),

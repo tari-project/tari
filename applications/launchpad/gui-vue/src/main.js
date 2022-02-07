@@ -37,11 +37,15 @@ library.add(
 
 import store from "./store";
 
-createApp(App)
-    .use(store)
-    .component('vue-fontawesome', FontAwesomeIcon)
-    .use(Oruga, {
-        iconComponent: 'vue-fontawesome',
-        iconPack: 'fas'
-    })
-    .mount('#app')
+console.log(store);
+store.dispatch("initState").then(()=> {
+    createApp(App)
+        .use(store)
+        .component('vue-fontawesome', FontAwesomeIcon)
+        .use(Oruga, {
+            iconComponent: 'vue-fontawesome',
+            iconPack: 'fas'
+        })
+        .mount('#app')
+})
+

@@ -40,19 +40,19 @@ use crate::docker::{DockerWrapperError, ImageType};
 pub fn create_workspace_folders<P: AsRef<Path>>(root: P) -> Result<(), DockerWrapperError> {
     if !root.as_ref().exists() {
         info!("Creating new workspace at {}", root.as_ref().to_str().unwrap_or("???"));
-        fs::create_dir(&root)?
+        fs::create_dir_all(&root)?;
     }
     let make_subfolder = |folder: &str| -> Result<(), std::io::Error> {
         let p = root.as_ref().join(folder);
         let p_str = p.as_path().to_str().unwrap_or("???");
         match p.exists() {
             true => {
-                debug!("{} already exists", p_str);
+                info!("{} already exists", p_str);
                 Ok(())
             },
             false => {
                 info!("Creating new data folder, {}", p_str);
-                fs::create_dir(&p)?;
+                fs::create_dir_all(&p)?;
                 #[cfg(any(target_os = "linux", target_os = "macos"))]
                 {
                     use std::os::unix::fs::PermissionsExt;
@@ -64,9 +64,11 @@ pub fn create_workspace_folders<P: AsRef<Path>>(root: P) -> Result<(), DockerWra
             },
         }
     };
-    let _ = make_subfolder("config")?;
+    info!("Making config folder");
+    make_subfolder("config")?;
     for image in ImageType::iter() {
-        let _ = make_subfolder(image.data_folder())?;
+        debug!("Making folder for image:{:?}", image);
+        make_subfolder(image.data_folder())?;
     }
     Ok(())
 }

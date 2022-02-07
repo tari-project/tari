@@ -6883,6 +6883,7 @@ dependencies = [
  "futures 0.3.19",
  "log",
  "rand 0.8.4",
+ "regex",
  "serde 1.0.135",
  "serde_json",
  "strum 0.23.0",

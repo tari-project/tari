@@ -127,6 +127,6 @@ mine_on_tip_only = false
             config.base_node_addr.to_string(),
             "/dns4/my_base_node/tcp/1234".to_string()
         );
-        assert_eq!(config.mine_on_tip_only, false);
+        assert!(!config.mine_on_tip_only);
     }
 }

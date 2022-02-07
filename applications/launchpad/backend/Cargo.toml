@@ -30,6 +30,7 @@ tor-hash-passwd = "1.0.1"
 thiserror = "1.0.30"
 tokio = { version = "1.9", features= ["sync"] }
 futures = "0.3"
+regex= "1.5.4"
 
 [features]
 default = [ "custom-protocol" ]

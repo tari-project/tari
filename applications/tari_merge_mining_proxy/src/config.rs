@@ -101,7 +101,7 @@ mod test {
         let cfg = get_config("config_b");
         let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.b.org".to_string()]);
-        assert_eq!(config.proxy_submit_to_origin, false);
+        assert!(!config.proxy_submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.as_str(), "password_dibbler");
         assert_eq!(
@@ -116,7 +116,7 @@ mod test {
         let cfg = get_config("config_a");
         let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.a.org".to_string()]);
-        assert_eq!(config.proxy_submit_to_origin, true);
+        assert!(config.proxy_submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.as_str(), "password_igor");
         assert_eq!(
@@ -133,7 +133,7 @@ mod test {
     fn default_config() {
         let config = MergeMiningProxyConfig::default();
         assert_eq!(&config.grpc_base_node_address.to_string(), "/ip4/127.0.0.1/tcp/18142");
-        assert_eq!(config.monerod_use_auth, false);
-        assert_eq!(config.proxy_submit_to_origin, true);
+        assert!(!config.monerod_use_auth);
+        assert!(config.proxy_submit_to_origin);
     }
 }

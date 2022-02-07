@@ -354,8 +354,7 @@ fn convert_node_config(
     }
 
     let mut wallet_config = None;
-    // TODO: Create Mining node config, do the same for above
-    if application == ApplicationType::ConsoleWallet || application == ApplicationType::MiningNode {
+    if application == ApplicationType::ConsoleWallet {
         let mut config = WalletConfig::default();
         // GPRC enabled
         let key = "wallet.grpc_enabled";

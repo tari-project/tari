@@ -188,7 +188,7 @@ impl TryFrom<&str> for TariNetwork {
 
 //-------------------------------------------     ImageType      ----------------------------------------------
 
-#[derive(Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
 pub enum ImageType {
     Tor,
     BaseNode,
