@@ -133,7 +133,8 @@ fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) 
         transport_type: create_transport_type(config),
         datastore_path: config.peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 100,
+        max_concurrent_inbound_tasks: 50,
+        max_concurrent_outbound_tasks: 100,
         outbound_buffer_size: 100,
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht.db")),

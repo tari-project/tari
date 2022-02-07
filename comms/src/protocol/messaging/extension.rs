@@ -27,7 +27,7 @@ use tower::Service;
 
 use super::MessagingProtocol;
 use crate::{
-    bounded_executor::BoundedExecutor,
+    bounded_executor::{BoundedExecutor, OptionallyBoundedExecutor},
     message::InboundMessage,
     pipeline,
     protocol::{
@@ -36,7 +36,6 @@ use crate::{
         ProtocolExtensionContext,
         ProtocolExtensionError,
     },
-    runtime,
     runtime::task,
 };
 
@@ -104,8 +103,9 @@ where
         );
         task::spawn(inbound.run());
 
+        let executor = OptionallyBoundedExecutor::from_current(self.pipeline.max_concurrent_outbound_tasks);
         // Spawn outbound pipeline
-        let outbound = pipeline::Outbound::new(runtime::current(), self.pipeline.outbound, messaging_request_tx);
+        let outbound = pipeline::Outbound::new(executor, self.pipeline.outbound, messaging_request_tx);
         task::spawn(outbound.run());
 
         Ok(())

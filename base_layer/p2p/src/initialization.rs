@@ -121,6 +121,9 @@ pub struct P2pConfig {
     pub peer_database_name: String,
     /// The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
     pub max_concurrent_inbound_tasks: usize,
+    /// The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging
+    /// queue
+    pub max_concurrent_outbound_tasks: usize,
     /// The size of the buffer (channel) which holds pending outbound message requests
     pub outbound_buffer_size: usize,
     /// Configuration for DHT
@@ -386,6 +389,7 @@ async fn configure_comms_and_dht(
             ServiceBuilder::new().layer(dht_outbound_layer).service(sink)
         })
         .max_concurrent_inbound_tasks(config.max_concurrent_inbound_tasks)
+        .max_concurrent_outbound_tasks(config.max_concurrent_outbound_tasks)
         .with_inbound_pipeline(
             ServiceBuilder::new()
                 .layer(dht.inbound_middleware_layer())

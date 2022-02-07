@@ -23,7 +23,7 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
 
@@ -151,7 +151,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     pub async fn create_initial_asset_checkpoint(
         &mut self,
         asset_pub_key: PublicKey,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
@@ -199,7 +199,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         asset_pub_key: PublicKey,
         unique_id: Vec<u8>,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
