@@ -43,6 +43,7 @@ class Wallet {
   callback_balance_updated;
   callback_transaction_validation_complete;
   callback_saf_message_received;
+  callback_connectivity_status;
   recoveryProgressCallback;
 
   getTxoValidationStatus() {
@@ -141,6 +142,10 @@ class Wallet {
     this.recoveryProgressCallback = InterfaceFFI.createRecoveryProgressCallback(
       this.onRecoveryProgress
     );
+    this.callback_connectivity_status =
+      InterfaceFFI.createCallbackConnectivityStatus(
+        this.onConnectivityStatusChange
+      );
     //endregion
 
     this.receivedTransaction = 0;
@@ -180,7 +185,8 @@ class Wallet {
       this.callback_txo_validation_complete,
       this.callback_balance_updated,
       this.callback_transaction_validation_complete,
-      this.callback_saf_message_received
+      this.callback_saf_message_received,
+      this.callback_connectivity_status
     );
   }
 
@@ -328,6 +334,10 @@ class Wallet {
     return InterfaceFFI.walletIsRecoveryInProgress(this.ptr);
   }
 
+  onConnectivityStatusChange = (status) => {
+    console.log("Connectivity Status Changed to ", status);
+  };
+
   getPublicKey() {
     let ptr = InterfaceFFI.walletGetPublicKey(this.ptr);
     let pk = new PublicKey();
@@ -463,6 +473,7 @@ class Wallet {
         this.callback_transaction_validation_complete =
         this.callback_saf_message_received =
         this.recoveryProgressCallback =
+        this.callback_connectivity_status =
           undefined; // clear callback function pointers
     }
   }
