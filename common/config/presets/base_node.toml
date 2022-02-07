@@ -53,9 +53,9 @@ db_type = "lmdb"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
-# The amount of messages that will be permitted in the flood ban timespan of 100s (Default dibbler = 1000,
-# default mainnet = 10000)
-flood_ban_max_msg_count = 10000
+# The amount of messages that will be permitted in the flood ban timespan of 100s (Default dibbler = 100000,
+# default mainnet = 100000)
+flood_ban_max_msg_count = 100_000
 
 # The relative path to store persistent data
 data_dir = "dibbler"
@@ -223,9 +223,9 @@ db_type = "lmdb"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
-# The amount of messages that will be permitted in the flood ban timespan of 100s (Default weatherwax = 1000,
-# default mainnet = 10000)
-flood_ban_max_msg_count = 10000
+# The amount of messages that will be permitted in the flood ban timespan of 100s (Default igor = 100000,
+# default mainnet = 100000)
+flood_ban_max_msg_count = 100_000
 
 # The relative path to store persistent data
 data_dir = "igor"
