@@ -59,7 +59,7 @@ signature challenges used in base-layer consensus.
 ## Description
 
 A Tari base node must validate each block containing a [block header] as well as set of transaction inputs, transaction outputs and transaction kernels,
-each containing a number of fields pertinent to their function within the [base layer]. The data contained within these structures need to be consistently encoded
+each containing a number of fields pertinent to their function within the [base layer]. The data contained within these structures needs to be consistently encoded
 (represented as bytes) across platforms and implementations so that the network can agree on a single correct state.
 
 This RFC defines the low-level specification for how these data types MUST be encoded to construct a valid hash and signature on the Tari network.
@@ -258,7 +258,7 @@ pub struct TransactionOutput {
 }
 ```
 
-The canonical hash commits to the common data between an output and the input spending that output
+The canonical output hash commits to the common data between an output and the input spending that output
 i.e. `output_hash = Hash(version | features | commitment | script | covenant)`. 
 
 This hash is appended to the output Merkle tree.
@@ -276,7 +276,7 @@ The encoding is defined as follows:
 The witness hash is appended to the witness Merkle tree.
 
 - `proof` - Raw proof bytes encoded using [dynamic vector] encoding
-- `metadata_signature` - [SchnorrSignature](#schnorr-signature)
+- `metadata_signature` - [CommitementSiganture]
 
 ##### Metadata signature challenge
 
@@ -311,14 +311,11 @@ pub struct TransactionInput {
 
 The transaction input canonical hash pre-image is constructed as follows:
 
-- `output_version` - 1 byte
-- `features` - [OutputFeatures]
-- `commitment` - [Commitment]
-- `script` - [TariScript]
+- `input_version` - 1 byte
+- `output_hash` - See [TransactionOutput]
 - `sender_offset_public_key` - [RistrettoPublicKey]
-- `script_signature` - [CommitementSiganture]
 - `input_data` - [TariScript Stack]
-- `covenant` - [Covenant]
+- `script_signature` - [CommitementSiganture]
 
 #### Script Challenge
 

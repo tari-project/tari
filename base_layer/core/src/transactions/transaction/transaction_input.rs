@@ -327,6 +327,7 @@ impl TransactionInput {
                 ref sender_offset_public_key,
                 ref covenant,
             } => {
+                // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
                 let mut writer = HashWriter::new(HashDigest::new());
                 version.consensus_encode(&mut writer)?;
                 features.consensus_encode(&mut writer)?;
