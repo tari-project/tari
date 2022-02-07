@@ -227,6 +227,22 @@ impl OptionallyBoundedExecutor {
             Either::Right(exec) => exec.num_available(),
         }
     }
+
+    /// Returns the max number tasks that can be performed concurrenly
+    pub fn max_available(&self) -> Option<usize> {
+        match &self.inner {
+            Either::Left(_) => None,
+            Either::Right(exec) => Some(exec.max_available()),
+        }
+    }
+}
+
+impl From<runtime::Handle> for OptionallyBoundedExecutor {
+    fn from(handle: runtime::Handle) -> Self {
+        Self {
+            inner: Either::Left(handle),
+        }
+    }
 }
 
 #[cfg(test)]

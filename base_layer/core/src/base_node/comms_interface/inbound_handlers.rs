@@ -479,7 +479,7 @@ where B: BlockchainBackend + 'static
                 })
             },
             NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
-                let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
+                let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
                 Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
                     FetchMempoolTransactionsResponse {
                         transactions,
@@ -553,7 +553,7 @@ where B: BlockchainBackend + 'static
             kernel_excess_sigs: excess_sigs,
         } = new_block;
 
-        let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
+        let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
 
         metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
@@ -587,7 +587,7 @@ where B: BlockchainBackend + 'static
 
             // Add returned transactions to unconfirmed pool
             if !transactions.is_empty() {
-                self.mempool.insert_all(&transactions).await?;
+                self.mempool.insert_all(transactions.clone()).await?;
             }
 
             if !not_found.is_empty() {
@@ -707,8 +707,6 @@ where B: BlockchainBackend + 'static
                     BlockAddResult::OrphanBlock => false,
                     BlockAddResult::ChainReorg { .. } => true,
                 };
-
-                self.blockchain_db.cleanup_orphans().await?;
 
                 self.update_block_result_metrics(&block_add_result);
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));

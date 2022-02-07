@@ -14,7 +14,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch 
 tari_storage = { version = "^0.27", path = "../infrastructure/storage" }
 tari_shutdown = { version = "^0.27", path = "../infrastructure/shutdown" }
 
-anyhow = "1.0.32"
+anyhow = "1.0.53"
 async-trait = "0.1.36"
 bitflags = "1.0.4"
 blake2 = "0.9.0"
