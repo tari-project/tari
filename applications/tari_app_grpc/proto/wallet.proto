@@ -44,6 +44,8 @@ service Wallet {
     rpc GetCompletedTransactions (GetCompletedTransactionsRequest) returns (stream GetCompletedTransactionsResponse);
     // Returns the balance
     rpc GetBalance (GetBalanceRequest) returns (GetBalanceResponse);
+    // Returns unspent amounts
+    rpc GetUnspentAmounts (Empty) returns (GetUnspentAmountsResponse);
     // Request the wallet perform a coinsplit
     rpc CoinSplit (CoinSplitRequest) returns (CoinSplitResponse);
     // Import Utxo to wallet
@@ -204,6 +206,10 @@ message GetBalanceResponse {
     uint64 available_balance = 1;
     uint64 pending_incoming_balance = 2;
     uint64 pending_outgoing_balance = 3;
+}
+
+message GetUnspentAmountsResponse {
+    repeated uint64 amount = 1;
 }
 
 message GetCoinbaseRequest {

@@ -176,6 +176,16 @@ pub(crate) async fn asset_wallets_get_balance(
 }
 
 #[tauri::command]
+pub(crate) async fn asset_wallets_get_unspent_amounts(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<u64>, Status> {
+  let mut client = state.create_wallet_client().await;
+  client.connect().await?;
+  let result = client.get_unspent_amounts().await?;
+  Ok(result.amount)
+}
+
+#[tauri::command]
 pub(crate) async fn asset_wallets_list(
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Vec<AssetRow>, Status> {
