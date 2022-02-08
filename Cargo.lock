@@ -6973,6 +6973,7 @@ dependencies = [
  "thiserror",
  "tokio 1.17.0",
  "tokio-stream",
+ "tonic",
 ]
 
 [[package]]

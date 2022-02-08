@@ -87,6 +87,8 @@ pub enum ExitCode {
     DatabaseError = 114,
     #[error("Database is in an inconsistent state!")]
     DbInconsistentState = 115,
+    #[error("DigitalAssetError")]
+    DigitalAssetError = 116,
 }
 
 impl From<super::ConfigError> for ExitError {
