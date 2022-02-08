@@ -24,7 +24,7 @@ mod asset_manager_service;
 pub use asset_manager_service::AssetManagerService;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
 
@@ -53,13 +53,13 @@ pub enum AssetManagerRequest {
     },
     CreateInitialCheckpoint {
         asset_public_key: Box<PublicKey>,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
     CreateFollowOnCheckpoint {
         asset_public_key: Box<PublicKey>,
         unique_id: Vec<u8>,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee_public_keys: Vec<PublicKey>,
     },
 }

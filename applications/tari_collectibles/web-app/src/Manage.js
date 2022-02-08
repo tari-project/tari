@@ -88,7 +88,7 @@ class Manage extends React.Component {
                     sx={{ pb: "5%", height: "20vw", width: "20vw" }}
                     image={asset.image}
                     alt="random"
-                  ></CardMedia>
+                  />
                 </Link>
                 <CardContent>
                   <Typography gutterBottom variant="h5" component="h2">

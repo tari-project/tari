@@ -30,12 +30,15 @@ use crate::{
     StorageTransaction,
   },
 };
+use log::{debug, error};
 use prost::Message;
 use tari_common_types::types::PublicKey;
 use tari_dan_common_types::proto::tips::tip002;
 use tari_utilities::{hex::Hex, ByteArray};
 use tauri::Manager;
 use uuid::Uuid;
+
+const LOG_TARGET: &str = "collectibles::asset_wallets";
 
 #[tauri::command]
 pub(crate) async fn asset_wallets_create(
@@ -84,7 +87,7 @@ pub(crate) async fn asset_wallets_create(
       }
     }
     Err(e) => {
-      dbg!(e);
+      error!(target: LOG_TARGET, "{}", e);
       None
     }
   };
@@ -121,7 +124,10 @@ pub(crate) async fn asset_wallets_get_balance(
   asset_public_key: String,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<u64, Status> {
-  dbg!(&asset_public_key);
+  debug!(
+    target: LOG_TARGET,
+    "asset_public_key {:?}", asset_public_key
+  );
   let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
 
   let wallet_id = state
@@ -143,7 +149,7 @@ pub(crate) async fn asset_wallets_get_balance(
     let args = tip002::BalanceOfRequest {
       owner: Vec::from(owner.public_key.as_bytes()),
     };
-    dbg!(&args);
+    debug!(target: LOG_TARGET, "args {:?}", args);
     let mut args_bytes = vec![];
     args.encode(&mut args_bytes)?;
     // let req = grpc::InvokeReadMethodRequest{
@@ -162,11 +168,21 @@ pub(crate) async fn asset_wallets_get_balance(
       )
       .await?;
 
-    dbg!(&resp);
+    debug!(target: LOG_TARGET, "resp {:?}", resp);
     let proto_resp: tip002::BalanceOfResponse = Message::decode(&*resp)?;
     total += proto_resp.balance;
   }
   Ok(total)
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_get_unspent_amounts(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<u64>, Status> {
+  let mut client = state.create_wallet_client().await;
+  client.connect().await?;
+  let result = client.get_unspent_amounts().await?;
+  Ok(result.amount)
 }
 
 #[tauri::command]
@@ -219,7 +235,7 @@ pub(crate) async fn asset_wallets_create_address(
     public_key: address_public_key,
     key_manager_path,
   };
-  dbg!(&address);
+  debug!(target: LOG_TARGET, "address {:?}", address);
   db.addresses().insert(&address, &transaction)?;
   transaction.commit()?;
   Ok(address)
@@ -295,6 +311,6 @@ pub(crate) async fn asset_wallets_send_to(
     .invoke_method(asset_public_key, 2, "transfer".to_string(), args_bytes)
     .await?;
 
-  dbg!(&resp);
+  debug!(target: LOG_TARGET, "resp {:?}", resp);
   Ok(())
 }

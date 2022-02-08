@@ -63,8 +63,10 @@ impl<B: BlockchainBackend> TxInternalConsistencyValidator<B> {
 
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInternalConsistencyValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let db = self.db.db_read_access()?;
-        let tip = db.fetch_chain_metadata()?;
+        let tip = {
+            let db = self.db.db_read_access()?;
+            db.fetch_chain_metadata()
+        }?;
 
         tx.validate_internal_consistency(
             self.bypass_range_proof_verification,
@@ -181,11 +183,13 @@ impl<B: BlockchainBackend> TxInputAndMaturityValidator<B> {
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxInputAndMaturityValidator<B> {
     fn validate(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let constants = self.db.consensus_constants()?;
-        let db = self.db.db_read_access()?;
-        check_inputs_are_utxos(&*db, tx.body())?;
-        check_outputs(&*db, constants, tx.body())?;
+        let tip_height = {
+            let db = self.db.db_read_access()?;
+            check_inputs_are_utxos(&*db, tx.body())?;
+            check_outputs(&*db, constants, tx.body())?;
+            db.fetch_chain_metadata()?.height_of_longest_chain()
+        };
 
-        let tip_height = db.fetch_chain_metadata()?.height_of_longest_chain();
         verify_timelocks(tx, tip_height)?;
         verify_no_duplicated_inputs_outputs(tx)?;
         Ok(())

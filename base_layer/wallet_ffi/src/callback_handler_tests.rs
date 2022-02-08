@@ -45,6 +45,7 @@ mod test {
     use tari_service_framework::reply_channel;
     use tari_shutdown::Shutdown;
     use tari_wallet::{
+        connectivity_service::OnlineStatus,
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
             service::Balance,
@@ -60,7 +61,11 @@ mod test {
             },
         },
     };
-    use tokio::{runtime::Runtime, sync::broadcast, time::Instant};
+    use tokio::{
+        runtime::Runtime,
+        sync::{broadcast, watch},
+        time::Instant,
+    };
 
     use crate::{callback_handler::CallbackHandler, output_manager_service_mock::MockOutputManagerService};
 
@@ -81,6 +86,7 @@ mod test {
         pub callback_balance_updated: u32,
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
+        pub connectivity_status_callback_called: u64,
     }
 
     impl CallbackState {
@@ -101,6 +107,7 @@ mod test {
                 tx_cancellation_callback_called_inbound: false,
                 tx_cancellation_callback_called_outbound: false,
                 saf_messages_received: false,
+                connectivity_status_callback_called: 0,
             }
         }
     }
@@ -197,6 +204,12 @@ mod test {
     unsafe extern "C" fn transaction_validation_complete_callback(request_key: u64, _result: bool) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_transaction_validation_complete += request_key as u32;
+        drop(lock);
+    }
+
+    unsafe extern "C" fn connectivity_status_callback(status: u64) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.connectivity_status_callback_called += status + 1;
         drop(lock);
     }
 
@@ -300,6 +313,8 @@ mod test {
         runtime.spawn(mock_output_manager_service.run());
         assert_eq!(balance, runtime.block_on(oms_handle.get_balance()).unwrap());
 
+        let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
+
         let callback_handler = CallbackHandler::new(
             db,
             transaction_event_receiver,
@@ -308,6 +323,7 @@ mod test {
             dht_event_receiver,
             shutdown_signal.to_signal(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
+            connectivity_rx,
             received_tx_callback,
             received_tx_reply_callback,
             received_tx_finalized_callback,
@@ -321,6 +337,7 @@ mod test {
             balance_updated_callback,
             transaction_validation_complete_callback,
             saf_messages_received_callback,
+            connectivity_status_callback,
         );
 
         runtime.spawn(callback_handler.start());
@@ -506,6 +523,14 @@ mod test {
         dht_event_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
             .unwrap();
+        thread::sleep(Duration::from_secs(2));
+        connectivity_tx.send(OnlineStatus::Offline).unwrap();
+        thread::sleep(Duration::from_secs(2));
+        connectivity_tx.send(OnlineStatus::Connecting).unwrap();
+        thread::sleep(Duration::from_secs(2));
+        connectivity_tx.send(OnlineStatus::Online).unwrap();
+        thread::sleep(Duration::from_secs(2));
+        connectivity_tx.send(OnlineStatus::Connecting).unwrap();
 
         thread::sleep(Duration::from_secs(10));
 
@@ -525,6 +550,7 @@ mod test {
         assert_eq!(lock.callback_txo_validation_complete, 3);
         assert_eq!(lock.callback_balance_updated, 5);
         assert_eq!(lock.callback_transaction_validation_complete, 7);
+        assert_eq!(lock.connectivity_status_callback_called, 7);
 
         drop(lock);
     }

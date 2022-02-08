@@ -22,7 +22,10 @@
 
 use std::convert::{TryFrom, TryInto};
 
-use tari_common_types::types::{Commitment, PublicKey};
+use tari_common_types::{
+    array::copy_into_fixed_array,
+    types::{Commitment, PublicKey},
+};
 use tari_core::transactions::transaction::{
     AssetOutputFeatures,
     MintNonFungibleFeatures,
@@ -176,10 +179,8 @@ impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures 
                 PublicKey::from_bytes(c).map_err(|err| format!("committee member was not a valid public key: {}", err))
             })
             .collect::<Result<_, _>>()?;
+        let merkle_root = copy_into_fixed_array(&value.merkle_root).map_err(|_| "Invalid merkle_root length")?;
 
-        Ok(Self {
-            merkle_root: value.merkle_root.as_bytes().to_vec(),
-            committee,
-        })
+        Ok(Self { merkle_root, committee })
     }
 }

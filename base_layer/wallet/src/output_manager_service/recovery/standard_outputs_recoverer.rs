@@ -24,7 +24,7 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::types::{PrivateKey, PublicKey};
+use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
 use tari_core::transactions::{
     transaction::{TransactionOutput, UnblindedOutput},
     CryptoFactories,
@@ -37,6 +37,7 @@ use tari_crypto::{
 
 use crate::output_manager_service::{
     error::{OutputManagerError, OutputManagerStorageError},
+    master_key_manager::KeyManagerBranch,
     storage::{
         database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
@@ -75,7 +76,7 @@ where TBackend: OutputManagerBackend + 'static
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
-        let mut rewound_outputs: Vec<UnblindedOutput> = outputs
+        let mut rewound_outputs: Vec<(UnblindedOutput, RangeProof)> = outputs
             .into_iter()
             .filter_map(|output| {
                 output
@@ -87,14 +88,15 @@ where TBackend: OutputManagerBackend + 'static
                     .ok()
                     .map(|v| ( v, output ) )
             })
-            //Todo this needs some investigation. We assume Nop script here and recovery here might create an unspendable output if the script does not equal Nop.
+            //TODO: This needs some investigation. We assume Nop script here and recovery here might create an
+            //TODO:   unspendable output if the script does not equal Nop.
             .map(
                 |(rewind_result, output)| {
                     // Todo we need to look here that we might want to fail a specific output and not recover it as this
                     // will only work if the script is a Nop script. If this is not a Nop script the recovered input
                     // will not be spendable.
                     let script_key = PrivateKey::random(&mut OsRng);
-                    UnblindedOutput::new(
+                    (UnblindedOutput::new(
                         output.version,
                         rewind_result.committed_value,
                         rewind_result.blinding_factor,
@@ -106,7 +108,8 @@ where TBackend: OutputManagerBackend + 'static
                         output.metadata_signature,
                         0,
                         output.covenant
-                    )
+                    ),
+                     output.proof)
                 },
             )
             .collect();
@@ -118,11 +121,17 @@ where TBackend: OutputManagerBackend + 'static
             rewind_time.as_millis(),
         );
 
-        for output in rewound_outputs.iter_mut() {
+        for (output, proof) in rewound_outputs.iter_mut() {
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
                 .await?;
 
-            let db_output = DbUnblindedOutput::from_unblinded_output(output.clone(), &self.factories, None)?;
+            let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
+                output.clone(),
+                &self.factories,
+                self.master_key_manager.rewind_data(),
+                None,
+                Some(proof),
+            )?;
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output(db_output).await {
                 match e {
@@ -145,6 +154,7 @@ where TBackend: OutputManagerBackend + 'static
             );
         }
 
+        let rewound_outputs = rewound_outputs.iter().map(|(ro, _)| ro.clone()).collect();
         Ok(rewound_outputs)
     }
 
@@ -155,18 +165,30 @@ where TBackend: OutputManagerBackend + 'static
         &mut self,
         output: &mut UnblindedOutput,
     ) -> Result<(), OutputManagerError> {
-        let found_index = self
-            .master_key_manager
-            .find_utxo_key_index(output.spending_key.clone())
-            .await?;
+        let script_key = if output.features.is_coinbase() {
+            let found_index = self
+                .master_key_manager
+                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Coinbase)
+                .await?;
 
-        self.master_key_manager
-            .update_current_index_if_higher(found_index)
-            .await?;
+            self.master_key_manager
+                .get_coinbase_script_key_at_index(found_index)
+                .await?
+        } else {
+            let found_index = self
+                .master_key_manager
+                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Spend)
+                .await?;
 
-        let script_private_key = self.master_key_manager.get_script_key_at_index(found_index).await?;
-        output.input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
-        output.script_private_key = script_private_key;
+            self.master_key_manager
+                .update_current_spend_key_index_if_higher(found_index)
+                .await?;
+
+            self.master_key_manager.get_script_key_at_index(found_index).await?
+        };
+
+        output.input_data = inputs!(PublicKey::from_secret_key(&script_key));
+        output.script_private_key = script_key;
         Ok(())
     }
 }
