@@ -148,56 +148,63 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
             Some(chk) => chk,
         };
 
-        if let Some(committee) = last_checkpoint.get_side_chain_committee() {
-            match invoke_type {
-                InvokeType::InvokeReadMethod => {
-                    let mut tasks = FuturesUnordered::new();
-                    for member in committee.iter().take(self.max_clients_to_ask) {
-                        tasks.push(self.forward_invoke_read_to_node(
-                            member,
-                            asset_public_key,
-                            template_id,
-                            method.clone(),
-                            args.clone(),
-                        ));
-                    }
+        let committee = last_checkpoint
+            .get_side_chain_committee()
+            .ok_or(DigitalAssetError::NoCommitteeForAsset)?;
 
-                    for result in tasks.next().await {
-                        match result {
-                            Ok(data) => return Ok(data),
-                            Err(err) => {
-                                error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
-                            },
-                        }
-                    }
-                },
-                InvokeType::InvokeMethod => {
-                    let mut tasks = FuturesUnordered::new();
-                    for member in committee.iter().take(self.max_clients_to_ask) {
-                        tasks.push(self.forward_invoke_to_node(
-                            member,
-                            asset_public_key,
-                            template_id,
-                            method.clone(),
-                            args.clone(),
-                        ));
-                    }
+        debug!(
+            target: LOG_TARGET,
+            "Found {} committee member(s): {}",
+            committee.len(),
+            committee.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ")
+        );
 
-                    for result in tasks.next().await {
-                        match result {
-                            Ok(data) => return Ok(data),
-                            Err(err) => {
-                                error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
-                            },
-                        }
-                    }
-                },
-            };
+        match invoke_type {
+            InvokeType::InvokeReadMethod => {
+                let mut tasks = FuturesUnordered::new();
+                for member in committee.iter().take(self.max_clients_to_ask) {
+                    tasks.push(self.forward_invoke_read_to_node(
+                        member,
+                        asset_public_key,
+                        template_id,
+                        method.clone(),
+                        args.clone(),
+                    ));
+                }
 
-            Err(DigitalAssetError::NoResponsesFromCommittee)
-        } else {
-            Err(DigitalAssetError::NoCommitteeForAsset)
-        }
+                for result in tasks.next().await {
+                    match result {
+                        Ok(data) => return Ok(data),
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
+                        },
+                    }
+                }
+            },
+            InvokeType::InvokeMethod => {
+                let mut tasks = FuturesUnordered::new();
+                for member in committee.iter().take(self.max_clients_to_ask) {
+                    tasks.push(self.forward_invoke_to_node(
+                        member,
+                        asset_public_key,
+                        template_id,
+                        method.clone(),
+                        args.clone(),
+                    ));
+                }
+
+                for result in tasks.next().await {
+                    match result {
+                        Ok(data) => return Ok(data),
+                        Err(err) => {
+                            error!(target: LOG_TARGET, "Committee member responded with error:{}", err);
+                        },
+                    }
+                }
+            },
+        };
+
+        Err(DigitalAssetError::NoResponsesFromCommittee)
     }
 }
 
@@ -215,7 +222,6 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
         // check if we are processing this asset
         if self.db_factory.get_state_db(asset_public_key)?.is_some() {
             let instruction = Instruction::new(
-                asset_public_key.clone(),
                 template_id,
                 method.clone(),
                 args.clone(),

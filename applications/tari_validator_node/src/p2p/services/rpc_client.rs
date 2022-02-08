@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
 use async_trait::async_trait;
+use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::{
     connection_manager::ConnectionManagerError,
@@ -31,13 +34,15 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::TemplateId,
+    models::{SideChainBlock, TemplateId, TreeNodeHash},
     services::{ValidatorNodeClientFactory, ValidatorNodeRpcClient},
     DigitalAssetError,
 };
+use tokio_stream::StreamExt;
 
 use crate::p2p::{proto::validator_node as proto, rpc};
-// const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
+
+const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
 
 pub struct TariCommsValidatorNodeRpcClient {
     connectivity: ConnectivityRequester,
@@ -93,6 +98,10 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        debug!(
+            target: LOG_TARGET,
+            r#"Invoking read method "{}" for asset '{}'"#, method, asset_public_key
+        );
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeReadMethodRequest {
@@ -117,6 +126,10 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        debug!(
+            target: LOG_TARGET,
+            r#"Invoking method "{}" for asset '{}'"#, method, asset_public_key
+        );
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::InvokeMethodRequest {
@@ -126,11 +139,50 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             args,
         };
         let response = client.invoke_method(request).await?;
-        Ok(if response.result.is_empty() {
-            None
+
+        debug!(
+            target: LOG_TARGET,
+            "Validator node '{}' returned status '{}' for asset '{}'", self.address, response.status, asset_public_key
+        );
+        if response.result.is_empty() {
+            Ok(None)
         } else {
-            Some(response.result)
-        })
+            Ok(Some(response.result))
+        }
+    }
+
+    async fn get_sidechain_blocks(
+        &mut self,
+        asset_public_key: &PublicKey,
+        start_hash: TreeNodeHash,
+        end_hash: Option<TreeNodeHash>,
+    ) -> Result<Vec<SideChainBlock>, DigitalAssetError> {
+        let mut connection = self.create_connection().await?;
+        let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
+        let request = proto::GetSidechainBlocksRequest {
+            asset_public_key: asset_public_key.to_vec(),
+            start_hash: start_hash.as_bytes().to_vec(),
+            end_hash: end_hash.map(|h| h.as_bytes().to_vec()).unwrap_or_default(),
+        };
+
+        let stream = client.get_sidechain_blocks(request).await?;
+        // TODO: By first collecting all the blocks, we lose the advantage of streaming. Since you cannot return
+        //       `Result<impl Stream<..>, _>`, and the Map type is private in tokio-stream, its a little tricky to
+        //       return the stream and not leak the RPC response type out of the client
+        let blocks = stream
+            .map(|result| {
+                let resp = result.map_err(DigitalAssetError::from)?;
+                let block: SideChainBlock = resp
+                    .block
+                    .ok_or_else(|| DigitalAssetError::ConversionError("Node returned empty block".to_string()))?
+                    .try_into()
+                    .map_err(DigitalAssetError::ConversionError)?;
+                Ok(block)
+            })
+            .collect::<Result<_, DigitalAssetError>>()
+            .await?;
+
+        Ok(blocks)
     }
 }
 

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use diesel;
-use tari_dan_core::storage::StorageError;
+use tari_dan_core::{fixed_hash::FixedHashSizeError, models::ModelError, storage::StorageError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -42,6 +42,10 @@ pub enum SqliteStorageError {
     },
     #[error("Error decoding bytes:{0}")]
     DecodeError(#[from] bytecodec::Error),
+    #[error("Encountered malformed hash data")]
+    MalformedHashData,
+    #[error(transparent)]
+    ModelError(#[from] ModelError),
 }
 
 impl From<SqliteStorageError> for StorageError {
@@ -57,6 +61,15 @@ impl From<SqliteStorageError> for StorageError {
                 reason: source.to_string(),
             },
             SqliteStorageError::DecodeError(e) => StorageError::DecodeError(e),
+            other => StorageError::General {
+                details: other.to_string(),
+            },
         }
+    }
+}
+
+impl From<FixedHashSizeError> for SqliteStorageError {
+    fn from(_: FixedHashSizeError) -> Self {
+        SqliteStorageError::MalformedHashData
     }
 }

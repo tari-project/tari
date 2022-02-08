@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package tari.dan.common;
+
+message SideChainBlock {
+  Node node = 1;
+  InstructionSet instructions = 2;
+}
+
+message Node {
+    bytes hash = 1;
+    bytes parent = 2;
+    uint32 height = 3;
+    bool is_committed = 4;
+}
+
+message Instruction {
+  uint32 template_id = 1;
+  string method = 2;
+  bytes args = 3;
+  //    bytes token_id = 5;
+  //    bytes signature = 6;
+}
+
+message InstructionSet{
+  repeated Instruction instructions = 1;
+}

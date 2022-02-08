@@ -19,49 +19,29 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-syntax = "proto3";
 
-package tari.p2p.validator_node;
+use crate::models::{InstructionSet, Node};
 
-service ValidatorNode {
-  rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
-  rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
-  rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
+#[derive(Debug)]
+pub struct SideChainBlock {
+    node: Node,
+    instructions: InstructionSet,
 }
 
-message GetTokenDataRequest {
-  bytes asset_pub_key = 1;
-  bytes unique_id = 2;
-}
+impl SideChainBlock {
+    pub fn new(node: Node, instructions: InstructionSet) -> Self {
+        Self { node, instructions }
+    }
 
-message GetTokenDataResponse {}
+    pub fn node(&self) -> &Node {
+        &self.node
+    }
 
-enum Status {
-  Accepted = 0;
-  Errored = 1;
-}
+    pub fn instructions(&self) -> &InstructionSet {
+        &self.instructions
+    }
 
-
-message InvokeReadMethodRequest{
-  bytes asset_public_key = 1;
-  uint32 template_id = 2;
-  string method = 3;
-  bytes args = 4;
-}
-
-message InvokeReadMethodResponse {
-  bytes result = 1;
-}
-
-
-message InvokeMethodRequest{
-  bytes asset_public_key = 1;
-  uint32 template_id = 2;
-  string method = 3;
-  bytes args = 4;
-}
-
-message InvokeMethodResponse {
-  bytes result = 1;
-  Status status = 2;
+    pub fn destruct(self) -> (Node, InstructionSet) {
+        (self.node, self.instructions)
+    }
 }

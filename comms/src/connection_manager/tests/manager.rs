@@ -46,9 +46,10 @@ use crate::{
     runtime,
     runtime::task,
     test_utils::{
+        build_peer_manager,
         count_string_occurrences,
         node_identity::{build_node_identity, ordered_node_identities},
-        test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
+        test_node::{build_connection_manager, TestNodeConfig},
     },
     transports::{MemoryTransport, TcpTransport},
 };

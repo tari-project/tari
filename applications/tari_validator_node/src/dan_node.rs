@@ -115,7 +115,7 @@ impl DanNode {
                         }
                     }
                     info!(target: LOG_TARGET, "Adding asset {:?}", asset.public_key);
-                    let node_identitiy = node_identity.as_ref().clone();
+                    let node_identity = node_identity.as_ref().clone();
                     let mempool = mempool_service.clone();
                     let handles = handles.clone();
                     let subscription_factory = subscription_factory.clone();
@@ -124,19 +124,16 @@ impl DanNode {
                     let db_factory = db_factory.clone();
                     tasks.insert(
                         asset.public_key.clone(),
-                        task::spawn(async move {
-                            DanNode::start_asset_worker(
-                                asset.clone(),
-                                node_identitiy,
-                                mempool,
-                                handles,
-                                subscription_factory,
-                                shutdown,
-                                dan_config,
-                                db_factory,
-                            )
-                            .await
-                        }),
+                        task::spawn(DanNode::start_asset_worker(
+                            asset.clone(),
+                            node_identity,
+                            mempool,
+                            handles,
+                            subscription_factory,
+                            shutdown,
+                            dan_config,
+                            db_factory,
+                        )),
                     );
                 }
             }

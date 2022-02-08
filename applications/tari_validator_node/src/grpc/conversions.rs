@@ -30,7 +30,7 @@ impl From<SidechainMetadata> for St {
         Self(tari_rpc::SidechainMetadata {
             asset_public_key: source.asset_public_key().as_bytes().to_vec(),
             committed_height: source.committed_height().into(),
-            committed_hash: source.committed_hash().clone().into(),
+            committed_hash: source.committed_hash().as_bytes().to_vec(),
         })
     }
 }
