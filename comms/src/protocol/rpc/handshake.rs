@@ -78,7 +78,7 @@ where T: AsyncRead + AsyncWrite + Unpin
     }
 
     /// Server-side handshake protocol
-    #[tracing::instrument(name = "rpc::server::perform_server_handshake", skip(self), err, fields(comms.direction="inbound"))]
+    #[tracing::instrument(level="trace", name = "rpc::server::perform_server_handshake", skip(self), err, fields(comms.direction="inbound"))]
     pub async fn perform_server_handshake(&mut self) -> Result<u32, RpcHandshakeError> {
         match self.recv_next_frame().await {
             Ok(Some(Ok(msg))) => {
@@ -88,7 +88,7 @@ where T: AsyncRead + AsyncWrite + Unpin
                     .iter()
                     .find(|v| msg.supported_versions.contains(v));
                 if let Some(version) = version {
-                    event!(Level::INFO, version = version, "Server accepted version");
+                    event!(Level::DEBUG, version = version, "Server accepted version");
                     debug!(target: LOG_TARGET, "Server accepted version: {}", version);
                     let reply = proto::rpc::RpcSessionReply {
                         session_result: Some(proto::rpc::rpc_session_reply::SessionResult::AcceptedVersion(*version)),

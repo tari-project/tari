@@ -81,11 +81,9 @@ impl StackBuilder {
 
         // Run all the initializers concurrently and check each Result returning an error
         // on the first one that failed.
-        for result in future::join_all(init_futures).await {
-            result?;
-        }
+        future::try_join_all(init_futures).await?;
 
-        let _ = notifier.trigger();
+        notifier.trigger();
 
         Ok(context.into_inner())
     }
