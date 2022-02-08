@@ -223,7 +223,7 @@ where
                 .new_unit_of_work();
             let proposal = self
                 .create_proposal(
-                    high_qc.node_hash().clone(),
+                    *high_qc.node_hash(),
                     payload_provider,
                     payload_processor,
                     0,
@@ -292,7 +292,7 @@ where
 
                     payload_provider.reserve_payload(node.payload(), node.hash()).await?;
                     self.send_vote_to_leader(
-                        node.hash().clone(),
+                        *node.hash(),
                         outbound,
                         view_leader,
                         current_view.view_id,

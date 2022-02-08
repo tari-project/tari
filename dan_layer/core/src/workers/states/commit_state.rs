@@ -194,7 +194,7 @@ where
                         if &n != m_node {
                             unimplemented!("Nodes did not match");
                         }
-                        Some(m_node.clone())
+                        Some(*m_node)
                     } else {
                         Some(n)
                     }
@@ -242,7 +242,7 @@ where
 
             unit_of_work.set_locked_qc(justify)?;
             self.send_vote_to_leader(
-                justify.node_hash().clone(),
+                *justify.node_hash(),
                 outbound,
                 view_leader,
                 current_view.view_id,

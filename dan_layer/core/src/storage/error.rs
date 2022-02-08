@@ -50,4 +50,6 @@ pub enum StorageError {
     FileSystemPathDoesNotExist,
     #[error("Merkle error:{0}")]
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
+    #[error("General storage error: {details}")]
+    General { details: String },
 }

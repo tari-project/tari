@@ -20,21 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use digest::Digest;
-use tari_common_types::types::PublicKey;
-use tari_crypto::{common::Blake256, tari_utilities::ByteArray};
+use std::fmt::{Display, Formatter};
 
-use crate::models::TemplateId;
+use digest::Digest;
+use tari_crypto::common::Blake256;
+use tari_utilities::hex::Hex;
+
+use crate::{fixed_hash::FixedHash, models::TemplateId};
 
 #[derive(Clone, Debug)]
 pub struct Instruction {
-    asset_id: PublicKey,
     template_id: TemplateId,
     method: String,
     args: Vec<u8>,
     // from: TokenId,
     // signature: ComSig,
-    hash: Vec<u8>,
+    hash: FixedHash,
 }
 
 impl PartialEq for Instruction {
@@ -45,7 +46,6 @@ impl PartialEq for Instruction {
 
 impl Instruction {
     pub fn new(
-        asset_id: PublicKey,
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
@@ -53,21 +53,16 @@ impl Instruction {
          * _signature: ComSig, */
     ) -> Self {
         let mut s = Self {
-            asset_id,
             template_id,
             method,
             args,
             // from,
             // TODO: this is obviously wrong
             // signature: ComSig::default(),
-            hash: vec![],
+            hash: FixedHash::zero(),
         };
         s.hash = s.calculate_hash();
         s
-    }
-
-    pub fn asset_id(&self) -> &PublicKey {
-        &self.asset_id
     }
 
     pub fn template_id(&self) -> TemplateId {
@@ -91,17 +86,27 @@ impl Instruction {
     //     &self.signature
     // }
 
-    pub fn hash(&self) -> &[u8] {
+    pub fn hash(&self) -> &FixedHash {
         &self.hash
     }
 
-    pub fn calculate_hash(&self) -> Vec<u8> {
-        let b = Blake256::new()
-            .chain(self.asset_id.as_bytes())
-            .chain(self.method.as_bytes())
-            .chain(&self.args);
+    pub fn calculate_hash(&self) -> FixedHash {
+        let b = Blake256::new().chain(self.method.as_bytes()).chain(&self.args);
         // b.chain(self.from.as_bytes())
         //     .chain(com_sig_to_bytes(&self.signature))
-        b.finalize().to_vec()
+        b.finalize().into()
+    }
+}
+
+impl Display for Instruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Method: {}, Hash: {}, Args: {} bytes, Template: {}",
+            self.method,
+            self.hash.to_hex(),
+            self.args.len(),
+            self.template_id
+        )
     }
 }

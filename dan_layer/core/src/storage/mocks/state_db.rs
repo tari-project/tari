@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,35 +20,67 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_common_types::types::PublicKey;
+use patricia_tree::PatriciaMap;
 
 use crate::storage::{
-    chain::{ChainDb, ChainDbBackendAdapter},
-    state::{StateDb, StateDbBackendAdapter},
+    state::{DbKeyValue, StateDbBackendAdapter},
     StorageError,
 };
 
-pub trait DbFactory: Sync + Send + 'static {
-    type ChainDbBackendAdapter: ChainDbBackendAdapter;
-    type StateDbBackendAdapter: StateDbBackendAdapter;
+#[derive(Debug, Clone, Default)]
+pub struct MockStateDbBackupAdapter;
 
-    fn get_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError>;
+impl StateDbBackendAdapter for MockStateDbBackupAdapter {
+    type BackendTransaction = ();
+    type Error = StorageError;
 
-    fn get_or_create_chain_db(
-        &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
+        todo!()
+    }
 
-    fn get_state_db(
+    fn update_key_value(
         &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError>;
+        _schema: &str,
+        _key: &[u8],
+        _value: &[u8],
+        _tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
 
-    fn get_or_create_state_db(
+    fn get(&self, _schema: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+        todo!()
+    }
+
+    fn find_keys_by_value(&self, _schema: &str, _value: &[u8]) -> Result<Vec<Vec<u8>>, Self::Error> {
+        todo!()
+    }
+
+    fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn get_current_state_tree(&self, _tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error> {
+        todo!()
+    }
+
+    fn set_current_state_tree(
         &self,
-        asset_public_key: &PublicKey,
-    ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError>;
+        _tree: PatriciaMap<Vec<u8>>,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn get_all_schemas(&self, _tx: &Self::BackendTransaction) -> Result<Vec<String>, Self::Error> {
+        todo!()
+    }
+
+    fn get_all_values_for_schema(
+        &self,
+        _schema: &str,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<Vec<DbKeyValue>, Self::Error> {
+        todo!()
+    }
 }

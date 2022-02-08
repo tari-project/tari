@@ -19,15 +19,62 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
 
-use crate::models::Instruction;
+package tari.dan.validator_node;
 
-pub struct Block {
-    instructions: Vec<Instruction>,
+import "common.proto";
+
+service ValidatorNode {
+  rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
+  rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
+  rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
 }
 
-impl Block {
-    pub fn new() -> Self {
-        Self { instructions: vec![] }
-    }
+message GetTokenDataRequest {
+  bytes asset_pub_key = 1;
+  bytes unique_id = 2;
+}
+
+message GetTokenDataResponse {}
+
+enum Status {
+  Accepted = 0;
+  Errored = 1;
+}
+
+
+message InvokeReadMethodRequest{
+  bytes asset_public_key = 1;
+  uint32 template_id = 2;
+  string method = 3;
+  bytes args = 4;
+}
+
+message InvokeReadMethodResponse {
+  bytes result = 1;
+}
+
+
+message InvokeMethodRequest{
+  bytes asset_public_key = 1;
+  uint32 template_id = 2;
+  string method = 3;
+  bytes args = 4;
+}
+
+message InvokeMethodResponse {
+  bytes result = 1;
+  Status status = 2;
+}
+
+message GetSidechainBlocksRequest {
+  bytes asset_public_key = 1;
+  bytes start_hash = 2;
+  bytes end_hash = 3;
+}
+
+
+message GetSidechainBlocksResponse {
+  tari.dan.common.SideChainBlock block = 1;
 }
