@@ -48,7 +48,11 @@ use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::{consts, initialization::init_configuration};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
-use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap};
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCode, ExitError},
+    ConfigBootstrap,
+};
 use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
@@ -73,20 +77,19 @@ pub mod wallet_modes;
 fn main() {
     match main_inner() {
         Ok(_) => process::exit(0),
-        Err(exit_code) => {
-            eprintln!("{:?}", exit_code);
+        Err(err) => {
+            let exit_code = err.exit_code;
+            eprintln!("{}", exit_code.hint());
             error!(
                 target: LOG_TARGET,
-                "Exiting with code ({:?}): {:?}",
-                exit_code.as_i32(),
-                exit_code
+                "Exiting with code ({}): {:?}", exit_code as i32, exit_code
             );
-            process::exit(exit_code.as_i32())
+            process::exit(exit_code as i32)
         },
     }
 }
 
-fn main_inner() -> Result<(), ExitCodes> {
+fn main_inner() -> Result<(), ExitError> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -197,8 +200,9 @@ fn main_inner() -> Result<(), ExitCodes> {
         WalletMode::Script(path) => script_mode(config, wallet.clone(), path),
         WalletMode::Command(command) => command_mode(config, wallet.clone(), command),
         WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
-        WalletMode::Invalid => Err(ExitCodes::InputError(
-            "Invalid wallet mode - are you trying too many command options at once?".to_string(),
+        WalletMode::Invalid => Err(ExitError::new(
+            ExitCode::InputError,
+            "Invalid wallet mode - are you trying too many command options at once?",
         )),
     };
 
@@ -210,7 +214,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     result
 }
 
-fn get_recovery_seed(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<CipherSeed>, ExitCodes> {
+fn get_recovery_seed(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
         let seed = if bootstrap.seed_words.is_some() {
             let seed_words: Vec<String> = bootstrap

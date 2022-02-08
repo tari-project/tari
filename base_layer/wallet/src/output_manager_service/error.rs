@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common::exit_codes::ExitCodes;
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
@@ -176,10 +176,10 @@ pub enum OutputManagerStorageError {
     KeyManagerError(#[from] KeyManagerError),
 }
 
-impl From<OutputManagerError> for ExitCodes {
+impl From<OutputManagerError> for ExitError {
     fn from(err: OutputManagerError) -> Self {
         log::error!(target: crate::error::LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
+        Self::new(ExitCode::WalletError, err)
     }
 }
 

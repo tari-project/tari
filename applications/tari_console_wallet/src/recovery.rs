@@ -24,7 +24,7 @@ use chrono::offset::Local;
 use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
-use tari_common::exit_codes::ExitCodes;
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
@@ -40,7 +40,7 @@ use crate::wallet_modes::PeerConfig;
 pub const LOG_TARGET: &str = "wallet::recovery";
 
 /// Prompt the user to input their seed words in a single line.
-pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitCodes> {
+pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Prompting for seed words.");
     let mut rl = Editor::<()>::new();
 
@@ -48,7 +48,7 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitCodes> {
         println!("Recovery Mode");
         println!();
         println!("Type or paste all of your seed words on one line, only separated by spaces.");
-        let input = rl.readline(">> ").map_err(|e| ExitCodes::IOError(e.to_string()))?;
+        let input = rl.readline(">> ").map_err(|e| ExitError::new(ExitCode::IOError, e))?;
         let seed_words: Vec<String> = input.split_whitespace().map(str::to_string).collect();
 
         match CipherSeed::from_mnemonic(&seed_words, None) {
@@ -63,14 +63,14 @@ pub fn prompt_private_key_from_seed_words() -> Result<CipherSeed, ExitCodes> {
 }
 
 /// Return seed matching the seed words.
-pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, ExitCodes> {
+pub fn get_seed_from_seed_words(seed_words: Vec<String>) -> Result<CipherSeed, ExitError> {
     debug!(target: LOG_TARGET, "Return seed derived from the provided seed words");
     match CipherSeed::from_mnemonic(&seed_words, None) {
         Ok(seed) => Ok(seed),
         Err(e) => {
             let err_msg = format!("MnemonicError parsing seed words: {}", e);
             warn!(target: LOG_TARGET, "{}", err_msg);
-            Err(ExitCodes::RecoveryError(err_msg))
+            Err(ExitError::new(ExitCode::RecoveryError, err_msg))
         },
     }
 }
@@ -82,7 +82,7 @@ pub async fn wallet_recovery(
     wallet: &WalletSqlite,
     base_node_config: &PeerConfig,
     retry_limit: usize,
-) -> Result<(), ExitCodes> {
+) -> Result<(), ExitError> {
     println!("\nPress Ctrl-C to stop the recovery process\n");
     // We dont care about the shutdown signal here, so we just create one
     let shutdown = Shutdown::new();
@@ -103,7 +103,7 @@ pub async fn wallet_recovery(
         peer_manager
             .add_peer(peer)
             .await
-            .map_err(|err| ExitCodes::NetworkError(err.to_string()))?;
+            .map_err(|err| ExitError::new(ExitCode::NetworkError, err))?;
     }
 
     let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
@@ -200,6 +200,6 @@ pub async fn wallet_recovery(
 
     recovery_join_handle
         .await
-        .map_err(|e| ExitCodes::RecoveryError(format!("{}", e)))?
-        .map_err(|e| ExitCodes::RecoveryError(format!("{}", e)))
+        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?
+        .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))
 }
