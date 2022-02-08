@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::Arc;
+
 use log::*;
 use tari_common_types::types::BlockHash;
 
@@ -27,6 +29,7 @@ use crate::{
     output_manager_service::{handle::OutputManagerHandle, storage::OutputStatus},
     transaction_service::{
         config::TransactionServiceConfig,
+        handle::{TransactionEvent, TransactionEventSender},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
             models::CompletedTransaction,
@@ -39,6 +42,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::service";
 pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
     mut output_manager: OutputManagerHandle,
     db: TransactionDatabase<TBackend>,
+    event_publisher: TransactionEventSender,
     tip_height: u64,
 ) {
     let mut all_faux_transactions: Vec<CompletedTransaction> = match db.get_imported_transactions().await {
@@ -107,32 +111,56 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             } else {
                 vec![0u8; 32]
             };
+            let is_valid = tip_height >= mined_height;
             let is_confirmed = tip_height.saturating_sub(mined_height) >=
                 TransactionServiceConfig::default().num_confirmations_required;
+            let num_confirmations = tip_height - mined_height;
             debug!(
                 target: LOG_TARGET,
-                "Updating faux transaction: TxId({}), mined_height({}), is_confirmed({}), num_confirmations({})",
+                "Updating faux transaction: TxId({}), mined_height({}), is_confirmed({}), num_confirmations({}), \
+                 is_valid({})",
                 tx.tx_id,
                 mined_height,
                 is_confirmed,
-                tip_height - mined_height,
+                num_confirmations,
+                is_valid,
             );
-            if let Err(e) = db
+            let result = db
                 .set_transaction_mined_height(
                     tx.tx_id,
                     true,
                     mined_height,
                     mined_in_block,
-                    tip_height - mined_height,
+                    num_confirmations,
                     is_confirmed,
-                    true,
+                    is_valid,
                 )
-                .await
-            {
+                .await;
+            if let Err(e) = result {
                 error!(
                     target: LOG_TARGET,
                     "Error setting faux transaction to mined confirmed: {}", e
                 );
+            } else {
+                let transaction_event = match is_confirmed {
+                    false => TransactionEvent::FauxTransactionUnconfirmed {
+                        tx_id: tx.tx_id,
+                        num_confirmations: 0,
+                        is_valid,
+                    },
+                    true => TransactionEvent::FauxTransactionConfirmed {
+                        tx_id: tx.tx_id,
+                        is_valid,
+                    },
+                };
+                let _ = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Error sending event, usually because there are no subscribers: {:?}",
+                        e
+                    );
+                    e
+                });
             }
         }
     }

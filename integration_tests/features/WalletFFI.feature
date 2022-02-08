@@ -61,7 +61,7 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
-        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And wallet SENDER detects all transactions are at least Broadcast
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
@@ -94,11 +94,11 @@ Feature: Wallet FFI
         And mining node MINER mines 10 blocks
         Then I wait for wallet SENDER to have at least 1000000 uT
         And I send 2000000 uT from wallet SENDER to wallet FFI_WALLET at fee 20
-        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be Broadcast
+        Then ffi wallet FFI_WALLET detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And mining node MINER mines 10 blocks
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I send 1000000 uT from ffi wallet FFI_WALLET to wallet RECEIVER at fee 20
-        Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be Broadcast
+        Then ffi wallet FFI_WALLET detects AT_LEAST 2 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         # The broadcast check does not include delivery; create some holding points to ensure it was received
         And mining node MINER mines 2 blocks
         Then all nodes are at height 22
@@ -134,6 +134,7 @@ Feature: Wallet FFI
         Then I wait for ffi wallet FFI_WALLET to have at least 1000000 uT
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to send a one-sided transaction
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
@@ -159,6 +160,7 @@ Feature: Wallet FFI
         Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_CONFIRMED and valid
         And I stop ffi wallet FFI_WALLET
 
+    @critical
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
@@ -172,7 +174,7 @@ Feature: Wallet FFI
         And mining node MINER mines 2 blocks
         Then all nodes are at height 12
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_UNCONFIRMED
-        And I send 2400000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
+        And I send 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
         And mining node MINER mines 5 blocks
         Then all nodes are at height 17

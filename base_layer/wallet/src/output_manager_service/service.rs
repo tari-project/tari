@@ -435,7 +435,7 @@ where
         // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
         // mined heights)
         let (mut last_height, mut max_mined_height, mut block_hash) = (0u64, None, None);
-        let _ = outputs.iter().map(|uo| {
+        for uo in outputs {
             if let Some(height) = uo.mined_height {
                 if last_height < height {
                     last_height = height;
@@ -443,7 +443,7 @@ where
                     block_hash = uo.mined_in_block.clone();
                 }
             }
-        });
+        }
         Ok((statuses, max_mined_height, block_hash))
     }
 

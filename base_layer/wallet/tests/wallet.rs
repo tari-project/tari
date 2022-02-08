@@ -756,20 +756,20 @@ async fn test_import_utxo() {
     let features = OutputFeatures::create_coinbase(50);
 
     let p = TestParams::new();
-    let utxo_1 = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
+    let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
 
-    let tx_id_1 = alice_wallet
+    let tx_id = alice_wallet
         .import_utxo(
-            utxo_1.value,
-            &utxo_1.spending_key,
+            utxo.value,
+            &utxo.spending_key,
             script.clone(),
             input.clone(),
             base_node_identity.public_key(),
             features.clone(),
             "Testing".to_string(),
-            utxo_1.metadata_signature.clone(),
+            utxo.metadata_signature.clone(),
             &p.script_private_key,
             &p.sender_offset_public_key,
             0,
@@ -782,16 +782,16 @@ async fn test_import_utxo() {
 
     assert_eq!(balance.pending_incoming_balance, 20000 * uT);
 
-    let completed_tx_1 = alice_wallet
+    let completed_tx = alice_wallet
         .transaction_service
         .get_completed_transactions()
         .await
         .unwrap()
-        .remove(&tx_id_1)
+        .remove(&tx_id)
         .expect("Tx should be in collection");
 
-    assert_eq!(completed_tx_1.amount, 20000 * uT);
-    assert_eq!(completed_tx_1.status, TransactionStatus::Imported);
+    assert_eq!(completed_tx.amount, 20000 * uT);
+    assert_eq!(completed_tx.status, TransactionStatus::Imported);
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
     let outputs = db.fetch_outputs_by_tx_id(tx_id).await.unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));

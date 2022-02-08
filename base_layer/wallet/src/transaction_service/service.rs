@@ -772,7 +772,13 @@ where
                 Some(val) => val.height_of_longest_chain(),
                 None => 0u64,
             };
-            tokio::spawn(check_faux_transactions(output_manager_handle, db, tip_height));
+            let event_publisher = self.event_publisher.clone();
+            tokio::spawn(check_faux_transactions(
+                output_manager_handle,
+                db,
+                event_publisher,
+                tip_height,
+            ));
         }
     }
 

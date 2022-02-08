@@ -425,7 +425,6 @@ where
         info!(
             target: LOG_TARGET,
             "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'", commitment_hex
-
         );
 
         Ok(tx_id)

@@ -49,6 +49,7 @@ use tokio::sync::broadcast;
 use crate::{
     error::WalletError,
     storage::database::WalletBackend,
+    transaction_service::error::{TransactionServiceError, TransactionStorageError},
     utxo_scanner_service::{
         error::UtxoScannerError,
         handle::UtxoScannerEvent,
@@ -543,6 +544,16 @@ where TBackend: WalletBackend + 'static
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
                     total_amount += uo.value;
+                },
+                Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
+                    TransactionStorageError::DuplicateOutput,
+                ))) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
+                         ignoring it as this is not a real error",
+                        tx_id
+                    );
                 },
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
