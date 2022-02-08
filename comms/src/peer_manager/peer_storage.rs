@@ -498,6 +498,13 @@ where DS: KeyValueStore<PeerId, Peer>
         Ok(node_id)
     }
 
+    pub fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        let peer = self
+            .find_by_node_id(node_id)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        Ok(peer.is_banned())
+    }
+
     /// Changes the OFFLINE flag bit of the peer.
     pub fn set_offline(&mut self, node_id: &NodeId, offline: bool) -> Result<bool, PeerManagerError> {
         let peer_key = *self
