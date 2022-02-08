@@ -193,34 +193,28 @@ impl ExitCodes {
     }
 }
 
-impl From<super::ConfigError> for ExitCodes {
+impl From<super::ConfigError> for ExitError {
     fn from(err: super::ConfigError) -> Self {
         // TODO: Move it out
         // error!(target: LOG_TARGET, "{}", err);
-        Self::ConfigError(err.to_string())
+        Self::new(ExitCode::ConfigError, err)
     }
 }
 
-impl From<crate::ConfigurationError> for ExitCodes {
+impl From<crate::ConfigurationError> for ExitError {
     fn from(err: crate::ConfigurationError) -> Self {
-        Self::ConfigError(err.to_string())
+        Self::new(ExitCode::ConfigError, err)
     }
 }
 
-impl From<multiaddr::Error> for ExitCodes {
+impl From<multiaddr::Error> for ExitError {
     fn from(err: multiaddr::Error) -> Self {
-        Self::ConfigError(err.to_string())
+        Self::new(ExitCode::ConfigError, err)
     }
 }
 
-impl From<std::io::Error> for ExitCodes {
+impl From<std::io::Error> for ExitError {
     fn from(err: std::io::Error) -> Self {
-        Self::IOError(err.to_string())
-    }
-}
-
-impl ExitCodes {
-    pub fn grpc<M: std::fmt::Display>(err: M) -> Self {
-        ExitCodes::GrpcError(format!("GRPC connection error: {}", err))
+        Self::new(ExitCode::IOError, err)
     }
 }
