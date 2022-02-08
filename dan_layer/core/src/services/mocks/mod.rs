@@ -198,6 +198,13 @@ impl BaseNodeClient for MockBaseNodeClient {
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
         todo!();
     }
+
+    async fn get_assets_for_dan_node(
+        &mut self,
+        _dan_node_public_key: PublicKey,
+    ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
+        todo!();
+    }
 }
 
 pub fn mock_base_node_client() -> MockBaseNodeClient {

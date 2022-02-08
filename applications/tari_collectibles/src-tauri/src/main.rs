@@ -45,6 +45,7 @@ fn main() -> Result<(), Box<dyn Error>> {
       commands::asset_wallets::asset_wallets_create,
       commands::asset_wallets::asset_wallets_list,
       commands::asset_wallets::asset_wallets_get_balance,
+      commands::asset_wallets::asset_wallets_get_unspent_amounts,
       commands::asset_wallets::asset_wallets_get_latest_address,
       commands::asset_wallets::asset_wallets_create_address,
       commands::asset_wallets::asset_wallets_send_to,
