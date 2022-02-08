@@ -381,7 +381,6 @@ where
         let peer_identity = common::perform_identity_exchange(
             &mut noise_socket,
             &node_identity,
-            CONNECTION_DIRECTION,
             &our_supported_protocols,
             config.network_info.clone(),
         )
