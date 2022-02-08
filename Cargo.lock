@@ -7218,7 +7218,7 @@ dependencies = [
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.8.1",
+ "tari_test_utils 0.27.3",
  "thiserror",
  "tokio 1.15.0",
  "tokio-stream",

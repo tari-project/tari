@@ -1,5 +1,3 @@
-use std::convert::TryFrom;
-
 //  Copyright 2021, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
@@ -22,6 +20,8 @@ use std::convert::TryFrom;
 // CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
+use std::convert::TryFrom;
+
 use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
@@ -140,8 +140,8 @@ where
 
     async fn get_sidechain_blocks(
         &self,
-        request: Request<proto::GetBlocksRequest>,
-    ) -> Result<Streaming<proto::GetBlocksResponse>, RpcStatus> {
+        request: Request<proto::GetSidechainBlocksRequest>,
+    ) -> Result<Streaming<proto::GetSidechainBlocksResponse>, RpcStatus> {
         let msg = request.into_message();
 
         let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
@@ -172,7 +172,7 @@ where
             .transpose()
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
-        if !end_block_exists.unwrap_or(false) {
+        if !end_block_exists.unwrap_or(true) {
             return Err(RpcStatus::not_found(format!(
                 "Block not found with end_hash '{}'",
                 end_hash.unwrap_or_else(TreeNodeHash::zero)
@@ -184,7 +184,7 @@ where
         task::spawn(async move {
             let mut current_block_hash = *start_block.node().hash();
             if tx
-                .send(Ok(proto::GetBlocksResponse {
+                .send(Ok(proto::GetSidechainBlocksResponse {
                     block: Some(start_block.into()),
                 }))
                 .await
@@ -197,7 +197,7 @@ where
                     Ok(Some(block)) => {
                         current_block_hash = *block.node().hash();
                         if tx
-                            .send(Ok(proto::GetBlocksResponse {
+                            .send(Ok(proto::GetSidechainBlocksResponse {
                                 block: Some(block.into()),
                             }))
                             .await

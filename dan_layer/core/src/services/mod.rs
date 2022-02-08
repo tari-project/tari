@@ -42,7 +42,6 @@ pub use signing_service::{NodeIdentitySigningService, SigningService};
 
 mod asset_proxy;
 mod checkpoint_manager;
-#[cfg(test)]
 pub mod mocks;
 mod service_specification;
 mod validator_node_rpc_client;

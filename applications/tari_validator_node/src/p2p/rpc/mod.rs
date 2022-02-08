@@ -22,6 +22,9 @@
 
 mod service_impl;
 
+#[cfg(test)]
+mod test;
+
 pub use service_impl::ValidatorNodeRpcServiceImpl;
 use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
@@ -55,8 +58,8 @@ pub trait ValidatorNodeRpcService: Send + Sync + 'static {
     #[rpc(method = 4)]
     async fn get_sidechain_blocks(
         &self,
-        request: Request<proto::GetBlocksRequest>,
-    ) -> Result<Streaming<proto::GetBlocksResponse>, RpcStatus>;
+        request: Request<proto::GetSidechainBlocksRequest>,
+    ) -> Result<Streaming<proto::GetSidechainBlocksResponse>, RpcStatus>;
 }
 
 pub fn create_validator_node_rpc_service<

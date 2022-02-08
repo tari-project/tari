@@ -20,7 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
+use tari_comms::{
+    connectivity::ConnectivityError,
+    protocol::rpc::{RpcError, RpcStatus},
+};
 use tari_comms_dht::DhtDiscoveryError;
 use thiserror::Error;
 
@@ -72,6 +75,8 @@ pub enum DigitalAssetError {
     ConnectivityError(#[from] ConnectivityError),
     #[error("RpcError: {0}")]
     RpcError(#[from] RpcError),
+    #[error("Remote node returned error: {0}")]
+    RpcStatusError(#[from] RpcStatus),
     #[error("Dht Discovery error: {0}")]
     DhtDiscoveryError(#[from] DhtDiscoveryError),
     #[error("Fatal error: {0}")]

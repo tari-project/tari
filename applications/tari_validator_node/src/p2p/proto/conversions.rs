@@ -242,6 +242,22 @@ impl From<SideChainBlock> for proto::common::SideChainBlock {
     }
 }
 
+impl TryFrom<proto::common::SideChainBlock> for SideChainBlock {
+    type Error = String;
+
+    fn try_from(block: proto::common::SideChainBlock) -> Result<Self, Self::Error> {
+        let node = block
+            .node
+            .map(TryInto::try_into)
+            .ok_or_else(|| "No node provided in sidechain block".to_string())??;
+        let instructions = block
+            .instructions
+            .map(TryInto::try_into)
+            .ok_or_else(|| "No InstructionSet provided in sidechain block".to_string())??;
+        Ok(Self::new(node, instructions))
+    }
+}
+
 impl From<Node> for proto::common::Node {
     fn from(node: Node) -> Self {
         Self {
@@ -250,5 +266,18 @@ impl From<Node> for proto::common::Node {
             height: node.height(),
             is_committed: node.is_committed(),
         }
+    }
+}
+
+impl TryFrom<proto::common::Node> for Node {
+    type Error = String;
+
+    fn try_from(node: proto::common::Node) -> Result<Self, Self::Error> {
+        let hash = TreeNodeHash::try_from(node.hash).map_err(|err| err.to_string())?;
+        let parent = TreeNodeHash::try_from(node.parent).map_err(|err| err.to_string())?;
+        let height = node.height;
+        let is_committed = node.is_committed;
+
+        Ok(Self::new(hash, parent, height, is_committed))
     }
 }

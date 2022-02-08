@@ -68,13 +68,13 @@ message InvokeMethodResponse {
   Status status = 2;
 }
 
-message GetBlocksRequest {
+message GetSidechainBlocksRequest {
   bytes asset_public_key = 1;
   bytes start_hash = 2;
   bytes end_hash = 3;
 }
 
 
-message GetBlocksResponse {
+message GetSidechainBlocksResponse {
   tari.dan.common.SideChainBlock block = 1;
 }

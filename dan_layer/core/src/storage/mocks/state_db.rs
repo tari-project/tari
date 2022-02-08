@@ -20,45 +20,67 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{models::TreeNodeHash, storage::chain::DbNode};
+use patricia_tree::PatriciaMap;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Node {
-    hash: TreeNodeHash,
-    parent: TreeNodeHash,
-    height: u32,
-    is_committed: bool,
-}
+use crate::storage::{
+    state::{DbKeyValue, StateDbBackendAdapter},
+    StorageError,
+};
 
-impl Node {
-    pub fn new(hash: TreeNodeHash, parent: TreeNodeHash, height: u32, is_committed: bool) -> Node {
-        Self {
-            hash,
-            parent,
-            height,
-            is_committed,
-        }
+#[derive(Debug, Clone, Default)]
+pub struct MockStateDbBackupAdapter;
+
+impl StateDbBackendAdapter for MockStateDbBackupAdapter {
+    type BackendTransaction = ();
+    type Error = StorageError;
+
+    fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
+        todo!()
     }
 
-    pub fn hash(&self) -> &TreeNodeHash {
-        &self.hash
+    fn update_key_value(
+        &self,
+        _schema: &str,
+        _key: &[u8],
+        _value: &[u8],
+        _tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        todo!()
     }
 
-    pub fn parent(&self) -> &TreeNodeHash {
-        &self.parent
+    fn get(&self, _schema: &str, _key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+        todo!()
     }
 
-    pub fn height(&self) -> u32 {
-        self.height
+    fn find_keys_by_value(&self, _schema: &str, _value: &[u8]) -> Result<Vec<Vec<u8>>, Self::Error> {
+        todo!()
     }
 
-    pub fn is_committed(&self) -> bool {
-        self.is_committed
+    fn commit(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        todo!()
     }
-}
 
-impl From<DbNode> for Node {
-    fn from(db_node: DbNode) -> Self {
-        Node::new(db_node.hash, db_node.parent, db_node.height, db_node.is_committed)
+    fn get_current_state_tree(&self, _tx: &Self::BackendTransaction) -> Result<PatriciaMap<Vec<u8>>, Self::Error> {
+        todo!()
+    }
+
+    fn set_current_state_tree(
+        &self,
+        _tree: PatriciaMap<Vec<u8>>,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn get_all_schemas(&self, _tx: &Self::BackendTransaction) -> Result<Vec<String>, Self::Error> {
+        todo!()
+    }
+
+    fn get_all_values_for_schema(
+        &self,
+        _schema: &str,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<Vec<DbKeyValue>, Self::Error> {
+        todo!()
     }
 }

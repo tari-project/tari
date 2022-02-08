@@ -44,11 +44,13 @@ use crate::{
         Payload,
         Signature,
         StateRoot,
+        TemplateId,
         TreeNodeHash,
     },
     services::{
         base_node_client::BaseNodeClient,
         infrastructure_services::NodeAddressable,
+        AssetProcessor,
         EventsPublisher,
         MempoolService,
         PayloadProcessor,
@@ -262,6 +264,38 @@ impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
         _payload: &TPayload,
         _unit_of_work: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MockAssetProcessor;
+
+impl AssetProcessor for MockAssetProcessor {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        _template_parameter: &TemplateParameter,
+        _asset_definition: &AssetDefinition,
+        _state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        _instruction: &Instruction,
+        _db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+        &self,
+        _template_id: TemplateId,
+        _method: String,
+        _args: &[u8],
+        _state_db: &mut TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         todo!()
     }
 }

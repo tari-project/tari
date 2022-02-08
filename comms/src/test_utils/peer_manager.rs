@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,10 +20,44 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{Instruction, TreeNodeHash};
+use std::sync::Arc;
 
-#[derive(Debug, Clone)]
-pub struct DbInstruction {
-    pub instruction: Instruction,
-    pub node_hash: TreeNodeHash,
+use crate::PeerManager;
+
+#[cfg(test)]
+pub fn build_peer_manager() -> Arc<PeerManager> {
+    Arc::new(PeerManager::new(tari_storage::HashmapDatabase::new(), None).unwrap())
+}
+
+#[cfg(not(test))]
+pub use not_test::build_peer_manager;
+
+#[cfg(not(test))]
+mod not_test {
+    use std::{iter, path::Path};
+
+    use rand::{distributions::Alphanumeric, Rng};
+    use tari_storage::{lmdb_store::LMDBBuilder, LMDBWrapper};
+
+    use super::*;
+
+    pub fn build_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {
+        let peer_database_name = {
+            let mut rng = rand::thread_rng();
+            iter::repeat(())
+                .map(|_| rng.sample(Alphanumeric) as char)
+                .take(8)
+                .collect::<String>()
+        };
+        std::fs::create_dir_all(&data_path).unwrap();
+        let datastore = LMDBBuilder::new()
+            .set_path(data_path)
+            .set_env_config(Default::default())
+            .set_max_number_of_databases(1)
+            .add_database(&peer_database_name, lmdb_zero::db::CREATE)
+            .build()
+            .unwrap();
+        let peer_database = datastore.get_handle(&peer_database_name).unwrap();
+        Arc::new(PeerManager::new(LMDBWrapper::new(Arc::new(peer_database)), None).unwrap())
+    }
 }
