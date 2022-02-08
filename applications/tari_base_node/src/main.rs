@@ -152,6 +152,7 @@ const LOG_TARGET: &str = "base_node::app";
 /// Application entry point
 fn main() {
     if let Err(err) = main_inner() {
+        eprintln!("{:?}", err);
         let exit_code = err.exit_code;
         eprintln!("{}", exit_code.hint());
         error!(
