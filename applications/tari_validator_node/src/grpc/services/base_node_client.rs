@@ -27,7 +27,7 @@ use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::{BaseLayerMetadata, BaseLayerOutput},
+    models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
     services::BaseNodeClient,
     DigitalAssetError,
 };
@@ -99,5 +99,49 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             })
             .transpose()?;
         Ok(output)
+    }
+
+    async fn get_assets_for_dan_node(
+        &mut self,
+        dan_node_public_key: PublicKey,
+    ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
+        let inner = match self.inner.as_mut() {
+            Some(i) => i,
+            None => {
+                self.connect().await?;
+                self.inner.as_mut().unwrap()
+            },
+        };
+        let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 0 };
+        let mut result = inner.list_asset_registrations(request).await.unwrap().into_inner();
+        let mut assets: Vec<AssetDefinition> = vec![];
+        let tip = self.get_tip_info().await?;
+        while let Some(r) = result.message().await.unwrap() {
+            if let Ok(asset_public_key) = PublicKey::from_bytes(r.unique_id.as_bytes()) {
+                if let Some(checkpoint) = self
+                    .get_current_checkpoint(tip.height_of_longest_chain, asset_public_key.clone(), vec![3u8; 32])
+                    .await?
+                {
+                    if let Some(committee) = checkpoint.get_side_chain_committee() {
+                        if committee.contains(&dan_node_public_key) {
+                            assets.push(AssetDefinition {
+                                public_key: asset_public_key,
+                                template_parameters: r
+                                    .features
+                                    .unwrap()
+                                    .asset
+                                    .unwrap()
+                                    .template_parameters
+                                    .into_iter()
+                                    .map(|tp| tp.into())
+                                    .collect(),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Ok(assets)
     }
 }
