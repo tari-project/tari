@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,32 +20,57 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use async_trait::async_trait;
-use tari_dan_core::{
-    models::{HotStuffTreeNode, SidechainMetadata, TariDanPayload},
-    storage::{chain::ChainDbUnitOfWork, ChainStorageService, StorageError},
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Formatter},
 };
 
-pub struct SqliteStorageService {}
+use tari_utilities::hex::{Hex, HexError};
 
-// TODO: this has no references to Sqlite, so may be worth moving to dan_layer.core
+use crate::fixed_hash::{FixedHash, FixedHashSizeError};
 
-#[async_trait]
-impl ChainStorageService<TariDanPayload> for SqliteStorageService {
-    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
-        todo!()
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TreeNodeHash(FixedHash);
+
+impl TreeNodeHash {
+    pub fn zero() -> Self {
+        Self(FixedHash::zero())
     }
 
-    async fn add_node<TUnitOfWork: ChainDbUnitOfWork>(
-        &self,
-        node: &HotStuffTreeNode<TariDanPayload>,
-        db: TUnitOfWork,
-    ) -> Result<(), StorageError> {
-        let mut db = db;
-        for instruction in node.payload().instructions() {
-            db.add_instruction(*node.hash(), instruction.clone())?;
-        }
-        db.add_node(*node.hash(), *node.parent(), node.height())?;
-        Ok(())
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_slice()
+    }
+}
+
+impl<T: Into<FixedHash>> From<T> for TreeNodeHash {
+    fn from(hash: T) -> Self {
+        Self(hash.into())
+    }
+}
+
+impl TryFrom<Vec<u8>> for TreeNodeHash {
+    type Error = FixedHashSizeError;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let hash = FixedHash::try_from(value)?;
+        Ok(Self(hash))
+    }
+}
+
+impl Hex for TreeNodeHash {
+    fn from_hex(hex: &str) -> Result<Self, HexError>
+    where Self: Sized {
+        let hash = FixedHash::from_hex(hex)?;
+        Ok(Self(hash))
+    }
+
+    fn to_hex(&self) -> String {
+        self.0.to_hex()
+    }
+}
+
+impl Display for TreeNodeHash {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_hex())
     }
 }

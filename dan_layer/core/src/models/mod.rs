@@ -20,21 +20,31 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, fmt::Debug, hash::Hash};
+use std::{
+    convert::{TryFrom, TryInto},
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+    str::FromStr,
+};
+
 mod asset_definition;
 mod base_layer_metadata;
 mod base_layer_output;
 mod committee;
 pub mod domain_events;
+mod error;
 mod hot_stuff_message;
 mod hot_stuff_tree_node;
 mod instruction;
 mod instruction_set;
+mod node;
 mod payload;
 mod quorum_certificate;
+mod sidechain_block;
 mod sidechain_metadata;
 mod state_root;
 mod tari_dan_payload;
+mod tree_node_hash;
 mod view;
 mod view_id;
 
@@ -42,15 +52,19 @@ pub use asset_definition::AssetDefinition;
 pub use base_layer_metadata::BaseLayerMetadata;
 pub use base_layer_output::BaseLayerOutput;
 pub use committee::Committee;
+pub use error::ModelError;
 pub use hot_stuff_message::HotStuffMessage;
 pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
 pub use instruction_set::InstructionSet;
+pub use node::Node;
 pub use payload::Payload;
 pub use quorum_certificate::QuorumCertificate;
+pub use sidechain_block::SideChainBlock;
 pub use sidechain_metadata::SidechainMetadata;
 pub use state_root::StateRoot;
 pub use tari_dan_payload::{CheckpointData, TariDanPayload};
+pub use tree_node_hash::TreeNodeHash;
 pub use view::View;
 pub use view_id::ViewId;
 
@@ -74,31 +88,53 @@ pub enum TemplateId {
     EditableMetadata = 20,
 }
 
-impl TemplateId {
-    pub fn _parse(s: &str) -> TemplateId {
+impl FromStr for TemplateId {
+    type Err = ModelError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "EditableMetadata" => TemplateId::EditableMetadata,
+            "Tip002" => Ok(TemplateId::Tip002),
+            "Tip003" => Ok(TemplateId::Tip003),
+            "Tip004" => Ok(TemplateId::Tip004),
+            "Tip721" => Ok(TemplateId::Tip721),
+            "EditableMetadata" => Ok(TemplateId::EditableMetadata),
             _ => {
-                // TODO: Propagate error instead
                 dbg!("Unrecognised template");
-                TemplateId::EditableMetadata
+                Err(ModelError::StringParseError {
+                    details: format!("Unrecognised template ID '{}'", s),
+                })
             },
         }
     }
 }
 
-impl From<u32> for TemplateId {
-    fn from(v: u32) -> Self {
-        // Must be an easier way than this
-        match v {
-            2 => TemplateId::Tip002,
-            3 => TemplateId::Tip003,
-            4 => TemplateId::Tip004,
-            721 => TemplateId::Tip721,
-            _ => {
-                unimplemented!()
-            },
+impl TryFrom<u32> for TemplateId {
+    type Error = ModelError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            2 => Ok(TemplateId::Tip002),
+            3 => Ok(TemplateId::Tip003),
+            4 => Ok(TemplateId::Tip004),
+            721 => Ok(TemplateId::Tip721),
+            _ => Err(ModelError::InvalidTemplateIdNumber { value: value as i64 }),
         }
+    }
+}
+
+impl TryFrom<i32> for TemplateId {
+    type Error = ModelError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        u32::try_from(value)
+            .map_err(|_| ModelError::InvalidTemplateIdNumber { value: value as i64 })?
+            .try_into()
+    }
+}
+
+impl Display for TemplateId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
@@ -154,20 +190,6 @@ impl TryFrom<u8> for HotStuffMessageType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct TreeNodeHash(pub Vec<u8>);
-
-impl TreeNodeHash {
-    pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-impl From<TreeNodeHash> for Vec<u8> {
-    fn from(v: TreeNodeHash) -> Self {
-        v.0
-    }
-}
 pub trait ConsensusHash {
     fn consensus_hash(&self) -> &[u8];
 }

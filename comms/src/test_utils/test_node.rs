@@ -20,6 +20,15 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{sync::Arc, time::Duration};
+
+use rand::rngs::OsRng;
+use tari_shutdown::ShutdownSignal;
+use tokio::{
+    io::{AsyncRead, AsyncWrite},
+    sync::{broadcast, mpsc},
+};
+
 use crate::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerRequester},
@@ -28,14 +37,6 @@ use crate::{
     peer_manager::{NodeIdentity, PeerFeatures, PeerManager},
     protocol::Protocols,
     transports::Transport,
-};
-use rand::rngs::OsRng;
-use std::{sync::Arc, time::Duration};
-use tari_shutdown::ShutdownSignal;
-use tari_storage::HashmapDatabase;
-use tokio::{
-    io::{AsyncRead, AsyncWrite},
-    sync::{broadcast, mpsc},
 };
 
 #[derive(Clone, Debug)]
@@ -98,8 +99,4 @@ where
     connection_manager.spawn();
 
     requester
-}
-
-pub fn build_peer_manager() -> Arc<PeerManager> {
-    Arc::new(PeerManager::new(HashmapDatabase::new(), None).unwrap())
 }

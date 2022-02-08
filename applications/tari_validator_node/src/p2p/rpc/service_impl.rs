@@ -1,10 +1,10 @@
 //  Copyright 2021, The Tari Project
 //
-//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-//  following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+// the  following conditions are met:
 //
-//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-//  disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the
+// following  disclaimer.
 //
 //  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
 //  following disclaimer in the documentation and/or other materials provided with the distribution.
@@ -12,21 +12,28 @@
 //  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
 //  products derived from this software without specific prior written permission.
 //
-//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+// WARRANTIES,  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+// PARTICULAR PURPOSE ARE  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL,  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+// PROCUREMENT OF SUBSTITUTE GOODS OR  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+// CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+// OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+// DAMAGE.
+use std::convert::TryFrom;
+
+use log::*;
 use tari_common_types::types::PublicKey;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::{Instruction, TemplateId},
+    models::{Instruction, TemplateId, TreeNodeHash},
     services::{AssetProcessor, MempoolService},
     storage::DbFactory,
 };
+use tokio::{sync::mpsc, task};
+
+const LOG_TARGET: &str = "vn::p2p::rpc";
 
 use crate::p2p::{proto::validator_node as proto, rpc::ValidatorNodeRpcService};
 
@@ -52,11 +59,12 @@ impl<
 }
 
 #[tari_comms::async_trait]
-impl<
-        TMempoolService: MempoolService + Clone,
-        TDbFactory: DbFactory + Clone,
-        TAssetProcessor: AssetProcessor + Clone,
-    > ValidatorNodeRpcService for ValidatorNodeRpcServiceImpl<TMempoolService, TDbFactory, TAssetProcessor>
+impl<TMempoolService, TDbFactory, TAssetProcessor> ValidatorNodeRpcService
+    for ValidatorNodeRpcServiceImpl<TMempoolService, TDbFactory, TAssetProcessor>
+where
+    TMempoolService: MempoolService + Clone,
+    TDbFactory: DbFactory + Clone,
+    TAssetProcessor: AssetProcessor + Clone,
 {
     async fn get_token_data(
         &self,
@@ -83,7 +91,7 @@ impl<
         let response_bytes = self
             .asset_processor
             .invoke_read_method(
-                TemplateId::from(request.template_id),
+                TemplateId::try_from(request.template_id).map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
                 request.method,
                 &request.args,
                 &mut unit_of_work,
@@ -101,9 +109,7 @@ impl<
         dbg!(&request);
         let request = request.into_message();
         let instruction = Instruction::new(
-            PublicKey::from_bytes(&request.asset_public_key)
-                .map_err(|_err| RpcStatus::bad_request("asset_public_key was not a valid public key"))?,
-            request.template_id.into(),
+            TemplateId::try_from(request.template_id).map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
             request.method.clone(),
             request.args.clone(),
             /* TokenId(request.token_id.clone()),
@@ -112,21 +118,107 @@ impl<
              * create_com_sig_from_bytes(&request.signature)
              *     .map_err(|err| Status::invalid_argument("signature was not a valid comsig"))?, */
         );
-
+        debug!(target: LOG_TARGET, "Submitting instruction {} to mempool", instruction);
         let mut mempool_service = self.mempool_service.clone();
         match mempool_service.submit_instruction(instruction).await {
             Ok(_) => {
+                debug!(target: LOG_TARGET, "Accepted instruction into mempool");
                 return Ok(Response::new(proto::InvokeMethodResponse {
                     result: vec![],
                     status: proto::Status::Accepted as i32,
-                }))
+                }));
             },
-            Err(_) => {
+            Err(err) => {
+                debug!(target: LOG_TARGET, "Mempool rejected instruction: {}", err);
                 return Ok(Response::new(proto::InvokeMethodResponse {
                     result: vec![],
                     status: proto::Status::Errored as i32,
-                }))
+                }));
             },
         }
+    }
+
+    async fn get_sidechain_blocks(
+        &self,
+        request: Request<proto::GetSidechainBlocksRequest>,
+    ) -> Result<Streaming<proto::GetSidechainBlocksResponse>, RpcStatus> {
+        let msg = request.into_message();
+
+        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
+            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+        let start_hash =
+            TreeNodeHash::try_from(msg.start_hash).map_err(|_| RpcStatus::bad_request("Invalid start hash"))?;
+
+        let end_hash = Some(msg.end_hash)
+            .filter(|h| !h.is_empty())
+            .map(TreeNodeHash::try_from)
+            .transpose()
+            .map_err(|_| RpcStatus::bad_request("Invalid end_hash"))?;
+
+        let db = self
+            .db_factory
+            .get_chain_db(&asset_public_key)
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
+
+        let start_block = db
+            .find_sidechain_block_by_node_hash(&start_hash)
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found(format!("Block not found with start_hash '{}'", start_hash)))?;
+
+        let end_block_exists = end_hash
+            .as_ref()
+            .map(|end_hash| db.sidechain_block_exists(end_hash))
+            .transpose()
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        if !end_block_exists.unwrap_or(true) {
+            return Err(RpcStatus::not_found(format!(
+                "Block not found with end_hash '{}'",
+                end_hash.unwrap_or_else(TreeNodeHash::zero)
+            )));
+        }
+
+        let (tx, rx) = mpsc::channel(2);
+
+        task::spawn(async move {
+            let mut current_block_hash = *start_block.node().hash();
+            if tx
+                .send(Ok(proto::GetSidechainBlocksResponse {
+                    block: Some(start_block.into()),
+                }))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            loop {
+                match db.find_sidechain_block_by_parent_node_hash(&current_block_hash) {
+                    Ok(Some(block)) => {
+                        current_block_hash = *block.node().hash();
+                        if tx
+                            .send(Ok(proto::GetSidechainBlocksResponse {
+                                block: Some(block.into()),
+                            }))
+                            .await
+                            .is_err()
+                        {
+                            return;
+                        }
+                        if end_hash.map(|h| h == current_block_hash).unwrap_or(false) {
+                            return;
+                        }
+                    },
+                    Ok(None) => return,
+                    Err(err) => {
+                        error!(target: LOG_TARGET, "Failure while streaming blocks: {}", err);
+                        let _ = tx.send(Err(RpcStatus::general("Internal database failure"))).await;
+                        return;
+                    },
+                }
+            }
+        });
+
+        Ok(Streaming::new(rx))
     }
 }

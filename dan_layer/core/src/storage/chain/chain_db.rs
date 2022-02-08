@@ -1,5 +1,3 @@
-//  Copyright 2021. The Tari Project
-//
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
 //
@@ -21,7 +19,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::QuorumCertificate,
+    models::{QuorumCertificate, SideChainBlock, TreeNodeHash},
     storage::{
         chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter},
         StorageError,
@@ -46,15 +44,63 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDb<TBackendAdapter> {
     pub fn get_locked_qc(&self) -> Result<QuorumCertificate, StorageError> {
         self.adapter.get_locked_qc().map_err(TBackendAdapter::Error::into)
     }
+
+    pub fn is_empty(&self) -> Result<bool, StorageError> {
+        self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
+    }
+
+    pub fn sidechain_block_exists(&self, hash: &TreeNodeHash) -> Result<bool, StorageError> {
+        self.adapter.node_exists(hash).map_err(TBackendAdapter::Error::into)
+    }
+
+    pub fn find_sidechain_block_by_node_hash(
+        &self,
+        hash: &TreeNodeHash,
+    ) -> Result<Option<SideChainBlock>, StorageError> {
+        let maybe_block = self
+            .adapter
+            .find_node_by_hash(hash)
+            .map_err(TBackendAdapter::Error::into)?;
+
+        let (block_id, node) = match maybe_block {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        let instructions = self
+            .adapter
+            .find_all_instructions_by_node(block_id)
+            .map_err(TBackendAdapter::Error::into)?;
+        let instructions = instructions.into_iter().map(|i| i.instruction).collect();
+
+        Ok(Some(SideChainBlock::new(node.into(), instructions)))
+    }
+
+    pub fn find_sidechain_block_by_parent_node_hash(
+        &self,
+        parent_hash: &TreeNodeHash,
+    ) -> Result<Option<SideChainBlock>, StorageError> {
+        let maybe_block = self
+            .adapter
+            .find_node_by_parent_hash(parent_hash)
+            .map_err(TBackendAdapter::Error::into)?;
+        let (block_id, node) = match maybe_block {
+            Some(v) => v,
+            None => return Ok(None),
+        };
+
+        let instructions = self
+            .adapter
+            .find_all_instructions_by_node(block_id)
+            .map_err(TBackendAdapter::Error::into)?;
+        let instructions = instructions.into_iter().map(|i| i.instruction).collect();
+
+        Ok(Some(SideChainBlock::new(node.into(), instructions)))
+    }
 }
 
 impl<TBackendAdapter: ChainDbBackendAdapter + Clone + Send + Sync> ChainDb<TBackendAdapter> {
     pub fn new_unit_of_work(&self) -> ChainDbUnitOfWorkImpl<TBackendAdapter> {
         ChainDbUnitOfWorkImpl::new(self.adapter.clone())
-    }
-}
-impl<TBackendAdapter: ChainDbBackendAdapter> ChainDb<TBackendAdapter> {
-    pub fn is_empty(&self) -> Result<bool, StorageError> {
-        self.adapter.is_empty().map_err(TBackendAdapter::Error::into)
     }
 }

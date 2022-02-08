@@ -22,7 +22,7 @@
 
 use crate::models::{Instruction, TreeNodeHash};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DbInstruction {
     pub instruction: Instruction,
     pub node_hash: TreeNodeHash,

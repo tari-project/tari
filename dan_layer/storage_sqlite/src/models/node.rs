@@ -22,7 +22,7 @@
 
 use crate::schema::*;
 
-#[derive(Queryable)]
+#[derive(Identifiable, Queryable)]
 pub struct Node {
     pub id: i32,
     pub hash: Vec<u8>,

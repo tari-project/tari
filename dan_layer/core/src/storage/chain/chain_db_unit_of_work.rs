@@ -169,7 +169,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
             return Ok(QuorumCertificate::new(
                 locked_qc.message_type,
                 locked_qc.view_number,
-                locked_qc.node_hash.clone(),
+                locked_qc.node_hash,
                 locked_qc.signature.clone(),
             ));
         }
@@ -183,7 +183,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
             DbQc {
                 message_type: qc.message_type(),
                 view_number: qc.view_number(),
-                node_hash: qc.node_hash().clone(),
+                node_hash: *qc.node_hash(),
                 signature: qc.signature().cloned(),
             },
             false,
@@ -198,14 +198,14 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
             let mut locked_qc = locked_qc.get_mut();
             locked_qc.message_type = qc.message_type();
             locked_qc.view_number = qc.view_number();
-            locked_qc.node_hash = qc.node_hash().clone();
+            locked_qc.node_hash = *qc.node_hash();
             locked_qc.signature = qc.signature().cloned();
         } else {
             inner.locked_qc = Some(UnitOfWorkTracker::new(
                 DbQc {
                     message_type: qc.message_type(),
                     view_number: qc.view_number(),
-                    node_hash: qc.node_hash().clone(),
+                    node_hash: *qc.node_hash(),
                     signature: qc.signature().cloned(),
                 },
                 true,
@@ -226,7 +226,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
             return Ok(Some(QuorumCertificate::new(
                 prepare_qc.message_type,
                 prepare_qc.view_number,
-                prepare_qc.node_hash.clone(),
+                prepare_qc.node_hash,
                 prepare_qc.signature.clone(),
             )));
         }
@@ -242,7 +242,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                 DbQc {
                     message_type: qc.message_type(),
                     view_number: qc.view_number(),
-                    node_hash: qc.node_hash().clone(),
+                    node_hash: *qc.node_hash(),
                     signature: qc.signature().cloned(),
                 },
                 false,
@@ -261,7 +261,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                     DbQc {
                         message_type: qc.message_type(),
                         view_number: qc.view_number(),
-                        node_hash: qc.node_hash().clone(),
+                        node_hash: *qc.node_hash(),
                         signature: qc.signature().cloned(),
                     },
                     true,
@@ -271,7 +271,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                 let mut db_qc = db_qc.get_mut();
                 db_qc.message_type = qc.message_type();
                 db_qc.view_number = qc.view_number();
-                db_qc.node_hash = qc.node_hash().clone();
+                db_qc.node_hash = *qc.node_hash();
                 db_qc.signature = qc.signature().cloned();
             },
         }
@@ -325,7 +325,8 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWorkInner<TBackendAdap
         let (id, item) = self
             .backend_adapter
             .find_node_by_hash(node_hash)
-            .map_err(TBackendAdapter::Error::into)?;
+            .map_err(TBackendAdapter::Error::into)?
+            .ok_or(StorageError::NotFound)?;
         let tracker = UnitOfWorkTracker::new(item, false);
         self.nodes.push((Some(id), tracker.clone()));
         Ok((Some(id), tracker))

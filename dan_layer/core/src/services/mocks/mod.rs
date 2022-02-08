@@ -33,6 +33,7 @@ use tari_core::transactions::transaction::TemplateParameter;
 use super::CommitteeManager;
 use crate::{
     digital_assets_error::DigitalAssetError,
+    fixed_hash::FixedHash,
     models::{
         AssetDefinition,
         BaseLayerMetadata,
@@ -43,11 +44,13 @@ use crate::{
         Payload,
         Signature,
         StateRoot,
+        TemplateId,
         TreeNodeHash,
     },
     services::{
         base_node_client::BaseNodeClient,
         infrastructure_services::NodeAddressable,
+        AssetProcessor,
         EventsPublisher,
         MempoolService,
         PayloadProcessor,
@@ -72,17 +75,17 @@ impl MempoolService for MockMempoolService {
 
     async fn reserve_instruction_in_block(
         &mut self,
-        _instruction_hash: &[u8],
-        _block_hash: Vec<u8>,
+        _instruction_hash: &FixedHash,
+        _block_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn remove_all_in_block(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn remove_all_in_block(&mut self, _block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn release_reservations(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn release_reservations(&mut self, _block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
@@ -261,6 +264,38 @@ impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
         _payload: &TPayload,
         _unit_of_work: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MockAssetProcessor;
+
+impl AssetProcessor for MockAssetProcessor {
+    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        _template_parameter: &TemplateParameter,
+        _asset_definition: &AssetDefinition,
+        _state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        _instruction: &Instruction,
+        _db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+        &self,
+        _template_id: TemplateId,
+        _method: String,
+        _args: &[u8],
+        _state_db: &mut TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         todo!()
     }
 }
