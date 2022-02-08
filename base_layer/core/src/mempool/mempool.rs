@@ -20,10 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use tari_common_types::types::{PrivateKey, Signature};
-use tokio::sync::RwLock;
+use tokio::task;
 
 use crate::{
     blocks::Block,
@@ -62,22 +62,25 @@ impl Mempool {
 
     /// Insert an unconfirmed transaction into the Mempool.
     pub async fn insert(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
-        self.pool_storage.write().await.insert(tx)
+        self.do_write_task(|storage| storage.insert(tx)).await
     }
 
     /// Inserts all transactions into the mempool.
-    pub async fn insert_all(&self, transactions: &[Arc<Transaction>]) -> Result<(), MempoolError> {
-        let mut mempool = self.pool_storage.write().await;
-        for tx in transactions {
-            mempool.insert(tx.clone())?;
-        }
+    pub async fn insert_all(&self, transactions: Vec<Arc<Transaction>>) -> Result<(), MempoolError> {
+        self.do_write_task(|storage| {
+            for tx in transactions {
+                storage.insert(tx)?;
+            }
 
-        Ok(())
+            Ok(())
+        })
+        .await
     }
 
     /// Update the Mempool based on the received published block.
-    pub async fn process_published_block(&self, published_block: &Block) -> Result<(), MempoolError> {
-        self.pool_storage.write().await.process_published_block(published_block)
+    pub async fn process_published_block(&self, published_block: Arc<Block>) -> Result<(), MempoolError> {
+        self.do_write_task(move |storage| storage.process_published_block(&published_block))
+            .await
     }
 
     /// In the event of a ReOrg, resubmit all ReOrged transactions into the Mempool and process each newly introduced
@@ -87,48 +90,74 @@ impl Mempool {
         removed_blocks: Vec<Arc<Block>>,
         new_blocks: Vec<Arc<Block>>,
     ) -> Result<(), MempoolError> {
-        self.pool_storage
-            .write()
+        self.do_write_task(move |storage| storage.process_reorg(&removed_blocks, &new_blocks))
             .await
-            .process_reorg(&removed_blocks, &new_blocks)
     }
 
     /// Returns all unconfirmed transaction stored in the Mempool, except the transactions stored in the ReOrgPool.
-    // TODO: Investigate returning an iterator rather than a large vector of transactions
-    pub async fn snapshot(&self) -> Vec<Arc<Transaction>> {
-        self.pool_storage.read().await.snapshot()
+    pub async fn snapshot(&self) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+        self.do_read_task(|storage| Ok(storage.snapshot())).await
     }
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Only transactions that fit into a block will be returned
     pub async fn retrieve(&self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
-        self.pool_storage.write().await.retrieve(total_weight)
+        self.do_write_task(move |storage| storage.retrieve_and_revalidate(total_weight))
+            .await
     }
 
     pub async fn retrieve_by_excess_sigs(
         &self,
-        excess_sigs: &[PrivateKey],
-    ) -> (Vec<Arc<Transaction>>, Vec<PrivateKey>) {
-        self.pool_storage.read().await.retrieve_by_excess_sigs(excess_sigs)
+        excess_sigs: Vec<PrivateKey>,
+    ) -> Result<(Vec<Arc<Transaction>>, Vec<PrivateKey>), MempoolError> {
+        self.do_read_task(move |storage| Ok(storage.retrieve_by_excess_sigs(&excess_sigs)))
+            .await
     }
 
     /// Check if the specified excess signature is found in the Mempool.
-    pub async fn has_tx_with_excess_sig(&self, excess_sig: &Signature) -> TxStorageResponse {
-        self.pool_storage.read().await.has_tx_with_excess_sig(excess_sig)
+    pub async fn has_tx_with_excess_sig(&self, excess_sig: Signature) -> Result<TxStorageResponse, MempoolError> {
+        self.do_read_task(move |storage| Ok(storage.has_tx_with_excess_sig(&excess_sig)))
+            .await
     }
 
     /// Check if the specified transaction is stored in the Mempool.
-    pub async fn has_transaction(&self, tx: &Transaction) -> Result<TxStorageResponse, MempoolError> {
-        self.pool_storage.read().await.has_transaction(tx)
+    pub async fn has_transaction(&self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
+        self.do_read_task(move |storage| storage.has_transaction(&tx)).await
     }
 
     /// Gathers and returns the stats of the Mempool.
-    pub async fn stats(&self) -> StatsResponse {
-        self.pool_storage.read().await.stats()
+    pub async fn stats(&self) -> Result<StatsResponse, MempoolError> {
+        self.do_read_task(|storage| Ok(storage.stats())).await
     }
 
     /// Gathers and returns a breakdown of all the transaction in the Mempool.
-    pub async fn state(&self) -> StateResponse {
-        self.pool_storage.read().await.state()
+    pub async fn state(&self) -> Result<StateResponse, MempoolError> {
+        self.do_read_task(|storage| Ok(storage.state())).await
+    }
+
+    async fn do_read_task<F, T>(&self, callback: F) -> Result<T, MempoolError>
+    where
+        F: FnOnce(&MempoolStorage) -> Result<T, MempoolError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let storage = self.pool_storage.clone();
+        task::spawn_blocking(move || {
+            let lock = storage.read().map_err(|_| MempoolError::RwLockPoisonError)?;
+            callback(&*lock)
+        })
+        .await?
+    }
+
+    async fn do_write_task<F, T>(&self, callback: F) -> Result<T, MempoolError>
+    where
+        F: FnOnce(&mut MempoolStorage) -> Result<T, MempoolError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let storage = self.pool_storage.clone();
+        task::spawn_blocking(move || {
+            let mut lock = storage.write().map_err(|_| MempoolError::RwLockPoisonError)?;
+            callback(&mut *lock)
+        })
+        .await?
     }
 }

@@ -892,13 +892,20 @@ where B: BlockchainBackend
             );
             return Err(e.into());
         }
+        trace!(
+            target: LOG_TARGET,
+            "[add_block] waiting for write access to add block block #{}",
+            new_height
+        );
+        let timer = Instant::now();
+        let mut db = self.db_write_access()?;
 
         trace!(
             target: LOG_TARGET,
-            "[add_block] acquired write access db lock for block #{} ",
-            &new_height
+            "[add_block] acquired write access db lock for block #{} in {:.2?}",
+            new_height,
+            timer.elapsed()
         );
-        let mut db = self.db_write_access()?;
         let block_add_result = add_block(
             &mut *db,
             &self.config,
@@ -917,6 +924,10 @@ where B: BlockchainBackend
             );
             // If blocks were added and the node is in pruned mode, perform pruning
             prune_database_if_needed(&mut *db, self.config.pruning_horizon, self.config.pruning_interval)?;
+        }
+
+        if let Err(e) = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity) {
+            warn!(target: LOG_TARGET, "Failed to clean up orphans: {}", e);
         }
 
         debug!(

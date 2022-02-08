@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,39 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::path::PathBuf;
+use tari_utilities::ByteArrayError;
 
-use structopt::StructOpt;
-
-#[derive(Debug, StructOpt)]
-pub struct Settings {
-  #[structopt(short, long, aliases = &["base_path", "base_dir", "base-dir"], env="DATA_DIR", default_value = "data")]
-  pub(crate) data_dir: PathBuf,
-  #[structopt(
-    short,
-    long,
-    env = "WALLET_GRPC_ADDRESS",
-    default_value = "localhost:18143"
-  )]
-  pub(crate) wallet_grpc_address: String,
-  #[structopt(
-    short,
-    long,
-    env = "BASE_NODE_GRPC_ADDRESS",
-    default_value = "localhost:18142"
-  )]
-  pub(crate) base_node_grpc_address: String,
-  #[structopt(
-    short,
-    long,
-    env = "VALIDATOR_NODE_GRPC_ADDRESS",
-    default_value = "localhost:18144"
-  )]
-  pub(crate) validator_node_grpc_address: String,
-}
-
-impl Settings {
-  pub fn new() -> Self {
-    Self::from_args()
-  }
+pub fn copy_into_fixed_array<T: Default + Copy, const SZ: usize>(elems: &[T]) -> Result<[T; SZ], ByteArrayError> {
+    if elems.len() != SZ {
+        return Err(ByteArrayError::IncorrectLength);
+    }
+    let mut buf = [T::default(); SZ];
+    buf.copy_from_slice(&elems[0..SZ]);
+    Ok(buf)
 }

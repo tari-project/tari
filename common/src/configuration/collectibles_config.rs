@@ -20,10 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    net::{IpAddr, Ipv4Addr, SocketAddr},
-    path::PathBuf,
-};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 use config::Config;
 use serde::Deserialize;
@@ -31,23 +28,27 @@ use serde::Deserialize;
 use crate::ConfigurationError;
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct ValidatorNodeConfig {
-    pub committee: Vec<String>,
-    pub phase_timeout: u64,
-    pub template_id: String,
-    #[serde(default = "default_asset_config_directory")]
-    pub asset_config_directory: PathBuf,
+pub struct CollectiblesConfig {
+    #[serde(default = "default_validator_node_grpc_address")]
+    pub validator_node_grpc_address: SocketAddr,
     #[serde(default = "default_base_node_grpc_address")]
     pub base_node_grpc_address: SocketAddr,
     #[serde(default = "default_wallet_grpc_address")]
     pub wallet_grpc_address: SocketAddr,
-    pub scan_for_assets: bool,
-    pub new_asset_scanning_interval: u64,
-    pub assets_allow_list: Option<Vec<String>>,
 }
 
-fn default_asset_config_directory() -> PathBuf {
-    PathBuf::from("assets")
+impl Default for CollectiblesConfig {
+    fn default() -> Self {
+        Self {
+            validator_node_grpc_address: default_validator_node_grpc_address(),
+            base_node_grpc_address: default_base_node_grpc_address(),
+            wallet_grpc_address: default_wallet_grpc_address(),
+        }
+    }
+}
+
+fn default_validator_node_grpc_address() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144)
 }
 
 fn default_base_node_grpc_address() -> SocketAddr {
@@ -58,9 +59,9 @@ fn default_wallet_grpc_address() -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18143)
 }
 
-impl ValidatorNodeConfig {
-    pub fn convert_if_present(cfg: Config) -> Result<Option<ValidatorNodeConfig>, ConfigurationError> {
-        let section: Self = match cfg.get("validator_node") {
+impl CollectiblesConfig {
+    pub fn convert_if_present(cfg: Config) -> Result<Option<CollectiblesConfig>, ConfigurationError> {
+        let section: Self = match cfg.get("collectibles") {
             Ok(s) => s,
             Err(_e) => {
                 // dbg!(e);
@@ -68,18 +69,5 @@ impl ValidatorNodeConfig {
             },
         };
         Ok(Some(section))
-        // dbg!(&section);
-        // if section.is_empty() {
-        //     Ok(None)
-        // } else {
-        //     Ok(Some(Self {
-        //         committee: section
-        //             .get("committee")
-        //             .ok_or_else(|| ConfigurationError::new("dan_node.committee", "missing committee"))?
-        //             .into_array()?
-        //             .into_iter()
-        //             .map(|c| c.into_str())
-        //             .collect::<Result<Vec<_>, ConfigError>>()?,
-        //     }))
     }
 }

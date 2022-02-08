@@ -183,7 +183,7 @@ impl CommandHandler {
             status_line.add_field(
                 "Rpc",
                 format!(
-                    "{}/{} sessions",
+                    "{}/{}",
                     num_active_rpc_sessions,
                     config
                         .rpc_max_simultaneous_sessions

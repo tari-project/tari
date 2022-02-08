@@ -22,6 +22,7 @@
 
 use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
+use tokio::task::JoinError;
 
 use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transactions::transaction::TransactionError};
 
@@ -35,4 +36,8 @@ pub enum MempoolError {
     TransportChannelError(#[from] TransportChannelError),
     #[error("The transaction did not contain any kernels")]
     TransactionNoKernels,
+    #[error("Mempool lock poisoned. This indicates that the mempool has panicked while holding a RwLockGuard.")]
+    RwLockPoisonError,
+    #[error(transparent)]
+    BlockingTaskError(#[from] JoinError),
 }

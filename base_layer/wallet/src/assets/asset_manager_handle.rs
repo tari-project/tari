@@ -22,7 +22,7 @@
 
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash, PublicKey},
 };
 use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
 use tari_service_framework::{reply_channel::SenderService, Service};
@@ -74,14 +74,14 @@ impl AssetManagerHandle {
     pub async fn create_initial_asset_checkpoint(
         &mut self,
         public_key: &PublicKey,
-        merkle_root: &[u8],
+        merkle_root: FixedHash,
         committee_public_keys: &[PublicKey],
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
                 asset_public_key: Box::new(public_key.clone()),
-                merkle_root: merkle_root.to_vec(),
+                merkle_root,
                 committee_public_keys: committee_public_keys.to_vec(),
             })
             .await??
@@ -98,14 +98,14 @@ impl AssetManagerHandle {
         &mut self,
         public_key: &PublicKey,
         unique_id: &[u8],
-        merkle_root: &[u8],
+        merkle_root: FixedHash,
         committee_public_keys: &[PublicKey],
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateFollowOnCheckpoint {
                 asset_public_key: Box::new(public_key.clone()),
-                merkle_root: merkle_root.to_vec(),
+                merkle_root,
                 unique_id: unique_id.to_vec(),
                 committee_public_keys: committee_public_keys.to_vec(),
             })

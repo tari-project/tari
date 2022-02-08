@@ -12,7 +12,7 @@ license = "BSD-3-Clause"
 [dependencies]
 tari_shutdown = { version = "^0.27", path = "../../infrastructure/shutdown" }
 
-anyhow = "1.0.32"
+anyhow = "1.0.53"
 async-trait = "0.1.50"
 futures = { version = "^0.3.16", features = ["async-await"] }
 log = "0.4.8"

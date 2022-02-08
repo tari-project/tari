@@ -59,10 +59,10 @@ impl MempoolInboundHandlers {
         debug!(target: LOG_TARGET, "Handling remote request: {}", request);
         use MempoolRequest::*;
         match request {
-            GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await)),
-            GetState => Ok(MempoolResponse::State(self.mempool.state().await)),
+            GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
+            GetState => Ok(MempoolResponse::State(self.mempool.state().await?)),
             GetTxStateByExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
-                self.mempool.has_tx_with_excess_sig(&excess_sig).await,
+                self.mempool.has_tx_with_excess_sig(excess_sig).await?,
             )),
             SubmitTransaction(tx) => {
                 debug!(
@@ -102,7 +102,8 @@ impl MempoolInboundHandlers {
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
 
-        let tx_storage = self.mempool.has_transaction(&tx).await?;
+        let tx = Arc::new(tx);
+        let tx_storage = self.mempool.has_transaction(tx.clone()).await?;
         let kernel_excess_sig = tx
             .first_kernel_excess_sig()
             .ok_or(MempoolServiceError::TransactionNoKernels)?
@@ -115,7 +116,6 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-        let tx = Arc::new(tx);
         match self.mempool.insert(tx.clone()).await {
             Ok(tx_storage) => {
                 if tx_storage.is_stored() {
@@ -146,9 +146,10 @@ impl MempoolInboundHandlers {
     }
 
     async fn update_pool_size_metrics(&self) {
-        let stats = self.mempool.stats().await;
-        metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
-        metrics::reorg_pool_size().set(stats.reorg_txs as i64);
+        if let Ok(stats) = self.mempool.stats().await {
+            metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
+            metrics::reorg_pool_size().set(stats.reorg_txs as i64);
+        }
     }
 
     /// Handle inbound block events from the local base node service.
@@ -156,7 +157,7 @@ impl MempoolInboundHandlers {
         use BlockEvent::*;
         match block_event {
             ValidBlockAdded(block, BlockAddResult::Ok(_)) => {
-                self.mempool.process_published_block(block).await?;
+                self.mempool.process_published_block(block.clone()).await?;
             },
             ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed }) => {
                 self.mempool
@@ -173,7 +174,7 @@ impl MempoolInboundHandlers {
                     .await?;
             },
             BlockSyncComplete(tip_block) => {
-                self.mempool.process_published_block(tip_block.block()).await?;
+                self.mempool.process_published_block(tip_block.to_arc_block()).await?;
             },
             AddBlockFailed(_) => {},
         }

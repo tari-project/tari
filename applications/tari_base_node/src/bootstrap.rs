@@ -259,7 +259,8 @@ where B: BlockchainBackend + 'static
             auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
             datastore_path: self.config.peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 100,
+            max_concurrent_inbound_tasks: 50,
+            max_concurrent_outbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),

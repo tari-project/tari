@@ -49,6 +49,7 @@ pub fn config_installer(_app_type: ApplicationType, path: &Path) -> Result<(), s
         include_str!("../../config/presets/merge_mining_proxy.toml"),
         include_str!("../../config/presets/stratum_transcoder.toml"),
         include_str!("../../config/presets/validator_node.toml"),
+        include_str!("../../config/presets/collectibles.toml"),
     ]
     .join("\n");
 
@@ -161,7 +162,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
     cfg.set_default("wallet.grpc_address", "127.0.0.1:18143").unwrap();
-    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 100_000)
         .unwrap();
 
     //---------------------------------- Weatherwax Defaults --------------------------------------------//
@@ -174,7 +175,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.weatherwax.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 100_000)
         .unwrap();
     cfg.set_default("base_node.weatherwax.peer_seeds", Vec::<String>::new())
         .unwrap();
@@ -219,7 +220,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 100_000)
         .unwrap();
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
@@ -235,7 +236,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 }
 
 fn set_common_network_defaults(cfg: &mut Config) {
-    for network in ["mainnet", "weatherwax", "igor", "localnet"] {
+    for network in ["mainnet", "dibbler", "igor", "localnet"] {
         let key = format!("base_node.{}.dns_seeds_name_server", network);
         cfg.set_default(&key, "1.1.1.1:853/cloudflare-dns.com").unwrap();
 

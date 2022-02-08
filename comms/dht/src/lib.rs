@@ -1,4 +1,3 @@
-#![feature(map_entry_replace)]
 #![doc(html_root_url = "https://docs.rs/tower-filter/0.3.0-alpha.2")]
 #![cfg_attr(not(debug_assertions), deny(unused_variables))]
 #![cfg_attr(not(debug_assertions), deny(unused_imports))]

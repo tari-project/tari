@@ -21,9 +21,12 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::error::CollectiblesError;
+use log::debug;
 use tari_app_grpc::{tari_rpc as grpc, tari_rpc::RegisterAssetRequest};
 use tari_common_types::types::PublicKey;
 use tari_utilities::{hex::Hex, ByteArray};
+
+const LOG_TARGET: &str = "collectibles::wallet";
 
 pub struct WalletClient {
   endpoint: String,
@@ -76,7 +79,7 @@ impl WalletClient {
         source: error,
       }
     })?;
-    dbg!(&result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner().public_key.to_hex())
   }
 
@@ -91,7 +94,7 @@ impl WalletClient {
         source,
       }
     })?;
-    dbg!(&result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner())
   }
 
@@ -117,7 +120,22 @@ impl WalletClient {
         request: "create_initial_asset_checkpoint".to_string(),
         source,
       })?;
-    dbg!(&result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
+    Ok(result.into_inner())
+  }
+
+  pub async fn get_unspent_amounts(
+    &mut self,
+  ) -> Result<grpc::GetUnspentAmountsResponse, CollectiblesError> {
+    let inner = self.inner.as_mut().unwrap();
+    let request = grpc::Empty {};
+    let result = inner.get_unspent_amounts(request).await.map_err(|source| {
+      CollectiblesError::ClientRequestError {
+        request: "get_unspent_amounts".to_string(),
+        source,
+      }
+    })?;
+    debug!(target: LOG_TARGET, "result {:?}", result);
     Ok(result.into_inner())
   }
 }

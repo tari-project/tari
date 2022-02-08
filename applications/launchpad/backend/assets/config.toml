@@ -46,7 +46,7 @@ track_reorgs = true
 
 [base_node.dibbler]
 db_type = "lmdb"
-flood_ban_max_msg_count = 10000
+flood_ban_max_msg_count = 100_000
 allow_test_addresses = false
 use_libtor = false
 base_node_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
@@ -65,7 +65,7 @@ grpc_base_node_address = "0.0.0.0:18142"
 
 [base_node.igor]
 db_type = "lmdb"
-flood_ban_max_msg_count = 10000
+flood_ban_max_msg_count = 100_000
 allow_test_addresses = false
 use_libtor = false
 base_node_identity_file = "/var/tari/base_node/config/igor/base_node_id.json"

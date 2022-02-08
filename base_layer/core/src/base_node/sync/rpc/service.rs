@@ -43,6 +43,7 @@ use tracing::{instrument, span, Instrument, Level};
 use crate::{
     base_node::{
         comms_interface::BlockEvent,
+        metrics,
         sync::rpc::{sync_utxos_task::SyncUtxosTask, BaseNodeSyncService},
         LocalNodeCommsInterface,
     },
@@ -95,6 +96,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncRpcService<B> {
 
         let token = Arc::new(peer);
         lock.push(Arc::downgrade(&token));
+        metrics::active_sync_peers().set(lock.len() as i64);
         Ok(token)
     }
 }
@@ -237,6 +239,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     }
                 }
 
+                metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
                     "Block sync round complete for peer `{}`.", peer_node_id,
@@ -325,6 +328,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     }
                 }
 
+                metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
                     "Header sync round complete for peer `{}`.", session_token,
@@ -430,6 +434,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         &self,
         request: Request<SyncKernelsRequest>,
     ) -> Result<Streaming<proto::types::TransactionKernel>, RpcStatus> {
+        let peer_node_id = request.context().peer_node_id().clone();
         let req = request.into_message();
         let (tx, rx) = mpsc::channel(100);
         let db = self.db();
@@ -455,6 +460,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             return Err(RpcStatus::bad_request("start header height is after end header"));
         }
 
+        let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         task::spawn(async move {
             while current_height <= end_height {
                 if tx.is_closed() {
@@ -524,6 +530,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     }
                 }
             }
+
+            metrics::active_sync_peers().dec();
+            debug!(
+                target: LOG_TARGET,
+                "Kernel sync round complete for peer `{}`.", session_token,
+            );
         });
         Ok(Streaming::new(rx))
     }
@@ -531,21 +543,22 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
     #[instrument(skip(self), err)]
     async fn sync_utxos(&self, request: Request<SyncUtxosRequest>) -> Result<Streaming<SyncUtxosResponse>, RpcStatus> {
         let req = request.message();
-        let peer = request.context().peer_node_id();
+        let peer_node_id = request.context().peer_node_id();
         debug!(
             target: LOG_TARGET,
             "Received sync_utxos request from header {} to {} (start = {}, include_pruned_utxos = {}, \
              include_deleted_bitmaps = {})",
-            peer,
+            peer_node_id,
             req.start,
             req.end_header_hash.to_hex(),
             req.include_pruned_utxos,
             req.include_deleted_bitmaps
         );
 
+        let _session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
         let (tx, rx) = mpsc::channel(200);
         let task = SyncUtxosTask::new(self.db());
-        task.run(request.into_message(), tx).await?;
+        task.run(request, tx).await?;
 
         Ok(Streaming::new(rx))
     }

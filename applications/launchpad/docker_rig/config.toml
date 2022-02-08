@@ -42,7 +42,7 @@ track_reorgs = true
 
 [base_node.dibbler]
 db_type = "lmdb"
-flood_ban_max_msg_count = 10000
+flood_ban_max_msg_count = 100_000
 data_dir = "/blockchain/dibbler"
 force_sync_peers = []
 allow_test_addresses = false
@@ -64,7 +64,7 @@ console_wallet_tor_identity_file = "config/dibbler/console_wallet_tor.json"
 
 [base_node.igor]
 db_type = "lmdb"
-flood_ban_max_msg_count = 10000
+flood_ban_max_msg_count = 100_000
 data_dir = "/blockchain/igor"
 force_sync_peers = []
 allow_test_addresses = false
