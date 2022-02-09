@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod check_imported_transaction_status;
+pub mod check_faux_transaction_status;
 pub mod send_finalized_transaction;
 pub mod send_transaction_cancelled;
 pub mod send_transaction_reply;

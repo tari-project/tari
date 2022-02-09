@@ -396,12 +396,23 @@ where
                 mined_in_block.clone(),
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
+                status.is_faux(),
             )
             .await
             .for_protocol(self.operation_id.as_u64())?;
 
         if num_confirmations >= self.config.num_confirmations_required {
-            self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+            if status.is_faux() {
+                self.publish_event(TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true })
+            } else {
+                self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+            }
+        } else if status.is_faux() {
+            self.publish_event(TransactionEvent::FauxTransactionUnconfirmed {
+                tx_id,
+                num_confirmations,
+                is_valid: true,
+            })
         } else {
             self.publish_event(TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id,
@@ -441,6 +452,7 @@ where
                 mined_in_block.clone(),
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
+                false,
             )
             .await
             .for_protocol(self.operation_id.as_u64())?;

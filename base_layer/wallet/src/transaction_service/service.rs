@@ -34,7 +34,7 @@ use log::*;
 use rand::rngs::OsRng;
 use sha2::Sha256;
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey},
 };
 use tari_comms::{peer_manager::NodeIdentity, types::CommsPublicKey};
@@ -93,7 +93,7 @@ use crate::{
             models::CompletedTransaction,
         },
         tasks::{
-            check_imported_transaction_status::check_imported_transactions,
+            check_faux_transaction_status::check_faux_transactions,
             send_finalized_transaction::send_finalized_transaction_message,
             send_transaction_cancelled::send_transaction_cancelled_message,
             send_transaction_reply::send_transaction_reply,
@@ -644,8 +644,24 @@ where
             TransactionServiceRequest::GetAnyTransaction(tx_id) => Ok(TransactionServiceResponse::AnyTransaction(
                 Box::new(self.db.get_any_transaction(tx_id).await?),
             )),
-            TransactionServiceRequest::ImportUtxo(value, source_public_key, message, maturity) => self
-                .add_utxo_import_transaction(value, source_public_key, message, maturity)
+            TransactionServiceRequest::ImportUtxoWithStatus {
+                amount,
+                source_public_key,
+                message,
+                maturity,
+                import_status,
+                tx_id,
+                current_height,
+            } => self
+                .add_utxo_import_transaction_with_status(
+                    amount,
+                    source_public_key,
+                    message,
+                    maturity,
+                    import_status,
+                    tx_id,
+                    current_height,
+                )
                 .await
                 .map(TransactionServiceResponse::UtxoImported),
             TransactionServiceRequest::SubmitTransactionToSelf(tx_id, tx, fee, amount, message) => self
@@ -748,7 +764,21 @@ where
         if let OutputManagerEvent::TxoValidationSuccess(_) = (*event).clone() {
             let db = self.db.clone();
             let output_manager_handle = self.output_manager_service.clone();
-            tokio::spawn(check_imported_transactions(output_manager_handle, db));
+            let metadata = match self.wallet_db.get_chain_metadata().await {
+                Ok(data) => data,
+                Err(_) => None,
+            };
+            let tip_height = match metadata {
+                Some(val) => val.height_of_longest_chain(),
+                None => 0u64,
+            };
+            let event_publisher = self.event_publisher.clone();
+            tokio::spawn(check_faux_transactions(
+                output_manager_handle,
+                db,
+                event_publisher,
+                tip_height,
+            ));
         }
     }
 
@@ -811,6 +841,7 @@ where
                     message,
                     Utc::now().naive_utc(),
                     TransactionDirection::Inbound,
+                    None,
                     None,
                 ),
             )
@@ -1016,6 +1047,7 @@ where
                 Utc::now().naive_utc(),
                 TransactionDirection::Outbound,
                 None,
+                None,
             ),
         )
         .await?;
@@ -1158,6 +1190,7 @@ where
                 message.clone(),
                 Utc::now().naive_utc(),
                 TransactionDirection::Outbound,
+                None,
                 None,
             ),
         )
@@ -2023,35 +2056,46 @@ where
     }
 
     /// Add a completed transaction to the Transaction Manager to record directly importing a spendable UTXO.
-    pub async fn add_utxo_import_transaction(
+    pub async fn add_utxo_import_transaction_with_status(
         &mut self,
         value: MicroTari,
         source_public_key: CommsPublicKey,
         message: String,
         maturity: Option<u64>,
+        import_status: ImportStatus,
+        tx_id: Option<TxId>,
+        current_height: Option<u64>,
     ) -> Result<TxId, TransactionServiceError> {
-        let tx_id = TxId::new_random();
+        let tx_id = if let Some(id) = tx_id { id } else { TxId::new_random() };
         self.db
-            .add_utxo_import_transaction(
+            .add_utxo_import_transaction_with_status(
                 tx_id,
                 value,
                 source_public_key,
                 self.node_identity.public_key().clone(),
                 message,
                 maturity,
+                import_status.clone(),
+                current_height,
             )
             .await?;
-        let _ = self
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionImported(tx_id)))
-            .map_err(|e| {
-                trace!(
-                    target: LOG_TARGET,
-                    "Error sending event, usually because there are no subscribers: {:?}",
-                    e
-                );
+        let transaction_event = match import_status {
+            ImportStatus::Imported => TransactionEvent::TransactionImported(tx_id),
+            ImportStatus::FauxUnconfirmed => TransactionEvent::FauxTransactionUnconfirmed {
+                tx_id,
+                num_confirmations: 0,
+                is_valid: true,
+            },
+            ImportStatus::FauxConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
+        };
+        let _ = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+            trace!(
+                target: LOG_TARGET,
+                "Error sending event, usually because there are no subscribers: {:?}",
                 e
-            });
+            );
+            e
+        });
         Ok(tx_id)
     }
 
@@ -2104,6 +2148,7 @@ where
                 message,
                 Utc::now().naive_utc(),
                 TransactionDirection::Inbound,
+                None,
                 None,
             ),
         )
@@ -2165,6 +2210,7 @@ where
                             Utc::now().naive_utc(),
                             TransactionDirection::Inbound,
                             Some(block_height),
+                            None,
                         ),
                     )
                     .await?;

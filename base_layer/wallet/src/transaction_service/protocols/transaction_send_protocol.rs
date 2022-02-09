@@ -511,6 +511,7 @@ where
             Utc::now().naive_utc(),
             TransactionDirection::Outbound,
             None,
+            None,
         );
 
         self.resources

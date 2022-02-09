@@ -29,7 +29,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -358,16 +358,16 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.resources.master_key_manager.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
+            OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs)
+            .scan_and_recover_outputs(outputs, tx_id)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs(outputs) => self
-                .scan_outputs_for_one_sided_payments(outputs)
+            OutputManagerRequest::ScanOutputs { outputs, tx_id } => self
+                .scan_outputs_for_one_sided_payments(outputs, tx_id)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
@@ -415,16 +415,36 @@ where
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
-            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => self
-                .get_output_status_by_tx_id(tx_id)
-                .await
-                .map(OutputManagerResponse::OutputStatusesByTxId),
+            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
+                let (statuses, mined_height, block_hash) = self.get_output_status_by_tx_id(tx_id).await?;
+                Ok(OutputManagerResponse::OutputStatusesByTxId {
+                    statuses,
+                    mined_height,
+                    block_hash,
+                })
+            },
         }
     }
 
-    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+    async fn get_output_status_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
         let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
-        Ok(outputs.into_iter().map(|uo| uo.status).collect())
+        let statuses = outputs.clone().into_iter().map(|uo| uo.status).collect();
+        // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
+        // mined heights)
+        let (mut last_height, mut max_mined_height, mut block_hash) = (0u64, None, None);
+        for uo in outputs {
+            if let Some(height) = uo.mined_height {
+                if last_height < height {
+                    last_height = height;
+                    max_mined_height = uo.mined_height;
+                    block_hash = uo.mined_in_block.clone();
+                }
+            }
+        }
+        Ok((statuses, max_mined_height, block_hash))
     }
 
     async fn claim_sha_atomic_swap_with_hash(
@@ -1893,6 +1913,7 @@ where
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
@@ -1945,7 +1966,7 @@ where
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    match self.resources.db.add_unspent_output(db_output).await {
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                         Ok(_) => {
                             rewound_outputs.push(rewound_output);
                         },

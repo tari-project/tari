@@ -22,11 +22,16 @@ class Wallet {
   ptr;
   balance = new WalletBalance();
   log_path = "";
-  receivedTransaction = 0;
-  receivedTransactionReply = 0;
+  transactionReceived = 0;
+  transactionReplyReceived = 0;
   transactionBroadcast = 0;
   transactionMined = 0;
-  saf_messages = 0;
+  transactionMinedUnconfirmed = 0;
+  transactionFauxConfirmed = 0;
+  transactionFauxUnconfirmed = 0;
+  transactionSafMessageReceived = 0;
+  transactionCancelled = 0;
+  transactionFinalized = 0;
   txo_validation_complete = false;
   txo_validation_result = 0;
   tx_validation_complete = false;
@@ -37,6 +42,8 @@ class Wallet {
   callback_transaction_broadcast;
   callback_transaction_mined;
   callback_transaction_mined_unconfirmed;
+  callback_faux_transaction_confirmed;
+  callback_faux_transaction_unconfirmed;
   callback_direct_send_result;
   callback_store_and_forward_send_result;
   callback_transaction_cancellation;
@@ -61,27 +68,31 @@ class Wallet {
   }
 
   clearCallbackCounters() {
-    this.receivedTransaction =
-      this.receivedTransactionReply =
+    this.transactionReceived =
+      this.transactionReplyReceived =
       this.transactionBroadcast =
       this.transactionMined =
-      this.saf_messages =
-      this.cancelled =
-      this.minedunconfirmed =
-      this.finalized =
+      this.transactionFauxConfirmed =
+      this.transactionSafMessageReceived =
+      this.transactionCancelled =
+      this.transactionMinedUnconfirmed =
+      this.transactionFauxUnconfirmed =
+      this.transactionFinalized =
         0;
   }
 
   getCounters() {
     return {
-      received: this.receivedTransaction,
-      replyreceived: this.receivedTransactionReply,
+      received: this.transactionReceived,
+      replyReceived: this.transactionReplyReceived,
       broadcast: this.transactionBroadcast,
-      finalized: this.finalized,
-      minedunconfirmed: this.minedunconfirmed,
-      cancelled: this.cancelled,
+      finalized: this.transactionFinalized,
+      minedUnconfirmed: this.transactionMinedUnconfirmed,
+      fauxUnconfirmed: this.transactionFauxUnconfirmed,
+      cancelled: this.transactionCancelled,
       mined: this.transactionMined,
-      saf: this.saf_messages,
+      fauxConfirmed: this.transactionFauxConfirmed,
+      saf: this.transactionSafMessageReceived,
     };
   }
 
@@ -116,6 +127,14 @@ class Wallet {
       InterfaceFFI.createCallbackTransactionMinedUnconfirmed(
         this.onTransactionMinedUnconfirmed
       );
+    this.callback_faux_transaction_confirmed =
+      InterfaceFFI.createCallbackFauxTransactionConfirmed(
+        this.onFauxTransactionConfirmed
+      );
+    this.callback_faux_transaction_unconfirmed =
+      InterfaceFFI.createCallbackFauxTransactionUnconfirmed(
+        this.onFauxTransactionUnconfirmed
+      );
     this.callback_direct_send_result =
       InterfaceFFI.createCallbackDirectSendResult(this.onDirectSendResult);
     this.callback_store_and_forward_send_result =
@@ -148,14 +167,16 @@ class Wallet {
       );
     //endregion
 
-    this.receivedTransaction = 0;
-    this.receivedTransactionReply = 0;
+    this.transactionReceived = 0;
+    this.transactionReplyReceived = 0;
     this.transactionBroadcast = 0;
     this.transactionMined = 0;
-    this.saf_messages = 0;
-    this.cancelled = 0;
-    this.minedunconfirmed = 0;
-    this.finalized = 0;
+    this.transactionFauxConfirmed = 0;
+    this.transactionSafMessageReceived = 0;
+    this.transactionCancelled = 0;
+    this.transactionMinedUnconfirmed = 0;
+    this.transactionFauxUnconfirmed = 0;
+    this.transactionFinalized = 0;
     this.recoveryFinished = true;
     let sanitize = null;
     let words = null;
@@ -179,6 +200,8 @@ class Wallet {
       this.callback_transaction_broadcast,
       this.callback_transaction_mined,
       this.callback_transaction_mined_unconfirmed,
+      this.callback_faux_transaction_confirmed,
+      this.callback_faux_transaction_unconfirmed,
       this.callback_direct_send_result,
       this.callback_store_and_forward_send_result,
       this.callback_transaction_cancellation,
@@ -198,7 +221,7 @@ class Wallet {
       `${new Date().toISOString()} received Transaction with txID ${tx.getTransactionID()}`
     );
     tx.destroy();
-    this.receivedTransaction += 1;
+    this.transactionReceived += 1;
   };
 
   onReceivedTransactionReply = (ptr) => {
@@ -208,7 +231,7 @@ class Wallet {
       `${new Date().toISOString()} received reply for Transaction with txID ${tx.getTransactionID()}.`
     );
     tx.destroy();
-    this.receivedTransactionReply += 1;
+    this.transactionReplyReceived += 1;
   };
 
   onReceivedFinalizedTransaction = (ptr) => {
@@ -218,7 +241,7 @@ class Wallet {
       `${new Date().toISOString()} received finalization for Transaction with txID ${tx.getTransactionID()}.`
     );
     tx.destroy();
-    this.finalized += 1;
+    this.transactionFinalized += 1;
   };
 
   onTransactionBroadcast = (ptr) => {
@@ -248,7 +271,27 @@ class Wallet {
       `${new Date().toISOString()} Transaction with txID ${tx.getTransactionID()} is mined unconfirmed with ${confirmations} confirmations.`
     );
     tx.destroy();
-    this.minedunconfirmed += 1;
+    this.transactionMinedUnconfirmed += 1;
+  };
+
+  onFauxTransactionConfirmed = (ptr) => {
+    let tx = new CompletedTransaction();
+    tx.pointerAssign(ptr);
+    console.log(
+      `${new Date().toISOString()} Faux transaction with txID ${tx.getTransactionID()} was confirmed.`
+    );
+    tx.destroy();
+    this.transactionFauxConfirmed += 1;
+  };
+
+  onFauxTransactionUnconfirmed = (ptr, confirmations) => {
+    let tx = new CompletedTransaction();
+    tx.pointerAssign(ptr);
+    console.log(
+      `${new Date().toISOString()} Faux transaction with txID ${tx.getTransactionID()} is unconfirmed with ${confirmations} confirmations.`
+    );
+    tx.destroy();
+    this.transactionFauxUnconfirmed += 1;
   };
 
   onTransactionCancellation = (ptr, reason) => {
@@ -258,7 +301,7 @@ class Wallet {
       `${new Date().toISOString()} Transaction with txID ${tx.getTransactionID()} was cancelled with reason code ${reason}.`
     );
     tx.destroy();
-    this.cancelled += 1;
+    this.transactionCancelled += 1;
   };
 
   onDirectSendResult = (id, success) => {
@@ -308,7 +351,7 @@ class Wallet {
 
   onSafMessageReceived = () => {
     console.log(`${new Date().toISOString()} callbackSafMessageReceived()`);
-    this.saf_messages += 1;
+    this.transactionSafMessageReceived += 1;
   };
 
   onRecoveryProgress = (a, b, c) => {
@@ -465,6 +508,8 @@ class Wallet {
         this.callback_transaction_broadcast =
         this.callback_transaction_mined =
         this.callback_transaction_mined_unconfirmed =
+        this.callback_faux_transaction_confirmed =
+        this.callback_faux_transaction_unconfirmed =
         this.callback_direct_send_result =
         this.callback_store_and_forward_send_result =
         this.callback_transaction_cancellation =

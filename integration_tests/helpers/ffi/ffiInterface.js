@@ -292,6 +292,8 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ptr,
+          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -1136,6 +1138,14 @@ class InterfaceFFI {
     return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
   }
 
+  static createCallbackFauxTransactionConfirmed(fn) {
+    return ffi.Callback(this.void, [this.ptr], fn);
+  }
+
+  static createCallbackFauxTransactionUnconfirmed(fn) {
+    return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
+  }
+
   static createCallbackDirectSendResult(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.bool], fn);
   }
@@ -1184,6 +1194,8 @@ class InterfaceFFI {
     callback_transaction_broadcast,
     callback_transaction_mined,
     callback_transaction_mined_unconfirmed,
+    callback_faux_transaction_confirmed,
+    callback_faux_transaction_unconfirmed,
     callback_direct_send_result,
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
@@ -1209,6 +1221,8 @@ class InterfaceFFI {
       callback_transaction_broadcast,
       callback_transaction_mined,
       callback_transaction_mined_unconfirmed,
+      callback_faux_transaction_confirmed,
+      callback_faux_transaction_unconfirmed,
       callback_direct_send_result,
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
