@@ -84,7 +84,7 @@ fn main() {
     }
 }
 
-async fn main_inner() -> Result<(), ExitCodes> {
+async fn main_inner() -> Result<(), ExitError> {
     let (bootstrap, _global, cfg) = init_configuration(ApplicationType::MiningNode)?;
     let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET_FILE, "{:?}", bootstrap);
@@ -156,7 +156,9 @@ async fn main_inner() -> Result<(), ExitCodes> {
         }
         Ok(())
     } else {
-        let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(ExitCodes::grpc)?;
+        let (mut node_conn, mut wallet_conn) = connect(&config)
+            .await
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, format!("Could not connect to wallet:{}", e)))?;
 
         let mut blocks_found: u64 = 0;
         loop {
