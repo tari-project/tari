@@ -57,7 +57,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::state::StateDbUnitOfWork,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
 };
 
 #[derive(Debug, Clone)]
@@ -289,7 +289,7 @@ impl AssetProcessor for MockAssetProcessor {
         todo!()
     }
 
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWorkReader>(
         &self,
         _template_id: TemplateId,
         _method: String,

@@ -241,6 +241,11 @@ pub(crate) async fn assets_create_initial_checkpoint(
   committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
+  let mut client = state.connect_validator_node_client().await?;
+  client
+    .get_initial_checkpoint_merkle_root(&asset_pub_key)
+    .await;
+
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
 
   let root = mmr.get_merkle_root().unwrap();

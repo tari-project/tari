@@ -50,7 +50,7 @@ impl FixedHash {
 
 impl From<[u8; FixedHash::byte_size()]> for FixedHash {
     fn from(hash: [u8; FixedHash::byte_size()]) -> Self {
-        hash.into()
+        Self(hash)
     }
 }
 
@@ -58,12 +58,20 @@ impl TryFrom<Vec<u8>> for FixedHash {
     type Error = FixedHashSizeError;
 
     fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        if value.len() != FixedHash::byte_size() {
+        TryFrom::try_from(value.as_slice())
+    }
+}
+
+impl TryFrom<&[u8]> for FixedHash {
+    type Error = FixedHashSizeError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self, Self::Error> {
+        if bytes.len() != FixedHash::byte_size() {
             return Err(FixedHashSizeError);
         }
 
         let mut buf = [0u8; FixedHash::byte_size()];
-        buf.copy_from_slice(&value);
+        buf.copy_from_slice(&bytes);
         Ok(Self(buf))
     }
 }
