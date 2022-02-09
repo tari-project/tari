@@ -4,10 +4,6 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
-    branches:
-      - build-*
-  schedule:
-    - cron: "05 00 * * *"
   workflow_dispatch:
     inputs:
       customTag:
