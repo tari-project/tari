@@ -35,7 +35,7 @@ use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
 use tari_common::GlobalConfig;
-use tari_common_types::{emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -818,18 +818,17 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
 
-                let unique_ids: Vec<Vec<u8>> = parsed.args[1..]
+                let unique_ids = parsed.args[1..]
                     .iter()
                     .map(|arg| {
                         let s = arg.to_string();
                         if let Some(s) = s.strip_prefix("0x") {
-                            let r: Vec<u8> = Hex::from_hex(s).unwrap();
-                            r
+                            Hex::from_hex(s).map_err(|_| CommandError::Argument)
                         } else {
-                            s.into_bytes()
+                            Ok(s.into_bytes())
                         }
                     })
-                    .collect();
+                    .collect::<Result<Vec<Vec<u8>>, _>>()?;
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
@@ -856,18 +855,14 @@ pub async fn command_runner(
 
                 let merkle_root = match parsed.args[1] {
                     ParsedArgument::Text(ref root) => {
-                        let s = root.to_string();
-                        match &s[0..2] {
-                            "0x" => {
-                                let s = s[2..].to_string();
-                                let r: Vec<u8> = Hex::from_hex(&s).unwrap();
-                                Ok(r)
-                            },
-                            _ => Ok(s.into_bytes()),
-                        }
+                        let bytes = match &root[0..2] {
+                            "0x" => Vec::<u8>::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
+                            _ => Vec::<u8>::from_hex(root).map_err(|_| CommandError::Argument)?,
+                        };
+                        copy_into_fixed_array(&bytes).map_err(|_| CommandError::Argument)?
                     },
-                    _ => Err(CommandError::Argument),
-                }?;
+                    _ => return Err(CommandError::Argument),
+                };
 
                 let committee: Vec<PublicKey> = parsed.args[2..]
                     .iter()
@@ -879,7 +874,7 @@ pub async fn command_runner(
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 let (tx_id, transaction) = asset_manager
-                    .create_initial_asset_checkpoint(&public_key, &merkle_root, &committee)
+                    .create_initial_asset_checkpoint(&public_key, merkle_root, &committee)
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(

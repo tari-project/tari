@@ -73,6 +73,7 @@ pub(crate) enum DialerRequest {
         Option<oneshot::Sender<Result<PeerConnection, ConnectionManagerError>>>,
     ),
     CancelPendingDial(NodeId),
+    NotifyNewInboundConnection(PeerConnection),
 }
 
 pub struct Dialer<TTransport, TBackoff> {
@@ -168,11 +169,27 @@ where
                 self.handle_dial_peer_request(pending_dials, peer, reply_tx);
             },
             CancelPendingDial(peer_id) => {
-                if let Some(mut s) = self.cancel_signals.remove(&peer_id) {
-                    let _ = s.trigger();
+                self.cancel_dial(&peer_id);
+            },
+
+            NotifyNewInboundConnection(conn) => {
+                if conn.is_connected() {
+                    self.resolve_pending_dials(conn);
                 }
             },
         }
+    }
+
+    fn cancel_dial(&mut self, peer_id: &NodeId) {
+        if let Some(mut s) = self.cancel_signals.remove(peer_id) {
+            let _ = s.trigger();
+        }
+    }
+
+    fn resolve_pending_dials(&mut self, conn: PeerConnection) {
+        let peer = conn.peer_node_id().clone();
+        self.reply_to_pending_requests(&peer, Ok(conn));
+        self.cancel_dial(&peer);
     }
 
     fn is_pending_dial(&self, node_id: &NodeId) -> bool {
@@ -223,12 +240,8 @@ where
             );
         }
 
-        if self.pending_dial_requests.contains_key(&node_id) {
-            self.reply_to_pending_requests(&node_id, dial_result);
-        }
-
-        // Drop cancel signal
-        let _ = self.cancel_signals.remove(&node_id);
+        self.reply_to_pending_requests(&node_id, dial_result);
+        self.cancel_dial(&node_id);
     }
 
     pub async fn notify_connection_manager(&mut self, event: ConnectionManagerEvent) {
@@ -376,7 +389,6 @@ where
         let peer_identity = common::perform_identity_exchange(
             &mut socket,
             &node_identity,
-            CONNECTION_DIRECTION,
             &our_supported_protocols,
             config.network_info.clone(),
         )

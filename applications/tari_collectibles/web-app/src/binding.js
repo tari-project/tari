@@ -137,6 +137,10 @@ async function command_asset_wallets_get_balance(assetPublicKey) {
   return await invoke("asset_wallets_get_balance", { assetPublicKey });
 }
 
+async function command_asset_wallets_get_unspent_amounts() {
+  return await invoke("asset_wallets_get_unspent_amounts", {});
+}
+
 const commands = {
   command_create_db,
   command_assets_create,
@@ -147,6 +151,7 @@ const commands = {
   command_next_asset_public_key,
   command_asset_wallets_create,
   command_asset_wallets_get_balance,
+  command_asset_wallets_get_unspent_amounts,
   command_asset_wallets_list,
   command_asset_wallets_get_latest_address,
   command_asset_wallets_create_address,

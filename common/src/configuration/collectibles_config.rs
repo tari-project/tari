@@ -37,6 +37,16 @@ pub struct CollectiblesConfig {
     pub wallet_grpc_address: SocketAddr,
 }
 
+impl Default for CollectiblesConfig {
+    fn default() -> Self {
+        Self {
+            validator_node_grpc_address: default_validator_node_grpc_address(),
+            base_node_grpc_address: default_base_node_grpc_address(),
+            wallet_grpc_address: default_wallet_grpc_address(),
+        }
+    }
+}
+
 fn default_validator_node_grpc_address() -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18144)
 }

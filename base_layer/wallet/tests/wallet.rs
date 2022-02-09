@@ -70,6 +70,7 @@ use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
+use tari_utilities::Hashable;
 use tari_wallet::{
     contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     error::{WalletError, WalletStorageError},
@@ -101,6 +102,7 @@ pub mod support;
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common_types::transaction::TransactionStatus;
 use tari_core::covenants::Covenant;
+use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -133,7 +135,8 @@ async fn create_wallet(
         auxilary_tcp_listener_address: None,
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
-        max_concurrent_inbound_tasks: 100,
+        max_concurrent_inbound_tasks: 10,
+        max_concurrent_outbound_tasks: 10,
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
@@ -684,8 +687,8 @@ fn test_store_and_forward_send_tx() {
 
 #[tokio::test]
 async fn test_import_utxo() {
-    let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
+    let shutdown = Shutdown::new();
     let alice_identity = NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
@@ -708,8 +711,9 @@ async fn test_import_utxo() {
         auxilary_tcp_listener_address: None,
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random::string(8),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
+        max_concurrent_inbound_tasks: 10,
+        max_concurrent_outbound_tasks: 10,
+        outbound_buffer_size: 10,
         dht: Default::default(),
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
@@ -738,7 +742,7 @@ async fn test_import_utxo() {
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection.clone(), None),
-        ContactsServiceSqliteDatabase::new(connection),
+        ContactsServiceSqliteDatabase::new(connection.clone()),
         shutdown.to_signal(),
         CipherSeed::new(),
     )
@@ -752,6 +756,8 @@ async fn test_import_utxo() {
 
     let p = TestParams::new();
     let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
+    let output = utxo.as_transaction_output(&factories).unwrap();
+    let expected_output_hash = output.hash();
 
     let tx_id = alice_wallet
         .import_utxo(
@@ -785,6 +791,9 @@ async fn test_import_utxo() {
 
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
+    let outputs = db.fetch_outputs_by_tx_id(tx_id).await.unwrap();
+    assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }
 
 #[test]

@@ -40,7 +40,7 @@ use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::W
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
-    exit_codes::{ExitCodes, ExitCodes::ConfigError},
+    exit_codes::{ExitCode, ExitError},
     ConfigBootstrap,
     DefaultConfigLoader,
 };
@@ -75,10 +75,11 @@ fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
     match rt.block_on(main_inner()) {
         Ok(_) => std::process::exit(0),
-        Err(exit_code) => {
-            eprintln!("Fatal error: {:?}", exit_code);
+        Err(err) => {
+            eprintln!("Fatal error: {:?}", err);
+            let exit_code = err.exit_code;
             error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
-            std::process::exit(exit_code.as_i32())
+            std::process::exit(exit_code as i32)
         },
     }
 }
@@ -92,8 +93,12 @@ async fn main_inner() -> Result<(), ExitCodes> {
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
         let url = config.mining_pool_address.clone();
         let mut miner_address = config.mining_wallet_address.clone();
-        let _ = RistrettoPublicKey::from_hex(&miner_address)
-            .map_err(|_| ConfigError("Miner is not configured with a valid wallet address.".to_string()))?;
+        let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
+            ExitError::new(
+                ExitCode::ConfigError,
+                "Miner is not configured with a valid wallet address.",
+            )
+        })?;
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", &config.mining_worker_name);
         }

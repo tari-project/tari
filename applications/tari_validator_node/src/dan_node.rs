@@ -20,17 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, fs::File, io::BufReader, path::Path, sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use futures::future::try_join_all;
-use log::*;
-use tari_common::{configuration::ValidatorNodeConfig, GlobalConfig};
+use log::info;
+use tari_common::{
+    configuration::ValidatorNodeConfig,
+    exit_codes::{ExitCode, ExitError},
+    GlobalConfig,
+};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_dan_core::{
     models::{AssetDefinition, Committee},
     services::{
+        BaseNodeClient,
         ConcreteAssetProcessor,
         ConcreteCheckpointManager,
         ConcreteCommitteeManager,
@@ -46,7 +50,7 @@ use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStorageService};
 use tari_p2p::{comms_connector::SubscriptionFactory, tari_message::TariMessageType};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
-use tokio::task;
+use tokio::{task, time};
 
 use crate::{
     default_service_specification::DefaultServiceSpecification,
@@ -55,10 +59,9 @@ use crate::{
         inbound_connection_service::TariCommsInboundConnectionService,
         outbound_connection_service::TariCommsOutboundService,
     },
-    ExitCodes,
 };
 
-const LOG_TARGET: &str = "tari::dan::dan_node";
+const LOG_TARGET: &str = "tari::validator_node::app";
 
 pub struct DanNode {
     config: GlobalConfig,
@@ -77,91 +80,67 @@ impl DanNode {
         db_factory: SqliteDbFactory,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
-    ) -> Result<(), ExitCodes> {
+    ) -> Result<(), ExitError> {
         let dan_config = self
             .config
             .validator_node
             .as_ref()
-            .ok_or_else(|| ExitCodes::ConfigError("Missing dan section".to_string()))?;
+            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Missing dan section"))?;
 
-        let asset_definitions = self.read_asset_definitions(&dan_config.asset_config_directory)?;
-        if asset_definitions.is_empty() {
-            warn!(
-                target: LOG_TARGET,
-                "No assets to process. Add assets by putting definitions in the `assets` folder with a `.asset` \
-                 extension."
-            );
-        }
-
-        let mut tasks = vec![];
-        for asset in asset_definitions {
-            let node_identitiy = node_identity.as_ref().clone();
-            let mempool = mempool_service.clone();
-            let handles = handles.clone();
-            let subscription_factory = subscription_factory.clone();
-            let shutdown = shutdown.clone();
-            let dan_config = dan_config.clone();
-            let db_factory = db_factory.clone();
-
-            tasks.push(task::spawn(async move {
-                DanNode::start_asset_worker(
-                    asset,
-                    node_identitiy,
-                    mempool,
-                    handles,
-                    subscription_factory,
-                    shutdown,
-                    dan_config,
-                    db_factory,
-                )
-                .await
-            }));
-        }
-
-        if tasks.is_empty() {
-            // If there are no assets to process, work in proxy mode
-            tasks.push(task::spawn(DanNode::wait_for_exit()));
-        }
-        try_join_all(tasks)
-            .await
-            .map_err(|err| ExitCodes::UnknownError(format!("Join error occurred. {}", err)))?
-            .into_iter()
-            .collect::<Result<_, _>>()?;
-
-        Ok(())
-    }
-
-    fn read_asset_definitions(&self, path: &Path) -> Result<Vec<AssetDefinition>, ExitCodes> {
-        if !path.exists() {
-            fs::create_dir_all(path).expect("Could not create dir");
-        }
-        let paths = fs::read_dir(path).expect("Could not read asset definitions");
-
-        let mut result = vec![];
-        for path in paths {
-            let path = path.expect("Not a valid file").path();
-
-            if !path.is_dir() && path.extension().unwrap_or_default() == "asset" {
-                let file = File::open(path).expect("could not open file");
-                let reader = BufReader::new(file);
-
-                let def: AssetDefinition = serde_json::from_reader(reader).expect("lol not a valid json");
-                result.push(def);
-            }
-        }
-        Ok(result)
-    }
-
-    async fn wait_for_exit() -> Result<(), ExitCodes> {
-        println!("Type `exit` to exit");
+        let mut base_node_client = GrpcBaseNodeClient::new(dan_config.base_node_grpc_address);
+        let mut tasks = HashMap::new();
+        let mut next_scanned_height = 0u64;
         loop {
-            let mut line = String::new();
-            let _ = std::io::stdin().read_line(&mut line).expect("Failed to read line");
-            if line.to_lowercase().trim() == "exit" {
-                return Err(ExitCodes::UnknownError("User cancelled".to_string()));
-            } else {
-                println!("Type `exit` to exit");
+            let tip = base_node_client.get_tip_info().await.unwrap();
+            if tip.height_of_longest_chain >= next_scanned_height {
+                info!(
+                    target: LOG_TARGET,
+                    "Scanning base layer (tip : {}) for new assets", tip.height_of_longest_chain
+                );
+                if dan_config.scan_for_assets {
+                    next_scanned_height = tip.height_of_longest_chain + dan_config.new_asset_scanning_interval;
+                    info!(target: LOG_TARGET, "Next scanning height {}", next_scanned_height);
+                } else {
+                    next_scanned_height = u64::MAX; // Never run again.
+                }
+
+                let assets = base_node_client
+                    .get_assets_for_dan_node(node_identity.public_key().clone())
+                    .await
+                    .unwrap();
+                for asset in assets {
+                    if tasks.contains_key(&asset.public_key) {
+                        continue;
+                    }
+                    if let Some(allow_list) = &dan_config.assets_allow_list {
+                        if !allow_list.contains(&asset.public_key.to_hex()) {
+                            continue;
+                        }
+                    }
+                    info!(target: LOG_TARGET, "Adding asset {:?}", asset.public_key);
+                    let node_identity = node_identity.as_ref().clone();
+                    let mempool = mempool_service.clone();
+                    let handles = handles.clone();
+                    let subscription_factory = subscription_factory.clone();
+                    let shutdown = shutdown.clone();
+                    let dan_config = dan_config.clone();
+                    let db_factory = db_factory.clone();
+                    tasks.insert(
+                        asset.public_key.clone(),
+                        task::spawn(DanNode::start_asset_worker(
+                            asset.clone(),
+                            node_identity,
+                            mempool,
+                            handles,
+                            subscription_factory,
+                            shutdown,
+                            dan_config,
+                            db_factory,
+                        )),
+                    );
+                }
             }
+            time::sleep(Duration::from_secs(120)).await;
         }
     }
 
@@ -178,14 +157,14 @@ impl DanNode {
         shutdown: ShutdownSignal,
         config: ValidatorNodeConfig,
         db_factory: SqliteDbFactory,
-    ) -> Result<(), ExitCodes> {
+    ) -> Result<(), ExitError> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
         let committee = asset_definition
             .initial_committee
             .iter()
             .map(|s| {
                 CommsPublicKey::from_hex(s)
-                    .map_err(|e| ExitCodes::ConfigError(format!("could not convert to hex:{}", e)))
+                    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("could not convert to hex:{}", e)))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -240,7 +219,7 @@ impl DanNode {
         consensus_worker
             .run(shutdown.clone(), None)
             .await
-            .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+            .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
 
         Ok(())
     }

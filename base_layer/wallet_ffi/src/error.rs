@@ -213,6 +213,12 @@ impl From<WalletError> for LibWalletError {
                 code: 204,
                 message: format!("{:?}", w),
             },
+            WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(
+                OutputManagerError::BuildError(ref s),
+            )) if s == &"Fee is greater than amount".to_string() => Self {
+                code: 212,
+                message: format!("{:?}", w),
+            },
             WalletError::TransactionServiceError(TransactionServiceError::OutputManagerError(_)) => Self {
                 code: 206,
                 message: format!("{:?}", w),
@@ -229,6 +235,7 @@ impl From<WalletError> for LibWalletError {
                 code: 211,
                 message: format!("{:?}", w),
             },
+
             // Comms Stack errors
             WalletError::MultiaddrError(_) => Self {
                 code: 301,

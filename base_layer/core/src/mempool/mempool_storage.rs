@@ -72,17 +72,19 @@ impl MempoolStorage {
     /// Insert an unconfirmed transaction into the Mempool. The transaction *MUST* have passed through the validation
     /// pipeline already and will thus always be internally consistent by this stage
     pub fn insert(&mut self, tx: Arc<Transaction>) -> Result<TxStorageResponse, MempoolError> {
-        debug!(
-            target: LOG_TARGET,
-            "Inserting tx into mempool: {}",
-            tx.body
-                .kernels()
-                .first()
-                .map(|k| k.excess_sig.get_signature().to_hex())
-                .unwrap_or_else(|| "None?!".into())
-        );
+        let tx_id = tx
+            .body
+            .kernels()
+            .first()
+            .map(|k| k.excess_sig.get_signature().to_hex())
+            .unwrap_or_else(|| "None?!".into());
+        debug!(target: LOG_TARGET, "Inserting tx into mempool: {}", tx_id);
         match self.validator.validate(&tx) {
             Ok(()) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Transaction {} is VALID, inserting in unconfirmed pool", tx_id
+                );
                 let weight = self.get_transaction_weighting(0);
                 self.unconfirmed_pool.insert(tx, None, &weight)?;
                 Ok(TxStorageResponse::UnconfirmedPool)
@@ -209,7 +211,7 @@ impl MempoolStorage {
 
     /// Returns a list of transaction ranked by transaction priority up to a given weight.
     /// Will only return transactions that will fit into the given weight
-    pub fn retrieve(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
+    pub fn retrieve_and_revalidate(&mut self, total_weight: u64) -> Result<Vec<Arc<Transaction>>, MempoolError> {
         let results = self.unconfirmed_pool.fetch_highest_priority_txs(total_weight)?;
         self.insert_txs(results.transactions_to_insert)?;
         Ok(results.retrieved_transactions)

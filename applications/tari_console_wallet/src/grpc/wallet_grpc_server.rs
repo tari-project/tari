@@ -51,6 +51,7 @@ use tari_app_grpc::{
         GetOwnedAssetsResponse,
         GetTransactionInfoRequest,
         GetTransactionInfoResponse,
+        GetUnspentAmountsResponse,
         GetVersionRequest,
         GetVersionResponse,
         ImportUtxosRequest,
@@ -71,7 +72,10 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::{BlockHash, PublicKey, Signature};
+use tari_common_types::{
+    array::copy_into_fixed_array,
+    types::{BlockHash, PublicKey, Signature},
+};
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
@@ -157,6 +161,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
             available_balance: balance.available_balance.0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
             pending_outgoing_balance: balance.pending_outgoing_balance.0,
+        }))
+    }
+
+    async fn get_unspent_amounts(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
+        let mut output_service = self.get_output_manager_service();
+        let unspent_amounts;
+        match output_service.get_unspent_outputs().await {
+            Ok(uo) => unspent_amounts = uo,
+            Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
+        }
+        Ok(Response::new(GetUnspentAmountsResponse {
+            amount: unspent_amounts
+                .into_iter()
+                .map(|o| o.value.as_u64())
+                .filter(|&a| a > 0)
+                .collect(),
         }))
     }
 
@@ -655,12 +678,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect::<Result<_, _>>()
             .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
 
+        let merkle_root = copy_into_fixed_array(&message.merkle_root)
+            .map_err(|_| Status::invalid_argument("Merkle root has an incorrect length"))?;
+
         let (tx_id, transaction) = asset_manager
-            .create_initial_asset_checkpoint(
-                &asset_public_key,
-                message.merkle_root.as_slice(),
-                committee_public_keys.as_slice(),
-            )
+            .create_initial_asset_checkpoint(&asset_public_key, merkle_root, committee_public_keys.as_slice())
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -691,11 +713,14 @@ impl wallet_server::Wallet for WalletGrpcServer {
                 Status::invalid_argument(format!("Next committee did not contain valid pub keys:{}", err))
             })?;
 
+        let merkle_root = copy_into_fixed_array(&message.merkle_root)
+            .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
+
         let (tx_id, transaction) = asset_manager
             .create_follow_on_asset_checkpoint(
                 &asset_public_key,
                 message.unique_id.as_slice(),
-                message.merkle_root.as_slice(),
+                merkle_root,
                 committee_public_keys.as_slice(),
             )
             .await

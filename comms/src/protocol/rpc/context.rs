@@ -58,6 +58,10 @@ impl RpcCommsBackend {
     pub fn peer_manager(&self) -> &PeerManager {
         &self.peer_manager
     }
+
+    pub fn peer_manager_owned(&self) -> Arc<PeerManager> {
+        self.peer_manager.clone()
+    }
 }
 
 #[async_trait]

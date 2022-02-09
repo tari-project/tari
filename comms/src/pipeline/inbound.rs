@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::Display;
+use std::{fmt::Display, time::Instant};
 
 use futures::future::FusedFuture;
 use log::*;
@@ -66,6 +66,7 @@ where
     }
 
     pub async fn run(mut self) {
+        let mut current_id = 0;
         while let Some(item) = self.stream.recv().await {
             // Check if the shutdown signal has been triggered.
             // If there are messages in the stream, drop them. Otherwise the stream is empty,
@@ -90,12 +91,24 @@ where
                     max_available
                 );
             }
+
+            let id = current_id;
+            current_id = (current_id + 1) % u64::MAX;
+
             // Call the service in it's own spawned task
             self.executor
                 .spawn(async move {
+                    let timer = Instant::now();
+                    trace!(target: LOG_TARGET, "Start inbound pipeline {}", id);
                     if let Err(err) = service.oneshot(item).await {
                         warn!(target: LOG_TARGET, "Inbound pipeline returned an error: '{}'", err);
                     }
+                    trace!(
+                        target: LOG_TARGET,
+                        "Finished inbound pipeline {} in {:.2?}",
+                        id,
+                        timer.elapsed()
+                    );
                 })
                 .await;
         }

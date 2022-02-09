@@ -29,10 +29,8 @@ use tokio::{
     io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
     time,
 };
-use tracing;
 
 use crate::{
-    connection_manager::ConnectionDirection,
     message::MessageExt,
     peer_manager::NodeIdentity,
     proto::identity::PeerIdentityMsg,
@@ -43,10 +41,8 @@ const LOG_TARGET: &str = "comms::protocol::identity";
 
 const MAX_IDENTITY_PROTOCOL_MSG_SIZE: u16 = 1024;
 
-#[tracing::instrument(skip(socket, our_supported_protocols))]
 pub async fn identity_exchange<'p, TSocket, P>(
     node_identity: &NodeIdentity,
-    direction: ConnectionDirection,
     our_supported_protocols: P,
     network_info: NodeNetworkInfo,
     socket: &mut TSocket,
@@ -186,7 +182,6 @@ mod test {
     use futures::{future, StreamExt};
 
     use crate::{
-        connection_manager::ConnectionDirection,
         peer_manager::PeerFeatures,
         protocol::{IdentityProtocolError, NodeNetworkInfo},
         runtime,
@@ -211,7 +206,6 @@ mod test {
         let (result1, result2) = future::join(
             super::identity_exchange(
                 &node_identity1,
-                ConnectionDirection::Inbound,
                 &[],
                 NodeNetworkInfo {
                     minor_version: 1,
@@ -221,7 +215,6 @@ mod test {
             ),
             super::identity_exchange(
                 &node_identity2,
-                ConnectionDirection::Outbound,
                 &[],
                 NodeNetworkInfo {
                     minor_version: 2,
@@ -260,7 +253,6 @@ mod test {
         let (result1, result2) = future::join(
             super::identity_exchange(
                 &node_identity1,
-                ConnectionDirection::Inbound,
                 &[],
                 NodeNetworkInfo {
                     major_version: 0,
@@ -270,7 +262,6 @@ mod test {
             ),
             super::identity_exchange(
                 &node_identity2,
-                ConnectionDirection::Outbound,
                 &[],
                 NodeNetworkInfo {
                     major_version: 1,

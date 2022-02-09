@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::models::{HotStuffMessageType, Signature, TreeNodeHash, ViewId};
+use crate::{
+    models::{HotStuffMessageType, Signature, TreeNodeHash, ViewId},
+    storage::chain::DbQc,
+};
 
 #[derive(Debug, Clone)]
 pub struct QuorumCertificate {
@@ -80,5 +83,16 @@ impl QuorumCertificate {
     pub fn matches(&self, message_type: HotStuffMessageType, view_id: ViewId) -> bool {
         // from hotstuf spec
         self.message_type() == message_type && view_id == self.view_number()
+    }
+}
+
+impl From<DbQc> for QuorumCertificate {
+    fn from(rec: DbQc) -> Self {
+        Self {
+            message_type: rec.message_type,
+            node_hash: rec.node_hash,
+            view_number: rec.view_number,
+            signature: rec.signature,
+        }
     }
 }

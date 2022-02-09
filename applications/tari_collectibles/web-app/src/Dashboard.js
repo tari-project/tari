@@ -54,7 +54,7 @@ class DashboardContent extends React.Component {
           name: o.name,
           description: o.description,
           public_key: toHexString(o.unique_id),
-          image_url: o.image_url || "asset-no-img.png",
+          image_url: o.image || "asset-no-img.png",
         })),
         isLoading: false,
       });

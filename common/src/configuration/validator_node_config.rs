@@ -41,6 +41,9 @@ pub struct ValidatorNodeConfig {
     pub base_node_grpc_address: SocketAddr,
     #[serde(default = "default_wallet_grpc_address")]
     pub wallet_grpc_address: SocketAddr,
+    pub scan_for_assets: bool,
+    pub new_asset_scanning_interval: u64,
+    pub assets_allow_list: Option<Vec<String>>,
 }
 
 fn default_asset_config_directory() -> PathBuf {

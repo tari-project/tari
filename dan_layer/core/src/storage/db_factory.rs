@@ -31,14 +31,22 @@ use crate::storage::{
 pub trait DbFactory: Sync + Send + 'static {
     type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type StateDbBackendAdapter: StateDbBackendAdapter;
+
+    fn get_chain_db(
+        &self,
+        asset_public_key: &PublicKey,
+    ) -> Result<Option<ChainDb<Self::ChainDbBackendAdapter>>, StorageError>;
+
     fn get_or_create_chain_db(
         &self,
         asset_public_key: &PublicKey,
     ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError>;
+
     fn get_state_db(
         &self,
         asset_public_key: &PublicKey,
     ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError>;
+
     fn get_or_create_state_db(
         &self,
         asset_public_key: &PublicKey,

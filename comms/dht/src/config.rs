@@ -83,11 +83,14 @@ pub struct DhtConfig {
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
     /// Default: 6 hrs
     pub ban_duration: Duration,
+    /// Length of time to ban a peer for a "short" duration.
+    /// Default: 30 mins
+    pub ban_duration_short: Duration,
     /// This allows the use of test addresses in the network.
     /// Default: false
     pub allow_test_addresses: bool,
-    /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration`)
-    /// Default: 1000 messages
+    /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
+    /// `ban_duration_short`) Default: 100_000 messages
     pub flood_ban_max_msg_count: usize,
     /// The timespan over which to calculate the max message rate.
     /// `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
@@ -151,8 +154,9 @@ impl Default for DhtConfig {
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(6 * 60 * 60),
+            ban_duration_short: Duration::from_secs(60 * 60),
             allow_test_addresses: false,
-            flood_ban_max_msg_count: 10000,
+            flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(2 * 60 * 60),
         }

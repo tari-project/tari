@@ -55,7 +55,7 @@ impl<TMempoolService: MempoolService> TariDanPayloadProvider<TMempoolService> {
 impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDanPayloadProvider<TMempoolService> {
     async fn create_payload(&self) -> Result<TariDanPayload, DigitalAssetError> {
         let instructions = self.mempool.read_block(100).await?;
-        let instruction_set = InstructionSet::from_slice(&instructions);
+        let instruction_set = InstructionSet::from_vec(instructions);
 
         Ok(TariDanPayload::new(instruction_set, None))
     }
@@ -76,13 +76,13 @@ impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDa
         // Reserve all instructions if they succeeded
         for instruction in payload.instructions() {
             self.mempool
-                .reserve_instruction_in_block(instruction.hash(), reservation_key.0.clone())
+                .reserve_instruction_in_block(instruction.hash(), *reservation_key)
                 .await?;
         }
         Ok(())
     }
 
     async fn remove_payload(&mut self, reservation_key: &TreeNodeHash) -> Result<(), DigitalAssetError> {
-        self.mempool.remove_all_in_block(reservation_key.as_bytes()).await
+        self.mempool.remove_all_in_block(reservation_key).await
     }
 }

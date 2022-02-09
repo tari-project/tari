@@ -22,7 +22,7 @@
 
 use crate::models::TreeNodeHash;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DbNode {
     pub hash: TreeNodeHash,
     pub parent: TreeNodeHash,
