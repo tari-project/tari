@@ -37,6 +37,7 @@ pub trait ChainDbBackendAdapter: Send + Sync + Clone {
     type Payload: Payload;
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
+    fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error>;
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
     fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn update_node(
@@ -56,7 +57,9 @@ pub trait ChainDbBackendAdapter: Send + Sync + Clone {
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error>;
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error>;
     fn get_prepare_qc(&self) -> Result<Option<QuorumCertificate>, Self::Error>;
-    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<(Self::Id, DbNode), Self::Error>;
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error>;
+    fn find_node_by_parent_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error>;
+    fn find_all_instructions_by_node(&self, node_id: Self::Id) -> Result<Vec<DbInstruction>, Self::Error>;
     fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn update_locked_qc(&self, locked_qc: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }

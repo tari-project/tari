@@ -201,7 +201,7 @@ where
                         if &n != m_node {
                             unimplemented!("Nodes did not match");
                         }
-                        Some(m_node.clone())
+                        Some(*m_node)
                     } else {
                         Some(n)
                     }
@@ -252,7 +252,7 @@ where
 
             unit_of_work.set_prepare_qc(justify)?;
             self.send_vote_to_leader(
-                justify.node_hash().clone(),
+                *justify.node_hash(),
                 outbound,
                 view_leader,
                 current_view.view_id,
@@ -274,7 +274,7 @@ where
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
-        let mut message = HotStuffMessage::vote_pre_commit(node.clone(), view_number, self.asset_public_key.clone());
+        let mut message = HotStuffMessage::vote_pre_commit(node, view_number, self.asset_public_key.clone());
         message.add_partial_sig(signing_service.sign(&self.node_id, &message.create_signature_challenge())?);
         outbound.send(self.node_id.clone(), view_leader.clone(), message).await
     }

@@ -44,7 +44,7 @@ use crate::{
     peer_manager::PeerFeatures,
     protocol::ProtocolId,
     runtime,
-    test_utils::{node_identity::build_node_identity, test_node::build_peer_manager},
+    test_utils::{build_peer_manager, node_identity::build_node_identity},
     transports::MemoryTransport,
 };
 

@@ -23,7 +23,11 @@
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
 
-use crate::{models::TemplateId, services::infrastructure_services::NodeAddressable, DigitalAssetError};
+use crate::{
+    models::{SideChainBlock, TemplateId, TreeNodeHash},
+    services::infrastructure_services::NodeAddressable,
+    DigitalAssetError,
+};
 
 pub trait ValidatorNodeClientFactory {
     type Addr: NodeAddressable;
@@ -48,4 +52,11 @@ pub trait ValidatorNodeRpcClient {
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+
+    async fn get_sidechain_blocks(
+        &mut self,
+        asset_public_key: &PublicKey,
+        start_hash: TreeNodeHash,
+        end_hash: Option<TreeNodeHash>,
+    ) -> Result<Vec<SideChainBlock>, DigitalAssetError>;
 }

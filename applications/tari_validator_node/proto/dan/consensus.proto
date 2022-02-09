@@ -1,6 +1,8 @@
 syntax = "proto3";
 
-package tari.p2p.dan;
+package tari.dan.consensus;
+
+import "common.proto";
 
 enum HotStuffMessageType {
     HOT_STUFF_MESSAGE_TYPE_UNKNOWN = 0;
@@ -41,22 +43,10 @@ message Signature{
 }
 
 message TariDanPayload {
-    InstructionSet instruction_set = 1;
+    tari.dan.common.InstructionSet instruction_set = 1;
     CheckpointData checkpoint = 2;
 }
 
 message CheckpointData {
     // todo: fill this in
-}
-
-message InstructionSet{
-    repeated Instruction instructions = 1;
-}
-message Instruction {
-    bytes asset_public_key = 1;
-    uint32 template_id = 2;
-    string method = 3;
-    bytes args = 4;
-//    bytes token_id = 5;
-//    bytes signature = 6;
 }

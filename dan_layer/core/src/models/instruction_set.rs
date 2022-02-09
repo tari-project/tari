@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::hash::Hash;
+use std::{hash::Hash, iter::FromIterator};
 
 use tari_crypto::common::Blake256;
 use tari_mmr::MerkleMountainRange;
@@ -46,13 +46,12 @@ pub struct InstructionSet {
 
 impl InstructionSet {
     pub fn empty() -> Self {
-        Self::from_slice(&[])
+        Self::from_vec(vec![])
     }
 
-    pub fn from_slice(instructions: &[Instruction]) -> Self {
-        let ins = Vec::from(instructions);
+    pub fn from_vec(instructions: Vec<Instruction>) -> Self {
         let mut result = Self {
-            instructions: ins,
+            instructions,
             hash: InstructionSetHash(vec![]),
         };
         result.hash = result.calculate_hash();
@@ -63,7 +62,7 @@ impl InstructionSet {
         let mut mmr = MerkleMountainRange::<Blake256, _>::new(Vec::default());
         // assume instructions are sorted
         for instruction in &self.instructions {
-            mmr.push(instruction.calculate_hash()).unwrap();
+            mmr.push(instruction.calculate_hash().to_vec()).unwrap();
         }
 
         InstructionSetHash(mmr.get_merkle_root().unwrap())
@@ -71,6 +70,19 @@ impl InstructionSet {
 
     pub fn instructions(&self) -> &[Instruction] {
         self.instructions.as_slice()
+    }
+}
+
+impl FromIterator<Instruction> for InstructionSet {
+    fn from_iter<T: IntoIterator<Item = Instruction>>(iter: T) -> Self {
+        let instructions = iter.into_iter().collect();
+        Self::from_vec(instructions)
+    }
+}
+
+impl From<Vec<Instruction>> for InstructionSet {
+    fn from(instructions: Vec<Instruction>) -> Self {
+        Self::from_vec(instructions)
     }
 }
 

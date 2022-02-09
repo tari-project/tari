@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
 use tari_core::transactions::transaction::TemplateParameter;
 
 use crate::{
@@ -147,7 +149,7 @@ impl TemplateFactory {
         asset_definition: &AssetDefinition,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        match TemplateId::from(template.template_id) {
+        match template.template_id.try_into()? {
             TemplateId::Tip002 => tip002_template::init(template, asset_definition, state_db)?,
             _ => unimplemented!(),
         }
