@@ -4,7 +4,7 @@ use config::Config;
 use structopt::StructOpt;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
-    exit_codes::ExitCodes,
+    exit_codes::ExitError,
     ConfigBootstrap,
     DatabaseType,
     GlobalConfig,
@@ -16,7 +16,7 @@ pub const LOG_TARGET: &str = "tari::application";
 
 pub fn init_configuration(
     application_type: ApplicationType,
-) -> Result<(ConfigBootstrap, GlobalConfig, Config), ExitCodes> {
+) -> Result<(ConfigBootstrap, GlobalConfig, Config), ExitError> {
     // Parse and validate command-line arguments
     let mut bootstrap = ConfigBootstrap::from_args();
 

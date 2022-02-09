@@ -27,7 +27,7 @@ use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_common::{
     configuration::{bootstrap::prompt, utils::get_local_ip},
-    exit_codes::ExitCodes,
+    exit_codes::{ExitCode, ExitError},
 };
 use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
 use tari_crypto::tari_utilities::hex::Hex;
@@ -48,7 +48,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     public_address: &Option<Multiaddr>,
     create_id: bool,
     peer_features: PeerFeatures,
-) -> Result<Arc<NodeIdentity>, ExitCodes> {
+) -> Result<Arc<NodeIdentity>, ExitError> {
     match load_identity(&identity_file) {
         Ok(id) => match public_address {
             Some(public_address) => {
@@ -69,12 +69,15 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                          identity.",
                         e
                     );
-                    return Err(ExitCodes::ConfigError(format!(
-                        "Node identity information not found. {}. You can update the configuration file to point to a \
-                         valid node identity file, or re-run the node with the --create-id flag to create a new \
-                         identity.",
-                        e
-                    )));
+                    return Err(ExitError::new(
+                        ExitCode::ConfigError,
+                        format!(
+                            "Node identity information not found. {}. You can update the configuration file to point \
+                             to a valid node identity file, or re-run the node with the --create-id flag to create a \
+                             new identity.",
+                            e
+                        ),
+                    ));
                 };
             }
 
@@ -93,10 +96,10 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                 },
                 Err(e) => {
                     error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
-                    Err(ExitCodes::ConfigError(format!(
-                        "Could not create new node id. {:?}.",
-                        e
-                    )))
+                    Err(ExitError::new(
+                        ExitCode::ConfigError,
+                        format!("Could not create new node id. {:?}.", e),
+                    ))
                 },
             }
         },
