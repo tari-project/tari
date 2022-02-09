@@ -6,7 +6,8 @@
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "postbuild": "touch ./dist/.gitkeep || type NUL > ./dist/.gitkeep"
   },
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.36",
