@@ -192,6 +192,10 @@ enum TransactionStatus {
     TRANSACTION_STATUS_NOT_FOUND = 7;
     // The transaction was rejected by the mempool
     TRANSACTION_STATUS_REJECTED = 8;
+    // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
+    TRANSACTION_STATUS_FAUX_UNCONFIRMED = 9;
+    // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
+    TRANSACTION_STATUS_FAUX_CONFIRMED = 10;
 }
 
 message GetCompletedTransactionsRequest { }

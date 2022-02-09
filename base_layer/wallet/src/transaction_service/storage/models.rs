@@ -159,6 +159,7 @@ impl CompletedTransaction {
         timestamp: NaiveDateTime,
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
+        mined_height: Option<u64>,
     ) -> Self {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
@@ -183,7 +184,7 @@ impl CompletedTransaction {
             valid: true,
             transaction_signature,
             confirmations: None,
-            mined_height: None,
+            mined_height,
             mined_in_block: None,
         }
     }

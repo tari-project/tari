@@ -263,14 +263,19 @@ unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction
 const char *completed_transaction_get_message(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the status of a TariCompletedTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int completed_transaction_get_status(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
@@ -341,14 +346,19 @@ const char *pending_outbound_transaction_get_message(struct TariPendingOutboundT
 unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Gets the status of a TariPendingOutboundTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int pending_outbound_transaction_get_status(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingOutboundTactions
@@ -383,14 +393,19 @@ unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInbo
 unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Gets the status of a TariPendingInboundTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed |
+// |   9 | FauxConfirmed   |
 int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingInboundTransaction
@@ -451,6 +466,10 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
+/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be called
+/// when a one-sided transaction is detected as mined AND confirmed.
+/// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This will
+/// be called  when a one-sided transaction is detected as mined but not yet confirmed.
 /// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
 /// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
@@ -515,6 +534,8 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_broadcast)(struct TariCompletedTransaction *),
                                  void (*callback_transaction_mined)(struct TariCompletedTransaction *),
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
+                                 void (*callback_faux_transaction_confirmed)(struct TariCompletedTransaction *),
+                                 void (*callback_faux_transaction_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),

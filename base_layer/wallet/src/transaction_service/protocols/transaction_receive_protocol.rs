@@ -451,6 +451,7 @@ where
                 inbound_tx.timestamp,
                 TransactionDirection::Inbound,
                 None,
+                None,
             );
 
             self.resources

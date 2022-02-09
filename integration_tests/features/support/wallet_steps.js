@@ -2034,7 +2034,9 @@ Then(
                 1 +
                 " has " +
                 transactions[i]["status"] +
-                " and is valid(" +
+                " (need " +
+                transactionStatus +
+                ") and is valid(" +
                 transactions[i]["valid"] +
                 ")"
             );
