@@ -3,12 +3,8 @@ name: Build libwallet
 
 on:
   push:
-    branches:
-      - "libwallet-*"
     tags:
       - "libwallet-*"
-  schedule:
-    - cron: "05 00 * * *"
   workflow_dispatch:
 
 jobs:
