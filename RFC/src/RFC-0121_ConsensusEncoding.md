@@ -181,12 +181,12 @@ The block hash pre-image is constructed by first constructing the merge mining h
 1. `version` - 1 byte
 2. `height` - varint
 3. `prev_hash` - fixed 32-bytes 
-4. `timestamp` - UNIX timestamp converted to a fixed 8-byte array (little endian) 
+4. `timestamp` - varint
 5. `input_mr` - fixed 32-bytes
-6. `output_mmr_size` - `u64` converted to a fixed 8-byte array (little endian)
+6. `output_mmr_size` - varint
 7. `witness_mr` - fixed 32-bytes
 8. `kernel_mr` - fixed 32-bytes
-9. `kernel_mmr_size` - `u64` converted to a fixed 8-byte array (little endian)
+9. `kernel_mmr_size` - `varint
 10. `total_kernel_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
 11. `total_script_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
 
