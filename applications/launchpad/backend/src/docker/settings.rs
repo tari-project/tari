@@ -21,11 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{collections::HashMap, ffi::OsStr, path, path::PathBuf, time::Duration};
+use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
@@ -191,6 +190,10 @@ impl LaunchpadConfig {
                 self.data_directory
                     .iter()
                     .filter_map(|part| {
+                        use std::{ffi::OsStr, path};
+
+                        use regex::Regex;
+
                         dbg!(part);
                         if part == OsStr::new(&path::MAIN_SEPARATOR.to_string()) {
                             None
