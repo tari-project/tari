@@ -23,7 +23,11 @@ use std::{fs, io::Stdout, path::PathBuf};
 
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
-use tari_common::{exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_common::{
+    exit_codes::{ExitCode, ExitError},
+    ConfigBootstrap,
+    GlobalConfig,
+};
 use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
 use tari_wallet::WalletSqlite;
 use tokio::runtime::Handle;
@@ -85,25 +89,26 @@ impl PeerConfig {
     /// 1. Custom Base Node
     /// 2. First configured Base Node Peer
     /// 3. Random configured Peer Seed
-    pub fn get_base_node_peer(&self) -> Result<Peer, ExitCodes> {
+    pub fn get_base_node_peer(&self) -> Result<Peer, ExitError> {
         if let Some(base_node) = self.base_node_custom.clone() {
             Ok(base_node)
         } else if !self.base_node_peers.is_empty() {
             Ok(self
                 .base_node_peers
                 .first()
-                .ok_or_else(|| ExitCodes::ConfigError("Configured base node peer has no address!".to_string()))?
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node peer has no address!"))?
                 .clone())
         } else if !self.peer_seeds.is_empty() {
             // pick a random peer seed
             Ok(self
                 .peer_seeds
                 .choose(&mut OsRng)
-                .ok_or_else(|| ExitCodes::ConfigError("Peer seeds was empty.".to_string()))?
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Peer seeds was empty."))?
                 .clone())
         } else {
-            Err(ExitCodes::ConfigError(
-                "No peer seeds or base node peer defined in config!".to_string(),
+            Err(ExitError::new(
+                ExitCode::ConfigError,
+                "No peer seeds or base node peer defined in config!",
             ))
         }
     }
@@ -129,7 +134,7 @@ impl PeerConfig {
     }
 }
 
-pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: String) -> Result<(), ExitCodes> {
+pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: String) -> Result<(), ExitError> {
     let WalletModeConfig {
         global_config, handle, ..
     } = config.clone();
@@ -151,16 +156,16 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
     wallet_or_exit(config, wallet)
 }
 
-pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf) -> Result<(), ExitCodes> {
+pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf) -> Result<(), ExitError> {
     let WalletModeConfig {
         global_config, handle, ..
     } = config.clone();
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
-    let script = fs::read_to_string(path).map_err(|e| ExitCodes::InputError(e.to_string()))?;
+    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
 
     if script.is_empty() {
-        return Err(ExitCodes::InputError("Input file is empty!".to_string()));
+        return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
     };
 
     let mut commands = Vec::new();
@@ -192,7 +197,7 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
 }
 
 /// Prompts the user to continue to the wallet, or exit.
-fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     if config.bootstrap.command_mode_auto_exit {
         info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
         return Ok(());
@@ -207,7 +212,7 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
         let mut buf = String::new();
         std::io::stdin()
             .read_line(&mut buf)
-            .map_err(|e| ExitCodes::IOError(e.to_string()))?;
+            .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
 
         match buf.as_str().trim() {
             "quit" | "q" | "exit" => {
@@ -222,7 +227,7 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
     }
 }
 
-pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<(), ExitCodes> {
+pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<(), ExitError> {
     let WalletModeConfig {
         base_node_config,
         mut base_node_selected,
@@ -279,7 +284,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
     Ok(())
 }
 
-pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     let WalletModeConfig {
         base_node_config,
         handle,
@@ -318,11 +323,14 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
     match wallet_mode {
         WalletMode::RecoveryDaemon => grpc_mode(config, wallet),
         WalletMode::RecoveryTui => tui_mode(config, wallet),
-        _ => Err(ExitCodes::RecoveryError("Unsupported post recovery mode".to_string())),
+        _ => Err(ExitError::new(
+            ExitCode::RecoveryError,
+            "Unsupported post recovery mode",
+        )),
     }
 }
 
-pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitCodes> {
+pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     let WalletModeConfig {
         global_config, handle, ..
     } = config;
@@ -331,7 +339,7 @@ pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), E
         let grpc = WalletGrpcServer::new(wallet);
         handle
             .block_on(run_grpc(grpc, grpc_address))
-            .map_err(ExitCodes::GrpcError)?;
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("No grpc address specified");
     }

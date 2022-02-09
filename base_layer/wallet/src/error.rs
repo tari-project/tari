@@ -23,7 +23,7 @@
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
-use tari_common::exit_codes::ExitCodes;
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -105,11 +105,11 @@ pub enum WalletError {
 
 pub const LOG_TARGET: &str = "tari::application";
 
-impl From<WalletError> for ExitCodes {
+impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
         // TODO: Log that outside
         log::error!(target: LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
+        Self::new(ExitCode::WalletError, err)
     }
 }
 
@@ -175,13 +175,12 @@ pub enum WalletStorageError {
     RecoverySeedError(String),
 }
 
-impl From<WalletStorageError> for ExitCodes {
+impl From<WalletStorageError> for ExitError {
     fn from(err: WalletStorageError) -> Self {
         use WalletStorageError::*;
         match err {
-            NoPasswordError => ExitCodes::NoPassword,
-            InvalidPassphrase => ExitCodes::IncorrectPassword,
-            e => ExitCodes::WalletError(e.to_string()),
+            NoPasswordError | InvalidPassphrase => ExitCode::IncorrectOrEmptyPassword.into(),
+            e => ExitError::new(ExitCode::WalletError, e),
         }
     }
 }
