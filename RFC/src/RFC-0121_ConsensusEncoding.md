@@ -178,8 +178,8 @@ produce the same encoding as non-null `dob`.
 
 The block hash pre-image is constructed by first constructing the merge mining hash. Each encoding is concatenated in order as follows:
 
-1. `version` - `u16` converted to a fixed 2-byte array (little endian) 
-2. `height` - `u64` converted to a fixed 8-byte array (little endian) 
+1. `version` - 1 byte
+2. `height` - varint
 3. `prev_hash` - fixed 32-bytes 
 4. `timestamp` - UNIX timestamp converted to a fixed 8-byte array (little endian) 
 5. `input_mr` - fixed 32-bytes
@@ -258,10 +258,8 @@ pub struct TransactionOutput {
 }
 ```
 
-The canonical output hash commits to the common data between an output and the input spending that output
-i.e. `output_hash = Hash(version | features | commitment | script | covenant)`. 
-
-This hash is appended to the output Merkle tree.
+The canonical output hash is appended to the output Merkle tree and commits to the common data between an output 
+and the input spending that output i.e. `output_hash = Hash(version | features | commitment | script | covenant)`. 
 
 The encoding is defined as follows:
 
