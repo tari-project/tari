@@ -147,7 +147,6 @@ where B: BlockchainBackend + 'static
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
                     auto_ping_interval: Some(Duration::from_secs(config.auto_ping_interval)),
-                    refresh_neighbours_interval: Duration::from_secs(3 * 60),
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
