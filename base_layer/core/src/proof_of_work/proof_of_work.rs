@@ -106,7 +106,7 @@ impl ConsensusEncoding for ProofOfWork {
 
 impl ConsensusEncodingSized for ProofOfWork {
     fn consensus_encode_exact_size(&self) -> usize {
-        self.pow_algo.as_u64().required_space() + self.pow_data.consensus_encode_exact_size()
+        1 + self.pow_data.consensus_encode_exact_size()
     }
 }
 
