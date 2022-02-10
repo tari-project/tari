@@ -20,13 +20,20 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    fmt::{Display, Error, Formatter},
+    io::{self, Write},
+};
 
 use bytes::BufMut;
+use integer_encoding::{VarInt, VarIntWriter};
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::proof_of_work::PowAlgorithm;
+use crate::{
+    consensus::{ConsensusEncoding, ConsensusEncodingSized},
+    proof_of_work::PowAlgorithm,
+};
 
 pub trait AchievedDifficulty {}
 
@@ -86,6 +93,20 @@ impl Display for ProofOfWork {
         writeln!(fmt, "Mining algorithm: {}", self.pow_algo)?;
         writeln!(fmt, "Pow data: {}", self.pow_data.to_hex())?;
         Ok(())
+    }
+}
+
+impl ConsensusEncoding for ProofOfWork {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = writer.write_varint(self.pow_algo.as_u64())?;
+        written += self.pow_data.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusEncodingSized for ProofOfWork {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.pow_algo.as_u64().required_space() + self.pow_data.consensus_encode_exact_size()
     }
 }
 
