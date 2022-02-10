@@ -98,7 +98,8 @@ impl Display for ProofOfWork {
 
 impl ConsensusEncoding for ProofOfWork {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        let mut written = writer.write_varint(self.pow_algo.as_u64())?;
+        writer.write_all(&[self.pow_algo as u8])?;
+        let mut written = 1;
         written += self.pow_data.consensus_encode(writer)?;
         Ok(written)
     }
