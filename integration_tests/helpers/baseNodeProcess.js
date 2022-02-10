@@ -100,7 +100,7 @@ class BaseNodeProcess {
   }
 
   getGrpcAddress() {
-    const address = "127.0.0.1:" + this.grpcPort;
+    const address = "/ip4/127.0.0.1/tcp/" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
     return address;
   }

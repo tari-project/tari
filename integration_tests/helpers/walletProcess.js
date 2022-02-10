@@ -38,7 +38,7 @@ class WalletProcess {
   }
 
   getGrpcAddress() {
-    return "127.0.0.1:" + this.grpcPort;
+    return "/ip4/127.0.0.1/tcp/" + this.grpcPort;
   }
 
   async connectClient() {
