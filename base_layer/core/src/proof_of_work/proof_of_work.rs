@@ -26,7 +26,6 @@ use std::{
 };
 
 use bytes::BufMut;
-use integer_encoding::{VarInt, VarIntWriter};
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::Hex;
 
