@@ -152,6 +152,7 @@ impl Parser {
             return;
         }
 
+        let args = Args::split(command_str);
         let mut args = command_str.split_whitespace();
         match args.next().unwrap_or("help").parse() {
             Ok(command) => {
@@ -752,5 +753,56 @@ impl Parser {
 
     async fn process_list_reorgs(&self) {
         self.command_handler.lock().await.list_reorgs();
+    }
+}
+
+use std::str::SplitWhitespace;
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[error("{name} {reason}")]
+struct ArgsError {
+    name: &'static str,
+    reason: ArgsReason,
+}
+
+impl ArgsError {
+    pub fn new(name: &'static str, reason: ArgsReason) -> Self {
+        Self { name, reason }
+    }
+}
+
+#[derive(Debug, Error)]
+enum ArgsReason {
+    #[error("argument required")]
+    Required,
+    #[error("argument can't be parsed: {details}")]
+    NotParsed { details: String },
+}
+
+struct Args<'a> {
+    splitted: SplitWhitespace<'a>,
+}
+
+impl<'a> Args<'a> {
+    fn split(s: &'a str) -> Self {
+        Self {
+            splitted: s.split_whitespace(),
+        }
+    }
+
+    fn take_next<T>(&mut self, name: &'static str) -> Result<T, ArgsError>
+    where
+        T: FromStr,
+        T::Err: ToString,
+    {
+        match self.splitted.next().map(T::from_str) {
+            Some(Ok(value)) => Ok(value),
+            Some(Err(err)) => Err(ArgsError::new(name, ArgsReason::NotParsed {
+                details: err.to_string(),
+            })),
+            None => Err(ArgsError::new(name, ArgsReason::Required)),
+        }
     }
 }
