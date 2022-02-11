@@ -31,7 +31,13 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
+        transaction_components::{
+            OutputFeatures,
+            Transaction,
+            TransactionOutput,
+            UnblindedOutput,
+            UnblindedOutputBuilder,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,

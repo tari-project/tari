@@ -30,7 +30,7 @@ use tari_common_types::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::TransactionOutput,
+    transaction_components::TransactionOutput,
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -215,7 +215,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction::OutputFeatures,
+            transaction_components::OutputFeatures,
             transaction_protocol::{
                 build_challenge,
                 sender::{SingleRoundSenderData, TransactionSenderMessage},

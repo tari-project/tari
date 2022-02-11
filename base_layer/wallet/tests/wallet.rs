@@ -62,7 +62,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams},
-        transaction::OutputFeatures,
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
 };

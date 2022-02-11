@@ -39,7 +39,7 @@ use crate::{
         encoder::CovenentWriteExt,
         error::CovenantError,
     },
-    transactions::transaction::{TransactionInput, TransactionOutput},
+    transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,7 +330,7 @@ mod test {
     use super::*;
     use crate::{
         covenants::test::create_outputs,
-        transactions::{test_helpers::UtxoTestParams, transaction::OutputFeatures},
+        transactions::{test_helpers::UtxoTestParams, transaction_components::OutputFeatures},
     };
 
     #[test]

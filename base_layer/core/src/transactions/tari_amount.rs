@@ -146,8 +146,7 @@ impl std::str::FromStr for MicroTari {
         if is_micro_tari {
             processed
                 .parse::<u64>()
-                // TODO: Why we compare it with `0` here? It's unsigned.
-                .map(|v| MicroTari::from(v.max(0)))
+                .map(MicroTari::from)
                 .map_err(|e| MicroTariError::ParseError(e.to_string()))
         } else {
             processed
@@ -157,7 +156,6 @@ impl std::str::FromStr for MicroTari {
                     if v.is_sign_negative() {
                         Err(MicroTariError::ParseError("value cannot be negative".to_string()))
                     } else {
-                        // TODO: Check. It can't be `NaN` anymore. Still we need `.max(0.0)` check?
                         Tari::from(v).try_into().map_err(MicroTariError::from)
                     }
                 })?
@@ -262,7 +260,7 @@ impl Display for Tari {
 
 pub type TariConversionError = DecimalConvertError;
 
-// TODO: Remove `f64` completely! Using it is the bad idea in general.
+// TODO: Remove `f64` completely! Using it is the bad idea in general. #LOGGED
 impl TryFrom<f64> for Tari {
     type Error = TariConversionError;
 

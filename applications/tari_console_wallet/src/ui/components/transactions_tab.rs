@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local};
+use log::*;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
 use tokio::runtime::Handle;
 use tui::{
@@ -18,6 +19,8 @@ use crate::ui::{
     widgets::{draw_dialog, MultiColumnList, WindowedListState},
     MAX_WIDTH,
 };
+
+const LOG_TARGET: &str = "wallet::console_wallet::transaction_tab";
 
 pub struct TransactionsTab {
     balance: Balance,
@@ -571,8 +574,9 @@ impl<B: Backend> Component<B> for TransactionsTab {
             },
             // Rebroadcast
             'r' => {
-                // TODO: use this result
-                let _res = Handle::current().block_on(app_state.rebroadcast_all());
+                if let Err(e) = Handle::current().block_on(app_state.rebroadcast_all()) {
+                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
+                }
             },
             'a' => app_state.toggle_abandoned_coinbase_filter(),
             '\n' => match self.selected_tx_list {

@@ -27,7 +27,7 @@ use tari_common_types::types::{Commitment, Signature};
 
 use crate::transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionError, TransactionKernel},
+    transaction_components::{KernelFeatures, TransactionError, TransactionKernel},
 };
 
 /// A version of Transaction kernel with optional fields. This struct is only used in constructing transaction kernels

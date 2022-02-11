@@ -44,7 +44,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_components::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -335,7 +335,7 @@ where
                 },
                 //Incoming request
                 Some(request_context) = request_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only
+                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
                     let start = Instant::now();
                     let (request, reply_tx) = request_context.split();
                     let event = format!("Handling Service API Request ({})", request);
@@ -358,7 +358,7 @@ where
                 },
                 // Incoming Transaction messages from the Comms layer
                 Some(msg) = transaction_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only
+                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Message, Trace: {}", msg.dht_header.message_tag);
@@ -387,7 +387,7 @@ where
                 },
                  // Incoming Transaction Reply messages from the Comms layer
                 Some(msg) = transaction_reply_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only
+                    // TODO: Remove time measurements; this is to aid in system testing only  #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Reply Message, Trace: {}", msg.dht_header.message_tag);
@@ -417,7 +417,7 @@ where
                 },
                // Incoming Finalized Transaction messages from the Comms layer
                 Some(msg) = transaction_finalized_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only
+                    // TODO: Remove time measurements; this is to aid in system testing only  #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET,
@@ -454,7 +454,7 @@ where
                 },
                 // Incoming messages from the Comms layer
                 Some(msg) = base_node_response_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only
+                    // TODO: Remove time measurements; this is to aid in system testing only  #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
@@ -472,7 +472,7 @@ where
                 }
                 // Incoming messages from the Comms layer
                 Some(msg) = transaction_cancelled_stream.next() => {
-                    // TODO: Remove time measurements; this is to aid in system testing only
+                    // TODO: Remove time measurements; this is to aid in system testing only #LOGGED
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Transaction Cancelled message, Trace: {}", msg.dht_header.message_tag);
@@ -949,8 +949,6 @@ where
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
-        // TODO: then come back and use it here.
         let spend_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )
@@ -1115,8 +1113,6 @@ where
         let sender_offset_private_key = stp
             .get_recipient_sender_offset_private_key(0)
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
-        // TODO: Add a standardized Diffie-Hellman method to the tari_crypto library that will return a private key,
-        // TODO: then come back and use it here.
         let spend_key = PrivateKey::from_bytes(
             CommsPublicKey::shared_secret(&sender_offset_private_key.clone(), &dest_pubkey.clone()).as_bytes(),
         )

@@ -47,7 +47,7 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari, T},
         test_helpers::{schema_to_transaction, spend_utxos},
-        transaction::{OutputFeatures, OutputFlags},
+        transaction_components::{OutputFeatures, OutputFlags},
         CryptoFactories,
     },
     tx,

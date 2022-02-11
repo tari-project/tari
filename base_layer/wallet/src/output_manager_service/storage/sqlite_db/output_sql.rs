@@ -33,7 +33,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -451,7 +451,6 @@ impl OutputSql {
         Ok(())
     }
 
-    // TODO: This method needs to be checked for concurrency
     pub fn update(
         &self,
         updated_output: UpdateOutput,

@@ -122,7 +122,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
 };
 use tari_crypto::{
     inputs,
@@ -184,10 +184,10 @@ const LOG_TARGET: &str = "wallet_ffi";
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
-pub type TariOutputFeatures = tari_core::transactions::transaction::OutputFeatures;
+pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
 pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
-pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 
 pub struct TariContacts(Vec<TariContact>);
@@ -3025,7 +3025,7 @@ pub unsafe extern "C" fn comms_config_create(
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                        //       docstring for more info.
+                        //       docstring for more info. #LOGGED
                         allow_test_addresses: true,
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,

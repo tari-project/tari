@@ -43,8 +43,13 @@ use crate::{
     consensus::ConsensusEncoding,
     covenants::Covenant,
     transactions::{
-        transaction,
-        transaction::{transaction_output::TransactionOutput, OutputFeatures, TransactionError, UnblindedOutput},
+        transaction_components,
+        transaction_components::{
+            transaction_output::TransactionOutput,
+            OutputFeatures,
+            TransactionError,
+            UnblindedOutput,
+        },
     },
 };
 
@@ -307,7 +312,7 @@ impl TransactionInput {
                 ref features,
                 ref covenant,
                 ..
-            } => transaction::hash_output(version, features, commitment, script, covenant).to_vec(),
+            } => transaction_components::hash_output(version, features, commitment, script, covenant).to_vec(),
         }
     }
 

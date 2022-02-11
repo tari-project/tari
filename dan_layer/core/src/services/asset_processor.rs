@@ -22,7 +22,7 @@
 
 use std::convert::TryInto;
 
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 
 use crate::{
     digital_assets_error::DigitalAssetError,

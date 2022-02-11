@@ -59,8 +59,8 @@ use crate::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction,
-        transaction::{
+        transaction_components,
+        transaction_components::{
             full_rewind_result::FullRewindResult,
             rewind_result::RewindResult,
             OutputFeatures,
@@ -365,7 +365,7 @@ impl TransactionOutput {
 /// Implement the canonical hashing function for TransactionOutput for use in ordering.
 impl Hashable for TransactionOutput {
     fn hash(&self) -> Vec<u8> {
-        transaction::hash_output(
+        transaction_components::hash_output(
             self.version,
             &self.features,
             &self.commitment,
