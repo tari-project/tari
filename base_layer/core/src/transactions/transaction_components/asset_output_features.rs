@@ -30,7 +30,7 @@ use tari_common_types::types::PublicKey;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec},
-    transactions::transaction::TemplateParameter,
+    transactions::transaction_components::TemplateParameter,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]

@@ -63,7 +63,7 @@ use tari_core::{
             TransactionOutput as TransactionOutputProto,
         },
     },
-    transactions::transaction::{Transaction, TransactionOutput},
+    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::Hashable;
 use tokio::{sync::mpsc, time::sleep};
@@ -558,9 +558,6 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         &self,
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus> {
-        // TODO: delay_lock is blocking any other RPC method from being called (as well as blocking an async task)
-        //       until this method returns.
-        //       Although this is sort of fine in tests it is probably unintentional
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             sleep(delay).await;
@@ -841,7 +838,7 @@ mod test {
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         proto::base_node::{ChainMetadata, TipInfoResponse},
-        transactions::transaction::Transaction,
+        transactions::transaction_components::Transaction,
     };
     use tokio::time::Duration;
 

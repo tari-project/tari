@@ -30,7 +30,7 @@ use tari_common_types::{
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{Transaction, TransactionOutput},
+    transaction_components::{Transaction, TransactionOutput},
 };
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -225,7 +225,6 @@ pub enum TransactionEvent {
         is_valid: bool,
     },
     TransactionMinedRequestTimedOut(TxId),
-    // TODO: Split into normal transaction mined and coinbase transaction mined
     TransactionMinedUnconfirmed {
         tx_id: TxId,
         num_confirmations: u64,

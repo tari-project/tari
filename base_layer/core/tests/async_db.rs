@@ -36,7 +36,7 @@ use tari_core::{
     transactions::{
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction::{TransactionOutput, UnblindedOutput},
+        transaction_components::{TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,

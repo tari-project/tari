@@ -76,7 +76,6 @@ pub fn into_body_from_response(resp: Response<json::Value>) -> Response<Body> {
 
 /// Reads the `Body` until there is no more to read
 pub async fn read_body_until_end(body: &mut Body) -> Result<BytesMut, MmProxyError> {
-    // TODO: Perhaps there is a more efficient way to do this
     let mut bytes = BytesMut::new();
     while let Some(data) = body.next().await {
         let data = data?;

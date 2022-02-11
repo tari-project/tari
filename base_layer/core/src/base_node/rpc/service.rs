@@ -60,7 +60,7 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
@@ -432,7 +432,6 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
         for position in message.mmr_positions {
             if position > u32::MAX as u64 {
-                // TODO: in future, bitmap may support higher than u32
                 return Err(RpcStatus::bad_request("position must fit into a u32"));
             }
             let position = position as u32;

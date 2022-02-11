@@ -24,7 +24,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 use crate::{

@@ -36,7 +36,7 @@ use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
     proto::base_node::{ChainMetadata, TipInfoResponse},
-    transactions::{tari_amount::MicroTari, transaction::UnblindedOutput, CryptoFactories},
+    transactions::{tari_amount::MicroTari, transaction_components::UnblindedOutput, CryptoFactories},
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;

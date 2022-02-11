@@ -26,7 +26,10 @@ use serde_json::Error as SerdeJsonError;
 use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{
+    transaction_components::TransactionError,
+    transaction_protocol::TransactionProtocolError,
+};
 use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -225,7 +228,7 @@ pub enum TransactionStorageError {
 /// include the ID of the protocol
 #[derive(Debug)]
 pub struct TransactionServiceProtocolError {
-    // TODO: Replace with T or something to account for OperationId or TxId
+    // TODO: Replace with T or something to account for OperationId or TxId #LOGGED
     pub id: u64,
     pub error: TransactionServiceError,
 }

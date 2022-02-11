@@ -534,7 +534,7 @@ pub async fn start_wallet(
     base_node: &Peer,
     wallet_mode: &WalletMode,
 ) -> Result<(), ExitError> {
-    // TODO gRPC interfaces for setting base node
+    // TODO gRPC interfaces for setting base node #LOGGED
     debug!(target: LOG_TARGET, "Setting base node peer");
 
     let net_address = base_node

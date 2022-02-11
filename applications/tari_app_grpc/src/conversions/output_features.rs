@@ -26,7 +26,7 @@ use tari_common_types::{
     array::copy_into_fixed_array,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{
+use tari_core::transactions::transaction_components::{
     AssetOutputFeatures,
     MintNonFungibleFeatures,
     OutputFeatures,

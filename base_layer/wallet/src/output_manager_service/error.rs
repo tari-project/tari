@@ -25,7 +25,7 @@ use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction::TransactionError,
+    transaction_components::TransactionError,
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };

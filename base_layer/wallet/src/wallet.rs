@@ -43,7 +43,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction_components::{OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };

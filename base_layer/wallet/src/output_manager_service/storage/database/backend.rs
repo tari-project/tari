@@ -3,7 +3,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
+use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,

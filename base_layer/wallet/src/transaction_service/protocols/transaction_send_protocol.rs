@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::KernelFeatures,
+        transaction_components::KernelFeatures,
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -262,7 +262,6 @@ where
                 tx_id,
                 self.dest_pubkey.clone(),
                 self.amount,
-                // TODO: put value in here
                 fee,
                 sender_protocol.clone(),
                 TransactionStatus::Pending,

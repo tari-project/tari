@@ -133,8 +133,7 @@ impl DedupCacheDatabase {
                             dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
                         ))
                         .execute(&conn)?;
-                    // TODO: Diesel support for RETURNING statements would remove this query, but is not
-                    // TODO: available for Diesel + SQLite yet
+
                     let hits = dedup_cache::table
                         .select(dedup_cache::number_of_hits)
                         .filter(dedup_cache::body_hash.eq(&body_hash))

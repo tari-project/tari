@@ -30,7 +30,6 @@
 //! of Callbacks that the client must implement and provide to the Wallet module to receive asynchronous replies and
 //! updates.
 
-// TODO: Improve documentation
 #ifndef wallet_ffi_h
 #define wallet_ffi_h
 

@@ -39,7 +39,7 @@ use crate::{
         NetworkConsensus,
     },
     proof_of_work::DifficultyAdjustmentError,
-    transactions::{tari_amount::MicroTari, transaction::TransactionKernel},
+    transactions::{tari_amount::MicroTari, transaction_components::TransactionKernel},
 };
 
 #[derive(Debug, Error)]

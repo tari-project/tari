@@ -35,7 +35,7 @@ use crate::{
         Mempool,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
