@@ -11,7 +11,7 @@ multiaddr = { version = "0.13.0" }
 
 # NB: make sure this crate is not included in any other crate used by wallet_ffi
 [target.'cfg(unix)'.dependencies]
-tari_shutdown = { version = "^0.27", path = "../shutdown"}
+tari_shutdown = { version = "^0.28", path = "../shutdown"}
 libtor = { version = "46.9.0", optional = true }
 rand = "0.8"
 tempfile = "3.1.0"

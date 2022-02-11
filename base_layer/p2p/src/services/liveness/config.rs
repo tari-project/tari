@@ -29,10 +29,6 @@ use tari_comms::peer_manager::NodeId;
 pub struct LivenessConfig {
     /// The interval to send Ping messages, or None to disable periodic pinging (default: None (disabled))
     pub auto_ping_interval: Option<Duration>,
-    /// The length of time between querying peer manager for closest neighbours. (default: 2 minutes)
-    pub refresh_neighbours_interval: Duration,
-    /// The length of time between querying peer manager for random neighbours. (default: 2 hours)
-    pub refresh_random_pool_interval: Duration,
     /// Number of peers to ping per round, excluding monitored peers (Default: 8)
     pub num_peers_per_round: usize,
     /// Peers to include in every auto ping round (Default: <empty>)
@@ -45,8 +41,6 @@ impl Default for LivenessConfig {
     fn default() -> Self {
         Self {
             auto_ping_interval: None,
-            refresh_neighbours_interval: Duration::from_secs(2 * 60),
-            refresh_random_pool_interval: Duration::from_secs(2 * 60 * 60),
             num_peers_per_round: 8,
             monitored_peers: Default::default(),
             max_allowed_ping_failures: 2,
