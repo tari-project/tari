@@ -2995,53 +2995,57 @@ pub unsafe extern "C" fn comms_config_create(
     let selected_network = Network::from_str(&network_str);
 
     match selected_network {
-        Ok(selected_network) => match public_address {
-            Ok(public_address) => {
-                let node_identity = NodeIdentity::new(
-                    CommsSecretKey::default(),
-                    public_address,
-                    PeerFeatures::COMMUNICATION_CLIENT,
-                );
+        Ok(selected_network) => {
+            match public_address {
+                Ok(public_address) => {
+                    let node_identity = NodeIdentity::new(
+                        CommsSecretKey::default(),
+                        public_address,
+                        PeerFeatures::COMMUNICATION_CLIENT,
+                    );
 
-                let config = TariCommsConfig {
-                    network: selected_network,
-                    node_identity: Arc::new(node_identity),
-                    transport_type: (*transport_type).clone(),
-                    auxilary_tcp_listener_address: None,
-                    datastore_path,
-                    peer_database_name: database_name_string,
-                    max_concurrent_inbound_tasks: 25,
-                    max_concurrent_outbound_tasks: 50,
-                    outbound_buffer_size: 50,
-                    dht: DhtConfig {
-                        discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                        database_url: DbConnectionUrl::File(dht_database_path),
-                        auto_join: true,
-                        saf_config: SafConfig {
-                            msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                    let config = TariCommsConfig {
+                        network: selected_network,
+                        node_identity: Arc::new(node_identity),
+                        transport_type: (*transport_type).clone(),
+                        auxilary_tcp_listener_address: None,
+                        datastore_path,
+                        peer_database_name: database_name_string,
+                        max_concurrent_inbound_tasks: 25,
+                        max_concurrent_outbound_tasks: 50,
+                        outbound_buffer_size: 50,
+                        dht: DhtConfig {
+                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                            database_url: DbConnectionUrl::File(dht_database_path),
+                            auto_join: true,
+                            saf_config: SafConfig {
+                                msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                ..Default::default()
+                            },
                             ..Default::default()
                         },
-                        ..Default::default()
-                    },
-                    allow_test_addresses: false,
-                    listener_liveness_allowlist_cidrs: Vec::new(),
-                    listener_liveness_max_sessions: 0,
-                    user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                    dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER
-                        .parse()
-                        .expect("Default dns name server constant should always be correct"),
-                    peer_seeds: Default::default(),
-                    dns_seeds: Default::default(),
-                    dns_seeds_use_dnssec: true,
-                };
+                        // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
+                        //       docstring for more info. #LOGGED
+                        allow_test_addresses: true,
+                        listener_liveness_allowlist_cidrs: Vec::new(),
+                        listener_liveness_max_sessions: 0,
+                        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+                        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER
+                            .parse()
+                            .expect("Default dns name server constant should always be correct"),
+                        peer_seeds: Default::default(),
+                        dns_seeds: Default::default(),
+                        dns_seeds_use_dnssec: true,
+                    };
 
-                Box::into_raw(Box::new(config))
-            },
-            Err(e) => {
-                error = LibWalletError::from(e).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                ptr::null_mut()
-            },
+                    Box::into_raw(Box::new(config))
+                },
+                Err(e) => {
+                    error = LibWalletError::from(e).code;
+                    ptr::swap(error_out, &mut error as *mut c_int);
+                    ptr::null_mut()
+                },
+            }
         },
         Err(_) => {
             error = LibWalletError::from(InterfaceError::NetworkError(network_str)).code;
