@@ -22,7 +22,7 @@
 
 //! A trait to allow abstraction from a specific base layer output
 use tari_common_types::types::PublicKey;
-use tari_core::transactions::transaction::OutputFeatures;
+use tari_core::transactions::transaction_components::OutputFeatures;
 
 pub struct BaseLayerOutput {
     pub features: OutputFeatures,

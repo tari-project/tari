@@ -35,7 +35,7 @@ use tari_utilities::ByteArray;
 use super::OutputFeaturesVersion;
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
-    transactions::transaction::{
+    transactions::transaction_components::{
         AssetOutputFeatures,
         MintNonFungibleFeatures,
         OutputFlags,

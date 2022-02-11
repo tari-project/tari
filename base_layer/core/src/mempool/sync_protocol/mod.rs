@@ -100,7 +100,7 @@ use tokio::{
 use crate::{
     mempool::{metrics, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 #[cfg(test)]

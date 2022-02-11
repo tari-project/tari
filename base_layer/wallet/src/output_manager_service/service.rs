@@ -39,7 +39,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -677,7 +677,7 @@ where
                 spending_key.clone(),
                 single_round_sender_data.features.clone(),
                 single_round_sender_data.script.clone(),
-                // TODO: The input data should be variable; this will only work for a Nop script
+                // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
                 single_round_sender_data.sender_offset_public_key.clone(),
@@ -811,7 +811,7 @@ where
             )
             .await?;
 
-        // TODO: improve this logic
+        // TODO: improve this logic #LOGGED
         let output_features = match unique_id {
             Some(ref _unique_id) => match input_selection
                 .utxos
@@ -1999,7 +1999,6 @@ where
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-/// TODO Investigate and implement more optimal strategies
 #[derive(Debug, PartialEq)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit

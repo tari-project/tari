@@ -41,7 +41,7 @@ mod test {
     use crate::{
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::transaction::OutputFlags,
+        transactions::transaction_components::OutputFlags,
     };
 
     #[test]

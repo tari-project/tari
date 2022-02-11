@@ -36,7 +36,7 @@ use tari_common_types::{
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+use tari_core::transactions::{tari_amount::MicroTari, transaction_components::Transaction};
 
 use crate::transaction_service::{
     error::TransactionStorageError,
@@ -607,7 +607,6 @@ where T: TransactionBackend + 'static
         self.get_completed_transactions_by_cancelled(true).await
     }
 
-    // TODO: all the single getters should use an Option rather than an error to indicate not found.
     pub async fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
         let key = DbKey::AnyTransaction(tx_id);

@@ -19,7 +19,7 @@ use tari_core::{
         tari_amount::{MicroTari, T},
         test_helpers,
         test_helpers::generate_keys,
-        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        transaction_components::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
 };

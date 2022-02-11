@@ -248,10 +248,7 @@ impl AppState {
     // Return alias or pub key if the contact is not in the list.
     pub fn get_alias(&self, pub_key: &RistrettoPublicKey) -> String {
         let pub_key_hex = format!("{}", pub_key);
-        // TODO: We can uncomment this to indicated unknown origin, otherwise there is our pub key.
-        // if self.get_identity().public_key == pub_key_hex {
-        //     return "Unknown".to_string();
-        // }
+
         match self
             .cached_data
             .contacts
@@ -533,7 +530,7 @@ impl AppState {
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
         use Network::*;
-        // TODO: TBD
+        // TODO: TBD #LOGGED
         match self.node_config.network {
             MainNet | LocalNet | Igor | Dibbler => MicroTari(5),
             Ridcully | Stibbons | Weatherwax => MicroTari(25),

@@ -32,7 +32,7 @@ use crate::base_node_service::{
     service::BaseNodeState,
 };
 
-/// TODO Move this into the test support utilities when we remove the Test Harness feature from this crate
+/// TODO Move this into the test support utilities when we remove the Test Harness feature from this crate #LOGGED
 pub struct MockBaseNodeService {
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
     pub base_node_peer: Option<Peer>,

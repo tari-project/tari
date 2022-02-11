@@ -47,7 +47,7 @@ use crate::{
         MempoolResponse,
     },
     proto,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::mempool::service::service";

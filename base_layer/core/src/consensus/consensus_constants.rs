@@ -31,7 +31,7 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
-        transaction::OutputFeatures,
+        transaction_components::OutputFeatures,
         weight::TransactionWeight,
     },
 };

@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 
 use crate::{
     digital_assets_error::DigitalAssetError,

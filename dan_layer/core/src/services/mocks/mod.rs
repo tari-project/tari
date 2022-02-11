@@ -28,7 +28,7 @@ use std::{
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 
 use super::CommitteeManager;
 use crate::{

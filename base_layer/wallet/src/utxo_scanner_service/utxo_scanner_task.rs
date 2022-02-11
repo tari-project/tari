@@ -39,7 +39,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{TransactionOutput, UnblindedOutput},
+        transaction_components::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_shutdown::ShutdownSignal;

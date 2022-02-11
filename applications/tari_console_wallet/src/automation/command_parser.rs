@@ -128,8 +128,8 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         CoinSplit => parse_coin_split(args)?,
         DiscoverPeer => parse_public_key(args)?,
         Whois => parse_whois(args)?,
-        ExportUtxos => parse_export_utxos(args)?, // todo: only show X number of utxos
-        ExportSpentUtxos => parse_export_spent_utxos(args)?, // todo: only show X number of utxos
+        ExportUtxos => parse_export_utxos(args)?,
+        ExportSpentUtxos => parse_export_spent_utxos(args)?,
         CountUtxos => Vec::new(),
         SetBaseNode => parse_public_key_and_address(args)?,
         SetCustomBaseNode => parse_public_key_and_address(args)?,

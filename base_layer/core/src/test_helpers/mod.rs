@@ -37,7 +37,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        transaction::{Transaction, UnblindedOutput},
+        transaction_components::{Transaction, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },

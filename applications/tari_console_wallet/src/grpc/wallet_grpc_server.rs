@@ -79,7 +79,7 @@ use tari_common_types::{
 use tari_comms::{types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
+    transaction_components::{OutputFeatures, UnblindedOutput},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
 use tari_utilities::{hex::Hex, ByteArray};
@@ -739,8 +739,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        // TODO: Clean up unwrap
-        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice()).unwrap();
+        let asset_public_key =
+            PublicKey::from_bytes(message.asset_public_key.as_slice()).map_err(|e| Status::internal(e.to_string()))?;
         let asset = asset_manager
             .get_owned_asset_by_pub_key(&asset_public_key)
             .await

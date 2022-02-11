@@ -76,7 +76,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::*,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
+        transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,

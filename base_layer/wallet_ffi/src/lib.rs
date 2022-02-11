@@ -122,7 +122,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
 };
 use tari_crypto::{
     inputs,
@@ -184,10 +184,10 @@ const LOG_TARGET: &str = "wallet_ffi";
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
-pub type TariOutputFeatures = tari_core::transactions::transaction::OutputFeatures;
+pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
 pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
-pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 
 pub struct TariContacts(Vec<TariContact>);
@@ -2995,57 +2995,53 @@ pub unsafe extern "C" fn comms_config_create(
     let selected_network = Network::from_str(&network_str);
 
     match selected_network {
-        Ok(selected_network) => {
-            match public_address {
-                Ok(public_address) => {
-                    let node_identity = NodeIdentity::new(
-                        CommsSecretKey::default(),
-                        public_address,
-                        PeerFeatures::COMMUNICATION_CLIENT,
-                    );
+        Ok(selected_network) => match public_address {
+            Ok(public_address) => {
+                let node_identity = NodeIdentity::new(
+                    CommsSecretKey::default(),
+                    public_address,
+                    PeerFeatures::COMMUNICATION_CLIENT,
+                );
 
-                    let config = TariCommsConfig {
-                        network: selected_network,
-                        node_identity: Arc::new(node_identity),
-                        transport_type: (*transport_type).clone(),
-                        auxilary_tcp_listener_address: None,
-                        datastore_path,
-                        peer_database_name: database_name_string,
-                        max_concurrent_inbound_tasks: 25,
-                        max_concurrent_outbound_tasks: 50,
-                        outbound_buffer_size: 50,
-                        dht: DhtConfig {
-                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                            database_url: DbConnectionUrl::File(dht_database_path),
-                            auto_join: true,
-                            saf_config: SafConfig {
-                                msg_validity: Duration::from_secs(saf_message_duration_in_secs),
-                                ..Default::default()
-                            },
+                let config = TariCommsConfig {
+                    network: selected_network,
+                    node_identity: Arc::new(node_identity),
+                    transport_type: (*transport_type).clone(),
+                    auxilary_tcp_listener_address: None,
+                    datastore_path,
+                    peer_database_name: database_name_string,
+                    max_concurrent_inbound_tasks: 25,
+                    max_concurrent_outbound_tasks: 50,
+                    outbound_buffer_size: 50,
+                    dht: DhtConfig {
+                        discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                        database_url: DbConnectionUrl::File(dht_database_path),
+                        auto_join: true,
+                        saf_config: SafConfig {
+                            msg_validity: Duration::from_secs(saf_message_duration_in_secs),
                             ..Default::default()
                         },
-                        // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                        //       docstring for more info.
-                        allow_test_addresses: true,
-                        listener_liveness_allowlist_cidrs: Vec::new(),
-                        listener_liveness_max_sessions: 0,
-                        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-                        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER
-                            .parse()
-                            .expect("Default dns name server constant should always be correct"),
-                        peer_seeds: Default::default(),
-                        dns_seeds: Default::default(),
-                        dns_seeds_use_dnssec: true,
-                    };
+                        ..Default::default()
+                    },
+                    allow_test_addresses: false,
+                    listener_liveness_allowlist_cidrs: Vec::new(),
+                    listener_liveness_max_sessions: 0,
+                    user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+                    dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER
+                        .parse()
+                        .expect("Default dns name server constant should always be correct"),
+                    peer_seeds: Default::default(),
+                    dns_seeds: Default::default(),
+                    dns_seeds_use_dnssec: true,
+                };
 
-                    Box::into_raw(Box::new(config))
-                },
-                Err(e) => {
-                    error = LibWalletError::from(e).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    ptr::null_mut()
-                },
-            }
+                Box::into_raw(Box::new(config))
+            },
+            Err(e) => {
+                error = LibWalletError::from(e).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                ptr::null_mut()
+            },
         },
         Err(_) => {
             error = LibWalletError::from(InterfaceError::NetworkError(network_str)).code;

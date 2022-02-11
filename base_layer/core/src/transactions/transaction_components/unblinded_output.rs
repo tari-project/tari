@@ -46,8 +46,8 @@ use crate::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction,
-        transaction::{
+        transaction_components,
+        transaction_components::{
             transaction_input::{SpentOutput, TransactionInput},
             transaction_output::TransactionOutput,
             OutputFeatures,
@@ -61,6 +61,7 @@ use crate::{
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
 // TODO: Try to get rid of 'Serialize' and 'Deserialize' traits here; see related comment at 'struct RawTransactionInfo'
+// #LOGGED
 #[derive(Clone, Serialize, Deserialize)]
 pub struct UnblindedOutput {
     pub version: TransactionOutputVersion,
@@ -265,7 +266,8 @@ impl UnblindedOutput {
     // Note: added to the struct to ensure consistency between `commitment`, `spending_key` and `value`.
     pub fn hash(&self, factories: &CryptoFactories) -> Vec<u8> {
         let commitment = factories.commitment.commit_value(&self.spending_key, self.value.into());
-        transaction::hash_output(self.version, &self.features, &commitment, &self.script, &self.covenant).to_vec()
+        transaction_components::hash_output(self.version, &self.features, &commitment, &self.script, &self.covenant)
+            .to_vec()
     }
 }
 

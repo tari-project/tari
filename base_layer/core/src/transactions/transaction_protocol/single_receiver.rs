@@ -30,7 +30,7 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::TransactionOutput,
+    transaction_components::TransactionOutput,
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -143,7 +143,7 @@ mod test {
     use crate::transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::*,
-        transaction::OutputFeatures,
+        transaction_components::OutputFeatures,
         transaction_protocol::{
             build_challenge,
             sender::SingleRoundSenderData,
