@@ -376,11 +376,35 @@ impl CommandHandler {
     }
 
     /// Function to process the get-mempool-state command
-    pub fn get_mempool_state(&self) {
+    pub fn get_mempool_state(&self, full: bool) {
         let mut handler = self.mempool_service.clone();
         self.executor.spawn(async move {
             match handler.get_mempool_state().await {
-                Ok(state) => println!("{}", state),
+                Ok(state) => {
+                    println!("----------------- Mempool -----------------");
+                    if full {
+                        println!("--- Unconfirmed Pool ---");
+                        for tx in &state.unconfirmed_pool {
+                            println!(
+                                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
+                                tx.first_kernel_excess_sig()
+                                    .map(|sig| sig.get_signature().to_hex())
+                                    .unwrap_or_else(|| "N/A".to_string()),
+                                tx.body.get_total_fee(),
+                                tx.body.outputs().len(),
+                                tx.body.kernels().len(),
+                                tx.body.inputs().len(),
+                                tx.body.sum_metadata_size(),
+                            );
+                        }
+                        println!("--- Reorg Pool ---");
+                        for excess_sig in &state.reorg_pool {
+                            println!("    {}", excess_sig.get_signature().to_hex());
+                        }
+                    } else {
+                        eprintln!("NOT IMPLEMENTED YET!");
+                    }
+                },
                 Err(err) => {
                     println!("Failed to retrieve mempool state: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
