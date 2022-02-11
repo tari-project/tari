@@ -146,7 +146,7 @@ impl std::str::FromStr for MicroTari {
         if is_micro_tari {
             processed
                 .parse::<u64>()
-                .map(|v| MicroTari::from(v))
+                .map(MicroTari::from)
                 .map_err(|e| MicroTariError::ParseError(e.to_string()))
         } else {
             processed
