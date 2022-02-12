@@ -20,7 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::stdout;
+
 use chrono::{Datelike, Utc};
+use crossterm::{
+    execute,
+    terminal::{size, SetSize},
+};
 use tari_app_utilities::consts;
 
 /// returns the top or bottom box line of the specified length
@@ -100,6 +106,16 @@ fn multiline_find_display_length(lines: &str) -> usize {
     result
 }
 
+/// Try to resize terminal to make sure the width is enough.
+/// In case of error, just simply print out the error.
+fn resize_terminal_to_fit_the_box(width: usize) {
+    if let Ok((_, rows)) = size() {
+        if let Err(e) = execute!(stdout(), SetSize(width as u16, rows)) {
+            println!("Can't resize terminal to fit the box. Error: {}", e)
+        }
+    }
+}
+
 /// Prints a pretty banner on the console as well as the list of available commands
 pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     let chunks: Vec<Vec<String>> = commands.chunks(chunk_size as usize).map(|x| x.to_vec()).collect();
@@ -141,6 +157,9 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
 
     let banner = include!("../assets/tari_banner.rs");
     let target_line_length = multiline_find_display_length(banner);
+
+    resize_terminal_to_fit_the_box(target_line_length);
+
     for line in banner.lines() {
         println!("{}", line);
     }
