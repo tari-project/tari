@@ -175,7 +175,7 @@ impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPay
                 .payload
                 .map(|p| p.try_into())
                 .transpose()?
-                .ok_or_else(|| "payload not provided")?,
+                .ok_or("payload not provided")?,
             state_root,
             value.height,
         ))
