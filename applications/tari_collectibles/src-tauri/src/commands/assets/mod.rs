@@ -237,21 +237,29 @@ pub(crate) async fn assets_list_registered_assets(
 
 #[tauri::command]
 pub(crate) async fn assets_create_initial_checkpoint(
-  asset_pub_key: String,
+  asset_public_key: String,
   committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
 
-  let root = mmr.get_merkle_root().unwrap();
+  let merkle_root = mmr.get_merkle_root().unwrap();
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
 
+  // todo: check for enough utxos first
+
+  // create asset reg checkpoint
   client
-    .create_initial_asset_checkpoint(asset_pub_key, root, committee)
-    .await
-    .unwrap();
+    .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
+    .await?;
+
+  // create committee checkpoint
+  // TODO: effective sidechain height...
+  client
+    .create_committee_checkpoint(&asset_public_key, committee, 0)
+    .await?;
 
   Ok(())
 }

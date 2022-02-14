@@ -242,6 +242,34 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
             .await?;
         Ok((tx_id, transaction))
     }
+
+    pub async fn create_committee_checkpoint(
+        &mut self,
+        asset_public_key: PublicKey,
+        committee_pub_keys: Vec<PublicKey>,
+        effective_sidechain_height: u64,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_committee(
+                    asset_public_key,
+                    vec![2u8; 32],
+                    committee_pub_keys.clone(),
+                    effective_sidechain_height,
+                    true,
+                ),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(vec![output], 100.into(), None, None)
+            .await?;
+
+        Ok((tx_id, transaction))
+    }
 }
 
 fn convert_to_asset(unblinded_output: DbUnblindedOutput) -> Result<Asset, WalletError> {

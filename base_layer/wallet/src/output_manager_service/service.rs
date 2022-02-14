@@ -105,7 +105,6 @@ where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
 {
-    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: OutputManagerServiceConfig,
         request_stream: reply_channel::Receiver<

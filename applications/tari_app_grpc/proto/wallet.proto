@@ -70,6 +70,7 @@ service Wallet {
     rpc CreateInitialAssetCheckpoint(CreateInitialAssetCheckpointRequest) returns (CreateInitialAssetCheckpointResponse);
     // TODO: Needs a better name pls
     rpc CreateFollowOnAssetCheckpoint(CreateFollowOnAssetCheckpointRequest) returns (CreateFollowOnAssetCheckpointResponse);
+    rpc CreateCommitteeCheckpoint(CreateCommitteeCheckpointRequest) returns (CreateCommitteeCheckpointResponse);
 
     rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
 
@@ -277,6 +278,16 @@ message CreateFollowOnAssetCheckpointRequest {
 }
 
 message CreateFollowOnAssetCheckpointResponse {
+
+}
+
+message CreateCommitteeCheckpointRequest {
+    bytes asset_public_key = 1;
+    repeated bytes committee = 2;
+    uint64 effective_sidechain_height = 3;
+}
+
+message CreateCommitteeCheckpointResponse {
 
 }
 

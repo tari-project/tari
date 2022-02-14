@@ -120,7 +120,6 @@ pub struct MessagingProtocol {
 }
 
 impl MessagingProtocol {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,

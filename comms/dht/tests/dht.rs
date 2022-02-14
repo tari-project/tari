@@ -159,7 +159,6 @@ async fn make_node_with_node_identity<I: IntoIterator<Item = Peer>>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,

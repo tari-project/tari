@@ -94,6 +94,7 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
+    CreateCommitteeCheckpoint,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -848,7 +849,7 @@ pub async fn command_runner(
             },
             CreateInitialCheckpoint => {
                 println!("Creating Initial Checkpoint for Asset");
-                let public_key = match parsed.args[0] {
+                let asset_public_key = match parsed.args[0] {
                     ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
                 }?;
@@ -864,7 +865,24 @@ pub async fn command_runner(
                     _ => return Err(CommandError::Argument),
                 };
 
-                let committee: Vec<PublicKey> = parsed.args[2..]
+                let message = format!("Initial asset checkpoint for {}", asset_public_key);
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
+            CreateCommitteeCheckpoint => {
+                println!("Creating Committee Checkpoint for Asset");
+                let asset_public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
                     .iter()
                     .map(|pk| match pk {
                         ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
@@ -872,17 +890,23 @@ pub async fn command_runner(
                     })
                     .collect::<Result<_, _>>()?;
 
+                let num_members = committee_public_keys.len();
+                if num_members < 1 {
+                    return Err(CommandError::Config("Committee has no members!".into()));
+                }
+                let message = format!(
+                    "Committee checkpoint with {} members for {}",
+                    num_members, asset_public_key
+                );
+
                 let mut asset_manager = wallet.asset_manager.clone();
+                // todo: effective sidechain height...
                 let (tx_id, transaction) = asset_manager
-                    .create_initial_asset_checkpoint(&public_key, merkle_root, &committee)
+                    .create_committee_checkpoint(&asset_public_key, &committee_public_keys, 0)
                     .await?;
+
                 let _result = transaction_service
-                    .submit_transaction(
-                        tx_id,
-                        transaction,
-                        0.into(),
-                        "test initial asset checkpoint transaction".to_string(),
-                    )
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
         }

@@ -93,7 +93,6 @@ pub struct OutboundTransaction {
 }
 
 impl OutboundTransaction {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tx_id: TxId,
         destination_public_key: CommsPublicKey,
@@ -146,7 +145,6 @@ pub struct CompletedTransaction {
 }
 
 impl CompletedTransaction {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tx_id: TxId,
         source_public_key: CommsPublicKey,

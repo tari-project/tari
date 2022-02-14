@@ -100,7 +100,6 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     height: Option<u64>,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
 where
     TBackend: TransactionBackend + 'static,

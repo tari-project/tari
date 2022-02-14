@@ -388,7 +388,6 @@ pub fn create_tx(
     (tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn create_unblinded_txos(
     amount: MicroTari,
     input_count: usize,

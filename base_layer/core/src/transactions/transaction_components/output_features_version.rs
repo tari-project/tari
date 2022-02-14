@@ -12,11 +12,12 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 #[repr(u8)]
 pub enum OutputFeaturesVersion {
     V0 = 0,
+    V1 = 1,
 }
 
 impl OutputFeaturesVersion {
     pub fn get_current_version() -> Self {
-        Self::V0
+        Self::V1
     }
 
     pub fn as_u8(self) -> u8 {
@@ -30,7 +31,8 @@ impl TryFrom<u8> for OutputFeaturesVersion {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(OutputFeaturesVersion::V0),
-            _ => Err("Unknown version!".to_string()),
+            1 => Ok(OutputFeaturesVersion::V1),
+            _ => Err("Unknown or unsupported OutputFeaturesVersion".into()),
         }
     }
 }

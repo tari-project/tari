@@ -70,7 +70,6 @@ where
     TPingStream: Stream<Item = DomainMessage<PingPongMessage>>,
     TRequestStream: Stream<Item = RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>>,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: LivenessConfig,
         request_rx: TRequestStream,

@@ -120,7 +120,6 @@ where
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn next_event<
         TChainStorageService: ChainStorageService<TPayload>,
         TUnitOfWork: ChainDbUnitOfWork,
