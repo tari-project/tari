@@ -221,7 +221,7 @@ impl Parser {
                 self.process_get_peer(args).await;
             },
             ListPeers => {
-                self.process_list_peers(args).await;
+                self.process_list_peers(typed_args).await;
             },
             ResetOfflinePeers => {
                 self.command_handler.lock().await.reset_offline_peers();
@@ -254,7 +254,7 @@ impl Parser {
                 self.command_handler.lock().await.list_connections();
             },
             ListHeaders => {
-                self.process_list_headers(args).await;
+                self.process_list_headers(typed_args).await;
             },
             BlockTiming | CalcTiming => {
                 self.process_block_timing(args).await;
@@ -580,9 +580,8 @@ impl Parser {
     }
 
     /// Function to process the list-peers command
-    async fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let filter = args.next().map(ToOwned::to_owned);
-
+    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) {
+        let filter = args.take_next("filter").ok();
         self.command_handler.lock().await.list_peers(filter)
     }
 
@@ -626,17 +625,16 @@ impl Parser {
     }
 
     /// Function to process the list-headers command
-    async fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let start = args.next().map(u64::from_str).map(Result::ok).flatten();
-        let end = args.next().map(u64::from_str).map(Result::ok).flatten();
-        if start.is_none() {
+    async fn process_list_headers<'a>(&self, mut args: Args<'a>) {
+        // TODO: Process errors properly
+        if let Ok(start) = args.take_next("start") {
+            let end = args.take_next("end").ok();
+            self.command_handler.lock().await.list_headers(start, end)
+        } else {
             println!("Command entered incorrectly, please use the following formats: ");
             println!("list-headers [first header height] [last header height]");
             println!("list-headers [amount of headers from chain tip]");
-            return;
         }
-        let start = start.unwrap();
-        self.command_handler.lock().await.list_headers(start, end)
     }
 
     /// Function to process the calc-timing command
