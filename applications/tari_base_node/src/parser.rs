@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
+use std::{iter::Peekable, str::FromStr, string::ToString, sync::Arc, time::Duration};
 
 use futures::future::Either;
 use log::*;
@@ -782,13 +782,31 @@ enum ArgsReason {
 }
 
 struct Args<'a> {
-    splitted: SplitWhitespace<'a>,
+    splitted: Peekable<SplitWhitespace<'a>>,
 }
 
 impl<'a> Args<'a> {
     fn split(s: &'a str) -> Self {
         Self {
-            splitted: s.split_whitespace(),
+            splitted: s.split_whitespace().peekable(),
+        }
+    }
+
+    fn shift_one(&mut self) {
+        self.splitted.next();
+    }
+
+    fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
+    where
+        T: FromStr,
+        T::Err: ToString,
+    {
+        match self.splitted.peek().map(|s| s.parse()) {
+            Some(Ok(value)) => Ok(Some(value)),
+            Some(Err(err)) => Err(ArgsError::new(name, ArgsReason::NotParsed {
+                details: err.to_string(),
+            })),
+            None => Ok(None),
         }
     }
 
@@ -797,12 +815,7 @@ impl<'a> Args<'a> {
         T: FromStr,
         T::Err: ToString,
     {
-        match self.splitted.next().map(T::from_str) {
-            Some(Ok(value)) => Ok(value),
-            Some(Err(err)) => Err(ArgsError::new(name, ArgsReason::NotParsed {
-                details: err.to_string(),
-            })),
-            None => Err(ArgsError::new(name, ArgsReason::Required)),
-        }
+        self.try_take_next(name)?
+            .ok_or_else(|| ArgsError::new(name, ArgsReason::Required))
     }
 }
