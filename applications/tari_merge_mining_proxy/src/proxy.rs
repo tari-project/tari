@@ -148,7 +148,8 @@ impl MergeMiningProxyService {
                 base_node_client,
                 wallet_client,
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
-                last_available_server: Arc::new(RwLock::new(None)),
+                current_monerod_server: Arc::new(RwLock::new(None)),
+                last_assigned_monerod_server: Arc::new(RwLock::new(None)),
             },
         }
     }
@@ -215,7 +216,8 @@ struct InnerService {
     base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
     wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
     initial_sync_achieved: Arc<AtomicBool>,
-    last_available_server: Arc<RwLock<Option<String>>>,
+    current_monerod_server: Arc<RwLock<Option<String>>>,
+    last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
 }
 
 impl InnerService {
@@ -632,7 +634,7 @@ impl InnerService {
     async fn get_fully_qualified_monerod_url(&self, uri: &Uri) -> Result<Url, MmProxyError> {
         {
             let lock = self
-                .last_available_server
+                .current_monerod_server
                 .read()
                 .expect("Read lock should not fail")
                 .clone();
@@ -642,9 +644,9 @@ impl InnerService {
             }
         }
 
-        let current_url = {
+        let last_used_url = {
             let lock = self
-                .last_available_server
+                .last_assigned_monerod_server
                 .read()
                 .expect("Read lock should not fail")
                 .clone();
@@ -653,30 +655,36 @@ impl InnerService {
                 None => "".to_string(),
             }
         };
-        let mut iter = self.config.monerod_url.iter();
-        let _ = iter.find(|&x| x == &current_url);
-        let mut count = 0;
-        loop {
-            count += 1;
-            if count > self.config.monerod_url.len() * 2 {
-                break;
+
+        // Query the list twice before giving up, starting after the last used entry
+        let pos = if let Some(index) = self.config.monerod_url.iter().position(|x| x == &last_used_url) {
+            index
+        } else {
+            0
+        };
+        let (left, right) = self.config.monerod_url.split_at(pos);
+        let left = left.to_vec();
+        let right = right.to_vec();
+        let iter = right.iter().chain(left.iter()).chain(right.iter()).chain(left.iter());
+
+        for next_url in iter {
+            let uri = format!("{}{}", next_url, uri.path()).parse::<Url>()?;
+            match reqwest::get(uri.clone()).await {
+                Ok(_) => {
+                    let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
+                    *lock = Some(next_url.to_string());
+                    let mut lock = self
+                        .last_assigned_monerod_server
+                        .write()
+                        .expect("Write lock should not fail");
+                    *lock = Some(next_url.to_string());
+                    info!(target: LOG_TARGET, "Monerod server available: {:?}", uri.clone());
+                    return Ok(uri);
+                },
+                Err(_) => {
+                    warn!(target: LOG_TARGET, "Monerod server unavailable: {:?}", uri);
+                },
             }
-            if let Some(next_url) = iter.next() {
-                let uri = format!("{}{}", next_url, uri.path()).parse::<Url>()?;
-                match reqwest::get(uri.clone()).await {
-                    Ok(_) => {
-                        let mut lock = self.last_available_server.write().expect("Write lock should not fail");
-                        *lock = Some(next_url.to_string());
-                        info!(target: LOG_TARGET, "Monerod server available: {:?}", uri.clone());
-                        return Ok(uri);
-                    },
-                    Err(_) => {
-                        warn!(target: LOG_TARGET, "Monerod server unavailable: {:?}", uri);
-                    },
-                }
-            } else {
-                iter = self.config.monerod_url.iter();
-            };
         }
 
         Err(MmProxyError::ServersUnavailable)
@@ -877,8 +885,8 @@ impl InnerService {
                 Ok(response)
             },
             Err(e) => {
-                // Monero Server encountered a problem processing the request, reset the last_available_server
-                let mut lock = self.last_available_server.write().expect("Write lock should not fail");
+                // Monero Server encountered a problem processing the request, reset the current monerod server
+                let mut lock = self.current_monerod_server.write().expect("Write lock should not fail");
                 *lock = None;
                 Err(e)
             },
