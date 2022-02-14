@@ -31,7 +31,7 @@ const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
 #[error("Invalid size")]
 pub struct FixedHashSizeError;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
 impl FixedHash {
@@ -71,7 +71,7 @@ impl TryFrom<&[u8]> for FixedHash {
         }
 
         let mut buf = [0u8; FixedHash::byte_size()];
-        buf.copy_from_slice(&bytes);
+        buf.copy_from_slice(bytes);
         Ok(Self(buf))
     }
 }

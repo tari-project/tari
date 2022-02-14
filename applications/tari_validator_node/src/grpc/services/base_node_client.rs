@@ -152,4 +152,32 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         }
         Ok(assets)
     }
+
+    async fn get_asset_registration(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        let conn = match self.inner.as_mut() {
+            Some(i) => i,
+            None => {
+                self.connect().await?;
+                self.inner.as_mut().unwrap()
+            },
+        };
+
+        let req = grpc::GetAssetMetadataRequest {
+            asset_public_key: asset_public_key.to_vec(),
+        };
+        let output = conn.get_asset_metadata(req).await.unwrap().into_inner();
+
+        let output = output
+            .features
+            .map(|features| match features.try_into() {
+                Ok(f) => Ok(BaseLayerOutput { features: f }),
+                Err(e) => Err(DigitalAssetError::ConversionError(e)),
+            })
+            .transpose()?;
+
+        Ok(output)
+    }
 }

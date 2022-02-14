@@ -25,6 +25,7 @@ pub use error::StateSyncError;
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common_types::types::PublicKey;
+use tari_utilities::hex::Hex;
 
 use crate::{
     models::CheckpointOutput,
@@ -95,6 +96,10 @@ where
     }
 
     async fn try_sync_from(&self, member: &TValidatorNodeClientFactory::Addr) -> Result<(), StateSyncError> {
+        info!(
+            target: LOG_TARGET,
+            "Attempting to sync asset '{}' from peer '{}'", self.last_checkpoint.parent_public_key, member
+        );
         let mut client = self.validator_node_client_factory.create_client(member);
         let tip_node = client
             .get_tip_node(&self.last_checkpoint.parent_public_key)
@@ -111,6 +116,13 @@ where
         for schema in state_schemas {
             let name = schema.name;
             for item in schema.items {
+                debug!(
+                    target: LOG_TARGET,
+                    "Adding schema={}, key={}, value={}",
+                    name,
+                    item.key.to_hex(),
+                    item.value.to_hex()
+                );
                 uow.set_value(name.clone(), item.key, item.value)?;
             }
         }

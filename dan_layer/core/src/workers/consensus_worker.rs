@@ -346,7 +346,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             (PreCommit, PreCommitted) => Commit,
             (Commit, Committed) => Decide,
             (Decide, Decided) => NextView,
-            (Starting, BaseLayerCheckpointNotFound) => {
+            (_, BaseLayerCheckpointNotFound | BaseLayerAssetRegistrationNotFound) => {
                 unimplemented!("Base layer checkpoint not found!")
             },
             (s, e) => {

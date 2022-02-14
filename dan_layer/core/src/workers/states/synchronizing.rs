@@ -59,7 +59,7 @@ impl Synchronizing {
     {
         // TODO: The collectibles app does not post a valid initial merkle root for the initial asset checkpoint. So
         // this is always out-of-sync.
-        return Ok(ConsensusWorkerStateEvent::Synchronized);
+        // return Ok(ConsensusWorkerStateEvent::Synchronized);
 
         let tip = base_node_client.get_tip_info().await?;
         let last_checkpoint = base_node_client
@@ -71,11 +71,13 @@ impl Synchronizing {
             .await?;
 
         let last_checkpoint = match last_checkpoint {
-            Some(cp) => cp,
+            Some(cp) => CheckpointOutput::try_from(cp)?,
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
         };
 
-        let last_checkpoint = CheckpointOutput::try_from(last_checkpoint)?;
+        let asset_registration = base_node_client
+            .get_asset_registration(asset_definition.public_key.clone())
+            .await?;
 
         let mut state_db = db_factory.get_or_create_state_db(&asset_definition.public_key)?;
         {
@@ -83,6 +85,17 @@ impl Synchronizing {
             let our_merkle_root = state_reader.calculate_root()?;
             if our_merkle_root.as_bytes() == last_checkpoint.merkle_root.as_slice() {
                 info!(target: LOG_TARGET, "Our state database is up-to-date.");
+                return Ok(ConsensusWorkerStateEvent::Synchronized);
+            }
+            let registration_merkle_root = asset_registration.and_then(|ar| ar.get_checkpoint_merkle_root());
+            if registration_merkle_root
+                .map(|mr| our_merkle_root.as_bytes() == mr.as_slice())
+                .unwrap_or(false)
+            {
+                info!(
+                    target: LOG_TARGET,
+                    "Our state database is up-to-date (at initial state)."
+                );
                 return Ok(ConsensusWorkerStateEvent::Synchronized);
             }
         }

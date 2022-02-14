@@ -53,6 +53,7 @@ impl BaseLayerOutput {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct CheckpointOutput {
     pub flags: OutputFlags,
     pub parent_public_key: PublicKey,
