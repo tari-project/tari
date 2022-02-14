@@ -40,6 +40,7 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
@@ -152,11 +153,14 @@ impl Parser {
             return;
         }
 
-        let args = Args::split(command_str);
+        let mut typed_args = Args::split(command_str);
+        // TODO: Use it as a command
+        typed_args.shift_one();
+
         let mut args = command_str.split_whitespace();
         match args.next().unwrap_or("help").parse() {
             Ok(command) => {
-                self.process_command(command, args, shutdown).await;
+                self.process_command(command, args, typed_args, shutdown).await;
             },
             Err(_) => {
                 println!("{} is not a valid command, please enter a valid command", command_str);
@@ -174,6 +178,7 @@ impl Parser {
         &mut self,
         command: BaseNodeCommand,
         mut args: I,
+        typed_args: Args<'a>,
         shutdown: &mut Shutdown,
     ) {
         use BaseNodeCommand::*;
@@ -204,10 +209,10 @@ impl Parser {
                 self.command_handler.lock().await.get_blockchain_db_stats();
             },
             DialPeer => {
-                self.process_dial_peer(args).await;
+                self.process_dial_peer(typed_args).await;
             },
             PingPeer => {
-                self.process_ping_peer(args).await;
+                self.process_ping_peer(typed_args).await;
             },
             DiscoverPeer => {
                 self.process_discover_peer(args).await;
@@ -234,10 +239,10 @@ impl Parser {
                 self.process_header_stats(args).await;
             },
             BanPeer => {
-                self.process_ban_peer(args, true).await;
+                self.process_ban_peer(typed_args, true).await;
             },
             UnbanPeer => {
-                self.process_ban_peer(args, false).await;
+                self.process_ban_peer(typed_args, false).await;
             },
             UnbanAllPeers => {
                 self.command_handler.lock().await.unban_all_peers();
@@ -582,65 +587,42 @@ impl Parser {
     }
 
     /// Function to process the dial-peer command
-    async fn process_dial_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let dest_node_id = match args
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-        {
-            Some(n) => n,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!("dial-peer [hex public key or emoji id]");
-                return;
-            },
-        };
-
-        self.command_handler.lock().await.dial_peer(dest_node_id)
+    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) {
+        if let Some(dest_node_id) = args.take_node_id() {
+            self.command_handler.lock().await.dial_peer(dest_node_id)
+        } else {
+            println!("Please enter a valid destination public key or emoji id");
+            println!("dial-peer [hex public key or emoji id]");
+        }
     }
 
     /// Function to process the dial-peer command
-    async fn process_ping_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let dest_node_id = match args
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-        {
-            Some(n) => n,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!("ping-peer [hex public key or emoji id]");
-                return;
-            },
-        };
-
-        self.command_handler.lock().await.ping_peer(dest_node_id)
+    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) {
+        if let Some(dest_node_id) = args.take_node_id() {
+            self.command_handler.lock().await.ping_peer(dest_node_id)
+        } else {
+            println!("Please enter a valid destination public key or emoji id");
+            println!("ping-peer [hex public key or emoji id]");
+        }
     }
 
     /// Function to process the ban-peer command
-    async fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
-        let node_id = match args
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-        {
-            Some(v) => v,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!(
-                    "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
-                );
-                return;
-            },
-        };
-
-        let duration = args
-            .next()
-            .and_then(|s| s.parse::<u64>().ok())
-            .map(Duration::from_secs)
-            .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
-
-        self.command_handler.lock().await.ban_peer(node_id, duration, must_ban)
+    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) {
+        if let Some(node_id) = args.take_node_id() {
+            // TODO: Use errors here to handle properly on bad values
+            let secs: u64 = args
+                .try_take_next("length")
+                .ok()
+                .and_then(std::convert::identity)
+                .unwrap_or(std::u64::MAX);
+            let duration = Duration::from_secs(secs);
+            self.command_handler.lock().await.ban_peer(node_id, duration, must_ban)
+        } else {
+            println!("Please enter a valid destination public key or emoji id");
+            println!(
+                "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
+            );
+        }
     }
 
     /// Function to process the list-headers command
@@ -794,6 +776,15 @@ impl<'a> Args<'a> {
 
     fn shift_one(&mut self) {
         self.splitted.next();
+    }
+
+    // TODO: It have to return error if a value provided,
+    // but can''t be parsed
+    fn take_node_id(&mut self) -> Option<NodeId> {
+        self.splitted
+            .next()
+            .and_then(parse_emoji_id_or_public_key_or_node_id)
+            .map(either_to_node_id)
     }
 
     fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
