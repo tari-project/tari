@@ -20,13 +20,15 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use core::fmt;
+
 use crate::{error::CollectiblesError, storage::StorageError};
 use diesel::result::Error;
 use prost::{DecodeError, EncodeError};
 use serde::{Deserialize, Serialize};
 use tari_utilities::hex::HexError;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "status")]
 pub enum Status {
   BadRequest {
@@ -122,6 +124,21 @@ impl From<CollectiblesError> for Status {
     Self::Internal {
       code: 504,
       message: format!("Error: {}", ce),
+    }
+  }
+}
+
+impl fmt::Display for Status {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match &self {
+      Status::BadRequest { code, message } => write!(f, "BadRequest {} {}", code, message),
+      Status::Unauthorized { code, message } => write!(f, "Unauthorized {} {}", code, message),
+      Status::NotFound {
+        code,
+        message,
+        entity,
+      } => write!(f, "NotFound {} {} {}", code, message, entity),
+      Status::Internal { code, message } => write!(f, "Internal {} {}", code, message),
     }
   }
 }
