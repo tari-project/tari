@@ -798,19 +798,22 @@ pub async fn command_runner(
                 tx_ids.push(tx_id);
             },
             RegisterAsset => {
-                println!("Registering asset.");
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
                 // todo: key manager #LOGGED
                 let mut rng = rand::thread_rng();
                 let (_, public_key) = PublicKey::random_keypair(&mut rng);
+                let public_key_hex = public_key.to_hex();
+                println!("Registering asset named: {name}");
+                println!("with public key: {public_key_hex}");
                 let (tx_id, transaction) = manager
                     .create_registration_transaction(name, public_key, vec![], None, None, vec![])
                     .await?;
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
+                println!("Done!");
             },
             MintTokens => {
                 println!("Minting tokens for asset");
@@ -876,11 +879,13 @@ pub async fn command_runner(
                     .await?;
             },
             CreateCommitteeCheckpoint => {
-                println!("Creating Committee Checkpoint for Asset");
                 let asset_public_key = match parsed.args[0] {
                     ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
                 }?;
+                let public_key_hex = asset_public_key.to_hex();
+                println!("Creating Committee Checkpoint for Asset");
+                println!("with public key {public_key_hex}");
 
                 let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
                     .iter()
@@ -898,6 +903,7 @@ pub async fn command_runner(
                     "Committee checkpoint with {} members for {}",
                     num_members, asset_public_key
                 );
+                println!("with {num_members} committee members");
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 // todo: effective sidechain height...
@@ -908,6 +914,7 @@ pub async fn command_runner(
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
+                println!("Done!");
             },
         }
     }
