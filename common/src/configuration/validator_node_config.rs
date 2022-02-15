@@ -25,7 +25,7 @@ use std::{
     path::PathBuf,
 };
 
-use config::Config;
+use config::{Config, ConfigError};
 use serde::Deserialize;
 
 use crate::ConfigurationError;
@@ -62,9 +62,11 @@ impl ValidatorNodeConfig {
     pub fn convert_if_present(cfg: Config) -> Result<Option<ValidatorNodeConfig>, ConfigurationError> {
         let section: Self = match cfg.get("validator_node") {
             Ok(s) => s,
-            Err(_e) => {
-                // dbg!(e);
+            Err(ConfigError::NotFound(_)) => {
                 return Ok(None);
+            },
+            Err(err) => {
+                return Err(err.into());
             },
         };
         Ok(Some(section))
