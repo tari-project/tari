@@ -120,13 +120,13 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-          components: clippy, rustfmt
+          profile: minimal
           override: true
-      - name: cargo check
+      - name: cargo build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --all-targets
+          args: --release
   build-stable:
     name: check stable
     runs-on: ubuntu-18.04
@@ -224,4 +224,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --all-targets
+          args: --release
