@@ -87,7 +87,6 @@ pub enum BaseNodeCommand {
     SearchKernel,
     GetMempoolStats,
     GetMempoolState,
-    GetMempoolStateFull,
     GetMempoolStateTx,
     Whoami,
     GetStateInfo,
@@ -278,9 +277,6 @@ impl Parser {
             GetMempoolState => {
                 self.command_handler.lock().await.get_mempool_state(false, None);
             },
-            GetMempoolStateFull => {
-                self.command_handler.lock().await.get_mempool_state(true, None);
-            },
             GetMempoolStateTx => {
                 self.get_mempool_state_tx(typed_args).await;
             },
@@ -438,11 +434,8 @@ impl Parser {
             GetMempoolState => {
                 println!("Retrieves your mempools state");
             },
-            GetMempoolStateFull => {
-                println!("Retrieves your mempools state (full)");
-            },
             GetMempoolStateTx => {
-                println!("Retrieves details about a transaction in the mempool");
+                println!("Filters and retrieves details about transactions from the mempool's state");
             },
             Whoami => {
                 println!(
