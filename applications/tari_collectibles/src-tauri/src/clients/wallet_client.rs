@@ -55,7 +55,7 @@ impl WalletClient {
     Ok(())
   }
 
-  fn get_inner(
+  fn get_inner_mut(
     &mut self,
   ) -> Result<&mut grpc::wallet_client::WalletClient<tonic::transport::Channel>, CollectiblesError>
   {
@@ -73,7 +73,7 @@ impl WalletClient {
     template_ids_implemented: Vec<u32>,
     template_parameters: Vec<grpc::TemplateParameter>,
   ) -> Result<String, CollectiblesError> {
-    let inner = self.get_inner()?;
+    let inner = self.get_inner_mut()?;
     let request = RegisterAssetRequest {
       name,
       public_key: public_key.as_bytes().into(),
@@ -97,7 +97,7 @@ impl WalletClient {
   pub async fn list_owned_assets(
     &mut self,
   ) -> Result<grpc::GetOwnedAssetsResponse, CollectiblesError> {
-    let inner = self.get_inner()?;
+    let inner = self.get_inner_mut()?;
     let request = grpc::Empty {};
     let result =
       inner
@@ -116,7 +116,7 @@ impl WalletClient {
     asset_public_key: &str,
     merkle_root: Vec<u8>,
   ) -> Result<grpc::CreateInitialAssetCheckpointResponse, CollectiblesError> {
-    let inner = self.get_inner()?;
+    let inner = self.get_inner_mut()?;
     let committee = vec![];
     let request = grpc::CreateInitialAssetCheckpointRequest {
       asset_public_key: Vec::from_hex(asset_public_key)?,
@@ -140,7 +140,7 @@ impl WalletClient {
     committee: Vec<String>,
     effective_sidechain_height: u64,
   ) -> Result<grpc::CreateCommitteeCheckpointResponse, CollectiblesError> {
-    let inner = self.get_inner()?;
+    let inner = self.get_inner_mut()?;
     let committee = committee
       .iter()
       .map(|s| Vec::from_hex(s))
@@ -165,7 +165,7 @@ impl WalletClient {
   pub async fn get_unspent_amounts(
     &mut self,
   ) -> Result<grpc::GetUnspentAmountsResponse, CollectiblesError> {
-    let inner = self.get_inner()?;
+    let inner = self.get_inner_mut()?;
     let request = grpc::Empty {};
     let result = inner.get_unspent_amounts(request).await.map_err(|source| {
       CollectiblesError::ClientRequest {

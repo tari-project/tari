@@ -40,6 +40,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
+const ASSET_FPG: u64 = 10;
 
 pub(crate) struct AssetManager<T: OutputManagerBackend + 'static> {
     output_database: OutputManagerDatabase<T>,
@@ -112,7 +113,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         debug!(target: LOG_TARGET, "Created output: {:?}", output);
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 20.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -143,7 +144,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(outputs, 100.into(), None, None)
+            .create_send_to_self_with_output(outputs, ASSET_FPG.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -190,7 +191,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 100.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -238,7 +239,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 100.into(), Some(unique_id), Some(asset_pub_key))
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), Some(unique_id), Some(asset_pub_key))
             .await?;
         Ok((tx_id, transaction))
     }
@@ -265,7 +266,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 100.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
 
         Ok((tx_id, transaction))
