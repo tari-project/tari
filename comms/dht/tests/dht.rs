@@ -357,7 +357,7 @@ async fn dht_discover_propagation() {
         .dht
         .discovery_service_requester()
         .discover_peer(
-            Box::new(node_D.node_identity().public_key().clone()),
+            node_D.node_identity().public_key().clone(),
             node_D.node_identity().node_id().clone().into(),
         )
         .await

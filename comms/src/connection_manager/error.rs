@@ -87,7 +87,7 @@ pub enum ConnectionManagerError {
     #[error("Peer did not provide the identity timestamp")]
     PeerIdentityNoUpdatedTimestampProvided,
     #[error("Peer did not provide any public addresses")]
-    PeerHasNoAddresses,
+    PeerIdentityNoAddresses,
 }
 
 impl From<yamux::ConnectionError> for ConnectionManagerError {

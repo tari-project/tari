@@ -322,14 +322,17 @@ pub async fn discover_peer(
 ) -> Result<(), CommandError> {
     use ParsedArgument::*;
     let dest_public_key = match args[0].clone() {
-        PublicKey(key) => Ok(Box::new(key)),
+        PublicKey(key) => Ok(key),
         _ => Err(CommandError::Argument),
     }?;
 
     let start = Instant::now();
     println!("🌎 Peer discovery started.");
     match dht_service
-        .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
+        .discover_peer(
+            dest_public_key.clone(),
+            NodeDestination::PublicKey(Box::new(dest_public_key)),
+        )
         .await
     {
         Ok(peer) => {
