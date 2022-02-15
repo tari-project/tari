@@ -23,10 +23,10 @@
 use std::num::{ParseFloatError, ParseIntError};
 
 use log::*;
-use tari_common::exit_codes::ExitCodes;
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_core::transactions::{
     tari_amount::{MicroTariError, TariConversionError},
-    transaction::TransactionError,
+    transaction_components::TransactionError,
 };
 use tari_utilities::hex::HexError;
 use tari_wallet::{
@@ -70,10 +70,10 @@ pub enum CommandError {
     ShaError(String),
 }
 
-impl From<CommandError> for ExitCodes {
+impl From<CommandError> for ExitError {
     fn from(err: CommandError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        Self::CommandError(err.to_string())
+        Self::new(ExitCode::CommandError, err)
     }
 }
 
@@ -103,10 +103,10 @@ pub enum ParseError {
     Unimplemented(String),
 }
 
-impl From<ParseError> for ExitCodes {
+impl From<ParseError> for ExitError {
     fn from(err: ParseError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
         let msg = format!("Failed to parse input file commands! {}", err);
-        Self::InputError(msg)
+        Self::new(ExitCode::InputError, msg)
     }
 }

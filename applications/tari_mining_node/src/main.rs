@@ -40,7 +40,7 @@ use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::W
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
-    exit_codes::{ExitCodes, ExitCodes::ConfigError},
+    exit_codes::{ExitCode, ExitError},
     ConfigBootstrap,
     DefaultConfigLoader,
 };
@@ -75,15 +75,16 @@ fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
     match rt.block_on(main_inner()) {
         Ok(_) => std::process::exit(0),
-        Err(exit_code) => {
-            eprintln!("Fatal error: {:?}", exit_code);
+        Err(err) => {
+            eprintln!("Fatal error: {:?}", err);
+            let exit_code = err.exit_code;
             error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
-            std::process::exit(exit_code.as_i32())
+            std::process::exit(exit_code as i32)
         },
     }
 }
 
-async fn main_inner() -> Result<(), ExitCodes> {
+async fn main_inner() -> Result<(), ExitError> {
     let (bootstrap, global, cfg) = init_configuration(ApplicationType::MiningNode)?;
     let mut config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     config.mine_on_tip_only = global.mine_on_tip_only;
@@ -108,8 +109,12 @@ async fn main_inner() -> Result<(), ExitCodes> {
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
         let url = config.mining_pool_address.clone();
         let mut miner_address = config.mining_wallet_address.clone();
-        let _ = RistrettoPublicKey::from_hex(&miner_address)
-            .map_err(|_| ConfigError("Miner is not configured with a valid wallet address.".to_string()))?;
+        let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
+            ExitError::new(
+                ExitCode::ConfigError,
+                "Miner is not configured with a valid wallet address.",
+            )
+        })?;
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", &config.mining_worker_name);
         }
@@ -172,7 +177,9 @@ async fn main_inner() -> Result<(), ExitCodes> {
             target: LOG_TARGET_FILE,
             "mine_on_tip_only is {}", config.mine_on_tip_only
         );
-        let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(ExitCodes::grpc)?;
+        let (mut node_conn, mut wallet_conn) = connect(&config)
+            .await
+            .map_err(|err| ExitError::new(ExitCode::GrpcError, format!("GRPC connection error: {}", err)))?;
 
         let mut blocks_found: u64 = 0;
         loop {

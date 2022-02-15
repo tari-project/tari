@@ -26,7 +26,11 @@ use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
 use multiaddr::Multiaddr;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::{exit_codes::ExitCodes, CommsTransport, TorControlAuthentication};
+use tari_common::{
+    exit_codes::{ExitCode, ExitError},
+    CommsTransport,
+    TorControlAuthentication,
+};
 use tari_shutdown::ShutdownSignal;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
@@ -74,7 +78,7 @@ impl Tor {
     /// Two TCP ports will be provided by the operating system.
     /// These ports are used for the control and socks ports, the onion address and port info are still loaded from the
     /// node identity file.
-    pub fn initialize() -> Result<Tor, ExitCodes> {
+    pub fn initialize() -> Result<Tor, ExitError> {
         debug!(target: LOG_TARGET, "Initializing libtor");
         let mut instance = Tor::default();
 
@@ -108,7 +112,7 @@ impl Tor {
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance
-    pub fn update_comms_transport(&self, transport: CommsTransport) -> Result<CommsTransport, ExitCodes> {
+    pub fn update_comms_transport(&self, transport: CommsTransport) -> Result<CommsTransport, ExitError> {
         debug!(target: LOG_TARGET, "updating comms transport");
         if let CommsTransport::TorHiddenService {
             socks_address_override,
@@ -139,12 +143,12 @@ impl Tor {
             Ok(transport)
         } else {
             let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
-            Err(ExitCodes::ConfigError(e))
+            Err(ExitError::new(ExitCode::ConfigError, e))
         }
     }
 
     /// Run the Tor instance until the shutdown signal is received
-    pub async fn run(self, mut shutdown_signal: ShutdownSignal) -> Result<(), ExitCodes> {
+    pub async fn run(self, mut shutdown_signal: ShutdownSignal) -> Result<(), ExitError> {
         info!(target: LOG_TARGET, "Starting Tor instance");
 
         let Tor {

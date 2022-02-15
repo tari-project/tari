@@ -25,13 +25,19 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PublicKey},
+    types::{BlockHash, HashOutput, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
+        transaction_components::{
+            OutputFeatures,
+            Transaction,
+            TransactionOutput,
+            UnblindedOutput,
+            UnblindedOutputBuilder,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
@@ -106,8 +112,14 @@ pub enum OutputManagerRequest {
         num_kernels: usize,
         num_outputs: usize,
     },
-    ScanForRecoverableOutputs(Vec<TransactionOutput>),
-    ScanOutputs(Vec<TransactionOutput>),
+    ScanForRecoverableOutputs {
+        outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
+    },
+    ScanOutputs {
+        outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
+    },
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroTari,
@@ -165,8 +177,8 @@ impl fmt::Display for OutputManagerRequest {
                 "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
                 amount, fee_per_gram, num_kernels, num_outputs
             ),
-            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs(_) => write!(f, "ScanOutputs"),
+            ScanForRecoverableOutputs { .. } => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs { .. } => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features } => {
                 write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
@@ -220,12 +232,21 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
-    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
+    CreateOutputWithFeatures {
+        output: Box<UnblindedOutputBuilder>,
+    },
+    CreatePayToSelfWithOutputs {
+        transaction: Box<Transaction>,
+        tx_id: TxId,
+    },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
-    OutputStatusesByTxId(Vec<OutputStatus>),
+    OutputStatusesByTxId {
+        statuses: Vec<OutputStatus>,
+        mined_height: Option<u64>,
+        block_hash: Option<BlockHash>,
+    },
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -642,10 +663,11 @@ impl OutputManagerHandle {
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
+            .call(OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id })
             .await??
         {
             OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
@@ -656,8 +678,13 @@ impl OutputManagerHandle {
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::ScanOutputs { outputs, tx_id })
+            .await??
+        {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -749,13 +776,20 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_output_statuses_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+    pub async fn get_output_statuses_by_tx_id(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
             .await??
         {
-            OutputManagerResponse::OutputStatusesByTxId(s) => Ok(s),
+            OutputManagerResponse::OutputStatusesByTxId {
+                statuses,
+                mined_height,
+                block_hash,
+            } => Ok((statuses, mined_height, block_hash)),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

@@ -39,7 +39,11 @@ use futures::FutureExt;
 use log::*;
 use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::{identity_management::setup_node_identity, initialization::init_configuration};
-use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, GlobalConfig};
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCode, ExitError},
+    GlobalConfig,
+};
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
@@ -61,19 +65,18 @@ const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
     // console_subscriber::init();
-    if let Err(exit_code) = main_inner() {
-        eprintln!("{:?}", exit_code);
+    if let Err(err) = main_inner() {
+        let exit_code = err.exit_code;
+        eprintln!("{:?}", err);
         error!(
             target: LOG_TARGET,
-            "Exiting with code ({}): {:?}",
-            exit_code.as_i32(),
-            exit_code
+            "Exiting with code ({}): {:?}", exit_code as i32, exit_code
         );
-        process::exit(exit_code.as_i32());
+        process::exit(exit_code as i32);
     }
 }
 
-fn main_inner() -> Result<(), ExitCodes> {
+fn main_inner() -> Result<(), ExitError> {
     let (bootstrap, config, _) = init_configuration(ApplicationType::ValidatorNode)?;
 
     // let _operation_mode = cmd_args::get_operation_mode();
@@ -87,10 +90,14 @@ fn main_inner() -> Result<(), ExitCodes> {
     Ok(())
 }
 
-async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes> {
+async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
+    let validator_node_config = config
+        .validator_node
+        .as_ref()
+        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "validator_node configuration not found"))?;
 
-    fs::create_dir_all(&config.peer_db_path).map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+    fs::create_dir_all(&config.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
         &config.public_address,
@@ -122,7 +129,7 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes
         handles.expect_handle::<Dht>().discovery_service_requester(),
     );
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        GrpcBaseNodeClient::new(config.validator_node.clone().unwrap().base_node_grpc_address),
+        GrpcBaseNodeClient::new(validator_node_config.base_node_grpc_address),
         validator_node_client_factory,
         5,
         mempool_service.clone(),
@@ -153,12 +160,12 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitCodes
     Ok(())
 }
 
-fn build_runtime() -> Result<Runtime, ExitCodes> {
+fn build_runtime() -> Result<Runtime, ExitError> {
     let mut builder = runtime::Builder::new_multi_thread();
     builder
         .enable_all()
         .build()
-        .map_err(|e| ExitCodes::UnknownError(e.to_string()))
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
 }
 
 async fn run_dan_node(
@@ -169,7 +176,7 @@ async fn run_dan_node(
     handles: ServiceHandles,
     subscription_factory: SubscriptionFactory,
     node_identity: Arc<NodeIdentity>,
-) -> Result<(), ExitCodes> {
+) -> Result<(), ExitError> {
     let node = DanNode::new(config);
     node.start(
         shutdown_signal,
@@ -194,7 +201,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
         .serve_with_shutdown(grpc_address, shutdown_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
             err
         })?;
 

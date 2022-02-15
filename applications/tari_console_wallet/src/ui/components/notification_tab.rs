@@ -4,9 +4,9 @@
 // are cleared.
 // Currently notifications are only added from the wallet_event_monitor which has
 // add_notification method.
-// TODO: auto delete old notifications.
+// TODO: auto delete old notifications. #LOGGED
 // TODO: add interaction with the notifications, e.g. if I have a pending transaction
-//       notification, the UI should go there if I click on it.
+//       notification, the UI should go there if I click on it. #LOGGED
 
 use tari_comms::runtime::Handle;
 use tui::{

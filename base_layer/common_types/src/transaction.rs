@@ -17,7 +17,7 @@ pub enum TransactionStatus {
     Broadcast,
     /// This transaction has been mined and included in a block.
     MinedUnconfirmed,
-    /// This transaction was generated as part of importing a spendable UTXO
+    /// This transaction was generated as part of importing a spendable unblinded UTXO
     Imported,
     /// This transaction is still being negotiated by the parties
     Pending,
@@ -27,6 +27,19 @@ pub enum TransactionStatus {
     MinedConfirmed,
     /// This transaction was Rejected by the mempool
     Rejected,
+    /// This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
+    FauxUnconfirmed,
+    /// All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
+    FauxConfirmed,
+}
+
+impl TransactionStatus {
+    pub fn is_faux(&self) -> bool {
+        matches!(
+            self,
+            TransactionStatus::Imported | TransactionStatus::FauxUnconfirmed | TransactionStatus::FauxConfirmed
+        )
+    }
 }
 
 #[derive(Debug, Error)]
@@ -48,6 +61,8 @@ impl TryFrom<i32> for TransactionStatus {
             5 => Ok(TransactionStatus::Coinbase),
             6 => Ok(TransactionStatus::MinedConfirmed),
             7 => Ok(TransactionStatus::Rejected),
+            8 => Ok(TransactionStatus::FauxUnconfirmed),
+            9 => Ok(TransactionStatus::FauxConfirmed),
             code => Err(TransactionConversionError { code }),
         }
     }
@@ -71,6 +86,43 @@ impl Display for TransactionStatus {
             TransactionStatus::Pending => write!(f, "Pending"),
             TransactionStatus::Coinbase => write!(f, "Coinbase"),
             TransactionStatus::Rejected => write!(f, "Rejected"),
+            TransactionStatus::FauxUnconfirmed => write!(f, "FauxUnconfirmed"),
+            TransactionStatus::FauxConfirmed => write!(f, "FauxConfirmed"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ImportStatus {
+    /// This transaction import status is used when importing a spendable UTXO
+    Imported,
+    /// This transaction import status is used when a one-sided transaction has been scanned but is unconfirmed
+    FauxUnconfirmed,
+    /// This transaction import status is used when a one-sided transaction has been scanned and confirmed
+    FauxConfirmed,
+}
+
+impl TryFrom<ImportStatus> for TransactionStatus {
+    type Error = TransactionConversionError;
+
+    fn try_from(value: ImportStatus) -> Result<Self, Self::Error> {
+        match value {
+            ImportStatus::Imported => Ok(TransactionStatus::Imported),
+            ImportStatus::FauxUnconfirmed => Ok(TransactionStatus::FauxUnconfirmed),
+            ImportStatus::FauxConfirmed => Ok(TransactionStatus::FauxConfirmed),
+        }
+    }
+}
+
+impl TryFrom<TransactionStatus> for ImportStatus {
+    type Error = TransactionConversionError;
+
+    fn try_from(value: TransactionStatus) -> Result<Self, Self::Error> {
+        match value {
+            TransactionStatus::Imported => Ok(ImportStatus::Imported),
+            TransactionStatus::FauxUnconfirmed => Ok(ImportStatus::FauxUnconfirmed),
+            TransactionStatus::FauxConfirmed => Ok(ImportStatus::FauxConfirmed),
+            _ => Err(TransactionConversionError { code: i32::MAX }),
         }
     }
 }

@@ -122,7 +122,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
 };
 use tari_crypto::{
     inputs,
@@ -184,10 +184,10 @@ const LOG_TARGET: &str = "wallet_ffi";
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
-pub type TariOutputFeatures = tari_core::transactions::transaction::OutputFeatures;
+pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
 pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
-pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 
 pub struct TariContacts(Vec<TariContact>);
@@ -3025,7 +3025,7 @@ pub unsafe extern "C" fn comms_config_create(
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                        //       docstring for more info.
+                        //       docstring for more info. #LOGGED
                         allow_test_addresses: true,
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
@@ -3231,7 +3231,11 @@ unsafe fn init_logging(
 /// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
-/// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
+/// be called when a Broadcast transaction is detected as mined but not yet confirmed.
+/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be
+/// called when a one-sided transaction is detected as mined AND confirmed.
+/// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This
+/// will be called when a one-sided transaction is detected as mined but not yet confirmed.
 /// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was
 /// successful or not.
@@ -3293,6 +3297,8 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
+    callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
@@ -3499,6 +3505,8 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_broadcast,
                 callback_transaction_mined,
                 callback_transaction_mined_unconfirmed,
+                callback_faux_transaction_confirmed,
+                callback_faux_transaction_unconfirmed,
                 callback_direct_send_result,
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
@@ -6053,6 +6061,8 @@ mod test {
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
         pub mined_tx_unconfirmed_callback_called: bool,
+        pub scanned_tx_callback_called: bool,
+        pub scanned_tx_unconfirmed_callback_called: bool,
         pub direct_send_callback_called: bool,
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
@@ -6070,6 +6080,8 @@ mod test {
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
                 mined_tx_unconfirmed_callback_called: false,
+                scanned_tx_callback_called: false,
+                scanned_tx_unconfirmed_callback_called: false,
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
@@ -6157,6 +6169,48 @@ mod test {
         assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = true;
+        let mut error = 0;
+        let error_ptr = &mut error as *mut c_int;
+        let kernel = completed_transaction_get_transaction_kernel(tx, error_ptr);
+        let excess_hex_ptr = transaction_kernel_get_excess_hex(kernel, error_ptr);
+        let excess_hex = CString::from_raw(excess_hex_ptr).to_str().unwrap().to_owned();
+        assert!(!excess_hex.is_empty());
+        let nonce_hex_ptr = transaction_kernel_get_excess_public_nonce_hex(kernel, error_ptr);
+        let nonce_hex = CString::from_raw(nonce_hex_ptr).to_str().unwrap().to_owned();
+        assert!(!nonce_hex.is_empty());
+        let sig_hex_ptr = transaction_kernel_get_excess_signature_hex(kernel, error_ptr);
+        let sig_hex = CString::from_raw(sig_hex_ptr).to_str().unwrap().to_owned();
+        assert!(!sig_hex.is_empty());
+        string_destroy(excess_hex_ptr as *mut c_char);
+        string_destroy(sig_hex_ptr as *mut c_char);
+        string_destroy(nonce_hex_ptr);
+        transaction_kernel_destroy(kernel);
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn scanned_callback(tx: *mut TariCompletedTransaction) {
+        assert!(!tx.is_null());
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::FauxConfirmed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.scanned_tx_callback_called = true;
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn scanned_unconfirmed_callback(tx: *mut TariCompletedTransaction, _confirmations: u64) {
+        assert!(!tx.is_null());
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::FauxUnconfirmed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.scanned_tx_unconfirmed_callback_called = true;
         let mut error = 0;
         let error_ptr = &mut error as *mut c_int;
         let kernel = completed_transaction_get_transaction_kernel(tx, error_ptr);
@@ -6579,6 +6633,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6616,6 +6672,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6719,6 +6777,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6767,6 +6827,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6798,6 +6860,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6824,6 +6888,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6871,6 +6937,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6947,6 +7015,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -7154,6 +7224,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -7209,6 +7281,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,

@@ -39,7 +39,7 @@ use crate::{
     consensus::ConsensusEncoding,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, TransactionError},
+        transaction_components::{KernelFeatures, TransactionError},
         transaction_protocol::{build_challenge, TransactionMetadata},
     },
 };

@@ -45,8 +45,10 @@
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
 use rand::rngs::OsRng;
+use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    transaction::TransactionStatus,
     types::{PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -55,11 +57,14 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    test_helpers::{create_unblinded_output, TestParams},
-    transaction::OutputFeatures,
-    CryptoFactories,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        test_helpers::{create_unblinded_output, TestParams},
+        transaction_components::OutputFeatures,
+        CryptoFactories,
+    },
 };
 use tari_crypto::{
     inputs,
@@ -97,11 +102,7 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::sleep};
-
 pub mod support;
-use support::{comms_and_services::get_next_memory_address, utils::make_input};
-use tari_common_types::transaction::TransactionStatus;
-use tari_core::covenants::Covenant;
 use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
@@ -763,10 +764,10 @@ async fn test_import_utxo() {
         .import_utxo(
             utxo.value,
             &utxo.spending_key,
-            script,
-            input,
+            script.clone(),
+            input.clone(),
             base_node_identity.public_key(),
-            features,
+            features.clone(),
             "Testing".to_string(),
             utxo.metadata_signature.clone(),
             &p.script_private_key,

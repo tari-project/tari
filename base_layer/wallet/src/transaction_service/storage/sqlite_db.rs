@@ -1009,6 +1009,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         mined_in_block: BlockHash,
         num_confirmations: u64,
         is_confirmed: bool,
+        is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -1022,6 +1023,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                     num_confirmations,
                     is_confirmed,
                     &conn,
+                    is_faux,
                 )?;
             },
             Err(TransactionStorageError::DieselError(DieselError::NotFound)) => {
@@ -1048,6 +1050,8 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let tx = completed_transactions::table
+            // Note: Check 'mined_in_block' as well as 'mined_height' is populated for faux transactions before it is confirmed
+            .filter(completed_transactions::mined_in_block.is_not_null())
             .filter(completed_transactions::mined_height.is_not_null())
             .filter(completed_transactions::mined_height.gt(0))
             .order_by(completed_transactions::mined_height.desc())
@@ -1072,6 +1076,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         Ok(result)
     }
 
+    // This method returns completed but unconfirmed transactions that were not imported
     fn fetch_unconfirmed_transactions_info(&self) -> Result<Vec<UnconfirmedTransactionInfo>, TransactionStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -1225,6 +1230,40 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
             })
             .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
+
+    fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        CompletedTransactionSql::index_by_status_and_cancelled(TransactionStatus::FauxUnconfirmed, false, &conn)?
+            .into_iter()
+            .map(|mut ct: CompletedTransactionSql| {
+                if let Err(e) = self.decrypt_if_necessary(&mut ct) {
+                    return Err(e);
+                }
+                CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+            })
+            .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
+    }
+
+    fn fetch_confirmed_faux_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        CompletedTransactionSql::index_by_status_and_cancelled_from_block_height(
+            TransactionStatus::FauxConfirmed,
+            false,
+            height as i64,
+            &conn,
+        )?
+        .into_iter()
+        .map(|mut ct: CompletedTransactionSql| {
+            if let Err(e) = self.decrypt_if_necessary(&mut ct) {
+                return Err(e);
+            }
+            CompletedTransaction::try_from(ct).map_err(TransactionStorageError::from)
+        })
+        .collect::<Result<Vec<CompletedTransaction>, TransactionStorageError>>()
     }
 }
 
@@ -1674,6 +1713,19 @@ impl CompletedTransactionSql {
             .load::<CompletedTransactionSql>(conn)?)
     }
 
+    pub fn index_by_status_and_cancelled_from_block_height(
+        status: TransactionStatus,
+        cancelled: bool,
+        block_height: i64,
+        conn: &SqliteConnection,
+    ) -> Result<Vec<CompletedTransactionSql>, TransactionStorageError> {
+        Ok(completed_transactions::table
+            .filter(completed_transactions::cancelled.eq(cancelled as i32))
+            .filter(completed_transactions::status.eq(status as i32))
+            .filter(completed_transactions::mined_height.ge(block_height))
+            .load::<CompletedTransactionSql>(conn)?)
+    }
+
     pub fn index_coinbase_at_block_height(
         block_height: i64,
         conn: &SqliteConnection,
@@ -1753,6 +1805,8 @@ impl CompletedTransactionSql {
     pub fn set_as_unmined(&self, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
         let status = if self.coinbase_block_height.is_some() {
             Some(TransactionStatus::Coinbase as i32)
+        } else if self.status == TransactionStatus::FauxConfirmed as i32 {
+            Some(TransactionStatus::FauxUnconfirmed as i32)
         } else if self.status == TransactionStatus::Broadcast as i32 {
             Some(TransactionStatus::Broadcast as i32)
         } else {
@@ -1798,11 +1852,18 @@ impl CompletedTransactionSql {
         num_confirmations: u64,
         is_confirmed: bool,
         conn: &SqliteConnection,
+        is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
         let status = if self.coinbase_block_height.is_some() && !is_valid {
             TransactionStatus::Coinbase as i32
         } else if is_confirmed {
-            TransactionStatus::MinedConfirmed as i32
+            if is_faux {
+                TransactionStatus::FauxConfirmed as i32
+            } else {
+                TransactionStatus::MinedConfirmed as i32
+            }
+        } else if is_faux {
+            TransactionStatus::FauxUnconfirmed as i32
         } else {
             TransactionStatus::MinedUnconfirmed as i32
         };
@@ -1983,11 +2044,11 @@ pub struct UnconfirmedTransactionInfoSql {
 }
 
 impl UnconfirmedTransactionInfoSql {
-    /// This method returns completed but unconfirmed transactions
+    /// This method returns completed but unconfirmed transactions that were not imported or scanned
     pub fn fetch_unconfirmed_transactions_info(
         conn: &SqliteConnection,
     ) -> Result<Vec<UnconfirmedTransactionInfoSql>, TransactionStorageError> {
-        // TODO: Should we not return cancelled transactions as well and handle it upstream? It could be mined.
+        // TODO: Should we not return cancelled transactions as well and handle it upstream? It could be mined. #LOGGED
         let query_result = completed_transactions::table
             .select((
                 completed_transactions::tx_id,
@@ -1999,6 +2060,8 @@ impl UnconfirmedTransactionInfoSql {
             .filter(
                 completed_transactions::status
                     .ne(TransactionStatus::Imported as i32)
+                    .and(completed_transactions::status.ne(TransactionStatus::FauxUnconfirmed as i32))
+                    .and(completed_transactions::status.ne(TransactionStatus::FauxConfirmed as i32))
                     .and(
                         completed_transactions::mined_height
                             .is_null()
@@ -2033,7 +2096,7 @@ mod test {
         transactions::{
             tari_amount::MicroTari,
             test_helpers::{create_unblinded_output, TestParams},
-            transaction::{OutputFeatures, Transaction},
+            transaction_components::{OutputFeatures, Transaction},
             transaction_protocol::sender::TransactionSenderMessage,
             CryptoFactories,
             ReceiverTransactionProtocol,

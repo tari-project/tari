@@ -48,7 +48,7 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -602,8 +602,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let response = tari_rpc::ListAssetRegistrationsResponse {
                     asset_public_key: output
                         .features
-                        .mint_non_fungible
-                        .map(|mint| mint.asset_public_key.to_vec())
+                        .asset
+                        .map(|asset| asset.public_key.to_vec())
                         .unwrap_or_default(),
                     unique_id: output.features.unique_id.unwrap_or_default(),
                     owner_commitment: output.commitment.to_vec(),

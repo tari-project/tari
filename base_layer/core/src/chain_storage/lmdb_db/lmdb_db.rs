@@ -104,7 +104,7 @@ use crate::{
     },
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+        transaction_components::{TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     },
 };
 

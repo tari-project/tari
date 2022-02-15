@@ -22,8 +22,12 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use log::info;
-use tari_common::{configuration::ValidatorNodeConfig, GlobalConfig};
+use log::*;
+use tari_common::{
+    configuration::ValidatorNodeConfig,
+    exit_codes::{ExitCode, ExitError},
+    GlobalConfig,
+};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_crypto::tari_utilities::hex::Hex;
@@ -55,7 +59,7 @@ use crate::{
         inbound_connection_service::TariCommsInboundConnectionService,
         outbound_connection_service::TariCommsOutboundService,
     },
-    ExitCodes,
+    TariCommsValidatorNodeClientFactory,
 };
 
 const LOG_TARGET: &str = "tari::validator_node::app";
@@ -77,12 +81,12 @@ impl DanNode {
         db_factory: SqliteDbFactory,
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
-    ) -> Result<(), ExitCodes> {
+    ) -> Result<(), ExitError> {
         let dan_config = self
             .config
             .validator_node
             .as_ref()
-            .ok_or_else(|| ExitCodes::ConfigError("Missing dan section".to_string()))?;
+            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Missing dan section"))?;
 
         let mut base_node_client = GrpcBaseNodeClient::new(dan_config.base_node_grpc_address);
         let mut tasks = HashMap::new();
@@ -105,16 +109,29 @@ impl DanNode {
                     .get_assets_for_dan_node(node_identity.public_key().clone())
                     .await
                     .unwrap();
+                info!(
+                    target: LOG_TARGET,
+                    "Base node returned {} asset(s) to process",
+                    assets.len()
+                );
                 for asset in assets {
                     if tasks.contains_key(&asset.public_key) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Asset task already running for asset '{}'", asset.public_key
+                        );
                         continue;
                     }
                     if let Some(allow_list) = &dan_config.assets_allow_list {
                         if !allow_list.contains(&asset.public_key.to_hex()) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Asset '{}' is not whitelisted for processing ", asset.public_key
+                            );
                             continue;
                         }
                     }
-                    info!(target: LOG_TARGET, "Adding asset {:?}", asset.public_key);
+                    info!(target: LOG_TARGET, "Adding asset '{}'", asset.public_key);
                     let node_identity = node_identity.as_ref().clone();
                     let mempool = mempool_service.clone();
                     let handles = handles.clone();
@@ -125,7 +142,7 @@ impl DanNode {
                     tasks.insert(
                         asset.public_key.clone(),
                         task::spawn(DanNode::start_asset_worker(
-                            asset.clone(),
+                            asset,
                             node_identity,
                             mempool,
                             handles,
@@ -154,14 +171,14 @@ impl DanNode {
         shutdown: ShutdownSignal,
         config: ValidatorNodeConfig,
         db_factory: SqliteDbFactory,
-    ) -> Result<(), ExitCodes> {
+    ) -> Result<(), ExitError> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
         let committee = asset_definition
             .initial_committee
             .iter()
             .map(|s| {
                 CommsPublicKey::from_hex(s)
-                    .map_err(|e| ExitCodes::ConfigError(format!("could not convert to hex:{}", e)))
+                    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("could not convert to hex:{}", e)))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -196,6 +213,9 @@ impl DanNode {
         let chain_storage = SqliteStorageService {};
         let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
         let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
+        let connectivity = handles.expect_handle();
+        let validator_node_client_factory =
+            TariCommsValidatorNodeClientFactory::new(connectivity, dht.discovery_service_requester());
         let mut consensus_worker = ConsensusWorker::<DefaultServiceSpecification>::new(
             receiver,
             outbound,
@@ -211,12 +231,13 @@ impl DanNode {
             db_factory,
             chain_storage,
             checkpoint_manager,
+            validator_node_client_factory,
         );
 
         consensus_worker
             .run(shutdown.clone(), None)
             .await
-            .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+            .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
 
         Ok(())
     }

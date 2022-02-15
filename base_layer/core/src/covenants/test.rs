@@ -26,7 +26,7 @@ use crate::{
     covenants::{context::CovenantContext, Covenant},
     transactions::{
         test_helpers::{TestParams, UtxoTestParams},
-        transaction::{TransactionInput, TransactionOutput},
+        transaction_components::{TransactionInput, TransactionOutput},
     },
 };
 

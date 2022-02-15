@@ -37,7 +37,7 @@ use crate::{
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{
+        transaction_components::{
             KernelSum,
             OutputFlags,
             TransactionError,

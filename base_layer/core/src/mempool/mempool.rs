@@ -36,7 +36,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
     validation::MempoolTransactionValidation,
 };
 

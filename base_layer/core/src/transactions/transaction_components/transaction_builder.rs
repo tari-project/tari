@@ -28,7 +28,7 @@ use tari_common_types::types::{BlindingFactor, HashOutput};
 use crate::transactions::{
     aggregated_body::AggregateBody,
     tari_amount::MicroTari,
-    transaction::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction_components::{Transaction, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
     CryptoFactories,
 };
 

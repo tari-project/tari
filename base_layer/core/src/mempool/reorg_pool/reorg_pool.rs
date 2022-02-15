@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, Signature};
 use tari_utilities::{hex::Hex, Hashable};
 
-use crate::{blocks::Block, transactions::transaction::Transaction};
+use crate::{blocks::Block, transactions::transaction_components::Transaction};
 
 pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 

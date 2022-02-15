@@ -26,7 +26,7 @@ use std::{
 };
 
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus, TxId};
-use tari_core::transactions::transaction::Transaction;
+use tari_core::transactions::transaction_components::Transaction;
 use tari_crypto::ristretto::RistrettoSecretKey;
 use tari_utilities::ByteArray;
 
@@ -98,6 +98,8 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             Pending => grpc::TransactionStatus::Pending,
             Coinbase => grpc::TransactionStatus::Coinbase,
             Rejected => grpc::TransactionStatus::Rejected,
+            FauxUnconfirmed => grpc::TransactionStatus::FauxUnconfirmed,
+            FauxConfirmed => grpc::TransactionStatus::FauxConfirmed,
         }
     }
 }

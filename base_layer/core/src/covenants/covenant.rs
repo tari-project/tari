@@ -36,7 +36,7 @@ use crate::{
         output_set::OutputSet,
         token::{CovenantToken, CovenantTokenCollection},
     },
-    transactions::transaction::{TransactionInput, TransactionOutput},
+    transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
 
 const MAX_COVENANT_BYTES: usize = 4096;

@@ -8,7 +8,7 @@ pub use coinbase_builder::{CoinbaseBuildError, CoinbaseBuilder};
 
 pub mod fee;
 pub mod tari_amount;
-pub mod transaction;
+pub mod transaction_components;
 
 mod format_currency;
 pub use format_currency::format_currency;

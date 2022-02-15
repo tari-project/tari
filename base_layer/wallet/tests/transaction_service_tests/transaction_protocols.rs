@@ -197,6 +197,7 @@ pub async fn add_transaction_to_database(
         Utc::now().naive_local(),
         TransactionDirection::Outbound,
         coinbase_block_height,
+        None,
     );
     completed_tx1.valid = valid;
     db.insert_completed_transaction(tx_id, completed_tx1).await.unwrap();

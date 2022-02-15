@@ -28,7 +28,12 @@ use tari_app_utilities::{
     identity_management::load_from_json,
     utilities::convert_socks_authentication,
 };
-use tari_common::{exit_codes::ExitCodes, CommsTransport, GlobalConfig, TorControlAuthentication};
+use tari_common::{
+    exit_codes::{ExitCode, ExitError},
+    CommsTransport,
+    GlobalConfig,
+    TorControlAuthentication,
+};
 use tari_comms::{
     protocol::rpc::RpcServer,
     socks,
@@ -61,7 +66,7 @@ pub async fn build_service_and_comms_stack(
     mempool: MempoolServiceHandle,
     db_factory: SqliteDbFactory,
     asset_processor: ConcreteAssetProcessor,
-) -> Result<(ServiceHandles, SubscriptionFactory), ExitCodes> {
+) -> Result<(ServiceHandles, SubscriptionFactory), ExitError> {
     // this code is duplicated from the base node
     let comms_config = create_comms_config(config, node_identity.clone());
 
@@ -71,7 +76,7 @@ pub async fn build_service_and_comms_stack(
         .add_initializer(P2pInitializer::new(comms_config, publisher))
         .build()
         .await
-        .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+        .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
 
     let comms = handles
         .take_handle::<UnspawnedCommsNode>()
@@ -81,15 +86,15 @@ pub async fn build_service_and_comms_stack(
 
     let comms = spawn_comms_using_transport(comms, create_transport_type(config))
         .await
-        .map_err(|e| ExitCodes::ConfigError(format!("Could not spawn using transport:{}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport:{}", e)))?;
 
     // Save final node identity after comms has initialized. This is required because the public_address can be
     // changed by comms during initialization when using tor.
     identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-        .map_err(|e| ExitCodes::ConfigError(format!("Failed to save node identity: {}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save node identity: {}", e)))?;
     if let Some(hs) = comms.hidden_service() {
         identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
-            .map_err(|e| ExitCodes::ConfigError(format!("Failed to save tor identity: {}", e)))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save tor identity: {}", e)))?;
     }
 
     handles.register(comms);
