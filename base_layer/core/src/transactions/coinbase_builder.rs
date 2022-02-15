@@ -41,7 +41,7 @@ use crate::{
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
-        transaction::{
+        transaction_components::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -222,7 +222,6 @@ impl CoinbaseBuilder {
             0,
             covenant,
         );
-        // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
                 .as_rewindable_transaction_output(&self.factories, rewind_data, None)
@@ -269,7 +268,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
+            transaction_components::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },

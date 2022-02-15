@@ -32,4 +32,6 @@ pub enum DnsClientError {
     Timeout,
     #[error("Failed to parse name server string")]
     NameServerParseFailed,
+    #[error("No record data present")]
+    NoRecordDataPresent,
 }

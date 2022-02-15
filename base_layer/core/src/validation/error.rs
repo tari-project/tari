@@ -29,7 +29,7 @@ use crate::{
     chain_storage::ChainStorageError,
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction::TransactionError,
+    transactions::transaction_components::TransactionError,
 };
 
 #[derive(Debug, Error)]

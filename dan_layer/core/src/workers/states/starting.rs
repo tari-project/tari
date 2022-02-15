@@ -105,6 +105,7 @@ where TBaseNodeClient: BaseNodeClient
             );
             return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
         }
+
         info!(
             target: LOG_TARGET,
             "Validator node is a committee member for asset public key '{}'",
@@ -118,7 +119,7 @@ where TBaseNodeClient: BaseNodeClient
             let mut tx = chain_db.new_unit_of_work();
 
             let state_db = db_factory.get_or_create_state_db(&asset_definition.public_key)?;
-            let mut state_tx = state_db.new_unit_of_work();
+            let mut state_tx = state_db.new_unit_of_work(0);
 
             info!(target: LOG_TARGET, "Loading initial state");
             let initial_state = asset_definition.initial_state();

@@ -34,6 +34,7 @@ use crate::{
 /// The Mnemonic system simplifies the encoding and decoding of a secret key into and from a Mnemonic word sequence
 /// It can autodetect the language of the Mnemonic word sequence
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
+// #LOGGED
 
 #[derive(Clone, Debug, PartialEq, EnumString, Display, Copy)]
 pub enum MnemonicLanguage {

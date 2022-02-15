@@ -42,7 +42,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
-        transaction::{
+        transaction_components::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -69,7 +69,7 @@ use crate::{
 /// This struct contains all the information that a transaction initiator (the sender) will manage throughout the
 /// Transaction construction process.
 // TODO: Investigate necessity to use the 'Serialize' and 'Deserialize' traits here; this could potentially leak
-// TODO:   information when least expected.
+// TODO:   information when least expected. #LOGGED
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
@@ -139,7 +139,6 @@ pub struct SingleRoundSenderData {
 pub enum TransactionSenderMessage {
     None,
     Single(Box<SingleRoundSenderData>),
-    // TODO: Three round types
     Multiple,
 }
 
@@ -766,7 +765,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
+            transaction_components::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
             transaction_protocol::{
                 sender::SenderTransactionProtocol,
                 single_receiver::SingleReceiverTransactionProtocol,

@@ -31,7 +31,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_core::transactions::transaction::TransactionError;
+use tari_core::transactions::transaction_components::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
@@ -107,7 +107,6 @@ pub const LOG_TARGET: &str = "tari::application";
 
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
-        // TODO: Log that outside
         log::error!(target: LOG_TARGET, "{}", err);
         Self::new(ExitCode::WalletError, err)
     }

@@ -30,7 +30,7 @@ use crate::{
         Reorg,
         UtxoMinedInfo,
     },
-    transactions::transaction::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{TransactionInput, TransactionKernel},
 };
 
 /// Identify behaviour for Blockchain database backends. Implementations must support `Send` and `Sync` so that

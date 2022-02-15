@@ -27,7 +27,7 @@ use crate::{
         filters::CovenantFilter,
         token::{CovenantToken, CovenantTokenCollection},
     },
-    transactions::transaction::TransactionInput,
+    transactions::transaction_components::TransactionInput,
 };
 
 pub struct CovenantContext<'a> {

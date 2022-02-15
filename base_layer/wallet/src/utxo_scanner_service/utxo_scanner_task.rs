@@ -28,7 +28,10 @@ use std::{
 use chrono::Utc;
 use futures::StreamExt;
 use log::*;
-use tari_common_types::{transaction::TxId, types::HashOutput};
+use tari_common_types::{
+    transaction::{ImportStatus, TxId},
+    types::HashOutput,
+};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey, PeerConnection};
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcClient,
@@ -36,7 +39,7 @@ use tari_core::{
     proto::base_node::SyncUtxosByBlockRequest,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{TransactionOutput, UnblindedOutput},
+        transaction_components::{TransactionOutput, UnblindedOutput},
     },
 };
 use tari_shutdown::ShutdownSignal;
@@ -46,6 +49,7 @@ use tokio::sync::broadcast;
 use crate::{
     error::WalletError,
     storage::database::WalletBackend,
+    transaction_service::error::{TransactionServiceError, TransactionStorageError},
     utxo_scanner_service::{
         error::UtxoScannerError,
         handle::UtxoScannerEvent,
@@ -427,10 +431,12 @@ where TBackend: WalletBackend + 'static
             total_scanned += outputs.len();
 
             let start = Instant::now();
-            let found_outputs = self.scan_for_outputs(outputs).await?;
+            let (tx_id, found_outputs) = self.scan_for_outputs(outputs).await?;
             scan_for_outputs_profiling.push(start.elapsed());
 
-            let (count, amount) = self.import_utxos_to_transaction_service(found_outputs).await?;
+            let (count, amount) = self
+                .import_utxos_to_transaction_service(found_outputs, tx_id, current_height)
+                .await?;
 
             self.resources
                 .db
@@ -481,17 +487,18 @@ where TBackend: WalletBackend + 'static
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<Vec<(UnblindedOutput, String)>, UtxoScannerError> {
+    ) -> Result<(TxId, Vec<(UnblindedOutput, String)>), UtxoScannerError> {
         let mut found_outputs: Vec<(UnblindedOutput, String)> = Vec::new();
+        let tx_id = TxId::new_random();
         if self.mode == UtxoScannerMode::Recovery {
             found_outputs.append(
                 &mut self
                     .resources
                     .output_manager_service
-                    .scan_for_recoverable_outputs(outputs.clone())
+                    .scan_for_recoverable_outputs(outputs.clone(), tx_id)
                     .await?
                     .into_iter()
-                    .map(|v| (v, format!("Recovered on {}.", Utc::now().naive_utc())))
+                    .map(|uo| (uo, format!("Recovered output on {}.", Utc::now().naive_utc())))
                     .collect(),
             );
         };
@@ -499,36 +506,54 @@ where TBackend: WalletBackend + 'static
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone())
+                .scan_outputs_for_one_sided_payments(outputs.clone(), tx_id)
                 .await?
                 .into_iter()
-                .map(|v| {
+                .map(|uo| {
                     (
-                        v,
-                        format!("Detected one-sided transaction on {}.", Utc::now().naive_utc()),
+                        uo,
+                        format!("Detected one-sided transaction output on {}.", Utc::now().naive_utc()),
                     )
                 })
                 .collect(),
         );
-        Ok(found_outputs)
+        Ok((tx_id, found_outputs))
     }
 
     async fn import_utxos_to_transaction_service(
         &mut self,
         utxos: Vec<(UnblindedOutput, String)>,
+        tx_id: TxId,
+        current_height: u64,
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
         let mut total_amount = MicroTari::from(0);
         let source_public_key = self.resources.node_identity.public_key().clone();
 
-        for uo in utxos {
+        for (uo, message) in utxos {
             match self
-                .import_unblinded_utxo_to_transaction_service(uo.0.clone(), &source_public_key, uo.1)
+                .import_unblinded_utxo_to_transaction_service(
+                    uo.clone(),
+                    &source_public_key,
+                    message,
+                    tx_id,
+                    current_height,
+                )
                 .await
             {
                 Ok(_) => {
                     num_recovered = num_recovered.saturating_add(1);
-                    total_amount += uo.0.value;
+                    total_amount += uo.value;
+                },
+                Err(WalletError::TransactionServiceError(TransactionServiceError::TransactionStorageError(
+                    TransactionStorageError::DuplicateOutput,
+                ))) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Recoverer attempted to add a duplicate output to the database for faux transaction ({}); \
+                         ignoring it as this is not a real error",
+                        tx_id
+                    );
                 },
                 Err(e) => return Err(UtxoScannerError::UtxoImportError(e.to_string())),
             }
@@ -565,33 +590,38 @@ where TBackend: WalletBackend + 'static
         let _ = self.event_sender.send(event);
     }
 
-    /// A faux incoming transaction will be created to provide a record of the event of importing a UTXO. The TxId of
-    /// the generated transaction is returned.
+    /// A faux incoming transaction will be created to provide a record of the event of importing a scanned UTXO. The
+    /// TxId of the generated transaction is returned.
     pub async fn import_unblinded_utxo_to_transaction_service(
         &mut self,
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
         message: String,
+        tx_id: TxId,
+        current_height: u64,
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .resources
             .transaction_service
-            .import_utxo(
+            .import_utxo_with_status(
                 unblinded_output.value,
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
+                ImportStatus::FauxUnconfirmed,
+                Some(tx_id),
+                Some(current_height),
             )
             .await?;
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::FauxUnconfirmed'",
             unblinded_output
                 .as_transaction_input(&self.resources.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
-                .to_hex()
+                .to_hex(),
         );
 
         Ok(tx_id)

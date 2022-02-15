@@ -42,7 +42,7 @@ message DhtHeader {
     DhtMessageType message_type = 8;
     uint32 flags = 10;
     // Message trace ID
-    // TODO: Remove for mainnet or when testing message traces is not required
+    // TODO: Remove for mainnet or when testing message traces is not required #LOGGED
     uint64 message_tag = 11;
     // Expiry timestamp for the message
     google.protobuf.Timestamp expires = 12;

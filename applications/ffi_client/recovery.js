@@ -80,6 +80,18 @@ try {
       console.log("txMinedUnconfirmed: ", ptr, confirmations);
     }
   );
+  // callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
+  const txFauxConfirmed = ffi.Callback("void", ["pointer"], function (ptr) {
+    console.log("txFauxConfirmed: ", ptr);
+  });
+  // callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
+  const txFauxUnconfirmed = ffi.Callback(
+      "void",
+      ["pointer"],
+      function (ptr, confirmations) {
+        console.log("txFauxUnconfirmed: ", ptr, confirmations);
+      }
+  );
   // callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
   const directSendResult = ffi.Callback("void", [u64, bool], function (i, j) {
     console.log("directSendResult: ", i, j);

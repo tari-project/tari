@@ -242,10 +242,14 @@ fn enable_tracing() {
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_service_name("tari::console_wallet")
-        .with_tags(vec![KeyValue::new("pid", process::id().to_string()), KeyValue::new("current_exe", env::current_exe().unwrap().to_str().unwrap_or_default().to_owned())])
-        // TODO: uncomment when using tokio 1
-        // .install_batch(opentelemetry::runtime::Tokio)
-        .install_simple()
+        .with_tags(vec![
+            KeyValue::new("pid", process::id().to_string()),
+            KeyValue::new(
+                "current_exe",
+                env::current_exe().unwrap().to_str().unwrap_or_default().to_owned(),
+            ),
+        ])
+        .install_batch(opentelemetry::runtime::Tokio)
         .unwrap();
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let subscriber = Registry::default().with(telemetry);

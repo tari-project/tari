@@ -26,7 +26,7 @@ use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
-    transaction::TxId,
+    transaction::{ImportStatus, TxId},
     types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -43,7 +43,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction_components::{OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -401,7 +401,15 @@ where
 
         let tx_id = self
             .transaction_service
-            .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
+            .import_utxo_with_status(
+                amount,
+                source_public_key.clone(),
+                message,
+                Some(features.maturity),
+                ImportStatus::Imported,
+                None,
+                None,
+            )
             .await?;
 
         let commitment_hex = unblinded_output
@@ -416,7 +424,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet", commitment_hex
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'", commitment_hex
         );
 
         Ok(tx_id)
@@ -433,11 +441,14 @@ where
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
-            .import_utxo(
+            .import_utxo_with_status(
                 unblinded_output.value,
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
+                ImportStatus::Imported,
+                None,
+                None,
             )
             .await?;
 
@@ -447,12 +458,12 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
-                .to_hex()
+                .to_hex(),
         );
 
         Ok(tx_id)

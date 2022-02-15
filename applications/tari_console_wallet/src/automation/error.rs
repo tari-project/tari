@@ -26,7 +26,7 @@ use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_core::transactions::{
     tari_amount::{MicroTariError, TariConversionError},
-    transaction::TransactionError,
+    transaction_components::TransactionError,
 };
 use tari_utilities::hex::HexError;
 use tari_wallet::{

@@ -24,7 +24,7 @@ use std::{fmt, marker::PhantomData};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
 use tari_common_types::types::PublicKey;
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Deserialize, Clone, Debug)]
@@ -92,6 +92,17 @@ pub struct InitialState {
 pub struct SchemaState {
     pub name: String,
     pub items: Vec<KeyValue>,
+}
+
+impl SchemaState {
+    pub fn new(name: String, items: Vec<KeyValue>) -> Self {
+        Self { name, items }
+    }
+
+    pub fn push_key_value(&mut self, key_value: KeyValue) -> &mut Self {
+        self.items.push(key_value);
+        self
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
