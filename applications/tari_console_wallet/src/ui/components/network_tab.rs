@@ -74,7 +74,7 @@ impl NetworkTab {
             Span::raw("Press "),
             Span::styled("B", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" and use "),
-            Span::styled("Up/Down Arrow Keys", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled("Up↑/Down↓ Keys", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to select a new Base Node, "),
             Span::styled("Enter", Style::default().add_modifier(Modifier::BOLD)),
             Span::raw(" to set."),
