@@ -180,4 +180,19 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
         lock.locked_qc.update(id, locked_qc.clone());
         Ok(())
     }
+
+    fn get_tip_node(&self) -> Result<Option<DbNode>, Self::Error> {
+        let lock = self.db.read().unwrap();
+        let found = lock
+            .nodes
+            .rows()
+            .fold(None, |val: Option<&DbNode>, row| match val {
+                Some(v) if v.height < row.height => Some(row),
+                Some(v) => Some(v),
+                None => Some(row),
+            })
+            .cloned();
+
+        Ok(found)
+    }
 }

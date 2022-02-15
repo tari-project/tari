@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io::stdout;
+
 use chrono::{Datelike, Utc};
+use crossterm::{execute, terminal::SetSize};
 use tari_app_utilities::consts;
 
 /// returns the top or bottom box line of the specified length
@@ -100,6 +103,14 @@ fn multiline_find_display_length(lines: &str) -> usize {
     result
 }
 
+/// Try to resize terminal to make sure the width is enough.
+/// In case of error, just simply print out the error.
+fn resize_terminal_to_fit_the_box(width: usize, height: usize) {
+    if let Err(e) = execute!(stdout(), SetSize(width as u16, height as u16)) {
+        println!("Can't resize terminal to fit the box. Error: {}", e)
+    }
+}
+
 /// Prints a pretty banner on the console as well as the list of available commands
 pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     let chunks: Vec<Vec<String>> = commands.chunks(chunk_size as usize).map(|x| x.to_vec()).collect();
@@ -141,6 +152,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
 
     let banner = include!("../assets/tari_banner.rs");
     let target_line_length = multiline_find_display_length(banner);
+
     for line in banner.lines() {
         println!("{}", line);
     }
@@ -168,8 +180,13 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     println!("{}", box_data("~~~~~~~~".to_string(), target_line_length));
     println!("{}", box_separator(target_line_length));
     let rows = box_tabular_data_rows(command_data, row_cell_size, target_line_length, 10);
+    // There are 24 fixed rows besides the possible changed "Commands" rows
+    // and plus 2 more blank rows for better layout.
+    let height_to_resize = &rows.len() + 24 + 2;
     for row in rows {
         println!("{}", row);
     }
     println!("{}", box_line(target_line_length, false));
+
+    resize_terminal_to_fit_the_box(target_line_length, height_to_resize);
 }

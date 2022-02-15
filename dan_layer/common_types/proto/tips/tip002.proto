@@ -7,7 +7,7 @@ service Tip002 {
   rpc Init(InitRequest) returns (Empty);
   //  rpc Info(InfoRequest) returns (InfoResponse);
   rpc BalanceOf(BalanceOfRequest) returns (BalanceOfResponse);
-  rpc Tranfer(TransferRequest) returns (TransferResponse);
+  rpc Transfer(TransferRequest) returns (TransferResponse);
 }
 
 

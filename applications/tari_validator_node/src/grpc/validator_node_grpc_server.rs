@@ -143,10 +143,10 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
             .get_state_db(&asset_public_key)
             .map_err(|e| Status::internal(format!("Could not create state db: {}", e)))?
         {
-            let mut unit_of_work = state.new_unit_of_work();
+            let mut state_db_reader = state.reader();
             let response_bytes = self
                 .asset_processor
-                .invoke_read_method(template_id, request.method, &request.args, &mut unit_of_work)
+                .invoke_read_method(template_id, request.method, &request.args, &mut state_db_reader)
                 .map_err(|e| Status::internal(format!("Could not invoke read method: {}", e)))?;
             Ok(Response::new(rpc::InvokeReadMethodResponse {
                 result: response_bytes.unwrap_or_default(),
