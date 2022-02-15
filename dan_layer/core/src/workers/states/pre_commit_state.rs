@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use std::{collections::HashMap, marker::PhantomData};
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -91,39 +91,35 @@ where
         unit_of_work: TUnitOfWork,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
-        let started = Instant::now();
         let mut unit_of_work = unit_of_work;
         let next_event_result;
+        let timeout = sleep(timeout);
+        futures::pin_mut!(timeout);
         loop {
             tokio::select! {
-                          r =  inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
+                r = inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
                     let (from, message) = r?;
-                    debug!(target: LOG_TARGET, "Received message: {:?} view:{}",  message.message_type(),
-            message.view_number());
+                    debug!(target: LOG_TARGET, "Received message: {:?} view:{}",  message.message_type(), message.view_number());
                      if current_view.is_leader() {
-
-                                  if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
-                            ).await?{
-                                     next_event_result = result;
-                                      break;
-                                  }
-
-                              }
-                    },
-                r =  inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
-                    let (from, message) = r?;
-                    let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                              if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
-                                  next_event_result = result;
-                                  break;
-                              }
-
-               },
-                      _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                                    next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                                    break;
-                                }
-                            }
+                         if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service).await? {
+                            next_event_result = result;
+                            break;
+                         }
+                     }
+                },
+                r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
+                   let (from, message) = r?;
+                   let leader = self.committee.leader_for_view(current_view.view_id).clone();
+                   if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
+                       next_event_result = result;
+                       break;
+                   }
+                },
+                _ = &mut timeout =>  {
+                      next_event_result = ConsensusWorkerStateEvent::TimedOut;
+                      break;
+                 }
+            }
         }
         Ok(next_event_result)
     }

@@ -24,12 +24,15 @@ use std::convert::TryFrom;
 
 use log::*;
 use tari_common_types::types::PublicKey;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::{
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    utils,
+};
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{Instruction, TemplateId, TreeNodeHash},
     services::{AssetProcessor, MempoolService},
-    storage::DbFactory,
+    storage::{state::StateDbUnitOfWorkReader, DbFactory},
 };
 use tokio::{sync::mpsc, task};
 
@@ -82,12 +85,14 @@ where
         let request = request.into_message();
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
             .map_err(|err| RpcStatus::bad_request(format!("Asset public key was not a valid public key:{}", err)))?;
+
         let state = self
             .db_factory
             .get_state_db(&asset_public_key)
             .map_err(|e| RpcStatus::general(format!("Could not create state db: {}", e)))?
             .ok_or_else(|| RpcStatus::not_found("This node does not process this asset".to_string()))?;
-        let mut unit_of_work = state.new_unit_of_work();
+
+        let mut unit_of_work = state.reader();
         let response_bytes = self
             .asset_processor
             .invoke_read_method(
@@ -97,6 +102,7 @@ where
                 &mut unit_of_work,
             )
             .map_err(|e| RpcStatus::general(format!("Could not invoke read method: {}", e)))?;
+
         Ok(Response::new(proto::InvokeReadMethodResponse {
             result: response_bytes.unwrap_or_default(),
         }))
@@ -220,5 +226,100 @@ where
         });
 
         Ok(Streaming::new(rx))
+    }
+
+    async fn get_sidechain_state(
+        &self,
+        request: Request<proto::GetSidechainStateRequest>,
+    ) -> Result<Streaming<proto::GetSidechainStateResponse>, RpcStatus> {
+        let msg = request.into_message();
+
+        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
+            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+
+        let db = self
+            .db_factory
+            .get_state_db(&asset_public_key)
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
+
+        let uow = db.reader();
+        let data = uow.get_all_state().map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+        let (tx, rx) = mpsc::channel(10);
+
+        task::spawn(async move {
+            for state in data {
+                let schema = proto::GetSidechainStateResponse {
+                    state: Some(proto::get_sidechain_state_response::State::Schema(state.name)),
+                };
+
+                if tx.send(Ok(schema)).await.is_err() {
+                    return;
+                }
+
+                let key_values = state
+                    .items
+                    .into_iter()
+                    .map(|kv| proto::get_sidechain_state_response::State::KeyValue(kv.into()))
+                    .map(|state| Ok(proto::GetSidechainStateResponse { state: Some(state) }));
+
+                if utils::mpsc::send_all(&tx, key_values).await.is_err() {
+                    return;
+                }
+            }
+        });
+
+        Ok(Streaming::new(rx))
+    }
+
+    async fn get_op_logs(
+        &self,
+        request: Request<proto::GetStateOpLogsRequest>,
+    ) -> Result<Response<proto::GetStateOpLogsResponse>, RpcStatus> {
+        let msg = request.into_message();
+
+        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
+            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+
+        let db = self
+            .db_factory
+            .get_state_db(&asset_public_key)
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
+
+        let reader = db.reader();
+        let op_logs = reader
+            .get_op_logs_for_height(msg.height)
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let resp = proto::GetStateOpLogsResponse {
+            op_logs: op_logs.into_iter().map(Into::into).collect(),
+        };
+
+        Ok(Response::new(resp))
+    }
+
+    async fn get_tip_node(
+        &self,
+        request: Request<proto::GetTipNodeRequest>,
+    ) -> Result<Response<proto::GetTipNodeResponse>, RpcStatus> {
+        let msg = request.into_message();
+
+        let asset_public_key = PublicKey::from_bytes(&msg.asset_public_key)
+            .map_err(|_| RpcStatus::bad_request("Invalid asset_public_key"))?;
+
+        let db = self
+            .db_factory
+            .get_chain_db(&asset_public_key)
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
+
+        let tip_node = db.get_tip_node().map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+
+        let resp = proto::GetTipNodeResponse {
+            tip_node: tip_node.map(Into::into),
+        };
+
+        Ok(Response::new(resp))
     }
 }
