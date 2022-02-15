@@ -80,7 +80,7 @@ jobs:
           command: clippy
           args: --all-targets -- -D warnings
   build:
-    name: check nightly
+    name: build nightly
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
@@ -125,7 +125,7 @@ jobs:
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
-          command: check
+          command: build
           args: --release --all-targets
   build-stable:
     name: check stable
@@ -180,7 +180,7 @@ jobs:
           args: --release --all-targets
   test:
     name: test
-    # needs: build
+    needs: build
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
@@ -220,13 +220,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-      - name: Install cargo-nextest
-        uses: baptiste0928/cargo-install@v1
-        with:
-          crate: cargo-nextest
-          version: 0.9
-      - name: cargo nextest
+      - name: cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: nextest
-          args: run --release --all-targets
+          command: test
+          args: --release --all-targets
