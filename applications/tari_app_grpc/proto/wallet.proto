@@ -77,6 +77,8 @@ service Wallet {
     rpc MintTokens(MintTokensRequest) returns (MintTokensResponse);
 
     rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
+
+    rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 }
 
 message GetVersionRequest { }
@@ -335,3 +337,10 @@ message CancelTransactionResponse {
 message RevalidateRequest{}
 
 message RevalidateResponse{}
+
+message SetBaseNodeRequest {
+    string public_key_hex = 1;
+    string net_address = 2;
+}
+
+message SetBaseNodeResponse{}

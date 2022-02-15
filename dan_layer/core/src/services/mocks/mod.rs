@@ -57,7 +57,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::state::StateDbUnitOfWork,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
 };
 
 #[derive(Debug, Clone)]
@@ -207,6 +207,13 @@ impl BaseNodeClient for MockBaseNodeClient {
     ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
         todo!();
     }
+
+    async fn get_asset_registration(
+        &mut self,
+        _asset_public_key: PublicKey,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        todo!()
+    }
 }
 
 pub fn mock_base_node_client() -> MockBaseNodeClient {
@@ -289,7 +296,7 @@ impl AssetProcessor for MockAssetProcessor {
         todo!()
     }
 
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWorkReader>(
         &self,
         _template_id: TemplateId,
         _method: String,

@@ -26,4 +26,12 @@ pub enum ModelError {
     InvalidTemplateIdNumber { value: i64 },
     #[error("Failed to parse string: {details}")]
     StringParseError { details: String },
+    #[error("Checkpoint output is missing parent public key")]
+    CheckpointOutputMissingParentPublicKey,
+    #[error("Checkpoint output is missing checkpoint merkle root")]
+    CheckpointOutputMissingCheckpointMerkleRoot,
+    #[error("Checkpoint output is missing side chain committee")]
+    CheckpointOutputMissingSidechainCommittee,
+    #[error("Output is not flagged as a checkpoint output")]
+    NotCheckpointOutput,
 }

@@ -35,18 +35,10 @@ pub enum TransactionStatus {
 
 impl TransactionStatus {
     pub fn is_faux(&self) -> bool {
-        match self {
-            TransactionStatus::Completed => false,
-            TransactionStatus::Broadcast => false,
-            TransactionStatus::MinedUnconfirmed => false,
-            TransactionStatus::Imported => true,
-            TransactionStatus::Pending => false,
-            TransactionStatus::Coinbase => false,
-            TransactionStatus::MinedConfirmed => false,
-            TransactionStatus::Rejected => false,
-            TransactionStatus::FauxUnconfirmed => true,
-            TransactionStatus::FauxConfirmed => true,
-        }
+        matches!(
+            self,
+            TransactionStatus::Imported | TransactionStatus::FauxUnconfirmed | TransactionStatus::FauxConfirmed
+        )
     }
 }
 

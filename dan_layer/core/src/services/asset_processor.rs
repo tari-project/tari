@@ -27,7 +27,7 @@ use tari_core::transactions::transaction_components::TemplateParameter;
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{AssetDefinition, Instruction, TemplateId},
-    storage::state::StateDbUnitOfWork,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
     template_command::ExecutionResult,
     templates::{tip002_template, tip004_template, tip721_template},
 };
@@ -48,12 +48,12 @@ pub trait AssetProcessor: Sync + Send + 'static {
         db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+    fn invoke_read_method<TUnitOfWorkReader: StateDbUnitOfWorkReader>(
         &self,
         template_id: TemplateId,
         method: String,
         args: &[u8],
-        state_db: &mut TUnifOfWork,
+        state_db: &mut TUnitOfWorkReader,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
@@ -89,12 +89,12 @@ impl AssetProcessor for ConcreteAssetProcessor {
         )
     }
 
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+    fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
         &self,
         template_id: TemplateId,
         method: String,
         args: &[u8],
-        state_db: &mut TUnifOfWork,
+        state_db: &mut TUnitOfWork,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         match template_id {
             TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),

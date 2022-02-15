@@ -24,22 +24,27 @@ use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
-use tari_dan_core::models::{
-    CheckpointData,
-    HotStuffMessage,
-    HotStuffMessageType,
-    HotStuffTreeNode,
-    Instruction,
-    InstructionSet,
-    Node,
-    QuorumCertificate,
-    SideChainBlock,
-    Signature,
-    StateRoot,
-    TariDanPayload,
-    TemplateId,
-    TreeNodeHash,
-    ViewId,
+use tari_dan_core::{
+    models::{
+        CheckpointData,
+        HotStuffMessage,
+        HotStuffMessageType,
+        HotStuffTreeNode,
+        Instruction,
+        InstructionSet,
+        KeyValue,
+        Node,
+        QuorumCertificate,
+        SideChainBlock,
+        Signature,
+        StateOpLogEntry,
+        StateRoot,
+        TariDanPayload,
+        TemplateId,
+        TreeNodeHash,
+        ViewId,
+    },
+    storage::state::DbStateOpLogEntry,
 };
 
 use crate::p2p::proto;
@@ -159,14 +164,19 @@ impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPay
         if value.parent.is_empty() {
             return Err("parent not provided".to_string());
         }
+        let state_root = value
+            .state_root
+            .try_into()
+            .map(StateRoot::new)
+            .map_err(|_| "Incorrect length for state_root")?;
         Ok(Self::new(
-            TreeNodeHash::try_from(value.parent).map_err(|err| err.to_string())?,
+            TreeNodeHash::try_from(value.parent).map_err(|_| "Incorrect length for parent")?,
             value
                 .payload
                 .map(|p| p.try_into())
                 .transpose()?
-                .ok_or_else(|| "payload not provided".to_string())?,
-            StateRoot::new(value.state_root),
+                .ok_or("payload not provided")?,
+            state_root,
             value.height,
         ))
     }
@@ -279,5 +289,72 @@ impl TryFrom<proto::common::Node> for Node {
         let is_committed = node.is_committed;
 
         Ok(Self::new(hash, parent, height, is_committed))
+    }
+}
+
+impl From<KeyValue> for proto::validator_node::KeyValue {
+    fn from(kv: KeyValue) -> Self {
+        Self {
+            key: kv.key,
+            value: kv.value,
+        }
+    }
+}
+
+impl TryFrom<proto::validator_node::KeyValue> for KeyValue {
+    type Error = String;
+
+    fn try_from(kv: proto::validator_node::KeyValue) -> Result<Self, Self::Error> {
+        if kv.key.is_empty() {
+            return Err("KeyValue: key cannot be empty".to_string());
+        }
+
+        Ok(Self {
+            key: kv.key,
+            value: kv.value,
+        })
+    }
+}
+
+impl From<StateOpLogEntry> for proto::validator_node::StateOpLog {
+    fn from(entry: StateOpLogEntry) -> Self {
+        let DbStateOpLogEntry {
+            height,
+            merkle_root,
+            operation,
+            schema,
+            key,
+            value,
+        } = entry.into_inner();
+        Self {
+            height,
+            merkle_root: merkle_root.map(|r| r.as_bytes().to_vec()).unwrap_or_default(),
+            operation: operation.as_op_str().to_string(),
+            schema,
+            key,
+            value: value.unwrap_or_default(),
+        }
+    }
+}
+impl TryFrom<proto::validator_node::StateOpLog> for StateOpLogEntry {
+    type Error = String;
+
+    fn try_from(value: proto::validator_node::StateOpLog) -> Result<Self, Self::Error> {
+        Ok(DbStateOpLogEntry {
+            height: value.height,
+            merkle_root: Some(value.merkle_root)
+                .filter(|r| !r.is_empty())
+                .map(TryInto::try_into)
+                .transpose()
+                .map_err(|_| "Invalid merkle root value".to_string())?,
+            operation: value
+                .operation
+                .parse()
+                .map_err(|_| "Invalid oplog operation string".to_string())?,
+            schema: value.schema,
+            key: value.key,
+            value: Some(value.value).filter(|v| !v.is_empty()),
+        }
+        .into())
     }
 }

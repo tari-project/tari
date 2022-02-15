@@ -97,32 +97,31 @@ where
         let next_event_result;
         loop {
             tokio::select! {
-            r  = inbound_services.wait_for_message(HotStuffMessageType::PreCommit, current_view.view_id()) => {
-                    let (from, message) = r?;
-                 if current_view.is_leader() {
-                           if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
-                     ).await?{
-                              next_event_result = result;
-                               break;
-                           }
+               r  = inbound_services.wait_for_message(HotStuffMessageType::PreCommit, current_view.view_id()) => {
+               let (from, message) = r?;
+                if current_view.is_leader() {
+                      if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
+                ).await?{
+                     next_event_result = result;
+                      break;
+                  }
 
-                       }
-             },
-             r =  inbound_services.wait_for_qc(HotStuffMessageType::PreCommit, current_view.view_id()) => {
-                    let (from, message) = r?;
-                 let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                       if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
-                           next_event_result = result;
-                           break;
-                       }
-
-               }
-               _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                             // TODO: perhaps this should be from the time the state was entered
-                             next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                             break;
-                         }
-                     }
+              }
+            },
+            r =  inbound_services.wait_for_qc(HotStuffMessageType::PreCommit, current_view.view_id()) => {
+                let (from, message) = r?;
+                let leader = self.committee.leader_for_view(current_view.view_id).clone();
+                if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
+                    next_event_result = result;
+                    break;
+                }
+            }
+            _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
+                  // TODO: perhaps this should be from the time the state was entered
+                  next_event_result = ConsensusWorkerStateEvent::TimedOut;
+                  break;
+              }
+            }
         }
         Ok(next_event_result)
     }

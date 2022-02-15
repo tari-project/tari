@@ -20,17 +20,25 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[derive(Default, PartialEq, Debug, Clone)]
+use crate::fixed_hash::FixedHash;
+
+#[derive(PartialEq, Debug, Clone)]
 pub struct StateRoot {
-    root: Vec<u8>,
+    root: FixedHash,
 }
 
 impl StateRoot {
-    pub fn new(root: Vec<u8>) -> Self {
+    pub fn new(root: FixedHash) -> Self {
         Self { root }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
         self.root.as_slice()
+    }
+
+    pub fn initial() -> Self {
+        Self {
+            root: FixedHash::zero(),
+        }
     }
 }

@@ -31,6 +31,7 @@ log = { version = "0.4.8", features = ["std"] }
 lmdb-zero = "0.4.4"
 prost = "0.9"
 prost-types = "0.9"
+rand = "0.8.4"
 serde = "1.0.126"
 thiserror = "^1.0.20"
 tokio = { version="1.10", features = ["macros", "time"]}
