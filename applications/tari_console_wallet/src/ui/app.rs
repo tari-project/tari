@@ -36,6 +36,7 @@ use crate::{
         components::{
             assets_tab::AssetsTab,
             base_node::BaseNode,
+            contacts_tab::ContactsTab,
             events_component::EventsComponent,
             log_tab::LogTab,
             menu::Menu,
@@ -91,6 +92,7 @@ impl<B: Backend> App<B> {
             .add("Transactions".into(), Box::new(TransactionsTab::new()))
             .add("Send".into(), Box::new(SendTab::new(&app_state)))
             .add("Receive".into(), Box::new(ReceiveTab::new()))
+            .add("Contacts".into(), Box::new(ContactsTab::new()))
             .add("Network".into(), Box::new(NetworkTab::new(base_node_selected)))
             .add("Assets".into(), Box::new(AssetsTab::new()))
             .add("Tokens".into(), Box::new(TokensComponent::new()))
@@ -173,17 +175,20 @@ impl<B: Backend> App<B> {
             .constraints([Constraint::Length(MAX_WIDTH), Constraint::Min(0)].as_ref())
             .split(f.size());
         let title_chunks = Layout::default()
-            .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(2)].as_ref())
+            .constraints(
+                [
+                    Constraint::Length(3),
+                    Constraint::Min(0),
+                    Constraint::Length(2),
+                    Constraint::Length(1),
+                ]
+                .as_ref(),
+            )
             .split(max_width_layout[0]);
-        let title_halves = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(65), Constraint::Percentage(35)].as_ref())
-            .split(title_chunks[0]);
 
-        self.tabs.draw_titles(f, title_halves[0], &self.app_state);
-
-        self.base_node_status.draw(f, title_halves[1], &self.app_state);
+        self.tabs.draw_titles(f, title_chunks[0], &self.app_state);
         self.tabs.draw_content(f, title_chunks[1], &mut self.app_state);
-        self.menu.draw(f, title_chunks[2], &self.app_state);
+        self.base_node_status.draw(f, title_chunks[2], &self.app_state);
+        self.menu.draw(f, title_chunks[3], &self.app_state);
     }
 }
