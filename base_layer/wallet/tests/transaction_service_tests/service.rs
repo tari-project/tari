@@ -3909,7 +3909,7 @@ fn test_coinbase_abandoned() {
         .expect("Validation should start");
 
     runtime.block_on(async {
-        let delay = sleep(Duration::from_secs(30));
+        let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
         let mut count = 0usize;
         loop {
