@@ -9,10 +9,10 @@ iterations before reaching this point:
   not cast in stone. RFCs can, and should, undergo further evaluation and discussion by the community. RFC comments are
   best made using Github [issue]s.
 
-New RFC's should follow the format given in the [RFC template](./RFC_template.md).
+New RFC's should follow the format given in the [RFC template](RFC_template.md).
 ## Lifecycle
 
-RFCs go through the following lifecycle, which roughly corresponds to the [COSS](https://rfc.unprotocols.org/spec:2/COSS/):
+RFCs go through the following lifecycle, which roughly corresponds to the [COSS](https://github.com/unprotocols/rfc/blob/master/2/README.md):
 
 | Status      |                                                   | Description                                                                                                                                                                                                         |
 |:------------|:--------------------------------------------------|:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
