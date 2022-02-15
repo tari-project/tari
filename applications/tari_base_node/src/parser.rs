@@ -88,6 +88,7 @@ pub enum BaseNodeCommand {
     GetMempoolStats,
     GetMempoolState,
     GetMempoolStateFull,
+    GetMempoolStateTx,
     Whoami,
     GetStateInfo,
     GetNetworkStats,
@@ -275,10 +276,13 @@ impl Parser {
                 self.command_handler.lock().await.get_mempool_stats();
             },
             GetMempoolState => {
-                self.command_handler.lock().await.get_mempool_state(false);
+                self.command_handler.lock().await.get_mempool_state(false, None);
             },
             GetMempoolStateFull => {
-                self.command_handler.lock().await.get_mempool_state(true);
+                self.command_handler.lock().await.get_mempool_state(true, None);
+            },
+            GetMempoolStateTx => {
+                self.get_mempool_state_tx(typed_args).await;
             },
             Whoami => {
                 self.command_handler.lock().await.whoami();
@@ -437,6 +441,9 @@ impl Parser {
             GetMempoolStateFull => {
                 println!("Retrieves your mempools state (full)");
             },
+            GetMempoolStateTx => {
+                println!("Retrieves details about a transaction in the mempool");
+            },
             Whoami => {
                 println!(
                     "Display identity information about this node, including: public key, node ID and the public \
@@ -539,6 +546,11 @@ impl Parser {
         let kernel_sig = Signature::new(public_nonce, signature);
 
         self.command_handler.lock().await.search_kernel(kernel_sig)
+    }
+
+    async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) {
+        let filter = args.take_next("filter").ok();
+        self.command_handler.lock().await.get_mempool_state(true, filter)
     }
 
     /// Function to process the discover-peer command

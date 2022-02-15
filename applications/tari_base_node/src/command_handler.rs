@@ -376,20 +376,32 @@ impl CommandHandler {
     }
 
     /// Function to process the get-mempool-state command
-    pub fn get_mempool_state(&self, full: bool) {
+    pub fn get_mempool_state(&self, full: bool, filter: Option<String>) {
         let mut handler = self.mempool_service.clone();
         self.executor.spawn(async move {
             match handler.get_mempool_state().await {
                 Ok(state) => {
+                    let mut filtered = 0;
                     println!("----------------- Mempool -----------------");
-                    if full {
-                        println!("--- Unconfirmed Pool ---");
-                        for tx in &state.unconfirmed_pool {
+                    println!("--- Unconfirmed Pool ---");
+                    for tx in &state.unconfirmed_pool {
+                        let tx_sig = tx
+                            .first_kernel_excess_sig()
+                            .map(|sig| sig.get_signature().to_hex())
+                            .unwrap_or_else(|| "N/A".to_string());
+                        if let Some(ref filter) = filter {
+                            if !tx_sig.contains(filter) {
+                                filtered += 1;
+                                continue;
+                            }
+                        }
+                        if full {
+                            println!("--- TX: {} ---", tx_sig);
+                            println!("{}", tx.body);
+                        } else {
                             println!(
                                 "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
-                                tx.first_kernel_excess_sig()
-                                    .map(|sig| sig.get_signature().to_hex())
-                                    .unwrap_or_else(|| "N/A".to_string()),
+                                tx_sig,
                                 tx.body.get_total_fee(),
                                 tx.body.outputs().len(),
                                 tx.body.kernels().len(),
@@ -397,12 +409,15 @@ impl CommandHandler {
                                 tx.body.sum_metadata_size(),
                             );
                         }
+                    }
+                    if filtered > 0 {
+                        println!("Filtered: {} transaction(s)", filtered);
+                    }
+                    if !full {
                         println!("--- Reorg Pool ---");
                         for excess_sig in &state.reorg_pool {
                             println!("    {}", excess_sig.get_signature().to_hex());
                         }
-                    } else {
-                        eprintln!("NOT IMPLEMENTED YET!");
                     }
                 },
                 Err(err) => {
