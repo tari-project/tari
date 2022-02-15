@@ -42,7 +42,7 @@ use crate::{
         tari_amount::MicroTari,
         transaction_components::{
             AssetOutputFeatures,
-            CommitteeCheckpointFeatures,
+            CommitteeDefinitionFeatures,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
@@ -302,7 +302,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
                 None => None,
             },
             features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
-            features.committee_checkpoint.map(|c| c.try_into()).transpose()?,
+            features.committee_definition.map(|c| c.try_into()).transpose()?,
         ))
     }
 }
@@ -322,7 +322,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
-            committee_checkpoint: features.committee_checkpoint.map(|c| c.into()),
+            committee_definition: features.committee_definition.map(|c| c.into()),
         }
     }
 }
@@ -429,10 +429,10 @@ impl From<SideChainCheckpointFeatures> for proto::types::SideChainCheckpointFeat
     }
 }
 
-impl TryFrom<proto::types::CommitteeCheckpointFeatures> for CommitteeCheckpointFeatures {
+impl TryFrom<proto::types::CommitteeDefinitionFeatures> for CommitteeDefinitionFeatures {
     type Error = String;
 
-    fn try_from(value: proto::types::CommitteeCheckpointFeatures) -> Result<Self, Self::Error> {
+    fn try_from(value: proto::types::CommitteeDefinitionFeatures) -> Result<Self, Self::Error> {
         let committee = value
             .committee
             .into_iter()
@@ -447,8 +447,8 @@ impl TryFrom<proto::types::CommitteeCheckpointFeatures> for CommitteeCheckpointF
     }
 }
 
-impl From<CommitteeCheckpointFeatures> for proto::types::CommitteeCheckpointFeatures {
-    fn from(value: CommitteeCheckpointFeatures) -> Self {
+impl From<CommitteeDefinitionFeatures> for proto::types::CommitteeDefinitionFeatures {
+    fn from(value: CommitteeDefinitionFeatures) -> Self {
         Self {
             committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
             effective_sidechain_height: value.effective_sidechain_height,

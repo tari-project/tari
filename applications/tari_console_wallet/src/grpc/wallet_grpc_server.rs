@@ -36,8 +36,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
-        CreateCommitteeCheckpointRequest,
-        CreateCommitteeCheckpointResponse,
+        CreateCommitteeDefinitionRequest,
+        CreateCommitteeDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
@@ -720,10 +720,10 @@ impl wallet_server::Wallet for WalletGrpcServer {
         Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
     }
 
-    async fn create_committee_checkpoint(
+    async fn create_committee_definition(
         &self,
-        request: Request<CreateCommitteeCheckpointRequest>,
-    ) -> Result<Response<CreateCommitteeCheckpointResponse>, Status> {
+        request: Request<CreateCommitteeDefinitionRequest>,
+    ) -> Result<Response<CreateCommitteeDefinitionResponse>, Status> {
         let mut asset_manager = self.wallet.asset_manager.clone();
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
@@ -739,7 +739,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let effective_sidechain_height = message.effective_sidechain_height;
 
         let (tx_id, transaction) = asset_manager
-            .create_committee_checkpoint(&asset_public_key, &committee_public_keys, effective_sidechain_height)
+            .create_committee_definition(&asset_public_key, &committee_public_keys, effective_sidechain_height)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -752,7 +752,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        Ok(Response::new(CreateCommitteeCheckpointResponse {}))
+        Ok(Response::new(CreateCommitteeDefinitionResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {

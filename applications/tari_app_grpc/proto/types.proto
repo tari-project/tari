@@ -225,7 +225,7 @@ message OutputFeatures {
     SideChainCheckpointFeatures sidechain_checkpoint = 8;
     // Version
     uint32 version = 9;
-    CommitteeCheckpointFeatures committee_checkpoint = 10;
+    CommitteeDefinitionFeatures committee_definition = 10;
 }
 
 message AssetOutputFeatures {
@@ -250,7 +250,7 @@ message SideChainCheckpointFeatures {
     repeated bytes committee = 2;
 }
 
-message CommitteeCheckpointFeatures {
+message CommitteeDefinitionFeatures {
     repeated bytes committee = 1;
     uint64 effective_sidechain_height = 2;
 }

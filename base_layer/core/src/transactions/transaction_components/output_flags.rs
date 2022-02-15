@@ -39,7 +39,7 @@ bitflags! {
         const MINT_NON_FUNGIBLE    = 0b0000_0100 | Self::NON_FUNGIBLE.bits;
         const BURN_NON_FUNGIBLE    = 0b1000_0000 | Self::NON_FUNGIBLE.bits;
         const SIDECHAIN_CHECKPOINT = 0b0001_0000 | Self::NON_FUNGIBLE.bits;
-        const COMMITTEE_CHECKPOINT = 0b0010_0000 | Self::NON_FUNGIBLE.bits;
+        const COMMITTEE_DEFINITION = 0b0010_0000 | Self::NON_FUNGIBLE.bits;
     }
 }
 

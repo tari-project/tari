@@ -271,7 +271,7 @@ Then(
     let wallet = this.getWallet(wallet_name);
     let output = await wallet_run_command(
       wallet,
-      `create-committee-checkpoint ${this.asset_public_key} ${member}`
+      `create-committee-definition ${this.asset_public_key} ${member}`
     );
     // console.log(output.buffer);
     expect(output.buffer).to.have.string(" committee members");

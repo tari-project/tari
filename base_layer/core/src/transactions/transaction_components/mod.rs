@@ -25,7 +25,7 @@
 
 pub use asset_output_features::AssetOutputFeatures;
 use blake2::Digest;
-pub use committee_checkpoint_features::CommitteeCheckpointFeatures;
+pub use committee_definition_features::CommitteeDefinitionFeatures;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
 pub use kernel_builder::KernelBuilder;
@@ -52,7 +52,7 @@ pub use unblinded_output::UnblindedOutput;
 pub use unblinded_output_builder::UnblindedOutputBuilder;
 
 mod asset_output_features;
-mod committee_checkpoint_features;
+mod committee_definition_features;
 mod error;
 mod full_rewind_result;
 mod kernel_builder;

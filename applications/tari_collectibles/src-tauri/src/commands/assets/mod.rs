@@ -258,7 +258,7 @@ pub(crate) async fn assets_create_initial_checkpoint(
 }
 
 #[tauri::command]
-pub(crate) async fn assets_create_committee_checkpoint(
+pub(crate) async fn assets_create_committee_definition(
   asset_public_key: String,
   committee: Vec<String>,
   state: tauri::State<'_, ConcurrentAppState>,
@@ -268,7 +268,7 @@ pub(crate) async fn assets_create_committee_checkpoint(
 
   // TODO: effective sidechain height...
   client
-    .create_committee_checkpoint(&asset_public_key, committee, 0)
+    .create_committee_definition(&asset_public_key, committee, 0)
     .await?;
 
   Ok(())

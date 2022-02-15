@@ -94,7 +94,7 @@ pub enum WalletCommand {
     RegisterAsset,
     MintTokens,
     CreateInitialCheckpoint,
-    CreateCommitteeCheckpoint,
+    CreateCommitteeDefinition,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -878,7 +878,7 @@ pub async fn command_runner(
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
-            CreateCommitteeCheckpoint => {
+            CreateCommitteeDefinition => {
                 let asset_public_key = match parsed.args[0] {
                     ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
@@ -908,7 +908,7 @@ pub async fn command_runner(
                 let mut asset_manager = wallet.asset_manager.clone();
                 // todo: effective sidechain height...
                 let (tx_id, transaction) = asset_manager
-                    .create_committee_checkpoint(&asset_public_key, &committee_public_keys, 0)
+                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0)
                     .await?;
 
                 let _result = transaction_service

@@ -134,28 +134,28 @@ impl WalletClient {
     Ok(result.into_inner())
   }
 
-  pub async fn create_committee_checkpoint(
+  pub async fn create_committee_definition(
     &mut self,
     asset_public_key: &str,
     committee: Vec<String>,
     effective_sidechain_height: u64,
-  ) -> Result<grpc::CreateCommitteeCheckpointResponse, CollectiblesError> {
+  ) -> Result<grpc::CreateCommitteeDefinitionResponse, CollectiblesError> {
     let inner = self.get_inner_mut()?;
     let committee = committee
       .iter()
       .map(|s| Vec::from_hex(s))
       .collect::<Result<Vec<_>, _>>()?;
 
-    let request = grpc::CreateCommitteeCheckpointRequest {
+    let request = grpc::CreateCommitteeDefinitionRequest {
       asset_public_key: Vec::from_hex(asset_public_key)?,
       committee,
       effective_sidechain_height,
     };
     let result = inner
-      .create_committee_checkpoint(request)
+      .create_committee_definition(request)
       .await
       .map_err(|source| CollectiblesError::ClientRequest {
-        request: "create_committee_checkpoint".to_string(),
+        request: "create_committee_definition".to_string(),
         source,
       })?;
     debug!(target: LOG_TARGET, "result {:?}", result);

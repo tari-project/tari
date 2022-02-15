@@ -65,7 +65,7 @@ impl Display for ParsedCommand {
             RegisterAsset => "register-asset",
             MintTokens => "mint-tokens",
             CreateInitialCheckpoint => "create-initial-checkpoint",
-            CreateCommitteeCheckpoint => "create-committee-checkpoint",
+            CreateCommitteeDefinition => "create-committee-definition",
         };
 
         let args = self
@@ -142,7 +142,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
         // mint-tokens pub_key nft_id1 nft_id2
         MintTokens => parser_builder(args).pub_key().text_array().build()?,
         CreateInitialCheckpoint => parser_builder(args).pub_key().text().build()?,
-        CreateCommitteeCheckpoint => parser_builder(args).pub_key().pub_key_array().build()?,
+        CreateCommitteeDefinition => parser_builder(args).pub_key().pub_key_array().build()?,
     };
 
     Ok(ParsedCommand { command, args })

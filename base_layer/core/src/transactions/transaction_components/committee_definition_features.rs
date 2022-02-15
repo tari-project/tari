@@ -30,12 +30,12 @@ use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeVec};
 
 #[derive(Debug, Clone, Hash, PartialEq, Deserialize, Serialize, Eq)]
-pub struct CommitteeCheckpointFeatures {
+pub struct CommitteeDefinitionFeatures {
     pub committee: Vec<PublicKey>,
     pub effective_sidechain_height: u64,
 }
 
-impl ConsensusEncoding for CommitteeCheckpointFeatures {
+impl ConsensusEncoding for CommitteeDefinitionFeatures {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
         let mut written = self.committee.consensus_encode(writer)?;
         written += self.effective_sidechain_height.consensus_encode(writer)?;
@@ -43,7 +43,7 @@ impl ConsensusEncoding for CommitteeCheckpointFeatures {
     }
 }
 
-impl ConsensusEncodingSized for CommitteeCheckpointFeatures {
+impl ConsensusEncodingSized for CommitteeDefinitionFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
         self.committee.len().required_space() +
             self.committee.len() * PublicKey::key_length() +
@@ -51,7 +51,7 @@ impl ConsensusEncodingSized for CommitteeCheckpointFeatures {
     }
 }
 
-impl ConsensusDecoding for CommitteeCheckpointFeatures {
+impl ConsensusDecoding for CommitteeDefinitionFeatures {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
         const MAX_COMMITTEE_KEYS: usize = 50;
         let committee = MaxSizeVec::<PublicKey, MAX_COMMITTEE_KEYS>::consensus_decode(reader)?;
@@ -73,7 +73,7 @@ mod test {
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
-        let subject = CommitteeCheckpointFeatures {
+        let subject = CommitteeDefinitionFeatures {
             committee: iter::repeat_with(PublicKey::default).take(50).collect(),
             effective_sidechain_height: 123,
         };
@@ -83,7 +83,7 @@ mod test {
 
     #[test]
     fn it_fails_for_too_many_committee_pks() {
-        let subject = CommitteeCheckpointFeatures {
+        let subject = CommitteeDefinitionFeatures {
             committee: iter::repeat_with(PublicKey::default).take(51).collect(),
             effective_sidechain_height: 321,
         };

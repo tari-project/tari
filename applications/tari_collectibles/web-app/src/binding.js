@@ -57,11 +57,11 @@ async function command_asset_create_initial_checkpoint(assetPubKey) {
   });
 }
 
-async function command_asset_create_committee_checkpoint(
+async function command_asset_create_committee_definition(
   assetPubKey,
   committee
 ) {
-  return await invoke("assets_create_committee_checkpoint", {
+  return await invoke("assets_create_committee_definition", {
     assetPubKey,
     committee,
   });
@@ -157,7 +157,7 @@ const commands = {
   command_assets_list_owned,
   command_assets_list_registered_assets,
   command_asset_create_initial_checkpoint,
-  command_asset_create_committee_checkpoint,
+  command_asset_create_committee_definition,
   command_next_asset_public_key,
   command_asset_wallets_create,
   command_asset_wallets_get_balance,

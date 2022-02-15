@@ -117,7 +117,7 @@ impl AssetManagerHandle {
         }
     }
 
-    pub async fn create_committee_checkpoint(
+    pub async fn create_committee_definition(
         &mut self,
         public_key: &PublicKey,
         committee_public_keys: &[PublicKey],
@@ -134,7 +134,7 @@ impl AssetManagerHandle {
         {
             AssetManagerResponse::CreateCommitteeCheckpoint { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
-                method: "create_committee_checkpoint".to_string(),
+                method: "create_committee_definition".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

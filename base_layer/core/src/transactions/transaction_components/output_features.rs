@@ -37,7 +37,7 @@ use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes},
     transactions::transaction_components::{
         AssetOutputFeatures,
-        CommitteeCheckpointFeatures,
+        CommitteeDefinitionFeatures,
         MintNonFungibleFeatures,
         OutputFlags,
         SideChainCheckpointFeatures,
@@ -60,7 +60,7 @@ pub struct OutputFeatures {
     pub asset: Option<AssetOutputFeatures>,
     pub mint_non_fungible: Option<MintNonFungibleFeatures>,
     pub sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
-    pub committee_checkpoint: Option<CommitteeCheckpointFeatures>,
+    pub committee_definition: Option<CommitteeDefinitionFeatures>,
 }
 
 impl OutputFeatures {
@@ -74,7 +74,7 @@ impl OutputFeatures {
         asset: Option<AssetOutputFeatures>,
         mint_non_fungible: Option<MintNonFungibleFeatures>,
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
-        committee_checkpoint: Option<CommitteeCheckpointFeatures>,
+        committee_definition: Option<CommitteeDefinitionFeatures>,
     ) -> OutputFeatures {
         OutputFeatures {
             version,
@@ -86,7 +86,7 @@ impl OutputFeatures {
             asset,
             mint_non_fungible,
             sidechain_checkpoint,
-            committee_checkpoint,
+            committee_definition,
         }
     }
 
@@ -99,7 +99,7 @@ impl OutputFeatures {
         asset: Option<AssetOutputFeatures>,
         mint_non_fungible: Option<MintNonFungibleFeatures>,
         sidechain_checkpoint: Option<SideChainCheckpointFeatures>,
-        committee_checkpoint: Option<CommitteeCheckpointFeatures>,
+        committee_definition: Option<CommitteeDefinitionFeatures>,
     ) -> OutputFeatures {
         OutputFeatures::new(
             OutputFeaturesVersion::get_current_version(),
@@ -111,7 +111,7 @@ impl OutputFeatures {
             asset,
             mint_non_fungible,
             sidechain_checkpoint,
-            committee_checkpoint,
+            committee_definition,
         )
     }
 
@@ -211,11 +211,11 @@ impl OutputFeatures {
     ) -> OutputFeatures {
         Self {
             flags: if is_initial {
-                OutputFlags::COMMITTEE_CHECKPOINT | OutputFlags::MINT_NON_FUNGIBLE
+                OutputFlags::COMMITTEE_DEFINITION | OutputFlags::MINT_NON_FUNGIBLE
             } else {
-                OutputFlags::COMMITTEE_CHECKPOINT
+                OutputFlags::COMMITTEE_DEFINITION
             },
-            committee_checkpoint: Some(CommitteeCheckpointFeatures {
+            committee_definition: Some(CommitteeDefinitionFeatures {
                 committee,
                 effective_sidechain_height,
             }),
@@ -256,7 +256,7 @@ impl ConsensusEncoding for OutputFeatures {
         match self.version {
             OutputFeaturesVersion::V0 => (),
             OutputFeaturesVersion::V1 => {
-                written += self.committee_checkpoint.consensus_encode(writer)?;
+                written += self.committee_definition.consensus_encode(writer)?;
             },
         }
         Ok(written)
@@ -281,10 +281,10 @@ impl ConsensusDecoding for OutputFeatures {
             <Option<SideChainCheckpointFeatures> as ConsensusDecoding>::consensus_decode(reader)?;
         const MAX_METADATA_SIZE: usize = 1024;
         let metadata = <MaxSizeBytes<MAX_METADATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
-        let committee_checkpoint = match version {
+        let committee_definition = match version {
             OutputFeaturesVersion::V0 => None,
             OutputFeaturesVersion::V1 => {
-                <Option<CommitteeCheckpointFeatures> as ConsensusDecoding>::consensus_decode(reader)?
+                <Option<CommitteeDefinitionFeatures> as ConsensusDecoding>::consensus_decode(reader)?
             },
         };
         Ok(Self {
@@ -297,7 +297,7 @@ impl ConsensusDecoding for OutputFeatures {
             mint_non_fungible,
             sidechain_checkpoint,
             metadata: metadata.into(),
-            committee_checkpoint,
+            committee_definition,
         })
     }
 }
@@ -364,7 +364,7 @@ mod test {
                 merkle_root: [1u8; 32],
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
             }),
-            committee_checkpoint: Some(CommitteeCheckpointFeatures {
+            committee_definition: Some(CommitteeDefinitionFeatures {
                 committee: iter::repeat_with(PublicKey::default).take(50).collect(),
                 effective_sidechain_height: u64::MAX,
             }),
@@ -384,7 +384,7 @@ mod test {
         subject.asset = None;
         subject.mint_non_fungible = None;
         subject.sidechain_checkpoint = None;
-        subject.committee_checkpoint = None;
+        subject.committee_definition = None;
         check_consensus_encoding_correctness(subject).unwrap();
     }
 

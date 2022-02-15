@@ -244,7 +244,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         Ok((tx_id, transaction))
     }
 
-    pub async fn create_committee_checkpoint(
+    pub async fn create_committee_definition(
         &mut self,
         asset_public_key: PublicKey,
         committee_pub_keys: Vec<PublicKey>,

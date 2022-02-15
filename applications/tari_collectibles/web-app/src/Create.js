@@ -174,12 +174,12 @@ class Create extends React.Component {
         let asset_registration =
           await binding.command_asset_create_initial_checkpoint(publicKey);
         console.log(asset_registration);
-        let committee_checkpoint =
-          await binding.command_asset_create_committee_checkpoint(
+        let committee_definition =
+          await binding.command_asset_create_committee_definition(
             publicKey,
             this.state.tip003Data.committee
           );
-        console.log(committee_checkpoint);
+        console.log(committee_definition);
       }
       let history = this.props.history;
 
