@@ -60,6 +60,24 @@ pub trait ValidatorNodeRpcService: Send + Sync + 'static {
         &self,
         request: Request<proto::GetSidechainBlocksRequest>,
     ) -> Result<Streaming<proto::GetSidechainBlocksResponse>, RpcStatus>;
+
+    #[rpc(method = 5)]
+    async fn get_sidechain_state(
+        &self,
+        request: Request<proto::GetSidechainStateRequest>,
+    ) -> Result<Streaming<proto::GetSidechainStateResponse>, RpcStatus>;
+
+    #[rpc(method = 6)]
+    async fn get_op_logs(
+        &self,
+        request: Request<proto::GetStateOpLogsRequest>,
+    ) -> Result<Response<proto::GetStateOpLogsResponse>, RpcStatus>;
+
+    #[rpc(method = 7)]
+    async fn get_tip_node(
+        &self,
+        request: Request<proto::GetTipNodeRequest>,
+    ) -> Result<Response<proto::GetTipNodeResponse>, RpcStatus>;
 }
 
 pub fn create_validator_node_rpc_service<

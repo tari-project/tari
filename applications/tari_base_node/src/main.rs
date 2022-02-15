@@ -357,7 +357,7 @@ async fn run_grpc(
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
             err
         })?;
 

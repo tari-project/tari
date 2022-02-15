@@ -37,8 +37,9 @@ pub trait ChainDbBackendAdapter: Send + Sync + Clone {
     type Payload: Payload;
 
     fn is_empty(&self) -> Result<bool, Self::Error>;
-    fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error>;
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error>;
+    fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error>;
+    fn get_tip_node(&self) -> Result<Option<DbNode>, Self::Error>;
     fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error>;
     fn update_node(
         &self,

@@ -52,7 +52,7 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
             parent: TreeNodeHash::zero(),
             payload,
             hash: TreeNodeHash::zero(),
-            state_root: StateRoot::default(),
+            state_root: StateRoot::initial(),
             height: 0,
         };
         s.hash = s.calculate_hash();

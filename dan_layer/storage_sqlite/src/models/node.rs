@@ -22,7 +22,7 @@
 
 use crate::schema::*;
 
-#[derive(Identifiable, Queryable)]
+#[derive(Debug, Clone, Identifiable, Queryable)]
 pub struct Node {
     pub id: i32,
     pub hash: Vec<u8>,
@@ -31,7 +31,7 @@ pub struct Node {
     pub is_committed: bool,
 }
 
-#[derive(Insertable)]
+#[derive(Debug, Clone, Insertable)]
 #[table_name = "nodes"]
 pub struct NewNode {
     pub hash: Vec<u8>,

@@ -24,3 +24,6 @@ mod consensus_worker;
 pub mod states;
 
 pub use consensus_worker::ConsensusWorker;
+
+mod state_sync;
+pub use state_sync::StateSyncError;

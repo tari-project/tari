@@ -27,7 +27,7 @@ use std::{
 };
 
 use crate::{
-    models::{Instruction, QuorumCertificate, TreeNodeHash},
+    models::{Instruction, Node, QuorumCertificate, TreeNodeHash},
     storage::{
         chain::{db_node::DbNode, ChainDbBackendAdapter, DbInstruction, DbQc},
         unit_of_work_tracker::UnitOfWorkTracker,
@@ -45,6 +45,7 @@ pub trait ChainDbUnitOfWork: Clone + Send + Sync {
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
     fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
     // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
+    fn get_tip_node(&self) -> Result<Option<Node>, StorageError>;
 }
 
 // Cloneable, Send, Sync wrapper
@@ -286,6 +287,11 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
         node.is_committed = true;
         Ok(())
     }
+
+    fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
+        let inner = self.inner.read().unwrap();
+        inner.get_tip_node()
+    }
 }
 
 pub struct ChainDbUnitOfWorkInner<TBackendAdapter: ChainDbBackendAdapter> {
@@ -330,5 +336,13 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWorkInner<TBackendAdap
         let tracker = UnitOfWorkTracker::new(item, false);
         self.nodes.push((Some(id), tracker.clone()));
         Ok((Some(id), tracker))
+    }
+
+    pub fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
+        let node = self
+            .backend_adapter
+            .get_tip_node()
+            .map_err(TBackendAdapter::Error::into)?;
+        Ok(node.map(Into::into))
     }
 }

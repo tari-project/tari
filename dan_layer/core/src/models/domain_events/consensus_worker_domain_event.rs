@@ -27,8 +27,8 @@ use crate::models::{ConsensusWorkerState, Event};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ConsensusWorkerDomainEvent {
     StateChanged {
-        old: ConsensusWorkerState,
-        new: ConsensusWorkerState,
+        from: ConsensusWorkerState,
+        to: ConsensusWorkerState,
     },
 }
 
@@ -37,7 +37,7 @@ impl Event for ConsensusWorkerDomainEvent {}
 impl fmt::Display for ConsensusWorkerDomainEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            ConsensusWorkerDomainEvent::StateChanged { old, new } => {
+            ConsensusWorkerDomainEvent::StateChanged { from: old, to: new } => {
                 write!(f, "State changed from {:?} to {:?}", old, new)
             },
         }

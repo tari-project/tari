@@ -43,4 +43,9 @@ pub trait BaseNodeClient {
         &mut self,
         dan_node_public_key: PublicKey,
     ) -> Result<Vec<AssetDefinition>, DigitalAssetError>;
+
+    async fn get_asset_registration(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError>;
 }

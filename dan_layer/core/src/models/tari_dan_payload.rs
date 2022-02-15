@@ -25,11 +25,14 @@ use std::fmt::Debug;
 use digest::Digest;
 use tari_crypto::common::Blake256;
 
-use crate::models::{ConsensusHash, Instruction, InstructionSet, Payload};
+use crate::{
+    fixed_hash::FixedHash,
+    models::{ConsensusHash, Instruction, InstructionSet, Payload},
+};
 
 #[derive(Debug, Clone)]
 pub struct TariDanPayload {
-    hash: Vec<u8>,
+    hash: FixedHash,
     instruction_set: InstructionSet,
     checkpoint: Option<CheckpointData>,
 }
@@ -37,7 +40,7 @@ pub struct TariDanPayload {
 impl TariDanPayload {
     pub fn new(instruction_set: InstructionSet, checkpoint: Option<CheckpointData>) -> Self {
         let mut result = Self {
-            hash: vec![],
+            hash: FixedHash::zero(),
             instruction_set,
             checkpoint,
         };
@@ -53,12 +56,12 @@ impl TariDanPayload {
         self.instruction_set.instructions()
     }
 
-    fn calculate_hash(&self) -> Vec<u8> {
+    fn calculate_hash(&self) -> FixedHash {
         let result = Blake256::new().chain(self.instruction_set.consensus_hash());
         if let Some(ref ck) = self.checkpoint {
-            result.chain(ck.consensus_hash()).finalize().to_vec()
+            result.chain(ck.consensus_hash()).finalize().into()
         } else {
-            result.finalize().to_vec()
+            result.finalize().into()
         }
     }
 }
@@ -73,7 +76,7 @@ impl Payload for TariDanPayload {}
 
 #[derive(Debug, Clone, Default)]
 pub struct CheckpointData {
-    hash: Vec<u8>,
+    hash: FixedHash,
 }
 
 impl ConsensusHash for CheckpointData {

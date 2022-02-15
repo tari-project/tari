@@ -48,5 +48,5 @@ mod validator_node_rpc_client;
 mod wallet_client;
 pub use checkpoint_manager::{CheckpointManager, ConcreteCheckpointManager};
 pub use service_specification::ServiceSpecification;
-pub use validator_node_rpc_client::{ValidatorNodeClientFactory, ValidatorNodeRpcClient};
+pub use validator_node_rpc_client::{ValidatorNodeClientError, ValidatorNodeClientFactory, ValidatorNodeRpcClient};
 pub use wallet_client::WalletClient;

@@ -116,18 +116,16 @@ impl TariCommsInboundConnectionService {
             tokio::select! {
                 request = self.request_channel.recv() => {
                     if let Some(request) = request {
-                    self.handle_request(request).await?;
-                        }
-                    else {
+                        self.handle_request(request).await?;
+                    } else {
                         debug!(target: LOG_TARGET, "All requesters have dropped, stopping.");
                         return Ok(())
                     }
                 },
                 message = self.loopback_receiver.recv() => {
                     if let Some((from, message)) = message {
-                  self.process_message(from, message).await?;
-                        }
-                    else {
+                        self.process_message(from, message).await?;
+                    } else {
                         debug!(target: LOG_TARGET, "Loopback senders have all dropped, stopping");
                         return Ok(())
                     }
