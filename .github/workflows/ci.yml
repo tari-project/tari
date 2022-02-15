@@ -180,7 +180,7 @@ jobs:
           args: --release --all-targets
   test:
     name: test
-    needs: build
+    # needs: build
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
@@ -220,8 +220,13 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-      - name: cargo test
+      - name: Install cargo-nextest
+        uses: baptiste0928/cargo-install@v1
+        with:
+          crate: cargo-nextest
+          version: 0.9
+      - name: cargo nextest
         uses: actions-rs/cargo@v1
         with:
-          command: test
-          args: --release --all-targets
+          command: nextest
+          args: run --release --all-targets
