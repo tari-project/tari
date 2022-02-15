@@ -73,6 +73,7 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
             .chain(self.parent.as_bytes())
             .chain(self.payload.consensus_hash())
             .chain(self.height.to_le_bytes())
+            .chain(self.state_root.as_bytes())
             .finalize_fixed();
         result.into()
     }
