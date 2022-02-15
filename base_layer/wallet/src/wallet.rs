@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc};
+use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use digest::Digest;
 use log::*;
@@ -61,6 +61,7 @@ use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
+    services::liveness::{LivenessConfig, LivenessInitializer},
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
@@ -168,11 +169,20 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                peer_message_subscription_factory,
+                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
                 wallet_database.clone(),
+            ))
+            .add_initializer(LivenessInitializer::new(
+                LivenessConfig {
+                    auto_ping_interval: Some(Duration::from_secs(config.contacts_auto_ping_interval)),
+                    num_peers_per_round: 0,       // No random peers
+                    max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
+                    ..Default::default()
+                },
+                peer_message_subscription_factory,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(

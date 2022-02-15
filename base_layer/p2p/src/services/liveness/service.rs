@@ -35,7 +35,7 @@ use tari_comms_dht::{
 };
 use tari_service_framework::reply_channel::RequestContext;
 use tari_shutdown::ShutdownSignal;
-use tokio::{time, time::MissedTickBehavior};
+use tokio::{sync::RwLock, time, time::MissedTickBehavior};
 use tokio_stream::wrappers;
 
 use super::{
@@ -63,6 +63,7 @@ pub struct LivenessService<THandleStream, TPingStream> {
     outbound_messaging: OutboundMessageRequester,
     event_publisher: LivenessEventSender,
     shutdown_signal: ShutdownSignal,
+    monitored_peers: Arc<RwLock<Vec<NodeId>>>,
 }
 
 impl<TRequestStream, TPingStream> LivenessService<TRequestStream, TPingStream>
@@ -88,7 +89,8 @@ where
             outbound_messaging,
             event_publisher,
             shutdown_signal,
-            config,
+            config: config.clone(),
+            monitored_peers: Arc::new(RwLock::new(config.monitored_peers)),
         }
     }
 
@@ -254,10 +256,25 @@ where
                 self.state.set_metadata_entry(key, value);
                 Ok(LivenessResponse::Ok)
             },
+            AddMonitoredPeer(node_id) => {
+                let node_id_exists = { self.monitored_peers.read().await.iter().any(|val| val == &node_id) };
+                if !node_id_exists {
+                    self.monitored_peers.write().await.push(node_id.clone());
+                }
+                Ok(LivenessResponse::Ok)
+            },
+            RemoveMonitoredPeer(node_id) => {
+                let node_id_exists = { self.monitored_peers.read().await.iter().position(|val| *val == node_id) };
+                if let Some(pos) = node_id_exists {
+                    self.monitored_peers.write().await.swap_remove(pos);
+                }
+                Ok(LivenessResponse::Ok)
+            },
         }
     }
 
     async fn start_ping_round(&mut self) -> Result<(), LivenessError> {
+        let monitored_peers = { self.monitored_peers.read().await.clone() };
         let selected_peers = self
             .connectivity
             .select_connections(ConnectivitySelection::random_nodes(
@@ -267,7 +284,7 @@ where
             .await?
             .into_iter()
             .map(|c| c.peer_node_id().clone())
-            .chain(self.config.monitored_peers.clone())
+            .chain(monitored_peers)
             .collect::<Vec<_>>();
 
         if selected_peers.is_empty() {

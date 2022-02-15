@@ -453,6 +453,7 @@ pub async fn init_wallet(
         Some(config.buffer_rate_limit_console_wallet),
         Some(updater_config),
         config.autoupdate_check_interval,
+        Some(config.contacts_auto_ping_interval),
     );
 
     let mut wallet = Wallet::start(

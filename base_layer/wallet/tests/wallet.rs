@@ -77,7 +77,11 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_utilities::Hashable;
 use tari_wallet::{
-    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    contacts_service::{
+        handle::ContactsLivenessEvent,
+        service::ContactMessageType,
+        storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    },
     error::{WalletError, WalletStorageError},
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
@@ -102,6 +106,7 @@ use tari_wallet::{
 };
 use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::sleep};
+
 pub mod support;
 use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
 
@@ -183,6 +188,7 @@ async fn create_wallet(
         None,
         None,
         None,
+        Some(1),
     );
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
@@ -305,10 +311,7 @@ async fn test_wallet() {
     for i in 0..2 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
-        contacts.push(Contact {
-            alias: random::string(8),
-            public_key,
-        });
+        contacts.push(Contact::new(random::string(8), public_key, None, None));
 
         alice_wallet
             .contacts_service
@@ -736,6 +739,7 @@ async fn test_import_utxo() {
         None,
         None,
         None,
+        None,
     );
 
     let mut alice_wallet = Wallet::start(
@@ -846,4 +850,138 @@ async fn test_recovery_birthday() {
 
     let db_birthday = wallet.db.get_wallet_birthday().await.unwrap();
     assert_eq!(birthday, db_birthday);
+}
+
+#[test]
+fn test_contacts_service_liveness() {
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
+    let factories = CryptoFactories::default();
+    let alice_db_tempdir = tempdir().unwrap();
+    let bob_db_tempdir = tempdir().unwrap();
+
+    let alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+
+    let mut alice_wallet = alice_runtime
+        .block_on(create_wallet(
+            alice_db_tempdir.path(),
+            "alice_db",
+            factories.clone(),
+            shutdown_a.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
+    let alice_identity = (*alice_wallet.comms.node_identity()).clone();
+
+    let mut bob_wallet = bob_runtime
+        .block_on(create_wallet(
+            bob_db_tempdir.path(),
+            "bob_db",
+            factories,
+            shutdown_b.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
+    let bob_identity = (*bob_wallet.comms.node_identity()).clone();
+
+    alice_runtime
+        .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
+        .unwrap();
+    let contact_bob = Contact::new(random::string(8), bob_identity.public_key().clone(), None, None);
+    alice_runtime
+        .block_on(alice_wallet.contacts_service.upsert_contact(contact_bob))
+        .unwrap();
+
+    bob_runtime
+        .block_on(bob_wallet.comms.peer_manager().add_peer(alice_identity.to_peer()))
+        .unwrap();
+    let contact_alice = Contact::new(random::string(8), alice_identity.public_key().clone(), None, None);
+    bob_runtime
+        .block_on(bob_wallet.contacts_service.upsert_contact(contact_alice))
+        .unwrap();
+
+    alice_runtime
+        .block_on(
+            alice_wallet
+                .comms
+                .connectivity()
+                .dial_peer(bob_identity.node_id().clone()),
+        )
+        .unwrap();
+
+    let mut liveness_event_stream_alice = alice_wallet.contacts_service.get_contacts_liveness_event_stream();
+    alice_runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
+        let mut ping_count = 0;
+        let mut pong_count = 0;
+        loop {
+            tokio::select! {
+                event = liveness_event_stream_alice.recv() => {
+                    if let ContactsLivenessEvent::StatusUpdated(data_vec) = &*event.unwrap() {
+                        if let Some(data) = data_vec.first() {
+                            if data.public_key() == &bob_identity.public_key().clone(){
+                                assert_eq!(data.node_id(), &bob_identity.node_id().clone());
+                                if data.message_type() == ContactMessageType::Ping {
+                                    ping_count += 1;
+                                } else if data.message_type() == ContactMessageType::Pong {
+                                    pong_count += 1;
+                                }
+                            }
+                        }
+                        if ping_count > 1 && pong_count > 1 {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert!(ping_count > 1);
+        assert!(pong_count > 1);
+    });
+
+    let mut liveness_event_stream_bob = bob_wallet.contacts_service.get_contacts_liveness_event_stream();
+    bob_runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
+        let mut ping_count = 0;
+        let mut pong_count = 0;
+        loop {
+            tokio::select! {
+                event = liveness_event_stream_bob.recv() => {
+                    if let ContactsLivenessEvent::StatusUpdated(data_vec) = &*event.unwrap() {
+                        if let Some(data) = data_vec.first() {
+                            if data.public_key() == &alice_identity.public_key().clone(){
+                                assert_eq!(data.node_id(), &alice_identity.node_id().clone());
+                                if data.message_type() == ContactMessageType::Ping {
+                                    ping_count += 1;
+                                } else if data.message_type() == ContactMessageType::Pong {
+                                    pong_count += 1;
+                                }
+                            }
+                        }
+                        if ping_count > 1 && pong_count > 1 {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert!(ping_count > 1);
+        assert!(pong_count > 1);
+    });
+
+    shutdown_a.trigger();
+    shutdown_b.trigger();
+    alice_runtime.block_on(alice_wallet.wait_until_shutdown());
+    bob_runtime.block_on(bob_wallet.wait_until_shutdown());
 }

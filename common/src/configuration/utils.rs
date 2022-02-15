@@ -243,8 +243,11 @@ fn set_common_network_defaults(cfg: &mut Config) {
         let key = format!("base_node.{}.dns_seeds_use_dnssec", network);
         cfg.set_default(&key, true).unwrap();
 
-        let key = format!("base_node.{}.auto_ping_interval", network);
+        let key = format!("base_node.{}.metadata_auto_ping_interval", network);
         cfg.set_default(&key, 30).unwrap();
+
+        let key = format!("wallet.{}.contacts_auto_ping_interval", network);
+        cfg.set_default(&key, 90).unwrap();
 
         let key = format!("common.{}.peer_seeds", network);
         cfg.set_default(&key, Vec::<String>::new()).unwrap();
