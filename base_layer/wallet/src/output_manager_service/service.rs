@@ -954,21 +954,22 @@ where
         )?;
 
         // Clear any existing pending coinbase transactions for this blockheight if they exist
-        if let Err(e) = self
+        match self
             .resources
             .db
             .clear_pending_coinbase_transaction_at_block_height(block_height)
             .await
         {
-            match e {
-                OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "An existing pending coinbase was cleared for block height {}", block_height
-                    )
-                },
+            Ok(_) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "An existing pending coinbase was cleared for block height {}", block_height
+                )
+            },
+            Err(e) => match e {
+                OutputManagerStorageError::DieselError(DieselError::NotFound) => {},
                 _ => return Err(OutputManagerError::from(e)),
-            }
+            },
         };
 
         // Clear any matching outputs for this commitment. Even if the older output is valid

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use chrono::{DateTime, Local};
 use log::*;
 use tari_common_types::transaction::{TransactionDirection, TransactionStatus};
+use tari_wallet::transaction_service::storage::models::TxCancellationReason;
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -96,13 +97,16 @@ impl TransactionsTab {
         let mut column2_items = Vec::new();
         let mut column3_items = Vec::new();
         for t in windowed_view.iter() {
-            let text_color = text_colors.get(&t.cancelled).unwrap_or(&Color::Reset).to_owned();
+            let text_color = text_colors
+                .get(&t.cancelled.is_some())
+                .unwrap_or(&Color::Reset)
+                .to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.destination_public_key),
                     Style::default().fg(text_color),
                 )));
-                let amount_style = if t.cancelled {
+                let amount_style = if t.cancelled.is_some() {
                     Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
                 } else {
                     Style::default().fg(Color::Red)
@@ -118,7 +122,7 @@ impl TransactionsTab {
                     app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
-                let amount_style = if t.cancelled {
+                let amount_style = if t.cancelled.is_some() {
                     Style::default().fg(Color::Green).add_modifier(Modifier::DIM)
                 } else {
                     Style::default().fg(Color::Green)
@@ -191,14 +195,14 @@ impl TransactionsTab {
         let mut column3_items = Vec::new();
 
         for t in windowed_view.iter() {
-            let cancelled = t.cancelled || !t.valid;
+            let cancelled = t.cancelled.is_some();
             let text_color = text_colors.get(&cancelled).unwrap_or(&Color::Reset).to_owned();
             if t.direction == TransactionDirection::Outbound {
                 column0_items.push(ListItem::new(Span::styled(
                     app_state.get_alias(&t.destination_public_key),
                     Style::default().fg(text_color),
                 )));
-                let amount_style = if t.cancelled {
+                let amount_style = if t.cancelled.is_some() {
                     Style::default().fg(Color::Red).add_modifier(Modifier::DIM)
                 } else {
                     Style::default().fg(Color::Red)
@@ -214,7 +218,7 @@ impl TransactionsTab {
                     app_state.get_alias(&t.source_public_key),
                     Style::default().fg(text_color),
                 )));
-                let color = match (t.cancelled, chain_height) {
+                let color = match (t.cancelled.is_some(), chain_height) {
                     // cancelled
                     (true, _) => Color::DarkGray,
                     // not mature yet
@@ -235,14 +239,12 @@ impl TransactionsTab {
                 format!("{}", local_time.format("%Y-%m-%d %H:%M:%S")),
                 Style::default().fg(text_color),
             )));
-            let status = if (t.cancelled || !t.valid) && t.status == TransactionStatus::Coinbase {
+            let status = if matches!(t.cancelled, Some(TxCancellationReason::AbandonedCoinbase)) {
                 "Abandoned".to_string()
-            } else if t.cancelled && t.status == TransactionStatus::Rejected {
-                "Rejected".to_string()
-            } else if t.cancelled {
+            } else if matches!(t.cancelled, Some(TxCancellationReason::UserCancelled)) {
                 "Cancelled".to_string()
-            } else if !t.valid {
-                "Invalid".to_string()
+            } else if t.cancelled.is_some() {
+                "Rejected".to_string()
             } else {
                 t.status.to_string()
             };
@@ -378,15 +380,12 @@ impl TransactionsTab {
                 Span::styled(format!("{}", tx.fee), Style::default().fg(Color::White)),
                 fee_details,
             ]);
-            let status_msg = if tx.cancelled && tx.status == TransactionStatus::Rejected {
-                "Rejected".to_string()
-            } else if tx.cancelled {
-                "Cancelled".to_string()
-            } else if !tx.valid {
-                "Invalid".to_string()
+            let status_msg = if let Some(reason) = tx.cancelled {
+                format!("Cancelled: {}", reason)
             } else {
                 tx.status.to_string()
             };
+
             let status = Span::styled(status_msg, Style::default().fg(Color::White));
             let message = Span::styled(tx.message.as_str(), Style::default().fg(Color::White));
             let local_time = DateTime::<Local>::from_utc(tx.timestamp, Local::now().offset().to_owned());
@@ -396,9 +395,9 @@ impl TransactionsTab {
             );
             let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
             let confirmation_count = app_state.get_confirmations(&tx.tx_id);
-            let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && !tx.cancelled {
+            let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
                 format!("{} required confirmations met", required_confirmations)
-            } else if tx.status == TransactionStatus::MinedUnconfirmed && !tx.cancelled {
+            } else if tx.status == TransactionStatus::MinedUnconfirmed && tx.cancelled.is_none() {
                 if let Some(count) = confirmation_count {
                     format!("{} of {} required confirmations met", count, required_confirmations)
                 } else {

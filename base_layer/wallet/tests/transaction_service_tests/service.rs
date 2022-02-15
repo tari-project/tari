@@ -1937,12 +1937,11 @@ fn test_power_mode_updates() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
-        cancelled: false,
+        cancelled: None,
         direction: TransactionDirection::Outbound,
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
-        valid: true,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
@@ -1959,12 +1958,11 @@ fn test_power_mode_updates() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
-        cancelled: false,
+        cancelled: None,
         direction: TransactionDirection::Outbound,
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
-        valid: true,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
@@ -3486,11 +3484,9 @@ fn test_coinbase_generation_and_monitoring() {
 
     let tx = completed_txs.get(&tx_id1).unwrap();
     assert_eq!(tx.status, TransactionStatus::Coinbase);
-    assert!(tx.valid);
 
     let tx = completed_txs.get(&tx_id2b).unwrap();
     assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
-    assert!(tx.valid);
 
     // Now we will have tx_id2b becoming confirmed
     let _ = transaction_query_batch_responses.pop();
@@ -3536,7 +3532,6 @@ fn test_coinbase_generation_and_monitoring() {
 
     let tx = completed_txs.get(&tx_id2b).unwrap();
     assert_eq!(tx.status, TransactionStatus::MinedConfirmed);
-    assert!(tx.valid);
 }
 
 #[test]
@@ -3643,15 +3638,14 @@ fn test_coinbase_abandoned() {
         assert_eq!(count, 1, "Expected a TransactionCancelled event");
     });
 
-    let tx = runtime
+    let txs = runtime
         .block_on(
             alice_ts_interface
                 .transaction_service_handle
-                .get_completed_transaction(tx_id1),
+                .get_cancelled_completed_transactions(),
         )
         .unwrap();
-    assert_eq!(tx.status, TransactionStatus::Coinbase);
-    assert!(!tx.valid);
+    assert!(txs.get(&tx_id1).is_some());
 
     let balance = runtime
         .block_on(alice_ts_interface.output_manager_service_handle.get_balance())
@@ -3687,7 +3681,7 @@ fn test_coinbase_abandoned() {
                 .get_completed_transactions(),
         )
         .unwrap();
-    assert_eq!(transactions.len(), 2);
+    assert_eq!(transactions.len(), 1);
     let tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
@@ -3701,13 +3695,22 @@ fn test_coinbase_abandoned() {
         fees2 + reward2
     );
 
-    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
-        signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
-        location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([11u8; 16].to_vec()),
-        confirmations: 2,
-        block_height: block_height_b,
-    }];
+    let transaction_query_batch_responses = vec![
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some([11u8; 16].to_vec()),
+            confirmations: 2,
+            block_height: block_height_b,
+        },
+    ];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
@@ -3727,6 +3730,7 @@ fn test_coinbase_abandoned() {
         block_headers.insert(i, block_header.clone());
     }
     alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
+
     runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
@@ -3799,6 +3803,7 @@ fn test_coinbase_abandoned() {
         block_headers.insert(i, block_header.clone());
     }
     alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
+
     runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
@@ -3839,15 +3844,16 @@ fn test_coinbase_abandoned() {
         );
     });
 
-    let tx = runtime
+    let txs = runtime
         .block_on(
             alice_ts_interface
                 .transaction_service_handle
-                .get_completed_transaction(tx_id2),
+                .get_cancelled_completed_transactions(),
         )
         .unwrap();
-    assert_eq!(tx.status, TransactionStatus::Coinbase);
-    assert!(!tx.valid);
+
+    assert!(txs.get(&tx_id1).is_some());
+    assert!(txs.get(&tx_id2).is_some());
 
     let balance = runtime
         .block_on(alice_ts_interface.output_manager_service_handle.get_balance())
@@ -5277,12 +5283,11 @@ fn broadcast_all_completed_transactions_on_startup() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
-        cancelled: false,
+        cancelled: None,
         direction: TransactionDirection::Outbound,
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
-        valid: true,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,

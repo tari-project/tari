@@ -222,6 +222,8 @@ pub enum TransactionStorageError {
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
+    #[error("Not a coinbase transaction so cannot be abandoned")]
+    NotCoinbase,
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also
