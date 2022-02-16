@@ -15,8 +15,11 @@ pub struct ArgsError {
 }
 
 impl ArgsError {
-    pub fn new(name: &'static str, reason: ArgsReason) -> Self {
-        Self { name, reason }
+    pub fn new(name: &'static str, reason: impl Into<ArgsReason>) -> Self {
+        Self {
+            name,
+            reason: reason.into(),
+        }
     }
 }
 
@@ -26,6 +29,16 @@ pub enum ArgsReason {
     Required,
     #[error("argument can't be parsed: {details}")]
     NotParsed { details: String },
+    #[error("argument is not valid: {description}")]
+    Inconsistent { description: String },
+}
+
+impl From<&str> for ArgsReason {
+    fn from(value: &str) -> Self {
+        Self::Inconsistent {
+            description: value.to_owned(),
+        }
+    }
 }
 
 pub struct Args<'a> {
@@ -71,7 +84,12 @@ impl<'a> Args<'a> {
         T: FromStr,
         T::Err: ToString,
     {
-        self.try_take_next(name)?
-            .ok_or_else(|| ArgsError::new(name, ArgsReason::Required))
+        match self.try_take_next(name)? {
+            Some(value) => {
+                self.shift_one();
+                Ok(value)
+            },
+            None => Err(ArgsError::new(name, ArgsReason::Required)),
+        }
     }
 }

@@ -49,7 +49,10 @@ use tari_utilities::{
 };
 use tokio::sync::Mutex;
 
-use super::{args::Args, LOG_TARGET};
+use super::{
+    args::{Args, ArgsError},
+    LOG_TARGET,
+};
 use crate::command_handler::{CommandHandler, Format, StatusOutput};
 
 /// Enum representing commands used by the basenode
@@ -159,7 +162,11 @@ impl Parser {
         let mut args = command_str.split_whitespace();
         match args.next().unwrap_or("help").parse() {
             Ok(command) => {
-                self.process_command(command, args, typed_args, shutdown).await;
+                let res = self.process_command(command, args, typed_args, shutdown).await;
+                if let Err(err) = res {
+                    println!("Command Error: {}", err);
+                    self.print_help(command);
+                }
             },
             Err(_) => {
                 println!("{} is not a valid command, please enter a valid command", command_str);
@@ -179,7 +186,7 @@ impl Parser {
         mut args: I,
         typed_args: Args<'a>,
         shutdown: &mut Shutdown,
-    ) {
+    ) -> Result<(), ArgsError> {
         use BaseNodeCommand::*;
         match command {
             Help => {
@@ -253,10 +260,10 @@ impl Parser {
                 self.command_handler.lock().await.list_connections();
             },
             ListHeaders => {
-                self.process_list_headers(typed_args).await;
+                self.process_list_headers(typed_args).await?;
             },
             BlockTiming | CalcTiming => {
-                self.process_block_timing(args).await;
+                self.process_block_timing(typed_args).await?;
             },
             ListReorgs => {
                 self.process_list_reorgs().await;
@@ -277,7 +284,7 @@ impl Parser {
                 self.command_handler.lock().await.get_mempool_state(None);
             },
             GetMempoolTx => {
-                self.get_mempool_state_tx(typed_args).await;
+                self.get_mempool_state_tx(typed_args).await?;
             },
             Whoami => {
                 self.command_handler.lock().await.whoami();
@@ -294,6 +301,8 @@ impl Parser {
                 let _ = shutdown.trigger();
             },
         }
+        // TODO: Remove it (use expressions above)
+        Ok(())
     }
 
     /// Displays the commands or context specific help for a given command
@@ -540,9 +549,10 @@ impl Parser {
         self.command_handler.lock().await.search_kernel(kernel_sig)
     }
 
-    async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) {
+    async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let filter = args.take_next("filter").ok();
-        self.command_handler.lock().await.get_mempool_state(filter)
+        self.command_handler.lock().await.get_mempool_state(filter);
+        Ok(())
     }
 
     /// Function to process the discover-peer command
@@ -629,33 +639,22 @@ impl Parser {
     }
 
     /// Function to process the list-headers command
-    async fn process_list_headers<'a>(&self, mut args: Args<'a>) {
-        // TODO: Process errors properly
-        if let Ok(start) = args.take_next("start") {
-            let end = args.take_next("end").ok();
-            self.command_handler.lock().await.list_headers(start, end)
-        } else {
-            println!("Command entered incorrectly, please use the following formats: ");
-            println!("list-headers [first header height] [last header height]");
-            println!("list-headers [amount of headers from chain tip]");
-        }
+    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let start = args.take_next("start")?;
+        let end = args.try_take_next("end")?;
+        self.command_handler.lock().await.list_headers(start, end);
+        Ok(())
     }
 
     /// Function to process the calc-timing command
-    async fn process_block_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let start = args.next().map(u64::from_str).map(Result::ok).flatten();
-        let end = args.next().map(u64::from_str).map(Result::ok).flatten();
-
-        let command = BaseNodeCommand::BlockTiming;
-        if let Some(start) = start {
-            if end.is_none() && start < 2 {
-                println!("Number of headers must be at least 2.");
-                self.print_help(command);
-            } else {
-                self.command_handler.lock().await.block_timing(start, end)
-            }
+    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let start = args.take_next("start")?;
+        let end = args.try_take_next("end")?;
+        if end.is_none() && start < 2 {
+            Err(ArgsError::new("start", "Number of headers must be at least 2."))
         } else {
-            self.print_help(command);
+            self.command_handler.lock().await.block_timing(start, end);
+            Ok(())
         }
     }
 
