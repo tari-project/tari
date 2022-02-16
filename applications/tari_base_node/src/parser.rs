@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
+use std::{string::ToString, sync::Arc, time::Duration};
 
 use futures::future::Either;
 use log::*;
@@ -216,7 +216,7 @@ impl Parser {
                 self.process_discover_peer(typed_args).await?;
             },
             GetPeer => {
-                self.process_get_peer(typed_args).await;
+                self.process_get_peer(typed_args).await?;
             },
             ListPeers => {
                 self.process_list_peers(typed_args).await;
@@ -225,7 +225,7 @@ impl Parser {
                 self.command_handler.lock().await.reset_offline_peers();
             },
             RewindBlockchain => {
-                self.process_rewind_blockchain(args).await;
+                self.process_rewind_blockchain(typed_args).await?;
             },
             CheckDb => {
                 self.command_handler.lock().await.check_db();
@@ -659,12 +659,10 @@ impl Parser {
         Ok(())
     }
 
-    async fn process_rewind_blockchain<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let new_height = try_or_print!(args
-            .next()
-            .ok_or("new_height argument required")
-            .and_then(|s| u64::from_str(s).map_err(|_| "new_height must be an integer.")));
+    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let new_height = args.take_next("new_height")?;
         self.command_handler.lock().await.rewind_blockchain(new_height);
+        Ok(())
     }
 
     async fn process_list_reorgs(&self) {
