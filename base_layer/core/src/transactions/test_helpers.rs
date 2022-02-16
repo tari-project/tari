@@ -165,7 +165,7 @@ impl TestParams {
         UnblindedOutput::new(
             params
                 .output_version
-                .unwrap_or(TransactionOutputVersion::get_current_version()),
+                .unwrap_or_else(TransactionOutputVersion::get_current_version),
             params.value,
             self.spend_key.clone(),
             params.features,
@@ -563,7 +563,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             .expect("Should be able to make a transaction input");
         utxo.version = schema
             .input_version
-            .unwrap_or(TransactionInputVersion::get_current_version());
+            .unwrap_or_else(TransactionInputVersion::get_current_version);
         stx_builder.with_input(utxo, input.clone());
     }
     let mut outputs = Vec::with_capacity(schema.to.len());

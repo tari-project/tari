@@ -197,7 +197,7 @@ impl UnblindedOutput {
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
         let output = TransactionOutput::new(
-            self.version.clone(),
+            self.version,
             self.features.clone(),
             commitment,
             RangeProof::from_bytes(
@@ -244,7 +244,7 @@ impl UnblindedOutput {
         };
 
         let output = TransactionOutput::new(
-            self.version.clone(),
+            self.version,
             self.features.clone(),
             commitment,
             proof,
