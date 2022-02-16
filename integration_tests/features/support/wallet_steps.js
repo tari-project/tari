@@ -2103,7 +2103,7 @@ Then(
         ).to.equal("");
       }
     }
-    expect(validA).to.equal(!validB);
+    expect(cancelledA).to.equal(!cancelledB);
   }
 );
 
