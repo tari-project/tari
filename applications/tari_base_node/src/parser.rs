@@ -34,13 +34,9 @@ use rustyline::{
 use rustyline_derive::{Helper, Highlighter, Validator};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_app_utilities::utilities::{
-    either_to_node_id,
-    parse_emoji_id_or_public_key_or_node_id,
-    UniNodeId,
-    UniPublicKey,
-};
+use tari_app_utilities::utilities::{UniNodeId, UniPublicKey};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
@@ -51,7 +47,7 @@ use tari_utilities::{
 use tokio::sync::Mutex;
 
 use super::{
-    args::{Args, ArgsError},
+    args::{Args, ArgsError, ArgsReason},
     LOG_TARGET,
 };
 use crate::command_handler::{CommandHandler, Format, StatusOutput};
@@ -220,7 +216,7 @@ impl Parser {
                 self.process_discover_peer(typed_args).await?;
             },
             GetPeer => {
-                self.process_get_peer(args).await;
+                self.process_get_peer(typed_args).await;
             },
             ListPeers => {
                 self.process_list_peers(typed_args).await;
@@ -342,6 +338,7 @@ impl Parser {
             },
             GetPeer => {
                 println!("Get all available info about peer");
+                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
@@ -554,28 +551,25 @@ impl Parser {
         Ok(())
     }
 
-    async fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let (original_str, partial) = match args
-            .next()
-            .map(|s| {
-                parse_emoji_id_or_public_key_or_node_id(s)
-                    .map(either_to_node_id)
-                    .map(|n| (s.to_string(), n.to_vec()))
-                    .or_else(|| {
-                        let bytes = hex::from_hex(&s[..s.len() - (s.len() % 2)]).unwrap_or_default();
-                        Some((s.to_string(), bytes))
-                    })
-            })
-            .flatten()
-        {
-            Some(n) => n,
-            None => {
-                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-                return;
+    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let original_str: String = args
+            .try_take_next("node_id")?
+            .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
+        let node_id: Result<UniNodeId, _> = args.take_next("node_id");
+        let partial;
+        match node_id {
+            Ok(n) => {
+                partial = NodeId::from(n).to_vec();
             },
-        };
-
-        self.command_handler.lock().await.get_peer(partial, original_str)
+            Err(_) => {
+                let s = &original_str;
+                // TODO: No idea why we did that
+                let bytes = hex::from_hex(&s[..s.len() - (s.len() % 2)]).unwrap_or_default();
+                partial = bytes;
+            },
+        }
+        self.command_handler.lock().await.get_peer(partial, original_str);
+        Ok(())
     }
 
     /// Function to process the list-peers command
