@@ -272,7 +272,7 @@ impl Parser {
                 self.process_get_block(args).await;
             },
             SearchUtxo => {
-                self.process_search_utxo(args).await;
+                self.process_search_utxo(typed_args).await?;
             },
             SearchKernel => {
                 self.process_search_kernel(args).await;
@@ -501,22 +501,12 @@ impl Parser {
     }
 
     /// Function to process the search utxo command
-    async fn process_search_utxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchUtxo);
-            return;
-        }
-        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid commitment provided.");
-                self.print_help(BaseNodeCommand::SearchUtxo);
-                return;
-            },
-        };
-        self.command_handler.lock().await.search_utxo(commitment)
+    async fn process_search_utxo<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let hex: String = args.take_next("hex")?;
+        let commitment = Commitment::from_hex(&hex)
+            .map_err(|err| ArgsError::new("hex", format!("Invalid commitment provided: {}", err)))?;
+        self.command_handler.lock().await.search_utxo(commitment);
+        Ok(())
     }
 
     /// Function to process the search kernel command

@@ -33,10 +33,10 @@ pub enum ArgsReason {
     Inconsistent { description: String },
 }
 
-impl From<&str> for ArgsReason {
-    fn from(value: &str) -> Self {
+impl<T: AsRef<str>> From<T> for ArgsReason {
+    fn from(value: T) -> Self {
         Self::Inconsistent {
-            description: value.to_owned(),
+            description: value.as_ref().to_owned(),
         }
     }
 }
