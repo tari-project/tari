@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq, PartialOrd)]
 #[repr(u8)]
 pub enum OutputFeaturesVersion {
     V0 = 0,
@@ -17,7 +17,7 @@ pub enum OutputFeaturesVersion {
 
 impl OutputFeaturesVersion {
     pub fn get_current_version() -> Self {
-        Self::V1
+        Self::V0
     }
 
     pub fn as_u8(self) -> u8 {

@@ -196,7 +196,8 @@ impl UnblindedOutput {
             ));
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-        let output = TransactionOutput::new_current_version(
+        let output = TransactionOutput::new(
+            self.version.clone(),
             self.features.clone(),
             commitment,
             RangeProof::from_bytes(
@@ -242,7 +243,8 @@ impl UnblindedOutput {
                 .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?
         };
 
-        let output = TransactionOutput::new_current_version(
+        let output = TransactionOutput::new(
+            self.version.clone(),
             self.features.clone(),
             commitment,
             proof,
