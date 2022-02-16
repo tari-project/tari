@@ -153,10 +153,9 @@ where
                     if current_view.is_leader() {
                         if let Some(result) = self.process_leader_message(current_view, message.clone(),
                             &from, committee, payload_provider, payload_processor, outbound_service, db_factory).await?{
-                           next_event_result = result;
+                            next_event_result = result;
                             break;
                         }
-
                     }
                 },
                 r = inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
@@ -219,13 +218,13 @@ where
 
             let temp_state_tx = db_factory
                 .get_or_create_state_db(&self.asset_public_key)?
-                .new_unit_of_work();
+                .new_unit_of_work(current_view.view_id.as_u64());
             let proposal = self
                 .create_proposal(
                     *high_qc.node_hash(),
                     payload_provider,
                     payload_processor,
-                    0,
+                    current_view.view_id.as_u64() as u32,
                     temp_state_tx,
                 )
                 .await?;

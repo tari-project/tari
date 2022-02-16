@@ -25,7 +25,10 @@ use prost::Message;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip721;
 
-use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
+use crate::{
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    DigitalAssetError,
+};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip721_template";
 
@@ -40,7 +43,7 @@ pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
     }
 }
 
-pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
     method: String,
     args: &[u8],
     state_db: &mut TUnitOfWork,
@@ -61,7 +64,7 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
     }
 }
 
-fn owner_of<TUnitOfWork: StateDbUnitOfWork>(
+fn owner_of<TUnitOfWork: StateDbUnitOfWorkReader>(
     token_id: Vec<u8>,
     state_db: &mut TUnitOfWork,
 ) -> Result<Vec<u8>, DigitalAssetError> {

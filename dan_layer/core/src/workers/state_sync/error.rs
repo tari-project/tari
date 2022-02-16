@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,10 +20,20 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod instruction;
-pub mod locked_qc;
-pub mod node;
-pub mod prepare_qc;
-pub mod state_key;
-pub mod state_op_log;
-pub mod state_tree;
+use crate::{services::ValidatorNodeClientError, storage::StorageError};
+
+#[derive(Debug, thiserror::Error)]
+pub enum StateSyncError {
+    #[error(
+        "This validator node is the only committee member but its state is not synchronized. Unable to recover state."
+    )]
+    NoOtherCommitteeMembersToSync,
+    #[error("Storage error: {0}")]
+    StorageError(#[from] StorageError),
+    #[error("Invalid state Merkle root")]
+    InvalidStateMerkleRoot,
+    #[error("Remote peer does not have tip node")]
+    RemotePeerDoesNotHaveTipNode,
+    #[error("Validator node client call failed: {0}")]
+    ValidatorNodeClientError(#[from] ValidatorNodeClientError),
+}

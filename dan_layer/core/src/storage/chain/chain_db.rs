@@ -19,7 +19,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use crate::{
-    models::{QuorumCertificate, SideChainBlock, TreeNodeHash},
+    models::{Node, QuorumCertificate, SideChainBlock, TreeNodeHash},
     storage::{
         chain::{chain_db_unit_of_work::ChainDbUnitOfWorkImpl, ChainDbBackendAdapter},
         StorageError,
@@ -96,6 +96,11 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDb<TBackendAdapter> {
         let instructions = instructions.into_iter().map(|i| i.instruction).collect();
 
         Ok(Some(SideChainBlock::new(node.into(), instructions)))
+    }
+
+    pub fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
+        let db_node = self.adapter.get_tip_node().map_err(TBackendAdapter::Error::into)?;
+        Ok(db_node.map(Into::into))
     }
 }
 

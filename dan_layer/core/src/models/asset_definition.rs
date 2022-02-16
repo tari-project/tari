@@ -94,6 +94,17 @@ pub struct SchemaState {
     pub items: Vec<KeyValue>,
 }
 
+impl SchemaState {
+    pub fn new(name: String, items: Vec<KeyValue>) -> Self {
+        Self { name, items }
+    }
+
+    pub fn push_key_value(&mut self, key_value: KeyValue) -> &mut Self {
+        self.items.push(key_value);
+        self
+    }
+}
+
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 pub struct KeyValue {
     pub key: Vec<u8>,

@@ -66,6 +66,8 @@ use tari_app_grpc::{
         RevalidateResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
+        SetBaseNodeRequest,
+        SetBaseNodeResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -78,7 +80,7 @@ use tari_common_types::{
     array::copy_into_fixed_array,
     types::{BlockHash, PublicKey, Signature},
 };
-use tari_comms::{types::CommsPublicKey, CommsNode};
+use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::{OutputFeatures, UnblindedOutput},
@@ -150,6 +152,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
             public_address: identity.public_address().to_string(),
             node_id: identity.node_id().to_string().into_bytes(),
         }))
+    }
+
+    async fn set_base_node(
+        &self,
+        request: Request<SetBaseNodeRequest>,
+    ) -> Result<Response<SetBaseNodeResponse>, Status> {
+        let message = request.into_inner();
+        let public_key = PublicKey::from_hex(&message.public_key_hex)
+            .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
+        let net_address = message
+            .net_address
+            .parse::<Multiaddr>()
+            .map_err(|e| Status::invalid_argument(format!("Base node net address was not valid: {}", e)))?;
+
+        println!("Setting base node peer...");
+        println!("{}::{}", public_key, net_address);
+        let mut wallet = self.wallet.clone();
+        wallet
+            .set_base_node_peer(public_key.clone(), net_address.clone())
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
+        Ok(Response::new(SetBaseNodeResponse {}))
     }
 
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {

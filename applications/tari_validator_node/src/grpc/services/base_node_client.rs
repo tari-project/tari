@@ -23,6 +23,7 @@
 use std::{convert::TryInto, net::SocketAddr};
 
 use async_trait::async_trait;
+use log::*;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
@@ -31,6 +32,8 @@ use tari_dan_core::{
     services::BaseNodeClient,
     DigitalAssetError,
 };
+
+const LOG_TARGET: &str = "tari::validator_node::app";
 
 #[derive(Clone)]
 pub struct GrpcBaseNodeClient {
@@ -112,18 +115,23 @@ impl BaseNodeClient for GrpcBaseNodeClient {
                 self.inner.as_mut().unwrap()
             },
         };
-        let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 0 };
+        // TODO: probably should use output mmr indexes here
+        let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
         let mut result = inner.list_asset_registrations(request).await.unwrap().into_inner();
         let mut assets: Vec<AssetDefinition> = vec![];
         let tip = self.get_tip_info().await?;
         while let Some(r) = result.message().await.unwrap() {
-            if let Ok(asset_public_key) = PublicKey::from_bytes(r.unique_id.as_bytes()) {
+            if let Ok(asset_public_key) = PublicKey::from_bytes(r.asset_public_key.as_bytes()) {
                 if let Some(checkpoint) = self
                     .get_current_checkpoint(tip.height_of_longest_chain, asset_public_key.clone(), vec![3u8; 32])
                     .await?
                 {
                     if let Some(committee) = checkpoint.get_side_chain_committee() {
                         if committee.contains(&dan_node_public_key) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Node is on committee for asset : {}", asset_public_key
+                            );
                             assets.push(AssetDefinition {
                                 public_key: asset_public_key,
                                 template_parameters: r
@@ -143,5 +151,33 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             }
         }
         Ok(assets)
+    }
+
+    async fn get_asset_registration(
+        &mut self,
+        asset_public_key: PublicKey,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        let conn = match self.inner.as_mut() {
+            Some(i) => i,
+            None => {
+                self.connect().await?;
+                self.inner.as_mut().unwrap()
+            },
+        };
+
+        let req = grpc::GetAssetMetadataRequest {
+            asset_public_key: asset_public_key.to_vec(),
+        };
+        let output = conn.get_asset_metadata(req).await.unwrap().into_inner();
+
+        let output = output
+            .features
+            .map(|features| match features.try_into() {
+                Ok(f) => Ok(BaseLayerOutput { features: f }),
+                Err(e) => Err(DigitalAssetError::ConversionError(e)),
+            })
+            .transpose()?;
+
+        Ok(output)
     }
 }

@@ -602,8 +602,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let response = tari_rpc::ListAssetRegistrationsResponse {
                     asset_public_key: output
                         .features
-                        .mint_non_fungible
-                        .map(|mint| mint.asset_public_key.to_vec())
+                        .asset
+                        .map(|asset| asset.public_key.to_vec())
                         .unwrap_or_default(),
                     unique_id: output.features.unique_id.unwrap_or_default(),
                     owner_commitment: output.commitment.to_vec(),
