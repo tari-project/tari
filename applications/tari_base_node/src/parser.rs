@@ -215,10 +215,10 @@ impl Parser {
                 self.command_handler.lock().await.get_blockchain_db_stats();
             },
             DialPeer => {
-                self.process_dial_peer(typed_args).await;
+                self.process_dial_peer(typed_args).await?;
             },
             PingPeer => {
-                self.process_ping_peer(typed_args).await;
+                self.process_ping_peer(typed_args).await?;
             },
             DiscoverPeer => {
                 self.process_discover_peer(args).await;
@@ -245,10 +245,10 @@ impl Parser {
                 self.process_header_stats(args).await;
             },
             BanPeer => {
-                self.process_ban_peer(typed_args, true).await;
+                self.process_ban_peer(typed_args, true).await?;
             },
             UnbanPeer => {
-                self.process_ban_peer(typed_args, false).await;
+                self.process_ban_peer(typed_args, false).await?;
             },
             UnbanAllPeers => {
                 self.command_handler.lock().await.unban_all_peers();
@@ -334,9 +334,11 @@ impl Parser {
             },
             DialPeer => {
                 println!("Attempt to connect to a known peer");
+                println!("dial-peer [hex public key or emoji id]");
             },
             PingPeer => {
                 println!("Send a ping to a known peer and wait for a pong reply");
+                println!("ping-peer [hex public key or emoji id]");
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
@@ -357,6 +359,9 @@ impl Parser {
             },
             BanPeer => {
                 println!("Bans a peer");
+                println!(
+                    "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
+                );
             },
             UnbanPeer => {
                 println!("Removes a peer ban");
@@ -600,42 +605,26 @@ impl Parser {
     }
 
     /// Function to process the dial-peer command
-    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) {
-        if let Some(dest_node_id) = args.take_node_id() {
-            self.command_handler.lock().await.dial_peer(dest_node_id)
-        } else {
-            println!("Please enter a valid destination public key or emoji id");
-            println!("dial-peer [hex public key or emoji id]");
-        }
+    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let dest_node_id = args.take_node_id()?;
+        self.command_handler.lock().await.dial_peer(dest_node_id);
+        Ok(())
     }
 
     /// Function to process the dial-peer command
-    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) {
-        if let Some(dest_node_id) = args.take_node_id() {
-            self.command_handler.lock().await.ping_peer(dest_node_id)
-        } else {
-            println!("Please enter a valid destination public key or emoji id");
-            println!("ping-peer [hex public key or emoji id]");
-        }
+    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let dest_node_id = args.take_node_id()?;
+        self.command_handler.lock().await.ping_peer(dest_node_id);
+        Ok(())
     }
 
     /// Function to process the ban-peer command
-    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) {
-        if let Some(node_id) = args.take_node_id() {
-            // TODO: Use errors here to handle properly on bad values
-            let secs: u64 = args
-                .try_take_next("length")
-                .ok()
-                .and_then(std::convert::identity)
-                .unwrap_or(std::u64::MAX);
-            let duration = Duration::from_secs(secs);
-            self.command_handler.lock().await.ban_peer(node_id, duration, must_ban)
-        } else {
-            println!("Please enter a valid destination public key or emoji id");
-            println!(
-                "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
-            );
-        }
+    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), ArgsError> {
+        let node_id = args.take_node_id()?;
+        let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
+        let duration = Duration::from_secs(secs);
+        self.command_handler.lock().await.ban_peer(node_id, duration, must_ban);
+        Ok(())
     }
 
     /// Function to process the list-headers command

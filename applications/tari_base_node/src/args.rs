@@ -58,11 +58,12 @@ impl<'a> Args<'a> {
 
     // TODO: It have to return error if a value provided,
     // but can''t be parsed
-    pub fn take_node_id(&mut self) -> Option<NodeId> {
-        self.splitted
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
+    pub fn take_node_id(&mut self) -> Result<NodeId, ArgsError> {
+        let param: String = self.take_next("node-id")?;
+        // TODO: Add and use error from that method
+        parse_emoji_id_or_public_key_or_node_id(&param)
             .map(either_to_node_id)
+            .ok_or_else(|| ArgsError::new("node-id", "can't parse node-id value"))
     }
 
     pub fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
