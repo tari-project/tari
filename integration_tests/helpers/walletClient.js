@@ -80,9 +80,7 @@ class WalletClient {
     const data = await this.getAllCoinbaseTransactions();
     const transactions = [];
     for (let i = 0; i < data.length; i++) {
-      if (
-        transactionStatus().indexOf(data[i].status) === 6
-      ) {
+      if (transactionStatus().indexOf(data[i].status) === 6) {
         transactions.push(data[i]);
       }
     }
@@ -107,9 +105,7 @@ class WalletClient {
     const data = await this.getAllCoinbaseTransactions();
     let count = 0;
     for (let i = 0; i < data.length; i++) {
-      if (
-        transactionStatus().indexOf(data[i].status) == 6
-      ) {
+      if (transactionStatus().indexOf(data[i].status) == 6) {
         count += 1;
       }
     }
@@ -226,9 +222,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2) {
         return true;
       } else {
         return false;
@@ -244,9 +238,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) == 2
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 2) {
         return true;
       } else {
         return false;
@@ -262,9 +254,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3) {
         return true;
       } else {
         return false;
@@ -280,9 +270,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4) {
         return true;
       } else {
         return false;
@@ -298,9 +286,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5) {
         return true;
       } else {
         return false;
@@ -316,9 +302,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) == 5
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 5) {
         return true;
       } else {
         return false;
@@ -334,9 +318,7 @@ class WalletClient {
       const txnDetails = await this.getTransactionInfo({
         transaction_ids: [tx_id.toString()],
       });
-      if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) == 6
-      ) {
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 6) {
         return true;
       } else {
         return false;

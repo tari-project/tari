@@ -884,8 +884,8 @@ class InterfaceFFI {
   static completedTransactionGetCancellationReason(ptr) {
     let error = this.initError();
     let result = this.fn.completed_transaction_get_cancellation_reason(
-        ptr,
-        error
+      ptr,
+      error
     );
     this.checkErrorResult(error, `completedTransactionGetCancellationReason`);
     return result;
