@@ -3543,9 +3543,6 @@ fn test_coinbase_abandoned() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(&mut runtime, factories, connection, None);
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_response_delay(Some(Duration::from_secs(1)));
 
     let block_height_a = 10;
 

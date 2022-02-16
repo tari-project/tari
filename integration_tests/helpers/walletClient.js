@@ -57,7 +57,6 @@ class WalletClient {
           Number(data[i].transaction.timestamp.seconds) * 1000
         ),
         message: data[i].transaction.message,
-        valid: data[i].transaction.valid,
       });
     }
     return transactions;
@@ -82,8 +81,7 @@ class WalletClient {
     const transactions = [];
     for (let i = 0; i < data.length; i++) {
       if (
-        transactionStatus().indexOf(data[i].status) === 6 &&
-        data[i].valid === true
+        transactionStatus().indexOf(data[i].status) === 6
       ) {
         transactions.push(data[i]);
       }
@@ -110,8 +108,7 @@ class WalletClient {
     let count = 0;
     for (let i = 0; i < data.length; i++) {
       if (
-        transactionStatus().indexOf(data[i].status) == 6 &&
-        data[i].valid == true
+        transactionStatus().indexOf(data[i].status) == 6
       ) {
         count += 1;
       }
@@ -230,8 +227,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 2
       ) {
         return true;
       } else {
@@ -249,8 +245,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) == 2 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 2
       ) {
         return true;
       } else {
@@ -268,8 +263,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 3
       ) {
         return true;
       } else {
@@ -287,8 +281,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 4
       ) {
         return true;
       } else {
@@ -306,8 +299,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) >= 5
       ) {
         return true;
       } else {
@@ -325,8 +317,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) == 5 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 5
       ) {
         return true;
       } else {
@@ -344,8 +335,7 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (
-        transactionStatus().indexOf(txnDetails.transactions[0].status) == 6 &&
-        txnDetails.transactions[0].valid
+        transactionStatus().indexOf(txnDetails.transactions[0].status) == 6
       ) {
         return true;
       } else {
