@@ -337,6 +337,7 @@ impl Parser {
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
+                println!("discover-peer [hex public key or emoji id]");
             },
             GetPeer => {
                 println!("Get all available info about peer");
@@ -551,7 +552,6 @@ impl Parser {
             Some(v) => Box::new(v),
             None => {
                 println!("Please enter a valid destination public key or emoji id");
-                println!("discover-peer [hex public key or emoji id]");
                 return;
             },
         };

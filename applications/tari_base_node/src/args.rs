@@ -52,6 +52,7 @@ impl<'a> Args<'a> {
         }
     }
 
+    // TODO: Remove
     pub fn shift_one(&mut self) {
         self.splitted.next();
     }
@@ -66,6 +67,7 @@ impl<'a> Args<'a> {
             .ok_or_else(|| ArgsError::new("node-id", "can't parse node-id value"))
     }
 
+    // TODO: Use `next` always
     pub fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
     where
         T: FromStr,
