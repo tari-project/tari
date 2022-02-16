@@ -40,8 +40,13 @@ use tower::Service;
 use crate::{
     transaction_service::{
         error::TransactionServiceError,
-        protocols::TxRejection,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        storage::models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
     },
     OperationId,
 };
@@ -208,7 +213,7 @@ pub enum TransactionEvent {
     TransactionDirectSendResult(TxId, bool),
     TransactionCompletedImmediately(TxId),
     TransactionStoreForwardSendResult(TxId, bool),
-    TransactionCancelled(TxId, TxRejection),
+    TransactionCancelled(TxId, TxCancellationReason),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
     FauxTransactionUnconfirmed {

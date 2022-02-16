@@ -298,9 +298,7 @@ function consoleLogTransactionDetails(txnDetails) {
       " has status " +
       pad("'" + txnDetails.status + "'", 40) +
       " and " +
-      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
-      " and " +
-      pad("is_valid(" + txnDetails.valid + ")", 16)
+      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21)
   );
 }
 

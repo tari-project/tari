@@ -2071,35 +2071,6 @@ pub unsafe extern "C" fn completed_transaction_get_message(
     result.into_raw()
 }
 
-/// Check if a TariCompletedTransaction is Valid or not
-///
-/// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if the transaction was originally sent from the wallet
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn completed_transaction_is_valid(
-    transaction: *mut TariCompletedTransaction,
-    error_out: *mut c_int,
-) -> bool {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if transaction.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    (*transaction).valid
-}
-
 /// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
 ///
 /// ## Arguments
@@ -2160,6 +2131,48 @@ pub unsafe extern "C" fn completed_transaction_get_confirmations(
     }
 
     (*tx).confirmations.unwrap_or(0)
+}
+
+/// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the reason for cancellation which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | Not Cancelled       |
+/// |   0 | Unknown             |
+/// |   1 | UserCancelled       |
+/// |   2 | Timeout             |
+/// |   3 | DoubleSpend         |
+/// |   4 | Orphan              |
+/// |   5 | TimeLocked          |
+/// |   6 | InvalidTransaction  |
+/// |   7 | AbandonedCoinbase   |
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_cancellation_reason(
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*tx).cancelled {
+        None => -1i32,
+        Some(reason) => reason as i32,
+    }
 }
 
 /// Frees memory for a TariCompletedTransaction
@@ -3244,8 +3257,8 @@ unsafe fn init_logging(
 /// is whether if was successful or not.
 /// `callback_transaction_cancellation` - The callback function pointer matching
 /// the function signature. This is called when a transaction is cancelled. The first parameter is a pointer to the
-/// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the `TxRejection`
-/// enum: pub enum TxRejection {
+/// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the
+/// `TxCancellationReason` enum: pub enum TxCancellationReason {
 ///     Unknown,                // 0
 ///     UserCancelled,          // 1
 ///     Timeout,                // 2

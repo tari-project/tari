@@ -86,11 +86,10 @@ use crate::{
             transaction_receive_protocol::{TransactionReceiveProtocol, TransactionReceiveProtocolStage},
             transaction_send_protocol::{TransactionSendProtocol, TransactionSendProtocolStage},
             transaction_validation_protocol::TransactionValidationProtocol,
-            TxRejection,
         },
         storage::{
             database::{TransactionBackend, TransactionDatabase},
-            models::CompletedTransaction,
+            models::{CompletedTransaction, TxCancellationReason},
         },
         tasks::{
             check_faux_transaction_status::check_faux_transactions,
@@ -1244,7 +1243,7 @@ where
                 return Ok(());
             }
 
-            if ctx.cancelled {
+            if ctx.cancelled.is_some() {
                 // Send a cancellation message
                 debug!(
                     target: LOG_TARGET,
@@ -1408,7 +1407,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 tx_id,
-                TxRejection::UserCancelled,
+                TxCancellationReason::UserCancelled,
             )))
             .map_err(|e| {
                 trace!(

@@ -180,6 +180,10 @@ class WalletFFIClient {
     return this.wallet.getOutboundTransactions();
   }
 
+  getCancelledTransactions() {
+    return this.wallet.walletGetCancelledTransactions();
+  }
+
   cancelPendingTransaction(tx_id) {
     return this.wallet.cancelPendingTransaction(tx_id);
   }
