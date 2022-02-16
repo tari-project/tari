@@ -34,7 +34,12 @@ use rustyline::{
 use rustyline_derive::{Helper, Highlighter, Validator};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_app_utilities::utilities::{either_to_node_id, parse_emoji_id_or_public_key_or_node_id, EmojiIdOrPublicKey};
+use tari_app_utilities::utilities::{
+    either_to_node_id,
+    parse_emoji_id_or_public_key_or_node_id,
+    UniNodeId,
+    UniPublicKey,
+};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
@@ -544,7 +549,7 @@ impl Parser {
 
     /// Function to process the discover-peer command
     async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
-        let key: EmojiIdOrPublicKey = args.take_next("id")?;
+        let key: UniPublicKey = args.take_next("id")?;
         self.command_handler.lock().await.discover_peer(Box::new(key.into()));
         Ok(())
     }
@@ -581,24 +586,27 @@ impl Parser {
 
     /// Function to process the dial-peer command
     async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
-        let dest_node_id = args.take_node_id()?;
-        self.command_handler.lock().await.dial_peer(dest_node_id);
+        let dest_node_id: UniNodeId = args.take_next("node-id")?;
+        self.command_handler.lock().await.dial_peer(dest_node_id.into());
         Ok(())
     }
 
     /// Function to process the dial-peer command
     async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
-        let dest_node_id = args.take_node_id()?;
-        self.command_handler.lock().await.ping_peer(dest_node_id);
+        let dest_node_id: UniNodeId = args.take_next("node-id")?;
+        self.command_handler.lock().await.ping_peer(dest_node_id.into());
         Ok(())
     }
 
     /// Function to process the ban-peer command
     async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), ArgsError> {
-        let node_id = args.take_node_id()?;
+        let node_id: UniNodeId = args.take_next("node-id")?;
         let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
         let duration = Duration::from_secs(secs);
-        self.command_handler.lock().await.ban_peer(node_id, duration, must_ban);
+        self.command_handler
+            .lock()
+            .await
+            .ban_peer(node_id.into(), duration, must_ban);
         Ok(())
     }
 

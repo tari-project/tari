@@ -3,8 +3,6 @@ use std::{
     str::{FromStr, SplitWhitespace},
 };
 
-use tari_app_utilities::utilities::{either_to_node_id, parse_emoji_id_or_public_key_or_node_id};
-use tari_comms::peer_manager::NodeId;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -55,16 +53,6 @@ impl<'a> Args<'a> {
     // TODO: Remove
     pub fn shift_one(&mut self) {
         self.splitted.next();
-    }
-
-    // TODO: It have to return error if a value provided,
-    // but can''t be parsed
-    pub fn take_node_id(&mut self) -> Result<NodeId, ArgsError> {
-        let param: String = self.take_next("node-id")?;
-        // TODO: Add and use error from that method
-        parse_emoji_id_or_public_key_or_node_id(&param)
-            .map(either_to_node_id)
-            .ok_or_else(|| ArgsError::new("node-id", "can't parse node-id value"))
     }
 
     // TODO: Use `next` always
