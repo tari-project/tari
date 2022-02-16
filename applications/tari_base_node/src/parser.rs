@@ -239,7 +239,7 @@ impl Parser {
                 self.command_handler.lock().await.check_db();
             },
             PeriodStats => {
-                self.process_period_stats(args).await;
+                self.process_period_stats(typed_args).await?;
             },
             HeaderStats => {
                 self.process_header_stats(args).await;
@@ -647,41 +647,15 @@ impl Parser {
         }
     }
 
-    async fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.map(|arg| arg.to_string()).take(3).collect::<Vec<String>>();
-        if command_arg.len() != 3 {
-            println!("Prints out certain stats to of the block chain, use as follows: ");
-            println!(
-                "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time in \
-                 unix timestamp]"
-            );
-            return;
-        }
-        let period_end = match u64::from_str(&command_arg[0]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
-        let period_ticker_end = match u64::from_str(&command_arg[1]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
-        let period = match u64::from_str(&command_arg[2]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
+    async fn process_period_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let period_end = args.take_next("period_end")?;
+        let period_ticker_end = args.take_next("period_ticker_end")?;
+        let period = args.take_next("period")?;
         self.command_handler
             .lock()
             .await
-            .period_stats(period_end, period_ticker_end, period)
+            .period_stats(period_end, period_ticker_end, period);
+        Ok(())
     }
 
     async fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
