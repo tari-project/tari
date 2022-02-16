@@ -150,7 +150,7 @@ jobs:
           args: --release --all-targets
   test:
     name: test
-    needs: build
+    # needs: build
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
