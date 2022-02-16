@@ -1993,7 +1993,7 @@ Then(
 );
 
 Then(
-  /wallet (.*) has at least (.*) transactions that are all (.*) and not cancelled`/,
+  /wallet (.*) has at least (.*) transactions that are all (.*) and not cancelled/,
   { timeout: 610 * 1000 },
   async function (walletName, numberOfTransactions, transactionStatus) {
     const walletClient = await this.getWallet(walletName).connectClient();
