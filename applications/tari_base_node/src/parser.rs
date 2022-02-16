@@ -274,7 +274,7 @@ impl Parser {
                 self.command_handler.lock().await.get_mempool_stats();
             },
             GetMempoolState => {
-                self.command_handler.lock().await.get_mempool_state(false, None);
+                self.command_handler.lock().await.get_mempool_state(None);
             },
             GetMempoolTx => {
                 self.get_mempool_state_tx(typed_args).await;
@@ -542,7 +542,7 @@ impl Parser {
 
     async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) {
         let filter = args.take_next("filter").ok();
-        self.command_handler.lock().await.get_mempool_state(true, filter)
+        self.command_handler.lock().await.get_mempool_state(filter)
     }
 
     /// Function to process the discover-peer command
