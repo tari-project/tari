@@ -11,6 +11,7 @@ preprocess = ["links", "index"]
 [output.html]
 mathjax-support=true
 theme = "src/theme"
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 [output.html.playpen]
 editable = false
@@ -26,3 +27,8 @@ boost-paragraph = 1
 expand = true
 heading-split-level = 3
 copy-js = true
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"

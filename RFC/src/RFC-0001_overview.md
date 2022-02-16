@@ -182,6 +182,8 @@ The Base Layer fulfils these, and only these, major roles:
 2. It maintains the Digital Asset register. This includes functionality for side-chain management, checkpoints, and transfer
    of funds into and out of side-chains.
 3. Maintain the Validator Node register. This includes support for registering and de-registering Validator Nodes.
+4. Maintain a register of smart contract templates. This allows users to verify that digital assets are running the code that they 
+   expect and includes functionality like version tracking.
 
 In general, the base layer knows _nothing about the specifics of what is happening on the side-chains_. It only cares
 that no Tari is created or destroyed, and that the flow of funds in and out of side chains are carried out by the appropriate
@@ -231,4 +233,4 @@ The following table summarizes the defining characteristics of the Tari network 
 | 30 Mar 2019 | First draft v0.0.1                                            | CjS77    |
 | 19 Jun 2019 | Propose payment channel layer                                 | CjS77    |
 | 22 Jun 2021 | Remove payment channel layer proposal                         | SimianZa |
-| 14 Jan 2022 | Update image. Expound on Base layer responsibilities | CjS77    |
+| 14 Jan 2022 | Update image. Expound on Base layer responsibilities          | CjS77    |
