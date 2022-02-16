@@ -24,17 +24,13 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-clippy-
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-
+          toolchain: ${{ env.toolchain }}
+          components: clippy, rustfmt
+          override: true
+      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -63,12 +59,6 @@ jobs:
           cd applications/launchpad/gui-vue
           npm ci
           npm run build
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.toolchain }}
-          components: clippy, rustfmt
-          override: true
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
@@ -85,17 +75,13 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-build-
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-
+          toolchain: ${{ env.toolchain }}
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -116,12 +102,6 @@ jobs:
           cd applications/launchpad/gui-vue
           npm ci
           npm run build
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.toolchain }}
-          profile: minimal
-          override: true
       - name: cargo build
         uses: actions-rs/cargo@v1
         with:
@@ -133,17 +113,13 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-stable-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-stable-build-
-            ${{ runner.os }}-${{ runner.cpu-model }}-stable-
+          toolchain: stable
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -164,12 +140,6 @@ jobs:
           cd applications/launchpad/gui-vue
           npm ci
           npm run build
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          override: true
       - name: rustup show
         run: |
           rustup show
@@ -185,17 +155,11 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-test-
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-
+          toolchain: ${{ env.toolchain }}
+      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -216,10 +180,6 @@ jobs:
           cd applications/launchpad/gui-vue
           npm ci
           npm run build
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.toolchain }}
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
