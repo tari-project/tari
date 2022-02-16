@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter::Peekable, str::FromStr, string::ToString, sync::Arc, time::Duration};
+use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
 
 use futures::future::Either;
 use log::*;
@@ -40,7 +40,6 @@ use tari_app_utilities::utilities::{
     parse_emoji_id_or_public_key_or_node_id,
 };
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
@@ -50,7 +49,7 @@ use tari_utilities::{
 };
 use tokio::sync::Mutex;
 
-use super::LOG_TARGET;
+use super::{args::Args, LOG_TARGET};
 use crate::command_handler::{CommandHandler, Format, StatusOutput};
 
 /// Enum representing commands used by the basenode
@@ -738,78 +737,5 @@ impl Parser {
 
     async fn process_list_reorgs(&self) {
         self.command_handler.lock().await.list_reorgs();
-    }
-}
-
-use std::str::SplitWhitespace;
-
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-#[error("{name} {reason}")]
-struct ArgsError {
-    name: &'static str,
-    reason: ArgsReason,
-}
-
-impl ArgsError {
-    pub fn new(name: &'static str, reason: ArgsReason) -> Self {
-        Self { name, reason }
-    }
-}
-
-#[derive(Debug, Error)]
-enum ArgsReason {
-    #[error("argument required")]
-    Required,
-    #[error("argument can't be parsed: {details}")]
-    NotParsed { details: String },
-}
-
-struct Args<'a> {
-    splitted: Peekable<SplitWhitespace<'a>>,
-}
-
-impl<'a> Args<'a> {
-    fn split(s: &'a str) -> Self {
-        Self {
-            splitted: s.split_whitespace().peekable(),
-        }
-    }
-
-    fn shift_one(&mut self) {
-        self.splitted.next();
-    }
-
-    // TODO: It have to return error if a value provided,
-    // but can''t be parsed
-    fn take_node_id(&mut self) -> Option<NodeId> {
-        self.splitted
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-    }
-
-    fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
-    where
-        T: FromStr,
-        T::Err: ToString,
-    {
-        match self.splitted.peek().map(|s| s.parse()) {
-            Some(Ok(value)) => Ok(Some(value)),
-            Some(Err(err)) => Err(ArgsError::new(name, ArgsReason::NotParsed {
-                details: err.to_string(),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    fn take_next<T>(&mut self, name: &'static str) -> Result<T, ArgsError>
-    where
-        T: FromStr,
-        T::Err: ToString,
-    {
-        self.try_take_next(name)?
-            .ok_or_else(|| ArgsError::new(name, ArgsReason::Required))
     }
 }
