@@ -238,7 +238,7 @@ impl Parser {
                 self.process_period_stats(typed_args).await?;
             },
             HeaderStats => {
-                self.process_header_stats(args).await;
+                self.process_header_stats(typed_args).await?;
             },
             BanPeer => {
                 self.process_ban_peer(typed_args, true).await?;
@@ -641,35 +641,28 @@ impl Parser {
         Ok(())
     }
 
-    async fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let start_height = try_or_print!(args
-            .next()
-            .ok_or_else(|| {
-                self.print_help(BaseNodeCommand::HeaderStats);
-                "No args provided".to_string()
-            })
-            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
+    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let start_height: u64 = args.take_next("start_height")?;
+        let end_height: u64 = args.take_next("end_height")?;
+        let filename: String = args
+            .try_take_next("filename")?
+            .unwrap_or_else(|| "header-data.csv".into());
 
-        let end_height = try_or_print!(args
-            .next()
-            .ok_or_else(|| {
-                self.print_help(BaseNodeCommand::HeaderStats);
-                "No end height provided".to_string()
-            })
-            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
+        // TODO: Replace that with a struct that impl `FromStr`
+        let algo_arg: Option<String> = args.try_take_next("algo")?;
+        let algo_str: Option<&str> = algo_arg.as_ref().map(String::as_ref);
+        let algo = match algo_str {
+            Some("monero") => Some(PowAlgorithm::Monero),
+            Some("sha") | Some("sha3") => Some(PowAlgorithm::Sha3),
+            None | Some("all") => None,
+            _ => return Err(ArgsError::new("algo", "Invalid pow algo")),
+        };
 
-        let filename = args.next().unwrap_or("header-data.csv").to_string();
-
-        let algo = try_or_print!(Ok(args.next()).and_then(|s| match s {
-            Some("monero") => Ok(Some(PowAlgorithm::Monero)),
-            Some("sha") | Some("sha3") => Ok(Some(PowAlgorithm::Sha3)),
-            None | Some("all") => Ok(None),
-            _ => Err("Invalid pow algo"),
-        }));
         self.command_handler
             .lock()
             .await
-            .save_header_stats(start_height, end_height, filename, algo)
+            .save_header_stats(start_height, end_height, filename, algo);
+        Ok(())
     }
 
     async fn process_rewind_blockchain<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
