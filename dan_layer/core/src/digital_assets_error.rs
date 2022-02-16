@@ -76,6 +76,14 @@ pub enum DigitalAssetError {
     StateSyncError(#[from] StateSyncError),
     #[error("Validator node client error: {0}")]
     ValidatorNodeClientError(#[from] ValidatorNodeClientError),
+    #[error("Peer did not send a quorum certificate in prepare phase")]
+    PreparePhaseNoQuorumCertificate,
+    #[error("Quorum certificate does not extend node")]
+    PreparePhaseCertificateDoesNotExtendNode,
+    #[error("Node not safe")]
+    PreparePhaseNodeNotSafe,
+    #[error("Unsupported template method {name}")]
+    TemplateUnsupportedMethod { name: String },
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {

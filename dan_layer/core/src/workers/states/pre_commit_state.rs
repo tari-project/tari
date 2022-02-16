@@ -28,9 +28,9 @@ use tokio::time::{sleep, Duration};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, TreeNodeHash, View, ViewId},
+    models::{Committee, HotStuffMessage, HotStuffMessageType, QuorumCertificate, TreeNodeHash, View, ViewId},
     services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        infrastructure_services::{InboundConnectionService, OutboundService},
         SigningService,
     },
     storage::chain::ChainDbUnitOfWork,
@@ -39,35 +39,33 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::precommit";
 
-pub struct PreCommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TSigningService: SigningService<TAddr>,
+pub struct PreCommitState<TInboundConnectionService, TOutboundService, TSigningService>
+where TOutboundService: OutboundService
 {
-    node_id: TAddr,
+    node_id: TOutboundService::Addr,
     asset_public_key: PublicKey,
-    committee: Committee<TAddr>,
+    committee: Committee<TOutboundService::Addr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
-    ta: PhantomData<TAddr>,
-    p_p: PhantomData<TPayload>,
+    ta: PhantomData<TOutboundService::Addr>,
+    p_p: PhantomData<TOutboundService::Payload>,
     p_s: PhantomData<TSigningService>,
-    received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
+    received_prepare_messages: HashMap<TOutboundService::Addr, HotStuffMessage<TOutboundService::Payload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-    PreCommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+impl<TInboundConnectionService, TOutboundService, TSigningService>
+    PreCommitState<TInboundConnectionService, TOutboundService, TSigningService>
 where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-    TSigningService: SigningService<TAddr>,
+    TInboundConnectionService:
+        InboundConnectionService<Addr = TOutboundService::Addr, Payload = TOutboundService::Payload>,
+    TOutboundService: OutboundService,
+    TSigningService: SigningService<TOutboundService::Addr>,
 {
-    pub fn new(node_id: TAddr, committee: Committee<TAddr>, asset_public_key: PublicKey) -> Self {
+    pub fn new(
+        node_id: TOutboundService::Addr,
+        committee: Committee<TOutboundService::Addr>,
+        asset_public_key: PublicKey,
+    ) -> Self {
         Self {
             node_id,
             asset_public_key,
@@ -76,7 +74,7 @@ where
             phantom_outbound: PhantomData,
             ta: PhantomData,
             p_p: PhantomData,
-            received_new_view_messages: HashMap::new(),
+            received_prepare_messages: HashMap::new(),
             p_s: PhantomData,
         }
     }
@@ -90,7 +88,7 @@ where
         signing_service: &TSigningService,
         unit_of_work: TUnitOfWork,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        self.received_new_view_messages.clear();
+        self.received_prepare_messages.clear();
         let mut unit_of_work = unit_of_work;
         let next_event_result;
         let timeout = sleep(timeout);
@@ -127,8 +125,8 @@ where
     async fn process_leader_message(
         &mut self,
         current_view: &View,
-        message: HotStuffMessage<TPayload>,
-        sender: &TAddr,
+        message: HotStuffMessage<TOutboundService::Payload>,
+        sender: &TOutboundService::Addr,
         outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         debug!(
@@ -141,17 +139,17 @@ where
             return Ok(None);
         }
 
-        if self.received_new_view_messages.contains_key(sender) {
+        if self.received_prepare_messages.contains_key(sender) {
             return Ok(None);
         }
 
-        self.received_new_view_messages.insert(sender.clone(), message);
+        self.received_prepare_messages.insert(sender.clone(), message);
 
-        if self.received_new_view_messages.len() >= self.committee.consensus_threshold() {
+        if self.received_prepare_messages.len() >= self.committee.consensus_threshold() {
             debug!(
                 target: LOG_TARGET,
                 "[PRECOMMIT] Consensus has been reached with {:?} out of {} votes",
-                self.received_new_view_messages.len(),
+                self.received_prepare_messages.len(),
                 self.committee.len()
             );
 
@@ -167,7 +165,7 @@ where
             debug!(
                 target: LOG_TARGET,
                 "[PRECOMMIT] Consensus has NOT YET been reached with {:?} out of {} votes",
-                self.received_new_view_messages.len(),
+                self.received_prepare_messages.len(),
                 self.committee.len()
             );
             Ok(None)
@@ -177,7 +175,7 @@ where
     async fn broadcast(
         &self,
         outbound: &mut TOutboundService,
-        committee: &Committee<TAddr>,
+        committee: &Committee<TOutboundService::Addr>,
         prepare_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
@@ -188,9 +186,9 @@ where
     }
 
     fn create_qc(&self, current_view: &View) -> Option<QuorumCertificate> {
-        let mut node = None;
-        for message in self.received_new_view_messages.values() {
-            node = match node {
+        let mut node_hash = None;
+        for message in self.received_prepare_messages.values() {
+            node_hash = match node_hash {
                 None => message.node_hash().cloned(),
                 Some(n) => {
                     if let Some(m_node) = message.node_hash() {
@@ -205,9 +203,9 @@ where
             };
         }
 
-        let node = node.unwrap();
-        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node, None);
-        for message in self.received_new_view_messages.values() {
+        let node_hash = node_hash.unwrap();
+        let mut qc = QuorumCertificate::new(HotStuffMessageType::Prepare, current_view.view_id, node_hash, None);
+        for message in self.received_prepare_messages.values() {
             qc.combine_sig(message.partial_sig().unwrap())
         }
         Some(qc)
@@ -215,10 +213,10 @@ where
 
     async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
-        message: &HotStuffMessage<TPayload>,
+        message: &HotStuffMessage<TOutboundService::Payload>,
         current_view: &View,
-        from: &TAddr,
-        view_leader: &TAddr,
+        from: &TOutboundService::Addr,
+        view_leader: &TOutboundService::Addr,
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
         unit_of_work: &mut TUnitOfWork,
@@ -266,7 +264,7 @@ where
         &self,
         node: TreeNodeHash,
         outbound: &mut TOutboundService,
-        view_leader: &TAddr,
+        view_leader: &TOutboundService::Addr,
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {
