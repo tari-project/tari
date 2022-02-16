@@ -53,10 +53,9 @@ mod test {
         test_utils::make_wallet_database_connection,
         transaction_service::{
             handle::TransactionEvent,
-            protocols::TxRejection,
             storage::{
                 database::TransactionDatabase,
-                models::{CompletedTransaction, InboundTransaction, OutboundTransaction},
+                models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
                 sqlite_db::TransactionServiceSqliteDatabase,
             },
         },
@@ -309,7 +308,9 @@ mod test {
         runtime
             .block_on(db.insert_completed_transaction(5u64.into(), completed_tx_cancelled.clone()))
             .unwrap();
-        runtime.block_on(db.reject_completed_transaction(5u64.into())).unwrap();
+        runtime
+            .block_on(db.reject_completed_transaction(5u64.into(), TxCancellationReason::Unknown))
+            .unwrap();
 
         let faux_unconfirmed_tx = CompletedTransaction::new(
             6u64.into(),
@@ -511,7 +512,7 @@ mod test {
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 3u64.into(),
-                TxRejection::UserCancelled,
+                TxCancellationReason::UserCancelled,
             )))
             .unwrap();
         let start = Instant::now();
@@ -530,14 +531,14 @@ mod test {
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 4u64.into(),
-                TxRejection::UserCancelled,
+                TxCancellationReason::UserCancelled,
             )))
             .unwrap();
 
         transaction_event_sender
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 5u64.into(),
-                TxRejection::UserCancelled,
+                TxCancellationReason::UserCancelled,
             )))
             .unwrap();
 
