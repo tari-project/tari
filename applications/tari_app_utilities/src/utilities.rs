@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use futures::future::Either;
 use log::*;
@@ -205,6 +205,34 @@ pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
     }
 }
 
+pub struct EmojiIdOrPublicKey(PublicKey);
+
+#[derive(Debug, Error)]
+pub enum EmojiIdOrPublicKeyError {
+    #[error("unknown id type, expected emoji-id, public-key")]
+    UnknownIdType,
+}
+
+impl FromStr for EmojiIdOrPublicKey {
+    type Err = EmojiIdOrPublicKeyError;
+
+    fn from_str(key: &str) -> Result<Self, Self::Err> {
+        if let Ok(public_key) = EmojiId::str_to_pubkey(&key.trim().replace('|', "")) {
+            Ok(Self(public_key))
+        } else if let Ok(public_key) = PublicKey::from_hex(key) {
+            Ok(Self(public_key))
+        } else {
+            Err(EmojiIdOrPublicKeyError::UnknownIdType)
+        }
+    }
+}
+
+impl From<EmojiIdOrPublicKey> for PublicKey {
+    fn from(id: EmojiIdOrPublicKey) -> Self {
+        id.0
+    }
+}
+
 pub enum UniId {
     PublicKey(PublicKey),
     NodeId(NodeId),
@@ -234,11 +262,11 @@ impl FromStr for UniId {
     }
 }
 
-impl TryInto<PublicKey> for UniId {
+impl TryFrom<UniId> for PublicKey {
     type Error = UniIdError;
 
-    fn try_into(self) -> Result<PublicKey, Self::Error> {
-        match self {
+    fn try_from(id: UniId) -> Result<Self, Self::Error> {
+        match id {
             UniId::PublicKey(public_key) => Ok(public_key),
             UniId::NodeId(_) => Err(UniIdError::Nonconvertible),
         }
