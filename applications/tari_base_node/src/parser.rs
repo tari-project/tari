@@ -156,11 +156,9 @@ impl Parser {
         }
 
         let mut typed_args = Args::split(command_str);
-        // TODO: Use it as a command
-        typed_args.shift_one();
-
-        let mut args = command_str.split_whitespace();
-        match args.next().unwrap_or("help").parse() {
+        let command = typed_args.take_next("command");
+        let args = command_str.split_whitespace();
+        match command {
             Ok(command) => {
                 let res = self.process_command(command, args, typed_args, shutdown).await;
                 if let Err(err) = res {
@@ -183,18 +181,15 @@ impl Parser {
     async fn process_command<'a, I: Iterator<Item = &'a str>>(
         &mut self,
         command: BaseNodeCommand,
-        mut args: I,
-        typed_args: Args<'a>,
+        args: I,
+        mut typed_args: Args<'a>,
         shutdown: &mut Shutdown,
     ) -> Result<(), ArgsError> {
         use BaseNodeCommand::*;
         match command {
             Help => {
-                self.print_help(
-                    args.next()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(BaseNodeCommand::Help),
-                );
+                let command = typed_args.take_next("help-command")?;
+                self.print_help(command);
             },
             Status => {
                 self.command_handler.lock().await.status(StatusOutput::Full);
