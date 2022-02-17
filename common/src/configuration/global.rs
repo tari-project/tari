@@ -63,10 +63,7 @@ const DB_RESIZE_THRESHOLD_MIN_MB: i64 = 10;
 
 #[derive(Debug, Clone)]
 pub struct GlobalConfig {
-    pub autoupdate_check_interval: Option<Duration>,
-    pub autoupdate_dns_hosts: Vec<String>,
-    pub autoupdate_hashes_url: String,
-    pub autoupdate_hashes_sig_url: String,
+    pub inner: Config,
     pub network: Network,
     pub comms_transport: CommsTransport,
     pub auxilary_tcp_listener_address: Option<Multiaddr>,
@@ -652,37 +649,11 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })?;
 
-    // Auto update
-    let key = config_string("common", net_str, "auto_update.check_interval");
-    let autoupdate_check_interval = optional(cfg.get_int(&key))?.and_then(|secs| {
-        if secs > 0 {
-            Some(Duration::from_secs(secs as u64))
-        } else {
-            None
-        }
-    });
-
-    let key = config_string("common", net_str, "auto_update.dns_hosts");
-    let autoupdate_dns_hosts = optional(cfg.get_array(&key))?
-        .unwrap_or_default()
-        .into_iter()
-        .map(|s| s.into_str())
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let key = config_string("common", net_str, "auto_update.hashes_url");
-    let autoupdate_hashes_url = optional(cfg.get_str(&key))?.unwrap_or_default();
-
-    let key = config_string("common", net_str, "auto_update.hashes_sig_url");
-    let autoupdate_hashes_sig_url = optional(cfg.get_str(&key))?.unwrap_or_default();
-
     let metrics = MetricsConfig::from_config(&cfg)?;
     let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(&cfg, net_str);
 
     Ok(GlobalConfig {
-        autoupdate_check_interval,
-        autoupdate_dns_hosts,
-        autoupdate_hashes_url,
-        autoupdate_hashes_sig_url,
+        inner: cfg.clone(),
         network,
         comms_transport,
         auxilary_tcp_listener_address,

@@ -165,7 +165,8 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     #[allow(unused_mut)] // config isn't mutated on windows
-    let (bootstrap, mut config, _) = init_configuration(ApplicationType::BaseNode)?;
+    let (bootstrap, mut config, _cfg) = init_configuration(ApplicationType::BaseNode)?;
+    // let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
 
     // Load or create the Node identity

@@ -28,6 +28,3 @@ pub mod consts {
     // Import the auto-generated const values from the Manifest and Git
     include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 }
-
-// Alias to common crate
-pub use tari_common as common;

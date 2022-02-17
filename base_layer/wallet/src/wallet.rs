@@ -197,7 +197,6 @@ where
                     .parse()
                     .expect("Unable to parse console wallet version."),
                 updater_config.clone(),
-                config.autoupdate_check_interval,
             )),
             _ => stack,
         };

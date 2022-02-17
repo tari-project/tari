@@ -279,6 +279,18 @@ function combineTwoTariKeys(key1, key2) {
   return total_key;
 }
 
+const multiAddrToSocket = (string) => {
+  console.log("input:", string);
+  let match = string.match(/\/ip4\/(.*)\/tcp\/(.*)/);
+  if (!match) {
+    console.log("no match, returning as is");
+    return string;
+  }
+  let res = `${match[1]}:${match[2]}`;
+  console.log("returning: ", res);
+  return res;
+};
+
 const byteArrayToHex = (bytes) =>
   bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
 
@@ -311,4 +323,5 @@ module.exports = {
   waitForPredicate,
   waitForIterate,
   NO_CONNECTION,
+  multiAddrToSocket,
 };

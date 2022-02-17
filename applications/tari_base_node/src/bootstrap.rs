@@ -25,7 +25,7 @@ use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
 use anyhow::anyhow;
 use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
-use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
+use tari_common::{configuration::bootstrap::ApplicationType, DefaultConfigLoader, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
 use tari_core::{
@@ -115,6 +115,8 @@ where B: BlockchainBackend + 'static
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
+        let auto_update_config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&config.inner)
+            .map_err(|e| anyhow!("Could not load auto_update config: {:?}", e))?;
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(comms_config, publisher))
             .add_initializer(SoftwareUpdaterService::new(
@@ -122,15 +124,7 @@ where B: BlockchainBackend + 'static
                 consts::APP_VERSION_NUMBER
                     .parse()
                     .expect("Unable to parse application version. Not valid semver"),
-                AutoUpdateConfig {
-                    name_server: config.dns_seeds_name_server.clone(),
-                    update_uris: config.autoupdate_dns_hosts.clone(),
-                    use_dnssec: config.dns_seeds_use_dnssec,
-                    download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
-                    hashes_url: config.autoupdate_hashes_url.clone(),
-                    hashes_sig_url: config.autoupdate_hashes_sig_url.clone(),
-                },
-                config.autoupdate_check_interval,
+                auto_update_config,
             ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 peer_message_subscriptions.clone(),

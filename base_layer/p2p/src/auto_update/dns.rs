@@ -229,6 +229,8 @@ mod test {
     }
 
     mod dns_software_update {
+        use std::time::Duration;
+
         use super::*;
         use crate::DEFAULT_DNS_NAME_SERVER;
 
@@ -244,6 +246,7 @@ mod test {
                     hashes_sig_url:
                         "https://raw.githubusercontent.com/tari-project/tari/development/meta/hashes.txt.sig"
                             .to_string(),
+                    check_interval: Some(Duration::from_secs(30)),
                 }
             }
         }

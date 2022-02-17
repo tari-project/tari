@@ -12,10 +12,8 @@ let outputProcess;
 class StratumTranscoderProcess {
   constructor(name, baseNodeAddress, walletAddress, logFilePath) {
     this.name = name;
-    this.nodeAddress = baseNodeAddress.split(":")[0];
-    this.nodeGrpcPort = baseNodeAddress.split(":")[1];
-    this.walletAddress = walletAddress.split(":")[0];
-    this.walletGrpcPort = walletAddress.split(":")[1];
+    this.baseNodeAddress = baseNodeAddress;
+    this.walletAddress = walletAddress;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.client = null;
   }
@@ -36,23 +34,13 @@ class StratumTranscoderProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const transcoderAddress = "127.0.0.1:" + this.port;
+      const transcoderFullAddress = "127.0.0.1:" + this.port;
 
-      const envs = createEnv(
-        this.name,
-        false,
-        "nodeid.json",
-        this.walletAddress,
-        this.walletGrpcPort,
-        this.port,
-        this.nodeAddress,
-        this.nodeGrpcPort,
-        this.baseNodePort,
-        "127.0.0.1:8085",
-        transcoderAddress,
-        [],
-        []
-      );
+      const envs = createEnv({
+        walletGrpcAddress: this.walletAddress,
+        baseNodeAddress: this.baseNodeAddress,
+        transcoderFullAddress,
+      });
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,

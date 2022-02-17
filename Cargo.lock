@@ -6972,6 +6972,7 @@ dependencies = [
  "strum 0.23.0",
  "strum_macros 0.23.1",
  "tari_app_utilities",
+ "tari_common",
  "tari_comms",
  "tauri",
  "tauri-build",

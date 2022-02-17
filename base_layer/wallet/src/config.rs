@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
-
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
 use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
 
@@ -44,7 +42,6 @@ pub struct WalletConfig {
     pub network: NetworkConsensus,
     pub base_node_service_config: BaseNodeServiceConfig,
     pub updater_config: Option<AutoUpdateConfig>,
-    pub autoupdate_check_interval: Option<Duration>,
 }
 
 impl WalletConfig {
@@ -59,7 +56,6 @@ impl WalletConfig {
         buffer_size: Option<usize>,
         rate_limit: Option<usize>,
         updater_config: Option<AutoUpdateConfig>,
-        autoupdate_check_interval: Option<Duration>,
     ) -> Self {
         Self {
             comms_config,
@@ -71,7 +67,6 @@ impl WalletConfig {
             network,
             base_node_service_config: base_node_service_config.unwrap_or_default(),
             updater_config,
-            autoupdate_check_interval,
         }
     }
 }

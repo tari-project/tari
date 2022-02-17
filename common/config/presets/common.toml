@@ -8,7 +8,7 @@
 # Select the network to connect to. Valid options are:
 #   mainnet - the "real" Tari network (default)
 #   weatherwax - the Tari testnet
-network = "dibbler"
+config  = "dibbler"
 
 # Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
 # Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the

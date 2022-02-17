@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,45 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fmt::{Display, Formatter},
-    net::SocketAddr,
-    str::FromStr,
-};
+use serde::{Deserialize, Serialize};
 
-use anyhow::anyhow;
-use serde::Deserialize;
+use crate::SubConfigPath;
 
-#[derive(Debug, Clone, Deserialize, PartialEq)]
-pub struct DnsNameServer {
-    pub addr: SocketAddr,
-    pub dns_name: String,
-}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct CommonConfig {}
 
-impl DnsNameServer {
-    pub fn new(addr: SocketAddr, dns_name: String) -> Self {
-        Self { addr, dns_name }
+impl Default for CommonConfig {
+    fn default() -> Self {
+        Self {}
     }
 }
 
-impl Display for DnsNameServer {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}/{}", self.addr, self.dns_name)
-    }
-}
-
-// TODO: Instead of using our own format, we should use multiaddresses in the format
-//       /ip4/1.1.1.1/tcp/853/tls/sni/cloudflare-dns.com
-impl FromStr for DnsNameServer {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut split = s.splitn(2, '/');
-        let addr = split.next().ok_or_else(|| anyhow!("failed to parse DNS name server"))?;
-        let dns_name = split.next().ok_or_else(|| anyhow!("failed to parse name server"))?;
-        Ok(Self {
-            addr: addr.parse()?,
-            dns_name: dns_name.to_string(),
-        })
+impl SubConfigPath for CommonConfig {
+    fn main_key_prefix() -> &'static str {
+        "common"
     }
 }

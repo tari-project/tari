@@ -20,11 +20,17 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, fs::File, io::Write, path::Path};
+use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path::Path, str::FromStr};
 
 use config::Config;
 use log::{debug, info};
 use multiaddr::{Multiaddr, Protocol};
+use serde::{
+    de::{self, MapAccess, Visitor},
+    Deserialize,
+    Deserializer,
+    Serializer,
+};
 
 use crate::{
     configuration::bootstrap::ApplicationType,
@@ -440,4 +446,42 @@ pub fn get_local_ip() -> Option<Multiaddr> {
                 addr
             })
     })
+}
+
+pub fn serialize_string<S, T>(source: &T, ser: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+    T: Display,
+{
+    ser.serialize_str(source.to_string().as_str())
+}
+
+pub fn deserialize_string_or_struct<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Deserialize<'de> + FromStr<Err = anyhow::Error>,
+    D: Deserializer<'de>,
+{
+    struct StringOrStruct<T>(PhantomData<fn() -> T>);
+
+    impl<'de, T> Visitor<'de> for StringOrStruct<T>
+    where T: Deserialize<'de> + FromStr<Err = anyhow::Error>
+    {
+        type Value = T;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("string or map")
+        }
+
+        fn visit_str<E>(self, value: &str) -> Result<T, E>
+        where E: de::Error {
+            Ok(FromStr::from_str(value).unwrap())
+        }
+
+        fn visit_map<M>(self, map: M) -> Result<T, M::Error>
+        where M: MapAccess<'de> {
+            Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))
+        }
+    }
+
+    deserializer.deserialize_any(StringOrStruct(PhantomData))
 }

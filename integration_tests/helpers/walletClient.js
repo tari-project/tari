@@ -1,5 +1,10 @@
 const { Client } = require("wallet-grpc-client");
-const { byteArrayToHex, tryConnect, convertStringToVec } = require("./util");
+const {
+  byteArrayToHex,
+  tryConnect,
+  convertStringToVec,
+  multiAddrToSocket,
+} = require("./util");
 
 function transactionStatus() {
   return [
@@ -19,8 +24,10 @@ class WalletClient {
     this.name = name;
   }
 
-  async connect(walletAddress) {
-    this.client = await tryConnect(() => Client.connect(walletAddress));
+  async connect(multiAddrOrSocket) {
+    this.client = await tryConnect(() =>
+      Client.connect(multiAddrToSocket(multiAddrOrSocket))
+    );
   }
 
   async getVersion() {

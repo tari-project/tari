@@ -181,7 +181,6 @@ async fn create_wallet(
         None,
         None,
         None,
-        None,
     );
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
@@ -730,7 +729,6 @@ async fn test_import_utxo() {
         None,
         None,
         Network::Weatherwax.into(),
-        None,
         None,
         None,
         None,

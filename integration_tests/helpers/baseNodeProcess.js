@@ -113,23 +113,14 @@ class BaseNodeProcess {
 
       let envs = [];
       if (!this.excludeTestEnvars) {
-        envs = createEnv(
-          this.name,
-          false,
-          this.nodeFile,
-          "127.0.0.1",
-          "8082",
-          "8081",
-          "127.0.0.1",
-          this.grpcPort,
-          this.port,
-          "127.0.0.1:8080",
-          "127.0.0.1:8085",
-          this.options,
-          this.peerSeeds,
-          "DirectAndStoreAndForward",
-          this.forceSyncPeers
-        );
+        envs = createEnv({
+          nodeFile: this.nodeFile,
+          baseNodeGrpcAddress: this.getGrpcAddress(),
+          baseNodePort: this.port,
+          options: this.options,
+          peerSeed: this.peerSeeds,
+          forceSyncPeers: this.forceSyncPeers,
+        });
       }
 
       // clear the .env file

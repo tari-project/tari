@@ -29,6 +29,7 @@ use tari_app_utilities::utilities::create_transport_type;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
     ConfigBootstrap,
+    DefaultConfigLoader,
     GlobalConfig,
 };
 use tari_comms::{
@@ -412,14 +413,7 @@ pub async fn init_wallet(
         config.base_node_event_channel_size,
     );
 
-    let updater_config = AutoUpdateConfig {
-        name_server: config.dns_seeds_name_server.clone(),
-        update_uris: config.autoupdate_dns_hosts.clone(),
-        use_dnssec: config.dns_seeds_use_dnssec,
-        download_base_url: "https://tari-binaries.s3.amazonaws.com/latest".to_string(),
-        hashes_url: config.autoupdate_hashes_url.clone(),
-        hashes_sig_url: config.autoupdate_hashes_sig_url.clone(),
-    };
+    let updater_config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&config.inner)?;
 
     let factories = CryptoFactories::default();
     let wallet_config = WalletConfig::new(
@@ -452,7 +446,6 @@ pub async fn init_wallet(
         )),
         Some(config.buffer_rate_limit_console_wallet),
         Some(updater_config),
-        config.autoupdate_check_interval,
     );
 
     let mut wallet = Wallet::start(
