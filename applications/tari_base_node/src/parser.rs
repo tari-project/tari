@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
+use std::{string::ToString, sync::Arc, time::Duration};
 
 use log::*;
 use rustyline::{
@@ -38,15 +38,11 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
-use tari_utilities::{
-    hex,
-    hex::{from_hex, Hex, HexError},
-    ByteArray,
-};
+use tari_utilities::{hex, ByteArray};
 use tokio::sync::Mutex;
 
 use super::{
-    args::{Args, ArgsError, ArgsReason},
+    args::{Args, ArgsError, ArgsReason, FromHex},
     LOG_TARGET,
 };
 use crate::command_handler::{CommandHandler, StatusOutput};
@@ -153,10 +149,9 @@ impl Parser {
 
         let mut typed_args = Args::split(command_str);
         let command = typed_args.take_next("command");
-        let args = command_str.split_whitespace();
         match command {
             Ok(command) => {
-                let res = self.process_command(command, args, typed_args, shutdown).await;
+                let res = self.process_command(command, typed_args, shutdown).await;
                 if let Err(err) = res {
                     println!("Command Error: {}", err);
                     self.print_help(command);
@@ -174,10 +169,9 @@ impl Parser {
     }
 
     /// Function to process commands
-    async fn process_command<'a, I: Iterator<Item = &'a str>>(
+    async fn process_command<'a>(
         &mut self,
         command: BaseNodeCommand,
-        args: I,
         mut typed_args: Args<'a>,
         shutdown: &mut Shutdown,
     ) -> Result<(), ArgsError> {
@@ -266,7 +260,7 @@ impl Parser {
                 self.process_search_utxo(typed_args).await?;
             },
             SearchKernel => {
-                self.process_search_kernel(args).await;
+                self.process_search_kernel(typed_args).await?;
             },
             GetMempoolStats => {
                 self.command_handler.lock().await.get_mempool_stats();
@@ -461,18 +455,7 @@ impl Parser {
     /// Function to process the get-block command
     async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let height = args.try_take_next("height")?;
-
-        struct StrHash(Vec<u8>);
-
-        impl FromStr for StrHash {
-            type Err = HexError;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                from_hex(s).map(Self)
-            }
-        }
-
-        let hash: Option<StrHash> = args.try_take_next("hash")?;
+        let hash: Option<FromHex<Vec<u8>>> = args.try_take_next("hash")?;
         args.shift_one();
         let format = args.try_take_next("format")?.unwrap_or_default();
 
@@ -481,8 +464,8 @@ impl Parser {
                 self.command_handler.lock().await.get_block(height, format);
                 Ok(())
             },
-            (_, Some(StrHash(hash))) => {
-                self.command_handler.lock().await.get_block_by_hash(hash, format);
+            (_, Some(hash)) => {
+                self.command_handler.lock().await.get_block_by_hash(hash.0, format);
                 Ok(())
             },
             _ => Err(ArgsError::new(
@@ -494,46 +477,18 @@ impl Parser {
 
     /// Function to process the search utxo command
     async fn process_search_utxo<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
-        let hex: String = args.take_next("hex")?;
-        let commitment = Commitment::from_hex(&hex)
-            .map_err(|err| ArgsError::new("hex", format!("Invalid commitment provided: {}", err)))?;
-        self.command_handler.lock().await.search_utxo(commitment);
+        let commitment: FromHex<Commitment> = args.take_next("hex")?;
+        self.command_handler.lock().await.search_utxo(commitment.0);
         Ok(())
     }
 
     /// Function to process the search kernel command
-    async fn process_search_kernel<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchKernel);
-            return;
-        }
-        let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid public nonce provided.");
-                self.print_help(BaseNodeCommand::SearchKernel);
-                return;
-            },
-        };
-
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchKernel);
-            return;
-        }
-        let signature = match PrivateKey::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid signature provided.");
-                self.print_help(BaseNodeCommand::SearchKernel);
-                return;
-            },
-        };
-        let kernel_sig = Signature::new(public_nonce, signature);
-
-        self.command_handler.lock().await.search_kernel(kernel_sig)
+    async fn process_search_kernel<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
+        let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
+        let kernel_sig = Signature::new(public_nonce.0, signature.0);
+        self.command_handler.lock().await.search_kernel(kernel_sig);
+        Ok(())
     }
 
     async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {

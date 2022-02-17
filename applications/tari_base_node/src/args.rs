@@ -3,6 +3,7 @@ use std::{
     str::{FromStr, SplitWhitespace},
 };
 
+use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -82,5 +83,15 @@ impl<'a> Args<'a> {
             },
             None => Err(ArgsError::new(name, ArgsReason::Required)),
         }
+    }
+}
+
+pub struct FromHex<T>(pub T);
+
+impl<T: Hex> FromStr for FromHex<T> {
+    type Err = HexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        T::from_hex(s).map(Self)
     }
 }
