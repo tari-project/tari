@@ -151,6 +151,12 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
+      - name: test key manager wasm
+        run: |
+          npm install -g wasm-pack
+          cd base_layer/key_manager
+          rustup target add wasm32-unknown-unknown
+          make test
       - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:
@@ -160,8 +166,3 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test --all-features
-      - name: test key manager wasm
-        run: |
-          cd base_layer/key_manager
-          rustup target add wasm32-unknown-unknown
-          make test
