@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{string::ToString, sync::Arc, time::Duration};
+use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
 
-use futures::future::Either;
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -41,7 +40,7 @@ use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
 use tari_utilities::{
     hex,
-    hex::{from_hex, Hex},
+    hex::{from_hex, Hex, HexError},
     ByteArray,
 };
 use tokio::sync::Mutex;
@@ -50,7 +49,7 @@ use super::{
     args::{Args, ArgsError, ArgsReason},
     LOG_TARGET,
 };
-use crate::command_handler::{CommandHandler, Format, StatusOutput};
+use crate::command_handler::{CommandHandler, StatusOutput};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -261,7 +260,7 @@ impl Parser {
                 self.process_list_reorgs().await;
             },
             GetBlock => {
-                self.process_get_block(args).await;
+                self.process_get_block(typed_args).await?;
             },
             SearchUtxo => {
                 self.process_search_utxo(typed_args).await?;
@@ -460,38 +459,37 @@ impl Parser {
     }
 
     /// Function to process the get-block command
-    async fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let height_or_hash = match args.next() {
-            Some(s) => s
-                .parse::<u64>()
-                .ok()
-                .map(Either::Left)
-                .or_else(|| from_hex(s).ok().map(Either::Right)),
-            None => {
-                self.print_help(BaseNodeCommand::GetBlock);
-                return;
-            },
-        };
+    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let height = args.try_take_next("height")?;
 
-        let format = match args.next() {
-            Some(v) if v.to_ascii_lowercase() == "json" => Format::Json,
-            Some(v) if v.to_ascii_lowercase() == "text" => Format::Text,
-            None => Format::Text,
-            Some(_) => {
-                println!("Unrecognized format specifier");
-                self.print_help(BaseNodeCommand::GetBlock);
-                return;
-            },
-        };
+        struct StrHash(Vec<u8>);
 
-        match height_or_hash {
-            Some(Either::Left(height)) => self.command_handler.lock().await.get_block(height, format),
-            Some(Either::Right(hash)) => self.command_handler.lock().await.get_block_by_hash(hash, format),
-            None => {
-                println!("Invalid block height or hash provided. Height must be an integer.");
-                self.print_help(BaseNodeCommand::GetBlock);
+        impl FromStr for StrHash {
+            type Err = HexError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                from_hex(s).map(Self)
+            }
+        }
+
+        let hash: Option<StrHash> = args.try_take_next("hash")?;
+        args.shift_one();
+        let format = args.try_take_next("format")?.unwrap_or_default();
+
+        match (height, hash) {
+            (Some(height), _) => {
+                self.command_handler.lock().await.get_block(height, format);
+                Ok(())
             },
-        };
+            (_, Some(StrHash(hash))) => {
+                self.command_handler.lock().await.get_block_by_hash(hash, format);
+                Ok(())
+            },
+            _ => Err(ArgsError::new(
+                "height",
+                "Invalid block height or hash provided. Height must be an integer.",
+            )),
+        }
     }
 
     /// Function to process the search utxo command

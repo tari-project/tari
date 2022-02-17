@@ -24,6 +24,7 @@ use std::{
     cmp,
     fs::File,
     io::{self, Write},
+    str::FromStr,
     string::ToString,
     sync::Arc,
     time::{Duration, Instant},
@@ -62,6 +63,7 @@ use tari_p2p::{
     services::liveness::{LivenessEvent, LivenessHandle},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
+use thiserror::Error;
 use tokio::{
     runtime,
     sync::{broadcast, watch},
@@ -1348,9 +1350,31 @@ async fn fetch_banned_peers(pm: &PeerManager) -> Result<Vec<Peer>, PeerManagerEr
     pm.perform_query(query).await
 }
 
+#[derive(Debug, Error)]
+#[error("invalid format '{0}'")]
+pub struct FormatParseError(String);
+
 pub enum Format {
     Json,
     Text,
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Self::Text
+    }
+}
+
+impl FromStr for Format {
+    type Err = FormatParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_ref() {
+            "json" => Ok(Self::Json),
+            "text" => Ok(Self::Text),
+            _ => Err(FormatParseError(s.into())),
+        }
+    }
 }
 
 // TODO: This is not currently used, but could be pretty useful (maybe as an iterator)
