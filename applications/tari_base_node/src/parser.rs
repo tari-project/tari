@@ -639,16 +639,7 @@ impl Parser {
         let filename: String = args
             .try_take_next("filename")?
             .unwrap_or_else(|| "header-data.csv".into());
-
-        // TODO: Replace that with a struct that impl `FromStr`
-        let algo_arg: Option<String> = args.try_take_next("algo")?;
-        let algo_str: Option<&str> = algo_arg.as_ref().map(String::as_ref);
-        let algo = match algo_str {
-            Some("monero") => Some(PowAlgorithm::Monero),
-            Some("sha") | Some("sha3") => Some(PowAlgorithm::Sha3),
-            None | Some("all") => None,
-            _ => return Err(ArgsError::new("algo", "Invalid pow algo")),
-        };
+        let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
 
         self.command_handler
             .lock()
