@@ -62,10 +62,6 @@ pub use events_and_states::{BaseNodeState, BlockSyncInfo, StateEvent, StateInfo,
 mod block_sync;
 pub use block_sync::BlockSync;
 
-// TODO: Clean up helpers
-pub(crate) mod helpers;
-pub use helpers::SyncPeerConfig;
-
 mod header_sync;
 pub use header_sync::HeaderSyncState;
 
@@ -73,7 +69,7 @@ mod sync_decide;
 pub use sync_decide::DecideNextSync;
 
 mod horizon_state_sync;
-pub use horizon_state_sync::{HorizonStateSync, HorizonSyncConfig};
+pub use horizon_state_sync::HorizonStateSync;
 
 mod listening;
 pub use listening::{Listening, ListeningInfo, PeerMetadata};

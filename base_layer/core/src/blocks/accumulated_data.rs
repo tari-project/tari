@@ -112,7 +112,7 @@ impl Display for BlockAccumulatedData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         write!(
             f,
-            "{} output(s), {} spends this block, {} kernel(s), {} rangeproof(s)",
+            "{} hashes in output MMR, {} spends this block, {} hashes in kernel MMR, {} hashes in witness MMR",
             self.outputs.len().unwrap_or(0),
             self.deleted.deleted.cardinality(),
             self.kernels.len().unwrap_or(0),

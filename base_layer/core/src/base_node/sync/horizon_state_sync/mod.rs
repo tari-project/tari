@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,34 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-/// Configuration for the Horizon State Synchronization.
-#[derive(Clone, Copy)]
-pub struct HorizonSyncConfig {
-    /// The selected horizon block height might be similar to other pruned nodes resulting in spent UTXOs being
-    /// discarded before the horizon sync has completed. A height offset is used to help with this problem by
-    /// selecting a future height after the current horizon block height.
-    pub horizon_sync_height_offset: u64,
-    /// The maximum number of retry attempts a node can perform a request from remote nodes.
-    pub max_sync_request_retry_attempts: usize,
-    /// The maximum number of kernel MMR nodes and kernels that can be requested in a single query.
-    pub max_kernel_mmr_node_request_size: usize,
-    /// The maximum number of UTXO MMR nodes, range proof MMR nodes and UTXOs that can be requested in a single query.
-    pub max_utxo_mmr_node_request_size: usize,
-    /// Number of headers to request at once
-    pub header_request_size: usize,
-    /// Maximum number of header retry attempts
-    pub max_header_request_retry_attempts: usize,
-}
+mod error;
+pub use error::HorizonSyncError;
 
-impl Default for HorizonSyncConfig {
-    fn default() -> Self {
-        Self {
-            horizon_sync_height_offset: 50,
-            max_sync_request_retry_attempts: 5,
-            max_kernel_mmr_node_request_size: 1000,
-            max_utxo_mmr_node_request_size: 1000,
-            header_request_size: 100,
-            max_header_request_retry_attempts: 5,
-        }
-    }
-}
+mod events;
+pub use events::{HorizonSyncInfo, HorizonSyncStatus};
+
+mod synchronizer;
+pub use synchronizer::HorizonStateSynchronization;

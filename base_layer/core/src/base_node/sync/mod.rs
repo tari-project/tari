@@ -23,7 +23,7 @@
 #[cfg(feature = "base_node")]
 mod config;
 #[cfg(feature = "base_node")]
-pub use self::config::BlockSyncConfig;
+pub use self::config::BlockchainSyncConfig;
 
 #[cfg(feature = "base_node")]
 mod block_sync;
@@ -34,6 +34,11 @@ pub use block_sync::{BlockSyncError, BlockSynchronizer};
 mod header_sync;
 #[cfg(feature = "base_node")]
 pub use header_sync::{BlockHeaderSyncError, HeaderSynchronizer};
+
+#[cfg(feature = "base_node")]
+mod horizon_state_sync;
+#[cfg(feature = "base_node")]
+pub use horizon_state_sync::{HorizonStateSynchronization, HorizonSyncError, HorizonSyncInfo, HorizonSyncStatus};
 
 #[cfg(feature = "base_node")]
 mod hooks;
