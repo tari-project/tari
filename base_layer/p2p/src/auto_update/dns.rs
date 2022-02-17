@@ -237,6 +237,7 @@ mod test {
         impl AutoUpdateConfig {
             fn get_test_defaults() -> Self {
                 Self {
+                    override_from: None,
                     name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
                     update_uris: vec!["test.local".to_string()],
                     use_dnssec: true,

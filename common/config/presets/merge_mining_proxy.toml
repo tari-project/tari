@@ -5,7 +5,7 @@
 ########################################################################################################################
 
 [merge_mining_proxy]
-config = "dibbler"
+#override_from = "dibbler"
 monerod_url = [ # stagenet
 "http://stagenet.xmr-tw.org:38081",
 "http://stagenet.community.xmr.to:38081",
@@ -35,7 +35,7 @@ monerod_username = ""
 monerod_password = ""
 monerod_use_auth = false
 
-[merge_mining_proxy.dibbler]
+#[merge_mining_proxy.dibbler]
 # Put any network specific settings here
 
 

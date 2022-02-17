@@ -158,7 +158,7 @@ impl<C: SubConfigPath> ConfigPath for C {
         let network_val: Option<String> = config
             .get_str(subconfig_key.as_str())
             .ok()
-            .map(|network| format!("{}.{}", Self::main_key_prefix(), network));
+            .map(|network| format!("{}.{}", network, Self::main_key_prefix()));
         Ok(network_val)
     }
 }

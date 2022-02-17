@@ -19,25 +19,3 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-//! Helper module for serialising configuration vairables from `Duration` to integers representing seconds and back.
-//! Use this converter by employing
-//! ```ignore
-//! use tari_common::configuration::seconds;
-//! ...
-//! #serde(with="seconds")
-//! pub my_var: Duration
-//! ```
-use std::time::Duration;
-
-use serde::{Deserialize, Deserializer, Serializer};
-
-pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
-where D: Deserializer<'de> {
-    Ok(Duration::from_secs(u64::deserialize(deserializer)?))
-}
-
-pub fn serialize<S>(duration: &Duration, s: S) -> Result<S::Ok, S::Error>
-where S: Serializer {
-    s.serialize_u64(duration.as_secs())
-}

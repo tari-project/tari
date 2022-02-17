@@ -44,7 +44,7 @@ mod base_node_config;
 mod collectibles_config;
 mod common_config;
 pub mod name_server;
-pub mod seconds;
+pub mod serializers;
 pub mod utils;
 mod validator_node_config;
 mod wallet_config;

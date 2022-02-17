@@ -45,6 +45,7 @@ use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{
         bootstrap::ApplicationType,
+        serializers::optional_seconds,
         utils::{deserialize_string_or_struct, serialize_string},
     },
     DnsNameServer,
@@ -58,7 +59,9 @@ use crate::auto_update::{dns::UpdateSpec, signature::SignedMessageVerifier};
 const LOG_TARGET: &str = "p2p::auto_update";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AutoUpdateConfig {
+    override_from: Option<String>,
     #[serde(
         deserialize_with = "deserialize_string_or_struct",
         serialize_with = "serialize_string"
@@ -69,12 +72,14 @@ pub struct AutoUpdateConfig {
     pub download_base_url: String,
     pub hashes_url: String,
     pub hashes_sig_url: String,
+    #[serde(with = "optional_seconds")]
     pub check_interval: Option<Duration>,
 }
 
 impl Default for AutoUpdateConfig {
     fn default() -> Self {
         Self {
+            override_from: None,
             name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
             update_uris: vec![],
             use_dnssec: false,
@@ -231,9 +236,17 @@ mod test {
                 format!(
                     r#"
 [auto_update]
-  override_from="{}"
-[auto_update.config_a]
-[auto_update.config_b]
+override_from="{}"
+check_interval=31
+name_server="127.0.0.1:80/localtest"
+update_uris = ["http://none", "http://local"]
+[config_a.auto_update]
+check_interval=33
+name_server="127.0.0.1:80/localtest2"
+use_dnssec=true
+[config_b.auto_update]
+# spelling error in name
+use_dns_sec=true
 "#,
                     o
                 )
@@ -242,6 +255,7 @@ mod test {
 [auto_update]
 check_interval=31
 name_server="127.0.0.1:80/localtest"
+download_base_url ="http://test.com"
 "#
             .to_string(),
         };
@@ -259,32 +273,33 @@ name_server="127.0.0.1:80/localtest"
             &config.name_server,
             &DnsNameServer::from_str("127.0.0.1:80/localtest").unwrap(),
         );
-        // name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
-
-        // let cfg = get_config("config_a");
-        // let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load
-        // config"); assert_eq!(&config.monerod_url, &["http://network.a.org".to_string()]);
-        // assert!(config.proxy_submit_to_origin);
-        // assert_eq!(config.monerod_username.as_str(), "cmot");
-        // assert_eq!(config.monerod_password.as_str(), "password_igor");
-        // assert_eq!(
-        //     config.grpc_base_node_address.to_string().as_str(),
-        //     "/dns4/base_node_a/tcp/8080"
-        // );
-        // assert_eq!(
-        //     config.grpc_console_wallet_address.to_string().as_str(),
-        //     "/dns4/wallet_a/tcp/9000"
-        // );
+        assert_eq!(&config.update_uris, &Vec::<String>::new());
+        assert_eq!(&config.download_base_url, "http://test.com");
+        // update_uris =
+        // pub update_uris: Vec<String>,
+        // pub download_base_url: String,
+        // pub hashes_url: String,
+        // pub hashes_sig_url: String,
+        // #[serde(with = "optional_seconds")]
+        // pub check_interval: Option<Duration>,
     }
 
     #[test]
     fn test_with_overrides() {
         let cfg = get_config(Some("config_a"));
         let config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-        assert_eq!(&config.check_interval, &Some(Duration::from_secs(31)));
+        assert_eq!(&config.check_interval, &Some(Duration::from_secs(33)));
         assert_eq!(
             &config.name_server,
-            &DnsNameServer::from_str("127.0.0.1:80/localtest").unwrap(),
+            &DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
         );
+        assert_eq!(&config.update_uris, &vec!["http://none", "http://local"]);
+        assert!(config.use_dnssec);
+    }
+
+    #[test]
+    fn test_incorrect_spelling() {
+        let cfg = get_config(Some("config_b"));
+        assert!(<AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).is_err());
     }
 }
