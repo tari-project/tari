@@ -45,11 +45,10 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
-        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction},
+            models::{CompletedTransaction, InboundTransaction, TxCancellationReason},
         },
         tasks::send_transaction_reply::send_transaction_reply,
         utc::utc_duration_since,
@@ -509,7 +508,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 self.id,
-                TxRejection::Timeout,
+                TxCancellationReason::Timeout,
             )))
             .map_err(|e| {
                 trace!(

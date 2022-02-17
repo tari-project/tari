@@ -128,7 +128,6 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
             let result = db
                 .set_transaction_mined_height(
                     tx.tx_id,
-                    true,
                     mined_height,
                     mined_in_block,
                     num_confirmations,

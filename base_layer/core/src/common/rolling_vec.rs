@@ -24,7 +24,7 @@ use std::ops::Deref;
 
 /// A vector that contains up to a number of elements. As new elements are added to the end, the first elements are
 /// removed.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RollingVec<T>(Vec<T>);
 
 impl<T> RollingVec<T> {
@@ -104,6 +104,14 @@ impl<T> Deref for RollingVec<T> {
 
     fn deref(&self) -> &Self::Target {
         self.inner()
+    }
+}
+
+impl<T: Clone> Clone for RollingVec<T> {
+    fn clone(&self) -> Self {
+        let mut v = Vec::with_capacity(self.capacity());
+        v.extend(self.0.clone());
+        Self(v)
     }
 }
 

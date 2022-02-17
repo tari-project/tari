@@ -216,7 +216,11 @@ where B: BlockchainBackend
         };
         let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
         if is_empty {
-            info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
+            info!(
+                target: LOG_TARGET,
+                "Blockchain db is empty. Adding genesis block {}.",
+                genesis_block.block().body.to_counts_string()
+            );
             blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
             let body = &genesis_block.block().body;

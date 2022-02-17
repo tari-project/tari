@@ -137,7 +137,7 @@ impl CommandHandler {
             let mut status_line = StatusLine::new();
             status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
             status_line.add_field("", config.network);
-            status_line.add_field("State", state_info.borrow().state_info.short_desc(full_log));
+            status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
             let metadata = node.get_metadata().await.unwrap();
             let height = metadata.height_of_longest_chain();
@@ -595,7 +595,10 @@ impl CommandHandler {
                             match &*event {
                                 LivenessEvent::ReceivedPong(pong) => {
                                     if pong.node_id == dest_node_id {
-                                        println!("🏓️ Pong received, latency in is {}ms!", pong.latency.unwrap_or(0));
+                                        println!(
+                                            "🏓️ Pong received, latency in is {:.2?}!",
+                                            pong.latency.unwrap_or_default()
+                                        );
                                         break;
                                     }
                                 },

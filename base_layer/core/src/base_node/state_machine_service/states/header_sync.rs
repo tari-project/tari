@@ -74,11 +74,11 @@ impl HeaderSyncState {
         shared: &mut BaseNodeStateMachine<B>,
     ) -> StateEvent {
         let mut synchronizer = HeaderSynchronizer::new(
-            shared.config.block_sync_config.clone(),
+            shared.config.blockchain_sync_config.clone(),
             shared.db.clone(),
             shared.consensus_rules.clone(),
             shared.connectivity.clone(),
-            &self.sync_peers,
+            &mut self.sync_peers,
             shared.randomx_factory.clone(),
             &self.local_metadata,
         );
@@ -97,12 +97,11 @@ impl HeaderSyncState {
         });
 
         let status_event_sender = shared.status_event_sender.clone();
-        synchronizer.on_progress(move |current_height, remote_tip_height, sync_peer, latency| {
+        synchronizer.on_progress(move |current_height, remote_tip_height, sync_peer| {
             let details = BlockSyncInfo {
                 tip_height: remote_tip_height,
                 local_height: current_height,
-                sync_peers: vec![sync_peer.clone()],
-                latency,
+                sync_peer: sync_peer.clone(),
             };
             let _ = status_event_sender.send(StatusInfo {
                 bootstrapped,
@@ -123,7 +122,19 @@ impl HeaderSyncState {
         match synchronizer.synchronize().await {
             Ok(sync_peer) => {
                 log_mdc::extend(mdc);
-                info!(target: LOG_TARGET, "Headers synchronized in {:.0?}", timer.elapsed());
+                info!(
+                    target: LOG_TARGET,
+                    "Headers synchronized from peer {} in {:.0?}",
+                    sync_peer,
+                    timer.elapsed()
+                );
+                // Move the sync peer used in header sync to the front of the queue
+                if let Some(pos) = self.sync_peers.iter().position(|p| *p == sync_peer) {
+                    if pos > 0 {
+                        let sync_peer = self.sync_peers.remove(pos);
+                        self.sync_peers.insert(0, sync_peer);
+                    }
+                }
                 self.is_synced = true;
                 StateEvent::HeadersSynchronized(sync_peer)
             },
