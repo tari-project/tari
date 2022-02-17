@@ -146,7 +146,7 @@ jobs:
         with:
           command: test --all-features
       - name: test key manager wasm
-      - run: |
+        run: |
           cd base_layer/key_manager
           rustup target add wasm32-unknown-unknown
           make test
