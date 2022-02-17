@@ -38,7 +38,7 @@ use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
-use tari_utilities::{hex, ByteArray};
+use tari_utilities::ByteArray;
 use tokio::sync::Mutex;
 
 use super::{
@@ -508,18 +508,13 @@ impl Parser {
         let original_str: String = args
             .try_take_next("node_id")?
             .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
-        let node_id: Result<UniNodeId, _> = args.take_next("node_id");
+        let node_id: Option<UniNodeId> = args.try_take_next("node_id")?;
         let partial;
-        match node_id {
-            Ok(n) => {
-                partial = NodeId::from(n).to_vec();
-            },
-            Err(_) => {
-                let s = &original_str;
-                // TODO: No idea why we did that
-                let bytes = hex::from_hex(&s[..s.len() - (s.len() % 2)]).unwrap_or_default();
-                partial = bytes;
-            },
+        if let Some(node_id) = node_id {
+            partial = NodeId::from(node_id).to_vec();
+        } else {
+            let data: FromHex<_> = args.take_next("node_id")?;
+            partial = data.0;
         }
         self.command_handler.lock().await.get_peer(partial, original_str);
         Ok(())
