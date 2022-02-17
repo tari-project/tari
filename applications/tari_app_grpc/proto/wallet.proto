@@ -167,7 +167,6 @@ message TransactionInfo {
     bytes excess_sig = 9;
     google.protobuf.Timestamp timestamp = 10;
     string message = 11;
-    bool valid = 12;
 }
 
 enum TransactionDirection {

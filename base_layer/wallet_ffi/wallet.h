@@ -283,9 +283,6 @@ unsigned long long completed_transaction_get_transaction_id(struct TariCompleted
 // Gets the timestamp of a TariCompletedTransaction
 unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction, int *error_out);
 
-// Check if a TariCompletedTransaction is Valid or not
-bool completed_transaction_is_valid(struct TariCompletedTransaction *tx, int *error_out);
-
 // Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
 // i.e the transaction was originally sent from the wallet
 bool completed_transaction_is_outbound(struct TariCompletedTransaction *tx, int *error_out);
@@ -295,6 +292,30 @@ unsigned long long completed_transaction_get_confirmations(struct TariCompletedT
 
 // Gets the TariTransactionKernel of a TariCompletedTransaction
 struct TariTransactionKernel *completed_transaction_get_transaction_kernel(struct TariCompletedTransaction *transaction, int *error_out);
+
+/// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the reason for cancellation which corresponds to:
+/// | Value | Interpretation    |
+/// |---  |---                  |
+/// |  -1 | Not Cancelled       |
+/// |   0 | Unknown             |
+/// |   1 | UserCancelled       |
+/// |   2 | Timeout             |
+/// |   3 | DoubleSpend         |
+/// |   4 | Orphan              |
+/// |   5 | TimeLocked          |
+/// |   6 | InvalidTransaction  |
+/// |   7 | AbandonedCoinbase   |
+/// # Safety
+/// None
+int completed_transaction_get_cancellation_reason(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
@@ -475,8 +496,8 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
 /// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
 /// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
-/// why said transaction failed that is mapped to the `TxRejection` enum:
-/// pub enum TxRejection {
+/// why said transaction failed that is mapped to the `TxCancellationReason` enum:
+/// pub enum TxCancellationReason {
 ///     Unknown,                // 0
 ///     UserCancelled,          // 1
 ///     Timeout,                // 2

@@ -57,7 +57,10 @@ use tari_wallet::{
     contacts_service::storage::database::Contact,
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
     tokens::Token,
-    transaction_service::{handle::TransactionEventReceiver, storage::models::CompletedTransaction},
+    transaction_service::{
+        handle::TransactionEventReceiver,
+        storage::models::{CompletedTransaction, TxCancellationReason},
+    },
     WalletSqlite,
 };
 use tokio::{
@@ -413,7 +416,7 @@ impl AppState {
             self.cached_data
                 .completed_txs
                 .iter()
-                .filter(|tx| !((tx.cancelled || !tx.valid) && tx.status == TransactionStatus::Coinbase))
+                .filter(|tx| !matches!(tx.cancelled, Some(TxCancellationReason::AbandonedCoinbase)))
                 .collect()
         } else {
             self.cached_data.completed_txs.iter().collect()
@@ -695,14 +698,14 @@ impl AppStateInner {
                 let tx =
                     CompletedTransactionInfo::from_completed_transaction(tx.into(), &self.get_transaction_weight());
                 if let Some(index) = self.data.pending_txs.iter().position(|i| i.tx_id == tx_id) {
-                    if tx.status == TransactionStatus::Pending && !tx.cancelled {
+                    if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                         self.data.pending_txs[index] = tx;
                         self.updated = true;
                         return Ok(());
                     } else {
                         let _ = self.data.pending_txs.remove(index);
                     }
-                } else if tx.status == TransactionStatus::Pending && !tx.cancelled {
+                } else if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                     self.data.pending_txs.push(tx);
                     self.data.pending_txs.sort_by(|a, b| {
                         b.timestamp
@@ -969,9 +972,8 @@ pub struct CompletedTransactionInfo {
     pub status: TransactionStatus,
     pub message: String,
     pub timestamp: NaiveDateTime,
-    pub cancelled: bool,
+    pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
-    pub valid: bool,
     pub mined_height: Option<u64>,
     pub is_coinbase: bool,
     pub weight: u64,
@@ -1030,7 +1032,6 @@ impl CompletedTransactionInfo {
             timestamp: tx.timestamp,
             cancelled: tx.cancelled,
             direction: tx.direction,
-            valid: tx.valid,
             mined_height: tx.mined_height,
             is_coinbase,
             weight,

@@ -53,7 +53,13 @@ use tari_wallet::{
     test_utils::create_consensus_constants,
     transaction_service::storage::{
         database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
-        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
@@ -266,12 +272,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             },
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
-            cancelled: false,
+            cancelled: None,
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
-            valid: true,
+
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
@@ -323,7 +329,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, true, 10, [0u8; 16].to_vec(), 5, true, false))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 5, true, false))
         .unwrap();
 
     assert_eq!(
@@ -365,7 +371,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
     runtime
-        .block_on(db.reject_completed_transaction(cancelled_tx_id))
+        .block_on(db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown))
         .unwrap();
     let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
