@@ -339,7 +339,7 @@ mod test {
 
     fn make_fully_populated_output_features() -> OutputFeatures {
         OutputFeatures {
-            version: OutputFeaturesVersion::get_current_version(),
+            version: OutputFeaturesVersion::V1,
             flags: OutputFlags::all(),
             maturity: u64::MAX,
             metadata: vec![1; 1024],
@@ -373,6 +373,12 @@ mod test {
 
     #[test]
     fn it_encodes_and_decodes_correctly() {
+        // v0 committee_definition decodes to None
+        let mut subject = make_fully_populated_output_features();
+        subject.version = OutputFeaturesVersion::V0;
+        subject.committee_definition = None;
+        check_consensus_encoding_correctness(subject).unwrap();
+
         let subject = make_fully_populated_output_features();
         check_consensus_encoding_correctness(subject).unwrap();
     }
