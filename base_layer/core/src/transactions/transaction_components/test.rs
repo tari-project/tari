@@ -440,6 +440,7 @@ mod output_features {
     use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn consensus_encode_minimal() {
         let mut features = OutputFeatures::default();
         features.version = OutputFeaturesVersion::V0;
