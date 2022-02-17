@@ -505,7 +505,7 @@ impl Parser {
     }
 
     async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
-        let original_str: String = args
+        let original_str = args
             .try_take_next("node_id")?
             .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
         let node_id: Option<UniNodeId> = args.try_take_next("node_id")?;
@@ -584,9 +584,9 @@ impl Parser {
     }
 
     async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
-        let start_height: u64 = args.take_next("start_height")?;
-        let end_height: u64 = args.take_next("end_height")?;
-        let filename: String = args
+        let start_height = args.take_next("start_height")?;
+        let end_height = args.take_next("end_height")?;
+        let filename = args
             .try_take_next("filename")?
             .unwrap_or_else(|| "header-data.csv".into());
         let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
