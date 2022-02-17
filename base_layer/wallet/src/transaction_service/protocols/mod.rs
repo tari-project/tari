@@ -20,17 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum TxRejection {
-    Unknown,            // 0
-    UserCancelled,      // 1
-    Timeout,            // 2
-    DoubleSpend,        // 3
-    Orphan,             // 4
-    TimeLocked,         // 5
-    InvalidTransaction, // 6
-}
-
 pub mod transaction_broadcast_protocol;
 pub mod transaction_receive_protocol;
 pub mod transaction_send_protocol;

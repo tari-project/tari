@@ -26,7 +26,6 @@ use std::{
     time::Duration,
 };
 
-use diesel::{ExpressionMethods, QueryDsl, SqliteConnection};
 use fs2::FileExt;
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
@@ -64,8 +63,6 @@ pub fn run_migration_and_create_sqlite_connection<P: AsRef<Path>>(
     );
     pool.create_pool()?;
     let connection = pool.get_pooled_connection()?;
-
-    check_for_incompatible_db_encryption(&connection)?;
 
     embed_migrations!("./migrations");
     embedded_migrations::run(&connection)
@@ -161,25 +158,4 @@ pub fn initialize_sqlite_database_backends(
         output_manager_backend,
         contacts_backend,
     ))
-}
-
-/// This method detects if the database contains the old incompatable encryption data and errors rather than breaking
-/// the DB
-/// TODO remove at next testnet reset
-fn check_for_incompatible_db_encryption(connection: &SqliteConnection) -> Result<(), WalletStorageError> {
-    use crate::{diesel::RunQueryDsl, schema::wallet_settings, storage::sqlite_db::wallet::WalletSettingSql};
-
-    if wallet_settings::table
-        .filter(wallet_settings::key.eq("MasterSecretKey".to_string()))
-        .first::<WalletSettingSql>(connection)
-        .is_ok()
-    {
-        return Err(WalletStorageError::AeadError(
-            "This wallet database is incompatible with the new form of encryption. Halting to preserve this database \
-             structure. Revert to a version of tari_console_wallet prior to 0.13.0"
-                .to_string(),
-        ));
-    }
-
-    Ok(())
 }

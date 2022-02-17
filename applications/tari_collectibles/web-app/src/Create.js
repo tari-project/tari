@@ -56,7 +56,7 @@ class Create extends React.Component {
       image: "",
       cid: "",
       error: "",
-      ipfsUploadError: null,
+      imageError: null,
       isSaving: false,
       tip001: true,
       tip002: false,
@@ -92,9 +92,9 @@ class Create extends React.Component {
       try {
         // only use the first file if multiple are dropped
         let cid = await this.addFileToIPFS(payload[0]);
-        this.setState({ cid, ipfsUploadError: null });
+        this.setState({ cid, imageError: null });
       } catch (e) {
-        this.setState({ ipfsUploadError: e.toString() });
+        this.setState({ imageError: e.toString() });
       }
     }
   }
@@ -294,15 +294,16 @@ class Create extends React.Component {
     try {
       let cid = await this.addFileToIPFS(filePath);
       console.info("IPFS cid: ", cid);
-      this.setState({ cid, ipfsUploadError: null });
+      this.setState({ cid, imageError: null });
     } catch (e) {
-      this.setState({ ipfsUploadError: e.toString() });
+      this.setState({ imageError: e.toString() });
     }
   };
 
   addFileToIPFS = async (filePath) => {
     const parts = filePath.split("/");
     const name = parts[parts.length - 1];
+    const timestamp = new Date().valueOf();
     // unfortunately the ipfs http /add api doesn't play nicely with the tauri http client
     // resulting in "file argument 'path' is required"
     // so we'll shell out to the ipfs command
@@ -329,7 +330,14 @@ class Create extends React.Component {
       });
     });
 
-    const cp = new Command("ipfs", ["files", "cp", `/ipfs/${cid}`, `/${name}`]);
+    if (!cid) return;
+
+    const cp = new Command("ipfs", [
+      "files",
+      "cp",
+      `/ipfs/${cid}`,
+      `/${timestamp}${name}`,
+    ]);
     await cp.spawn();
 
     await new Promise((resolve, reject) => {
@@ -347,22 +355,6 @@ class Create extends React.Component {
     });
 
     return cid;
-    // console.log("command", command);
-    // const { success, output, error } = commandOutput(command);
-    // if (success) {
-    //   const cid = output;
-    //   console.log("cid", cid);
-    //   const command = await runCommand("ipfs", [
-    //     "files",
-    //     "cp",
-    //     `/ipfs/${cid}`,
-    //     `/${name}`,
-    //   ]);
-    //   const { error } = commandOutput(command);
-    //   if (error) console.error("error: ", error);
-    // } else {
-    //   console.error("error: ", error);
-    // }
   };
 
   render() {
@@ -424,7 +416,8 @@ class Create extends React.Component {
               cid={this.state.cid}
               setCid={(cid) => this.setState({ cid })}
               image={this.state.image}
-              error={this.state.ipfsUploadError}
+              error={this.state.imageError}
+              setError={(e) => this.setState({ imageError: e })}
             />
           </FormGroup>
           <FormGroup>
@@ -550,7 +543,7 @@ ImageSwitch.propTypes = {
   setMode: PropTypes.func,
 };
 
-const ImageUrl = ({ setImage }) => {
+const ImageUrl = ({ setImage, setMode }) => {
   const [url, setUrl] = useState("");
 
   return (
@@ -565,54 +558,78 @@ const ImageUrl = ({ setImage }) => {
         onChange={(e) => setUrl(e.target.value)}
       />
       <Button onClick={() => setImage(url)}>Save</Button>
+      <Button onClick={() => setMode("")}>Back</Button>
     </div>
   );
 };
 
 ImageUrl.propTypes = {
   setImage: PropTypes.func,
+  setMode: PropTypes.func,
 };
 
-const ImageUpload = ({ selectFile, error }) => {
+const ImageUpload = ({ selectFile, setMode }) => {
   return (
     <div>
       <p>Select an image, or drag and drop an image onto this window</p>
       <Button onClick={selectFile}>Click to Select Image</Button>
-
-      {error ? <Alert severity="error">{error}</Alert> : <span />}
+      <Button onClick={() => setMode("")}>Back</Button>
     </div>
   );
 };
 
 ImageUpload.propTypes = {
   selectFile: PropTypes.func,
+  setMode: PropTypes.func,
   error: PropTypes.string,
 };
 
-const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
+const ImageSelector = ({
+  cid,
+  image,
+  selectFile,
+  setImage,
+  setCid,
+  error,
+  setError,
+}) => {
   const [mode, setMode] = useState("");
+  const reset = () => {
+    setError("");
+    setMode("");
+    setImage("");
+  };
+
+  if (error) {
+    return (
+      <div>
+        <Alert severity="error">{error}</Alert>
+        <Button onClick={reset}>Reset</Button>
+      </div>
+    );
+  }
 
   if (image) {
     return (
       <div>
         <img src={image} alt="" width="200px" />
         <br />
-        <p onClick={() => setImage("")}>Change</p>
+        <Button onClick={reset}>Reset</Button>
       </div>
     );
   }
   if (cid) {
-    return <IpfsImage cid={cid} setCid={setCid} />;
+    return <IpfsImage cid={cid} setCid={setCid} reset={reset} />;
   }
 
   let display;
 
   switch (mode) {
     case "url":
-      display = <ImageUrl setImage={setImage} error={error} />;
+      display = <ImageUrl setImage={setImage} setMode={setMode} />;
       break;
     case "upload":
-      display = <ImageUpload selectFile={selectFile} error={error} />;
+      display = <ImageUpload selectFile={selectFile} setMode={setMode} />;
       break;
     default:
       display = <ImageSwitch setMode={setMode} />;
@@ -628,9 +645,10 @@ ImageSelector.propTypes = {
   setImage: PropTypes.func,
   setCid: PropTypes.func,
   error: PropTypes.string,
+  setError: PropTypes.func,
 };
 
-const IpfsImage = ({ cid, setCid, error }) => {
+const IpfsImage = ({ cid, setCid, reset, error }) => {
   const [src, setSrc] = useState("");
   const [httpError, setHttpError] = useState(null);
 
@@ -659,7 +677,15 @@ const IpfsImage = ({ cid, setCid, error }) => {
       <div>
         <img src={src} alt="" width="200px" />
         <br />
-        <p onClick={() => setCid("")}>Change</p>
+        <Button
+          onClick={() => {
+            reset();
+            setSrc("");
+            setCid("");
+          }}
+        >
+          Reset
+        </Button>
       </div>
     );
   }
@@ -667,7 +693,17 @@ const IpfsImage = ({ cid, setCid, error }) => {
   if (error || httpError) {
     return (
       <div>
-        <Alert severity="error">{error || httpError}</Alert>
+        <Alert severity="error">
+          {error || httpError} - is the IPFS daemon running?
+        </Alert>
+        <Button
+          onClick={() => {
+            setCid("");
+            reset();
+          }}
+        >
+          Reset
+        </Button>
       </div>
     );
   }
@@ -678,6 +714,7 @@ const IpfsImage = ({ cid, setCid, error }) => {
 IpfsImage.propTypes = {
   cid: PropTypes.string,
   setCid: PropTypes.func,
+  reset: PropTypes.func,
   error: PropTypes.string,
 };
 

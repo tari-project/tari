@@ -20,9 +20,12 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::storage::state::{state_db_unit_of_work::StateDbUnitOfWorkImpl, StateDbBackendAdapter};
+use crate::storage::state::{
+    state_db_unit_of_work::{StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader, UnitOfWorkContext},
+    StateDbBackendAdapter,
+};
 
-pub struct StateDb<TStateDbBackendAdapter: StateDbBackendAdapter> {
+pub struct StateDb<TStateDbBackendAdapter> {
     backend_adapter: TStateDbBackendAdapter,
 }
 
@@ -31,14 +34,13 @@ impl<TStateDbBackendAdapter: StateDbBackendAdapter> StateDb<TStateDbBackendAdapt
         Self { backend_adapter }
     }
 
-    pub fn new_unit_of_work(&self) -> StateDbUnitOfWorkImpl<TStateDbBackendAdapter> {
-        StateDbUnitOfWorkImpl::new(self.backend_adapter.clone())
+    pub fn new_unit_of_work(&self, height: u64) -> StateDbUnitOfWorkImpl<TStateDbBackendAdapter> {
+        StateDbUnitOfWorkImpl::new(UnitOfWorkContext::new(height), self.backend_adapter.clone())
+    }
 
-        // let mut unit_of_work = self.current_unit_of_work_mut();
-        // if unit_of_work.is_none() {
-        //     self.unit_of_work = Some(StateDbUnitOfWork {});
-        //     unit_of_work = self.unit_of_work
-        // };
-        // unit_of_work.as_mut().unwrap()
+    pub fn reader(&self) -> impl StateDbUnitOfWorkReader {
+        // TODO: A reader doesnt need the current context, should perhaps make a read-only implementation that the
+        //       writable implementation also uses
+        StateDbUnitOfWorkImpl::new(UnitOfWorkContext::new(0), self.backend_adapter.clone())
     }
 }

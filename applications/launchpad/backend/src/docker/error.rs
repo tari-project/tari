@@ -23,7 +23,7 @@
 
 use std::error::Error;
 
-use tari_app_utilities::common::exit_codes::ExitCodes;
+use tari_app_utilities::common::exit_codes::ExitError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -43,7 +43,7 @@ pub enum DockerWrapperError {
     #[error("It should not be possible to be in this error state")]
     UnexpectedError,
     #[error("Could not create an identity file")]
-    IdentityError(#[from] ExitCodes),
+    IdentityError(#[from] ExitError),
     #[error("The specified image type is not supported")]
     InvalidImageType,
 }

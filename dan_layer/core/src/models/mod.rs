@@ -38,6 +38,7 @@ mod hot_stuff_tree_node;
 mod instruction;
 mod instruction_set;
 mod node;
+mod op_log;
 mod payload;
 mod quorum_certificate;
 mod sidechain_block;
@@ -48,9 +49,9 @@ mod tree_node_hash;
 mod view;
 mod view_id;
 
-pub use asset_definition::AssetDefinition;
+pub use asset_definition::{AssetDefinition, InitialState, KeyValue, SchemaState};
 pub use base_layer_metadata::BaseLayerMetadata;
-pub use base_layer_output::BaseLayerOutput;
+pub use base_layer_output::{BaseLayerOutput, CheckpointOutput};
 pub use committee::Committee;
 pub use error::ModelError;
 pub use hot_stuff_message::HotStuffMessage;
@@ -58,6 +59,7 @@ pub use hot_stuff_tree_node::HotStuffTreeNode;
 pub use instruction::Instruction;
 pub use instruction_set::InstructionSet;
 pub use node::Node;
+pub use op_log::{StateOpLogEntry, StateOperation};
 pub use payload::Payload;
 pub use quorum_certificate::QuorumCertificate;
 pub use sidechain_block::SideChainBlock;
@@ -211,6 +213,7 @@ pub trait Event: Clone + Send + Sync {}
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ConsensusWorkerState {
     Starting,
+    Synchronizing,
     Prepare,
     PreCommit,
     Commit,

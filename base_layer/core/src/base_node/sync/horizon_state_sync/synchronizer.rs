@@ -67,7 +67,7 @@ use crate::{
         SyncUtxosRequest,
         SyncUtxosResponse,
     },
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
     validation::{helpers, FinalHorizonStateValidation},
 };
 

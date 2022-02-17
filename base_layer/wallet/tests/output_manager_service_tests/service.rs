@@ -41,7 +41,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::{OutputFeatures, OutputFlags},
+        transaction_components::{OutputFeatures, OutputFlags},
         transaction_protocol::sender::TransactionSenderMessage,
         weight::TransactionWeight,
         CryptoFactories,
@@ -1904,12 +1904,12 @@ async fn test_get_status_by_tx_id() {
     let (mut oms, _, _shutdown, _, _, _, _, _) = setup_output_manager_service(backend, true).await;
 
     let (_ti, uo1) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
-    oms.add_unvalidated_output(TxId::from(1), uo1, None).await.unwrap();
+    oms.add_unvalidated_output(TxId::from(1u64), uo1, None).await.unwrap();
 
     let (_ti, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
-    oms.add_unvalidated_output(TxId::from(2), uo2, None).await.unwrap();
+    oms.add_unvalidated_output(TxId::from(2u64), uo2, None).await.unwrap();
 
-    let status = oms.get_output_statuses_by_tx_id(TxId::from(1)).await.unwrap();
+    let (status, _, _) = oms.get_output_statuses_by_tx_id(TxId::from(1u64)).await.unwrap();
 
     assert_eq!(status.len(), 1);
     assert_eq!(status[0], OutputStatus::EncumberedToBeReceived);

@@ -44,7 +44,7 @@ use tari_comms::{
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
-    transaction::{TransactionOutput, UnblindedOutput},
+    transaction_components::{TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
@@ -113,7 +113,7 @@ pub struct SentTransaction {}
 fn get_transaction_parameters(
     args: Vec<ParsedArgument>,
 ) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
-    // TODO: Consolidate "fee per gram" in codebase
+    // TODO: Consolidate "fee per gram" in codebase #LOGGED
     let fee_per_gram = 25 * uT;
 
     use ParsedArgument::*;
@@ -138,7 +138,7 @@ fn get_transaction_parameters(
 fn get_init_sha_atomic_swap_parameters(
     args: Vec<ParsedArgument>,
 ) -> Result<(MicroTari, MicroTari, PublicKey, String), CommandError> {
-    // TODO: Consolidate "fee per gram" in codebase
+    // TODO: Consolidate "fee per gram" in codebase #LOGGED
     let fee_per_gram = 25 * uT;
 
     use ParsedArgument::*;
@@ -801,7 +801,7 @@ pub async fn command_runner(
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
-                // todo: key manager
+                // todo: key manager #LOGGED
                 let mut rng = rand::thread_rng();
                 let (_, public_key) = PublicKey::random_keypair(&mut rng);
                 let (tx_id, transaction) = manager

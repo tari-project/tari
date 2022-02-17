@@ -35,6 +35,7 @@ pub mod tabs_container;
 pub mod tokens_component;
 pub mod transactions_tab;
 pub use self::component::*;
+pub mod contacts_tab;
 pub mod events_component;
 
 #[derive(PartialEq, Eq)]

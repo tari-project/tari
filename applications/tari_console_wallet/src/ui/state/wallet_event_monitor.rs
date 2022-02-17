@@ -94,13 +94,15 @@ impl WalletEventMonitor {
                                         self.trigger_balance_refresh();
                                         notifier.transaction_received(tx_id);
                                     },
-                                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
+                                    TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _}=> {
                                         self.trigger_confirmations_refresh(tx_id, num_confirmations).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
                                     },
-                                    TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
+                                    TransactionEvent::TransactionMined{tx_id, is_valid: _} |
+                                    TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _}=> {
                                         self.trigger_confirmations_cleanup(tx_id).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
@@ -114,7 +116,8 @@ impl WalletEventMonitor {
                                     TransactionEvent::ReceivedTransaction(tx_id) |
                                     TransactionEvent::ReceivedTransactionReply(tx_id) |
                                     TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) | TransactionEvent::TransactionImported(tx_id) => {
+                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) |
+                                    TransactionEvent::TransactionImported(tx_id)  => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                     },

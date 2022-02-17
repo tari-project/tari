@@ -70,7 +70,7 @@ mod test {
         consensus::ToConsensusBytes,
         covenant,
         covenants::{filters::test::setup_filter_test, test::create_input},
-        transactions::transaction::OutputFeatures,
+        transactions::transaction_components::OutputFeatures,
     };
 
     #[test]

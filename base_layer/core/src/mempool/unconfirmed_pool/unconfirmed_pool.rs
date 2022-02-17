@@ -41,7 +41,7 @@ use crate::{
         unconfirmed_pool::UnconfirmedPoolError,
     },
     transactions::{
-        transaction::{Transaction, TransactionOutput},
+        transaction_components::{Transaction, TransactionOutput},
         weight::TransactionWeight,
     },
 };
@@ -628,7 +628,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction::{KernelFeatures, OutputFeatures},
+            transaction_components::{KernelFeatures, OutputFeatures},
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,

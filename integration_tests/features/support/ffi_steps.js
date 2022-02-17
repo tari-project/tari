@@ -3,16 +3,6 @@ const expect = require("chai").expect;
 
 const { sleep, waitForIterate } = require("../../helpers/util");
 
-When(
-  "I have ffi wallet {word} connected to base node {word}",
-  { timeout: 20 * 1000 },
-  async function (name, node) {
-    let wallet = await this.createAndAddFFIWallet(name);
-    let peer = this.nodes[node].peerAddress().split("::");
-    wallet.addBaseNodePeer(peer[0], peer[1]);
-  }
-);
-
 Then("I want to get emoji id of ffi wallet {word}", async function (name) {
   let wallet = this.getWallet(name);
   let emoji_id = wallet.identifyEmoji();
@@ -479,13 +469,21 @@ Then(
 );
 
 Then(
-  "ffi wallet {word} detects {word} {int} ffi transactions to be Broadcast",
+  "ffi wallet {word} detects {word} {int} ffi transactions to be {word}",
   { timeout: 125 * 1000 },
-  async function (walletName, comparison, amount) {
+  async function (walletName, comparison, amount, status) {
     // Pending -> Completed -> Broadcast -> Mined Unconfirmed -> Mined Confirmed
     const atLeast = "AT_LEAST";
     const exactly = "EXACTLY";
     expect(comparison === atLeast || comparison === exactly).to.equal(true);
+    const broadcast = "TRANSACTION_STATUS_BROADCAST";
+    const fauxUnconfirmed = "TRANSACTION_STATUS_FAUX_UNCONFIRMED";
+    const fauxConfirmed = "TRANSACTION_STATUS_FAUX_CONFIRMED";
+    expect(
+      status === broadcast ||
+        status === fauxUnconfirmed ||
+        status === fauxConfirmed
+    ).to.equal(true);
     const wallet = this.getWallet(walletName);
 
     console.log("\n");
@@ -496,27 +494,53 @@ Then(
         comparison +
         " " +
         amount +
-        " broadcast transaction(s)"
+        " " +
+        status +
+        " transaction(s)"
     );
 
     await waitForIterate(
       () => {
-        return wallet.getCounters().broadcast >= amount;
+        switch (status) {
+          case broadcast:
+            return wallet.getCounters().broadcast >= amount;
+          case fauxUnconfirmed:
+            return wallet.getCounters().fauxUnconfirmed >= amount;
+          case fauxConfirmed:
+            return wallet.getCounters().fauxConfirmed >= amount;
+          default:
+            expect(status).to.equal("please add this<< TransactionStatus");
+        }
       },
       true,
       1000,
       120
     );
 
-    if (!(wallet.getCounters().broadcast >= amount)) {
-      console.log("Counter not adequate!");
+    let amountOfCallbacks;
+    switch (status) {
+      case broadcast:
+        amountOfCallbacks = wallet.getCounters().broadcast;
+        break;
+      case fauxUnconfirmed:
+        amountOfCallbacks = wallet.getCounters().fauxUnconfirmed;
+        break;
+      case fauxConfirmed:
+        amountOfCallbacks = wallet.getCounters().fauxConfirmed;
+        break;
+      default:
+        expect(status).to.equal("please add this<< TransactionStatus");
+    }
+
+    if (!(amountOfCallbacks >= amount)) {
+      console.log("\nCounter not adequate!", wallet.getCounters());
     } else {
       console.log(wallet.getCounters());
     }
     if (comparison === atLeast) {
-      expect(wallet.getCounters().broadcast >= amount).to.equal(true);
+      expect(amountOfCallbacks >= amount).to.equal(true);
     } else {
-      expect(wallet.getCounters().broadcast === amount).to.equal(true);
+      expect(amountOfCallbacks === amount).to.equal(true);
     }
   }
 );

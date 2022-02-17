@@ -69,7 +69,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
 }
 use tari_common_types::types::Signature;
 
-use crate::transaction_service::protocols::TxRejection;
+use crate::transaction_service::storage::models::TxCancellationReason;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
@@ -284,7 +284,6 @@ where
     > {
         let mut mined = vec![];
         let mut unmined = vec![];
-
         let mut batch_signatures = HashMap::new();
         for tx_info in batch.iter() {
             // Imported transactions do not have a signature; this is represented by the default signature in info
@@ -391,17 +390,27 @@ where
         self.db
             .set_transaction_mined_height(
                 tx_id,
-                true,
                 mined_height,
                 mined_in_block.clone(),
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
+                status.is_faux(),
             )
             .await
             .for_protocol(self.operation_id.as_u64())?;
 
         if num_confirmations >= self.config.num_confirmations_required {
-            self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+            if status.is_faux() {
+                self.publish_event(TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true })
+            } else {
+                self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+            }
+        } else if status.is_faux() {
+            self.publish_event(TransactionEvent::FauxTransactionUnconfirmed {
+                tx_id,
+                num_confirmations,
+                is_valid: true,
+            })
         } else {
             self.publish_event(TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id,
@@ -436,12 +445,17 @@ where
         self.db
             .set_transaction_mined_height(
                 tx_id,
-                false,
                 mined_height,
                 mined_in_block.clone(),
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
+                false,
             )
+            .await
+            .for_protocol(self.operation_id.as_u64())?;
+
+        self.db
+            .abandon_coinbase_transaction(tx_id)
             .await
             .for_protocol(self.operation_id.as_u64())?;
 
@@ -454,9 +468,10 @@ where
                 self.operation_id
             );
         };
-
-        self.publish_event(TransactionEvent::TransactionCancelled(tx_id, TxRejection::Orphan));
-
+        self.publish_event(TransactionEvent::TransactionCancelled(
+            tx_id,
+            TxCancellationReason::AbandonedCoinbase,
+        ));
         Ok(())
     }
 

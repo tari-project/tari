@@ -42,7 +42,7 @@ use crate::{
         tari_amount::{uT, MicroTari, T},
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
-        transaction::OutputFeatures,
+        transaction_components::OutputFeatures,
         transaction_protocol::{RewindData, TransactionProtocolError},
         CryptoFactories,
     },

@@ -40,7 +40,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             AssetOutputFeatures,
             KernelFeatures,
             MintNonFungibleFeatures,

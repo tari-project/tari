@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 use tari_crypto::tari_utilities::Hashable;
 
-use crate::transactions::transaction::TransactionOutput;
+use crate::transactions::transaction_components::TransactionOutput;
 
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

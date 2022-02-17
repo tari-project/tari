@@ -157,7 +157,7 @@ class WalletFFIClient {
     seed_words_text,
     pass_phrase,
     rolling_log_files = 50,
-    byte_size_per_log = 102400
+    byte_size_per_log = 1048576
   ) {
     this.pass_phrase = pass_phrase;
     if (seed_words_text) {
@@ -178,6 +178,10 @@ class WalletFFIClient {
 
   getOutboundTransactions() {
     return this.wallet.getOutboundTransactions();
+  }
+
+  getCancelledTransactions() {
+    return this.wallet.walletGetCancelledTransactions();
   }
 
   cancelPendingTransaction(tx_id) {

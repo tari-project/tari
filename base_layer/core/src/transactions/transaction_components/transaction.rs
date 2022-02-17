@@ -36,7 +36,13 @@ use tari_crypto::tari_utilities::hex::Hex;
 use crate::transactions::{
     aggregated_body::AggregateBody,
     tari_amount::{uT, MicroTari},
-    transaction::{OutputFeatures, TransactionError, TransactionInput, TransactionKernel, TransactionOutput},
+    transaction_components::{
+        OutputFeatures,
+        TransactionError,
+        TransactionInput,
+        TransactionKernel,
+        TransactionOutput,
+    },
     weight::TransactionWeight,
     CryptoFactories,
 };

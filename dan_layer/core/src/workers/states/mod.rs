@@ -38,6 +38,7 @@ mod next_view;
 mod pre_commit_state;
 mod prepare;
 mod starting;
+mod synchronizing;
 
 pub use commit_state::CommitState;
 pub use decide_state::DecideState;
@@ -46,11 +47,14 @@ pub use next_view::NextViewState;
 pub use pre_commit_state::PreCommitState;
 pub use prepare::Prepare;
 pub use starting::Starting;
+pub use synchronizing::Synchronizing;
 
 #[derive(Debug, PartialEq)]
 pub enum ConsensusWorkerStateEvent {
     Initialized,
+    Synchronized,
     BaseLayerCheckpointNotFound,
+    BaseLayerAssetRegistrationNotFound,
     NotPartOfCommittee,
     Errored { reason: String },
     Prepared,

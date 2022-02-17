@@ -37,7 +37,7 @@ use tari_core::{
         proto::wallet_rpc::{TxLocation, TxQueryResponse, TxSubmissionRejectionReason, TxSubmissionResponse},
         rpc::BaseNodeWalletRpcClient,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::{sync::watch, time::sleep};
@@ -47,9 +47,11 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
-        protocols::TxRejection,
         service::TransactionServiceResources,
-        storage::{database::TransactionBackend, models::CompletedTransaction},
+        storage::{
+            database::TransactionBackend,
+            models::{CompletedTransaction, TxCancellationReason},
+        },
     },
 };
 
@@ -218,33 +220,35 @@ where
                 "Transaction (TxId: {}) rejected by Base Node for reason: {}", self.tx_id, response.rejection_reason
             );
 
-            self.cancel_transaction().await;
-
-            let reason = match response.rejection_reason {
-                TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => {
-                    TransactionServiceError::MempoolRejectionInvalidTransaction
-                },
-                TxSubmissionRejectionReason::DoubleSpend => TransactionServiceError::MempoolRejectionDoubleSpend,
-                TxSubmissionRejectionReason::Orphan => TransactionServiceError::MempoolRejectionOrphan,
-                TxSubmissionRejectionReason::TimeLocked => TransactionServiceError::MempoolRejectionTimeLocked,
-                _ => TransactionServiceError::UnexpectedBaseNodeResponse,
+            let (reason_error, reason) = match response.rejection_reason {
+                TxSubmissionRejectionReason::None | TxSubmissionRejectionReason::ValidationFailed => (
+                    TransactionServiceError::MempoolRejectionInvalidTransaction,
+                    TxCancellationReason::InvalidTransaction,
+                ),
+                TxSubmissionRejectionReason::DoubleSpend => (
+                    TransactionServiceError::MempoolRejectionDoubleSpend,
+                    TxCancellationReason::DoubleSpend,
+                ),
+                TxSubmissionRejectionReason::Orphan => (
+                    TransactionServiceError::MempoolRejectionOrphan,
+                    TxCancellationReason::Orphan,
+                ),
+                TxSubmissionRejectionReason::TimeLocked => (
+                    TransactionServiceError::MempoolRejectionTimeLocked,
+                    TxCancellationReason::TimeLocked,
+                ),
+                _ => (
+                    TransactionServiceError::UnexpectedBaseNodeResponse,
+                    TxCancellationReason::Unknown,
+                ),
             };
 
-            let cancellation_event_reason = match reason {
-                TransactionServiceError::MempoolRejectionInvalidTransaction => TxRejection::InvalidTransaction,
-                TransactionServiceError::MempoolRejectionDoubleSpend => TxRejection::DoubleSpend,
-                TransactionServiceError::MempoolRejectionOrphan => TxRejection::Orphan,
-                TransactionServiceError::MempoolRejectionTimeLocked => TxRejection::TimeLocked,
-                _ => TxRejection::Unknown,
-            };
+            self.cancel_transaction(reason).await;
 
             let _ = self
                 .resources
                 .event_publisher
-                .send(Arc::new(TransactionEvent::TransactionCancelled(
-                    self.tx_id,
-                    cancellation_event_reason,
-                )))
+                .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id, reason)))
                 .map_err(|e| {
                     trace!(
                         target: LOG_TARGET,
@@ -254,7 +258,7 @@ where
                     e
                 });
 
-            return Err(TransactionServiceProtocolError::new(self.tx_id, reason));
+            return Err(TransactionServiceProtocolError::new(self.tx_id, reason_error));
         } else if response.rejection_reason == TxSubmissionRejectionReason::AlreadyMined {
             info!(
                 target: LOG_TARGET,
@@ -354,14 +358,14 @@ where
                      cancelling transaction",
                     self.tx_id
                 );
-                self.cancel_transaction().await;
+                self.cancel_transaction(TxCancellationReason::InvalidTransaction).await;
 
                 let _ = self
                     .resources
                     .event_publisher
                     .send(Arc::new(TransactionEvent::TransactionCancelled(
                         self.tx_id,
-                        TxRejection::InvalidTransaction,
+                        TxCancellationReason::InvalidTransaction,
                     )))
                     .map_err(|e| {
                         trace!(
@@ -413,7 +417,7 @@ where
         }
     }
 
-    async fn cancel_transaction(&mut self) {
+    async fn cancel_transaction(&mut self, reason: TxCancellationReason) {
         if let Err(e) = self
             .resources
             .output_manager_service
@@ -425,7 +429,7 @@ where
                 "Failed to Cancel outputs for TxId: {} after failed sending attempt with error {:?}", self.tx_id, e
             );
         }
-        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id).await {
+        if let Err(e) = self.resources.db.reject_completed_transaction(self.tx_id, reason).await {
             warn!(
                 target: LOG_TARGET,
                 "Failed to Cancel TxId: {} after failed sending attempt with error {:?}", self.tx_id, e

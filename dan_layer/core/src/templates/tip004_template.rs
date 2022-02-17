@@ -26,7 +26,10 @@ use prost::Message;
 use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
 use tari_dan_common_types::proto::tips::tip004;
 
-use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
+use crate::{
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    DigitalAssetError,
+};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
 
@@ -41,7 +44,7 @@ pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
     }
 }
 
-pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
     method: String,
     args: &[u8],
     state_db: &mut TUnitOfWork,
@@ -91,7 +94,7 @@ fn hash_of(s: &str) -> Vec<u8> {
     Blake256::new().chain(s).finalize().to_vec()
 }
 
-fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
+fn balance_of<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
@@ -111,7 +114,7 @@ fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
     Ok(Some(response_bytes))
 }
 
-fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWork>(
+fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {

@@ -63,8 +63,6 @@ mod output_flags;
 mod rewind_result;
 mod side_chain_checkpoint_features;
 mod template_parameter;
-// TODO: in future, this module can be renamed
-#[allow(clippy::module_inception)]
 mod transaction;
 mod transaction_builder;
 mod transaction_input;

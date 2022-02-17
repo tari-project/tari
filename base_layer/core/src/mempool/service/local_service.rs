@@ -30,7 +30,7 @@ use crate::{
         StatsResponse,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 pub type LocalMempoolRequester = SenderService<MempoolRequest, Result<MempoolResponse, MempoolServiceError>>;

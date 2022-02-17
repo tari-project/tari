@@ -27,7 +27,7 @@ use crate::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
     },
 };
 

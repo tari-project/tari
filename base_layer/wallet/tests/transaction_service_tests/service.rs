@@ -38,7 +38,7 @@ use prost::Message;
 use rand::rngs::OsRng;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{PrivateKey, PublicKey, Signature},
 };
 use tari_comms::{
@@ -76,7 +76,7 @@ use tari_core::{
         fee::Fee,
         tari_amount::*,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
+        transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, Transaction},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -908,7 +908,7 @@ fn recover_one_sided_transaction() {
         let outputs = completed_tx.transaction.body.outputs().clone();
 
         let unblinded = bob_oms
-            .scan_outputs_for_one_sided_payments(outputs.clone())
+            .scan_outputs_for_one_sided_payments(outputs.clone(), TxId::new_random())
             .await
             .unwrap();
         // Bob should be able to claim 1 output.
@@ -916,7 +916,10 @@ fn recover_one_sided_transaction() {
         assert_eq!(value, unblinded[0].value);
 
         // Should ignore already existing outputs
-        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
+        let unblinded = bob_oms
+            .scan_outputs_for_one_sided_payments(outputs, TxId::new_random())
+            .await
+            .unwrap();
         assert!(unblinded.is_empty());
     });
 }
@@ -1934,12 +1937,11 @@ fn test_power_mode_updates() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
-        cancelled: false,
+        cancelled: None,
         direction: TransactionDirection::Outbound,
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
-        valid: true,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
@@ -1956,12 +1958,11 @@ fn test_power_mode_updates() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
-        cancelled: false,
+        cancelled: None,
         direction: TransactionDirection::Outbound,
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
-        valid: true,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
@@ -3483,11 +3484,9 @@ fn test_coinbase_generation_and_monitoring() {
 
     let tx = completed_txs.get(&tx_id1).unwrap();
     assert_eq!(tx.status, TransactionStatus::Coinbase);
-    assert!(tx.valid);
 
     let tx = completed_txs.get(&tx_id2b).unwrap();
     assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
-    assert!(tx.valid);
 
     // Now we will have tx_id2b becoming confirmed
     let _ = transaction_query_batch_responses.pop();
@@ -3533,7 +3532,6 @@ fn test_coinbase_generation_and_monitoring() {
 
     let tx = completed_txs.get(&tx_id2b).unwrap();
     assert_eq!(tx.status, TransactionStatus::MinedConfirmed);
-    assert!(tx.valid);
 }
 
 #[test]
@@ -3545,9 +3543,6 @@ fn test_coinbase_abandoned() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(&mut runtime, factories, connection, None);
     let mut alice_event_stream = alice_ts_interface.transaction_service_handle.get_event_stream();
-    alice_ts_interface
-        .base_node_rpc_mock_state
-        .set_response_delay(Some(Duration::from_secs(1)));
 
     let block_height_a = 10;
 
@@ -3640,15 +3635,14 @@ fn test_coinbase_abandoned() {
         assert_eq!(count, 1, "Expected a TransactionCancelled event");
     });
 
-    let tx = runtime
+    let txs = runtime
         .block_on(
             alice_ts_interface
                 .transaction_service_handle
-                .get_completed_transaction(tx_id1),
+                .get_cancelled_completed_transactions(),
         )
         .unwrap();
-    assert_eq!(tx.status, TransactionStatus::Coinbase);
-    assert!(!tx.valid);
+    assert!(txs.get(&tx_id1).is_some());
 
     let balance = runtime
         .block_on(alice_ts_interface.output_manager_service_handle.get_balance())
@@ -3684,7 +3678,7 @@ fn test_coinbase_abandoned() {
                 .get_completed_transactions(),
         )
         .unwrap();
-    assert_eq!(transactions.len(), 2);
+    assert_eq!(transactions.len(), 1);
     let tx_id2 = transactions
         .values()
         .find(|tx| tx.amount == fees2 + reward2)
@@ -3698,13 +3692,22 @@ fn test_coinbase_abandoned() {
         fees2 + reward2
     );
 
-    let transaction_query_batch_responses = vec![TxQueryBatchResponseProto {
-        signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
-        location: TxLocationProto::from(TxLocation::Mined) as i32,
-        block_hash: Some([11u8; 16].to_vec()),
-        confirmations: 2,
-        block_height: block_height_b,
-    }];
+    let transaction_query_batch_responses = vec![
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx1.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::NotStored) as i32,
+            block_hash: None,
+            confirmations: 0,
+            block_height: 0,
+        },
+        TxQueryBatchResponseProto {
+            signature: Some(SignatureProto::from(tx2.first_kernel_excess_sig().unwrap().clone())),
+            location: TxLocationProto::from(TxLocation::Mined) as i32,
+            block_hash: Some([11u8; 16].to_vec()),
+            confirmations: 2,
+            block_height: block_height_b,
+        },
+    ];
 
     let batch_query_response = TxQueryBatchResponsesProto {
         responses: transaction_query_batch_responses,
@@ -3724,6 +3727,7 @@ fn test_coinbase_abandoned() {
         block_headers.insert(i, block_header.clone());
     }
     alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
+
     runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
@@ -3796,6 +3800,7 @@ fn test_coinbase_abandoned() {
         block_headers.insert(i, block_header.clone());
     }
     alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
+
     runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
@@ -3836,15 +3841,16 @@ fn test_coinbase_abandoned() {
         );
     });
 
-    let tx = runtime
+    let txs = runtime
         .block_on(
             alice_ts_interface
                 .transaction_service_handle
-                .get_completed_transaction(tx_id2),
+                .get_cancelled_completed_transactions(),
         )
         .unwrap();
-    assert_eq!(tx.status, TransactionStatus::Coinbase);
-    assert!(!tx.valid);
+
+    assert!(txs.get(&tx_id1).is_some());
+    assert!(txs.get(&tx_id2).is_some());
 
     let balance = runtime
         .block_on(alice_ts_interface.output_manager_service_handle.get_balance())
@@ -3900,7 +3906,7 @@ fn test_coinbase_abandoned() {
         .expect("Validation should start");
 
     runtime.block_on(async {
-        let delay = sleep(Duration::from_secs(30));
+        let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
         let mut count = 0usize;
         loop {
@@ -5274,12 +5280,11 @@ fn broadcast_all_completed_transactions_on_startup() {
         status: TransactionStatus::Completed,
         message: "Yo!".to_string(),
         timestamp: Utc::now().naive_utc(),
-        cancelled: false,
+        cancelled: None,
         direction: TransactionDirection::Outbound,
         coinbase_block_height: None,
         send_count: 0,
         last_send_timestamp: None,
-        valid: true,
         transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
         confirmations: None,
         mined_height: None,
@@ -5394,52 +5399,115 @@ fn test_update_faux_tx_on_oms_validation() {
 
     let mut alice_ts_interface = setup_transaction_service_no_comms(&mut runtime, factories.clone(), connection, None);
 
-    let tx_id = runtime
-        .block_on(alice_ts_interface.transaction_service_handle.import_utxo(
+    let tx_id_1 = runtime
+        .block_on(alice_ts_interface.transaction_service_handle.import_utxo_with_status(
             MicroTari::from(10000),
             alice_ts_interface.base_node_identity.public_key().clone(),
             "blah".to_string(),
             None,
+            ImportStatus::Imported,
+            None,
+            None,
+        ))
+        .unwrap();
+    let tx_id_2 = runtime
+        .block_on(alice_ts_interface.transaction_service_handle.import_utxo_with_status(
+            MicroTari::from(20000),
+            alice_ts_interface.base_node_identity.public_key().clone(),
+            "one-sided 1".to_string(),
+            None,
+            ImportStatus::FauxUnconfirmed,
+            None,
+            None,
+        ))
+        .unwrap();
+    let tx_id_3 = runtime
+        .block_on(alice_ts_interface.transaction_service_handle.import_utxo_with_status(
+            MicroTari::from(30000),
+            alice_ts_interface.base_node_identity.public_key().clone(),
+            "one-sided 2".to_string(),
+            None,
+            ImportStatus::FauxConfirmed,
+            None,
+            None,
         ))
         .unwrap();
 
-    let (_ti, uo) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
-    runtime
-        .block_on(
-            alice_ts_interface
-                .output_manager_service_handle
-                .add_output_with_tx_id(tx_id, uo, None),
-        )
-        .unwrap();
-
-    let transaction = runtime
-        .block_on(alice_ts_interface.transaction_service_handle.get_any_transaction(tx_id))
-        .unwrap()
-        .unwrap();
-    if let WalletTransaction::Completed(tx) = transaction {
-        assert_eq!(tx.status, TransactionStatus::Imported);
-    } else {
-        panic!("Should find a complete transaction");
+    let (_ti, uo_1) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
+    let (_ti, uo_2) = make_input(&mut OsRng.clone(), MicroTari::from(20000), &factories.commitment);
+    let (_ti, uo_3) = make_input(&mut OsRng.clone(), MicroTari::from(30000), &factories.commitment);
+    for (tx_id, uo) in [(tx_id_1, uo_1), (tx_id_2, uo_2), (tx_id_3, uo_3)] {
+        runtime
+            .block_on(
+                alice_ts_interface
+                    .output_manager_service_handle
+                    .add_output_with_tx_id(tx_id, uo, None),
+            )
+            .unwrap();
     }
 
-    alice_ts_interface
-        .output_manager_service_event_publisher
-        .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1)))
-        .unwrap();
-
-    let mut found = false;
-    for _ in 0..20 {
-        runtime.block_on(async { sleep(Duration::from_secs(1)).await });
+    for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
         let transaction = runtime
             .block_on(alice_ts_interface.transaction_service_handle.get_any_transaction(tx_id))
             .unwrap()
             .unwrap();
-        if let WalletTransaction::Completed(tx) = transaction {
-            if tx.status == TransactionStatus::MinedConfirmed {
-                found = true;
-                break;
+        if tx_id == tx_id_1 {
+            if let WalletTransaction::Completed(tx) = &transaction {
+                assert_eq!(tx.status, TransactionStatus::Imported);
+            } else {
+                panic!("Should find a complete Imported transaction");
+            }
+        }
+        if tx_id == tx_id_2 {
+            if let WalletTransaction::Completed(tx) = &transaction {
+                assert_eq!(tx.status, TransactionStatus::FauxUnconfirmed);
+            } else {
+                panic!("Should find a complete FauxUnconfirmed transaction");
+            }
+        }
+        if tx_id == tx_id_3 {
+            if let WalletTransaction::Completed(tx) = &transaction {
+                assert_eq!(tx.status, TransactionStatus::FauxConfirmed);
+            } else {
+                panic!("Should find a complete FauxConfirmed transaction");
             }
         }
     }
-    assert!(found, "Should have found the updated status");
+
+    // This will change the status of the imported transaction
+    alice_ts_interface
+        .output_manager_service_event_publisher
+        .send(Arc::new(OutputManagerEvent::TxoValidationSuccess(1u64)))
+        .unwrap();
+
+    let mut found_imported = false;
+    let mut found_faux_unconfirmed = false;
+    let mut found_faux_confirmed = false;
+    for _ in 0..20 {
+        runtime.block_on(async { sleep(Duration::from_secs(1)).await });
+        for tx_id in [tx_id_1, tx_id_2, tx_id_3] {
+            let transaction = runtime
+                .block_on(alice_ts_interface.transaction_service_handle.get_any_transaction(tx_id))
+                .unwrap()
+                .unwrap();
+            if let WalletTransaction::Completed(tx) = transaction {
+                if tx_id == tx_id_1 && tx.status == TransactionStatus::FauxUnconfirmed && !found_imported {
+                    found_imported = true;
+                }
+                if tx_id == tx_id_2 && tx.status == TransactionStatus::FauxUnconfirmed && !found_faux_unconfirmed {
+                    found_faux_unconfirmed = true;
+                }
+                if tx_id == tx_id_3 && tx.status == TransactionStatus::FauxConfirmed && !found_faux_confirmed {
+                    found_faux_confirmed = true;
+                }
+            }
+        }
+        if found_imported && found_faux_unconfirmed && found_faux_confirmed {
+            break;
+        }
+    }
+    assert!(
+        found_imported && found_faux_unconfirmed && found_faux_confirmed,
+        "Should have found the updated statuses"
+    );
 }

@@ -38,7 +38,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::KernelFeatures,
+        transaction_components::KernelFeatures,
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -60,11 +60,10 @@ use crate::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::{TransactionEvent, TransactionServiceResponse},
-        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
-            models::{CompletedTransaction, OutboundTransaction},
+            models::{CompletedTransaction, OutboundTransaction, TxCancellationReason},
         },
         tasks::{
             send_finalized_transaction::send_finalized_transaction_message,
@@ -262,7 +261,6 @@ where
                 tx_id,
                 self.dest_pubkey.clone(),
                 self.amount,
-                // TODO: put value in here
                 fee,
                 sender_protocol.clone(),
                 TransactionStatus::Pending,
@@ -510,6 +508,7 @@ where
             outbound_tx.message.clone(),
             Utc::now().naive_utc(),
             TransactionDirection::Outbound,
+            None,
             None,
         );
 
@@ -806,7 +805,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 self.id,
-                TxRejection::Timeout,
+                TxCancellationReason::Timeout,
             )))
             .map_err(|e| {
                 trace!(

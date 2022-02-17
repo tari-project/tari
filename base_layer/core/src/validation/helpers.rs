@@ -50,7 +50,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelSum,
             OutputFlags,
             TransactionError,
@@ -850,7 +850,7 @@ mod test {
 
     mod check_maturity {
         use super::*;
-        use crate::transactions::transaction::{OutputFeatures, TransactionInputVersion};
+        use crate::transactions::transaction_components::{OutputFeatures, TransactionInputVersion};
 
         #[test]
         fn it_checks_the_input_maturity() {

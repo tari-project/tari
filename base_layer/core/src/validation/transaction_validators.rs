@@ -26,7 +26,7 @@ use tari_utilities::hex::Hex;
 use crate::{
     chain_storage::{BlockchainBackend, BlockchainDatabase, PrunedOutput},
     transactions::{
-        transaction::{SpentOutput, Transaction},
+        transaction_components::{SpentOutput, Transaction},
         CryptoFactories,
     },
     validation::{

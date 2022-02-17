@@ -21,11 +21,15 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use prost::Message;
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip002;
 
-use crate::{models::AssetDefinition, storage::state::StateDbUnitOfWork, DigitalAssetError};
+use crate::{
+    models::AssetDefinition,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    DigitalAssetError,
+};
 
 pub fn init<TUnitOfWork: StateDbUnitOfWork>(
     template_parameter: &TemplateParameter,
@@ -47,7 +51,7 @@ pub fn init<TUnitOfWork: StateDbUnitOfWork>(
     Ok(())
 }
 
-pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
     method: String,
     args: &[u8],
     state_db: &mut TUnitOfWork,
@@ -69,7 +73,7 @@ pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
     }
 }
 
-fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
+fn balance_of<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {

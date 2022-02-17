@@ -48,6 +48,6 @@ impl<TEvent: Event> Default for LoggingEventsPublisher<TEvent> {
 
 impl<TEvent: Event + Debug + Display> EventsPublisher<TEvent> for LoggingEventsPublisher<TEvent> {
     fn publish(&mut self, event: TEvent) {
-        debug!(target: LOG_TARGET, "[Event] Event received:{}", event);
+        debug!(target: LOG_TARGET, "[Event] Event received: {}", event);
     }
 }
