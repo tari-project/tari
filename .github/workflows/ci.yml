@@ -31,34 +31,6 @@ jobs:
           components: clippy, rustfmt
           override: true
       - uses: Swatinem/rust-cache@v1
-      - name: ubuntu dependencies
-        run: |
-          sudo apt-get update && \
-          sudo apt-get -y install \
-          libssl-dev \
-          openssl \
-          libsqlite3-dev \
-          pkg-config \
-          git \
-          cmake \
-          zip \
-          libc++-dev \
-          libc++abi-dev \
-          libprotobuf-dev \
-          protobuf-compiler \
-          libwebkit2gtk-4.0-dev \
-          build-essential \
-          curl \
-          wget \
-          libgtk-3-dev \
-          libappindicator3-dev \
-          patchelf \
-          librsvg2-dev
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
@@ -97,11 +69,6 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
@@ -135,22 +102,16 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: rustup show
         run: |
           rustup show
-      - name: cargo build
+      - name: cargo check
         uses: actions-rs/cargo@v1
         with:
           command: check
           args: --release --all-targets
   test:
     name: test
-    # needs: build
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
@@ -175,17 +136,17 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: cargo test compile
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --no-run --locked
+          args: --no-run --locked --all-features
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
-          command: test
+          command: test --all-features
+      - name: test key manager wasm
+      - run: |
+        cd base_layer/key_manager
+        rustup target add wasm32-unknown-unknown
+        make test
