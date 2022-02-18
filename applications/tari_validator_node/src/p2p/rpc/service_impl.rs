@@ -20,7 +20,7 @@
 // CAUSED AND ON ANY THEORY OF LIABILITY,  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
 // OTHERWISE) ARISING IN ANY WAY OUT OF THE  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 // DAMAGE.
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -30,7 +30,7 @@ use tari_comms::{
 };
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::{Instruction, TemplateId, TreeNodeHash},
+    models::{Instruction, TreeNodeHash},
     services::{AssetProcessor, MempoolService},
     storage::{state::StateDbUnitOfWorkReader, DbFactory},
 };
@@ -92,15 +92,19 @@ where
             .map_err(|e| RpcStatus::general(format!("Could not create state db: {}", e)))?
             .ok_or_else(|| RpcStatus::not_found("This node does not process this asset".to_string()))?;
 
-        let mut unit_of_work = state.reader();
+        let unit_of_work = state.reader();
+
+        let instruction = Instruction::new(
+            request
+                .template_id
+                .try_into()
+                .map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
+            request.method,
+            request.args,
+        );
         let response_bytes = self
             .asset_processor
-            .invoke_read_method(
-                TemplateId::try_from(request.template_id).map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
-                request.method,
-                &request.args,
-                &mut unit_of_work,
-            )
+            .invoke_read_method(&instruction, &unit_of_work)
             .map_err(|e| RpcStatus::general(format!("Could not invoke read method: {}", e)))?;
 
         Ok(Response::new(proto::InvokeReadMethodResponse {
@@ -115,7 +119,10 @@ where
         dbg!(&request);
         let request = request.into_message();
         let instruction = Instruction::new(
-            TemplateId::try_from(request.template_id).map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
+            request
+                .template_id
+                .try_into()
+                .map_err(|_| RpcStatus::bad_request("Invalid template_id"))?,
             request.method.clone(),
             request.args.clone(),
             /* TokenId(request.token_id.clone()),

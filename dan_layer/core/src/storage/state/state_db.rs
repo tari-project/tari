@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_common_types::types::PublicKey;
+
 use crate::storage::state::{
     state_db_unit_of_work::{StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader, UnitOfWorkContext},
     StateDbBackendAdapter,
@@ -27,20 +29,30 @@ use crate::storage::state::{
 
 pub struct StateDb<TStateDbBackendAdapter> {
     backend_adapter: TStateDbBackendAdapter,
+    asset_public_key: PublicKey,
 }
 
 impl<TStateDbBackendAdapter: StateDbBackendAdapter> StateDb<TStateDbBackendAdapter> {
-    pub fn new(backend_adapter: TStateDbBackendAdapter) -> Self {
-        Self { backend_adapter }
+    pub fn new(asset_public_key: PublicKey, backend_adapter: TStateDbBackendAdapter) -> Self {
+        Self {
+            backend_adapter,
+            asset_public_key,
+        }
     }
 
     pub fn new_unit_of_work(&self, height: u64) -> StateDbUnitOfWorkImpl<TStateDbBackendAdapter> {
-        StateDbUnitOfWorkImpl::new(UnitOfWorkContext::new(height), self.backend_adapter.clone())
+        StateDbUnitOfWorkImpl::new(
+            UnitOfWorkContext::new(height, self.asset_public_key.clone()),
+            self.backend_adapter.clone(),
+        )
     }
 
     pub fn reader(&self) -> impl StateDbUnitOfWorkReader {
         // TODO: A reader doesnt need the current context, should perhaps make a read-only implementation that the
         //       writable implementation also uses
-        StateDbUnitOfWorkImpl::new(UnitOfWorkContext::new(0), self.backend_adapter.clone())
+        StateDbUnitOfWorkImpl::new(
+            UnitOfWorkContext::new(0, self.asset_public_key.clone()),
+            self.backend_adapter.clone(),
+        )
     }
 }

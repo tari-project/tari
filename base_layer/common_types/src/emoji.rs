@@ -29,6 +29,7 @@ use tari_crypto::tari_utilities::{
     hex::{Hex, HexError},
     ByteArray,
 };
+use thiserror::Error;
 
 use crate::{
     luhn::{checksum, is_valid},
@@ -169,7 +170,9 @@ impl Display for EmojiId {
     }
 }
 
-#[derive(Debug)]
+// TODO: We have to add more details
+#[derive(Debug, Error)]
+#[error("emoji id error")]
 pub struct EmojiIdError;
 
 #[cfg(test)]

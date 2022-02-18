@@ -26,6 +26,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use log::*;
+
 use crate::{
     models::{Instruction, Node, QuorumCertificate, TreeNodeHash},
     storage::{
@@ -34,6 +36,8 @@ use crate::{
         StorageError,
     },
 };
+
+const LOG_TARGET: &str = "tari::dan::chain_db::unit_of_work";
 
 pub trait ChainDbUnitOfWork: Clone + Send + Sync {
     fn commit(&mut self) -> Result<(), StorageError>;
@@ -212,6 +216,12 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                 true,
             ));
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "Marking proposed node '{}' as committed",
+            qc.node_hash()
+        );
         let found_node = inner.find_proposed_node(qc.node_hash())?;
         let mut node = found_node.1.get_mut();
         let mut n = node.deref_mut();

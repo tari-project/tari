@@ -351,11 +351,11 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         ))
     }
 
-    fn find_node_by_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
         use crate::schema::nodes::dsl;
         let connection = self.get_connection()?;
         let node = dsl::nodes
-            .filter(nodes::parent.eq(parent_hash.as_bytes()))
+            .filter(nodes::hash.eq(node_hash.as_bytes()))
             .first::<Node>(&connection)
             .optional()
             .map_err(|source| SqliteStorageError::DieselError {
@@ -374,11 +374,11 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         }
     }
 
-    fn find_node_by_parent_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
+    fn find_node_by_parent_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
         use crate::schema::nodes::dsl;
         let connection = self.get_connection()?;
         let node = dsl::nodes
-            .filter(nodes::parent.eq(node_hash.as_bytes()))
+            .filter(nodes::parent.eq(parent_hash.as_bytes()))
             .first::<Node>(&connection)
             .optional()
             .map_err(|source| SqliteStorageError::DieselError {
