@@ -393,11 +393,7 @@ impl CommandReader {
                     },
                     Err(ReadlineError::Interrupted) => {
                         // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                        println!("The node is shutting down because Ctrl+C was received...");
-                        info!(
-                            target: LOG_TARGET,
-                            "Termination signal received from user. Shutting node down."
-                        );
+                        info!(target: LOG_TARGET, "Interruption signal received from user.");
                         event = CommandEvent::Interrupt;
                     },
                     Err(err) => {
@@ -472,6 +468,8 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
         .get_software_updater()
         .new_update_notifier()
         .clone();
+    let mut first_signal = false;
+    // TODO: Add heartbeat here
     loop {
         let interval = status_interval(start_time);
         tokio::select! {
@@ -480,8 +478,15 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
                     match event {
                         CommandEvent::Command(line) => {
                             performer.handle_command(line.as_str(), &mut shutdown).await;
+                            first_signal = false;
                         }
                         CommandEvent::Interrupt => {
+                            if !first_signal {
+                                println!("Are you leaving already? Press Ctrl-C again to terminate the node.");
+                                first_signal = true;
+                            } else {
+                                break;
+                            }
                         }
                         CommandEvent::Error(err) => {
                             // TODO: Not sure we have to break here
