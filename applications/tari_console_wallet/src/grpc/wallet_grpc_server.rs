@@ -142,7 +142,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             tari_wallet::connectivity_service::OnlineStatus::Offline => OnlineStatus::Offline,
         };
         Ok(Response::new(CheckConnectivityResponse {
-            status: gprc_connectivity as i32,
+            status: grpc_connectivity as i32,
         }))
     }
 
