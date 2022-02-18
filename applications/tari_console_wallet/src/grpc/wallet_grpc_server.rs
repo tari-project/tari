@@ -30,6 +30,7 @@ use tari_app_grpc::{
         self,
         payment_recipient::PaymentType,
         wallet_server,
+        CheckConnectivityResponse,
         ClaimHtlcRefundRequest,
         ClaimHtlcRefundResponse,
         ClaimShaAtomicSwapRequest,
@@ -46,6 +47,7 @@ use tari_app_grpc::{
         GetCoinbaseResponse,
         GetCompletedTransactionsRequest,
         GetCompletedTransactionsResponse,
+        GetConnectivityRequest,
         GetIdentityRequest,
         GetIdentityResponse,
         GetOwnedAssetsResponse,
@@ -86,6 +88,7 @@ use tari_core::transactions::{
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
@@ -124,6 +127,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
     async fn get_version(&self, _: Request<GetVersionRequest>) -> Result<Response<GetVersionResponse>, Status> {
         Ok(Response::new(GetVersionResponse {
             version: env!("CARGO_PKG_VERSION").to_string(),
+        }))
+    }
+
+    async fn check_connectivity(
+        &self,
+        _: Request<GetConnectivityRequest>,
+    ) -> Result<Response<CheckConnectivityResponse>, Status> {
+        let mut connectivity = self.wallet.wallet_connectivity.clone();
+        let status = connectivity.get_connectivity_status();
+        let gprc_connectivity = match status {
+            tari_wallet::connectivity_service::OnlineStatus::Connecting => OnlineStatus::Connecting,
+            tari_wallet::connectivity_service::OnlineStatus::Online => OnlineStatus::Online,
+            tari_wallet::connectivity_service::OnlineStatus::Offline => OnlineStatus::Offline,
+        };
+        Ok(Response::new(CheckConnectivityResponse {
+            status: gprc_connectivity as i32,
         }))
     }
 
