@@ -31,7 +31,7 @@ const ZERO_HASH: [u8; FixedHash::byte_size()] = [0u8; FixedHash::byte_size()];
 #[error("Invalid size")]
 pub struct FixedHashSizeError;
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash)]
 pub struct FixedHash([u8; FixedHash::byte_size()]);
 
 impl FixedHash {

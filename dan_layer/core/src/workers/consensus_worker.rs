@@ -155,9 +155,6 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                         &self.asset_definition,
                         &mut self.committee_manager,
                         &self.db_factory,
-                        &self.payload_provider,
-                        &self.payload_processor,
-                        &self.chain_storage_service,
                         &self.node_address,
                     )
                     .await
@@ -184,11 +181,13 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                     .ok_or(DigitalAssetError::MissingDatabase)?
                     .new_unit_of_work(self.current_view_id.as_u64());
 
-                let mut p = states::Prepare::new(self.node_address.clone(), self.asset_definition.public_key.clone());
-                let res = p
+                let mut prepare =
+                    states::Prepare::new(self.node_address.clone(), self.asset_definition.public_key.clone());
+                let res = prepare
                     .next_event(
                         &self.get_current_view()?,
                         self.timeout,
+                        &self.asset_definition,
                         self.committee_manager.current_committee()?,
                         &self.inbound_connections,
                         &mut self.outbound_service,
@@ -310,6 +309,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                         self.committee_manager.current_committee()?,
                         self.node_address.clone(),
                         &self.asset_definition,
+                        &self.payload_provider,
                         shutdown,
                     )
                     .await
@@ -336,10 +336,11 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             (Idle, TimedOut) => Starting,
             (_, TimedOut) => {
                 warn!(target: LOG_TARGET, "State timed out");
+                self.current_view_id = self.current_view_id.saturating_sub(1.into());
                 NextView
             },
-            (NextView, NewView { .. }) => {
-                self.current_view_id = self.current_view_id.next();
+            (NextView, NewView { new_view }) => {
+                self.current_view_id = new_view;
                 Prepare
             },
             (Prepare, Prepared) => PreCommit,

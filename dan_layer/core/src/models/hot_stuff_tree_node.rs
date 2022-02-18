@@ -47,12 +47,12 @@ impl<TPayload: Payload> HotStuffTreeNode<TPayload> {
         s
     }
 
-    pub fn genesis(payload: TPayload) -> HotStuffTreeNode<TPayload> {
+    pub fn genesis(payload: TPayload, state_root: StateRoot) -> HotStuffTreeNode<TPayload> {
         let mut s = Self {
             parent: TreeNodeHash::zero(),
             payload,
             hash: TreeNodeHash::zero(),
-            state_root: StateRoot::initial(),
+            state_root,
             height: 0,
         };
         s.hash = s.calculate_hash();
