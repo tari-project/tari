@@ -19,9 +19,10 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::convert::TryFrom;
+use std::{convert::TryFrom, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[repr(u8)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Hash, Eq)]
@@ -44,7 +45,14 @@ impl PowAlgorithm {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum PowAlgorithmParseError {
+    #[error("unknown pow algorithm type {0}")]
+    UnknownType(String),
+}
+
 impl TryFrom<u64> for PowAlgorithm {
+    // TODO: Use `parse error` here
     type Error = String;
 
     fn try_from(v: u64) -> Result<Self, Self::Error> {
@@ -52,6 +60,18 @@ impl TryFrom<u64> for PowAlgorithm {
             0 => Ok(PowAlgorithm::Monero),
             1 => Ok(PowAlgorithm::Sha3),
             _ => Err("Invalid PoWAlgorithm".into()),
+        }
+    }
+}
+
+impl FromStr for PowAlgorithm {
+    type Err = PowAlgorithmParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "monero" => Ok(Self::Monero),
+            "sha" | "sha3" | "SHA3" => Ok(Self::Sha3),
+            other => Err(PowAlgorithmParseError::UnknownType(other.into())),
         }
     }
 }
