@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -25,13 +25,14 @@ use std::{
     convert::{TryFrom, TryInto},
     mem,
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
+use tari_comms::connectivity::ConnectivityRequester;
 use tari_crypto::{
     commitment::HomomorphicCommitment,
     tari_utilities::{hex::Hex, Hashable},
@@ -41,12 +42,12 @@ use tokio::task;
 
 use super::error::HorizonSyncError;
 use crate::{
-    base_node::{
-        state_machine_service::{
-            states::events_and_states::{HorizonSyncInfo, HorizonSyncStatus, StateInfo},
-            BaseNodeStateMachine,
-        },
-        sync::{rpc, SyncPeer},
+    base_node::sync::{
+        hooks::Hooks,
+        horizon_state_sync::{HorizonSyncInfo, HorizonSyncStatus},
+        rpc,
+        BlockchainSyncConfig,
+        SyncPeer,
     },
     blocks::{BlockHeader, ChainHeader, UpdateBlockAccumulatedData},
     chain_storage::{
@@ -57,6 +58,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
     },
+    consensus::ConsensusManager,
     proto::base_node::{
         sync_utxo as proto_sync_utxo,
         sync_utxos_response::UtxoOrDeleted,
@@ -66,45 +68,75 @@ use crate::{
         SyncUtxosResponse,
     },
     transactions::transaction_components::{TransactionKernel, TransactionOutput},
-    validation::helpers,
+    validation::{helpers, FinalHorizonStateValidation},
 };
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sync";
 
-pub struct HorizonStateSynchronization<'a, B: BlockchainBackend> {
-    shared: &'a mut BaseNodeStateMachine<B>,
-    sync_peer: &'a SyncPeer,
+pub struct HorizonStateSynchronization<'a, B> {
+    config: BlockchainSyncConfig,
+    db: AsyncBlockchainDb<B>,
+    rules: ConsensusManager,
+    sync_peers: &'a [SyncPeer],
     horizon_sync_height: u64,
     prover: Arc<RangeProofService>,
     num_kernels: u64,
     num_outputs: u64,
     full_bitmap: Option<Bitmap>,
+    hooks: Hooks,
+    connectivity: ConnectivityRequester,
+    final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
+    max_latency: Duration,
 }
 
 impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        shared: &'a mut BaseNodeStateMachine<B>,
-        sync_peer: &'a SyncPeer,
+        config: BlockchainSyncConfig,
+        db: AsyncBlockchainDb<B>,
+        connectivity: ConnectivityRequester,
+        rules: ConsensusManager,
+        sync_peers: &'a [SyncPeer],
         horizon_sync_height: u64,
         prover: Arc<RangeProofService>,
+        final_state_validator: Arc<dyn FinalHorizonStateValidation<B>>,
     ) -> Self {
         Self {
-            shared,
-            sync_peer,
+            max_latency: config.initial_max_sync_latency,
+            config,
+            db,
+            rules,
+            connectivity,
+            sync_peers,
             horizon_sync_height,
             prover,
             num_kernels: 0,
             num_outputs: 0,
             full_bitmap: None,
+            hooks: Hooks::default(),
+            final_state_validator,
         }
     }
 
+    pub fn on_starting<H>(&mut self, hook: H)
+    where for<'r> H: FnOnce() + Send + Sync + 'static {
+        self.hooks.add_on_starting_hook(hook);
+    }
+
+    pub fn on_progress<H>(&mut self, hook: H)
+    where H: Fn(HorizonSyncInfo) + Send + Sync + 'static {
+        self.hooks.add_on_progress_horizon_hook(hook);
+    }
+
     pub async fn synchronize(&mut self) -> Result<(), HorizonSyncError> {
+        if self.sync_peers.is_empty() {
+            return Err(HorizonSyncError::NoSyncPeers);
+        }
+
         debug!(
             target: LOG_TARGET,
             "Preparing database for horizon sync to height #{}", self.horizon_sync_height
         );
-
         let header = self.db().fetch_header(self.horizon_sync_height).await?.ok_or_else(|| {
             ChainStorageError::ValueNotFound {
                 entity: "Header",
@@ -113,39 +145,73 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
         })?;
 
-        let mut connection = self
-            .shared
-            .connectivity
-            .dial_peer(self.sync_peer.node_id().clone())
-            .await?;
-        let mut client = connection.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
+        loop {
+            match self.sync(&header).await {
+                Ok(()) => return Ok(()),
+                Err(err @ HorizonSyncError::AllSyncPeersExceedLatency) => {
+                    // If we don't have many sync peers to select from, return the listening state and see if we can get
+                    // some more.
+                    warn!(
+                        target: LOG_TARGET,
+                        "Slow sync peers detected: {}",
+                        self.sync_peers
+                            .iter()
+                            .map(|p| format!("{} ({:.2?})", p.node_id(), p.latency().unwrap_or_default()))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    );
+                    if self.sync_peers.len() < 2 {
+                        return Err(err);
+                    }
+                    self.max_latency += self.config.max_latency_increase;
+                },
+                Err(err) => return Err(err),
+            }
+        }
+    }
 
-        match self.begin_sync(&mut client, &header).await {
-            Ok(_) => match self.finalize_horizon_sync().await {
-                Ok(_) => Ok(()),
+    async fn sync(&mut self, header: &BlockHeader) -> Result<(), HorizonSyncError> {
+        for (i, sync_peer) in self.sync_peers.iter().enumerate() {
+            let mut connection = self.connectivity.dial_peer(sync_peer.node_id().clone()).await?;
+            let mut client = connection.connect_rpc::<rpc::BaseNodeSyncRpcClient>().await?;
+
+            match self.begin_sync(sync_peer.clone(), &mut client, header).await {
+                Ok(_) => match self.finalize_horizon_sync(sync_peer).await {
+                    Ok(_) => return Ok(()),
+                    Err(err) => {
+                        warn!(target: LOG_TARGET, "Error during sync:{}", err);
+                        return Err(err);
+                    },
+                },
+                Err(err @ HorizonSyncError::MaxLatencyExceeded { .. }) => {
+                    warn!(target: LOG_TARGET, "{}", err);
+                    if i == self.sync_peers.len() - 1 {
+                        return Err(HorizonSyncError::AllSyncPeersExceedLatency);
+                    }
+                },
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                    Err(err)
+                    return Err(err);
                 },
-            },
-            Err(err) => {
-                warn!(target: LOG_TARGET, "Error during sync:{}", err);
-                Err(err)
-            },
+            }
         }
+
+        Err(HorizonSyncError::FailedSyncAllPeers)
     }
 
     async fn begin_sync(
         &mut self,
+        sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Initializing");
         self.initialize().await?;
+        self.hooks.call_on_starting_hook();
         debug!(target: LOG_TARGET, "Synchronizing kernels");
-        self.synchronize_kernels(client, to_header).await?;
+        self.synchronize_kernels(sync_peer.clone(), client, to_header).await?;
         debug!(target: LOG_TARGET, "Synchronizing outputs");
-        self.synchronize_outputs(client, to_header).await?;
+        self.synchronize_outputs(sync_peer, client, to_header).await?;
         Ok(())
     }
 
@@ -166,6 +232,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     async fn synchronize_kernels(
         &mut self,
+        mut sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
@@ -179,16 +246,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Ok(());
         }
 
-        let info = HorizonSyncInfo::new(
-            vec![self.sync_peer.node_id().clone()],
-            HorizonSyncStatus::Kernels(
-                local_num_kernels,
-                remote_num_kernels,
-                self.sync_peer.node_id().clone(),
-                client.get_last_request_latency(),
-            ),
-        );
-        self.shared.set_state_info(StateInfo::HorizonSync(info));
+        let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Kernels {
+            current: local_num_kernels,
+            total: remote_num_kernels,
+            sync_peer: sync_peer.clone(),
+        });
+        self.hooks.call_on_progress_horizon_hooks(info);
 
         debug!(
             target: LOG_TARGET,
@@ -202,7 +265,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Initiating kernel sync with peer `{}` (latency = {}ms)",
-            self.sync_peer.node_id(),
+            sync_peer.node_id(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -224,7 +287,9 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut txn = db.write_transaction();
         let mut mmr_position = local_num_kernels;
         let end = remote_num_kernels;
+        let mut last_sync_timer = Instant::now();
         while let Some(kernel) = kernel_stream.next().await {
+            let latency = last_sync_timer.elapsed();
             let kernel: TransactionKernel = kernel?.try_into().map_err(HorizonSyncError::ConversionError)?;
             kernel
                 .verify_signature()
@@ -237,9 +302,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 let num_kernels = kernel_hashes.len();
                 debug!(
                     target: LOG_TARGET,
-                    "Header #{} ({} kernels)",
+                    "Header #{} ({} kernels, latency: {:.2?})",
                     current_header.height(),
                     num_kernels,
+                    latency
                 );
                 // Validate root
                 let block_data = db
@@ -291,18 +357,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             }
             mmr_position += 1;
 
+            sync_peer.set_latency(latency);
+            sync_peer.add_sample(last_sync_timer.elapsed());
             if mmr_position % 100 == 0 || mmr_position == self.num_kernels {
-                let info = HorizonSyncInfo::new(
-                    vec![self.sync_peer.node_id().clone()],
-                    HorizonSyncStatus::Kernels(
-                        mmr_position,
-                        self.num_kernels,
-                        self.sync_peer.node_id().clone(),
-                        client.get_last_request_latency(),
-                    ),
-                );
-                self.shared.set_state_info(StateInfo::HorizonSync(info));
+                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Kernels {
+                    current: mmr_position,
+                    total: self.num_kernels,
+                    sync_peer: sync_peer.clone(),
+                });
+                self.hooks.call_on_progress_horizon_hooks(info);
             }
+
+            if latency > self.max_latency {
+                return Err(HorizonSyncError::MaxLatencyExceeded {
+                    peer: sync_peer.node_id().clone(),
+                    latency,
+                    max_latency: self.max_latency,
+                });
+            }
+
+            last_sync_timer = Instant::now();
         }
 
         if mmr_position != end {
@@ -315,6 +389,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     async fn synchronize_outputs(
         &mut self,
+        mut sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
@@ -328,16 +403,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
             return Ok(());
         }
 
-        let info = HorizonSyncInfo::new(
-            vec![self.sync_peer.node_id().clone()],
-            HorizonSyncStatus::Outputs(
-                local_num_outputs,
-                self.num_outputs,
-                self.sync_peer.node_id().clone(),
-                client.get_last_request_latency(),
-            ),
-        );
-        self.shared.set_state_info(StateInfo::HorizonSync(info));
+        let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
+            current: local_num_outputs,
+            total: self.num_outputs,
+            sync_peer: sync_peer.clone(),
+        });
+        self.hooks.call_on_progress_horizon_hooks(info);
 
         debug!(
             target: LOG_TARGET,
@@ -355,7 +426,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         debug!(
             target: LOG_TARGET,
             "Initiating output sync with peer `{}` (latency = {}ms)",
-            self.sync_peer.node_id(),
+            sync_peer.node_id(),
             latency.unwrap_or_default().as_millis()
         );
 
@@ -393,13 +464,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
         let mut output_mmr = MerkleMountainRange::<HashDigest, _>::new(output_pruned_set);
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(witness_pruned_set);
-        let mut constants = self
-            .shared
-            .consensus_rules
-            .consensus_constants(current_header.height())
-            .clone();
+        let mut constants = self.rules.consensus_constants(current_header.height()).clone();
+        let mut last_sync_timer = Instant::now();
 
         while let Some(response) = output_stream.next().await {
+            let latency = last_sync_timer.elapsed();
             let res: SyncUtxosResponse = response?;
 
             if res.mmr_index != 0 && res.mmr_index != mmr_position {
@@ -480,14 +549,14 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                              peer {}",
                             diff_bitmap.len(),
                             MAX_DIFF_BITMAP_BYTE_LEN,
-                            self.sync_peer.node_id()
+                            sync_peer.node_id()
                         )));
                     }
 
                     let diff_bitmap = Bitmap::try_deserialize(&diff_bitmap).ok_or_else(|| {
                         HorizonSyncError::IncorrectResponse(format!(
                             "Peer {} sent an invalid difference bitmap",
-                            self.sync_peer.node_id()
+                            sync_peer.node_id()
                         ))
                     })?;
 
@@ -560,11 +629,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                         break;
                     } else {
                         current_header = db.fetch_chain_header(current_header.height() + 1).await?;
-                        constants = self
-                            .shared
-                            .consensus_rules
-                            .consensus_constants(current_header.height())
-                            .clone();
+                        constants = self.rules.consensus_constants(current_header.height()).clone();
                         debug!(
                             target: LOG_TARGET,
                             "Expecting to receive the next UTXO set {}-{} for header #{}",
@@ -582,18 +647,26 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 },
             }
 
+            sync_peer.set_latency(latency);
+            sync_peer.add_sample(last_sync_timer.elapsed());
             if mmr_position % 100 == 0 || mmr_position == self.num_outputs {
-                let info = HorizonSyncInfo::new(
-                    vec![self.sync_peer.node_id().clone()],
-                    HorizonSyncStatus::Outputs(
-                        mmr_position,
-                        self.num_outputs,
-                        self.sync_peer.node_id().clone(),
-                        client.get_last_request_latency(),
-                    ),
-                );
-                self.shared.set_state_info(StateInfo::HorizonSync(info));
+                let info = HorizonSyncInfo::new(vec![sync_peer.node_id().clone()], HorizonSyncStatus::Outputs {
+                    current: mmr_position,
+                    total: self.num_outputs,
+                    sync_peer: sync_peer.clone(),
+                });
+                self.hooks.call_on_progress_horizon_hooks(info);
             }
+
+            if latency > self.max_latency {
+                return Err(HorizonSyncError::MaxLatencyExceeded {
+                    peer: sync_peer.node_id().clone(),
+                    latency,
+                    max_latency: self.max_latency,
+                });
+            }
+
+            last_sync_timer = Instant::now();
         }
 
         if mmr_position != end {
@@ -606,16 +679,20 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
     }
 
     async fn validate_rangeproofs(&self, mut unpruned_outputs: Vec<TransactionOutput>) -> Result<(), HorizonSyncError> {
-        let concurrency = self.shared.config.sync_validation_concurrency;
+        let concurrency = self.config.validation_concurrency;
         let mut chunk_size = unpruned_outputs.len() / concurrency;
         if unpruned_outputs.len() % concurrency > 0 {
             chunk_size += 1;
         }
         // Validate rangeproofs in parallel
         let mut tasks = (0..concurrency)
-            .map(|_| {
-                let end = cmp::min(unpruned_outputs.len(), chunk_size);
-                unpruned_outputs.drain(..end).collect::<Vec<_>>()
+            .filter_map(|_| {
+                if unpruned_outputs.is_empty() {
+                    None
+                } else {
+                    let end = cmp::min(unpruned_outputs.len(), chunk_size);
+                    Some(unpruned_outputs.drain(..end).collect::<Vec<_>>())
+                }
             })
             .map(|chunk| {
                 let prover = self.prover.clone();
@@ -637,20 +714,18 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
 
     // Finalize the horizon state synchronization by setting the chain metadata to the local tip and committing
     // the horizon state to the blockchain backend.
-    async fn finalize_horizon_sync(&mut self) -> Result<(), HorizonSyncError> {
+    async fn finalize_horizon_sync(&mut self, sync_peer: &SyncPeer) -> Result<(), HorizonSyncError> {
         debug!(target: LOG_TARGET, "Validating horizon state");
 
-        self.shared.set_state_info(StateInfo::HorizonSync(HorizonSyncInfo::new(
-            vec![self.sync_peer.node_id().clone()],
+        self.hooks.call_on_progress_horizon_hooks(HorizonSyncInfo::new(
+            vec![sync_peer.node_id().clone()],
             HorizonSyncStatus::Finalizing,
-        )));
+        ));
 
         let header = self.db().fetch_chain_header(self.horizon_sync_height).await?;
         let (calc_utxo_sum, calc_kernel_sum) = self.calculate_commitment_sums(&header).await?;
 
-        self.shared
-            .sync_validators
-            .final_horizon_state
+        self.final_state_validator
             .validate(
                 &*self.db().inner().db_read_access()?,
                 header.height(),
@@ -698,8 +773,8 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         &mut self,
         header: &ChainHeader,
     ) -> Result<(Commitment, Commitment), HorizonSyncError> {
-        let mut pruned_utxo_sum = HomomorphicCommitment::default();
-        let mut pruned_kernel_sum = HomomorphicCommitment::default();
+        let mut utxo_sum = HomomorphicCommitment::default();
+        let mut kernel_sum = HomomorphicCommitment::default();
 
         let mut prev_mmr = 0;
         let mut prev_kernel_mmr = 0;
@@ -724,6 +799,12 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                     curr_header.header().output_mmr_size - 1
                 );
                 let (utxos, _) = db.fetch_utxos_in_block(curr_header.hash().clone(), None)?;
+                debug!(
+                    target: LOG_TARGET,
+                    "{} output(s) loaded for height {}",
+                    utxos.len(),
+                    curr_header.height()
+                );
                 trace!(
                     target: LOG_TARGET,
                     "Fetching kernels from db: height:{}, header.kernel_mmr:{}, prev_mmr:{}, end:{}",
@@ -734,7 +815,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 );
 
                 trace!(target: LOG_TARGET, "Number of utxos returned: {}", utxos.len());
-                let mut prune_counter = 0;
+                let mut pruned_counter = 0;
                 for u in utxos {
                     match u {
                         PrunedOutput::NotPruned { output } => {
@@ -744,36 +825,38 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                                     "Found output that needs pruning at height: {} position: {}", h, utxo_mmr_position
                                 );
                                 prune_positions.push(utxo_mmr_position);
-                                prune_counter += 1;
+                                pruned_counter += 1;
                             } else {
-                                pruned_utxo_sum = &output.commitment + &pruned_utxo_sum;
+                                utxo_sum = &output.commitment + &utxo_sum;
                             }
                         },
                         _ => {
-                            prune_counter += 1;
+                            pruned_counter += 1;
                         },
                     }
                     utxo_mmr_position += 1;
                 }
-                if prune_counter > 0 {
-                    trace!(target: LOG_TARGET, "Pruned {} outputs", prune_counter);
+                if pruned_counter > 0 {
+                    trace!(target: LOG_TARGET, "{} pruned output(s)", pruned_counter);
                 }
                 prev_mmr = curr_header.header().output_mmr_size;
 
                 let kernels = db.fetch_kernels_in_block(curr_header.hash().clone())?;
                 trace!(target: LOG_TARGET, "Number of kernels returned: {}", kernels.len());
                 for k in kernels {
-                    pruned_kernel_sum = &k.excess + &pruned_kernel_sum;
+                    kernel_sum = &k.excess + &kernel_sum;
                 }
                 prev_kernel_mmr = curr_header.header().kernel_mmr_size;
 
                 if h % 1000 == 0 {
                     debug!(
                         target: LOG_TARGET,
-                        "Final Validation: {:.2}% complete. Height: {}, mmr_position: {} ",
+                        "Final Validation: {:.2}% complete. Height: {}, mmr_position: {}, {} outputs to prune after \
+                         sync",
                         (h as f32 / height as f32) * 100.0,
                         h,
                         utxo_mmr_position,
+                        prune_positions.len()
                     );
                 }
             }
@@ -784,13 +867,13 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 db.write(txn)?;
             }
 
-            Ok((pruned_utxo_sum, pruned_kernel_sum))
+            Ok((utxo_sum, kernel_sum))
         })
         .await?
     }
 
     #[inline]
     fn db(&self) -> &AsyncBlockchainDb<B> {
-        &self.shared.db
+        &self.db
     }
 }

@@ -20,14 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fmt::{Display, Error, Formatter},
-    time::Duration,
-};
+use std::fmt::{Display, Error, Formatter};
 
 use randomx_rs::RandomXFlag;
 use tari_common_types::chain_metadata::ChainMetadata;
-use tari_comms::peer_manager::NodeId;
 
 use crate::base_node::{
     state_machine_service::states::{
@@ -41,7 +37,7 @@ use crate::base_node::{
         Starting,
         Waiting,
     },
-    sync::SyncPeer,
+    sync::{HorizonSyncInfo, SyncPeer},
 };
 
 #[derive(Debug)]
@@ -63,8 +59,8 @@ pub enum StateEvent {
     Initialized,
     HeadersSynchronized(SyncPeer),
     HeaderSyncFailed,
-    ProceedToHorizonSync(SyncPeer),
-    ProceedToBlockSync(SyncPeer),
+    ProceedToHorizonSync(Vec<SyncPeer>),
+    ProceedToBlockSync(Vec<SyncPeer>),
     HorizonStateSynchronized,
     HorizonStateSyncFailure,
     BlocksSynchronized,
@@ -176,41 +172,14 @@ pub enum StateInfo {
 }
 
 impl StateInfo {
-    pub fn short_desc(&self, full_log: bool) -> String {
+    pub fn short_desc(&self) -> String {
         use StateInfo::*;
         match self {
             StartUp => "Starting up".to_string(),
             HeaderSync(None) => "Starting header sync".to_string(),
             HeaderSync(Some(info)) => format!("Syncing headers: {}", info.sync_progress_string()),
-            HorizonSync(info) => match info.status.clone() {
-                HorizonSyncStatus::Starting => "Starting horizon sync".to_string(),
-                HorizonSyncStatus::Kernels(current, total, node, latency) => format!(
-                    "Syncing kernels: {}/{} ({:.0}%) with latency {} {}",
-                    current,
-                    total,
-                    current as f64 / total as f64 * 100.0,
-                    match latency {
-                        Some(latency) => format!("{:?}", latency),
-                        None => "unknown".to_string(),
-                    },
-                    match full_log {
-                        true => format!(" {}", node),
-                        false => "".to_string(),
-                    }
-                ),
-                HorizonSyncStatus::Outputs(current, total, node, latency) => format!(
-                    "Syncing outputs: {}/{} ({:.0}%) from {} with latency {}",
-                    current,
-                    total,
-                    current as f64 / total as f64 * 100.0,
-                    node,
-                    match latency {
-                        Some(latency) => format!("{:?}", latency),
-                        None => "unknown".to_string(),
-                    },
-                ),
-                HorizonSyncStatus::Finalizing => "Finalizing horizon sync".to_string(),
-            },
+            HorizonSync(info) => info.to_progress_string(),
+
             BlockSync(info) => format!("Syncing blocks: {}", info.sync_progress_string()),
             Listening(_) => "Listening".to_string(),
             BlockSyncStarting => "Starting block sync".to_string(),
@@ -280,46 +249,36 @@ impl Display for StatusInfo {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
 /// This struct contains info that is use full for external viewing of state info
+#[derive(Clone, Debug, PartialEq)]
 pub struct BlockSyncInfo {
     pub tip_height: u64,
     pub local_height: u64,
-    pub sync_peers: Vec<NodeId>,
-    pub latency: Option<Duration>,
+    pub sync_peer: SyncPeer,
 }
 
 impl BlockSyncInfo {
     /// Creates a new BlockSyncInfo
-    pub fn new(
-        tip_height: u64,
-        local_height: u64,
-        sync_peers: Vec<NodeId>,
-        latency: Option<Duration>,
-    ) -> BlockSyncInfo {
-        BlockSyncInfo {
+    pub fn new(tip_height: u64, local_height: u64, sync_peer: SyncPeer) -> Self {
+        Self {
             tip_height,
             local_height,
-            sync_peers,
-            latency,
+            sync_peer,
         }
     }
 
     pub fn sync_progress_string(&self) -> String {
         format!(
-            "({}) {}/{} ({:.0}%) with latency {}",
-            self.sync_peers
-                .iter()
-                .map(|n| n.short_str())
-                .collect::<Vec<_>>()
-                .join(", "),
+            "({}) {}/{} ({:.0}%){} Latency: {:.2?}",
+            self.sync_peer.node_id().short_str(),
             self.local_height,
             self.tip_height,
             (self.local_height as f64 / self.tip_height as f64 * 100.0),
-            match self.latency {
-                Some(latency) => format!("{:?}", latency),
-                None => "unknown".to_string(),
-            }
+            self.sync_peer
+                .items_per_second()
+                .map(|bps| format!(" {:.2?} blks/s", bps))
+                .unwrap_or_default(),
+            self.sync_peer.latency().unwrap_or_default()
         )
     }
 }
@@ -328,58 +287,4 @@ impl Display for BlockSyncInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
         writeln!(f, "Syncing {}", self.sync_progress_string())
     }
-}
-
-/// Info about the state of horizon sync
-#[derive(Clone, Debug, PartialEq)]
-pub struct HorizonSyncInfo {
-    pub sync_peers: Vec<NodeId>,
-    pub status: HorizonSyncStatus,
-}
-
-impl HorizonSyncInfo {
-    pub fn new(sync_peers: Vec<NodeId>, status: HorizonSyncStatus) -> HorizonSyncInfo {
-        HorizonSyncInfo { sync_peers, status }
-    }
-}
-
-impl Display for HorizonSyncInfo {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        fmt.write_str("Syncing horizon state from the following peers: \n")?;
-        for peer in &self.sync_peers {
-            fmt.write_str(&format!("{}\n", peer))?;
-        }
-
-        match self.status.clone() {
-            HorizonSyncStatus::Starting => fmt.write_str("Starting horizon state synchronization"),
-            HorizonSyncStatus::Kernels(current, total, node, latency) => fmt.write_str(&format!(
-                "Horizon syncing kernels: {}/{} from {} with latency {}\n",
-                current,
-                total,
-                node,
-                match latency {
-                    Some(latency) => format!("{:?}", latency),
-                    None => "unknown".to_string(),
-                },
-            )),
-            HorizonSyncStatus::Outputs(current, total, node, latency) => fmt.write_str(&format!(
-                "Horizon syncing outputs: {}/{} from {} with latency {}\n",
-                current,
-                total,
-                node,
-                match latency {
-                    Some(latency) => format!("{:?}", latency),
-                    None => "unknown".to_string(),
-                },
-            )),
-            HorizonSyncStatus::Finalizing => fmt.write_str("Finalizing horizon state synchronization"),
-        }
-    }
-}
-#[derive(Clone, Debug, PartialEq)]
-pub enum HorizonSyncStatus {
-    Starting,
-    Kernels(u64, u64, NodeId, Option<Duration>),
-    Outputs(u64, u64, NodeId, Option<Duration>),
-    Finalizing,
 }

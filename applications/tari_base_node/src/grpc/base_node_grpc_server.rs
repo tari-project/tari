@@ -1361,11 +1361,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .state_info
             .get_block_sync_info()
             .map(|info| {
-                let node_ids = info.sync_peers.iter().map(|x| x.to_string().into_bytes()).collect();
+                let node_ids = info.sync_peer.node_id().to_string().into_bytes();
                 tari_rpc::SyncInfoResponse {
                     tip_height: info.tip_height,
                     local_height: info.local_height,
-                    peer_node_id: node_ids,
+                    peer_node_id: vec![node_ids],
                 }
             })
             .unwrap_or_default();
@@ -1436,7 +1436,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: latency.unwrap_or_default(),
+            avg_latency_ms: latency
+                .map(|l| u32::try_from(l.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or(0),
             num_node_connections: status.num_connected_nodes() as u32,
         };
 

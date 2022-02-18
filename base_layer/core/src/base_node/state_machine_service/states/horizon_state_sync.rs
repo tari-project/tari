@@ -23,25 +23,17 @@
 //!
 //! Horizon state synchronisation module for pruned mode.
 
-// TODO: Move the horizon synchronizer to the `sync` module
+use std::mem;
 
-mod config;
-pub use self::config::HorizonSyncConfig;
-
-mod error;
-pub use error::HorizonSyncError;
-
-mod horizon_state_synchronization;
-use horizon_state_synchronization::HorizonStateSynchronization;
 use log::*;
 
-use super::{
-    events_and_states::{HorizonSyncInfo, HorizonSyncStatus},
-    StateEvent,
-    StateInfo,
-};
+use super::{StateEvent, StateInfo};
 use crate::{
-    base_node::{sync::SyncPeer, BaseNodeStateMachine},
+    base_node::{
+        state_machine_service::states::StatusInfo,
+        sync::{HorizonStateSynchronization, HorizonSyncInfo, HorizonSyncStatus, SyncPeer},
+        BaseNodeStateMachine,
+    },
     chain_storage::BlockchainBackend,
     transactions::CryptoFactories,
 };
@@ -50,16 +42,12 @@ const LOG_TARGET: &str = "c::bn::state_machine_service::states::horizon_state_sy
 
 #[derive(Clone, Debug)]
 pub struct HorizonStateSync {
-    sync_peer: SyncPeer,
+    sync_peers: Vec<SyncPeer>,
 }
 
 impl HorizonStateSync {
-    pub fn new(sync_peer: SyncPeer) -> Self {
-        Self { sync_peer }
-    }
-
-    pub fn into_sync_peer(self) -> SyncPeer {
-        self.sync_peer
+    pub fn into_sync_peers(self) -> Vec<SyncPeer> {
+        self.sync_peers
     }
 
     pub async fn next_event<B: BlockchainBackend + 'static>(
@@ -90,14 +78,51 @@ impl HorizonStateSync {
             );
             return StateEvent::HorizonStateSynchronized;
         }
+        let sync_peers = mem::take(&mut self.sync_peers);
 
-        let info = HorizonSyncInfo::new(vec![self.sync_peer.node_id().clone()], HorizonSyncStatus::Starting);
-        shared.set_state_info(StateInfo::HorizonSync(info));
-
+        let db = shared.db.clone();
+        let config = shared.config.blockchain_sync_config.clone();
+        let connectivity = shared.connectivity.clone();
+        let rules = shared.consensus_rules.clone();
         let prover = CryptoFactories::default().range_proof;
-        let mut horizon_state = HorizonStateSynchronization::new(shared, &self.sync_peer, horizon_sync_height, prover);
+        let validator = shared.sync_validators.final_horizon_state.clone();
+        let mut horizon_sync = HorizonStateSynchronization::new(
+            config,
+            db,
+            connectivity,
+            rules,
+            &sync_peers,
+            horizon_sync_height,
+            prover,
+            validator,
+        );
 
-        match horizon_state.synchronize().await {
+        let status_event_sender = shared.status_event_sender.clone();
+        let bootstrapped = shared.is_bootstrapped();
+        let randomx_vm_cnt = shared.get_randomx_vm_cnt();
+        let randomx_vm_flags = shared.get_randomx_vm_flags();
+        let sync_peers_node_id = sync_peers.iter().map(|p| p.node_id()).cloned().collect();
+        horizon_sync.on_starting(move || {
+            let info = HorizonSyncInfo::new(sync_peers_node_id, HorizonSyncStatus::Starting);
+            let _ = status_event_sender.send(StatusInfo {
+                bootstrapped,
+                state_info: StateInfo::HorizonSync(info),
+                randomx_vm_cnt,
+                randomx_vm_flags,
+            });
+        });
+
+        let status_event_sender = shared.status_event_sender.clone();
+        horizon_sync.on_progress(move |info| {
+            let _ = status_event_sender.send(StatusInfo {
+                bootstrapped,
+                state_info: StateInfo::HorizonSync(info),
+                randomx_vm_cnt,
+                randomx_vm_flags,
+            });
+        });
+
+        match horizon_sync.synchronize().await {
             Ok(()) => {
                 info!(target: LOG_TARGET, "Horizon state has synchronized.");
                 StateEvent::HorizonStateSynchronized
@@ -110,8 +135,8 @@ impl HorizonStateSync {
     }
 }
 
-impl From<SyncPeer> for HorizonStateSync {
-    fn from(sync_peer: SyncPeer) -> Self {
-        Self { sync_peer }
+impl From<Vec<SyncPeer>> for HorizonStateSync {
+    fn from(sync_peers: Vec<SyncPeer>) -> Self {
+        Self { sync_peers }
     }
 }

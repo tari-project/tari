@@ -1,5 +1,26 @@
 # Changelog
 
+### [0.28.1](https://github.com/tari-project/tari/compare/v0.28.0...v0.28.1) (2022-02-17)
+
+
+### Features
+
+* add persistence of transaction cancellation reason to wallet db ([#3842](https://github.com/tari-project/tari/issues/3842)) ([31410cd](https://github.com/tari-project/tari/commit/31410cd05c14751136a93ec543c9822fd8221e18))
+* **cli:** resize terminal height ([#3838](https://github.com/tari-project/tari/issues/3838)) ([9026152](https://github.com/tari-project/tari/commit/90261526683c940c8aebe224d0d666931d4de11e))
+* resize base node terminal on startup ([#3827](https://github.com/tari-project/tari/issues/3827)) ([00bc6e2](https://github.com/tari-project/tari/commit/00bc6e2bb1afbd709d3fc8492d182242e92c7620)), closes [#1728](https://github.com/tari-project/tari/issues/1728)
+* **sync:** switch peers when max latency is exceeded ([#3741](https://github.com/tari-project/tari/issues/3741)) ([9e4af94](https://github.com/tari-project/tari/commit/9e4af94221dee0e87aa577a65bfa5d4b7809f558))
+* update console wallet tui ([#3837](https://github.com/tari-project/tari/issues/3837)) ([3403db6](https://github.com/tari-project/tari/commit/3403db6320210b2cd4497a87fad87d6d5dc87478))
+* **validator-node:** initial state sync implementation (partial) ([#3826](https://github.com/tari-project/tari/issues/3826)) ([ee4b52d](https://github.com/tari-project/tari/commit/ee4b52d97cb41133dbf1ed9dd2f0787fc00375d2))
+* **wallet:** add grpc method for setting base node ([#3828](https://github.com/tari-project/tari/issues/3828)) ([8791e93](https://github.com/tari-project/tari/commit/8791e93df52d05bec1a10d80e8c3a9416270d5d9))
+
+
+### Bug Fixes
+
+* daily test ([#3815](https://github.com/tari-project/tari/issues/3815)) ([815ba8e](https://github.com/tari-project/tari/commit/815ba8ea39fdfde97f3a79dabc4e74bf76ea5363))
+* **dan:** include state_root in node hash ([#3836](https://github.com/tari-project/tari/issues/3836)) ([5cda980](https://github.com/tari-project/tari/commit/5cda980d92fb3c4617836611dcfb59e01c58cec6))
+* update RFC links and README ([#3675](https://github.com/tari-project/tari/issues/3675)) ([#3839](https://github.com/tari-project/tari/issues/3839)) ([22416a1](https://github.com/tari-project/tari/commit/22416a1c2efd9328f35f11ad89bed3fb845c9f72))
+* **wallet:** fix aggressive disconnects in wallet connectivity ([#3807](https://github.com/tari-project/tari/issues/3807)) ([86e0154](https://github.com/tari-project/tari/commit/86e01542e6b92794613bfdb32ca54d28c5e19ed7))
+
 ## [0.28.0](https://github.com/tari-project/tari/compare/v0.27.2...v0.28.0) (2022-02-10)
 
 

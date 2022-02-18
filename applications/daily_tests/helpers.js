@@ -154,10 +154,10 @@ async function monitorProcessOutput({
 }
 
 const git = {
-  pull(cwd = null) {
+  command(params, cwd = null) {
     cwd = cwd || process.cwd();
     return new Promise((resolve, reject) => {
-      let ps = spawn("git", ["pull", "--rebase"], { cwd });
+      let ps = spawn("git", params, { cwd });
       ps.stdout.on("data", (buf) => {
         console.log(buf.toString());
       });
@@ -173,6 +173,8 @@ const git = {
       });
     });
   },
+  reset: (cwd = null) => git.command(["reset", "--hard"], cwd),
+  pull: (cwd = null) => git.command(["pull", "--rebase"], cwd),
 };
 
 module.exports = {
