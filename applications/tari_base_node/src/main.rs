@@ -86,6 +86,7 @@ mod table;
 #[macro_use]
 mod macros;
 
+mod args;
 mod bootstrap;
 mod builder;
 mod cli;
