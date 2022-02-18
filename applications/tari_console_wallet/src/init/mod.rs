@@ -318,7 +318,7 @@ pub async fn init_wallet(
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
 
-    let node_address = match config.public_address.clone() {
+    let node_address = match config.comms_public_address.clone() {
         Some(addr) => addr,
         None => match wallet_db.get_node_address().await? {
             Some(addr) => addr,
@@ -387,17 +387,17 @@ pub async fn init_wallet(
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
             auto_join: true,
-            allow_test_addresses: config.allow_test_addresses,
+            allow_test_addresses: config.comms_allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_config: SafConfig {
                 msg_validity: config.saf_expiry_duration,
                 ..Default::default()
             },
-            dedup_cache_capacity: config.dedup_cache_capacity,
+            dedup_cache_capacity: config.dht_dedup_cache_capacity,
             ..Default::default()
         },
         // This should be false unless testing locally
-        allow_test_addresses: config.allow_test_addresses,
+        allow_test_addresses: config.comms_allow_test_addresses,
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
