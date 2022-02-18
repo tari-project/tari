@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, marker::PhantomData};
+use std::collections::HashMap;
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -43,6 +43,7 @@ use crate::{
         infrastructure_services::{InboundConnectionService, OutboundService},
         PayloadProcessor,
         PayloadProvider,
+        ServiceSpecification,
         SigningService,
     },
     storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, DbFactory, StorageError},
@@ -51,71 +52,42 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
 
-pub struct Prepare<TInboundConnectionService, TOutboundService, TSigningService, TPayloadProvider, TPayloadProcessor>
-where TOutboundService: OutboundService
-{
-    node_id: TOutboundService::Addr,
+pub struct Prepare<TSpecification: ServiceSpecification> {
+    node_id: TSpecification::Addr,
     asset_public_key: PublicKey,
-    // bft_service: Box<dyn BftReplicaService>,
-    // TODO remove this hack
-    phantom: PhantomData<TInboundConnectionService>,
-    phantom_payload_provider: PhantomData<TPayloadProvider>,
-    phantom_outbound: PhantomData<TOutboundService>,
-    phantom_signing: PhantomData<TSigningService>,
-    phantom_processor: PhantomData<TPayloadProcessor>,
-    received_new_view_messages: HashMap<TOutboundService::Addr, HotStuffMessage<TOutboundService::Payload>>,
+    received_new_view_messages: HashMap<TSpecification::Addr, HotStuffMessage<TSpecification::Payload>>,
 }
 
-impl<TInboundConnectionService, TOutboundService, TSigningService, TPayloadProvider, TPayloadProcessor>
-    Prepare<TInboundConnectionService, TOutboundService, TSigningService, TPayloadProvider, TPayloadProcessor>
-where
-    TOutboundService: OutboundService,
-    TInboundConnectionService:
-        InboundConnectionService<Addr = TOutboundService::Addr, Payload = TOutboundService::Payload> + Send,
-    TSigningService: SigningService<TOutboundService::Addr>,
-    TPayloadProvider: PayloadProvider<TOutboundService::Payload>,
-    TPayloadProcessor: PayloadProcessor<TOutboundService::Payload>,
-{
-    pub fn new(node_id: TOutboundService::Addr, asset_public_key: PublicKey) -> Self {
+impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
+    pub fn new(node_id: TSpecification::Addr, asset_public_key: PublicKey) -> Self {
         Self {
             node_id,
             asset_public_key,
-            phantom: PhantomData,
-            phantom_payload_provider: PhantomData,
-            phantom_outbound: PhantomData,
-            phantom_signing: PhantomData,
             received_new_view_messages: HashMap::new(),
-            phantom_processor: PhantomData,
         }
     }
 
-    pub async fn next_event<
-        TChainStorageService: ChainStorageService<TOutboundService::Payload>,
-        TUnitOfWork: ChainDbUnitOfWork,
-        TStateDbUnitOfWork: StateDbUnitOfWork,
-        TDbFactory: DbFactory,
-    >(
+    pub async fn next_event<TChainDbUnitOfWork: ChainDbUnitOfWork, TStateDbUnitOfWork: StateDbUnitOfWork>(
         &mut self,
         current_view: &View,
         timeout: Duration,
         asset_definition: &AssetDefinition,
-        committee: &Committee<TOutboundService::Addr>,
-        inbound_services: &TInboundConnectionService,
-        outbound_service: &mut TOutboundService,
-        payload_provider: &mut TPayloadProvider,
-        signing_service: &TSigningService,
-        payload_processor: &mut TPayloadProcessor,
-        chain_storage_service: &TChainStorageService,
-        chain_tx: TUnitOfWork,
+        committee: &Committee<TSpecification::Addr>,
+        inbound_services: &TSpecification::InboundConnectionService,
+        outbound_service: &mut TSpecification::OutboundService,
+        payload_provider: &mut TSpecification::PayloadProvider,
+        signing_service: &TSpecification::SigningService,
+        payload_processor: &mut TSpecification::PayloadProcessor,
+        chain_storage_service: &TSpecification::ChainStorageService,
+        mut chain_tx: TChainDbUnitOfWork,
         state_tx: &mut TStateDbUnitOfWork,
-        db_factory: &TDbFactory,
+        db_factory: &TSpecification::DbFactory,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
-
-        let mut chain_tx = chain_tx;
-        let next_event_result;
         let timeout = sleep(timeout);
         futures::pin_mut!(timeout);
+        debug!(target: LOG_TARGET, "[PREPARE] Current view: {}", current_view);
+
         if current_view.is_leader() {
             debug!(
                 target: LOG_TARGET,
@@ -135,7 +107,7 @@ where
                     let (from, message) = r?;
                     debug!(target: LOG_TARGET, "Received leader message (is_leader = {:?})", current_view.is_leader());
                     if current_view.is_leader() {
-                        if let Some(result) = self.process_leader_message(
+                        if let Some(event) = self.process_leader_message(
                             current_view,
                             message.clone(),
                             &from,
@@ -146,15 +118,14 @@ where
                             outbound_service,
                             db_factory,
                         ).await? {
-                            next_event_result = result;
-                            break;
+                            break Ok(event)
                         }
                     }
                 },
                 r = inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
                     let (from, message) = r?;
                     debug!(target: LOG_TARGET, "Received replica message");
-                    if let Some(result) = self.process_replica_message(
+                    if let Some(event) = self.process_replica_message(
                         &message,
                         current_view,
                         &from,
@@ -167,34 +138,28 @@ where
                         chain_storage_service,
                         state_tx,
                     ).await? {
-                        next_event_result = result;
-                        break;
+                        break Ok(event);
                     }
 
                 },
                 _ = &mut timeout => {
-                    next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                    break;
+                    break Ok( ConsensusWorkerStateEvent::TimedOut);
                 }
-                // _ = shutdown => {
-                //     return Ok(ConsensusWorkerStateEvent::ShutdownReceived)
-                // }
             }
         }
-        Ok(next_event_result)
     }
 
-    async fn process_leader_message<TDbFactory: DbFactory>(
+    async fn process_leader_message(
         &mut self,
         current_view: &View,
-        message: HotStuffMessage<TOutboundService::Payload>,
-        sender: &TOutboundService::Addr,
+        message: HotStuffMessage<TSpecification::Payload>,
+        sender: &TSpecification::Addr,
         asset_definition: &AssetDefinition,
-        committee: &Committee<TOutboundService::Addr>,
-        payload_provider: &TPayloadProvider,
-        payload_processor: &mut TPayloadProcessor,
-        outbound: &mut TOutboundService,
-        db_factory: &TDbFactory,
+        committee: &Committee<TSpecification::Addr>,
+        payload_provider: &TSpecification::PayloadProvider,
+        payload_processor: &mut TSpecification::PayloadProcessor,
+        outbound: &mut TSpecification::OutboundService,
+        db_factory: &TSpecification::DbFactory,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         debug!(
             target: LOG_TARGET,
@@ -247,22 +212,18 @@ where
         }
     }
 
-    async fn process_replica_message<
-        TUnitOfWork: ChainDbUnitOfWork,
-        TChainStorageService: ChainStorageService<TOutboundService::Payload>,
-        TStateDbUnitOfWork: StateDbUnitOfWork,
-    >(
+    async fn process_replica_message<TChainDbUnitOfWork: ChainDbUnitOfWork, TStateDbUnitOfWork: StateDbUnitOfWork>(
         &self,
-        message: &HotStuffMessage<TOutboundService::Payload>,
+        message: &HotStuffMessage<TSpecification::Payload>,
         current_view: &View,
-        from: &TOutboundService::Addr,
-        view_leader: &TOutboundService::Addr,
-        outbound: &mut TOutboundService,
-        signing_service: &TSigningService,
-        payload_processor: &mut TPayloadProcessor,
-        payload_provider: &mut TPayloadProvider,
-        chain_tx: &mut TUnitOfWork,
-        chain_storage_service: &TChainStorageService,
+        from: &TSpecification::Addr,
+        view_leader: &TSpecification::Addr,
+        outbound: &mut TSpecification::OutboundService,
+        signing_service: &TSpecification::SigningService,
+        payload_processor: &mut TSpecification::PayloadProcessor,
+        payload_provider: &mut TSpecification::PayloadProvider,
+        chain_tx: &mut TChainDbUnitOfWork,
+        chain_storage_service: &TSpecification::ChainStorageService,
         state_tx: &mut TStateDbUnitOfWork,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         debug!(
@@ -323,7 +284,7 @@ where
         );
 
         chain_storage_service
-            .add_node::<TUnitOfWork>(node, chain_tx.clone())
+            .add_node::<TChainDbUnitOfWork>(node, chain_tx.clone())
             .await?;
 
         payload_provider.reserve_payload(node.payload(), node.hash()).await?;
@@ -360,15 +321,15 @@ where
         &self,
         parent: TreeNodeHash,
         asset_definition: &AssetDefinition,
-        payload_provider: &TPayloadProvider,
-        payload_processor: &mut TPayloadProcessor,
+        payload_provider: &TSpecification::PayloadProvider,
+        payload_processor: &mut TSpecification::PayloadProcessor,
         view_id: ViewId,
         state_db: TStateDbUnitOfWork,
-    ) -> Result<HotStuffTreeNode<TOutboundService::Payload>, DigitalAssetError> {
-        debug!(target: LOG_TARGET, "Creating new proposal");
+    ) -> Result<HotStuffTreeNode<TSpecification::Payload>, DigitalAssetError> {
+        debug!(target: LOG_TARGET, "Creating new proposal for {}", view_id);
 
         // TODO: Artificial delay here to set the block time
-        sleep(Duration::from_secs(1)).await;
+        sleep(Duration::from_secs(10)).await;
 
         if view_id.is_genesis() {
             let payload = payload_provider.create_genesis_payload(asset_definition);
@@ -389,9 +350,9 @@ where
 
     async fn broadcast_proposal(
         &self,
-        outbound: &mut TOutboundService,
-        committee: &Committee<TOutboundService::Addr>,
-        proposal: HotStuffTreeNode<TOutboundService::Payload>,
+        outbound: &mut TSpecification::OutboundService,
+        committee: &Committee<TSpecification::Addr>,
+        proposal: HotStuffTreeNode<TSpecification::Payload>,
         high_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
@@ -401,13 +362,13 @@ where
             .await
     }
 
-    fn does_extend(&self, node: &HotStuffTreeNode<TOutboundService::Payload>, from: &TreeNodeHash) -> bool {
+    fn does_extend(&self, node: &HotStuffTreeNode<TSpecification::Payload>, from: &TreeNodeHash) -> bool {
         from == node.parent()
     }
 
     fn is_safe_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
-        node: &HotStuffTreeNode<TOutboundService::Payload>,
+        node: &HotStuffTreeNode<TSpecification::Payload>,
         quorum_certificate: &QuorumCertificate,
         chain_tx: &mut TUnitOfWork,
     ) -> Result<bool, StorageError> {
@@ -418,10 +379,10 @@ where
     async fn send_vote_to_leader(
         &self,
         node: TreeNodeHash,
-        outbound: &mut TOutboundService,
-        view_leader: &TOutboundService::Addr,
+        outbound: &mut TSpecification::OutboundService,
+        view_leader: &TSpecification::Addr,
         view_number: ViewId,
-        signing_service: &TSigningService,
+        signing_service: &TSpecification::SigningService,
     ) -> Result<(), DigitalAssetError> {
         // TODO: Only send node hash, not the full node
         let mut message = HotStuffMessage::vote_prepare(node, view_number, self.asset_public_key.clone());
