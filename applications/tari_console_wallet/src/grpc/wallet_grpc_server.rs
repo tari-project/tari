@@ -136,7 +136,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
     ) -> Result<Response<CheckConnectivityResponse>, Status> {
         let mut connectivity = self.wallet.wallet_connectivity.clone();
         let status = connectivity.get_connectivity_status();
-        let gprc_connectivity = match status {
+        let grpc_connectivity = match status {
             tari_wallet::connectivity_service::OnlineStatus::Connecting => OnlineStatus::Connecting,
             tari_wallet::connectivity_service::OnlineStatus::Online => OnlineStatus::Online,
             tari_wallet::connectivity_service::OnlineStatus::Offline => OnlineStatus::Offline,
