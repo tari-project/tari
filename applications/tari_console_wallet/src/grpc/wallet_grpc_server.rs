@@ -36,6 +36,8 @@ use tari_app_grpc::{
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateCommitteeDefinitionRequest,
+        CreateCommitteeDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
@@ -655,8 +657,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })
             .next()
             .unwrap();
+        let message = format!("Asset registration for {}", asset_public_key);
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "register asset transaction".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(RegisterAssetResponse {
@@ -695,23 +698,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
             .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
-        let committee_public_keys: Vec<RistrettoPublicKey> = message
-            .committee
-            .iter()
-            .map(|c| PublicKey::from_bytes(c.as_slice()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
 
         let merkle_root = copy_into_fixed_array(&message.merkle_root)
             .map_err(|_| Status::invalid_argument("Merkle root has an incorrect length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_initial_asset_checkpoint(&asset_public_key, merkle_root, committee_public_keys.as_slice())
+            .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let message = format!("Initial asset checkpoint for {}", asset_public_key);
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "Asset checkpoint".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -728,34 +726,57 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
             .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
-        let committee_public_keys: Vec<RistrettoPublicKey> = message
-            .next_committee
-            .iter()
-            .map(|c| PublicKey::from_bytes(c.as_slice()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| {
-                Status::invalid_argument(format!("Next committee did not contain valid pub keys:{}", err))
-            })?;
 
         let merkle_root = copy_into_fixed_array(&message.merkle_root)
             .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_follow_on_asset_checkpoint(
-                &asset_public_key,
-                message.unique_id.as_slice(),
-                merkle_root,
-                committee_public_keys.as_slice(),
-            )
+            .create_follow_on_asset_checkpoint(&asset_public_key, message.unique_id.as_slice(), merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let message = format!("Asset state checkpoint for {}", asset_public_key);
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "Follow on asset checkpoint".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
+    }
+
+    async fn create_committee_definition(
+        &self,
+        request: Request<CreateCommitteeDefinitionRequest>,
+    ) -> Result<Response<CreateCommitteeDefinitionResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let committee_public_keys: Vec<RistrettoPublicKey> = message
+            .committee
+            .iter()
+            .map(|c| PublicKey::from_bytes(c.as_slice()))
+            .collect::<Result<_, _>>()
+            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
+        let effective_sidechain_height = message.effective_sidechain_height;
+
+        let (tx_id, transaction) = asset_manager
+            .create_committee_definition(&asset_public_key, &committee_public_keys, effective_sidechain_height)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        let message = format!(
+            "Committee checkpoint for asset {} with effective sidechain height {}",
+            asset_public_key, effective_sidechain_height
+        );
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateCommitteeDefinitionResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
@@ -784,14 +805,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let owner_commitments = transaction
+        let owner_commitments: Vec<Vec<u8>> = transaction
             .body
             .outputs()
             .iter()
             .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
             .collect();
+
+        let message = format!(
+            "Minting {} tokens for asset {}",
+            owner_commitments.len(),
+            asset_public_key
+        );
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "test mint transaction".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 

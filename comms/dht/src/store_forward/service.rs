@@ -191,7 +191,6 @@ pub struct StoreAndForwardService {
 }
 
 impl StoreAndForwardService {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: SafConfig,
         conn: DbConnection,

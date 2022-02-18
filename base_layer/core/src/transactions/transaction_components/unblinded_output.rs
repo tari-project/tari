@@ -79,7 +79,7 @@ pub struct UnblindedOutput {
 
 impl UnblindedOutput {
     /// Creates a new un-blinded output
-    #[allow(clippy::too_many_arguments)]
+
     pub fn new(
         version: TransactionOutputVersion,
         value: MicroTari,
@@ -108,7 +108,6 @@ impl UnblindedOutput {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn new_current_version(
         value: MicroTari,
         spending_key: BlindingFactor,
@@ -197,7 +196,8 @@ impl UnblindedOutput {
             ));
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-        let output = TransactionOutput::new_current_version(
+        let output = TransactionOutput::new(
+            self.version,
             self.features.clone(),
             commitment,
             RangeProof::from_bytes(
@@ -243,7 +243,8 @@ impl UnblindedOutput {
                 .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?
         };
 
-        let output = TransactionOutput::new_current_version(
+        let output = TransactionOutput::new(
+            self.version,
             self.features.clone(),
             commitment,
             proof,

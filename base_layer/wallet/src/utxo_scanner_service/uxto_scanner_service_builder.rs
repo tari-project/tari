@@ -108,7 +108,6 @@ impl UtxoScannerServiceBuilder {
         )
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn build_with_resources<TBackend: WalletBackend + 'static>(
         &mut self,
         db: WalletDatabase<TBackend>,
