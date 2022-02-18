@@ -108,10 +108,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use futures::{pin_mut, FutureExt};
+use derive_more::{Deref, DerefMut};
+use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use parser::Parser;
+use parser::{Parser, Performer};
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
@@ -139,9 +140,9 @@ use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
-    sync::Mutex,
-    task,
-    time::{self},
+    sync::{mpsc, Mutex},
+    task::{self, JoinHandle},
+    time,
 };
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
@@ -298,15 +299,11 @@ async fn run_node(
         task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
-        let parser = Parser::new(command_handler);
-        cli::print_banner(parser.get_commands(), 3);
-
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-
-        task::spawn(cli_loop(parser, shutdown));
+        task::spawn(cli_loop(command_handler, shutdown));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -366,32 +363,55 @@ async fn run_grpc(
     Ok(())
 }
 
-async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<Parser>), String> {
-    task::spawn_blocking(|| {
-        let readline = rustyline.readline(">> ");
+enum CommandEvent {
+    Command(String),
+    Interrupt,
+    Error(String),
+}
 
-        match readline {
-            Ok(line) => {
-                rustyline.add_history_entry(line.as_str());
-                Ok((line, rustyline))
-            },
-            Err(ReadlineError::Interrupted) => {
-                // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                println!("The node is shutting down because Ctrl+C was received...");
-                info!(
-                    target: LOG_TARGET,
-                    "Termination signal received from user. Shutting node down."
-                );
-                Err("Node is shutting down".to_string())
-            },
-            Err(err) => {
-                println!("Error: {:?}", err);
-                Err(err.to_string())
-            },
-        }
-    })
-    .await
-    .expect("Could not spawn rustyline task")
+#[derive(Deref, DerefMut)]
+struct CommandReader {
+    #[allow(dead_code)]
+    task: JoinHandle<()>,
+    #[deref]
+    #[deref_mut]
+    receiver: mpsc::UnboundedReceiver<CommandEvent>,
+}
+
+impl CommandReader {
+    fn new(mut rustyline: Editor<Parser>) -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let task = task::spawn_blocking(move || {
+            loop {
+                let readline = rustyline.readline(">> ");
+
+                let event;
+                match readline {
+                    Ok(line) => {
+                        rustyline.add_history_entry(line.as_str());
+                        event = CommandEvent::Command(line);
+                    },
+                    Err(ReadlineError::Interrupted) => {
+                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
+                        println!("The node is shutting down because Ctrl+C was received...");
+                        info!(
+                            target: LOG_TARGET,
+                            "Termination signal received from user. Shutting node down."
+                        );
+                        event = CommandEvent::Interrupt;
+                    },
+                    Err(err) => {
+                        println!("Error: {:?}", err);
+                        event = CommandEvent::Error(err.to_string());
+                    },
+                }
+                if tx.send(event).is_err() {
+                    break;
+                }
+            }
+        });
+        Self { task, receiver: rx }
+    }
 }
 
 fn status_interval(start_time: Instant) -> time::Sleep {
@@ -427,7 +447,12 @@ async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shut
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
+async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shutdown) {
+    let parser = Parser::new();
+    cli::print_banner(parser.get_commands(), 3);
+
+    let mut performer = Performer::new(command_handler);
+
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -435,10 +460,9 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
         .output_stream(OutputStreamType::Stdout)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
-    let command_handler = parser.get_command_handler();
+    let command_handler = performer.get_command_handler();
     rustyline.set_helper(Some(parser));
-    let read_command_fut = read_command(rustyline).fuse();
-    pin_mut!(read_command_fut);
+    let mut reader = CommandReader::new(rustyline);
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
@@ -451,21 +475,23 @@ async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
     loop {
         let interval = status_interval(start_time);
         tokio::select! {
-            res = &mut read_command_fut => {
-                match res {
-                    Ok((line, mut rustyline)) => {
-                        if let Some(p) = rustyline.helper_mut() {
-                            p.handle_command(line.as_str(), &mut shutdown).await;
+            res = reader.recv() => {
+                if let Some(event) = res {
+                    match event {
+                        CommandEvent::Command(line) => {
+                            performer.handle_command(line.as_str(), &mut shutdown).await;
                         }
-                        if !shutdown.is_triggered() {
-                            read_command_fut.set(read_command(rustyline).fuse());
+                        CommandEvent::Interrupt => {
                         }
-                    },
-                    Err(err) => {
-                        // This happens when the node is shutting down.
-                        debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                        break;
+                        CommandEvent::Error(err) => {
+                            // TODO: Not sure we have to break here
+                            // This happens when the node is shutting down.
+                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                            break;
+                        }
                     }
+                } else {
+                    break;
                 }
             },
             Ok(_) = software_update_notif.changed() => {

@@ -89,12 +89,16 @@ pub enum BaseNodeCommand {
     Exit,
 }
 
+#[derive(Clone)]
+pub struct Performer {
+    command_handler: Arc<Mutex<CommandHandler>>,
+}
+
 /// This is used to parse commands from the user and execute them
 #[derive(Helper, Validator, Highlighter)]
 pub struct Parser {
     commands: Vec<String>,
     hinter: HistoryHinter,
-    command_handler: Arc<Mutex<CommandHandler>>,
 }
 
 /// This will go through all instructions and look for potential matches
@@ -128,17 +132,26 @@ impl Hinter for Parser {
 
 impl Parser {
     /// creates a new parser struct
-    pub fn new(command_handler: Arc<Mutex<CommandHandler>>) -> Self {
+    pub fn new() -> Self {
         Parser {
             commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
             hinter: HistoryHinter {},
-            command_handler,
         }
     }
 
     /// This will return the list of commands from the parser
     pub fn get_commands(&self) -> Vec<String> {
         self.commands.clone()
+    }
+}
+
+impl Performer {
+    pub fn new(command_handler: Arc<Mutex<CommandHandler>>) -> Self {
+        Self { command_handler }
+    }
+
+    pub fn get_command_handler(&self) -> Arc<Mutex<CommandHandler>> {
+        self.command_handler.clone()
     }
 
     /// This will parse the provided command and execute the task
@@ -162,10 +175,6 @@ impl Parser {
                 println!("Enter help or press tab for available commands");
             },
         }
-    }
-
-    pub fn get_command_handler(&self) -> Arc<Mutex<CommandHandler>> {
-        self.command_handler.clone()
     }
 
     /// Function to process commands
@@ -296,7 +305,11 @@ impl Parser {
         match command {
             Help => {
                 println!("Available commands are: ");
-                let joined = self.commands.join(", ");
+                // TODO: Improve that
+                let joined = BaseNodeCommand::iter()
+                    .map(|item| item.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 println!("{}", joined);
             },
             Status => {
