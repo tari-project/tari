@@ -93,6 +93,7 @@ mod cli;
 mod command_handler;
 mod grpc;
 mod parser;
+mod reader;
 mod recovery;
 mod status_line;
 mod utils;
@@ -108,12 +109,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use derive_more::{Deref, DerefMut};
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use parser::{Parser, Performer};
-use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
+use rustyline::{config::OutputStreamType, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -138,16 +138,14 @@ use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    runtime,
-    sync::{mpsc, Mutex},
-    task::{self, JoinHandle},
-    time,
-};
+use tokio::{runtime, sync::Mutex, task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-use crate::command_handler::{CommandHandler, StatusOutput};
+use crate::{
+    command_handler::{CommandHandler, StatusOutput},
+    reader::{CommandEvent, CommandReader},
+};
 
 const LOG_TARGET: &str = "base_node::app";
 
@@ -363,53 +361,6 @@ async fn run_grpc(
     Ok(())
 }
 
-enum CommandEvent {
-    Command(String),
-    Interrupt,
-    Error(String),
-}
-
-#[derive(Deref, DerefMut)]
-struct CommandReader {
-    #[allow(dead_code)]
-    task: JoinHandle<()>,
-    #[deref]
-    #[deref_mut]
-    receiver: mpsc::UnboundedReceiver<CommandEvent>,
-}
-
-impl CommandReader {
-    fn new(mut rustyline: Editor<Parser>) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
-        let task = task::spawn_blocking(move || {
-            loop {
-                let readline = rustyline.readline(">> ");
-
-                let event;
-                match readline {
-                    Ok(line) => {
-                        rustyline.add_history_entry(line.as_str());
-                        event = CommandEvent::Command(line);
-                    },
-                    Err(ReadlineError::Interrupted) => {
-                        // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                        info!(target: LOG_TARGET, "Interruption signal received from user.");
-                        event = CommandEvent::Interrupt;
-                    },
-                    Err(err) => {
-                        println!("Error: {:?}", err);
-                        event = CommandEvent::Error(err.to_string());
-                    },
-                }
-                if tx.send(event).is_err() {
-                    break;
-                }
-            }
-        });
-        Self { task, receiver: rx }
-    }
-}
-
 fn status_interval(start_time: Instant) -> time::Sleep {
     let duration = match start_time.elapsed().as_secs() {
         0..=120 => Duration::from_secs(5),
@@ -511,6 +462,7 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
                 }
             }
             _ = interval => {
+                // TODO: Execute `watch` command
                 command_handler.lock().await.status(StatusOutput::Full);
             },
             _ = shutdown_signal.wait() => {
