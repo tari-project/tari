@@ -290,24 +290,25 @@ impl CommandHandler {
     }
 
     pub async fn search_utxo(&mut self, commitment: Commitment) -> Result<(), Error> {
-        let mut data = self
+        let v = self
             .node_service
             .fetch_blocks_with_utxos(vec![commitment.clone()])
-            .await?;
-        match data.pop() {
-            Some(v) => println!("{}", v.block()),
-            _ => println!("Block not found for utxo commitment {}", commitment.to_hex()),
-        }
+            .await?
+            .pop()
+            .ok_or_else(|| anyhow!("Block not found for utxo commitment {}", commitment.to_hex()))?;
+        println!("{}", v.block());
         Ok(())
     }
 
     pub async fn search_kernel(&mut self, excess_sig: Signature) -> Result<(), Error> {
         let hex_sig = excess_sig.get_signature().to_hex();
-        let mut data = self.node_service.get_blocks_with_kernels(vec![excess_sig]).await?;
-        match data.pop() {
-            Some(v) => println!("{}", v),
-            _ => println!("No kernel with signature {} found", hex_sig),
-        }
+        let v = self
+            .node_service
+            .get_blocks_with_kernels(vec![excess_sig])
+            .await?
+            .pop()
+            .ok_or_else(|| anyhow!("No kernel with signature {} found", hex_sig))?;
+        println!("{}", v);
         Ok(())
     }
 
@@ -508,56 +509,43 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn dial_peer(&self, dest_node_id: NodeId) {
+    pub async fn dial_peer(&self, dest_node_id: NodeId) -> Result<(), Error> {
         let start = Instant::now();
         println!("☎️  Dialing peer...");
 
-        match self.connectivity.dial_peer(dest_node_id).await {
-            Ok(p) => {
-                println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
-                println!("Connection: {}", p);
-            },
-            Err(err) => {
-                println!("📞  Dial failed: {}", err);
-            },
-        }
+        let connection = self.connectivity.dial_peer(dest_node_id).await?;
+        println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
+        println!("Connection: {}", connection);
+        Ok(())
     }
 
-    pub async fn ping_peer(&mut self, dest_node_id: NodeId) {
+    pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
         // TODO: Add timeout here (we should add a timeout to an every command)
         // time::timeout(Duration::from_secs(30), fut)
         println!("🏓 Pinging peer...");
         let mut liveness_events = self.liveness.get_event_stream();
 
-        match self.liveness.send_ping(dest_node_id.clone()).await {
-            Ok(_) => loop {
-                match liveness_events.recv().await {
-                    Ok(event) =>
-                    {
-                        #[allow(clippy::single_match)]
-                        match &*event {
-                            LivenessEvent::ReceivedPong(pong) => {
-                                if pong.node_id == dest_node_id {
-                                    println!(
-                                        "🏓️ Pong received, latency in is {:.2?}!",
-                                        pong.latency.unwrap_or_default()
-                                    );
-                                    break;
-                                }
-                            },
-                            _ => {},
+        self.liveness.send_ping(dest_node_id.clone()).await?;
+        loop {
+            match liveness_events.recv().await {
+                Ok(event) => {
+                    if let LivenessEvent::ReceivedPong(pong) = &*event {
+                        if pong.node_id == dest_node_id {
+                            println!(
+                                "🏓️ Pong received, latency in is {:.2?}!",
+                                pong.latency.unwrap_or_default()
+                            );
+                            break;
                         }
-                    },
-                    Err(broadcast::error::RecvError::Closed) => {
-                        break;
-                    },
-                    _ => {},
-                }
-            },
-            Err(err) => {
-                println!("📞  Could not send ping: {}", err);
-            },
+                    }
+                },
+                Err(broadcast::error::RecvError::Closed) => {
+                    break;
+                },
+                _ => {},
+            }
         }
+        Ok(())
     }
 
     pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration, must_ban: bool) {

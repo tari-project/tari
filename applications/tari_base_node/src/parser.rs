@@ -467,15 +467,13 @@ impl Performer {
     /// Function to process the dial-peer command
     async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.dial_peer(dest_node_id.into()).await;
-        Ok(())
+        self.command_handler.dial_peer(dest_node_id.into()).await
     }
 
     /// Function to process the dial-peer command
     async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.ping_peer(dest_node_id.into()).await;
-        Ok(())
+        self.command_handler.ping_peer(dest_node_id.into()).await
     }
 
     /// Function to process the ban-peer command
