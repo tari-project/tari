@@ -22,7 +22,6 @@
 
 use std::{
     cmp,
-    fs::File,
     io::{self, Write},
     str::FromStr,
     string::ToString,
@@ -65,7 +64,11 @@ use tari_p2p::{
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use thiserror::Error;
-use tokio::sync::{broadcast, watch};
+use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
+    sync::{broadcast, watch},
+};
 
 use super::LOG_TARGET;
 use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
@@ -885,8 +888,7 @@ impl CommandHandler {
         filename: String,
         pow_algo: Option<PowAlgorithm>,
     ) -> Result<(), Error> {
-        // TODO: Use `async` here!!!
-        let mut output = File::create(&filename)?;
+        let mut output = File::create(&filename).await?;
 
         println!(
             "Loading header from height {} to {} and dumping to file [working-dir]/{}.{}",
@@ -899,11 +901,13 @@ impl CommandHandler {
         let start_height = cmp::max(start_height, 1);
         let mut prev_header = self.blockchain_db.fetch_chain_header(start_height - 1).await?;
 
+        let mut buff = Vec::new();
         writeln!(
-            output,
+            buff,
             "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
              Window,Acc.Monero,Acc.Sha3"
         )?;
+        output.write_all(&buff).await?;
 
         for height in start_height..=end_height {
             let header = self.blockchain_db.fetch_chain_header(height).await?;
@@ -941,8 +945,9 @@ impl CommandHandler {
             let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
             let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
 
+            buff.clear();
             writeln!(
-                output,
+                buff,
                 "{},{},{},{},{},{},{},{},{},{},{}",
                 height,
                 achieved.as_u64(),
@@ -956,6 +961,7 @@ impl CommandHandler {
                 acc_monero.as_u64(),
                 acc_sha3.as_u64(),
             )?;
+            output.write_all(&buff).await?;
 
             if header.header().hash() != header.accumulated_data().hash {
                 eprintln!(
