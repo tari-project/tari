@@ -420,8 +420,12 @@ async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
                 if let Some(event) = res {
                     match event {
                         CommandEvent::Command(line) => {
-                            performer.handle_command(line.as_str(), &mut shutdown).await;
                             first_signal = false;
+                            let fut = performer.handle_command(line.as_str(), &mut shutdown);
+                            let res = time::timeout(Duration::from_secs(30), fut).await;
+                            if let Err(_err) = res {
+                                println!("Time for command execution elapsed: `{}`", line);
+                            }
                         }
                         CommandEvent::Interrupt => {
                             if !first_signal {

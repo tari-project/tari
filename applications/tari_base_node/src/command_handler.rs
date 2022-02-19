@@ -523,8 +523,6 @@ impl CommandHandler {
     }
 
     pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
-        // TODO: Add timeout here (we should add a timeout to an every command)
-        // time::timeout(Duration::from_secs(30), fut)
         println!("🏓 Pinging peer...");
         let mut liveness_events = self.liveness.get_event_stream();
 
