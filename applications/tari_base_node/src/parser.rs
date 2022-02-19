@@ -22,6 +22,7 @@
 
 use std::{string::ToString, time::Duration};
 
+use anyhow::Error;
 use derive_more::{Deref, DerefMut};
 use log::*;
 use rustyline::{
@@ -180,7 +181,7 @@ impl Performer {
         command: BaseNodeCommand,
         mut typed_args: Args<'a>,
         shutdown: &mut Shutdown,
-    ) -> Result<(), ArgsError> {
+    ) -> Result<(), Error> {
         use BaseNodeCommand::*;
         match command {
             Help => {
@@ -463,7 +464,7 @@ impl Performer {
     }
 
     /// Function to process the get-block command
-    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let height = args.try_take_next("height")?;
         let hash: Option<FromHex<Vec<u8>>> = args.try_take_next("hash")?;
         args.shift_one();
@@ -481,19 +482,20 @@ impl Performer {
             _ => Err(ArgsError::new(
                 "height",
                 "Invalid block height or hash provided. Height must be an integer.",
-            )),
+            )
+            .into()),
         }
     }
 
     /// Function to process the search utxo command
-    async fn process_search_utxo<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_search_utxo<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let commitment: FromHex<Commitment> = args.take_next("hex")?;
         self.command_handler.search_utxo(commitment.0).await;
         Ok(())
     }
 
     /// Function to process the search kernel command
-    async fn process_search_kernel<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_search_kernel<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
         let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
         let kernel_sig = Signature::new(public_nonce.0, signature.0);
@@ -501,20 +503,20 @@ impl Performer {
         Ok(())
     }
 
-    async fn get_mempool_state_tx<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn get_mempool_state_tx<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let filter = args.take_next("filter").ok();
         self.command_handler.get_mempool_state(filter).await;
         Ok(())
     }
 
     /// Function to process the discover-peer command
-    async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let key: UniPublicKey = args.take_next("id")?;
         self.command_handler.discover_peer(Box::new(key.into())).await;
         Ok(())
     }
 
-    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let original_str = args
             .try_take_next("node_id")?
             .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
@@ -537,21 +539,21 @@ impl Performer {
     }
 
     /// Function to process the dial-peer command
-    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
         self.command_handler.dial_peer(dest_node_id.into()).await;
         Ok(())
     }
 
     /// Function to process the dial-peer command
-    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
         self.command_handler.ping_peer(dest_node_id.into()).await;
         Ok(())
     }
 
     /// Function to process the ban-peer command
-    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), ArgsError> {
+    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), Error> {
         let node_id: UniNodeId = args.take_next("node-id")?;
         let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
         let duration = Duration::from_secs(secs);
@@ -560,7 +562,7 @@ impl Performer {
     }
 
     /// Function to process the list-headers command
-    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start = args.take_next("start")?;
         let end = args.try_take_next("end")?;
         self.command_handler.list_headers(start, end).await;
@@ -568,18 +570,18 @@ impl Performer {
     }
 
     /// Function to process the calc-timing command
-    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start = args.take_next("start")?;
         let end = args.try_take_next("end")?;
         if end.is_none() && start < 2 {
-            Err(ArgsError::new("start", "Number of headers must be at least 2."))
+            Err(ArgsError::new("start", "Number of headers must be at least 2.").into())
         } else {
             self.command_handler.block_timing(start, end).await;
             Ok(())
         }
     }
 
-    async fn process_period_stats<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_period_stats<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let period_end = args.take_next("period_end")?;
         let period_ticker_end = args.take_next("period_ticker_end")?;
         let period = args.take_next("period")?;
@@ -589,7 +591,7 @@ impl Performer {
         Ok(())
     }
 
-    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start_height = args.take_next("start_height")?;
         let end_height = args.take_next("end_height")?;
         let filename = args
@@ -603,7 +605,7 @@ impl Performer {
         Ok(())
     }
 
-    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let new_height = args.take_next("new_height")?;
         self.command_handler.rewind_blockchain(new_height).await;
         Ok(())
