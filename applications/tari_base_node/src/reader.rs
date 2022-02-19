@@ -1,4 +1,3 @@
-use derive_more::{Deref, DerefMut};
 use rustyline::{error::ReadlineError, Editor};
 use tokio::{
     sync::mpsc,
@@ -14,22 +13,23 @@ pub enum CommandEvent {
     Error(String),
 }
 
-#[derive(Deref, DerefMut)]
 pub struct CommandReader {
     #[allow(dead_code)]
     task: JoinHandle<()>,
-    #[deref]
-    #[deref_mut]
-    receiver: mpsc::UnboundedReceiver<CommandEvent>,
+    sender: mpsc::Sender<()>,
+    receiver: mpsc::Receiver<CommandEvent>,
 }
 
 impl CommandReader {
     pub fn new(mut rustyline: Editor<Parser>) -> Self {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx_next, mut rx_next) = mpsc::channel(1);
+        let (tx_event, rx_event) = mpsc::channel(1);
         let task = task::spawn_blocking(move || {
             loop {
+                if rx_next.blocking_recv().is_none() {
+                    break;
+                }
                 let readline = rustyline.readline(">> ");
-
                 let event;
                 match readline {
                     Ok(line) => {
@@ -46,11 +46,20 @@ impl CommandReader {
                         event = CommandEvent::Error(err.to_string());
                     },
                 }
-                if tx.send(event).is_err() {
+                if tx_event.blocking_send(event).is_err() {
                     break;
                 }
             }
         });
-        Self { task, receiver: rx }
+        Self {
+            task,
+            sender: tx_next,
+            receiver: rx_event,
+        }
+    }
+
+    pub async fn next_command(&mut self) -> Option<CommandEvent> {
+        self.sender.send(()).await.ok()?;
+        self.receiver.recv().await
     }
 }

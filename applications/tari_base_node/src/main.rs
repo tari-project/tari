@@ -424,7 +424,7 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
     loop {
         let interval = status_interval(start_time);
         tokio::select! {
-            res = reader.recv() => {
+            res = reader.next_command() => {
                 if let Some(event) = res {
                     match event {
                         CommandEvent::Command(line) => {
