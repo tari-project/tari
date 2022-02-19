@@ -22,6 +22,7 @@
 
 use std::{string::ToString, sync::Arc, time::Duration};
 
+use derive_more::{Deref, DerefMut};
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -89,7 +90,8 @@ pub enum BaseNodeCommand {
     Exit,
 }
 
-#[derive(Clone)]
+// TODO: Use `CommandHandler` directly instead
+#[derive(Clone, Deref, DerefMut)]
 pub struct Performer {
     command_handler: Arc<Mutex<CommandHandler>>,
 }
@@ -148,10 +150,6 @@ impl Parser {
 impl Performer {
     pub fn new(command_handler: Arc<Mutex<CommandHandler>>) -> Self {
         Self { command_handler }
-    }
-
-    pub fn get_command_handler(&self) -> Arc<Mutex<CommandHandler>> {
-        self.command_handler.clone()
     }
 
     /// This will parse the provided command and execute the task

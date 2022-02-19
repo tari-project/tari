@@ -407,13 +407,13 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
         .output_stream(OutputStreamType::Stdout)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
-    let command_handler = performer.get_command_handler();
+    // let command_handler = performer.get_command_handler();
     rustyline.set_helper(Some(parser));
     let mut reader = CommandReader::new(rustyline);
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
-    let mut software_update_notif = command_handler
+    let mut software_update_notif = performer
         .lock()
         .await
         .get_software_updater()
@@ -463,7 +463,7 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
             }
             _ = interval => {
                 // TODO: Execute `watch` command
-                command_handler.lock().await.status(StatusOutput::Full);
+                performer.lock().await.status(StatusOutput::Full);
             },
             _ = shutdown_signal.wait() => {
                 break;
