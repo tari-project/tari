@@ -64,11 +64,7 @@ use tari_p2p::{
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use thiserror::Error;
-use tokio::{
-    runtime,
-    sync::{broadcast, watch},
-    time,
-};
+use tokio::sync::{broadcast, watch};
 
 use super::LOG_TARGET;
 use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
@@ -79,7 +75,6 @@ pub enum StatusOutput {
 }
 
 pub struct CommandHandler {
-    executor: runtime::Handle,
     config: Arc<GlobalConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
@@ -98,9 +93,8 @@ pub struct CommandHandler {
 }
 
 impl CommandHandler {
-    pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
+    pub fn new(ctx: &BaseNodeContext) -> Self {
         Self {
-            executor,
             config: ctx.config(),
             consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
@@ -119,7 +113,7 @@ impl CommandHandler {
         }
     }
 
-    pub fn status(&mut self, output: StatusOutput) {
+    pub async fn status(&mut self, output: StatusOutput) {
         let state_info = self.state_machine_info.clone();
         let mut node = self.node_service.clone();
         let mut mempool = self.mempool_service.clone();
@@ -135,85 +129,83 @@ impl CommandHandler {
             full_log = true;
         }
 
-        self.executor.spawn(async move {
-            let mut status_line = StatusLine::new();
-            status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
-            status_line.add_field("", config.network);
-            status_line.add_field("State", state_info.borrow().state_info.short_desc());
+        let mut status_line = StatusLine::new();
+        status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
+        status_line.add_field("", config.network);
+        status_line.add_field("State", state_info.borrow().state_info.short_desc());
 
-            let metadata = node.get_metadata().await.unwrap();
-            let height = metadata.height_of_longest_chain();
-            let last_header = node.get_header(height).await.unwrap().unwrap();
-            let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
-            status_line.add_field(
-                "Tip",
-                format!(
-                    "{} ({})",
-                    metadata.height_of_longest_chain(),
-                    last_block_time.to_rfc2822()
-                ),
-            );
+        let metadata = node.get_metadata().await.unwrap();
+        let height = metadata.height_of_longest_chain();
+        let last_header = node.get_header(height).await.unwrap().unwrap();
+        let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
+        status_line.add_field(
+            "Tip",
+            format!(
+                "{} ({})",
+                metadata.height_of_longest_chain(),
+                last_block_time.to_rfc2822()
+            ),
+        );
 
-            let constants = consensus_rules.consensus_constants(metadata.height_of_longest_chain());
-            let mempool_stats = mempool.get_mempool_stats().await.unwrap();
-            status_line.add_field(
-                "Mempool",
-                format!(
-                    "{}tx ({}g, +/- {}blks)",
-                    mempool_stats.unconfirmed_txs,
-                    mempool_stats.total_weight,
-                    if mempool_stats.total_weight == 0 {
-                        0
-                    } else {
-                        1 + mempool_stats.total_weight / constants.get_max_block_transaction_weight()
-                    },
-                ),
-            );
-
-            let conns = connectivity.get_active_connections().await.unwrap();
-            status_line.add_field("Connections", conns.len());
-            let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
-            status_line.add_field("Banned", banned_peers.len());
-
-            let num_messages = metrics
-                .get_total_message_count_in_timespan(Duration::from_secs(60))
-                .await
-                .unwrap();
-            status_line.add_field("Messages (last 60s)", num_messages);
-
-            let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
-            status_line.add_field(
-                "Rpc",
-                format!(
-                    "{}/{}",
-                    num_active_rpc_sessions,
-                    config
-                        .rpc_max_simultaneous_sessions
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| "∞".to_string()),
-                ),
-            );
-            if full_log {
-                status_line.add_field(
-                    "RandomX",
-                    format!(
-                        "#{} with flags {:?}",
-                        state_info.borrow().randomx_vm_cnt,
-                        state_info.borrow().randomx_vm_flags
-                    ),
-                );
-            }
-
-            let target = "base_node::app::status";
-            match output {
-                StatusOutput::Full => {
-                    println!("{}", status_line);
-                    info!(target: target, "{}", status_line);
+        let constants = consensus_rules.consensus_constants(metadata.height_of_longest_chain());
+        let mempool_stats = mempool.get_mempool_stats().await.unwrap();
+        status_line.add_field(
+            "Mempool",
+            format!(
+                "{}tx ({}g, +/- {}blks)",
+                mempool_stats.unconfirmed_txs,
+                mempool_stats.total_weight,
+                if mempool_stats.total_weight == 0 {
+                    0
+                } else {
+                    1 + mempool_stats.total_weight / constants.get_max_block_transaction_weight()
                 },
-                StatusOutput::Log => info!(target: target, "{}", status_line),
-            };
-        });
+            ),
+        );
+
+        let conns = connectivity.get_active_connections().await.unwrap();
+        status_line.add_field("Connections", conns.len());
+        let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
+        status_line.add_field("Banned", banned_peers.len());
+
+        let num_messages = metrics
+            .get_total_message_count_in_timespan(Duration::from_secs(60))
+            .await
+            .unwrap();
+        status_line.add_field("Messages (last 60s)", num_messages);
+
+        let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
+        status_line.add_field(
+            "Rpc",
+            format!(
+                "{}/{}",
+                num_active_rpc_sessions,
+                config
+                    .rpc_max_simultaneous_sessions
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| "∞".to_string()),
+            ),
+        );
+        if full_log {
+            status_line.add_field(
+                "RandomX",
+                format!(
+                    "#{} with flags {:?}",
+                    state_info.borrow().randomx_vm_cnt,
+                    state_info.borrow().randomx_vm_flags
+                ),
+            );
+        }
+
+        let target = "base_node::app::status";
+        match output {
+            StatusOutput::Full => {
+                println!("{}", status_line);
+                info!(target: target, "{}", status_line);
+            },
+            StatusOutput::Log => info!(target: target, "{}", status_line),
+        };
     }
 
     /// Function to process the get-state-info command
@@ -223,25 +215,23 @@ impl CommandHandler {
     }
 
     /// Check for updates
-    pub fn check_for_updates(&self) {
+    pub async fn check_for_updates(&self) {
         let mut updater = self.software_updater.clone();
         println!("Checking for updates (current version: {})...", consts::APP_VERSION);
-        self.executor.spawn(async move {
-            match updater.check_for_updates().await {
-                Some(update) => {
-                    println!(
-                        "Version {} of the {} is available: {} (sha: {})",
-                        update.version(),
-                        update.app(),
-                        update.download_url(),
-                        update.to_hash_hex()
-                    );
-                },
-                None => {
-                    println!("No updates found.",);
-                },
-            }
-        });
+        match updater.check_for_updates().await {
+            Some(update) => {
+                println!(
+                    "Version {} of the {} is available: {} (sha: {})",
+                    update.version(),
+                    update.app(),
+                    update.download_url(),
+                    update.to_hash_hex()
+                );
+            },
+            None => {
+                println!("No updates found.",);
+            },
+        }
     }
 
     /// Function process the version command
@@ -264,395 +254,372 @@ impl CommandHandler {
         }
     }
 
-    pub fn get_chain_meta(&self) {
+    pub async fn get_chain_meta(&self) {
         let mut handler = self.node_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_metadata().await {
-                Err(err) => {
-                    println!("Failed to retrieve chain metadata: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
-                },
-                Ok(data) => println!("{}", data),
-            };
-        });
+        match handler.get_metadata().await {
+            Err(err) => {
+                println!("Failed to retrieve chain metadata: {:?}", err);
+                warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
+            },
+            Ok(data) => println!("{}", data),
+        };
     }
 
-    pub fn get_block(&self, height: u64, format: Format) {
+    pub async fn get_block(&self, height: u64, format: Format) {
         let blockchain = self.blockchain_db.clone();
-        self.executor.spawn(async move {
-            match blockchain.fetch_blocks(height..=height).await {
-                Ok(mut data) => match (data.pop(), format) {
-                    (Some(block), Format::Text) => {
-                        let block_data =
-                            try_or_print!(blockchain.fetch_block_accumulated_data(block.hash().clone()).await);
+        match blockchain.fetch_blocks(height..=height).await {
+            Ok(mut data) => match (data.pop(), format) {
+                (Some(block), Format::Text) => {
+                    let block_data = try_or_print!(blockchain.fetch_block_accumulated_data(block.hash().clone()).await);
 
-                        println!("{}", block);
-                        println!("-- Accumulated data --");
-                        println!("{}", block_data);
-                    },
-                    (Some(block), Format::Json) => println!(
-                        "{}",
-                        block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
-                    ),
-                    (None, _) => println!("Block not found at height {}", height),
+                    println!("{}", block);
+                    println!("-- Accumulated data --");
+                    println!("{}", block_data);
                 },
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {}", err);
-                    warn!(target: LOG_TARGET, "{}", err);
-                },
-            };
-        });
+                (Some(block), Format::Json) => println!(
+                    "{}",
+                    block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
+                ),
+                (None, _) => println!("Block not found at height {}", height),
+            },
+            Err(err) => {
+                println!("Failed to retrieve blocks: {}", err);
+                warn!(target: LOG_TARGET, "{}", err);
+            },
+        };
     }
 
-    pub fn get_block_by_hash(&self, hash: HashOutput, format: Format) {
+    pub async fn get_block_by_hash(&self, hash: HashOutput, format: Format) {
         let blockchain = self.blockchain_db.clone();
-        self.executor.spawn(async move {
-            match blockchain.fetch_block_by_hash(hash).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {}", err);
-                    warn!(target: LOG_TARGET, "{}", err);
-                },
-                Ok(data) => match (data, format) {
-                    (Some(block), Format::Text) => println!("{}", block),
-                    (Some(block), Format::Json) => println!(
-                        "{}",
-                        block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
-                    ),
-                    (None, _) => println!("Block not found"),
-                },
-            };
-        });
+        match blockchain.fetch_block_by_hash(hash).await {
+            Err(err) => {
+                println!("Failed to retrieve blocks: {}", err);
+                warn!(target: LOG_TARGET, "{}", err);
+            },
+            Ok(data) => match (data, format) {
+                (Some(block), Format::Text) => println!("{}", block),
+                (Some(block), Format::Json) => println!(
+                    "{}",
+                    block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
+                ),
+                (None, _) => println!("Block not found"),
+            },
+        };
     }
 
-    pub fn search_utxo(&self, commitment: Commitment) {
+    pub async fn search_utxo(&self, commitment: Commitment) {
         let mut handler = self.node_service.clone();
-        self.executor.spawn(async move {
-            match handler.fetch_blocks_with_utxos(vec![commitment.clone()]).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with local base node: {:?}", err,
-                    );
-                },
-                Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v.block()),
-                    _ => println!("Block not found for utxo commitment {}", commitment.to_hex()),
-                },
-            };
-        });
+        match handler.fetch_blocks_with_utxos(vec![commitment.clone()]).await {
+            Err(err) => {
+                println!("Failed to retrieve blocks: {:?}", err);
+                warn!(
+                    target: LOG_TARGET,
+                    "Error communicating with local base node: {:?}", err,
+                );
+            },
+            Ok(mut data) => match data.pop() {
+                Some(v) => println!("{}", v.block()),
+                _ => println!("Block not found for utxo commitment {}", commitment.to_hex()),
+            },
+        };
     }
 
-    pub fn search_kernel(&self, excess_sig: Signature) {
+    pub async fn search_kernel(&self, excess_sig: Signature) {
         let mut handler = self.node_service.clone();
         let hex_sig = excess_sig.get_signature().to_hex();
-        self.executor.spawn(async move {
-            match handler.get_blocks_with_kernels(vec![excess_sig]).await {
-                Err(err) => {
-                    println!("Failed to retrieve blocks: {:?}", err);
-                    warn!(
-                        target: LOG_TARGET,
-                        "Error communicating with local base node: {:?}", err,
-                    );
-                },
-                Ok(mut data) => match data.pop() {
-                    Some(v) => println!("{}", v),
-                    _ => println!("No kernel with signature {} found", hex_sig),
-                },
-            };
-        });
+        match handler.get_blocks_with_kernels(vec![excess_sig]).await {
+            Err(err) => {
+                println!("Failed to retrieve blocks: {:?}", err);
+                warn!(
+                    target: LOG_TARGET,
+                    "Error communicating with local base node: {:?}", err,
+                );
+            },
+            Ok(mut data) => match data.pop() {
+                Some(v) => println!("{}", v),
+                _ => println!("No kernel with signature {} found", hex_sig),
+            },
+        };
     }
 
     /// Function to process the get-mempool-stats command
-    pub fn get_mempool_stats(&self) {
+    pub async fn get_mempool_stats(&self) {
         let mut handler = self.mempool_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_mempool_stats().await {
-                Ok(stats) => println!("{}", stats),
-                Err(err) => {
-                    println!("Failed to retrieve mempool stats: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
-                },
-            };
-        });
+        match handler.get_mempool_stats().await {
+            Ok(stats) => println!("{}", stats),
+            Err(err) => {
+                println!("Failed to retrieve mempool stats: {:?}", err);
+                warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
+            },
+        };
     }
 
     /// Function to process the get-mempool-state command
-    pub fn get_mempool_state(&self, filter: Option<String>) {
+    pub async fn get_mempool_state(&self, filter: Option<String>) {
         let mut handler = self.mempool_service.clone();
-        self.executor.spawn(async move {
-            match handler.get_mempool_state().await {
-                Ok(state) => {
-                    println!("----------------- Mempool -----------------");
-                    println!("--- Unconfirmed Pool ---");
-                    for tx in &state.unconfirmed_pool {
-                        let tx_sig = tx
-                            .first_kernel_excess_sig()
-                            .map(|sig| sig.get_signature().to_hex())
-                            .unwrap_or_else(|| "N/A".to_string());
-                        if let Some(ref filter) = filter {
-                            if !tx_sig.contains(filter) {
-                                println!("--- TX: {} ---", tx_sig);
-                                println!("{}", tx.body);
-                                continue;
-                            }
-                        } else {
-                            println!(
-                                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
-                                tx_sig,
-                                tx.body.get_total_fee(),
-                                tx.body.outputs().len(),
-                                tx.body.kernels().len(),
-                                tx.body.inputs().len(),
-                                tx.body.sum_metadata_size(),
-                            );
+        match handler.get_mempool_state().await {
+            Ok(state) => {
+                println!("----------------- Mempool -----------------");
+                println!("--- Unconfirmed Pool ---");
+                for tx in &state.unconfirmed_pool {
+                    let tx_sig = tx
+                        .first_kernel_excess_sig()
+                        .map(|sig| sig.get_signature().to_hex())
+                        .unwrap_or_else(|| "N/A".to_string());
+                    if let Some(ref filter) = filter {
+                        if !tx_sig.contains(filter) {
+                            println!("--- TX: {} ---", tx_sig);
+                            println!("{}", tx.body);
+                            continue;
                         }
+                    } else {
+                        println!(
+                            "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
+                            tx_sig,
+                            tx.body.get_total_fee(),
+                            tx.body.outputs().len(),
+                            tx.body.kernels().len(),
+                            tx.body.inputs().len(),
+                            tx.body.sum_metadata_size(),
+                        );
                     }
-                    if filter.is_none() {
-                        println!("--- Reorg Pool ---");
-                        for excess_sig in &state.reorg_pool {
-                            println!("    {}", excess_sig.get_signature().to_hex());
-                        }
+                }
+                if filter.is_none() {
+                    println!("--- Reorg Pool ---");
+                    for excess_sig in &state.reorg_pool {
+                        println!("    {}", excess_sig.get_signature().to_hex());
                     }
-                },
-                Err(err) => {
-                    println!("Failed to retrieve mempool state: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
-                },
-            };
-        });
+                }
+            },
+            Err(err) => {
+                println!("Failed to retrieve mempool state: {:?}", err);
+                warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
+            },
+        };
     }
 
-    pub fn discover_peer(&self, dest_pubkey: Box<RistrettoPublicKey>) {
+    pub async fn discover_peer(&self, dest_pubkey: Box<RistrettoPublicKey>) {
         let mut dht = self.discovery_service.clone();
 
-        self.executor.spawn(async move {
-            let start = Instant::now();
-            println!("🌎 Peer discovery started.");
+        let start = Instant::now();
+        println!("🌎 Peer discovery started.");
 
-            match dht
-                .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
-                .await
-            {
-                Ok(p) => {
-                    println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
-                    println!("This peer was found:");
-                    println!("{}", p);
-                },
-                Err(err) => {
-                    println!("💀 Discovery failed: '{:?}'", err);
-                },
-            }
-        });
+        match dht
+            .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
+            .await
+        {
+            Ok(p) => {
+                println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
+                println!("This peer was found:");
+                println!("{}", p);
+            },
+            Err(err) => {
+                println!("💀 Discovery failed: '{:?}'", err);
+            },
+        }
     }
 
-    pub fn get_peer(&self, partial: Vec<u8>, original_str: String) {
+    pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) {
         let peer_manager = self.peer_manager.clone();
 
-        self.executor.spawn(async move {
-            let peer = match peer_manager.find_all_starts_with(&partial).await {
-                Ok(peers) if peers.is_empty() => {
-                    if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
-                        if let Ok(Some(peer)) = peer_manager.find_by_public_key(&pk).await {
-                            peer
-                        } else {
-                            println!("No peer matching '{}'", original_str);
-                            return;
-                        }
+        let peer = match peer_manager.find_all_starts_with(&partial).await {
+            Ok(peers) if peers.is_empty() => {
+                if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
+                    if let Ok(Some(peer)) = peer_manager.find_by_public_key(&pk).await {
+                        peer
                     } else {
                         println!("No peer matching '{}'", original_str);
                         return;
                     }
-                },
-                Ok(mut peers) => peers.remove(0),
-                Err(err) => {
-                    println!("{}", err);
+                } else {
+                    println!("No peer matching '{}'", original_str);
                     return;
-                },
-            };
+                }
+            },
+            Ok(mut peers) => peers.remove(0),
+            Err(err) => {
+                println!("{}", err);
+                return;
+            },
+        };
 
-            let eid = EmojiId::from_pubkey(&peer.public_key);
-            println!("Emoji ID: {}", eid);
-            println!("Public Key: {}", peer.public_key);
-            println!("NodeId: {}", peer.node_id);
-            println!("Addresses:");
-            peer.addresses.iter().for_each(|a| {
-                println!("- {}", a);
-            });
-            println!("User agent: {}", peer.user_agent);
-            println!("Features: {:?}", peer.features);
-            println!("Supported protocols:");
-            peer.supported_protocols.iter().for_each(|p| {
-                println!("- {}", String::from_utf8_lossy(p));
-            });
-            if let Some(dt) = peer.banned_until() {
-                println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-            }
-            if let Some(dt) = peer.last_seen() {
-                println!("Last seen: {}", dt);
-            }
-            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
-                println!("Last updated: {} (UTC)", updated_at);
-            }
+        let eid = EmojiId::from_pubkey(&peer.public_key);
+        println!("Emoji ID: {}", eid);
+        println!("Public Key: {}", peer.public_key);
+        println!("NodeId: {}", peer.node_id);
+        println!("Addresses:");
+        peer.addresses.iter().for_each(|a| {
+            println!("- {}", a);
         });
+        println!("User agent: {}", peer.user_agent);
+        println!("Features: {:?}", peer.features);
+        println!("Supported protocols:");
+        peer.supported_protocols.iter().for_each(|p| {
+            println!("- {}", String::from_utf8_lossy(p));
+        });
+        if let Some(dt) = peer.banned_until() {
+            println!("Banned until {}, reason: {}", dt, peer.banned_reason);
+        }
+        if let Some(dt) = peer.last_seen() {
+            println!("Last seen: {}", dt);
+        }
+        if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+            println!("Last updated: {} (UTC)", updated_at);
+        }
     }
 
-    pub fn list_peers(&self, filter: Option<String>) {
+    pub async fn list_peers(&self, filter: Option<String>) {
         let peer_manager = self.peer_manager.clone();
-        self.executor.spawn(async move {
-            let mut query = PeerQuery::new();
-            if let Some(f) = filter {
-                let filter = f.to_lowercase();
-                query = query.select_where(move |p| match filter.as_str() {
-                    "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => {
-                        p.features == PeerFeatures::COMMUNICATION_NODE
-                    },
-                    "wallet" | "wallets" | "w" => p.features == PeerFeatures::COMMUNICATION_CLIENT,
-                    _ => false,
-                })
-            }
-            match peer_manager.perform_query(query).await {
-                Ok(peers) => {
-                    let num_peers = peers.len();
-                    println!();
-                    let mut table = Table::new();
-                    table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
+        let mut query = PeerQuery::new();
+        if let Some(f) = filter {
+            let filter = f.to_lowercase();
+            query = query.select_where(move |p| match filter.as_str() {
+                "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => {
+                    p.features == PeerFeatures::COMMUNICATION_NODE
+                },
+                "wallet" | "wallets" | "w" => p.features == PeerFeatures::COMMUNICATION_CLIENT,
+                _ => false,
+            })
+        }
+        match peer_manager.perform_query(query).await {
+            Ok(peers) => {
+                let num_peers = peers.len();
+                println!();
+                let mut table = Table::new();
+                table.set_titles(vec!["NodeId", "Public Key", "Role", "User Agent", "Info"]);
 
-                    for peer in peers {
-                        let info_str = {
-                            let mut s = vec![];
+                for peer in peers {
+                    let info_str = {
+                        let mut s = vec![];
 
-                            if peer.is_offline() {
-                                if !peer.is_banned() {
-                                    s.push("OFFLINE".to_string());
-                                }
-                            } else if let Some(dt) = peer.last_seen() {
-                                s.push(format!(
-                                    "LAST_SEEN: {}",
-                                    Utc::now()
-                                        .naive_utc()
-                                        .signed_duration_since(dt)
-                                        .to_std()
-                                        .map(format_duration_basic)
-                                        .unwrap_or_else(|_| "?".into())
-                                ));
+                        if peer.is_offline() {
+                            if !peer.is_banned() {
+                                s.push("OFFLINE".to_string());
                             }
+                        } else if let Some(dt) = peer.last_seen() {
+                            s.push(format!(
+                                "LAST_SEEN: {}",
+                                Utc::now()
+                                    .naive_utc()
+                                    .signed_duration_since(dt)
+                                    .to_std()
+                                    .map(format_duration_basic)
+                                    .unwrap_or_else(|_| "?".into())
+                            ));
+                        }
 
-                            if let Some(dt) = peer.banned_until() {
-                                s.push(format!(
-                                    "BANNED({}, {})",
-                                    dt.signed_duration_since(Utc::now().naive_utc())
-                                        .to_std()
-                                        .map(format_duration_basic)
-                                        .unwrap_or_else(|_| "∞".to_string()),
-                                    peer.banned_reason
-                                ));
-                            }
+                        if let Some(dt) = peer.banned_until() {
+                            s.push(format!(
+                                "BANNED({}, {})",
+                                dt.signed_duration_since(Utc::now().naive_utc())
+                                    .to_std()
+                                    .map(format_duration_basic)
+                                    .unwrap_or_else(|_| "∞".to_string()),
+                                peer.banned_reason
+                            ));
+                        }
 
-                            if let Some(metadata) = peer
-                                .get_metadata(1)
-                                .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
-                            {
-                                s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
-                            }
+                        if let Some(metadata) = peer
+                            .get_metadata(1)
+                            .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
+                        {
+                            s.push(format!("chain height: {}", metadata.metadata.height_of_longest_chain()));
+                        }
 
-                            if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
-                                s.push(format!("updated_at: {} (UTC)", updated_at));
-                            }
+                        if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
+                            s.push(format!("updated_at: {} (UTC)", updated_at));
+                        }
 
-                            if s.is_empty() {
-                                "--".to_string()
+                        if s.is_empty() {
+                            "--".to_string()
+                        } else {
+                            s.join(", ")
+                        }
+                    };
+                    table.add_row(row![
+                        peer.node_id,
+                        peer.public_key,
+                        {
+                            if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                                "Wallet"
                             } else {
-                                s.join(", ")
+                                "Base node"
                             }
-                        };
-                        table.add_row(row![
-                            peer.node_id,
-                            peer.public_key,
-                            {
-                                if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
-                                    "Wallet"
-                                } else {
-                                    "Base node"
-                                }
-                            },
-                            Some(peer.user_agent)
-                                .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
-                                .unwrap(),
-                            info_str,
-                        ]);
-                    }
-                    table.print_stdout();
+                        },
+                        Some(peer.user_agent)
+                            .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
+                            .unwrap(),
+                        info_str,
+                    ]);
+                }
+                table.print_stdout();
 
-                    println!("{} peer(s) known by this node", num_peers);
-                },
-                Err(err) => {
-                    println!("Failed to list peers: {:?}", err);
-                    error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
-                },
-            }
-        });
+                println!("{} peer(s) known by this node", num_peers);
+            },
+            Err(err) => {
+                println!("Failed to list peers: {:?}", err);
+                error!(target: LOG_TARGET, "Could not list peers: {:?}", err);
+            },
+        }
     }
 
-    pub fn dial_peer(&self, dest_node_id: NodeId) {
+    pub async fn dial_peer(&self, dest_node_id: NodeId) {
         let connectivity = self.connectivity.clone();
 
-        self.executor.spawn(async move {
-            let start = Instant::now();
-            println!("☎️  Dialing peer...");
+        let start = Instant::now();
+        println!("☎️  Dialing peer...");
 
-            match connectivity.dial_peer(dest_node_id).await {
-                Ok(p) => {
-                    println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
-                    println!("Connection: {}", p);
-                },
-                Err(err) => {
-                    println!("📞  Dial failed: {}", err);
-                },
-            }
-        });
+        match connectivity.dial_peer(dest_node_id).await {
+            Ok(p) => {
+                println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
+                println!("Connection: {}", p);
+            },
+            Err(err) => {
+                println!("📞  Dial failed: {}", err);
+            },
+        }
     }
 
-    pub fn ping_peer(&self, dest_node_id: NodeId) {
+    pub async fn ping_peer(&self, dest_node_id: NodeId) {
         let mut liveness = self.liveness.clone();
 
-        self.executor.spawn(time::timeout(Duration::from_secs(30), async move {
-            println!("🏓 Pinging peer...");
-            let mut liveness_events = liveness.get_event_stream();
+        // TODO: Add timeout here (we should add a timeout to an every command)
+        // time::timeout(Duration::from_secs(30), fut)
+        println!("🏓 Pinging peer...");
+        let mut liveness_events = liveness.get_event_stream();
 
-            match liveness.send_ping(dest_node_id.clone()).await {
-                Ok(_) => loop {
-                    match liveness_events.recv().await {
-                        Ok(event) =>
-                        {
-                            #[allow(clippy::single_match)]
-                            match &*event {
-                                LivenessEvent::ReceivedPong(pong) => {
-                                    if pong.node_id == dest_node_id {
-                                        println!(
-                                            "🏓️ Pong received, latency in is {:.2?}!",
-                                            pong.latency.unwrap_or_default()
-                                        );
-                                        break;
-                                    }
-                                },
-                                _ => {},
-                            }
-                        },
-                        Err(broadcast::error::RecvError::Closed) => {
-                            break;
-                        },
-                        _ => {},
-                    }
-                },
-                Err(err) => {
-                    println!("📞  Could not send ping: {}", err);
-                },
-            }
-        }));
+        match liveness.send_ping(dest_node_id.clone()).await {
+            Ok(_) => loop {
+                match liveness_events.recv().await {
+                    Ok(event) =>
+                    {
+                        #[allow(clippy::single_match)]
+                        match &*event {
+                            LivenessEvent::ReceivedPong(pong) => {
+                                if pong.node_id == dest_node_id {
+                                    println!(
+                                        "🏓️ Pong received, latency in is {:.2?}!",
+                                        pong.latency.unwrap_or_default()
+                                    );
+                                    break;
+                                }
+                            },
+                            _ => {},
+                        }
+                    },
+                    Err(broadcast::error::RecvError::Closed) => {
+                        break;
+                    },
+                    _ => {},
+                }
+            },
+            Err(err) => {
+                println!("📞  Could not send ping: {}", err);
+            },
+        }
     }
 
-    pub fn ban_peer(&self, node_id: NodeId, duration: Duration, must_ban: bool) {
+    pub async fn ban_peer(&self, node_id: NodeId, duration: Duration, must_ban: bool) {
         if self.base_node_identity.node_id() == &node_id {
             println!("Cannot ban our own node");
             return;
@@ -661,200 +628,188 @@ impl CommandHandler {
         let mut connectivity = self.connectivity.clone();
         let peer_manager = self.peer_manager.clone();
 
-        self.executor.spawn(async move {
-            if must_ban {
-                match connectivity
-                    .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
-                    .await
-                {
-                    Ok(_) => println!("Peer was banned in base node."),
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                    },
-                }
-            } else {
-                match peer_manager.unban_peer(&node_id).await {
-                    Ok(_) => {
-                        println!("Peer ban was removed from base node.");
-                    },
-                    Err(err) if err.is_peer_not_found() => {
-                        println!("Peer not found in base node");
-                    },
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                    },
-                }
+        if must_ban {
+            match connectivity
+                .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
+                .await
+            {
+                Ok(_) => println!("Peer was banned in base node."),
+                Err(err) => {
+                    println!("Failed to ban peer: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                },
             }
-        });
+        } else {
+            match peer_manager.unban_peer(&node_id).await {
+                Ok(_) => {
+                    println!("Peer ban was removed from base node.");
+                },
+                Err(err) if err.is_peer_not_found() => {
+                    println!("Peer not found in base node");
+                },
+                Err(err) => {
+                    println!("Failed to ban peer: {:?}", err);
+                    error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                },
+            }
+        }
     }
 
-    pub fn unban_all_peers(&self) {
+    pub async fn unban_all_peers(&self) {
         let peer_manager = self.peer_manager.clone();
-        self.executor.spawn(async move {
-            async fn unban_all(pm: &PeerManager) -> usize {
-                let query = PeerQuery::new().select_where(|p| p.is_banned());
-                match pm.perform_query(query).await {
-                    Ok(peers) => {
-                        let num_peers = peers.len();
-                        for peer in peers {
-                            if let Err(err) = pm.unban_peer(&peer.node_id).await {
-                                println!("Failed to unban peer: {}", err);
-                            }
-                        }
-                        num_peers
-                    },
-                    Err(err) => {
-                        println!("Failed to unban peers: {}", err);
-                        0
-                    },
-                }
-            }
-
-            let n = unban_all(&peer_manager).await;
-            println!("Unbanned {} peer(s) from node", n);
-        });
-    }
-
-    pub fn list_banned_peers(&self) {
-        let peer_manager = self.peer_manager.clone();
-        self.executor.spawn(async move {
-            match fetch_banned_peers(&peer_manager).await {
-                Ok(banned) => {
-                    if banned.is_empty() {
-                        println!("No peers banned from node.")
-                    } else {
-                        println!("Peers banned from node ({}):", banned.len());
-                        for peer in banned {
-                            println!("{}", peer);
+        async fn unban_all(pm: &PeerManager) -> usize {
+            let query = PeerQuery::new().select_where(|p| p.is_banned());
+            match pm.perform_query(query).await {
+                Ok(peers) => {
+                    let num_peers = peers.len();
+                    for peer in peers {
+                        if let Err(err) = pm.unban_peer(&peer.node_id).await {
+                            println!("Failed to unban peer: {}", err);
                         }
                     }
+                    num_peers
                 },
-                Err(e) => println!("Error listing peers: {}", e),
+                Err(err) => {
+                    println!("Failed to unban peers: {}", err);
+                    0
+                },
             }
-        });
+        }
+
+        let n = unban_all(&peer_manager).await;
+        println!("Unbanned {} peer(s) from node", n);
+    }
+
+    pub async fn list_banned_peers(&self) {
+        let peer_manager = self.peer_manager.clone();
+        match fetch_banned_peers(&peer_manager).await {
+            Ok(banned) => {
+                if banned.is_empty() {
+                    println!("No peers banned from node.")
+                } else {
+                    println!("Peers banned from node ({}):", banned.len());
+                    for peer in banned {
+                        println!("{}", peer);
+                    }
+                }
+            },
+            Err(e) => println!("Error listing peers: {}", e),
+        }
     }
 
     /// Function to process the list-connections command
-    pub fn list_connections(&self) {
+    pub async fn list_connections(&self) {
         let mut connectivity = self.connectivity.clone();
         let peer_manager = self.peer_manager.clone();
 
-        self.executor.spawn(async move {
-            match connectivity.get_active_connections().await {
-                Ok(conns) if conns.is_empty() => {
-                    println!("No active peer connections.");
-                },
-                Ok(conns) => {
-                    println!();
-                    let num_connections = conns.len();
-                    let mut table = Table::new();
-                    table.set_titles(vec![
-                        "NodeId",
-                        "Public Key",
-                        "Address",
-                        "Direction",
-                        "Age",
-                        "Role",
-                        "User Agent",
-                        "Info",
+        match connectivity.get_active_connections().await {
+            Ok(conns) if conns.is_empty() => {
+                println!("No active peer connections.");
+            },
+            Ok(conns) => {
+                println!();
+                let num_connections = conns.len();
+                let mut table = Table::new();
+                table.set_titles(vec![
+                    "NodeId",
+                    "Public Key",
+                    "Address",
+                    "Direction",
+                    "Age",
+                    "Role",
+                    "User Agent",
+                    "Info",
+                ]);
+                for conn in conns {
+                    let peer = peer_manager
+                        .find_by_node_id(conn.peer_node_id())
+                        .await
+                        .expect("Unexpected peer database error")
+                        .expect("Peer not found");
+
+                    let chain_height = peer
+                        .get_metadata(1)
+                        .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
+                        .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
+
+                    table.add_row(row![
+                        peer.node_id,
+                        peer.public_key,
+                        conn.address(),
+                        conn.direction(),
+                        format_duration_basic(conn.age()),
+                        {
+                            if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                                "Wallet"
+                            } else {
+                                "Base node"
+                            }
+                        },
+                        Some(peer.user_agent)
+                            .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
+                            .unwrap(),
+                        format!(
+                            "substreams: {}{}",
+                            conn.substream_count(),
+                            chain_height.map(|s| format!(", {}", s)).unwrap_or_default()
+                        ),
                     ]);
-                    for conn in conns {
-                        let peer = peer_manager
-                            .find_by_node_id(conn.peer_node_id())
-                            .await
-                            .expect("Unexpected peer database error")
-                            .expect("Peer not found");
+                }
 
-                        let chain_height = peer
-                            .get_metadata(1)
-                            .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
-                            .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
+                table.print_stdout();
 
-                        table.add_row(row![
-                            peer.node_id,
-                            peer.public_key,
-                            conn.address(),
-                            conn.direction(),
-                            format_duration_basic(conn.age()),
-                            {
-                                if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
-                                    "Wallet"
-                                } else {
-                                    "Base node"
-                                }
-                            },
-                            Some(peer.user_agent)
-                                .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
-                                .unwrap(),
-                            format!(
-                                "substreams: {}{}",
-                                conn.substream_count(),
-                                chain_height.map(|s| format!(", {}", s)).unwrap_or_default()
-                            ),
-                        ]);
-                    }
-
-                    table.print_stdout();
-
-                    println!("{} active connection(s)", num_connections);
-                },
-                Err(err) => {
-                    println!("Failed to list connections: {:?}", err);
-                    error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
-                },
-            }
-        });
+                println!("{} active connection(s)", num_connections);
+            },
+            Err(err) => {
+                println!("Failed to list connections: {:?}", err);
+                error!(target: LOG_TARGET, "Could not list connections: {:?}", err);
+            },
+        }
     }
 
-    pub fn reset_offline_peers(&self) {
+    pub async fn reset_offline_peers(&self) {
         let peer_manager = self.peer_manager.clone();
-        self.executor.spawn(async move {
-            let result = peer_manager
-                .update_each(|mut peer| {
-                    if peer.is_offline() {
-                        peer.set_offline(false);
-                        Some(peer)
-                    } else {
-                        None
-                    }
-                })
-                .await;
+        let result = peer_manager
+            .update_each(|mut peer| {
+                if peer.is_offline() {
+                    peer.set_offline(false);
+                    Some(peer)
+                } else {
+                    None
+                }
+            })
+            .await;
 
-            match result {
-                Ok(num_updated) => {
-                    println!("{} peer(s) were unmarked as offline.", num_updated);
-                },
-                Err(err) => {
-                    println!("Failed to clear offline peer states: {:?}", err);
-                    error!(target: LOG_TARGET, "{:?}", err);
-                },
-            }
-        });
+        match result {
+            Ok(num_updated) => {
+                println!("{} peer(s) were unmarked as offline.", num_updated);
+            },
+            Err(err) => {
+                println!("Failed to clear offline peer states: {:?}", err);
+                error!(target: LOG_TARGET, "{:?}", err);
+            },
+        }
     }
 
-    pub fn list_headers(&self, start: u64, end: Option<u64>) {
+    pub async fn list_headers(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
-        self.executor.spawn(async move {
-            let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
-                Ok(h) if h.is_empty() => {
-                    println!("No headers found");
-                    return;
-                },
-                Ok(h) => h,
-                Err(err) => {
-                    println!("Failed to retrieve headers: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                    return;
-                },
-            };
+        let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
+            Ok(h) if h.is_empty() => {
+                println!("No headers found");
+                return;
+            },
+            Ok(h) => h,
+            Err(err) => {
+                println!("Failed to retrieve headers: {:?}", err);
+                warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                return;
+            },
+        };
 
-            for header in headers {
-                println!("\n\nHeader hash: {}", header.hash().to_hex());
-                println!("{}", header);
-            }
-        });
+        for header in headers {
+            println!("\n\nHeader hash: {}", header.hash().to_hex());
+            println!("{}", header);
+        }
     }
 
     /// Function to process the get-headers command
@@ -879,173 +834,167 @@ impl CommandHandler {
         }
     }
 
-    pub fn block_timing(&self, start: u64, end: Option<u64>) {
+    pub async fn block_timing(&self, start: u64, end: Option<u64>) {
         let blockchain_db = self.blockchain_db.clone();
-        self.executor.spawn(async move {
-            let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
-                Ok(h) if h.is_empty() => {
-                    println!("No headers found");
-                    return;
-                },
-                Ok(h) => h.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>(),
-                Err(err) => {
-                    println!("Failed to retrieve headers: {:?}", err);
-                    warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                    return;
-                },
-            };
+        let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
+            Ok(h) if h.is_empty() => {
+                println!("No headers found");
+                return;
+            },
+            Ok(h) => h.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>(),
+            Err(err) => {
+                println!("Failed to retrieve headers: {:?}", err);
+                warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
+                return;
+            },
+        };
 
-            let (max, min, avg) = BlockHeader::timing_stats(&headers);
-            println!(
-                "Timing for blocks #{} - #{}",
-                headers.first().unwrap().height,
-                headers.last().unwrap().height
-            );
-            println!("Max block time: {}", max);
-            println!("Min block time: {}", min);
-            println!("Avg block time: {}", avg);
-        });
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        println!(
+            "Timing for blocks #{} - #{}",
+            headers.first().unwrap().height,
+            headers.last().unwrap().height
+        );
+        println!("Max block time: {}", max);
+        println!("Min block time: {}", min);
+        println!("Avg block time: {}", avg);
     }
 
     /// Function to process the check-db command
-    pub fn check_db(&self) {
+    pub async fn check_db(&self) {
         let mut node = self.node_service.clone();
-        self.executor.spawn(async move {
-            let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
+        let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
 
-            let mut height = meta.height_of_longest_chain();
-            let mut missing_blocks = Vec::new();
-            let mut missing_headers = Vec::new();
-            print!("Searching for height: ");
-            // We need to check every header, but not every block.
-            let horizon_height = meta.horizon_block(height);
-            while height > 0 {
-                print!("{}", height);
-                io::stdout().flush().unwrap();
-                // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
-                if height > horizon_height {
-                    match node.get_block(height).await {
-                        Err(err) => {
-                            // We need to check the data itself, as FetchMatchingBlocks will suppress any error, only
-                            // logging it.
-                            error!(target: LOG_TARGET, "{}", err);
-                            missing_blocks.push(height);
-                        },
-                        Ok(Some(_)) => {},
-                        Ok(None) => missing_blocks.push(height),
-                    };
-                }
-                height -= 1;
-                let next_header = node.get_header(height).await.ok().flatten();
-                if next_header.is_none() {
-                    // this header is missing, so we stop here and need to ask for this header
-                    missing_headers.push(height);
+        let mut height = meta.height_of_longest_chain();
+        let mut missing_blocks = Vec::new();
+        let mut missing_headers = Vec::new();
+        print!("Searching for height: ");
+        // We need to check every header, but not every block.
+        let horizon_height = meta.horizon_block(height);
+        while height > 0 {
+            print!("{}", height);
+            io::stdout().flush().unwrap();
+            // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
+            if height > horizon_height {
+                match node.get_block(height).await {
+                    Err(err) => {
+                        // We need to check the data itself, as FetchMatchingBlocks will suppress any error, only
+                        // logging it.
+                        error!(target: LOG_TARGET, "{}", err);
+                        missing_blocks.push(height);
+                    },
+                    Ok(Some(_)) => {},
+                    Ok(None) => missing_blocks.push(height),
                 };
-                print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
             }
-            println!("Complete");
-            for missing_block in missing_blocks {
-                println!("Missing block at height: {}", missing_block);
-            }
-            for missing_header_height in missing_headers {
-                println!("Missing header at height: {}", missing_header_height)
-            }
-        });
+            height -= 1;
+            let next_header = node.get_header(height).await.ok().flatten();
+            if next_header.is_none() {
+                // this header is missing, so we stop here and need to ask for this header
+                missing_headers.push(height);
+            };
+            print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+        }
+        println!("Complete");
+        for missing_block in missing_blocks {
+            println!("Missing block at height: {}", missing_block);
+        }
+        for missing_header_height in missing_headers {
+            println!("Missing header at height: {}", missing_header_height)
+        }
     }
 
     #[allow(deprecated)]
-    pub fn period_stats(&self, period_end: u64, mut period_ticker_end: u64, period: u64) {
+    pub async fn period_stats(&self, period_end: u64, mut period_ticker_end: u64, period: u64) {
         let mut node = self.node_service.clone();
-        self.executor.spawn(async move {
-            let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
+        let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
 
-            let mut height = meta.height_of_longest_chain();
-            // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
-            let mut results: Vec<(usize, f64, u64, u64, usize)> = Vec::new();
+        let mut height = meta.height_of_longest_chain();
+        // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
+        let mut results: Vec<(usize, f64, u64, u64, usize)> = Vec::new();
 
-            let mut period_ticker_start = period_ticker_end - period;
-            let mut period_tx_count = 0;
-            let mut period_block_count = 0;
-            let mut period_hash = 0.0;
-            let mut period_difficulty = 0;
-            let mut period_solvetime = 0;
-            print!("Searching for height: ");
-            while height > 0 {
-                print!("{}", height);
-                io::stdout().flush().unwrap();
+        let mut period_ticker_start = period_ticker_end - period;
+        let mut period_tx_count = 0;
+        let mut period_block_count = 0;
+        let mut period_hash = 0.0;
+        let mut period_difficulty = 0;
+        let mut period_solvetime = 0;
+        print!("Searching for height: ");
+        while height > 0 {
+            print!("{}", height);
+            io::stdout().flush().unwrap();
 
-                let block = match node.get_block(height).await {
-                    Err(err) => {
-                        println!("Error in db, could not get block: {}", err);
-                        break;
-                    },
-                    // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                    // logging it.
-                    Ok(Some(historical_block)) => historical_block,
-                    Ok(None) => {
-                        println!("Error in db, block not found at height {}", height);
-                        break;
-                    },
-                };
-                let prev_block = match node.get_block(height - 1).await {
-                    Err(err) => {
-                        println!("Error in db, could not get block: {}", err);
-                        break;
-                    },
-                    // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                    // logging it.
-                    Ok(Some(historical_block)) => historical_block,
-                    Ok(None) => {
-                        println!("Error in db, block not found at height {}", height - 1);
-                        break;
-                    },
-                };
-                height -= 1;
-                if block.header().timestamp.as_u64() > period_ticker_end {
-                    print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
-                    continue;
-                };
-                while block.header().timestamp.as_u64() < period_ticker_start {
-                    results.push((
-                        period_tx_count,
-                        period_hash,
-                        period_difficulty,
-                        period_solvetime,
-                        period_block_count,
-                    ));
-                    period_tx_count = 0;
-                    period_block_count = 0;
-                    period_hash = 0.0;
-                    period_difficulty = 0;
-                    period_solvetime = 0;
-                    period_ticker_end -= period;
-                    period_ticker_start -= period;
-                }
-                period_tx_count += block.block().body.kernels().len() - 1;
-                period_block_count += 1;
-                let st = if prev_block.header().timestamp.as_u64() >= block.header().timestamp.as_u64() {
-                    1.0
-                } else {
-                    (block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()) as f64
-                };
-                let diff = block.accumulated_data.target_difficulty.as_u64();
-                period_difficulty += diff;
-                period_solvetime += st as u64;
-                period_hash += diff as f64 / st / 1_000_000.0;
-                if period_ticker_end <= period_end {
+            let block = match node.get_block(height).await {
+                Err(err) => {
+                    println!("Error in db, could not get block: {}", err);
                     break;
-                }
+                },
+                // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                // logging it.
+                Ok(Some(historical_block)) => historical_block,
+                Ok(None) => {
+                    println!("Error in db, block not found at height {}", height);
+                    break;
+                },
+            };
+            let prev_block = match node.get_block(height - 1).await {
+                Err(err) => {
+                    println!("Error in db, could not get block: {}", err);
+                    break;
+                },
+                // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
+                // logging it.
+                Ok(Some(historical_block)) => historical_block,
+                Ok(None) => {
+                    println!("Error in db, block not found at height {}", height - 1);
+                    break;
+                },
+            };
+            height -= 1;
+            if block.header().timestamp.as_u64() > period_ticker_end {
                 print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+                continue;
+            };
+            while block.header().timestamp.as_u64() < period_ticker_start {
+                results.push((
+                    period_tx_count,
+                    period_hash,
+                    period_difficulty,
+                    period_solvetime,
+                    period_block_count,
+                ));
+                period_tx_count = 0;
+                period_block_count = 0;
+                period_hash = 0.0;
+                period_difficulty = 0;
+                period_solvetime = 0;
+                period_ticker_end -= period;
+                period_ticker_start -= period;
             }
-            println!("Complete");
-            println!("Results of tx count, hash rate estimation, target difficulty, solvetime, block count");
-            for data in results {
-                println!("{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4);
+            period_tx_count += block.block().body.kernels().len() - 1;
+            period_block_count += 1;
+            let st = if prev_block.header().timestamp.as_u64() >= block.header().timestamp.as_u64() {
+                1.0
+            } else {
+                (block.header().timestamp.as_u64() - prev_block.header().timestamp.as_u64()) as f64
+            };
+            let diff = block.accumulated_data.target_difficulty.as_u64();
+            period_difficulty += diff;
+            period_solvetime += st as u64;
+            period_hash += diff as f64 / st / 1_000_000.0;
+            if period_ticker_end <= period_end {
+                break;
             }
-        });
+            print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+        }
+        println!("Complete");
+        println!("Results of tx count, hash rate estimation, target difficulty, solvetime, block count");
+        for data in results {
+            println!("{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4);
+        }
     }
 
-    pub fn save_header_stats(
+    pub async fn save_header_stats(
         &self,
         start_height: u64,
         end_height: u64,
@@ -1054,111 +1003,106 @@ impl CommandHandler {
     ) {
         let db = self.blockchain_db.clone();
         let consensus_rules = self.consensus_rules.clone();
-        self.executor.spawn(async move {
-            let mut output = try_or_print!(File::create(&filename));
+        let mut output = try_or_print!(File::create(&filename));
 
-            println!(
-                "Loading header from height {} to {} and dumping to file [working-dir]/{}.{}",
-                start_height,
-                end_height,
-                filename,
-                pow_algo
-                    .map(|a| format!(" PoW algo = {}", a))
-                    .unwrap_or_else(String::new)
+        println!(
+            "Loading header from height {} to {} and dumping to file [working-dir]/{}.{}",
+            start_height,
+            end_height,
+            filename,
+            pow_algo
+                .map(|a| format!(" PoW algo = {}", a))
+                .unwrap_or_else(String::new)
+        );
+
+        let start_height = cmp::max(start_height, 1);
+        let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
+
+        writeln!(
+            output,
+            "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
+             Window,Acc.Monero,Acc.Sha3"
+        )
+        .unwrap();
+
+        for height in start_height..=end_height {
+            let header = try_or_print!(db.fetch_chain_header(height).await);
+
+            // Optionally, filter out pow algos
+            if pow_algo.map(|algo| header.header().pow_algo() != algo).unwrap_or(false) {
+                continue;
+            }
+
+            let target_diff = try_or_print!(
+                db.fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                    .await
             );
+            let pow_algo = header.header().pow_algo();
 
-            let start_height = cmp::max(start_height, 1);
-            let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
+            let min = consensus_rules.consensus_constants(height).min_pow_difficulty(pow_algo);
+            let max = consensus_rules.consensus_constants(height).max_pow_difficulty(pow_algo);
+
+            let calculated_target_difficulty = target_diff.get(pow_algo).calculate(min, max);
+            let existing_target_difficulty = header.accumulated_data().target_difficulty;
+            let achieved = header.accumulated_data().achieved_difficulty;
+            let solve_time = header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
+            let normalized_solve_time = cmp::min(
+                cmp::max(solve_time, 1) as u64,
+                consensus_rules
+                    .consensus_constants(height)
+                    .get_difficulty_max_block_interval(pow_algo),
+            );
+            let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
+            let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
 
             writeln!(
                 output,
-                "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
-                 Window,Acc.Monero,Acc.Sha3"
+                "{},{},{},{},{},{},{},{},{},{},{}",
+                height,
+                achieved.as_u64(),
+                existing_target_difficulty.as_u64(),
+                calculated_target_difficulty.as_u64(),
+                solve_time,
+                normalized_solve_time,
+                pow_algo,
+                chrono::DateTime::from(header.header().timestamp),
+                target_diff.get(pow_algo).len(),
+                acc_monero.as_u64(),
+                acc_sha3.as_u64(),
             )
             .unwrap();
 
-            for height in start_height..=end_height {
-                let header = try_or_print!(db.fetch_chain_header(height).await);
-
-                // Optionally, filter out pow algos
-                if pow_algo.map(|algo| header.header().pow_algo() != algo).unwrap_or(false) {
-                    continue;
-                }
-
-                let target_diff = try_or_print!(
-                    db.fetch_target_difficulties_for_next_block(prev_header.hash().clone())
-                        .await
-                );
-                let pow_algo = header.header().pow_algo();
-
-                let min = consensus_rules.consensus_constants(height).min_pow_difficulty(pow_algo);
-                let max = consensus_rules.consensus_constants(height).max_pow_difficulty(pow_algo);
-
-                let calculated_target_difficulty = target_diff.get(pow_algo).calculate(min, max);
-                let existing_target_difficulty = header.accumulated_data().target_difficulty;
-                let achieved = header.accumulated_data().achieved_difficulty;
-                let solve_time =
-                    header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
-                let normalized_solve_time = cmp::min(
-                    cmp::max(solve_time, 1) as u64,
-                    consensus_rules
-                        .consensus_constants(height)
-                        .get_difficulty_max_block_interval(pow_algo),
-                );
-                let acc_sha3 = header.accumulated_data().accumulated_sha_difficulty;
-                let acc_monero = header.accumulated_data().accumulated_monero_difficulty;
-
-                writeln!(
-                    output,
-                    "{},{},{},{},{},{},{},{},{},{},{}",
+            if header.header().hash() != header.accumulated_data().hash {
+                eprintln!(
+                    "Difference in hash at {}! header = {} and accum hash = {}",
                     height,
-                    achieved.as_u64(),
-                    existing_target_difficulty.as_u64(),
-                    calculated_target_difficulty.as_u64(),
-                    solve_time,
-                    normalized_solve_time,
-                    pow_algo,
-                    chrono::DateTime::from(header.header().timestamp),
-                    target_diff.get(pow_algo).len(),
-                    acc_monero.as_u64(),
-                    acc_sha3.as_u64(),
-                )
-                .unwrap();
-
-                if header.header().hash() != header.accumulated_data().hash {
-                    eprintln!(
-                        "Difference in hash at {}! header = {} and accum hash = {}",
-                        height,
-                        header.header().hash().to_hex(),
-                        header.accumulated_data().hash.to_hex()
-                    );
-                }
-
-                if existing_target_difficulty != calculated_target_difficulty {
-                    eprintln!(
-                        "Difference at {}! existing = {} and calculated = {}",
-                        height, existing_target_difficulty, calculated_target_difficulty
-                    );
-                }
-
-                print!("{}", height);
-                try_or_print!(io::stdout().flush());
-                print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
-                prev_header = header;
+                    header.header().hash().to_hex(),
+                    header.accumulated_data().hash.to_hex()
+                );
             }
-            println!("Complete");
-        });
+
+            if existing_target_difficulty != calculated_target_difficulty {
+                eprintln!(
+                    "Difference at {}! existing = {} and calculated = {}",
+                    height, existing_target_difficulty, calculated_target_difficulty
+                );
+            }
+
+            print!("{}", height);
+            try_or_print!(io::stdout().flush());
+            print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
+            prev_header = header;
+        }
+        println!("Complete");
     }
 
-    pub fn rewind_blockchain(&self, new_height: u64) {
+    pub async fn rewind_blockchain(&self, new_height: u64) {
         let db = self.blockchain_db.clone();
         let local_node_comms_interface = self.node_service.clone();
-        self.executor.spawn(async move {
-            let blocks = try_or_print!(db.rewind_to_height(new_height).await);
-            if !blocks.is_empty() {
-                local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
-            }
-        });
+        let blocks = try_or_print!(db.rewind_to_height(new_height).await);
+        if !blocks.is_empty() {
+            local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+        }
     }
 
     /// Function to process the whoami command
@@ -1170,95 +1114,93 @@ impl CommandHandler {
         self.software_updater.clone()
     }
 
-    pub fn get_blockchain_db_stats(&self) {
+    pub async fn get_blockchain_db_stats(&self) {
         const BYTES_PER_MB: usize = 1024 * 1024;
 
         let db = self.blockchain_db.clone();
 
-        self.executor.spawn(async move {
-            let total_db_size = match db.get_stats().await {
-                Ok(stats) => {
-                    let mut table = Table::new();
-                    table.set_titles(vec![
-                        "Name",
-                        "Entries",
-                        "Depth",
-                        "Branch Pages",
-                        "Leaf Pages",
-                        "Overflow Pages",
-                        "Est. Size (MiB)",
-                        "% of total",
+        let total_db_size = match db.get_stats().await {
+            Ok(stats) => {
+                let mut table = Table::new();
+                table.set_titles(vec![
+                    "Name",
+                    "Entries",
+                    "Depth",
+                    "Branch Pages",
+                    "Leaf Pages",
+                    "Overflow Pages",
+                    "Est. Size (MiB)",
+                    "% of total",
+                ]);
+                let total_db_size = stats.db_stats().iter().map(|s| s.total_page_size()).sum::<usize>();
+                stats.db_stats().iter().for_each(|stat| {
+                    table.add_row(row![
+                        stat.name,
+                        stat.entries,
+                        stat.depth,
+                        stat.branch_pages,
+                        stat.leaf_pages,
+                        stat.overflow_pages,
+                        format!("{:.2}", stat.total_page_size() as f32 / BYTES_PER_MB as f32),
+                        format!("{:.2}%", (stat.total_page_size() as f32 / total_db_size as f32) * 100.0)
                     ]);
-                    let total_db_size = stats.db_stats().iter().map(|s| s.total_page_size()).sum::<usize>();
-                    stats.db_stats().iter().for_each(|stat| {
-                        table.add_row(row![
-                            stat.name,
-                            stat.entries,
-                            stat.depth,
-                            stat.branch_pages,
-                            stat.leaf_pages,
-                            stat.overflow_pages,
-                            format!("{:.2}", stat.total_page_size() as f32 / BYTES_PER_MB as f32),
-                            format!("{:.2}%", (stat.total_page_size() as f32 / total_db_size as f32) * 100.0)
-                        ]);
-                    });
+                });
 
-                    table.print_stdout();
-                    println!();
-                    println!(
-                        "{} databases, {:.2} MiB used ({:.2}%), page size: {} bytes, env_info = ({})",
-                        stats.root().entries,
-                        total_db_size as f32 / BYTES_PER_MB as f32,
-                        (total_db_size as f32 / stats.env_info().mapsize as f32) * 100.0,
-                        stats.root().psize as usize,
-                        stats.env_info()
-                    );
-                    total_db_size
-                },
-                Err(err) => {
-                    println!("{}", err);
-                    return;
-                },
-            };
+                table.print_stdout();
+                println!();
+                println!(
+                    "{} databases, {:.2} MiB used ({:.2}%), page size: {} bytes, env_info = ({})",
+                    stats.root().entries,
+                    total_db_size as f32 / BYTES_PER_MB as f32,
+                    (total_db_size as f32 / stats.env_info().mapsize as f32) * 100.0,
+                    stats.root().psize as usize,
+                    stats.env_info()
+                );
+                total_db_size
+            },
+            Err(err) => {
+                println!("{}", err);
+                return;
+            },
+        };
 
-            println!();
-            println!("Totalling DB entry sizes. This may take a few seconds...");
-            println!();
-            match db.fetch_total_size_stats().await {
-                Ok(stats) => {
-                    println!();
-                    let mut table = Table::new();
-                    table.set_titles(vec![
-                        "Name",
-                        "Entries",
-                        "Total Size (MiB)",
-                        "Avg. Size/Entry (bytes)",
-                        "% of total",
-                    ]);
-                    let total_data_size = stats.sizes().iter().map(|s| s.total()).sum::<u64>();
-                    stats.sizes().iter().for_each(|size| {
-                        let total = size.total() as f32 / BYTES_PER_MB as f32;
-                        table.add_row(row![
-                            size.name,
-                            size.num_entries,
-                            format!("{:.2}", total),
-                            format!("{}", size.avg_bytes_per_entry()),
-                            format!("{:.2}%", (size.total() as f32 / total_data_size as f32) * 100.0)
-                        ])
-                    });
-                    table.print_stdout();
-                    println!();
-                    println!(
-                        "Total blockchain data size: {:.2} MiB ({:.2} % of LMDB map size)",
-                        total_data_size as f32 / BYTES_PER_MB as f32,
-                        (total_data_size as f32 / total_db_size as f32) * 100.0
-                    );
-                },
-                Err(err) => {
-                    println!("{}", err);
-                },
-            }
-        });
+        println!();
+        println!("Totalling DB entry sizes. This may take a few seconds...");
+        println!();
+        match db.fetch_total_size_stats().await {
+            Ok(stats) => {
+                println!();
+                let mut table = Table::new();
+                table.set_titles(vec![
+                    "Name",
+                    "Entries",
+                    "Total Size (MiB)",
+                    "Avg. Size/Entry (bytes)",
+                    "% of total",
+                ]);
+                let total_data_size = stats.sizes().iter().map(|s| s.total()).sum::<u64>();
+                stats.sizes().iter().for_each(|size| {
+                    let total = size.total() as f32 / BYTES_PER_MB as f32;
+                    table.add_row(row![
+                        size.name,
+                        size.num_entries,
+                        format!("{:.2}", total),
+                        format!("{}", size.avg_bytes_per_entry()),
+                        format!("{:.2}%", (size.total() as f32 / total_data_size as f32) * 100.0)
+                    ])
+                });
+                table.print_stdout();
+                println!();
+                println!(
+                    "Total blockchain data size: {:.2} MiB ({:.2} % of LMDB map size)",
+                    total_data_size as f32 / BYTES_PER_MB as f32,
+                    (total_data_size as f32 / total_db_size as f32) * 100.0
+                );
+            },
+            Err(err) => {
+                println!("{}", err);
+            },
+        }
     }
 
     #[cfg(not(feature = "metrics"))]

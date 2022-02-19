@@ -138,7 +138,7 @@ use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, task, time};
+use tokio::{task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
@@ -292,7 +292,7 @@ async fn run_node(
     }
 
     // Run, node, run!
-    let command_handler = CommandHandler::new(runtime::Handle::current(), &ctx);
+    let command_handler = CommandHandler::new(&ctx);
     if bootstrap.non_interactive_mode {
         task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
@@ -381,7 +381,7 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
             }
 
             _ = interval => {
-               command_handler.status(StatusOutput::Log);
+               command_handler.status(StatusOutput::Log).await;
             },
         }
     }
@@ -458,7 +458,7 @@ async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
             }
             _ = interval => {
                 // TODO: Execute `watch` command here
-                performer.status(StatusOutput::Full);
+                performer.status(StatusOutput::Full).await;
             },
             _ = shutdown_signal.wait() => {
                 break;
