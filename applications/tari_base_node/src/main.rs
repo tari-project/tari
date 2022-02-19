@@ -381,7 +381,7 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
             }
 
             _ = interval => {
-               command_handler.status(StatusOutput::Log).await;
+               command_handler.status(StatusOutput::Log).await.ok();
             },
         }
     }
@@ -457,8 +457,8 @@ async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
                 }
             }
             _ = interval => {
-                // TODO: Execute `watch` command here
-                performer.status(StatusOutput::Full).await;
+                // TODO: Execute `watch` command here + use the result
+                performer.status(StatusOutput::Full).await.ok();
             },
             _ = shutdown_signal.wait() => {
                 break;

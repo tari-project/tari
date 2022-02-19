@@ -187,103 +187,40 @@ impl Performer {
             Help => {
                 let command = typed_args.take_next("help-command")?;
                 self.print_help(command);
+                Ok(())
             },
-            Status => {
-                self.command_handler.status(StatusOutput::Full).await;
-            },
-            GetStateInfo => {
-                self.command_handler.state_info();
-            },
-            Version => {
-                self.command_handler.print_version();
-            },
-            CheckForUpdates => {
-                self.command_handler.check_for_updates().await;
-            },
-            GetChainMetadata => {
-                self.command_handler.get_chain_meta().await;
-            },
-            GetDbStats => {
-                self.command_handler.get_blockchain_db_stats().await;
-            },
-            DialPeer => {
-                self.process_dial_peer(typed_args).await?;
-            },
-            PingPeer => {
-                self.process_ping_peer(typed_args).await?;
-            },
-            DiscoverPeer => {
-                self.process_discover_peer(typed_args).await?;
-            },
-            GetPeer => {
-                self.process_get_peer(typed_args).await?;
-            },
-            ListPeers => {
-                self.process_list_peers(typed_args).await;
-            },
-            ResetOfflinePeers => {
-                self.command_handler.reset_offline_peers().await;
-            },
-            RewindBlockchain => {
-                self.process_rewind_blockchain(typed_args).await?;
-            },
-            CheckDb => {
-                self.command_handler.check_db().await;
-            },
-            PeriodStats => {
-                self.process_period_stats(typed_args).await?;
-            },
-            HeaderStats => {
-                self.process_header_stats(typed_args).await?;
-            },
-            BanPeer => {
-                self.process_ban_peer(typed_args, true).await?;
-            },
-            UnbanPeer => {
-                self.process_ban_peer(typed_args, false).await?;
-            },
-            UnbanAllPeers => {
-                self.command_handler.unban_all_peers().await;
-            },
-            ListBannedPeers => {
-                self.command_handler.list_banned_peers().await;
-            },
-            ListConnections => {
-                self.command_handler.list_connections().await;
-            },
-            ListHeaders => {
-                self.process_list_headers(typed_args).await?;
-            },
-            BlockTiming | CalcTiming => {
-                self.process_block_timing(typed_args).await?;
-            },
-            ListReorgs => {
-                self.process_list_reorgs().await;
-            },
-            GetBlock => {
-                self.process_get_block(typed_args).await?;
-            },
-            SearchUtxo => {
-                self.process_search_utxo(typed_args).await?;
-            },
-            SearchKernel => {
-                self.process_search_kernel(typed_args).await?;
-            },
-            GetMempoolStats => {
-                self.command_handler.get_mempool_stats().await;
-            },
-            GetMempoolState => {
-                self.command_handler.get_mempool_state(None).await;
-            },
-            GetMempoolTx => {
-                self.get_mempool_state_tx(typed_args).await?;
-            },
-            Whoami => {
-                self.command_handler.whoami();
-            },
-            GetNetworkStats => {
-                self.command_handler.get_network_stats();
-            },
+            Status => self.command_handler.status(StatusOutput::Full).await,
+            GetStateInfo => self.command_handler.state_info(),
+            Version => self.command_handler.print_version(),
+            CheckForUpdates => self.command_handler.check_for_updates().await,
+            GetChainMetadata => self.command_handler.get_chain_meta().await,
+            GetDbStats => self.command_handler.get_blockchain_db_stats().await,
+            DialPeer => self.process_dial_peer(typed_args).await,
+            PingPeer => self.process_ping_peer(typed_args).await,
+            DiscoverPeer => self.process_discover_peer(typed_args).await,
+            GetPeer => self.process_get_peer(typed_args).await,
+            ListPeers => self.process_list_peers(typed_args).await,
+            ResetOfflinePeers => self.command_handler.reset_offline_peers().await,
+            RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
+            CheckDb => self.command_handler.check_db().await,
+            PeriodStats => self.process_period_stats(typed_args).await,
+            HeaderStats => self.process_header_stats(typed_args).await,
+            BanPeer => self.process_ban_peer(typed_args, true).await,
+            UnbanPeer => self.process_ban_peer(typed_args, false).await,
+            UnbanAllPeers => self.command_handler.unban_all_peers().await,
+            ListBannedPeers => self.command_handler.list_banned_peers().await,
+            ListConnections => self.command_handler.list_connections().await,
+            ListHeaders => self.process_list_headers(typed_args).await,
+            BlockTiming | CalcTiming => self.process_block_timing(typed_args).await,
+            ListReorgs => self.process_list_reorgs().await,
+            GetBlock => self.process_get_block(typed_args).await,
+            SearchUtxo => self.process_search_utxo(typed_args).await,
+            SearchKernel => self.process_search_kernel(typed_args).await,
+            GetMempoolStats => self.command_handler.get_mempool_stats().await,
+            GetMempoolState => self.command_handler.get_mempool_state(None).await,
+            GetMempoolTx => self.get_mempool_state_tx(typed_args).await,
+            Whoami => self.command_handler.whoami(),
+            GetNetworkStats => self.command_handler.get_network_stats(),
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -291,10 +228,9 @@ impl Performer {
                     "Termination signal received from user. Shutting node down."
                 );
                 let _ = shutdown.trigger();
+                Ok(())
             },
         }
-        // TODO: Remove it (use expressions above)
-        Ok(())
     }
 
     /// Displays the commands or context specific help for a given command
@@ -471,14 +407,8 @@ impl Performer {
         let format = args.try_take_next("format")?.unwrap_or_default();
 
         match (height, hash) {
-            (Some(height), _) => {
-                self.command_handler.get_block(height, format).await;
-                Ok(())
-            },
-            (_, Some(hash)) => {
-                self.command_handler.get_block_by_hash(hash.0, format).await;
-                Ok(())
-            },
+            (Some(height), _) => self.command_handler.get_block(height, format).await,
+            (_, Some(hash)) => self.command_handler.get_block_by_hash(hash.0, format).await,
             _ => Err(ArgsError::new(
                 "height",
                 "Invalid block height or hash provided. Height must be an integer.",
@@ -490,8 +420,7 @@ impl Performer {
     /// Function to process the search utxo command
     async fn process_search_utxo<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let commitment: FromHex<Commitment> = args.take_next("hex")?;
-        self.command_handler.search_utxo(commitment.0).await;
-        Ok(())
+        self.command_handler.search_utxo(commitment.0).await
     }
 
     /// Function to process the search kernel command
@@ -499,21 +428,18 @@ impl Performer {
         let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
         let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
         let kernel_sig = Signature::new(public_nonce.0, signature.0);
-        self.command_handler.search_kernel(kernel_sig).await;
-        Ok(())
+        self.command_handler.search_kernel(kernel_sig).await
     }
 
     async fn get_mempool_state_tx<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let filter = args.take_next("filter").ok();
-        self.command_handler.get_mempool_state(filter).await;
-        Ok(())
+        self.command_handler.get_mempool_state(filter).await
     }
 
     /// Function to process the discover-peer command
     async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let key: UniPublicKey = args.take_next("id")?;
-        self.command_handler.discover_peer(Box::new(key.into())).await;
-        Ok(())
+        self.command_handler.discover_peer(Box::new(key.into())).await
     }
 
     async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
@@ -533,7 +459,7 @@ impl Performer {
     }
 
     /// Function to process the list-peers command
-    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) {
+    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let filter = args.take_next("filter").ok();
         self.command_handler.list_peers(filter).await
     }
@@ -611,7 +537,7 @@ impl Performer {
         Ok(())
     }
 
-    async fn process_list_reorgs(&self) {
-        self.command_handler.list_reorgs();
+    async fn process_list_reorgs(&self) -> Result<(), Error> {
+        self.command_handler.list_reorgs()
     }
 }
