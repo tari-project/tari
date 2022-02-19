@@ -30,7 +30,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use anyhow::Error;
+use anyhow::{anyhow, Error};
 use chrono::{DateTime, Utc};
 use log::*;
 use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
@@ -740,29 +740,23 @@ impl CommandHandler {
         }
     }
 
-    pub async fn block_timing(&self, start: u64, end: Option<u64>) {
-        let headers = match Self::get_chain_headers(&self.blockchain_db, start, end).await {
-            Ok(h) if h.is_empty() => {
-                println!("No headers found");
-                return;
-            },
-            Ok(h) => h.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>(),
-            Err(err) => {
-                println!("Failed to retrieve headers: {:?}", err);
-                warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                return;
-            },
-        };
-
-        let (max, min, avg) = BlockHeader::timing_stats(&headers);
-        println!(
-            "Timing for blocks #{} - #{}",
-            headers.first().unwrap().height,
-            headers.last().unwrap().height
-        );
-        println!("Max block time: {}", max);
-        println!("Min block time: {}", min);
-        println!("Avg block time: {}", avg);
+    pub async fn block_timing(&self, start: u64, end: Option<u64>) -> Result<(), Error> {
+        let headers = Self::get_chain_headers(&self.blockchain_db, start, end).await?;
+        if !headers.is_empty() {
+            let headers = headers.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>();
+            let (max, min, avg) = BlockHeader::timing_stats(&headers);
+            println!(
+                "Timing for blocks #{} - #{}",
+                headers.first().unwrap().height,
+                headers.last().unwrap().height
+            );
+            println!("Max block time: {}", max);
+            println!("Min block time: {}", min);
+            println!("Avg block time: {}", avg);
+        } else {
+            println!("No headers found");
+        }
+        Ok(())
     }
 
     /// Function to process the check-db command
@@ -813,12 +807,13 @@ impl CommandHandler {
     }
 
     #[allow(deprecated)]
-    pub async fn period_stats(&mut self, period_end: u64, mut period_ticker_end: u64, period: u64) {
-        let meta = self
-            .node_service
-            .get_metadata()
-            .await
-            .expect("Could not retrieve chain meta");
+    pub async fn period_stats(
+        &mut self,
+        period_end: u64,
+        mut period_ticker_end: u64,
+        period: u64,
+    ) -> Result<(), Error> {
+        let meta = self.node_service.get_metadata().await?;
 
         let mut height = meta.height_of_longest_chain();
         // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
@@ -833,34 +828,20 @@ impl CommandHandler {
         print!("Searching for height: ");
         while height > 0 {
             print!("{}", height);
-            io::stdout().flush().unwrap();
+            io::stdout().flush()?;
 
-            let block = match self.node_service.get_block(height).await {
-                Err(err) => {
-                    println!("Error in db, could not get block: {}", err);
-                    break;
-                },
-                // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                // logging it.
-                Ok(Some(historical_block)) => historical_block,
-                Ok(None) => {
-                    println!("Error in db, block not found at height {}", height);
-                    break;
-                },
-            };
-            let prev_block = match self.node_service.get_block(height - 1).await {
-                Err(err) => {
-                    println!("Error in db, could not get block: {}", err);
-                    break;
-                },
-                // We need to check the data it self, as FetchMatchingBlocks will suppress any error, only
-                // logging it.
-                Ok(Some(historical_block)) => historical_block,
-                Ok(None) => {
-                    println!("Error in db, block not found at height {}", height - 1);
-                    break;
-                },
-            };
+            let block = self
+                .node_service
+                .get_block(height)
+                .await?
+                .ok_or_else(|| anyhow!("Error in db, block not found at height {}", height))?;
+
+            let prev_block = self
+                .node_service
+                .get_block(height - 1)
+                .await?
+                .ok_or_else(|| anyhow!("Error in db, block not found at height {}", height))?;
+
             height -= 1;
             if block.header().timestamp.as_u64() > period_ticker_end {
                 print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
@@ -903,6 +884,7 @@ impl CommandHandler {
         for data in results {
             println!("{},{},{},{},{}", data.0, data.1, data.2, data.3, data.4);
         }
+        Ok(())
     }
 
     pub async fn save_header_stats(
@@ -911,42 +893,39 @@ impl CommandHandler {
         end_height: u64,
         filename: String,
         pow_algo: Option<PowAlgorithm>,
-    ) {
-        let mut output = try_or_print!(File::create(&filename));
+    ) -> Result<(), Error> {
+        // TODO: Use `async` here!!!
+        let mut output = File::create(&filename)?;
 
         println!(
             "Loading header from height {} to {} and dumping to file [working-dir]/{}.{}",
             start_height,
             end_height,
             filename,
-            pow_algo
-                .map(|a| format!(" PoW algo = {}", a))
-                .unwrap_or_else(String::new)
+            pow_algo.map(|a| format!(" PoW algo = {}", a)).unwrap_or_default()
         );
 
         let start_height = cmp::max(start_height, 1);
-        let mut prev_header = try_or_print!(self.blockchain_db.fetch_chain_header(start_height - 1).await);
+        let mut prev_header = self.blockchain_db.fetch_chain_header(start_height - 1).await?;
 
         writeln!(
             output,
             "Height,Achieved,TargetDifficulty,CalculatedDifficulty,SolveTime,NormalizedSolveTime,Algo,Timestamp,\
              Window,Acc.Monero,Acc.Sha3"
-        )
-        .unwrap();
+        )?;
 
         for height in start_height..=end_height {
-            let header = try_or_print!(self.blockchain_db.fetch_chain_header(height).await);
+            let header = self.blockchain_db.fetch_chain_header(height).await?;
 
             // Optionally, filter out pow algos
             if pow_algo.map(|algo| header.header().pow_algo() != algo).unwrap_or(false) {
                 continue;
             }
 
-            let target_diff = try_or_print!(
-                self.blockchain_db
-                    .fetch_target_difficulties_for_next_block(prev_header.hash().clone())
-                    .await
-            );
+            let target_diff = self
+                .blockchain_db
+                .fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                .await?;
             let pow_algo = header.header().pow_algo();
 
             let min = self
@@ -985,8 +964,7 @@ impl CommandHandler {
                 target_diff.get(pow_algo).len(),
                 acc_monero.as_u64(),
                 acc_sha3.as_u64(),
-            )
-            .unwrap();
+            )?;
 
             if header.header().hash() != header.accumulated_data().hash {
                 eprintln!(
@@ -1005,19 +983,21 @@ impl CommandHandler {
             }
 
             print!("{}", height);
-            try_or_print!(io::stdout().flush());
+            io::stdout().flush()?;
             print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
             prev_header = header;
         }
         println!("Complete");
+        Ok(())
     }
 
-    pub async fn rewind_blockchain(&self, new_height: u64) {
-        let local_node_comms_interface = self.node_service.clone();
-        let blocks = try_or_print!(self.blockchain_db.rewind_to_height(new_height).await);
+    pub async fn rewind_blockchain(&self, new_height: u64) -> Result<(), Error> {
+        let blocks = self.blockchain_db.rewind_to_height(new_height).await?;
         if !blocks.is_empty() {
-            local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
+            self.node_service
+                .publish_block_event(BlockEvent::BlockSyncRewind(blocks));
         }
+        Ok(())
     }
 
     /// Function to process the whoami command

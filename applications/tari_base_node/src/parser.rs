@@ -502,8 +502,7 @@ impl Performer {
         if end.is_none() && start < 2 {
             Err(ArgsError::new("start", "Number of headers must be at least 2.").into())
         } else {
-            self.command_handler.block_timing(start, end).await;
-            Ok(())
+            self.command_handler.block_timing(start, end).await
         }
     }
 
@@ -513,8 +512,7 @@ impl Performer {
         let period = args.take_next("period")?;
         self.command_handler
             .period_stats(period_end, period_ticker_end, period)
-            .await;
-        Ok(())
+            .await
     }
 
     async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
@@ -527,14 +525,12 @@ impl Performer {
 
         self.command_handler
             .save_header_stats(start_height, end_height, filename, algo)
-            .await;
-        Ok(())
+            .await
     }
 
     async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let new_height = args.take_next("new_height")?;
-        self.command_handler.rewind_blockchain(new_height).await;
-        Ok(())
+        self.command_handler.rewind_blockchain(new_height).await
     }
 
     async fn process_list_reorgs(&self) -> Result<(), Error> {
