@@ -7,6 +7,7 @@ use tokio::{
 use super::LOG_TARGET;
 use crate::parser::Parser;
 
+// TODO: Remove it and use the result from the `rustyline` directly
 pub enum CommandEvent {
     Command(String),
     Interrupt,
@@ -33,7 +34,6 @@ impl CommandReader {
                 let event;
                 match readline {
                     Ok(line) => {
-                        rustyline.add_history_entry(line.as_str());
                         event = CommandEvent::Command(line);
                     },
                     Err(ReadlineError::Interrupted) => {

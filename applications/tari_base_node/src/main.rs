@@ -402,9 +402,9 @@ async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
         .completion_type(CompletionType::List)
         .edit_mode(EditMode::Emacs)
         .output_stream(OutputStreamType::Stdout)
+        .auto_add_history(true)
         .build();
     let mut rustyline = Editor::with_config(cli_config);
-    // let command_handler = performer.get_command_handler();
     rustyline.set_helper(Some(parser));
     let mut reader = CommandReader::new(rustyline);
 
