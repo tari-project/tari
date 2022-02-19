@@ -138,7 +138,7 @@ use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{runtime, sync::Mutex, task, time};
+use tokio::{runtime, task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
@@ -292,7 +292,7 @@ async fn run_node(
     }
 
     // Run, node, run!
-    let command_handler = Arc::new(Mutex::new(CommandHandler::new(runtime::Handle::current(), &ctx)));
+    let command_handler = CommandHandler::new(runtime::Handle::current(), &ctx);
     if bootstrap.non_interactive_mode {
         task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
@@ -369,7 +369,7 @@ fn status_interval(start_time: Instant) -> time::Sleep {
     time::sleep(duration)
 }
 
-async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shutdown) {
+async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
     loop {
@@ -381,7 +381,7 @@ async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shut
             }
 
             _ = interval => {
-               command_handler.lock().await.status(StatusOutput::Log);
+               command_handler.status(StatusOutput::Log);
             },
         }
     }
@@ -394,7 +394,7 @@ async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shut
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shutdown) {
+async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
     let parser = Parser::new();
     cli::print_banner(parser.get_commands(), 3);
 
@@ -413,12 +413,7 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
-    let mut software_update_notif = performer
-        .lock()
-        .await
-        .get_software_updater()
-        .new_update_notifier()
-        .clone();
+    let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
     let mut first_signal = false;
     // TODO: Add heartbeat here
     loop {
@@ -462,8 +457,8 @@ async fn cli_loop(command_handler: Arc<Mutex<CommandHandler>>, mut shutdown: Shu
                 }
             }
             _ = interval => {
-                // TODO: Execute `watch` command
-                performer.lock().await.status(StatusOutput::Full);
+                // TODO: Execute `watch` command here
+                performer.status(StatusOutput::Full);
             },
             _ = shutdown_signal.wait() => {
                 break;

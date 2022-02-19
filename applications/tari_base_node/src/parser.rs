@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{string::ToString, sync::Arc, time::Duration};
+use std::{string::ToString, time::Duration};
 
 use derive_more::{Deref, DerefMut};
 use log::*;
@@ -40,7 +40,6 @@ use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
 use tari_utilities::ByteArray;
-use tokio::sync::Mutex;
 
 use super::{
     args::{Args, ArgsError, ArgsReason, FromHex},
@@ -91,9 +90,9 @@ pub enum BaseNodeCommand {
 }
 
 // TODO: Use `CommandHandler` directly instead
-#[derive(Clone, Deref, DerefMut)]
+#[derive(Deref, DerefMut)]
 pub struct Performer {
-    command_handler: Arc<Mutex<CommandHandler>>,
+    command_handler: CommandHandler,
 }
 
 /// This is used to parse commands from the user and execute them
@@ -148,7 +147,7 @@ impl Parser {
 }
 
 impl Performer {
-    pub fn new(command_handler: Arc<Mutex<CommandHandler>>) -> Self {
+    pub fn new(command_handler: CommandHandler) -> Self {
         Self { command_handler }
     }
 
@@ -189,22 +188,22 @@ impl Performer {
                 self.print_help(command);
             },
             Status => {
-                self.command_handler.lock().await.status(StatusOutput::Full);
+                self.command_handler.status(StatusOutput::Full);
             },
             GetStateInfo => {
-                self.command_handler.lock().await.state_info();
+                self.command_handler.state_info();
             },
             Version => {
-                self.command_handler.lock().await.print_version();
+                self.command_handler.print_version();
             },
             CheckForUpdates => {
-                self.command_handler.lock().await.check_for_updates();
+                self.command_handler.check_for_updates();
             },
             GetChainMetadata => {
-                self.command_handler.lock().await.get_chain_meta();
+                self.command_handler.get_chain_meta();
             },
             GetDbStats => {
-                self.command_handler.lock().await.get_blockchain_db_stats();
+                self.command_handler.get_blockchain_db_stats();
             },
             DialPeer => {
                 self.process_dial_peer(typed_args).await?;
@@ -222,13 +221,13 @@ impl Performer {
                 self.process_list_peers(typed_args).await;
             },
             ResetOfflinePeers => {
-                self.command_handler.lock().await.reset_offline_peers();
+                self.command_handler.reset_offline_peers();
             },
             RewindBlockchain => {
                 self.process_rewind_blockchain(typed_args).await?;
             },
             CheckDb => {
-                self.command_handler.lock().await.check_db();
+                self.command_handler.check_db();
             },
             PeriodStats => {
                 self.process_period_stats(typed_args).await?;
@@ -243,13 +242,13 @@ impl Performer {
                 self.process_ban_peer(typed_args, false).await?;
             },
             UnbanAllPeers => {
-                self.command_handler.lock().await.unban_all_peers();
+                self.command_handler.unban_all_peers();
             },
             ListBannedPeers => {
-                self.command_handler.lock().await.list_banned_peers();
+                self.command_handler.list_banned_peers();
             },
             ListConnections => {
-                self.command_handler.lock().await.list_connections();
+                self.command_handler.list_connections();
             },
             ListHeaders => {
                 self.process_list_headers(typed_args).await?;
@@ -270,19 +269,19 @@ impl Performer {
                 self.process_search_kernel(typed_args).await?;
             },
             GetMempoolStats => {
-                self.command_handler.lock().await.get_mempool_stats();
+                self.command_handler.get_mempool_stats();
             },
             GetMempoolState => {
-                self.command_handler.lock().await.get_mempool_state(None);
+                self.command_handler.get_mempool_state(None);
             },
             GetMempoolTx => {
                 self.get_mempool_state_tx(typed_args).await?;
             },
             Whoami => {
-                self.command_handler.lock().await.whoami();
+                self.command_handler.whoami();
             },
             GetNetworkStats => {
-                self.command_handler.lock().await.get_network_stats();
+                self.command_handler.get_network_stats();
             },
             Exit | Quit => {
                 println!("Shutting down...");
@@ -472,11 +471,11 @@ impl Performer {
 
         match (height, hash) {
             (Some(height), _) => {
-                self.command_handler.lock().await.get_block(height, format);
+                self.command_handler.get_block(height, format);
                 Ok(())
             },
             (_, Some(hash)) => {
-                self.command_handler.lock().await.get_block_by_hash(hash.0, format);
+                self.command_handler.get_block_by_hash(hash.0, format);
                 Ok(())
             },
             _ => Err(ArgsError::new(
@@ -489,7 +488,7 @@ impl Performer {
     /// Function to process the search utxo command
     async fn process_search_utxo<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let commitment: FromHex<Commitment> = args.take_next("hex")?;
-        self.command_handler.lock().await.search_utxo(commitment.0);
+        self.command_handler.search_utxo(commitment.0);
         Ok(())
     }
 
@@ -498,20 +497,20 @@ impl Performer {
         let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
         let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
         let kernel_sig = Signature::new(public_nonce.0, signature.0);
-        self.command_handler.lock().await.search_kernel(kernel_sig);
+        self.command_handler.search_kernel(kernel_sig);
         Ok(())
     }
 
     async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let filter = args.take_next("filter").ok();
-        self.command_handler.lock().await.get_mempool_state(filter);
+        self.command_handler.get_mempool_state(filter);
         Ok(())
     }
 
     /// Function to process the discover-peer command
     async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let key: UniPublicKey = args.take_next("id")?;
-        self.command_handler.lock().await.discover_peer(Box::new(key.into()));
+        self.command_handler.discover_peer(Box::new(key.into()));
         Ok(())
     }
 
@@ -527,27 +526,27 @@ impl Performer {
             let data: FromHex<_> = args.take_next("node_id")?;
             partial = data.0;
         }
-        self.command_handler.lock().await.get_peer(partial, original_str);
+        self.command_handler.get_peer(partial, original_str);
         Ok(())
     }
 
     /// Function to process the list-peers command
     async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) {
         let filter = args.take_next("filter").ok();
-        self.command_handler.lock().await.list_peers(filter)
+        self.command_handler.list_peers(filter)
     }
 
     /// Function to process the dial-peer command
     async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.lock().await.dial_peer(dest_node_id.into());
+        self.command_handler.dial_peer(dest_node_id.into());
         Ok(())
     }
 
     /// Function to process the dial-peer command
     async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.lock().await.ping_peer(dest_node_id.into());
+        self.command_handler.ping_peer(dest_node_id.into());
         Ok(())
     }
 
@@ -556,10 +555,7 @@ impl Performer {
         let node_id: UniNodeId = args.take_next("node-id")?;
         let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
         let duration = Duration::from_secs(secs);
-        self.command_handler
-            .lock()
-            .await
-            .ban_peer(node_id.into(), duration, must_ban);
+        self.command_handler.ban_peer(node_id.into(), duration, must_ban);
         Ok(())
     }
 
@@ -567,7 +563,7 @@ impl Performer {
     async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let start = args.take_next("start")?;
         let end = args.try_take_next("end")?;
-        self.command_handler.lock().await.list_headers(start, end);
+        self.command_handler.list_headers(start, end);
         Ok(())
     }
 
@@ -578,7 +574,7 @@ impl Performer {
         if end.is_none() && start < 2 {
             Err(ArgsError::new("start", "Number of headers must be at least 2."))
         } else {
-            self.command_handler.lock().await.block_timing(start, end);
+            self.command_handler.block_timing(start, end);
             Ok(())
         }
     }
@@ -587,10 +583,7 @@ impl Performer {
         let period_end = args.take_next("period_end")?;
         let period_ticker_end = args.take_next("period_ticker_end")?;
         let period = args.take_next("period")?;
-        self.command_handler
-            .lock()
-            .await
-            .period_stats(period_end, period_ticker_end, period);
+        self.command_handler.period_stats(period_end, period_ticker_end, period);
         Ok(())
     }
 
@@ -603,19 +596,17 @@ impl Performer {
         let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
 
         self.command_handler
-            .lock()
-            .await
             .save_header_stats(start_height, end_height, filename, algo);
         Ok(())
     }
 
     async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let new_height = args.take_next("new_height")?;
-        self.command_handler.lock().await.rewind_blockchain(new_height);
+        self.command_handler.rewind_blockchain(new_height);
         Ok(())
     }
 
     async fn process_list_reorgs(&self) {
-        self.command_handler.lock().await.list_reorgs();
+        self.command_handler.list_reorgs();
     }
 }
