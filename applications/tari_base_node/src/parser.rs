@@ -486,14 +486,14 @@ impl Performer {
     }
 
     /// Function to process the search utxo command
-    async fn process_search_utxo<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_search_utxo<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let commitment: FromHex<Commitment> = args.take_next("hex")?;
         self.command_handler.search_utxo(commitment.0).await;
         Ok(())
     }
 
     /// Function to process the search kernel command
-    async fn process_search_kernel<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_search_kernel<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
         let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
         let kernel_sig = Signature::new(public_nonce.0, signature.0);
@@ -501,7 +501,7 @@ impl Performer {
         Ok(())
     }
 
-    async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn get_mempool_state_tx<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let filter = args.take_next("filter").ok();
         self.command_handler.get_mempool_state(filter).await;
         Ok(())
@@ -579,7 +579,7 @@ impl Performer {
         }
     }
 
-    async fn process_period_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_period_stats<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
         let period_end = args.take_next("period_end")?;
         let period_ticker_end = args.take_next("period_ticker_end")?;
         let period = args.take_next("period")?;

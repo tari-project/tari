@@ -114,14 +114,6 @@ impl CommandHandler {
     }
 
     pub async fn status(&mut self, output: StatusOutput) {
-        let state_info = self.state_machine_info.clone();
-        let mut node = self.node_service.clone();
-        let mut mempool = self.mempool_service.clone();
-        let peer_manager = self.peer_manager.clone();
-        let mut connectivity = self.connectivity.clone();
-        let mut metrics = self.dht_metrics_collector.clone();
-        let mut rpc_server = self.rpc_server.clone();
-        let config = self.config.clone();
         let consensus_rules = self.consensus_rules.clone();
         let mut full_log = false;
         if self.last_time_full.elapsed() > Duration::from_secs(120) {
@@ -131,12 +123,12 @@ impl CommandHandler {
 
         let mut status_line = StatusLine::new();
         status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
-        status_line.add_field("", config.network);
-        status_line.add_field("State", state_info.borrow().state_info.short_desc());
+        status_line.add_field("", self.config.network);
+        status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
 
-        let metadata = node.get_metadata().await.unwrap();
+        let metadata = self.node_service.get_metadata().await.unwrap();
         let height = metadata.height_of_longest_chain();
-        let last_header = node.get_header(height).await.unwrap().unwrap();
+        let last_header = self.node_service.get_header(height).await.unwrap().unwrap();
         let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
         status_line.add_field(
             "Tip",
@@ -148,7 +140,7 @@ impl CommandHandler {
         );
 
         let constants = consensus_rules.consensus_constants(metadata.height_of_longest_chain());
-        let mempool_stats = mempool.get_mempool_stats().await.unwrap();
+        let mempool_stats = self.mempool_service.get_mempool_stats().await.unwrap();
         status_line.add_field(
             "Mempool",
             format!(
@@ -163,24 +155,25 @@ impl CommandHandler {
             ),
         );
 
-        let conns = connectivity.get_active_connections().await.unwrap();
+        let conns = self.connectivity.get_active_connections().await.unwrap();
         status_line.add_field("Connections", conns.len());
-        let banned_peers = fetch_banned_peers(&peer_manager).await.unwrap();
+        let banned_peers = fetch_banned_peers(&self.peer_manager).await.unwrap();
         status_line.add_field("Banned", banned_peers.len());
 
-        let num_messages = metrics
+        let num_messages = self
+            .dht_metrics_collector
             .get_total_message_count_in_timespan(Duration::from_secs(60))
             .await
             .unwrap();
         status_line.add_field("Messages (last 60s)", num_messages);
 
-        let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
+        let num_active_rpc_sessions = self.rpc_server.get_num_active_sessions().await.unwrap();
         status_line.add_field(
             "Rpc",
             format!(
                 "{}/{}",
                 num_active_rpc_sessions,
-                config
+                self.config
                     .rpc_max_simultaneous_sessions
                     .as_ref()
                     .map(ToString::to_string)
@@ -192,8 +185,8 @@ impl CommandHandler {
                 "RandomX",
                 format!(
                     "#{} with flags {:?}",
-                    state_info.borrow().randomx_vm_cnt,
-                    state_info.borrow().randomx_vm_flags
+                    self.state_machine_info.borrow().randomx_vm_cnt,
+                    self.state_machine_info.borrow().randomx_vm_flags
                 ),
             );
         }
@@ -210,15 +203,13 @@ impl CommandHandler {
 
     /// Function to process the get-state-info command
     pub fn state_info(&self) {
-        let watch = self.state_machine_info.clone();
-        println!("Current state machine state:\n{}", *watch.borrow());
+        println!("Current state machine state:\n{}", *self.state_machine_info.borrow());
     }
 
     /// Check for updates
-    pub async fn check_for_updates(&self) {
-        let mut updater = self.software_updater.clone();
+    pub async fn check_for_updates(&mut self) {
         println!("Checking for updates (current version: {})...", consts::APP_VERSION);
-        match updater.check_for_updates().await {
+        match self.software_updater.check_for_updates().await {
             Some(update) => {
                 println!(
                     "Version {} of the {} is available: {} (sha: {})",
@@ -254,9 +245,8 @@ impl CommandHandler {
         }
     }
 
-    pub async fn get_chain_meta(&self) {
-        let mut handler = self.node_service.clone();
-        match handler.get_metadata().await {
+    pub async fn get_chain_meta(&mut self) {
+        match self.node_service.get_metadata().await {
             Err(err) => {
                 println!("Failed to retrieve chain metadata: {:?}", err);
                 warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err);
@@ -266,11 +256,14 @@ impl CommandHandler {
     }
 
     pub async fn get_block(&self, height: u64, format: Format) {
-        let blockchain = self.blockchain_db.clone();
-        match blockchain.fetch_blocks(height..=height).await {
+        match self.blockchain_db.fetch_blocks(height..=height).await {
             Ok(mut data) => match (data.pop(), format) {
                 (Some(block), Format::Text) => {
-                    let block_data = try_or_print!(blockchain.fetch_block_accumulated_data(block.hash().clone()).await);
+                    let block_data = try_or_print!(
+                        self.blockchain_db
+                            .fetch_block_accumulated_data(block.hash().clone())
+                            .await
+                    );
 
                     println!("{}", block);
                     println!("-- Accumulated data --");
@@ -290,8 +283,7 @@ impl CommandHandler {
     }
 
     pub async fn get_block_by_hash(&self, hash: HashOutput, format: Format) {
-        let blockchain = self.blockchain_db.clone();
-        match blockchain.fetch_block_by_hash(hash).await {
+        match self.blockchain_db.fetch_block_by_hash(hash).await {
             Err(err) => {
                 println!("Failed to retrieve blocks: {}", err);
                 warn!(target: LOG_TARGET, "{}", err);
@@ -307,9 +299,12 @@ impl CommandHandler {
         };
     }
 
-    pub async fn search_utxo(&self, commitment: Commitment) {
-        let mut handler = self.node_service.clone();
-        match handler.fetch_blocks_with_utxos(vec![commitment.clone()]).await {
+    pub async fn search_utxo(&mut self, commitment: Commitment) {
+        match self
+            .node_service
+            .fetch_blocks_with_utxos(vec![commitment.clone()])
+            .await
+        {
             Err(err) => {
                 println!("Failed to retrieve blocks: {:?}", err);
                 warn!(
@@ -324,10 +319,9 @@ impl CommandHandler {
         };
     }
 
-    pub async fn search_kernel(&self, excess_sig: Signature) {
-        let mut handler = self.node_service.clone();
+    pub async fn search_kernel(&mut self, excess_sig: Signature) {
         let hex_sig = excess_sig.get_signature().to_hex();
-        match handler.get_blocks_with_kernels(vec![excess_sig]).await {
+        match self.node_service.get_blocks_with_kernels(vec![excess_sig]).await {
             Err(err) => {
                 println!("Failed to retrieve blocks: {:?}", err);
                 warn!(
@@ -343,9 +337,8 @@ impl CommandHandler {
     }
 
     /// Function to process the get-mempool-stats command
-    pub async fn get_mempool_stats(&self) {
-        let mut handler = self.mempool_service.clone();
-        match handler.get_mempool_stats().await {
+    pub async fn get_mempool_stats(&mut self) {
+        match self.mempool_service.get_mempool_stats().await {
             Ok(stats) => println!("{}", stats),
             Err(err) => {
                 println!("Failed to retrieve mempool stats: {:?}", err);
@@ -355,9 +348,8 @@ impl CommandHandler {
     }
 
     /// Function to process the get-mempool-state command
-    pub async fn get_mempool_state(&self, filter: Option<String>) {
-        let mut handler = self.mempool_service.clone();
-        match handler.get_mempool_state().await {
+    pub async fn get_mempool_state(&mut self, filter: Option<String>) {
+        match self.mempool_service.get_mempool_state().await {
             Ok(state) => {
                 println!("----------------- Mempool -----------------");
                 println!("--- Unconfirmed Pool ---");
@@ -564,12 +556,10 @@ impl CommandHandler {
     }
 
     pub async fn dial_peer(&self, dest_node_id: NodeId) {
-        let connectivity = self.connectivity.clone();
-
         let start = Instant::now();
         println!("☎️  Dialing peer...");
 
-        match connectivity.dial_peer(dest_node_id).await {
+        match self.connectivity.dial_peer(dest_node_id).await {
             Ok(p) => {
                 println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
                 println!("Connection: {}", p);
@@ -580,15 +570,13 @@ impl CommandHandler {
         }
     }
 
-    pub async fn ping_peer(&self, dest_node_id: NodeId) {
-        let mut liveness = self.liveness.clone();
-
+    pub async fn ping_peer(&mut self, dest_node_id: NodeId) {
         // TODO: Add timeout here (we should add a timeout to an every command)
         // time::timeout(Duration::from_secs(30), fut)
         println!("🏓 Pinging peer...");
-        let mut liveness_events = liveness.get_event_stream();
+        let mut liveness_events = self.liveness.get_event_stream();
 
-        match liveness.send_ping(dest_node_id.clone()).await {
+        match self.liveness.send_ping(dest_node_id.clone()).await {
             Ok(_) => loop {
                 match liveness_events.recv().await {
                     Ok(event) =>
@@ -619,17 +607,15 @@ impl CommandHandler {
         }
     }
 
-    pub async fn ban_peer(&self, node_id: NodeId, duration: Duration, must_ban: bool) {
+    pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration, must_ban: bool) {
         if self.base_node_identity.node_id() == &node_id {
             println!("Cannot ban our own node");
             return;
         }
 
-        let mut connectivity = self.connectivity.clone();
-        let peer_manager = self.peer_manager.clone();
-
         if must_ban {
-            match connectivity
+            match self
+                .connectivity
                 .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
                 .await
             {
@@ -640,7 +626,7 @@ impl CommandHandler {
                 },
             }
         } else {
-            match peer_manager.unban_peer(&node_id).await {
+            match self.peer_manager.unban_peer(&node_id).await {
                 Ok(_) => {
                     println!("Peer ban was removed from base node.");
                 },
@@ -656,33 +642,27 @@ impl CommandHandler {
     }
 
     pub async fn unban_all_peers(&self) {
-        let peer_manager = self.peer_manager.clone();
-        async fn unban_all(pm: &PeerManager) -> usize {
-            let query = PeerQuery::new().select_where(|p| p.is_banned());
-            match pm.perform_query(query).await {
-                Ok(peers) => {
-                    let num_peers = peers.len();
-                    for peer in peers {
-                        if let Err(err) = pm.unban_peer(&peer.node_id).await {
-                            println!("Failed to unban peer: {}", err);
-                        }
+        let num_peers;
+        let query = PeerQuery::new().select_where(|p| p.is_banned());
+        match self.peer_manager.perform_query(query).await {
+            Ok(peers) => {
+                num_peers = peers.len();
+                for peer in peers {
+                    if let Err(err) = self.peer_manager.unban_peer(&peer.node_id).await {
+                        println!("Failed to unban peer: {}", err);
                     }
-                    num_peers
-                },
-                Err(err) => {
-                    println!("Failed to unban peers: {}", err);
-                    0
-                },
-            }
+                }
+            },
+            Err(err) => {
+                println!("Failed to unban peers: {}", err);
+                num_peers = 0;
+            },
         }
-
-        let n = unban_all(&peer_manager).await;
-        println!("Unbanned {} peer(s) from node", n);
+        println!("Unbanned {} peer(s) from node", num_peers);
     }
 
     pub async fn list_banned_peers(&self) {
-        let peer_manager = self.peer_manager.clone();
-        match fetch_banned_peers(&peer_manager).await {
+        match fetch_banned_peers(&self.peer_manager).await {
             Ok(banned) => {
                 if banned.is_empty() {
                     println!("No peers banned from node.")
@@ -698,11 +678,8 @@ impl CommandHandler {
     }
 
     /// Function to process the list-connections command
-    pub async fn list_connections(&self) {
-        let mut connectivity = self.connectivity.clone();
-        let peer_manager = self.peer_manager.clone();
-
-        match connectivity.get_active_connections().await {
+    pub async fn list_connections(&mut self) {
+        match self.connectivity.get_active_connections().await {
             Ok(conns) if conns.is_empty() => {
                 println!("No active peer connections.");
             },
@@ -721,7 +698,8 @@ impl CommandHandler {
                     "Info",
                 ]);
                 for conn in conns {
-                    let peer = peer_manager
+                    let peer = self
+                        .peer_manager
                         .find_by_node_id(conn.peer_node_id())
                         .await
                         .expect("Unexpected peer database error")
@@ -768,8 +746,8 @@ impl CommandHandler {
     }
 
     pub async fn reset_offline_peers(&self) {
-        let peer_manager = self.peer_manager.clone();
-        let result = peer_manager
+        let result = self
+            .peer_manager
             .update_each(|mut peer| {
                 if peer.is_offline() {
                     peer.set_offline(false);
@@ -792,8 +770,7 @@ impl CommandHandler {
     }
 
     pub async fn list_headers(&self, start: u64, end: Option<u64>) {
-        let blockchain_db = self.blockchain_db.clone();
-        let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
+        let headers = match Self::get_chain_headers(&self.blockchain_db, start, end).await {
             Ok(h) if h.is_empty() => {
                 println!("No headers found");
                 return;
@@ -835,8 +812,7 @@ impl CommandHandler {
     }
 
     pub async fn block_timing(&self, start: u64, end: Option<u64>) {
-        let blockchain_db = self.blockchain_db.clone();
-        let headers = match Self::get_chain_headers(&blockchain_db, start, end).await {
+        let headers = match Self::get_chain_headers(&self.blockchain_db, start, end).await {
             Ok(h) if h.is_empty() => {
                 println!("No headers found");
                 return;
@@ -861,10 +837,12 @@ impl CommandHandler {
     }
 
     /// Function to process the check-db command
-    pub async fn check_db(&self) {
-        let mut node = self.node_service.clone();
-        let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
-
+    pub async fn check_db(&mut self) {
+        let meta = self
+            .node_service
+            .get_metadata()
+            .await
+            .expect("Could not retrieve chain meta");
         let mut height = meta.height_of_longest_chain();
         let mut missing_blocks = Vec::new();
         let mut missing_headers = Vec::new();
@@ -876,7 +854,7 @@ impl CommandHandler {
             io::stdout().flush().unwrap();
             // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
             if height > horizon_height {
-                match node.get_block(height).await {
+                match self.node_service.get_block(height).await {
                     Err(err) => {
                         // We need to check the data itself, as FetchMatchingBlocks will suppress any error, only
                         // logging it.
@@ -888,7 +866,7 @@ impl CommandHandler {
                 };
             }
             height -= 1;
-            let next_header = node.get_header(height).await.ok().flatten();
+            let next_header = self.node_service.get_header(height).await.ok().flatten();
             if next_header.is_none() {
                 // this header is missing, so we stop here and need to ask for this header
                 missing_headers.push(height);
@@ -905,9 +883,12 @@ impl CommandHandler {
     }
 
     #[allow(deprecated)]
-    pub async fn period_stats(&self, period_end: u64, mut period_ticker_end: u64, period: u64) {
-        let mut node = self.node_service.clone();
-        let meta = node.get_metadata().await.expect("Could not retrieve chain meta");
+    pub async fn period_stats(&mut self, period_end: u64, mut period_ticker_end: u64, period: u64) {
+        let meta = self
+            .node_service
+            .get_metadata()
+            .await
+            .expect("Could not retrieve chain meta");
 
         let mut height = meta.height_of_longest_chain();
         // Currently gets the stats for: tx count, hash rate estimation, target difficulty, solvetime.
@@ -924,7 +905,7 @@ impl CommandHandler {
             print!("{}", height);
             io::stdout().flush().unwrap();
 
-            let block = match node.get_block(height).await {
+            let block = match self.node_service.get_block(height).await {
                 Err(err) => {
                     println!("Error in db, could not get block: {}", err);
                     break;
@@ -937,7 +918,7 @@ impl CommandHandler {
                     break;
                 },
             };
-            let prev_block = match node.get_block(height - 1).await {
+            let prev_block = match self.node_service.get_block(height - 1).await {
                 Err(err) => {
                     println!("Error in db, could not get block: {}", err);
                     break;
@@ -1001,8 +982,6 @@ impl CommandHandler {
         filename: String,
         pow_algo: Option<PowAlgorithm>,
     ) {
-        let db = self.blockchain_db.clone();
-        let consensus_rules = self.consensus_rules.clone();
         let mut output = try_or_print!(File::create(&filename));
 
         println!(
@@ -1016,7 +995,7 @@ impl CommandHandler {
         );
 
         let start_height = cmp::max(start_height, 1);
-        let mut prev_header = try_or_print!(db.fetch_chain_header(start_height - 1).await);
+        let mut prev_header = try_or_print!(self.blockchain_db.fetch_chain_header(start_height - 1).await);
 
         writeln!(
             output,
@@ -1026,7 +1005,7 @@ impl CommandHandler {
         .unwrap();
 
         for height in start_height..=end_height {
-            let header = try_or_print!(db.fetch_chain_header(height).await);
+            let header = try_or_print!(self.blockchain_db.fetch_chain_header(height).await);
 
             // Optionally, filter out pow algos
             if pow_algo.map(|algo| header.header().pow_algo() != algo).unwrap_or(false) {
@@ -1034,13 +1013,20 @@ impl CommandHandler {
             }
 
             let target_diff = try_or_print!(
-                db.fetch_target_difficulties_for_next_block(prev_header.hash().clone())
+                self.blockchain_db
+                    .fetch_target_difficulties_for_next_block(prev_header.hash().clone())
                     .await
             );
             let pow_algo = header.header().pow_algo();
 
-            let min = consensus_rules.consensus_constants(height).min_pow_difficulty(pow_algo);
-            let max = consensus_rules.consensus_constants(height).max_pow_difficulty(pow_algo);
+            let min = self
+                .consensus_rules
+                .consensus_constants(height)
+                .min_pow_difficulty(pow_algo);
+            let max = self
+                .consensus_rules
+                .consensus_constants(height)
+                .max_pow_difficulty(pow_algo);
 
             let calculated_target_difficulty = target_diff.get(pow_algo).calculate(min, max);
             let existing_target_difficulty = header.accumulated_data().target_difficulty;
@@ -1048,7 +1034,7 @@ impl CommandHandler {
             let solve_time = header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
             let normalized_solve_time = cmp::min(
                 cmp::max(solve_time, 1) as u64,
-                consensus_rules
+                self.consensus_rules
                     .consensus_constants(height)
                     .get_difficulty_max_block_interval(pow_algo),
             );
@@ -1097,9 +1083,8 @@ impl CommandHandler {
     }
 
     pub async fn rewind_blockchain(&self, new_height: u64) {
-        let db = self.blockchain_db.clone();
         let local_node_comms_interface = self.node_service.clone();
-        let blocks = try_or_print!(db.rewind_to_height(new_height).await);
+        let blocks = try_or_print!(self.blockchain_db.rewind_to_height(new_height).await);
         if !blocks.is_empty() {
             local_node_comms_interface.publish_block_event(BlockEvent::BlockSyncRewind(blocks));
         }
