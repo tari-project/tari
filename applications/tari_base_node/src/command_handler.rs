@@ -126,9 +126,13 @@ impl CommandHandler {
         status_line.add_field("", self.config.network);
         status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
 
-        let metadata = self.node_service.get_metadata().await.unwrap();
+        let metadata = self.node_service.get_metadata().await?;
         let height = metadata.height_of_longest_chain();
-        let last_header = self.node_service.get_header(height).await.unwrap().unwrap();
+        let last_header = self
+            .node_service
+            .get_header(height)
+            .await?
+            .ok_or_else(|| anyhow!("No last header"))?;
         let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
         status_line.add_field(
             "Tip",
@@ -142,7 +146,7 @@ impl CommandHandler {
         let constants = self
             .consensus_rules
             .consensus_constants(metadata.height_of_longest_chain());
-        let mempool_stats = self.mempool_service.get_mempool_stats().await.unwrap();
+        let mempool_stats = self.mempool_service.get_mempool_stats().await?;
         status_line.add_field(
             "Mempool",
             format!(
@@ -157,19 +161,18 @@ impl CommandHandler {
             ),
         );
 
-        let conns = self.connectivity.get_active_connections().await.unwrap();
+        let conns = self.connectivity.get_active_connections().await?;
         status_line.add_field("Connections", conns.len());
-        let banned_peers = fetch_banned_peers(&self.peer_manager).await.unwrap();
+        let banned_peers = fetch_banned_peers(&self.peer_manager).await?;
         status_line.add_field("Banned", banned_peers.len());
 
         let num_messages = self
             .dht_metrics_collector
             .get_total_message_count_in_timespan(Duration::from_secs(60))
-            .await
-            .unwrap();
+            .await?;
         status_line.add_field("Messages (last 60s)", num_messages);
 
-        let num_active_rpc_sessions = self.rpc_server.get_num_active_sessions().await.unwrap();
+        let num_active_rpc_sessions = self.rpc_server.get_num_active_sessions().await?;
         status_line.add_field(
             "Rpc",
             format!(
@@ -270,10 +273,7 @@ impl CommandHandler {
                 println!("-- Accumulated data --");
                 println!("{}", block_data);
             },
-            (Some(block), Format::Json) => println!(
-                "{}",
-                block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
-            ),
+            (Some(block), Format::Json) => println!("{}", block.to_json()?),
             (None, _) => println!("Block not found at height {}", height),
         }
         Ok(())
@@ -283,10 +283,7 @@ impl CommandHandler {
         let data = self.blockchain_db.fetch_block_by_hash(hash).await?;
         match (data, format) {
             (Some(block), Format::Text) => println!("{}", block),
-            (Some(block), Format::Json) => println!(
-                "{}",
-                block.to_json().unwrap_or_else(|_| "Error deserializing block".into())
-            ),
+            (Some(block), Format::Json) => println!("{}", block.to_json()?),
             (None, _) => println!("Block not found"),
         }
         Ok(())
@@ -484,6 +481,7 @@ impl CommandHandler {
                     s.join(", ")
                 }
             };
+            let ua = peer.user_agent;
             table.add_row(row![
                 peer.node_id,
                 peer.public_key,
@@ -494,9 +492,13 @@ impl CommandHandler {
                         "Base node"
                     }
                 },
-                Some(peer.user_agent)
-                    .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
-                    .unwrap(),
+                {
+                    if ua.is_empty() {
+                        "<unknown>"
+                    } else {
+                        ua.as_ref()
+                    }
+                },
                 info_str,
             ]);
         }
@@ -650,6 +652,7 @@ impl CommandHandler {
                     .and_then(|v| bincode::deserialize::<PeerMetadata>(v).ok())
                     .map(|metadata| format!("height: {}", metadata.metadata.height_of_longest_chain()));
 
+                let ua = peer.user_agent;
                 table.add_row(row![
                     peer.node_id,
                     peer.public_key,
@@ -663,9 +666,13 @@ impl CommandHandler {
                             "Base node"
                         }
                     },
-                    Some(peer.user_agent)
-                        .map(|ua| if ua.is_empty() { "<unknown>".to_string() } else { ua })
-                        .unwrap(),
+                    {
+                        if ua.is_empty() {
+                            "<unknown>"
+                        } else {
+                            ua.as_ref()
+                        }
+                    },
                     format!(
                         "substreams: {}{}",
                         conn.substream_count(),
@@ -761,11 +768,7 @@ impl CommandHandler {
 
     /// Function to process the check-db command
     pub async fn check_db(&mut self) -> Result<(), Error> {
-        let meta = self
-            .node_service
-            .get_metadata()
-            .await
-            .expect("Could not retrieve chain meta");
+        let meta = self.node_service.get_metadata().await?;
         let mut height = meta.height_of_longest_chain();
         let mut missing_blocks = Vec::new();
         let mut missing_headers = Vec::new();
@@ -774,7 +777,7 @@ impl CommandHandler {
         let horizon_height = meta.horizon_block(height);
         while height > 0 {
             print!("{}", height);
-            io::stdout().flush().unwrap();
+            io::stdout().flush()?;
             // we can only check till the pruning horizon, 0 is archive node so it needs to check every block.
             if height > horizon_height {
                 match self.node_service.get_block(height).await {
