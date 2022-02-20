@@ -43,6 +43,7 @@ fn main() -> Result<(), Box<dyn Error>> {
       commands::assets::assets_list_owned,
       commands::assets::assets_list_registered_assets,
       commands::assets::assets_create_initial_checkpoint,
+      commands::assets::assets_create_committee_definition,
       commands::assets::assets_get_registration,
       commands::asset_wallets::asset_wallets_create,
       commands::asset_wallets::asset_wallets_list,
