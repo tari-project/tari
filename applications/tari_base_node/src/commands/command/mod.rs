@@ -12,7 +12,7 @@ use std::{
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use clap::{Parser, Subcommand};
+use clap::{AppSettings, Parser, Subcommand};
 use log::*;
 use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
@@ -56,13 +56,14 @@ use super::status_line::StatusLine;
 use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
 
 #[derive(Debug, Parser)]
+#[clap(setting = AppSettings::NoBinaryName)]
 pub struct Args {
     #[clap(subcommand)]
-    command: Command,
+    pub command: Command,
 }
 
 #[derive(Debug, Subcommand)]
-enum Command {
+pub enum Command {
     StateInfo(state_info::StateInfoArgs),
 }
 
@@ -72,7 +73,7 @@ pub trait HandleCommand<T> {
 }
 
 pub struct CommandContext {
-    config: Arc<GlobalConfig>,
+    pub config: Arc<GlobalConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,

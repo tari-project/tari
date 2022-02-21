@@ -101,7 +101,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+use clap::Parser as _;
 use commands::{
+    command::{CommandContext, HandleCommand},
     command_handler::{CommandHandler, StatusLineOutput},
     parser::Parser,
     performer::Performer,
@@ -293,7 +295,8 @@ async fn run_node(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(command_handler, config.clone(), shutdown));
+        let context = CommandContext::new(&ctx);
+        task::spawn(cli_loop(context, shutdown));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -387,11 +390,11 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mut shutdown: Shutdown) {
+async fn cli_loop(mut command_context: CommandContext, mut shutdown: Shutdown) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
-    let mut performer = Performer::new(command_handler);
+    // let mut performer = Performer::new(command_handler);
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -405,11 +408,12 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
 
     let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
-    let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
+    // let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
     let mut first_signal = false;
     // TODO: Add heartbeat here
     // Show status immediately on startup
-    let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+    // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+    let config = command_context.config.clone();
     loop {
         let interval = get_status_interval(start_time, config.base_node_status_line_interval);
         tokio::select! {
@@ -418,10 +422,28 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
                     match event {
                         CommandEvent::Command(line) => {
                             first_signal = false;
-                            let fut = performer.handle_command(line.as_str(), &mut shutdown);
-                            let res = time::timeout(Duration::from_secs(70), fut).await;
-                            if let Err(_err) = res {
-                                println!("Time for command execution elapsed: `{}`", line);
+                            if !line.is_empty() {
+                                let sw = line.split_whitespace();
+                                let args = commands::command::Args::try_parse_from(sw);
+                                match args {
+                                    Ok(args) => {
+                                        let fut = command_context.handle_command(args.command);
+                                        let res = time::timeout(Duration::from_secs(70), fut).await;
+                                        match res {
+                                            Ok(Ok(())) => {
+                                            }
+                                            Ok(Err(err)) => {
+                                                println!("Command failed: {}", err);
+                                            }
+                                            Err(_timeout) => {
+                                                println!("Time for command execution elapsed: `{}`", line);
+                                            }
+                                        }
+                                    }
+                                    Err(err) => {
+                                        println!("Invalid args: {}\n", err);
+                                    }
+                                }
                             }
                         }
                         CommandEvent::Interrupt => {
@@ -443,6 +465,7 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
                     break;
                 }
             },
+            /*
             Ok(_) = software_update_notif.changed() => {
                 if let Some(ref update) = *software_update_notif.borrow() {
                     println!(
@@ -454,9 +477,10 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
                     );
                 }
             }
+            */
             _ = interval => {
                 // TODO: Execute `watch` command here + use the result
-                let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+                // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
             },
             _ = shutdown_signal.wait() => {
                 break;
