@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
 
 use log::*;
 use rpassword::prompt_password_stdout;
@@ -453,7 +453,7 @@ pub async fn init_wallet(
         Some(config.buffer_rate_limit_console_wallet),
         Some(updater_config),
         config.autoupdate_check_interval,
-        Some(config.contacts_auto_ping_interval),
+        Some(Duration::from_secs(config.contacts_auto_ping_interval)),
     );
 
     let mut wallet = Wallet::start(

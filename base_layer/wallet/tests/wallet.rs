@@ -188,7 +188,7 @@ async fn create_wallet(
         None,
         None,
         None,
-        Some(1),
+        Some(Duration::from_secs(1)),
     );
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 

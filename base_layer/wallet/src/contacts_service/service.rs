@@ -239,9 +239,6 @@ where T: ContactsBackend + 'static
                         self.number_of_rounds_no_pings = 0;
                     }
                 }
-                // Ensure that we're waiting for the correct amount of peers to respond
-                // and have allocated space for their replies
-
                 self.resize_contacts_liveness_data_buffer(*num_peers);
             },
         }
@@ -314,6 +311,8 @@ where T: ContactsBackend + 'static
         Ok(())
     }
 
+    // Ensure that we're waiting for the correct amount of peers to respond to
+    // and have allocated space for their replies
     fn resize_contacts_liveness_data_buffer(&mut self, n: usize) {
         match self.liveness_data.capacity() {
             cap if n > cap => {

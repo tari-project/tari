@@ -45,7 +45,7 @@ pub struct WalletConfig {
     pub base_node_service_config: BaseNodeServiceConfig,
     pub updater_config: Option<AutoUpdateConfig>,
     pub autoupdate_check_interval: Option<Duration>,
-    pub contacts_auto_ping_interval: u64,
+    pub contacts_auto_ping_interval: Duration,
 }
 
 impl WalletConfig {
@@ -60,7 +60,7 @@ impl WalletConfig {
         rate_limit: Option<usize>,
         updater_config: Option<AutoUpdateConfig>,
         autoupdate_check_interval: Option<Duration>,
-        contacts_auto_ping_interval: Option<u64>,
+        contacts_auto_ping_interval: Option<Duration>,
     ) -> Self {
         Self {
             comms_config,
@@ -73,7 +73,7 @@ impl WalletConfig {
             base_node_service_config: base_node_service_config.unwrap_or_default(),
             updater_config,
             autoupdate_check_interval,
-            contacts_auto_ping_interval: contacts_auto_ping_interval.unwrap_or(90),
+            contacts_auto_ping_interval: contacts_auto_ping_interval.unwrap_or_else(|| Duration::from_secs(90)),
         }
     }
 }

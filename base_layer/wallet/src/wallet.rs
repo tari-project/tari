@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{marker::PhantomData, sync::Arc};
 
 use digest::Digest;
 use log::*;
@@ -177,7 +177,7 @@ where
             ))
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
-                    auto_ping_interval: Some(Duration::from_secs(config.contacts_auto_ping_interval)),
+                    auto_ping_interval: Some(config.contacts_auto_ping_interval),
                     num_peers_per_round: 0,       // No random peers
                     max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
                     ..Default::default()
