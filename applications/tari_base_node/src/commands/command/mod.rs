@@ -1,61 +1,31 @@
 mod check_for_updates;
 mod get_state_info;
+mod status;
 mod version;
 
-use std::{
-    cmp,
-    io::{self, Write},
-    str::FromStr,
-    string::ToString,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{sync::Arc, time::Instant};
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use clap::{AppSettings, Parser, Subcommand};
-use log::*;
-use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
-use tari_common_types::{
-    emoji::EmojiId,
-    types::{Commitment, HashOutput, Signature},
-};
 use tari_comms::{
     connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
+    peer_manager::{Peer, PeerManager, PeerManagerError, PeerQuery},
     protocol::rpc::RpcServerHandle,
     NodeIdentity,
 };
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
+use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
-    base_node::{
-        comms_interface::BlockEvent,
-        state_machine_service::states::{PeerMetadata, StatusInfo},
-        LocalNodeCommsInterface,
-    },
-    blocks::{BlockHeader, ChainHeader},
+    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
-    proof_of_work::PowAlgorithm,
 };
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_p2p::{
-    auto_update::SoftwareUpdaterHandle,
-    services::liveness::{LivenessEvent, LivenessHandle},
-};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
-use thiserror::Error;
-use tokio::{
-    fs::File,
-    io::AsyncWriteExt,
-    sync::{broadcast, watch},
-};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tokio::sync::watch;
 
-use super::status_line::StatusLine;
-use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
+use crate::builder::BaseNodeContext;
 
 #[derive(Debug, Parser)]
 #[clap(setting = AppSettings::NoBinaryName)]
@@ -68,7 +38,7 @@ pub struct Args {
 pub enum Command {
     Version(version::Args),
     CheckForUpdates(check_for_updates::Args),
-    // Status,
+    Status(status::Args),
     // GetChainMetadata,
     // GetDbStats,
     // GetPeer,
@@ -156,7 +126,16 @@ impl HandleCommand<Command> for CommandContext {
         match command {
             Command::Version(args) => self.handle_command(args).await,
             Command::CheckForUpdates(args) => self.handle_command(args).await,
+            Command::Status(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
         }
+    }
+}
+
+impl CommandContext {
+    async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
+        let pm = &self.peer_manager;
+        let query = PeerQuery::new().select_where(|p| p.is_banned());
+        pm.perform_query(query).await
     }
 }

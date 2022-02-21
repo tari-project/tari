@@ -106,7 +106,6 @@ use commands::{
     command::{CommandContext, HandleCommand},
     command_handler::{CommandHandler, StatusLineOutput},
     parser::Parser,
-    performer::Performer,
     reader::{CommandEvent, CommandReader},
 };
 use futures::FutureExt;

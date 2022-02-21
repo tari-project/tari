@@ -33,6 +33,7 @@ use std::{
 use anyhow::{anyhow, Error};
 use chrono::{DateTime, Utc};
 use log::*;
+use strum::{Display, EnumString};
 use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
 use tari_common::GlobalConfig;
 use tari_common_types::{
@@ -74,6 +75,8 @@ use tokio::{
 use super::status_line::StatusLine;
 use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
 
+#[derive(Debug, Display, EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub enum StatusLineOutput {
     Log,
     StdOutAndLog,
