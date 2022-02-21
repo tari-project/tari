@@ -103,7 +103,8 @@ use std::{
 
 use commands::{
     command_handler::{CommandHandler, StatusOutput},
-    parser::{Parser, Performer},
+    parser::Parser,
+    performer::Performer,
     reader::{CommandEvent, CommandReader},
 };
 use futures::FutureExt;
