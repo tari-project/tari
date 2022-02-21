@@ -97,7 +97,7 @@ pub struct TransactionOutput {
 /// An output for a transaction, includes a range proof and Tari script metadata
 impl TransactionOutput {
     /// Create new Transaction Output
-    #[allow(clippy::too_many_arguments)]
+
     pub fn new(
         version: TransactionOutputVersion,
         features: OutputFeatures,
@@ -260,7 +260,7 @@ impl TransactionOutput {
     }
 
     // Create commitment signature for the metadata
-    #[allow(clippy::too_many_arguments)]
+
     fn create_metadata_signature(
         value: &MicroTari,
         spending_key: &BlindingFactor,

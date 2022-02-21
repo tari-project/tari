@@ -70,7 +70,6 @@ where TBackend: WalletBackend + 'static
 impl<TBackend> UtxoScannerService<TBackend>
 where TBackend: WalletBackend + 'static
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         peer_seeds: Vec<CommsPublicKey>,
         retry_limit: usize,

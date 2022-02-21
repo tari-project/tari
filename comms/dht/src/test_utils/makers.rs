@@ -70,7 +70,6 @@ pub fn make_comms_inbound_message(node_identity: &NodeIdentity, message: Bytes) 
     InboundMessage::new(node_identity.node_id().clone(), message)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn make_dht_header(
     node_identity: &NodeIdentity,
     e_pk: &CommsPublicKey,

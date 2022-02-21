@@ -24,6 +24,7 @@ use std::{
     cmp,
     fs::File,
     io::{self, Write},
+    str::FromStr,
     string::ToString,
     sync::Arc,
     time::{Duration, Instant},
@@ -62,6 +63,7 @@ use tari_p2p::{
     services::liveness::{LivenessEvent, LivenessHandle},
 };
 use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
+use thiserror::Error;
 use tokio::{
     runtime,
     sync::{broadcast, watch},
@@ -376,11 +378,43 @@ impl CommandHandler {
     }
 
     /// Function to process the get-mempool-state command
-    pub fn get_mempool_state(&self) {
+    pub fn get_mempool_state(&self, filter: Option<String>) {
         let mut handler = self.mempool_service.clone();
         self.executor.spawn(async move {
             match handler.get_mempool_state().await {
-                Ok(state) => println!("{}", state),
+                Ok(state) => {
+                    println!("----------------- Mempool -----------------");
+                    println!("--- Unconfirmed Pool ---");
+                    for tx in &state.unconfirmed_pool {
+                        let tx_sig = tx
+                            .first_kernel_excess_sig()
+                            .map(|sig| sig.get_signature().to_hex())
+                            .unwrap_or_else(|| "N/A".to_string());
+                        if let Some(ref filter) = filter {
+                            if !tx_sig.contains(filter) {
+                                println!("--- TX: {} ---", tx_sig);
+                                println!("{}", tx.body);
+                                continue;
+                            }
+                        } else {
+                            println!(
+                                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
+                                tx_sig,
+                                tx.body.get_total_fee(),
+                                tx.body.outputs().len(),
+                                tx.body.kernels().len(),
+                                tx.body.inputs().len(),
+                                tx.body.sum_metadata_size(),
+                            );
+                        }
+                    }
+                    if filter.is_none() {
+                        println!("--- Reorg Pool ---");
+                        for excess_sig in &state.reorg_pool {
+                            println!("    {}", excess_sig.get_signature().to_hex());
+                        }
+                    }
+                },
                 Err(err) => {
                     println!("Failed to retrieve mempool state: {:?}", err);
                     warn!(target: LOG_TARGET, "Error communicating with local mempool: {:?}", err,);
@@ -1316,9 +1350,31 @@ async fn fetch_banned_peers(pm: &PeerManager) -> Result<Vec<Peer>, PeerManagerEr
     pm.perform_query(query).await
 }
 
+#[derive(Debug, Error)]
+#[error("invalid format '{0}'")]
+pub struct FormatParseError(String);
+
 pub enum Format {
     Json,
     Text,
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Self::Text
+    }
+}
+
+impl FromStr for Format {
+    type Err = FormatParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_ref() {
+            "json" => Ok(Self::Json),
+            "text" => Ok(Self::Text),
+            _ => Err(FormatParseError(s.into())),
+        }
+    }
 }
 
 // TODO: This is not currently used, but could be pretty useful (maybe as an iterator)

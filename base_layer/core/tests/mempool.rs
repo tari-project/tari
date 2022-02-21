@@ -50,7 +50,14 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari, T},
-        test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
+        test_helpers::{
+            create_unblinded_output,
+            schema_to_transaction,
+            spend_utxos,
+            TestParams,
+            TransactionSchema,
+            UtxoTestParams,
+        },
         transaction_components::{KernelBuilder, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         CryptoFactories,
@@ -992,6 +999,156 @@ async fn consensus_validation_large_tx() {
     // make sure the tx was not accepted into the mempool
     assert!(matches!(response, TxStorageResponse::NotStored));
 }
+#[tokio::test]
+#[allow(clippy::erasing_op)]
+#[allow(clippy::identity_op)]
+async fn consensus_validation_versions() {
+    use tari_core::transactions::transaction_components::{
+        OutputFeaturesVersion,
+        TransactionInputVersion,
+        TransactionKernelVersion,
+        TransactionOutputVersion,
+    };
+
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    let cc = consensus_manager.consensus_constants(0);
+
+    // check the current localnet defaults
+    assert_eq!(
+        cc.input_version_range().clone(),
+        TransactionInputVersion::V0..=TransactionInputVersion::V0
+    );
+    assert_eq!(
+        cc.kernel_version_range().clone(),
+        TransactionKernelVersion::V0..=TransactionKernelVersion::V0
+    );
+    assert_eq!(
+        cc.output_version_range().clone().outputs,
+        TransactionOutputVersion::V0..=TransactionOutputVersion::V0
+    );
+    assert_eq!(
+        cc.output_version_range().clone().features,
+        OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0
+    );
+
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+
+    let test_params = TestParams::new();
+    let params = UtxoTestParams::with_value(1 * T);
+    let output_v0_features_v0 = test_params.create_unblinded_output(params);
+    assert_eq!(output_v0_features_v0.version, TransactionOutputVersion::V0);
+    assert_eq!(output_v0_features_v0.features.version, OutputFeaturesVersion::V0);
+
+    let test_params = TestParams::new();
+    let params = UtxoTestParams::with_value(1 * T);
+    let mut output_v1_features_v0 = test_params.create_unblinded_output(params);
+    output_v1_features_v0.version = TransactionOutputVersion::V1;
+    assert_eq!(output_v1_features_v0.version, TransactionOutputVersion::V1);
+    assert_eq!(output_v1_features_v0.features.version, OutputFeaturesVersion::V0);
+
+    let features = OutputFeatures::new(
+        OutputFeaturesVersion::V1,
+        OutputFlags::empty(),
+        0,
+        Default::default(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let test_params = TestParams::new();
+    let mut params = UtxoTestParams::with_value(1 * T);
+    params.features = features.clone();
+    let output_v0_features_v1 = test_params.create_unblinded_output(params);
+    assert_eq!(output_v0_features_v1.version, TransactionOutputVersion::V0);
+    assert_eq!(output_v0_features_v1.features.version, OutputFeaturesVersion::V1);
+
+    let test_params = TestParams::new();
+    let mut params = UtxoTestParams::with_value(1 * T);
+    params.features = features.clone();
+    let mut output_v1_features_v1 = test_params.create_unblinded_output(params);
+    output_v1_features_v1.version = TransactionOutputVersion::V1;
+    assert_eq!(output_v1_features_v1.version, TransactionOutputVersion::V1);
+    assert_eq!(output_v1_features_v1.features.version, OutputFeaturesVersion::V1);
+
+    let schema = txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
+    );
+    let txs = vec![schema];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    // Cases:
+    // invalid input version
+    let tx = TransactionSchema {
+        from: vec![outputs[1][0].clone()],
+        to: vec![1 * T],
+        to_outputs: vec![],
+        fee: 25.into(),
+        lock_height: 0,
+        features: Default::default(),
+        script: tari_crypto::script![Nop],
+        input_data: None,
+        covenant: Default::default(),
+        input_version: Some(TransactionInputVersion::V1),
+        output_version: None,
+    };
+
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // invalid output version
+    let tx = TransactionSchema {
+        from: vec![outputs[1][1].clone()],
+        to: vec![],
+        to_outputs: vec![output_v1_features_v0],
+        fee: 25.into(),
+        lock_height: 0,
+        features: Default::default(),
+        script: tari_crypto::script![Nop],
+        input_data: None,
+        covenant: Default::default(),
+        input_version: None,
+        output_version: Some(TransactionOutputVersion::V1),
+    };
+
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // invalid output features version
+    let tx = TransactionSchema {
+        from: vec![outputs[1][2].clone()],
+        to: vec![],
+        to_outputs: vec![output_v0_features_v1],
+        fee: 25.into(),
+        lock_height: 0,
+        features: Default::default(),
+        script: tari_crypto::script![Nop],
+        input_data: None,
+        covenant: Default::default(),
+        input_version: None,
+        output_version: None,
+    };
+
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+}
 
 #[tokio::test]
 #[allow(clippy::erasing_op)]
@@ -1100,7 +1257,6 @@ async fn consensus_validation_unique_id() {
     let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
-    dbg!(&response);
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 }
 

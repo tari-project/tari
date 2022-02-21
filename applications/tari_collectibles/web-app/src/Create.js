@@ -171,21 +171,24 @@ class Create extends React.Component {
 
       // TODO: How to create the initial checkpoint?
       if (this.state.tip003) {
-        let res = await binding.command_asset_create_initial_checkpoint(
-          publicKey,
-          this.state.tip003Data.committee
-        );
-
-        console.log(res);
+        let asset_registration =
+          await binding.command_asset_create_initial_checkpoint(publicKey);
+        console.log(asset_registration);
+        let committee_definition =
+          await binding.command_asset_create_committee_definition(
+            publicKey,
+            this.state.tip003Data.committee
+          );
+        console.log(committee_definition);
       }
       let history = this.props.history;
 
       history.push(`/assets/manage/${publicKey}`);
     } catch (err) {
+      console.error(err);
       this.setState({
         error: "Could not create asset: " + err.message,
       });
-      console.log(err);
     }
     this.setState({ isSaving: false });
   };

@@ -83,7 +83,6 @@ pub struct HiddenServiceController {
 }
 
 impl HiddenServiceController {
-    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         control_server_addr: Multiaddr,
         control_server_auth: Authentication,

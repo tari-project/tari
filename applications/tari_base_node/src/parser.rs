@@ -20,9 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{str::FromStr, string::ToString, sync::Arc, time::Duration};
+use std::{string::ToString, sync::Arc, time::Duration};
 
-use futures::future::Either;
 use log::*;
 use rustyline::{
     completion::Completer,
@@ -34,23 +33,19 @@ use rustyline::{
 use rustyline_derive::{Helper, Highlighter, Validator};
 use strum::IntoEnumIterator;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_app_utilities::utilities::{
-    either_to_node_id,
-    parse_emoji_id_or_public_key,
-    parse_emoji_id_or_public_key_or_node_id,
-};
+use tari_app_utilities::utilities::{UniNodeId, UniPublicKey};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
+use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
-use tari_utilities::{
-    hex,
-    hex::{from_hex, Hex},
-    ByteArray,
-};
+use tari_utilities::ByteArray;
 use tokio::sync::Mutex;
 
-use super::LOG_TARGET;
-use crate::command_handler::{CommandHandler, Format, StatusOutput};
+use super::{
+    args::{Args, ArgsError, ArgsReason, FromHex},
+    LOG_TARGET,
+};
+use crate::command_handler::{CommandHandler, StatusOutput};
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -86,6 +81,7 @@ pub enum BaseNodeCommand {
     SearchKernel,
     GetMempoolStats,
     GetMempoolState,
+    GetMempoolTx,
     Whoami,
     GetStateInfo,
     GetNetworkStats,
@@ -151,10 +147,15 @@ impl Parser {
             return;
         }
 
-        let mut args = command_str.split_whitespace();
-        match args.next().unwrap_or("help").parse() {
+        let mut typed_args = Args::split(command_str);
+        let command = typed_args.take_next("command");
+        match command {
             Ok(command) => {
-                self.process_command(command, args, shutdown).await;
+                let res = self.process_command(command, typed_args, shutdown).await;
+                if let Err(err) = res {
+                    println!("Command Error: {}", err);
+                    self.print_help(command);
+                }
             },
             Err(_) => {
                 println!("{} is not a valid command, please enter a valid command", command_str);
@@ -168,20 +169,17 @@ impl Parser {
     }
 
     /// Function to process commands
-    async fn process_command<'a, I: Iterator<Item = &'a str>>(
+    async fn process_command<'a>(
         &mut self,
         command: BaseNodeCommand,
-        mut args: I,
+        mut typed_args: Args<'a>,
         shutdown: &mut Shutdown,
-    ) {
+    ) -> Result<(), ArgsError> {
         use BaseNodeCommand::*;
         match command {
             Help => {
-                self.print_help(
-                    args.next()
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(BaseNodeCommand::Help),
-                );
+                let command = typed_args.take_next("help-command")?;
+                self.print_help(command);
             },
             Status => {
                 self.command_handler.lock().await.status(StatusOutput::Full);
@@ -202,40 +200,40 @@ impl Parser {
                 self.command_handler.lock().await.get_blockchain_db_stats();
             },
             DialPeer => {
-                self.process_dial_peer(args).await;
+                self.process_dial_peer(typed_args).await?;
             },
             PingPeer => {
-                self.process_ping_peer(args).await;
+                self.process_ping_peer(typed_args).await?;
             },
             DiscoverPeer => {
-                self.process_discover_peer(args).await;
+                self.process_discover_peer(typed_args).await?;
             },
             GetPeer => {
-                self.process_get_peer(args).await;
+                self.process_get_peer(typed_args).await?;
             },
             ListPeers => {
-                self.process_list_peers(args).await;
+                self.process_list_peers(typed_args).await;
             },
             ResetOfflinePeers => {
                 self.command_handler.lock().await.reset_offline_peers();
             },
             RewindBlockchain => {
-                self.process_rewind_blockchain(args).await;
+                self.process_rewind_blockchain(typed_args).await?;
             },
             CheckDb => {
                 self.command_handler.lock().await.check_db();
             },
             PeriodStats => {
-                self.process_period_stats(args).await;
+                self.process_period_stats(typed_args).await?;
             },
             HeaderStats => {
-                self.process_header_stats(args).await;
+                self.process_header_stats(typed_args).await?;
             },
             BanPeer => {
-                self.process_ban_peer(args, true).await;
+                self.process_ban_peer(typed_args, true).await?;
             },
             UnbanPeer => {
-                self.process_ban_peer(args, false).await;
+                self.process_ban_peer(typed_args, false).await?;
             },
             UnbanAllPeers => {
                 self.command_handler.lock().await.unban_all_peers();
@@ -247,28 +245,31 @@ impl Parser {
                 self.command_handler.lock().await.list_connections();
             },
             ListHeaders => {
-                self.process_list_headers(args).await;
+                self.process_list_headers(typed_args).await?;
             },
             BlockTiming | CalcTiming => {
-                self.process_block_timing(args).await;
+                self.process_block_timing(typed_args).await?;
             },
             ListReorgs => {
                 self.process_list_reorgs().await;
             },
             GetBlock => {
-                self.process_get_block(args).await;
+                self.process_get_block(typed_args).await?;
             },
             SearchUtxo => {
-                self.process_search_utxo(args).await;
+                self.process_search_utxo(typed_args).await?;
             },
             SearchKernel => {
-                self.process_search_kernel(args).await;
+                self.process_search_kernel(typed_args).await?;
             },
             GetMempoolStats => {
                 self.command_handler.lock().await.get_mempool_stats();
             },
             GetMempoolState => {
-                self.command_handler.lock().await.get_mempool_state();
+                self.command_handler.lock().await.get_mempool_state(None);
+            },
+            GetMempoolTx => {
+                self.get_mempool_state_tx(typed_args).await?;
             },
             Whoami => {
                 self.command_handler.lock().await.whoami();
@@ -285,6 +286,8 @@ impl Parser {
                 let _ = shutdown.trigger();
             },
         }
+        // TODO: Remove it (use expressions above)
+        Ok(())
     }
 
     /// Displays the commands or context specific help for a given command
@@ -316,15 +319,19 @@ impl Parser {
             },
             DialPeer => {
                 println!("Attempt to connect to a known peer");
+                println!("dial-peer [hex public key or emoji id]");
             },
             PingPeer => {
                 println!("Send a ping to a known peer and wait for a pong reply");
+                println!("ping-peer [hex public key or emoji id]");
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
+                println!("discover-peer [hex public key or emoji id]");
             },
             GetPeer => {
                 println!("Get all available info about peer");
+                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
             },
             ListPeers => {
                 println!("Lists the peers that this node knows about");
@@ -339,6 +346,9 @@ impl Parser {
             },
             BanPeer => {
                 println!("Bans a peer");
+                println!(
+                    "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
+                );
             },
             UnbanPeer => {
                 println!("Removes a peer ban");
@@ -424,6 +434,9 @@ impl Parser {
             GetMempoolState => {
                 println!("Retrieves your mempools state");
             },
+            GetMempoolTx => {
+                println!("Filters and retrieves details about transactions from the mempool's state");
+            },
             Whoami => {
                 println!(
                     "Display identity information about this node, including: public key, node ID and the public \
@@ -440,307 +453,155 @@ impl Parser {
     }
 
     /// Function to process the get-block command
-    async fn process_get_block<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let height_or_hash = match args.next() {
-            Some(s) => s
-                .parse::<u64>()
-                .ok()
-                .map(Either::Left)
-                .or_else(|| from_hex(s).ok().map(Either::Right)),
-            None => {
-                self.print_help(BaseNodeCommand::GetBlock);
-                return;
-            },
-        };
+    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let height = args.try_take_next("height")?;
+        let hash: Option<FromHex<Vec<u8>>> = args.try_take_next("hash")?;
+        args.shift_one();
+        let format = args.try_take_next("format")?.unwrap_or_default();
 
-        let format = match args.next() {
-            Some(v) if v.to_ascii_lowercase() == "json" => Format::Json,
-            Some(v) if v.to_ascii_lowercase() == "text" => Format::Text,
-            None => Format::Text,
-            Some(_) => {
-                println!("Unrecognized format specifier");
-                self.print_help(BaseNodeCommand::GetBlock);
-                return;
+        match (height, hash) {
+            (Some(height), _) => {
+                self.command_handler.lock().await.get_block(height, format);
+                Ok(())
             },
-        };
-
-        match height_or_hash {
-            Some(Either::Left(height)) => self.command_handler.lock().await.get_block(height, format),
-            Some(Either::Right(hash)) => self.command_handler.lock().await.get_block_by_hash(hash, format),
-            None => {
-                println!("Invalid block height or hash provided. Height must be an integer.");
-                self.print_help(BaseNodeCommand::GetBlock);
+            (_, Some(hash)) => {
+                self.command_handler.lock().await.get_block_by_hash(hash.0, format);
+                Ok(())
             },
-        };
+            _ => Err(ArgsError::new(
+                "height",
+                "Invalid block height or hash provided. Height must be an integer.",
+            )),
+        }
     }
 
     /// Function to process the search utxo command
-    async fn process_search_utxo<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchUtxo);
-            return;
-        }
-        let commitment = match Commitment::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid commitment provided.");
-                self.print_help(BaseNodeCommand::SearchUtxo);
-                return;
-            },
-        };
-        self.command_handler.lock().await.search_utxo(commitment)
+    async fn process_search_utxo<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let commitment: FromHex<Commitment> = args.take_next("hex")?;
+        self.command_handler.lock().await.search_utxo(commitment.0);
+        Ok(())
     }
 
     /// Function to process the search kernel command
-    async fn process_search_kernel<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        // let command_arg = args.take(4).collect::<Vec<&str>>();
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchKernel);
-            return;
-        }
-        let public_nonce = match PublicKey::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid public nonce provided.");
-                self.print_help(BaseNodeCommand::SearchKernel);
-                return;
-            },
-        };
+    async fn process_search_kernel<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
+        let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
+        let kernel_sig = Signature::new(public_nonce.0, signature.0);
+        self.command_handler.lock().await.search_kernel(kernel_sig);
+        Ok(())
+    }
 
-        let hex = args.next();
-        if hex.is_none() {
-            self.print_help(BaseNodeCommand::SearchKernel);
-            return;
-        }
-        let signature = match PrivateKey::from_hex(&hex.unwrap().to_string()) {
-            Ok(v) => v,
-            _ => {
-                println!("Invalid signature provided.");
-                self.print_help(BaseNodeCommand::SearchKernel);
-                return;
-            },
-        };
-        let kernel_sig = Signature::new(public_nonce, signature);
-
-        self.command_handler.lock().await.search_kernel(kernel_sig)
+    async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let filter = args.take_next("filter").ok();
+        self.command_handler.lock().await.get_mempool_state(filter);
+        Ok(())
     }
 
     /// Function to process the discover-peer command
-    async fn process_discover_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let dest_pubkey = match args.next().and_then(parse_emoji_id_or_public_key) {
-            Some(v) => Box::new(v),
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!("discover-peer [hex public key or emoji id]");
-                return;
-            },
-        };
-
-        self.command_handler.lock().await.discover_peer(dest_pubkey)
+    async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let key: UniPublicKey = args.take_next("id")?;
+        self.command_handler.lock().await.discover_peer(Box::new(key.into()));
+        Ok(())
     }
 
-    async fn process_get_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let (original_str, partial) = match args
-            .next()
-            .map(|s| {
-                parse_emoji_id_or_public_key_or_node_id(s)
-                    .map(either_to_node_id)
-                    .map(|n| (s.to_string(), n.to_vec()))
-                    .or_else(|| {
-                        let bytes = hex::from_hex(&s[..s.len() - (s.len() % 2)]).unwrap_or_default();
-                        Some((s.to_string(), bytes))
-                    })
-            })
-            .flatten()
-        {
-            Some(n) => n,
-            None => {
-                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-                return;
-            },
-        };
-
-        self.command_handler.lock().await.get_peer(partial, original_str)
+    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let original_str = args
+            .try_take_next("node_id")?
+            .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
+        let node_id: Option<UniNodeId> = args.try_take_next("node_id")?;
+        let partial;
+        if let Some(node_id) = node_id {
+            partial = NodeId::from(node_id).to_vec();
+        } else {
+            let data: FromHex<_> = args.take_next("node_id")?;
+            partial = data.0;
+        }
+        self.command_handler.lock().await.get_peer(partial, original_str);
+        Ok(())
     }
 
     /// Function to process the list-peers command
-    async fn process_list_peers<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let filter = args.next().map(ToOwned::to_owned);
-
+    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) {
+        let filter = args.take_next("filter").ok();
         self.command_handler.lock().await.list_peers(filter)
     }
 
     /// Function to process the dial-peer command
-    async fn process_dial_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let dest_node_id = match args
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-        {
-            Some(n) => n,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!("dial-peer [hex public key or emoji id]");
-                return;
-            },
-        };
-
-        self.command_handler.lock().await.dial_peer(dest_node_id)
+    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let dest_node_id: UniNodeId = args.take_next("node-id")?;
+        self.command_handler.lock().await.dial_peer(dest_node_id.into());
+        Ok(())
     }
 
     /// Function to process the dial-peer command
-    async fn process_ping_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I) {
-        let dest_node_id = match args
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-        {
-            Some(n) => n,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!("ping-peer [hex public key or emoji id]");
-                return;
-            },
-        };
-
-        self.command_handler.lock().await.ping_peer(dest_node_id)
+    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let dest_node_id: UniNodeId = args.take_next("node-id")?;
+        self.command_handler.lock().await.ping_peer(dest_node_id.into());
+        Ok(())
     }
 
     /// Function to process the ban-peer command
-    async fn process_ban_peer<'a, I: Iterator<Item = &'a str>>(&mut self, mut args: I, must_ban: bool) {
-        let node_id = match args
-            .next()
-            .and_then(parse_emoji_id_or_public_key_or_node_id)
-            .map(either_to_node_id)
-        {
-            Some(v) => v,
-            None => {
-                println!("Please enter a valid destination public key or emoji id");
-                println!(
-                    "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
-                );
-                return;
-            },
-        };
-
-        let duration = args
-            .next()
-            .and_then(|s| s.parse::<u64>().ok())
-            .map(Duration::from_secs)
-            .unwrap_or_else(|| Duration::from_secs(std::u64::MAX));
-
-        self.command_handler.lock().await.ban_peer(node_id, duration, must_ban)
+    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), ArgsError> {
+        let node_id: UniNodeId = args.take_next("node-id")?;
+        let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
+        let duration = Duration::from_secs(secs);
+        self.command_handler
+            .lock()
+            .await
+            .ban_peer(node_id.into(), duration, must_ban);
+        Ok(())
     }
 
     /// Function to process the list-headers command
-    async fn process_list_headers<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let start = args.next().map(u64::from_str).map(Result::ok).flatten();
-        let end = args.next().map(u64::from_str).map(Result::ok).flatten();
-        if start.is_none() {
-            println!("Command entered incorrectly, please use the following formats: ");
-            println!("list-headers [first header height] [last header height]");
-            println!("list-headers [amount of headers from chain tip]");
-            return;
-        }
-        let start = start.unwrap();
-        self.command_handler.lock().await.list_headers(start, end)
+    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let start = args.take_next("start")?;
+        let end = args.try_take_next("end")?;
+        self.command_handler.lock().await.list_headers(start, end);
+        Ok(())
     }
 
     /// Function to process the calc-timing command
-    async fn process_block_timing<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let start = args.next().map(u64::from_str).map(Result::ok).flatten();
-        let end = args.next().map(u64::from_str).map(Result::ok).flatten();
-
-        let command = BaseNodeCommand::BlockTiming;
-        if let Some(start) = start {
-            if end.is_none() && start < 2 {
-                println!("Number of headers must be at least 2.");
-                self.print_help(command);
-            } else {
-                self.command_handler.lock().await.block_timing(start, end)
-            }
+    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let start = args.take_next("start")?;
+        let end = args.try_take_next("end")?;
+        if end.is_none() && start < 2 {
+            Err(ArgsError::new("start", "Number of headers must be at least 2."))
         } else {
-            self.print_help(command);
+            self.command_handler.lock().await.block_timing(start, end);
+            Ok(())
         }
     }
 
-    async fn process_period_stats<'a, I: Iterator<Item = &'a str>>(&self, args: I) {
-        let command_arg = args.map(|arg| arg.to_string()).take(3).collect::<Vec<String>>();
-        if command_arg.len() != 3 {
-            println!("Prints out certain stats to of the block chain, use as follows: ");
-            println!(
-                "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time in \
-                 unix timestamp]"
-            );
-            return;
-        }
-        let period_end = match u64::from_str(&command_arg[0]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
-        let period_ticker_end = match u64::from_str(&command_arg[1]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
-        let period = match u64::from_str(&command_arg[2]) {
-            Ok(v) => v,
-            Err(_) => {
-                println!("Not a valid number provided");
-                return;
-            },
-        };
+    async fn process_period_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let period_end = args.take_next("period_end")?;
+        let period_ticker_end = args.take_next("period_ticker_end")?;
+        let period = args.take_next("period")?;
         self.command_handler
             .lock()
             .await
-            .period_stats(period_end, period_ticker_end, period)
+            .period_stats(period_end, period_ticker_end, period);
+        Ok(())
     }
 
-    async fn process_header_stats<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let start_height = try_or_print!(args
-            .next()
-            .ok_or_else(|| {
-                self.print_help(BaseNodeCommand::HeaderStats);
-                "No args provided".to_string()
-            })
-            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
+    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let start_height = args.take_next("start_height")?;
+        let end_height = args.take_next("end_height")?;
+        let filename = args
+            .try_take_next("filename")?
+            .unwrap_or_else(|| "header-data.csv".into());
+        let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
 
-        let end_height = try_or_print!(args
-            .next()
-            .ok_or_else(|| {
-                self.print_help(BaseNodeCommand::HeaderStats);
-                "No end height provided".to_string()
-            })
-            .and_then(|arg| u64::from_str(arg).map_err(|err| err.to_string())));
-
-        let filename = args.next().unwrap_or("header-data.csv").to_string();
-
-        let algo = try_or_print!(Ok(args.next()).and_then(|s| match s {
-            Some("monero") => Ok(Some(PowAlgorithm::Monero)),
-            Some("sha") | Some("sha3") => Ok(Some(PowAlgorithm::Sha3)),
-            None | Some("all") => Ok(None),
-            _ => Err("Invalid pow algo"),
-        }));
         self.command_handler
             .lock()
             .await
-            .save_header_stats(start_height, end_height, filename, algo)
+            .save_header_stats(start_height, end_height, filename, algo);
+        Ok(())
     }
 
-    async fn process_rewind_blockchain<'a, I: Iterator<Item = &'a str>>(&self, mut args: I) {
-        let new_height = try_or_print!(args
-            .next()
-            .ok_or("new_height argument required")
-            .and_then(|s| u64::from_str(s).map_err(|_| "new_height must be an integer.")));
+    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+        let new_height = args.take_next("new_height")?;
         self.command_handler.lock().await.rewind_blockchain(new_height);
+        Ok(())
     }
 
     async fn process_list_reorgs(&self) {

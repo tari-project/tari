@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use std::{collections::HashMap, marker::PhantomData};
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -29,9 +29,9 @@ use tokio::time::{sleep, Duration};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
+    models::{Committee, HotStuffMessage, HotStuffMessageType, QuorumCertificate, View, ViewId},
     services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        infrastructure_services::{InboundConnectionService, OutboundService},
         PayloadProvider,
     },
     storage::chain::ChainDbUnitOfWork,
@@ -41,32 +41,30 @@ use crate::{
 const LOG_TARGET: &str = "tari::dan::workers::states::decide";
 
 // TODO: This is very similar to pre-commit, and commit state
-pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
-where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-    TOutboundService: OutboundService<TAddr, TPayload>,
+pub struct DecideState<TInboundConnectionService, TOutboundService>
+where TOutboundService: OutboundService
 {
-    node_id: TAddr,
+    node_id: TOutboundService::Addr,
     asset_public_key: PublicKey,
-    committee: Committee<TAddr>,
+    committee: Committee<TOutboundService::Addr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
-    ta: PhantomData<TAddr>,
-    p_p: PhantomData<TPayload>,
-    received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
+    ta: PhantomData<TOutboundService::Addr>,
+    p_p: PhantomData<TOutboundService::Payload>,
+    received_new_view_messages: HashMap<TOutboundService::Addr, HotStuffMessage<TOutboundService::Payload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService>
-    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
+impl<TInboundConnectionService, TOutboundService> DecideState<TInboundConnectionService, TOutboundService>
 where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
+    TInboundConnectionService:
+        InboundConnectionService<Addr = TOutboundService::Addr, Payload = TOutboundService::Payload>,
+    TOutboundService: OutboundService,
 {
-    pub fn new(node_id: TAddr, asset_public_key: PublicKey, committee: Committee<TAddr>) -> Self {
+    pub fn new(
+        node_id: TOutboundService::Addr,
+        asset_public_key: PublicKey,
+        committee: Committee<TOutboundService::Addr>,
+    ) -> Self {
         Self {
             node_id,
             asset_public_key,
@@ -79,7 +77,10 @@ where
         }
     }
 
-    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork, TPayloadProvider: PayloadProvider<TPayload>>(
+    pub async fn next_event<
+        TUnitOfWork: ChainDbUnitOfWork,
+        TPayloadProvider: PayloadProvider<TOutboundService::Payload>,
+    >(
         &mut self,
         timeout: Duration,
         current_view: &View,
@@ -89,37 +90,34 @@ where
         payload_provider: &mut TPayloadProvider,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
-        let started = Instant::now();
         let mut unit_of_work = unit_of_work;
         let next_event_result;
+        let timeout = sleep(timeout);
+        futures::pin_mut!(timeout);
         loop {
             tokio::select! {
-                      r = inbound_services.wait_for_message(HotStuffMessageType::Commit, current_view.view_id()) => {
+                r = inbound_services.wait_for_message(HotStuffMessageType::Commit, current_view.view_id()) => {
                     let (from, message) = r?;
-                        if current_view.is_leader() {
-                              if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
-                        ).await?{
-                                 next_event_result = result;
-                                  break;
-                              }
-
-                          }
+                    if current_view.is_leader() {
+                        if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service).await?{
+                          next_event_result = result;
+                          break;
+                      }
+                  }
                 },
               r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
                     let (from, message) = r?;
-                        let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                          if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
-                              next_event_result = result;
-                              break;
-                          }
-
-                          }
-            ,
-                  _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                                next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                                break;
-                            }
-                        }
+                    let leader= self.committee.leader_for_view(current_view.view_id).clone();
+                      if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
+                          next_event_result = result;
+                          break;
+                      }
+              },
+              _ = &mut timeout =>  {
+                    next_event_result = ConsensusWorkerStateEvent::TimedOut;
+                    break;
+                }
+            }
         }
         Ok(next_event_result)
     }
@@ -127,8 +125,8 @@ where
     async fn process_leader_message(
         &mut self,
         current_view: &View,
-        message: HotStuffMessage<TPayload>,
-        sender: &TAddr,
+        message: HotStuffMessage<TOutboundService::Payload>,
+        sender: &TOutboundService::Addr,
         outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if !message.matches(HotStuffMessageType::Commit, current_view.view_id) {
@@ -205,15 +203,19 @@ where
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork, TPayloadProvider: PayloadProvider<TPayload>>(
+    async fn process_replica_message<
+        TUnitOfWork: ChainDbUnitOfWork,
+        TPayloadProvider: PayloadProvider<TOutboundService::Payload>,
+    >(
         &mut self,
-        message: &HotStuffMessage<TPayload>,
+        message: &HotStuffMessage<TOutboundService::Payload>,
         current_view: &View,
-        from: &TAddr,
-        view_leader: &TAddr,
+        from: &TOutboundService::Addr,
+        view_leader: &TOutboundService::Addr,
         unit_of_work: &mut TUnitOfWork,
         payload_provider: &mut TPayloadProvider,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        debug!(target: LOG_TARGET, "[DECIDE] replica message: {:?}", message);
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
                 warn!(
