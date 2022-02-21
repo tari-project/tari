@@ -34,7 +34,7 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common::{configuration::WalletConfig, GlobalConfig};
+use tari_common::GlobalConfig;
 use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -155,12 +155,12 @@ fn get_init_sha_atomic_swap_parameters(
 /// Send a normal negotiated transaction to a recipient
 pub async fn send_tari(
     mut wallet_transaction_service: TransactionServiceHandle,
-    config: &WalletConfig,
+    fee_per_gram: u64,
     args: Vec<ParsedArgument>,
 ) -> Result<TxId, CommandError> {
     let (amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_transaction(dest_pubkey, amount, config.fee_per_gram * uT, message)
+        .send_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -168,13 +168,13 @@ pub async fn send_tari(
 /// publishes a tari-SHA atomic swap HTLC transaction
 pub async fn init_sha_atomic_swap(
     mut wallet_transaction_service: TransactionServiceHandle,
-    config: &WalletConfig,
+    fee_per_gram: u64,
     args: Vec<ParsedArgument>,
 ) -> Result<(TxId, PublicKey, TransactionOutput), CommandError> {
     let (amount, dest_pubkey, message) = get_init_sha_atomic_swap_parameters(args)?;
 
     let (tx_id, pre_image, output) = wallet_transaction_service
-        .send_sha_atomic_swap_transaction(dest_pubkey, amount, config.fee_per_gram * uT, message)
+        .send_sha_atomic_swap_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)?;
     Ok((tx_id, pre_image, output))
@@ -229,12 +229,12 @@ pub async fn claim_htlc_refund(
 /// Send a one-sided transaction to a recipient
 pub async fn send_one_sided(
     mut wallet_transaction_service: TransactionServiceHandle,
-    config: &WalletConfig,
+    fee_per_gram: u64,
     args: Vec<ParsedArgument>,
 ) -> Result<TxId, CommandError> {
     let (amount, dest_pubkey, message) = get_transaction_parameters(args)?;
     wallet_transaction_service
-        .send_one_sided_transaction(dest_pubkey, amount, config.fee_per_gram * uT, message)
+        .send_one_sided_transaction(dest_pubkey, amount, fee_per_gram * uT, message)
         .await
         .map_err(CommandError::TransactionServiceError)
 }
@@ -345,7 +345,7 @@ pub async fn discover_peer(
 
 pub async fn make_it_rain(
     wallet_transaction_service: TransactionServiceHandle,
-    config: &WalletConfig,
+    fee_per_gram: u64,
     args: Vec<ParsedArgument>,
 ) -> Result<(), CommandError> {
     use ParsedArgument::*;
@@ -390,7 +390,6 @@ pub async fn make_it_rain(
         _ => Err(CommandError::Argument),
     }?;
 
-    let config_clone = config.clone();
     // We are spawning this command in parallel, thus not collecting transaction IDs
     tokio::task::spawn(async move {
         // Wait until specified test start time
@@ -454,14 +453,14 @@ pub async fn make_it_rain(
                 }
                 let delayed_for = Instant::now();
                 let sender_clone = sender.clone();
-                let inner_config_clone = config_clone.clone();
+                let fee = fee_per_gram;
                 tokio::task::spawn(async move {
                     let spawn_start = Instant::now();
                     // Send transaction
                     let tx_id = if negotiated {
-                        send_tari(tx_service, &inner_config_clone, send_args).await
+                        send_tari(tx_service, fee, send_args).await
                     } else {
-                        send_one_sided(tx_service, &inner_config_clone, send_args).await
+                        send_one_sided(tx_service, fee, send_args).await
                     };
                     let submit_time = Instant::now();
                     tokio::task::spawn(async move {
@@ -674,17 +673,18 @@ pub async fn command_runner(
                 discover_peer(dht_service.clone(), parsed.args).await?
             },
             SendTari => {
-                let tx_id = send_tari(transaction_service.clone(), &wallet_config, parsed.args).await?;
+                let tx_id = send_tari(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
             SendOneSided => {
-                let tx_id = send_one_sided(transaction_service.clone(), &wallet_config, parsed.args).await?;
+                let tx_id =
+                    send_one_sided(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
                 debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
             MakeItRain => {
-                make_it_rain(transaction_service.clone(), &wallet_config, parsed.args).await?;
+                make_it_rain(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
             },
             CoinSplit => {
                 let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
@@ -775,8 +775,12 @@ pub async fn command_runner(
                 println!("Custom base node peer cleared from wallet database.");
             },
             InitShaAtomicSwap => {
-                let (tx_id, pre_image, output) =
-                    init_sha_atomic_swap(transaction_service.clone(), &wallet_config, parsed.clone().args).await?;
+                let (tx_id, pre_image, output) = init_sha_atomic_swap(
+                    transaction_service.clone(),
+                    wallet_config.fee_per_gram,
+                    parsed.clone().args,
+                )
+                .await?;
                 debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
                 let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
                 println!("pre_image hex: {}", pre_image.to_hex());
