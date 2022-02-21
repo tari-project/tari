@@ -1,4 +1,6 @@
-mod state_info;
+mod check_for_updates;
+mod get_state_info;
+mod version;
 
 use std::{
     cmp,
@@ -64,7 +66,43 @@ pub struct Args {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    StateInfo(state_info::StateInfoArgs),
+    Version(version::Args),
+    CheckForUpdates(check_for_updates::Args),
+    // Status,
+    // GetChainMetadata,
+    // GetDbStats,
+    // GetPeer,
+    // ListPeers,
+    // DialPeer,
+    // PingPeer,
+    // ResetOfflinePeers,
+    // RewindBlockchain,
+    // BanPeer,
+    // UnbanPeer,
+    // UnbanAllPeers,
+    // ListBannedPeers,
+    // ListConnections,
+    // ListHeaders,
+    // CheckDb,
+    // PeriodStats,
+    // HeaderStats,
+    // BlockTiming,
+    // CalcTiming,
+    // ListReorgs,
+    // DiscoverPeer,
+    // GetBlock,
+    // SearchUtxo,
+    // SearchKernel,
+    // GetMempoolStats,
+    // GetMempoolState,
+    // GetMempoolTx,
+    // Whoami,
+    GetStateInfo(get_state_info::Args),
+    /* GetStateInfo,
+     * GetNetworkStats,
+     * Quit,
+     * Exit,
+     */
 }
 
 #[async_trait]
@@ -116,7 +154,9 @@ impl CommandContext {
 impl HandleCommand<Command> for CommandContext {
     async fn handle_command(&mut self, command: Command) -> Result<(), Error> {
         match command {
-            Command::StateInfo(args) => self.handle_command(args).await,
+            Command::Version(args) => self.handle_command(args).await,
+            Command::CheckForUpdates(args) => self.handle_command(args).await,
+            Command::GetStateInfo(args) => self.handle_command(args).await,
         }
     }
 }

@@ -5,11 +5,11 @@ use clap::Parser;
 use super::{CommandContext, HandleCommand};
 
 #[derive(Debug, Parser)]
-pub struct StateInfoArgs {}
+pub struct Args {}
 
 #[async_trait]
-impl HandleCommand<StateInfoArgs> for CommandContext {
-    async fn handle_command(&mut self, _: StateInfoArgs) -> Result<(), Error> {
+impl HandleCommand<Args> for CommandContext {
+    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
         println!("Current state machine state:\n{}", *self.state_machine_info.borrow());
         Ok(())
     }
