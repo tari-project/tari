@@ -20,13 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{io, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, io, path::PathBuf, time::Duration};
 
 use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
     SqliteConnection,
 };
 use log::*;
+use serde::{Deserialize, Serialize};
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
 
 use crate::storage::error::StorageError;
@@ -34,7 +35,8 @@ use crate::storage::error::StorageError;
 const LOG_TARGET: &str = "comms::dht::storage::connection";
 const SQLITE_POOL_SIZE: usize = 16;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
 pub enum DbConnectionUrl {
     /// In-memory database. Each connection has it's own database
     Memory,
@@ -54,6 +56,24 @@ impl DbConnectionUrl {
                 .to_str()
                 .expect("Invalid non-UTF8 character in database path")
                 .to_owned(),
+        }
+    }
+}
+
+impl From<DbConnectionUrl> for String {
+    fn from(source: DbConnectionUrl) -> Self {
+        source.to_url_string()
+    }
+}
+
+impl TryFrom<String> for DbConnectionUrl {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.as_str() == ":memory:" {
+            Ok(Self::Memory)
+        } else {
+            Ok(Self::File(PathBuf::from(value)))
         }
     }
 }

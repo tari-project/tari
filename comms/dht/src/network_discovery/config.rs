@@ -22,7 +22,9 @@
 
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy)]
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct NetworkDiscoveryConfig {
     /// True to enable network discovery, false to disable it.
     /// Default: true

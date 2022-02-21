@@ -23,10 +23,10 @@
 use std::{fmt, time::Duration};
 
 use log::*;
-
+use serde::{Deserialize, Serialize};
 const LOG_TARGET: &str = "wallet::transaction_service::config";
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TransactionServiceConfig {
     pub broadcast_monitoring_timeout: Duration,
     pub chain_monitoring_timeout: Duration,

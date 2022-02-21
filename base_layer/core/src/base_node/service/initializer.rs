@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, sync::Arc};
+use std::{convert::TryFrom, sync::Arc, time::Duration};
 
 use futures::{future, Stream, StreamExt};
 use log::*;
@@ -44,7 +44,7 @@ use tokio::sync::{broadcast, mpsc};
 use crate::{
     base_node::{
         comms_interface::{InboundNodeCommsHandlers, LocalNodeCommsInterface, OutboundNodeCommsInterface},
-        service::service::{BaseNodeService, BaseNodeServiceConfig, BaseNodeStreams},
+        service::service::{BaseNodeService, BaseNodeStreams},
         StateMachineHandle,
     },
     blocks::NewBlock,
@@ -64,7 +64,7 @@ pub struct BaseNodeServiceInitializer<T> {
     blockchain_db: AsyncBlockchainDb<T>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
-    config: BaseNodeServiceConfig,
+    service_request_timeout: Duration,
 }
 
 impl<T> BaseNodeServiceInitializer<T>
@@ -76,14 +76,14 @@ where T: BlockchainBackend
         blockchain_db: AsyncBlockchainDb<T>,
         mempool: Mempool,
         consensus_manager: ConsensusManager,
-        config: BaseNodeServiceConfig,
+        service_request_timeout: Duration,
     ) -> Self {
         Self {
             inbound_message_subscription_factory,
             blockchain_db,
             mempool,
             consensus_manager,
-            config,
+            service_request_timeout,
         }
     }
 
@@ -170,7 +170,7 @@ where T: BlockchainBackend + 'static
         context.register_handle(outbound_nci.clone());
         context.register_handle(local_nci);
 
-        let config = self.config;
+        let service_request_timeout = self.service_request_timeout;
         let blockchain_db = self.blockchain_db.clone();
         let mempool = self.mempool.clone();
         let consensus_manager = self.consensus_manager.clone();
@@ -200,8 +200,13 @@ where T: BlockchainBackend + 'static
                 local_request_stream,
                 local_block_stream,
             };
-            let service =
-                BaseNodeService::new(outbound_message_service, inbound_nch, config, state_machine).start(streams);
+            let service = BaseNodeService::new(
+                outbound_message_service,
+                inbound_nch,
+                service_request_timeout,
+                state_machine,
+            )
+            .start(streams);
             futures::pin_mut!(service);
             future::select(service, handles.get_shutdown_signal()).await;
             info!(target: LOG_TARGET, "Base Node Service shutdown");

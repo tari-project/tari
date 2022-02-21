@@ -6,7 +6,6 @@ use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
     exit_codes::ExitError,
     ConfigBootstrap,
-    DatabaseType,
     GlobalConfig,
 };
 
@@ -47,10 +46,10 @@ pub fn init_configuration(
                 );
                 global_config.network = network;
                 global_config.data_dir = PathBuf::from(str);
-                if let DatabaseType::LMDB(_) = global_config.db_type {
-                    global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
-                }
-                global_config.peer_db_path = global_config.data_dir.join("peer_db");
+                // if let DatabaseType::LMDB(_) = global_config.db_type {
+                //     global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
+                // }
+                // global_config.peer_db_path = global_config.data_dir.join("peer_db");
                 global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
                 global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
             },
@@ -74,17 +73,11 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
     let prepend = bootstrap.base_path.clone();
     if !config.data_dir.is_absolute() {
         config.data_dir = concatenate_paths_normalized(prepend.clone(), config.data_dir.clone());
-        if let DatabaseType::LMDB(_) = config.db_type {
-            config.db_type = DatabaseType::LMDB(config.data_dir.join("db"));
-        }
+        // if let DatabaseType::LMDB(_) = config.db_type {
+        //     config.db_type = DatabaseType::LMDB(config.data_dir.join("db"));
+        // }
     }
-    if !config.peer_db_path.is_absolute() {
-        config.peer_db_path = concatenate_paths_normalized(prepend.clone(), config.peer_db_path.clone());
-    }
-    if !config.base_node_identity_file.is_absolute() {
-        config.base_node_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.base_node_identity_file.clone());
-    }
+
     if !config.base_node_tor_identity_file.is_absolute() {
         config.base_node_tor_identity_file =
             concatenate_paths_normalized(prepend.clone(), config.base_node_tor_identity_file.clone());

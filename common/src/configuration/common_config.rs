@@ -20,21 +20,49 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::path::{Path, PathBuf};
+
 use serde::{Deserialize, Serialize};
 
 use crate::SubConfigPath;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct CommonConfig {}
+#[serde(deny_unknown_fields)]
+pub struct CommonConfig {
+    override_from: Option<String>,
+    base_path: PathBuf,
+    data_dir: PathBuf,
+}
 
 impl Default for CommonConfig {
     fn default() -> Self {
-        Self {}
+        let base_path = dirs_next::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(PathBuf::from(".tari"));
+        Self {
+            override_from: None,
+            base_path,
+            data_dir: PathBuf::from("data"),
+        }
     }
 }
 
 impl SubConfigPath for CommonConfig {
     fn main_key_prefix() -> &'static str {
         "common"
+    }
+}
+
+impl CommonConfig {
+    pub fn base_path(&self) -> PathBuf {
+        self.base_path.clone()
+    }
+
+    pub fn data_dir(&self) -> PathBuf {
+        if self.data_dir.is_absolute() {
+            self.data_dir.clone()
+        } else {
+            self.base_path.join(&self.data_dir)
+        }
     }
 }

@@ -78,7 +78,7 @@ pub enum StatusOutput {
 
 pub struct CommandHandler {
     executor: runtime::Handle,
-    config: Arc<GlobalConfig>,
+    config: Arc<BaseNodeContext>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
@@ -99,7 +99,7 @@ impl CommandHandler {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
         Self {
             executor,
-            config: ctx.config(),
+            config: ctx.base_node_config(),
             consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),

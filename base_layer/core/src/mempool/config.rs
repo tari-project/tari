@@ -26,10 +26,11 @@ use tari_common::SubConfigPath;
 use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
 /// Configuration for the Mempool.
-#[derive(Clone, Copy, Deserialize, Serialize, Default)]
+#[derive(Clone, Copy, Deserialize, Serialize, Default, Debug)]
 pub struct MempoolConfig {
     pub unconfirmed_pool: UnconfirmedPoolConfig,
     pub reorg_pool: ReorgPoolConfig,
+    pub service: MempoolServiceConfig,
 }
 
 impl SubConfigPath for MempoolConfig {
@@ -39,7 +40,7 @@ impl SubConfigPath for MempoolConfig {
 }
 
 /// Configuration for the MempoolService.
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Copy, Deserialize, Serialize, Debug)]
 pub struct MempoolServiceConfig {
     /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
     /// not initiate any more mempool syncs. Default: 2
@@ -54,12 +55,6 @@ impl Default for MempoolServiceConfig {
             initial_sync_num_peers: 2,
             initial_sync_max_transactions: 10_000,
         }
-    }
-}
-
-impl SubConfigPath for MempoolServiceConfig {
-    fn main_key_prefix() -> &'static str {
-        "mempool_service"
     }
 }
 

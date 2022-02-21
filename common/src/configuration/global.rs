@@ -42,10 +42,8 @@ use crate::{
     configuration::{
         bootstrap::ApplicationType,
         name_server::DnsNameServer,
-        BaseNodeConfig,
         CollectiblesConfig,
         Network,
-        ValidatorNodeConfig,
         WalletConfig,
     },
     ConfigurationError,
@@ -72,22 +70,19 @@ pub struct GlobalConfig {
     pub listener_liveness_allowlist_cidrs: Vec<String>,
     pub rpc_max_simultaneous_sessions: Option<usize>,
     pub data_dir: PathBuf,
-    pub db_type: DatabaseType,
+
     pub db_config: LMDBConfig,
     pub orphan_storage_capacity: usize,
     pub orphan_db_clean_out_threshold: usize,
     pub pruning_horizon: u64,
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
-    pub base_node_identity_file: PathBuf,
     pub public_address: Option<Multiaddr>,
-    pub base_node_config: Option<BaseNodeConfig>,
     pub wallet_config: Option<WalletConfig>,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
     pub dns_seeds_name_server: DnsNameServer,
     pub dns_seeds_use_dnssec: bool,
-    pub peer_db_path: PathBuf,
     pub base_node_tor_identity_file: PathBuf,
     pub wallet_db_file: PathBuf,
     pub console_wallet_db_file: PathBuf,
@@ -124,15 +119,13 @@ pub struct GlobalConfig {
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub prevent_fee_gt_amount: bool,
     pub transcoder_host_address: SocketAddr,
-    pub force_sync_peers: Vec<String>,
+
     pub max_randomx_vms: usize,
     pub console_wallet_notify_file: Option<PathBuf>,
     pub auto_ping_interval: u64,
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
-    pub validator_node: Option<ValidatorNodeConfig>,
     pub base_node_bypass_range_proof_verification: bool,
-    pub metrics: MetricsConfig,
     pub base_node_use_libtor: bool,
     pub console_wallet_use_libtor: bool,
     pub blockchain_track_reorgs: bool,
@@ -176,22 +169,6 @@ fn convert_node_config(
 
     let key = config_string("common", net_str, "data_dir");
     let data_dir: PathBuf = cfg.get_str(&key).unwrap_or_else(|_| net_str.to_string()).into();
-
-    let key = config_string("base_node", net_str, "db_type");
-    let db_type = cfg
-        .get_str(&key)
-        .map(|s| s.to_lowercase())
-        .unwrap_or_else(|_| "lmdb".to_string());
-
-    let db_type = match db_type.as_str() {
-        "memory" => Ok(DatabaseType::Memory),
-        "lmdb" => Ok(DatabaseType::LMDB(data_dir.join("db"))),
-        invalid_opt => Err(ConfigurationError::new(
-            "base_node.db_type",
-            Some(invalid_opt.to_string()),
-            &format!("Invalid option: {}", invalid_opt),
-        )),
-    }?;
 
     let key = "base_node.track_reorgs";
     let blockchain_track_reorgs = optional(cfg.get_bool(key))
@@ -288,13 +265,6 @@ fn convert_node_config(
         .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
         .unwrap_or(2) as usize;
 
-    // Base node identity path
-    let key = config_string("base_node", net_str, "base_node_identity_file");
-    let base_node_identity_file = cfg
-        .get_str(&key)
-        .unwrap_or_else(|_| "config/base_node_id.json".to_string())
-        .into();
-
     // Tor private key persistence
     let key = config_string("base_node", net_str, "base_node_tor_identity_file");
     let base_node_tor_identity_file = cfg
@@ -324,31 +294,6 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })
         .transpose()?;
-
-    let mut base_node_config = None;
-    // TODO: Create Mining node config, do the same for below
-    if application == ApplicationType::BaseNode || application == ApplicationType::MiningNode {
-        let mut bn_config = BaseNodeConfig::default();
-        // GPRC enabled
-        let key = "base_node.grpc_enabled";
-        let grpc_enabled = cfg.get_bool(key).unwrap_or_default();
-
-        bn_config.grpc_address = if grpc_enabled {
-            let key = "base_node.grpc_address";
-            let addr = cfg
-                .get_str(key)
-                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/18142".to_string());
-
-            let grpc_address = addr
-                .parse::<Multiaddr>()
-                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
-
-            Some(grpc_address)
-        } else {
-            None
-        };
-        base_node_config = Some(bn_config);
-    }
 
     let mut wallet_config = None;
     if application == ApplicationType::ConsoleWallet {
@@ -649,7 +594,6 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })?;
 
-    let metrics = MetricsConfig::from_config(&cfg)?;
     let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(&cfg, net_str);
 
     Ok(GlobalConfig {
@@ -662,22 +606,18 @@ fn convert_node_config(
         listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
         rpc_max_simultaneous_sessions,
         data_dir,
-        db_type,
         db_config,
         orphan_storage_capacity,
         orphan_db_clean_out_threshold,
         pruning_horizon,
         pruned_mode_cleanup_interval,
         core_threads,
-        base_node_identity_file,
         public_address,
-        base_node_config,
         wallet_config,
         peer_seeds,
         dns_seeds,
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
-        peer_db_path,
         base_node_tor_identity_file,
         wallet_db_file,
         console_wallet_db_file,
@@ -714,15 +654,12 @@ fn convert_node_config(
         wallet_balance_enquiry_cooldown_period,
         prevent_fee_gt_amount,
         transcoder_host_address,
-        force_sync_peers,
         max_randomx_vms,
         console_wallet_notify_file,
         auto_ping_interval,
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
-        validator_node: ValidatorNodeConfig::convert_if_present(&cfg)?,
         base_node_bypass_range_proof_verification,
-        metrics,
         base_node_use_libtor,
         console_wallet_use_libtor,
         blockchain_track_reorgs,
@@ -904,13 +841,6 @@ fn config_string(prefix: &str, network: &str, key: &str) -> String {
     format!("{}.{}.{}", prefix, network, key)
 }
 
-//---------------------------------------------      Database type        ------------------------------------------//
-#[derive(Debug, Clone)]
-pub enum DatabaseType {
-    LMDB(PathBuf),
-    Memory,
-}
-
 //---------------------------------------------     Network Transport     ------------------------------------------//
 #[derive(Clone)]
 pub enum TorControlAuthentication {
@@ -1031,30 +961,4 @@ pub enum CommsTransport {
         auth: SocksAuthentication,
         listener_address: Multiaddr,
     },
-}
-
-#[derive(Debug, Clone)]
-pub struct MetricsConfig {
-    pub prometheus_scraper_bind_addr: Option<SocketAddr>,
-    pub prometheus_push_endpoint: Option<String>,
-}
-
-impl MetricsConfig {
-    fn from_config(cfg: &Config) -> Result<Self, ConfigurationError> {
-        let key = "common.metrics.server_bind_address";
-        let prometheus_scraper_bind_addr = optional(cfg.get_str(key))?
-            .map(|s| {
-                s.parse()
-                    .map_err(|_| ConfigurationError::new(key, Some(s), "Invalid metrics server socket address"))
-            })
-            .transpose()?;
-
-        let key = "common.metrics.push_endpoint";
-        let prometheus_push_endpoint = optional(cfg.get_str(key))?;
-
-        Ok(Self {
-            prometheus_scraper_bind_addr,
-            prometheus_push_endpoint,
-        })
-    }
 }

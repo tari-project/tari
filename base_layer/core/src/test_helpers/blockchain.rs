@@ -128,7 +128,6 @@ pub fn create_store_with_consensus_and_validators_and_config(
         validators,
         config,
         DifficultyCalculator::new(rules, Default::default()),
-        false,
     )
     .unwrap()
 }

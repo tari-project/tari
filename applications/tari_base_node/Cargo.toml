@@ -21,6 +21,7 @@ tari_mmr = { path = "../../base_layer/mmr", features = ["native_bitmap"] }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
+tari_storage = { path = "../../infrastructure/storage" }
 tari_utilities = "0.3.0"
 
 anyhow = "1.0.53"
@@ -35,6 +36,7 @@ num_cpus = "1"
 regex = "1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
+serde = "1.0.136"
 strum = "0.22"
 strum_macros = "0.22"
 thiserror = "^1.0.26"

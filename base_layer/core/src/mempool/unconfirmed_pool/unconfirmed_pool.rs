@@ -51,7 +51,7 @@ pub const LOG_TARGET: &str = "c::mp::unconfirmed_pool::unconfirmed_pool_storage"
 type TransactionKey = usize;
 
 /// Configuration for the UnconfirmedPool
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy, Serialize, Deserialize, Debug)]
 pub struct UnconfirmedPoolConfig {
     /// The maximum number of transactions that can be stored in the Unconfirmed Transaction pool
     pub storage_capacity: usize,

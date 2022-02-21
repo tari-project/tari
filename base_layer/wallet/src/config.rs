@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use serde::{Deserialize, Serialize};
+use tari_common::configuration::Network;
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
 use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
 
@@ -31,42 +33,25 @@ use crate::{
 
 pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct WalletConfig {
     pub comms_config: P2pConfig,
-    pub factories: CryptoFactories,
-    pub transaction_service_config: Option<TransactionServiceConfig>,
-    pub output_manager_service_config: Option<OutputManagerServiceConfig>,
+    // pub factories: CryptoFactories,
+    pub transaction_service_config: TransactionServiceConfig,
+    pub output_manager_service_config: OutputManagerServiceConfig,
     pub buffer_size: usize,
     pub rate_limit: usize,
-    pub network: NetworkConsensus,
+    pub network: Network,
     pub base_node_service_config: BaseNodeServiceConfig,
-    pub updater_config: Option<AutoUpdateConfig>,
+    pub updater_config: AutoUpdateConfig,
 }
 
-impl WalletConfig {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        comms_config: P2pConfig,
-        factories: CryptoFactories,
-        transaction_service_config: Option<TransactionServiceConfig>,
-        output_manager_service_config: Option<OutputManagerServiceConfig>,
-        network: NetworkConsensus,
-        base_node_service_config: Option<BaseNodeServiceConfig>,
-        buffer_size: Option<usize>,
-        rate_limit: Option<usize>,
-        updater_config: Option<AutoUpdateConfig>,
-    ) -> Self {
+impl Default for WalletConfig {
+    fn default() -> Self {
         Self {
-            comms_config,
-            factories,
-            transaction_service_config,
-            output_manager_service_config,
-            buffer_size: buffer_size.unwrap_or(1500),
-            rate_limit: rate_limit.unwrap_or(50),
-            network,
-            base_node_service_config: base_node_service_config.unwrap_or_default(),
-            updater_config,
+            buffer_size: 0,
+            rate_limit: 0,
+            ..Default::default()
         }
     }
 }

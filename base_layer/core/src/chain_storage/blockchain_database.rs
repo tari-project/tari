@@ -33,6 +33,7 @@ use std::{
 
 use croaring::Bitmap;
 use log::*;
+use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
@@ -92,12 +93,13 @@ use crate::{
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
     pub pruning_interval: u64,
     pub track_reorgs: bool,
+    pub cleanup_orphans_at_startup: bool,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -107,6 +109,7 @@ impl Default for BlockchainDatabaseConfig {
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             track_reorgs: false,
+            cleanup_orphans_at_startup: false,
         }
     }
 }
@@ -202,7 +205,6 @@ where B: BlockchainBackend
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
-        cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError> {
         debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let is_empty = db.is_empty()?;
@@ -245,7 +247,7 @@ where B: BlockchainBackend
                     .into(),
             ));
         }
-        if cleanup_orphans_at_startup {
+        if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(

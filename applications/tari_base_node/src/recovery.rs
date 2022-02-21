@@ -22,6 +22,7 @@
 //
 
 use std::{
+    env::temp_dir,
     fs,
     io::{self, Write},
     path::Path,
@@ -31,9 +32,8 @@ use std::{
 use anyhow::anyhow;
 use log::*;
 use tari_common::{
-    configuration::Network,
+    configuration::{CommonConfig, Network},
     exit_codes::{ExitCode, ExitError},
-    DatabaseType,
     GlobalConfig,
 };
 use tari_core::{
@@ -57,41 +57,39 @@ use tari_core::{
     },
 };
 
+use crate::config::{BaseNodeConfig, DatabaseType};
+
 pub const LOG_TARGET: &str = "base_node::app";
 
-pub fn initiate_recover_db(node_config: &GlobalConfig) -> Result<(), ExitError> {
+pub fn initiate_recover_db(config: &BaseNodeConfig, common_config: &CommonConfig) -> Result<(), ExitError> {
     // create recovery db
-    match &node_config.db_type {
-        DatabaseType::LMDB(p) => {
-            let _backend = create_recovery_lmdb_database(&p).map_err(|err| {
+    match &config.db_type {
+        DatabaseType::Lmdb => {
+            let _backend = create_recovery_lmdb_database(config.lmdb_path(common_config)).map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
                 ExitError::new(ExitCode::UnknownError, err)
             })?;
-        },
-        _ => {
-            const MSG: &str = "Recovery mode is only available for LMDB";
-            error!(target: LOG_TARGET, "{}", MSG);
-            return Err(ExitError::new(ExitCode::UnknownError, MSG));
         },
     };
     Ok(())
 }
 
-pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Error> {
+pub async fn run_recovery(node_config: &BaseNodeConfig, common_config: &CommonConfig) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
-    let (temp_db, main_db) = match &node_config.db_type {
-        DatabaseType::LMDB(p) => {
-            let backend = create_lmdb_database(&p, node_config.db_config.clone()).map_err(|e| {
-                error!(target: LOG_TARGET, "Error opening db: {}", e);
-                anyhow!("Could not open DB: {}", e)
-            })?;
-            let new_path = Path::new(&p).join("temp_recovery");
+    let (temp_db, main_db, temp_path) = match &node_config.db_type {
+        DatabaseType::Lmdb => {
+            let backend = create_lmdb_database(&node_config.lmdb_path(common_config), node_config.lmdb.clone())
+                .map_err(|e| {
+                    error!(target: LOG_TARGET, "Error opening db: {}", e);
+                    anyhow!("Could not open DB: {}", e)
+                })?;
+            let temp_path = temp_dir().join("temp_recovery");
 
-            let temp = create_lmdb_database(&new_path, node_config.db_config.clone()).map_err(|e| {
+            let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone()).map_err(|e| {
                 error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
                 anyhow!("Could not open recovery DB: {}", e)
             })?;
-            (temp, backend)
+            (temp, backend, temp_path)
         },
         _ => {
             error!(target: LOG_TARGET, "Recovery mode is only available for LMDB");
@@ -106,21 +104,15 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),
-            node_config.base_node_bypass_range_proof_verification,
+            node_config.bypass_range_proof_verification,
             factories.clone(),
         ),
     );
-    let db_config = BlockchainDatabaseConfig {
-        orphan_storage_capacity: node_config.orphan_storage_capacity,
-        pruning_horizon: node_config.pruning_horizon,
-        pruning_interval: node_config.pruned_mode_cleanup_interval,
-        track_reorgs: false,
-    };
     let db = BlockchainDatabase::new(
         main_db,
         rules.clone(),
         validators,
-        db_config,
+        node_config.storage.clone(),
         DifficultyCalculator::new(rules, randomx_factory),
         true,
     )?;
@@ -130,19 +122,10 @@ pub async fn run_recovery(node_config: &GlobalConfig) -> Result<(), anyhow::Erro
         target: LOG_TARGET,
         "Node has completed recovery mode, it will try to cleanup the db"
     );
-    match &node_config.db_type {
-        DatabaseType::LMDB(p) => {
-            let new_path = Path::new(p).join("temp_recovery");
-            fs::remove_dir_all(&new_path).map_err(|e| {
-                error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
-                anyhow!("Could not open recovery DB: {}", e)
-            })
-        },
-        _ => {
-            error!(target: LOG_TARGET, "Recovery mode is only available for LMDB");
-            Ok(())
-        },
-    }
+    fs::remove_dir_all(&temp_path).map_err(|e| {
+        error!(target: LOG_TARGET, "Error opening recovery db: {}", e);
+        anyhow!("Could not open recovery DB: {}", e)
+    })
 }
 
 // Function to handle the recovery attempt of the db

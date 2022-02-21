@@ -23,6 +23,7 @@
 #![allow(clippy::too_many_arguments)]
 mod cmd_args;
 mod comms;
+mod config;
 mod dan_node;
 mod default_service_specification;
 mod grpc;
@@ -40,8 +41,9 @@ use log::*;
 use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::{identity_management::setup_node_identity, initialization::init_configuration};
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, CommonConfig},
     exit_codes::{ExitCode, ExitError},
+    DefaultConfigLoader,
     GlobalConfig,
 };
 use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
@@ -55,6 +57,7 @@ use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
 
 use crate::{
+    config::ValidatorNodeConfig,
     dan_node::DanNode,
     default_service_specification::DefaultServiceSpecification,
     grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
@@ -77,30 +80,36 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
-    let (bootstrap, config, _) = init_configuration(ApplicationType::ValidatorNode)?;
+    let (bootstrap, global, cfg) = init_configuration(ApplicationType::ValidatorNode)?;
 
-    // let _operation_mode = cmd_args::get_operation_mode();
-    // match operation_mode {
-    //     OperationMode::Run => {
+    let validator_node_config = <ValidatorNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg)?;
     let runtime = build_runtime()?;
-    runtime.block_on(run_node(config, bootstrap.create_id))?;
-    // }
-    // }
+    runtime.block_on(run_node(
+        &validator_node_config,
+        &common_config,
+        global,
+        bootstrap.create_id,
+    ))?;
 
     Ok(())
 }
 
-async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError> {
+async fn run_node(
+    validator_node_config: &ValidatorNodeConfig,
+    common_config: &CommonConfig,
+    global: GlobalConfig,
+    create_id: bool,
+) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
 
-    fs::create_dir_all(&config.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let node_identity = setup_node_identity(
-        &config.base_node_identity_file,
-        &config.public_address,
+        &validator_node_config.identity_file,
+        &validator_node_config.public_address,
         create_id,
         PeerFeatures::NONE,
     )?;
-    let db_factory = SqliteDbFactory::new(&config);
+    let db_factory = SqliteDbFactory::new(&common_config);
     let mempool_service = MempoolServiceHandle::default();
 
     info!(
@@ -109,8 +118,10 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError
         node_identity.public_key(),
         node_identity.node_id()
     );
+    // fs::create_dir_all(&global.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(
-        &config,
+        validator_node_config,
+        &global,
         shutdown.to_signal(),
         node_identity.clone(),
         mempool_service.clone(),
@@ -125,7 +136,7 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError
         handles.expect_handle::<Dht>().discovery_service_requester(),
     );
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        GrpcBaseNodeClient::new(config.validator_node.clone().unwrap().base_node_grpc_address),
+        GrpcBaseNodeClient::new(validator_node_config.base_node_grpc_address),
         validator_node_client_factory,
         5,
         mempool_service.clone(),
@@ -145,7 +156,7 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError
     println!("{}", node_identity);
     run_dan_node(
         shutdown.to_signal(),
-        config,
+        validator_node_config.clone(),
         mempool_service,
         db_factory,
         handles,
@@ -166,7 +177,7 @@ fn build_runtime() -> Result<Runtime, ExitError> {
 
 async fn run_dan_node(
     shutdown_signal: ShutdownSignal,
-    config: GlobalConfig,
+    config: ValidatorNodeConfig,
     mempool_service: MempoolServiceHandle,
     db_factory: SqliteDbFactory,
     handles: ServiceHandles,

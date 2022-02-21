@@ -145,28 +145,8 @@ pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authent
     }
 }
 
-/// Sets up the tokio runtime based on the configuration
-/// ## Parameters
-/// `config` - The configuration  of the base node
-///
-/// ## Returns
-/// A result containing the runtime on success, string indicating the error on failure
-pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, ExitError> {
+pub fn setup_runtime() -> Result<Runtime, ExitError> {
     let mut builder = runtime::Builder::new_multi_thread();
-
-    if let Some(core_threads) = config.core_threads {
-        info!(
-            target: LOG_TARGET,
-            "Configuring the node to run on up to {} core threads.",
-            config
-                .core_threads
-                .as_ref()
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "<num cores>".to_string()),
-        );
-        builder.worker_threads(core_threads);
-    }
-
     builder.enable_all().build().map_err(|e| {
         let msg = format!("There was an error while building the node runtime. {}", e);
         ExitError::new(ExitCode::UnknownError, msg)

@@ -27,9 +27,12 @@ use std::{
     io::Write,
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::envelope::DhtMessageError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "u32", into = "u32")]
 pub enum DhtProtocolVersion {
     V1 { minor: u32 },
     V2 { minor: u32 },
@@ -96,5 +99,11 @@ impl TryFrom<(u32, u32)> for DhtProtocolVersion {
             2 => Ok(V2 { minor }),
             n => Err(DhtMessageError::InvalidProtocolVersion(n)),
         }
+    }
+}
+
+impl From<DhtProtocolVersion> for u32 {
+    fn from(source: DhtProtocolVersion) -> Self {
+        source.as_major()
     }
 }

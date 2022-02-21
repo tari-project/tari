@@ -96,6 +96,7 @@ mod recovery;
 mod status_line;
 mod utils;
 
+mod config;
 #[cfg(feature = "metrics")]
 mod metrics;
 
@@ -121,9 +122,10 @@ use tari_app_utilities::{
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, CommonConfig},
     exit_codes::{ExitCode, ExitError},
     ConfigBootstrap,
+    DefaultConfigLoader,
     GlobalConfig,
 };
 use tari_comms::{
@@ -145,7 +147,10 @@ use tokio::{
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-use crate::command_handler::{CommandHandler, StatusOutput};
+use crate::{
+    command_handler::{CommandHandler, StatusOutput},
+    config::BaseNodeConfig,
+};
 
 const LOG_TARGET: &str = "base_node::app";
 
@@ -165,14 +170,19 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     #[allow(unused_mut)] // config isn't mutated on windows
-    let (bootstrap, mut config, _cfg) = init_configuration(ApplicationType::BaseNode)?;
-    // let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
+    let (bootstrap, cfg) = init_configuration(ApplicationType::BaseNode)?;
+
+    let base_node_config = <BaseNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    debug!(
+        target: LOG_TARGET,
+        "Using base node configuration: {:?}", base_node_config
+    );
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
-        &config.base_node_identity_file,
-        &config.public_address,
+        &base_node_config.identity_file(common_config.base_path.as_path()),
+        &base_node_config.public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
@@ -182,7 +192,9 @@ fn main_inner() -> Result<(), ExitError> {
         info!(
             target: LOG_TARGET,
             "Base node's node ID created at '{}'. Done.",
-            config.base_node_identity_file.to_string_lossy(),
+            base_node_config
+                .identity_file(common_config.base_path.as_path())
+                .to_string_lossy(),
         );
         return Ok(());
     }
@@ -196,7 +208,7 @@ fn main_inner() -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
 
     // Set up the Tokio runtime
-    let runtime = setup_runtime(&config)?;
+    let runtime = setup_runtime()?;
 
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
@@ -212,7 +224,13 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // Run the base node
-    runtime.block_on(run_node(node_identity, config.into(), bootstrap, shutdown))?;
+    runtime.block_on(run_node(
+        node_identity,
+        &base_node_config,
+        &common_config,
+        bootstrap,
+        shutdown,
+    ))?;
 
     // Shutdown and send any traces
     global::shutdown_tracer_provider();
@@ -223,7 +241,9 @@ fn main_inner() -> Result<(), ExitError> {
 /// Sets up the base node and runs the cli_loop
 async fn run_node(
     node_identity: Arc<NodeIdentity>,
-    config: Arc<GlobalConfig>,
+    base_node_config: &BaseNodeConfig,
+    common_config: &CommonConfig,
+    cfg: &GlobalConfig,
     bootstrap: ConfigBootstrap,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
@@ -233,6 +253,8 @@ async fn run_node(
 
     #[cfg(feature = "metrics")]
     {
+        use crate::metrics::MetricsConfig;
+        let config = <MetricsConfig as DefaultConfigLoader>::load_from(&cfg.inner)?;
         metrics::install(
             ApplicationType::BaseNode,
             &node_identity,
@@ -247,8 +269,8 @@ async fn run_node(
 
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&config)?;
-        recovery::run_recovery(&config)
+        recovery::initiate_recover_db(base_node_config, common_config)?;
+        recovery::run_recovery(base_node_config, common_config)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
@@ -256,7 +278,8 @@ async fn run_node(
 
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(
-        config.clone(),
+        base_node_config,
+        common_config,
         node_identity,
         shutdown.to_signal(),
         bootstrap.clean_orphans_db,
@@ -283,13 +306,11 @@ async fn run_node(
         ExitError::new(ExitCode::UnknownError, err)
     })?;
 
-    if let Some(ref base_node_config) = config.base_node_config {
-        if let Some(ref address) = base_node_config.grpc_address {
-            // Go, GRPC, go go
-            let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
-            task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
-        }
+    if let Some(ref address) = base_node_config.grpc_address {
+        // Go, GRPC, go go
+        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+        let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+        task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
     }
 
     // Run, node, run!
@@ -308,7 +329,7 @@ async fn run_node(
 
         task::spawn(cli_loop(parser, shutdown));
     }
-    if !config.force_sync_peers.is_empty() {
+    if !base_node_config.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
             "Force Sync Peers have been set! This node will only sync to the nodes in this set."

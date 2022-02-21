@@ -264,7 +264,6 @@ fn rewind_past_horizon_height() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
 
@@ -1008,7 +1007,6 @@ fn store_and_retrieve_blocks() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
 
@@ -1228,7 +1226,6 @@ fn restore_metadata_and_pruning_horizon_update() {
             validators.clone(),
             config,
             DifficultyCalculator::new(rules.clone(), Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1252,7 +1249,6 @@ fn restore_metadata_and_pruning_horizon_update() {
             validators.clone(),
             config,
             DifficultyCalculator::new(rules.clone(), Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1271,7 +1267,6 @@ fn restore_metadata_and_pruning_horizon_update() {
             validators,
             config,
             DifficultyCalculator::new(rules, Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1405,7 +1400,6 @@ fn orphan_cleanup_on_block_add() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
 
@@ -1475,7 +1469,6 @@ fn horizon_height_orphan_cleanup() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let orphan1 = create_orphan_block(2, vec![], &consensus_manager);
@@ -1541,7 +1534,6 @@ fn orphan_cleanup_on_reorg() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let mut blocks = vec![block0];
@@ -1668,7 +1660,7 @@ fn orphan_cleanup_delete_all_orphans() {
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let config = BlockchainDatabaseConfig {
+    let mut config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 5,
         pruning_horizon: 0,
         pruning_interval: 50,
@@ -1683,7 +1675,6 @@ fn orphan_cleanup_delete_all_orphans() {
             validators.clone(),
             config,
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1737,7 +1728,6 @@ fn orphan_cleanup_delete_all_orphans() {
             validators.clone(),
             config,
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-            false,
         )
         .unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 5);
@@ -1746,13 +1736,13 @@ fn orphan_cleanup_delete_all_orphans() {
     // Test orphans cleanup on open
     {
         let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        config.cleanup_orphans_at_startup = true;
         let store = BlockchainDatabase::new(
             db,
             consensus_manager.clone(),
             validators,
             config,
             DifficultyCalculator::new(consensus_manager, Default::default()),
-            true,
         )
         .unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 0);
@@ -1791,7 +1781,6 @@ fn fails_validation() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let mut blocks = vec![block0];
@@ -1837,7 +1826,6 @@ fn pruned_mode_cleanup_and_fetch_block() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();

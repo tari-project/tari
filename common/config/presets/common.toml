@@ -5,10 +5,8 @@
 ########################################################################################################################
 
 [common]
-# Select the network to connect to. Valid options are:
-#   mainnet - the "real" Tari network (default)
-#   weatherwax - the Tari testnet
-config  = "dibbler"
+network="dibbler"
+
 
 # Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
 # Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the
@@ -88,15 +86,7 @@ dns_seeds =["seeds.weatherwax.tari.com"]
 # Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
 dns_seeds_use_dnssec = false
 
-# Auto Update
-#
-# This interval in seconds to check for software updates. Setting this to 0 disables checking.
-# auto_update.check_interval = 300
-# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
-# "auto_update.dns_hosts" = ["updates.weatherwax.taripulse.com"]
-# Customize the location of the update SHA hashes and maintainer-signed signature.
-# "auto_update.hashes_url" = "https://<address>/hashes.txt"
-# "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
+
 
 [common.igor]
 peer_seeds = [
@@ -132,3 +122,16 @@ peer_seeds = [
     # eeeeb0a943ed143e613a135392
     "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
 ]
+
+
+[auto_update]
+override_from="dibbler"
+# This interval in seconds to check for software updates. Setting this to 0 disables checking.
+check_interval = 300
+
+[dibbler.auto_update]
+# Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
+update_uris = ["updates.dibbler.taripulse.com"]
+# Customize the location of the update SHA hashes and maintainer-signed signature.
+# "auto_update.hashes_url" = "https://<address>/hashes.txt"
+# "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"

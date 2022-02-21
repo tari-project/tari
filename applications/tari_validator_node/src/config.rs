@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,9 +20,47 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use multiaddr::Multiaddr;
+use std::{
+    net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 
-#[derive(Debug, Clone, Default)]
-pub struct BaseNodeConfig {
-    pub grpc_address: Option<Multiaddr>,
+use serde::{Deserialize, Serialize};
+use tari_common::SubConfigPath;
+use tari_comms::multiaddr::Multiaddr;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct ValidatorNodeConfig {
+    override_from: Option<String>,
+    pub identity_file: PathBuf,
+    pub public_address: Option<Multiaddr>,
+    pub phase_timeout: u64,
+    pub base_node_grpc_address: SocketAddr,
+    pub wallet_grpc_address: SocketAddr,
+    pub scan_for_assets: bool,
+    pub new_asset_scanning_interval: u64,
+    pub assets_allow_list: Option<Vec<String>>,
+}
+
+impl Default for ValidatorNodeConfig {
+    fn default() -> Self {
+        Self {
+            override_from: None,
+            identity_file: PathBuf::from("validator_node_id.json"),
+            public_address: None,
+            phase_timeout: 30,
+            base_node_grpc_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18142),
+            wallet_grpc_address: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 18143),
+            scan_for_assets: true,
+            new_asset_scanning_interval: 10,
+            assets_allow_list: None,
+        }
+    }
+}
+
+impl SubConfigPath for ValidatorNodeConfig {
+    fn main_key_prefix() -> &'static str {
+        "validator_node"
+    }
 }

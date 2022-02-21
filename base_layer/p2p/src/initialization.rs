@@ -35,7 +35,8 @@ use futures::future;
 use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::{configuration::Network, DnsNameServer};
+use serde::{Deserialize, Serialize};
+use tari_common::{configuration::Network, DnsNameServer, SubConfigPath};
 use tari_comms::{
     backoff::ConstantBackoff,
     multiaddr::Multiaddr,
@@ -112,8 +113,11 @@ impl CommsInitializationError {
     }
 }
 
+use tari_common::configuration::utils::{deserialize_string_or_struct, serialize_string};
+
 /// Configuration for a comms node
-#[derive(Clone)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct P2pConfig {
     /// Path to the LMDB data files.
     pub datastore_path: PathBuf,
@@ -130,10 +134,8 @@ pub struct P2pConfig {
     pub dht: DhtConfig,
     /// The p2p network currently being connected to.
     pub network: Network,
-    /// The identity of this node on the network
-    pub node_identity: Arc<NodeIdentity>,
     /// The type of transport to use
-    pub transport_type: TransportType,
+    // pub transport_type: TransportType,
     /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
     /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
     /// should always be false for non-test nodes.
@@ -151,6 +153,10 @@ pub struct P2pConfig {
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
     /// peer list.
     pub dns_seeds: Vec<String>,
+    #[serde(
+        deserialize_with = "deserialize_string_or_struct",
+        serialize_with = "serialize_string"
+    )]
     /// DNS name server to use for DNS seeds.
     pub dns_seeds_name_server: DnsNameServer,
     /// All DNS seed records must pass DNSSEC validation
@@ -159,6 +165,35 @@ pub struct P2pConfig {
     /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
     /// Default: None
     pub auxilary_tcp_listener_address: Option<Multiaddr>,
+}
+
+impl Default for P2pConfig {
+    fn default() -> Self {
+        Self {
+            datastore_path: PathBuf::from("peer_db"),
+            peer_database_name: "peers".to_string(),
+            max_concurrent_inbound_tasks: 50,
+            max_concurrent_outbound_tasks: 100,
+            outbound_buffer_size: 100,
+            dht: Default::default(),
+            network: Default::default(),
+            allow_test_addresses: false,
+            listener_liveness_max_sessions: 0,
+            listener_liveness_allowlist_cidrs: vec![],
+            user_agent: "".to_string(),
+            peer_seeds: vec![],
+            dns_seeds: vec![],
+            dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
+            dns_seeds_use_dnssec: false,
+            auxilary_tcp_listener_address: None,
+        }
+    }
+}
+
+impl SubConfigPath for P2pConfig {
+    fn main_key_prefix() -> &'static str {
+        "p2p"
+    }
 }
 
 /// Initialize Tari Comms configured for tests
@@ -461,13 +496,15 @@ async fn add_all_peers(
 
 pub struct P2pInitializer {
     config: P2pConfig,
+    node_identity: Arc<NodeIdentity>,
     connector: Option<PubsubDomainConnector>,
 }
 
 impl P2pInitializer {
-    pub fn new(config: P2pConfig, connector: PubsubDomainConnector) -> Self {
+    pub fn new(config: P2pConfig, node_identity: Arc<NodeIdentity>, connector: PubsubDomainConnector) -> Self {
         Self {
             config,
+            node_identity,
             connector: Some(connector),
         }
     }
@@ -550,7 +587,7 @@ impl ServiceInitializer for P2pInitializer {
 
         let mut builder = CommsBuilder::new()
             .with_shutdown_signal(context.get_shutdown_signal())
-            .with_node_identity(config.node_identity.clone())
+            .with_node_identity(self.node_identity.clone())
             .with_node_info(NodeNetworkInfo {
                 major_version: MAJOR_NETWORK_VERSION,
                 minor_version: MINOR_NETWORK_VERSION,

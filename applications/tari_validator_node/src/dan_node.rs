@@ -24,7 +24,6 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use log::info;
 use tari_common::{
-    configuration::ValidatorNodeConfig,
     exit_codes::{ExitCode, ExitError},
     GlobalConfig,
 };
@@ -53,6 +52,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{task, time};
 
 use crate::{
+    config::ValidatorNodeConfig,
     default_service_specification::DefaultServiceSpecification,
     grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
     p2p::services::{
@@ -64,11 +64,11 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 pub struct DanNode {
-    config: GlobalConfig,
+    config: ValidatorNodeConfig,
 }
 
 impl DanNode {
-    pub fn new(config: GlobalConfig) -> Self {
+    pub fn new(config: ValidatorNodeConfig) -> Self {
         Self { config }
     }
 
@@ -81,13 +81,7 @@ impl DanNode {
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
     ) -> Result<(), ExitError> {
-        let dan_config = self
-            .config
-            .validator_node
-            .as_ref()
-            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Missing dan section"))?;
-
-        let mut base_node_client = GrpcBaseNodeClient::new(dan_config.base_node_grpc_address);
+        let mut base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
         let mut tasks = HashMap::new();
         let mut next_scanned_height = 0u64;
         loop {
@@ -97,8 +91,8 @@ impl DanNode {
                     target: LOG_TARGET,
                     "Scanning base layer (tip : {}) for new assets", tip.height_of_longest_chain
                 );
-                if dan_config.scan_for_assets {
-                    next_scanned_height = tip.height_of_longest_chain + dan_config.new_asset_scanning_interval;
+                if self.config.scan_for_assets {
+                    next_scanned_height = tip.height_of_longest_chain + self.config.new_asset_scanning_interval;
                     info!(target: LOG_TARGET, "Next scanning height {}", next_scanned_height);
                 } else {
                     next_scanned_height = u64::MAX; // Never run again.
@@ -112,7 +106,7 @@ impl DanNode {
                     if tasks.contains_key(&asset.public_key) {
                         continue;
                     }
-                    if let Some(allow_list) = &dan_config.assets_allow_list {
+                    if let Some(allow_list) = &self.config.assets_allow_list {
                         if !allow_list.contains(&asset.public_key.to_hex()) {
                             continue;
                         }
@@ -123,7 +117,7 @@ impl DanNode {
                     let handles = handles.clone();
                     let subscription_factory = subscription_factory.clone();
                     let shutdown = shutdown.clone();
-                    let dan_config = dan_config.clone();
+                    let dan_config = self.config.clone();
                     let db_factory = db_factory.clone();
                     tasks.insert(
                         asset.public_key.clone(),

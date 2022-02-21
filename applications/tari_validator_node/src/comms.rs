@@ -55,11 +55,12 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::p2p::create_validator_node_rpc_service;
+use crate::{config::ValidatorNodeConfig, p2p::create_validator_node_rpc_service};
 
 const LOG_TARGET: &str = "tari::validator_node::comms";
 
 pub async fn build_service_and_comms_stack(
+    validator_node_config: &ValidatorNodeConfig,
     config: &GlobalConfig,
     shutdown: ShutdownSignal,
     node_identity: Arc<NodeIdentity>,
@@ -73,7 +74,7 @@ pub async fn build_service_and_comms_stack(
     let (publisher, peer_message_subscriptions) = pubsub_connector(100, config.buffer_rate_limit_base_node);
 
     let mut handles = StackBuilder::new(shutdown.clone())
-        .add_initializer(P2pInitializer::new(comms_config, publisher))
+        .add_initializer(P2pInitializer::new(comms_config, node_identity.clone(), publisher))
         .build()
         .await
         .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
@@ -90,7 +91,7 @@ pub async fn build_service_and_comms_stack(
 
     // Save final node identity after comms has initialized. This is required because the public_address can be
     // changed by comms during initialization when using tor.
-    identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
+    identity_management::save_as_json(&validator_node_config.identity_file, &*comms.node_identity())
         .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save node identity: {}", e)))?;
     if let Some(hs) = comms.hidden_service() {
         identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())

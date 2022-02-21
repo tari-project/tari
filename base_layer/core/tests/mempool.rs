@@ -39,10 +39,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::{
-        service::BaseNodeServiceConfig,
-        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    },
+    base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
@@ -778,7 +775,6 @@ async fn receive_and_propagate_transaction() {
         .build();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
-            BaseNodeServiceConfig::default(),
             MempoolServiceConfig::default(),
             LivenessConfig::default(),
             consensus_manager,
@@ -1127,7 +1123,6 @@ async fn block_event_and_reorg_event_handling() {
         .with_block(block0.clone())
         .build();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,

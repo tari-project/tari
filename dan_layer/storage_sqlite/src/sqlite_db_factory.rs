@@ -25,7 +25,7 @@ use std::{fs::create_dir_all, path::PathBuf};
 use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::embed_migrations;
 use log::*;
-use tari_common::GlobalConfig;
+use tari_common::{configuration::CommonConfig, GlobalConfig};
 use tari_common_types::types::PublicKey;
 use tari_dan_core::storage::{chain::ChainDb, state::StateDb, DbFactory, StorageError};
 use tari_utilities::hex::Hex;
@@ -42,9 +42,9 @@ pub struct SqliteDbFactory {
 }
 
 impl SqliteDbFactory {
-    pub fn new(config: &GlobalConfig) -> Self {
+    pub fn new(config: &CommonConfig) -> Self {
         Self {
-            data_dir: config.data_dir.clone(),
+            data_dir: config.data_dir(),
         }
         // let database_url = config
         //     .data_dir

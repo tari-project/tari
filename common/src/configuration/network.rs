@@ -21,17 +21,21 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
 };
+
+use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum Network {
     MainNet = 0x00,
     LocalNet = 0x10,
@@ -86,6 +90,19 @@ impl FromStr for Network {
                 &format!("Invalid network option: {}", invalid),
             )),
         }
+    }
+}
+impl TryFrom<String> for Network {
+    type Error = ConfigurationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(value.as_str())
+    }
+}
+
+impl From<Network> for String {
+    fn from(n: Network) -> Self {
+        n.to_string()
     }
 }
 

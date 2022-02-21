@@ -206,7 +206,6 @@ pub fn create_new_blockchain_lmdb(
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     (db, vec![block0], vec![vec![output]], consensus_manager)

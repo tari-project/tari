@@ -22,6 +22,8 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
     storage::DbConnectionUrl,
@@ -29,7 +31,7 @@ use crate::{
     version::DhtProtocolVersion,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DhtConfig {
     /// The major protocol version to use. Default: DhtProtocolVersion::latest()
     pub protocol_version: DhtProtocolVersion,
