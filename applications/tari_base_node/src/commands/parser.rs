@@ -44,9 +44,9 @@ use tari_utilities::ByteArray;
 
 use super::{
     args::{Args, ArgsError, ArgsReason, FromHex},
-    LOG_TARGET,
+    command_handler::{CommandHandler, StatusOutput},
 };
-use crate::command_handler::{CommandHandler, StatusOutput};
+use crate::LOG_TARGET;
 
 /// Enum representing commands used by the basenode
 #[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]
@@ -90,7 +90,6 @@ pub enum BaseNodeCommand {
     Exit,
 }
 
-// TODO: Use `CommandHandler` directly instead
 #[derive(Deref, DerefMut)]
 pub struct Performer {
     command_handler: CommandHandler,

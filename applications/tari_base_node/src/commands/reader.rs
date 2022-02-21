@@ -4,8 +4,8 @@ use tokio::{
     task::{self, JoinHandle},
 };
 
-use super::LOG_TARGET;
-use crate::parser::Parser;
+use super::parser::Parser;
+use crate::LOG_TARGET;
 
 // TODO: Remove it and use the result from the `rustyline` directly
 pub enum CommandEvent {

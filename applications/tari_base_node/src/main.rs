@@ -83,16 +83,11 @@
 #[macro_use]
 mod table;
 
-mod args;
 mod bootstrap;
 mod builder;
-mod cli;
-mod command_handler;
+mod commands;
 mod grpc;
-mod parser;
-mod reader;
 mod recovery;
-mod status_line;
 mod utils;
 
 #[cfg(feature = "metrics")]
@@ -106,10 +101,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use commands::{
+    command_handler::{CommandHandler, StatusOutput},
+    parser::{Parser, Performer},
+    reader::{CommandEvent, CommandReader},
+};
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use parser::{Parser, Performer};
 use rustyline::{config::OutputStreamType, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
@@ -138,11 +137,6 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
-
-use crate::{
-    command_handler::{CommandHandler, StatusOutput},
-    reader::{CommandEvent, CommandReader},
-};
 
 const LOG_TARGET: &str = "base_node::app";
 
@@ -393,7 +387,7 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
 /// Doesn't return anything
 async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
     let parser = Parser::new();
-    cli::print_banner(parser.get_commands(), 3);
+    commands::cli::print_banner(parser.get_commands(), 3);
 
     let mut performer = Performer::new(command_handler);
 

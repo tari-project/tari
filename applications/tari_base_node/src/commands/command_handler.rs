@@ -70,8 +70,8 @@ use tokio::{
     sync::{broadcast, watch},
 };
 
-use super::LOG_TARGET;
-use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
+use super::status_line::StatusLine;
+use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
 
 pub enum StatusOutput {
     Log,
