@@ -65,6 +65,8 @@ pub struct BaseNodeConfig {
     pub storage: BlockchainDatabaseConfig,
     pub mempool: MempoolConfig,
     pub p2p: P2pConfig,
+    // TODO: move to p2p config or rpc config
+    pub rpc_max_simultaneous_sessions: usize,
 }
 
 impl Default for BaseNodeConfig {
@@ -83,6 +85,7 @@ impl Default for BaseNodeConfig {
             orphan_db_clean_out_threshold: 0,
             force_sync_peers: vec![],
             service_request_timeout: Duration::from_secs(60),
+            rpc_max_simultaneous_sessions: 100,
             ..Default::default()
         }
     }

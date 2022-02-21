@@ -52,7 +52,7 @@ pub fn install(
     if let Some(endpoint) = bootstrap
         .metrics_push_endpoint
         .as_ref()
-        .or_else(|| config.metrics.push_endpoint.as_ref())
+        .or_else(|| config.push_endpoint.as_ref())
     {
         // http://localhost:9091/metrics/job/base-node
         metrics = metrics.with_push_gateway(endpoint);

@@ -220,9 +220,9 @@ async fn build_node_context(
     //---------------------------------- Blockchain --------------------------------------------//
     debug!(
         target: LOG_TARGET,
-        "Building base node context for {}  network", common_config.network
+        "Building base node context for {}  network", base_node_config.network
     );
-    let rules = ConsensusManager::builder(common_config.network).build();
+    let rules = ConsensusManager::builder(base_node_config.network).build();
     let factories = CryptoFactories::default();
     let randomx_factory = RandomXFactory::new(base_node_config.max_randomx_vms);
     let validators = Validators::new(
@@ -261,7 +261,7 @@ async fn build_node_context(
     debug!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
-        config: &global_config,
+        config: global_config,
         base_node_config: &base_node_config,
         common_config,
         auto_update_config,

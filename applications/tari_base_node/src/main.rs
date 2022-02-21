@@ -137,6 +137,7 @@ use tari_comms::{
 use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
+use tari_p2p::auto_update::AutoUpdateConfig;
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tokio::{
     runtime,
@@ -170,10 +171,12 @@ fn main() {
 
 fn main_inner() -> Result<(), ExitError> {
     #[allow(unused_mut)] // config isn't mutated on windows
-    let (bootstrap, cfg) = init_configuration(ApplicationType::BaseNode)?;
+    let (bootstrap, global_config, cfg) = init_configuration(ApplicationType::BaseNode)?;
 
     let base_node_config = <BaseNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
     let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    let auto_update_config =
+        <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load auto-update config");
     debug!(
         target: LOG_TARGET,
         "Using base node configuration: {:?}", base_node_config
@@ -181,7 +184,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
-        &base_node_config.identity_file(common_config.base_path.as_path()),
+        &base_node_config.identity_file(&common_config),
         &base_node_config.public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
@@ -192,9 +195,7 @@ fn main_inner() -> Result<(), ExitError> {
         info!(
             target: LOG_TARGET,
             "Base node's node ID created at '{}'. Done.",
-            base_node_config
-                .identity_file(common_config.base_path.as_path())
-                .to_string_lossy(),
+            base_node_config.identity_file(&common_config).to_string_lossy(),
         );
         return Ok(());
     }
@@ -226,8 +227,10 @@ fn main_inner() -> Result<(), ExitError> {
     // Run the base node
     runtime.block_on(run_node(
         node_identity,
-        &base_node_config,
+        Arc::new(base_node_config),
         &common_config,
+        auto_update_config,
+        &global_config,
         bootstrap,
         shutdown,
     ))?;
@@ -241,8 +244,9 @@ fn main_inner() -> Result<(), ExitError> {
 /// Sets up the base node and runs the cli_loop
 async fn run_node(
     node_identity: Arc<NodeIdentity>,
-    base_node_config: &BaseNodeConfig,
+    base_node_config: Arc<BaseNodeConfig>,
     common_config: &CommonConfig,
+    auto_update_config: AutoUpdateConfig,
     cfg: &GlobalConfig,
     bootstrap: ConfigBootstrap,
     shutdown: Shutdown,
@@ -269,8 +273,8 @@ async fn run_node(
 
     if bootstrap.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(base_node_config, common_config)?;
-        recovery::run_recovery(base_node_config, common_config)
+        recovery::initiate_recover_db(&base_node_config, common_config)?;
+        recovery::run_recovery(&base_node_config, common_config)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
@@ -278,11 +282,12 @@ async fn run_node(
 
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(
-        base_node_config,
+        base_node_config.clone(),
         common_config,
+        auto_update_config,
+        cfg,
         node_identity,
         shutdown.to_signal(),
-        bootstrap.clean_orphans_db,
     )
     .await
     .map_err(|err| {

@@ -91,10 +91,6 @@ pub async fn run_recovery(node_config: &BaseNodeConfig, common_config: &CommonCo
             })?;
             (temp, backend, temp_path)
         },
-        _ => {
-            error!(target: LOG_TARGET, "Recovery mode is only available for LMDB");
-            return Err(anyhow!("Recovery mode is only available for LMDB"));
-        },
     };
     let rules = ConsensusManager::builder(node_config.network).build();
     let factories = CryptoFactories::default();
@@ -108,13 +104,14 @@ pub async fn run_recovery(node_config: &BaseNodeConfig, common_config: &CommonCo
             factories.clone(),
         ),
     );
+    let mut config = node_config.storage.clone();
+    config.cleanup_orphans_at_startup = true;
     let db = BlockchainDatabase::new(
         main_db,
         rules.clone(),
         validators,
         node_config.storage.clone(),
         DifficultyCalculator::new(rules, randomx_factory),
-        true,
     )?;
     do_recovery(db.into(), temp_db).await?;
 
@@ -146,7 +143,6 @@ async fn do_recovery<D: BlockchainBackend + 'static>(
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules, Default::default()),
-        false,
     )?;
     let max_height = source_database
         .get_chain_metadata()

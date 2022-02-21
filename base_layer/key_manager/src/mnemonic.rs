@@ -22,6 +22,7 @@
 
 use std::{cmp::Ordering, slice::Iter};
 
+use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 use tari_crypto::tari_utilities::bit::*;
 
@@ -35,7 +36,7 @@ use crate::{
 /// It can autodetect the language of the Mnemonic word sequence
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
 
-#[derive(Clone, Debug, PartialEq, EnumString, Display, Copy)]
+#[derive(Clone, Debug, PartialEq, EnumString, Display, Copy, Serialize, Deserialize)]
 pub enum MnemonicLanguage {
     ChineseSimplified,
     English,

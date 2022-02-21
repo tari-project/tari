@@ -63,7 +63,7 @@ impl Default for TransactionServiceConfig {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
 pub enum TransactionRoutingMechanism {
     DirectOnly,
     StoreAndForwardOnly,

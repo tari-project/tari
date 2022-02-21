@@ -62,6 +62,9 @@ force_sync_peers = [
     #"public_key1::address1",
 ]
 
+
+#rpc_max_simultaneous_sessions = 100
+
 [base_node.p2p]
 
 [base_node.p2p.dht]

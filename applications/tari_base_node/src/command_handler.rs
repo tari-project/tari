@@ -69,7 +69,13 @@ use tokio::{
 };
 
 use super::LOG_TARGET;
-use crate::{builder::BaseNodeContext, status_line::StatusLine, table::Table, utils::format_duration_basic};
+use crate::{
+    builder::BaseNodeContext,
+    config::BaseNodeConfig,
+    status_line::StatusLine,
+    table::Table,
+    utils::format_duration_basic,
+};
 
 pub enum StatusOutput {
     Log,
@@ -78,7 +84,7 @@ pub enum StatusOutput {
 
 pub struct CommandHandler {
     executor: runtime::Handle,
-    config: Arc<BaseNodeContext>,
+    config: Arc<BaseNodeConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
@@ -99,7 +105,7 @@ impl CommandHandler {
     pub fn new(executor: runtime::Handle, ctx: &BaseNodeContext) -> Self {
         Self {
             executor,
-            config: ctx.base_node_config(),
+            config: ctx.config(),
             consensus_rules: ctx.consensus_rules().clone(),
             blockchain_db: ctx.blockchain_db().into(),
             discovery_service: ctx.base_node_dht().discovery_service_requester(),
@@ -182,15 +188,7 @@ impl CommandHandler {
             let num_active_rpc_sessions = rpc_server.get_num_active_sessions().await.unwrap();
             status_line.add_field(
                 "Rpc",
-                format!(
-                    "{}/{}",
-                    num_active_rpc_sessions,
-                    config
-                        .rpc_max_simultaneous_sessions
-                        .as_ref()
-                        .map(ToString::to_string)
-                        .unwrap_or_else(|| "∞".to_string()),
-                ),
+                format!("{}/{}", num_active_rpc_sessions, config.rpc_max_simultaneous_sessions),
             );
             if full_log {
                 status_line.add_field(
@@ -1276,7 +1274,7 @@ impl CommandHandler {
     }
 
     pub fn list_reorgs(&self) {
-        if !self.config.blockchain_track_reorgs {
+        if !self.config.storage.track_reorgs {
             println!(
                 "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \
                  turn it on."

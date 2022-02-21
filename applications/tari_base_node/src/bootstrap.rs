@@ -179,7 +179,7 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), config);
+        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), base_node_config);
         let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone()).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
@@ -219,21 +219,12 @@ where B: BlockchainBackend + 'static
         comms: UnspawnedCommsNode,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
-        config: &GlobalConfig,
+        config: &BaseNodeConfig,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let builder = RpcServer::builder();
-        let builder = match config.rpc_max_simultaneous_sessions {
-            Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
-            None => {
-                warn!(
-                    target: LOG_TARGET,
-                    "Node is configured to allow unlimited RPC sessions."
-                );
-                builder.with_unlimited_simultaneous_sessions()
-            },
-        };
+        let builder = builder.with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions);
         let rpc_server = builder.finish();
         handles.register(rpc_server.get_handle());
 

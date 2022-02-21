@@ -52,9 +52,6 @@ dedup_cache_capacity = 25000
 # The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
 #service_request_timeout = 180
 
-# The maximum simultaneous comms RPC sessions allowed (default value = 1000). Setting this to -1 will allow unlimited
-# sessions.
-rpc_max_simultaneous_sessions = 10000
 
 [common.weatherwax]
 # When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of

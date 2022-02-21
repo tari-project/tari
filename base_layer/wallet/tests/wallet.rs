@@ -124,14 +124,14 @@ async fn create_wallet(
     passphrase: Option<String>,
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
-    const NETWORK: Network = Network::Weatherwax;
+    const network: Network = Network::Weatherwax;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
-        network: NETWORK,
-        node_identity: Arc::new(node_identity.clone()),
-        transport_type: TransportType::Memory {
-            listener_address: node_identity.public_address(),
-        },
+        network,
+        // node_identity: Arc::new(node_identity.clone()),
+        // transport_type: TransportType::Memory {
+        //     listener_address: node_identity.public_address(),
+        // },
         auxilary_tcp_listener_address: None,
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
@@ -171,17 +171,13 @@ async fn create_wallet(
         ..Default::default()
     };
 
-    let config = WalletConfig::new(
+    let config = WalletConfig {
         comms_config,
-        factories,
-        Some(transaction_service_config),
-        None,
-        NETWORK.into(),
-        None,
-        None,
-        None,
-        None,
-    );
+        transaction_service_config,
+        network,
+        ..Default::default()
+    };
+
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
     let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
@@ -190,7 +186,12 @@ async fn create_wallet(
     let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
 
     Wallet::start(
+        factories,
+        TransportType::Memory {
+            listener_address: node_identity.public_address(),
+        },
         config,
+        Arc::new(node_identity.clone()),
         wallet_db,
         transaction_backend,
         output_manager_backend,
@@ -702,11 +703,11 @@ async fn test_import_utxo() {
     let (connection, _temp_dir) = make_wallet_database_connection(None);
     let comms_config = P2pConfig {
         network: Network::Weatherwax,
-        node_identity: Arc::new(alice_identity.clone()),
-        transport_type: TransportType::Tcp {
-            listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-            tor_socks_config: None,
-        },
+        // node_identity: Arc::new(alice_identity.clone()),
+        // transport_type: TransportType::Tcp {
+        //     listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+        //     tor_socks_config: None,
+        // },
         auxilary_tcp_listener_address: None,
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random::string(8),
@@ -723,20 +724,20 @@ async fn test_import_utxo() {
         dns_seeds: Default::default(),
         dns_seeds_use_dnssec: false,
     };
-    let config = WalletConfig::new(
+    let config = WalletConfig {
         comms_config,
-        factories.clone(),
-        None,
-        None,
-        Network::Weatherwax.into(),
-        None,
-        None,
-        None,
-        None,
-    );
+        network: Network::Weatherwax,
+        ..Default::default()
+    };
 
     let mut alice_wallet = Wallet::start(
+        factories,
+        TransportType::Tcp {
+            listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            tor_socks_config: None,
+        },
         config,
+        Arc::new(alice_identity.clone()),
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection.clone(), None),

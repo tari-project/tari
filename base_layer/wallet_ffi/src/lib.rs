@@ -3006,8 +3006,6 @@ pub unsafe extern "C" fn comms_config_create(
 
                     let config = TariCommsConfig {
                         network: selected_network,
-                        node_identity: Arc::new(node_identity),
-                        transport_type: (*transport_type).clone(),
                         auxilary_tcp_listener_address: None,
                         datastore_path,
                         peer_database_name: database_name_string,
