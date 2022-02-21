@@ -278,7 +278,6 @@ impl AppState {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn send_transaction(
         &mut self,
         public_key: String,
@@ -311,7 +310,6 @@ impl AppState {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn send_one_sided_transaction(
         &mut self,
         public_key: String,

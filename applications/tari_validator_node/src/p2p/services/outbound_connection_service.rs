@@ -37,6 +37,8 @@ use tokio::sync::mpsc::Sender;
 
 use crate::p2p::proto;
 
+const LOG_TARGET: &str = "tari::validator_node::messages::outbound::validator_node";
+
 pub struct TariCommsOutboundService<TPayload: Payload> {
     outbound_message_requester: OutboundMessageRequester,
     loopback_service: Sender<(CommsPublicKey, HotStuffMessage<TPayload>)>,
@@ -61,16 +63,25 @@ impl<TPayload: Payload> TariCommsOutboundService<TPayload> {
 }
 
 #[async_trait]
-impl OutboundService<CommsPublicKey, TariDanPayload> for TariCommsOutboundService<TariDanPayload> {
+impl OutboundService for TariCommsOutboundService<TariDanPayload> {
+    type Addr = CommsPublicKey;
+    type Payload = TariDanPayload;
+
     async fn send(
         &mut self,
         from: CommsPublicKey,
         to: CommsPublicKey,
         message: HotStuffMessage<TariDanPayload>,
     ) -> Result<(), DigitalAssetError> {
-        debug!(target: "messages::outbound::validator_node", "Outbound message to be sent:{} {:?}", to, message);
+        debug!(target: LOG_TARGET, "Outbound message to be sent:{} {:?}", to, message);
         // Tari comms does allow sending to itself
         if from == to && message.asset_public_key() == &self.asset_public_key {
+            debug!(
+                target: LOG_TARGET,
+                "Sending {:?} to self for asset {}",
+                message.message_type(),
+                message.asset_public_key()
+            );
             self.loopback_service.send((from, message)).await.unwrap();
             return Ok(());
         }

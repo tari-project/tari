@@ -85,7 +85,7 @@ impl DbFactory for MockDbFactory {
             .unwrap()
             .get(asset_public_key)
             .cloned()
-            .map(StateDb::new))
+            .map(|db| StateDb::new(asset_public_key.clone(), db)))
     }
 
     fn get_or_create_state_db(
@@ -99,7 +99,7 @@ impl DbFactory for MockDbFactory {
             .entry(asset_public_key.clone())
             .or_default()
             .clone();
-        Ok(StateDb::new(entry))
+        Ok(StateDb::new(asset_public_key.clone(), entry))
     }
 }
 

@@ -28,7 +28,7 @@ use std::{
 
 use digest::Digest;
 use log::*;
-use tari_common_types::types::HashDigest;
+use tari_common_types::types::{HashDigest, PublicKey};
 use tari_crypto::common::Blake256;
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::hex::Hex;
@@ -52,8 +52,9 @@ pub trait StateDbUnitOfWork: StateDbUnitOfWorkReader {
 }
 
 pub trait StateDbUnitOfWorkReader: Clone + Send + Sync {
-    fn get_value(&mut self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError>;
-    fn get_u64(&mut self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError>;
+    fn context(&self) -> &UnitOfWorkContext;
+    fn get_value(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError>;
+    fn get_u64(&self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError>;
     fn find_keys_by_value(&self, schema: &str, value: &[u8]) -> Result<Vec<Vec<u8>>, StorageError>;
     fn calculate_root(&self) -> Result<StateRoot, StorageError>;
     fn get_all_state(&self) -> Result<Vec<SchemaState>, StorageError>;
@@ -62,12 +63,24 @@ pub trait StateDbUnitOfWorkReader: Clone + Send + Sync {
 
 #[derive(Debug, Clone)]
 pub struct UnitOfWorkContext {
-    pub height: u64,
+    asset_public_key: PublicKey,
+    height: u64,
 }
 
 impl UnitOfWorkContext {
-    pub fn new(height: u64) -> Self {
-        Self { height }
+    pub fn new(height: u64, asset_public_key: PublicKey) -> Self {
+        Self {
+            height,
+            asset_public_key,
+        }
+    }
+
+    pub fn height(&self) -> u64 {
+        self.height
+    }
+
+    pub fn asset_public_key(&self) -> &PublicKey {
+        &self.asset_public_key
     }
 }
 
@@ -167,35 +180,20 @@ impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWork for StateDbUnitOf
 }
 
 impl<TBackendAdapter: StateDbBackendAdapter> StateDbUnitOfWorkReader for StateDbUnitOfWorkImpl<TBackendAdapter> {
-    fn get_value(&mut self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
-        let mut inner = self.inner.write().unwrap();
-        for v in &inner.updates {
-            let inner_v = v.get();
-            if inner_v.schema == schema && inner_v.key == key {
-                return Ok(Some(inner_v.value.clone()));
-            }
-        }
-        // Hit the DB.
-        let value = inner
-            .backend_adapter
-            .get(schema, key)
-            .map_err(TBackendAdapter::Error::into)?;
-        if let Some(value) = value {
-            inner.updates.push(UnitOfWorkTracker::new(
-                DbKeyValue {
-                    schema: schema.to_string(),
-                    key: Vec::from(key),
-                    value: value.clone(),
-                },
-                false,
-            ));
-            Ok(Some(value))
-        } else {
-            Ok(None)
-        }
+    fn context(&self) -> &UnitOfWorkContext {
+        &self.context
     }
 
-    fn get_u64(&mut self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError> {
+    fn get_value(&self, schema: &str, key: &[u8]) -> Result<Option<Vec<u8>>, StorageError> {
+        let inner = self.inner.read().unwrap();
+        // Hit the DB.
+        inner
+            .backend_adapter
+            .get(schema, key)
+            .map_err(TBackendAdapter::Error::into)
+    }
+
+    fn get_u64(&self, schema: &str, key: &[u8]) -> Result<Option<u64>, StorageError> {
         let data = self.get_value(schema, key)?;
         match data {
             Some(data) => {

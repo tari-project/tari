@@ -33,10 +33,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, PartialOrd)]
 #[repr(u8)]
 pub enum TransactionOutputVersion {
     V0 = 0,
+    V1 = 1,
 }
 
 impl TransactionOutputVersion {
@@ -55,6 +56,7 @@ impl TryFrom<u8> for TransactionOutputVersion {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(TransactionOutputVersion::V0),
+            1 => Ok(TransactionOutputVersion::V1),
             _ => Err("Unknown version!".to_string()),
         }
     }

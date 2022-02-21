@@ -1,3 +1,4 @@
+// TODO: Remove this macro
 macro_rules! try_or_print {
     ($e:expr, $($arg:tt)*) => {
         match $e {

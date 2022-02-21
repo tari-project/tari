@@ -107,10 +107,10 @@ where TBackend: TransactionBackend + 'static
     connectivity_status_watch: watch::Receiver<OnlineStatus>,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl<TBackend> CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: TransactionEventReceiver,

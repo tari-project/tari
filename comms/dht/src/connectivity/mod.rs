@@ -87,7 +87,6 @@ pub struct DhtConnectivity {
 }
 
 impl DhtConnectivity {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Arc<DhtConfig>,
         peer_manager: Arc<PeerManager>,

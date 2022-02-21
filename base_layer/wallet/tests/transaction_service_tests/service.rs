@@ -168,7 +168,6 @@ fn create_runtime() -> Runtime {
         .unwrap()
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn setup_transaction_service<P: AsRef<Path>>(
     runtime: &mut Runtime,
     node_identity: Arc<NodeIdentity>,

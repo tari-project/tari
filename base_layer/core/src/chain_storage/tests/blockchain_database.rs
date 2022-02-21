@@ -411,6 +411,8 @@ mod add_block {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
         let commitment_hex = txns[0]
             .body
@@ -450,6 +452,8 @@ mod add_block {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
 
         let (block, _) = create_next_block(&db, &prev_block, txns);

@@ -20,16 +20,21 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use tari_utilities::hex::HexError;
 use tonic::Status;
 
 #[derive(Debug, thiserror::Error)]
 pub enum CollectiblesError {
   #[error("No connection to {client}. Is it running with grpc on '{address}' ? Error: {error}")]
-  ClientConnectionError {
+  ClientConnection {
     client: &'static str,
     address: String,
     error: String,
   },
   #[error("Error invoking operation: {request}: {source}")]
-  ClientRequestError { request: String, source: Status },
+  ClientRequest { request: String, source: Status },
+  #[error("Error trying to use wallet client before calling connect()")]
+  NoConnection,
+  #[error("Error converting from Hex to Public Key")]
+  Hex(#[from] HexError),
 }

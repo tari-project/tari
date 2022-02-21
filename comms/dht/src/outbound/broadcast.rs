@@ -400,7 +400,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn generate_send_messages(
         &mut self,
         selected_peers: Vec<NodeId>,
@@ -484,7 +483,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn process_encryption(
         &self,
         encryption: &OutboundEncryption,
