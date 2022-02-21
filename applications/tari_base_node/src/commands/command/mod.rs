@@ -1,0 +1,121 @@
+mod state_info;
+
+use std::{
+    cmp,
+    io::{self, Write},
+    str::FromStr,
+    string::ToString,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+use anyhow::{anyhow, Error};
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use clap::{Parser, Subcommand};
+use log::*;
+use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
+use tari_common::GlobalConfig;
+use tari_common_types::{
+    emoji::EmojiId,
+    types::{Commitment, HashOutput, Signature},
+};
+use tari_comms::{
+    connectivity::ConnectivityRequester,
+    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
+    protocol::rpc::RpcServerHandle,
+    NodeIdentity,
+};
+use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
+use tari_core::{
+    base_node::{
+        comms_interface::BlockEvent,
+        state_machine_service::states::{PeerMetadata, StatusInfo},
+        LocalNodeCommsInterface,
+    },
+    blocks::{BlockHeader, ChainHeader},
+    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
+    consensus::ConsensusManager,
+    mempool::service::LocalMempoolService,
+    proof_of_work::PowAlgorithm,
+};
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_p2p::{
+    auto_update::SoftwareUpdaterHandle,
+    services::liveness::{LivenessEvent, LivenessHandle},
+};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
+use thiserror::Error;
+use tokio::{
+    fs::File,
+    io::AsyncWriteExt,
+    sync::{broadcast, watch},
+};
+
+use super::status_line::StatusLine;
+use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
+
+#[derive(Debug, Parser)]
+pub struct Args {
+    #[clap(subcommand)]
+    command: Command,
+}
+
+#[derive(Debug, Subcommand)]
+enum Command {
+    StateInfo(state_info::StateInfoArgs),
+}
+
+#[async_trait]
+pub trait HandleCommand<T> {
+    async fn handle_command(&mut self, args: T) -> Result<(), Error>;
+}
+
+pub struct CommandContext {
+    config: Arc<GlobalConfig>,
+    consensus_rules: ConsensusManager,
+    blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
+    discovery_service: DhtDiscoveryRequester,
+    dht_metrics_collector: MetricsCollectorHandle,
+    rpc_server: RpcServerHandle,
+    base_node_identity: Arc<NodeIdentity>,
+    peer_manager: Arc<PeerManager>,
+    connectivity: ConnectivityRequester,
+    liveness: LivenessHandle,
+    node_service: LocalNodeCommsInterface,
+    mempool_service: LocalMempoolService,
+    state_machine_info: watch::Receiver<StatusInfo>,
+    software_updater: SoftwareUpdaterHandle,
+    last_time_full: Instant,
+}
+
+impl CommandContext {
+    pub fn new(ctx: &BaseNodeContext) -> Self {
+        Self {
+            config: ctx.config(),
+            consensus_rules: ctx.consensus_rules().clone(),
+            blockchain_db: ctx.blockchain_db().into(),
+            discovery_service: ctx.base_node_dht().discovery_service_requester(),
+            dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
+            rpc_server: ctx.rpc_server(),
+            base_node_identity: ctx.base_node_identity(),
+            peer_manager: ctx.base_node_comms().peer_manager(),
+            connectivity: ctx.base_node_comms().connectivity(),
+            liveness: ctx.liveness(),
+            node_service: ctx.local_node(),
+            mempool_service: ctx.local_mempool(),
+            state_machine_info: ctx.get_state_machine_info_channel(),
+            software_updater: ctx.software_updater(),
+            last_time_full: Instant::now(),
+        }
+    }
+}
+
+#[async_trait]
+impl HandleCommand<Command> for CommandContext {
+    async fn handle_command(&mut self, command: Command) -> Result<(), Error> {
+        match command {
+            Command::StateInfo(args) => self.handle_command(args).await,
+        }
+    }
+}
