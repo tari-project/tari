@@ -1,4 +1,5 @@
 mod check_for_updates;
+mod get_chain_metadata;
 mod get_state_info;
 mod status;
 mod version;
@@ -39,7 +40,7 @@ pub enum Command {
     Version(version::Args),
     CheckForUpdates(check_for_updates::Args),
     Status(status::Args),
-    // GetChainMetadata,
+    GetChainMetadata(get_chain_metadata::Args),
     // GetDbStats,
     // GetPeer,
     // ListPeers,
@@ -127,6 +128,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Version(args) => self.handle_command(args).await,
             Command::CheckForUpdates(args) => self.handle_command(args).await,
             Command::Status(args) => self.handle_command(args).await,
+            Command::GetChainMetadata(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
         }
     }
