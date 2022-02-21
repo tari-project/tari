@@ -23,14 +23,14 @@
 use std::{
     self,
     io::{BufRead, ErrorKind, Write},
-    sync::{mpsc, Arc, RwLock},
+    sync::mpsc,
     thread,
     time::{Duration, Instant},
 };
 
 use log::*;
 
-use crate::stratum::{error::Error, stratum_statistics::stats, stratum_types as types, stream::Stream};
+use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
@@ -45,7 +45,6 @@ pub struct Controller {
     pub tx: mpsc::Sender<types::client_message::ClientMessage>,
     miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
     last_request_id: String,
-    stats: Arc<RwLock<stats::Statistics>>,
 }
 
 // fn invalid_error_response() -> types::RpcError {
@@ -62,7 +61,6 @@ impl Controller {
         server_password: Option<String>,
         server_tls_enabled: Option<bool>,
         miner_tx: mpsc::Sender<types::miner_message::MinerMessage>,
-        stats: Arc<RwLock<stats::Statistics>>,
     ) -> Result<Controller, Error> {
         let (tx, rx) = mpsc::channel::<types::client_message::ClientMessage>();
         Ok(Controller {
@@ -75,7 +73,6 @@ impl Controller {
             rx,
             miner_tx,
             last_request_id: "".to_string(),
-            stats,
         })
     }
 
@@ -284,8 +281,6 @@ impl Controller {
                         // rejected share
                         self.handle_error(error);
                         warn!(target: LOG_TARGET, "Rejected");
-                        let mut stats = self.stats.write().unwrap();
-                        stats.mining_stats.solution_stats.rejected += 1;
                     } else {
                         // accepted share
                         debug!(target: LOG_TARGET, "Share accepted: {:?}", st.status);
