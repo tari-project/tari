@@ -11,6 +11,7 @@ mod get_mempool_state;
 mod get_mempool_stats;
 mod get_network_stats;
 mod get_state_info;
+mod header_stats;
 mod list_banned_peers;
 mod list_connections;
 mod list_headers;
@@ -79,7 +80,7 @@ pub enum Command {
     ListHeaders(list_headers::Args),
     CheckDb(check_db::Args),
     // PeriodStats,
-    // HeaderStats,
+    HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
     CalcTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
@@ -92,7 +93,6 @@ pub enum Command {
     GetMempoolTx(get_mempool_state::ArgsTx),
     Whoami(whoami::Args),
     GetStateInfo(get_state_info::Args),
-    // GetStateInfo,
     GetNetworkStats(get_network_stats::Args),
     /* Quit,
      * Exit, */
@@ -164,6 +164,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListHeaders(args) => self.handle_command(args).await,
             Command::CheckDb(args) => self.handle_command(args).await,
+            Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
             Command::DiscoverPeer(args) => self.handle_command(args).await,

@@ -64,7 +64,6 @@ impl Performer {
             },
             GetPeer => self.process_get_peer(typed_args).await,
             PeriodStats => self.process_period_stats(typed_args).await,
-            HeaderStats => self.process_header_stats(typed_args).await,
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -93,16 +92,6 @@ impl Performer {
             GetPeer => {
                 println!("Get all available info about peer");
                 println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-            },
-            HeaderStats => {
-                println!(
-                    "Prints out certain stats to of the block chain in csv format for easy copy, use as follows: "
-                );
-                println!("header-stats [start height] [end height] (dump_file) (filter:monero|sha3)");
-                println!("e.g.");
-                println!("header-stats 0 1000");
-                println!("header-stats 0 1000 sample2.csv");
-                println!("header-stats 0 1000 monero-sample.csv monero");
             },
             PeriodStats => {
                 println!(
@@ -142,19 +131,6 @@ impl Performer {
         let period = args.take_next("period")?;
         self.command_handler
             .period_stats(period_end, period_ticker_end, period)
-            .await
-    }
-
-    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
-        let start_height = args.take_next("start_height")?;
-        let end_height = args.take_next("end_height")?;
-        let filename = args
-            .try_take_next("filename")?
-            .unwrap_or_else(|| "header-data.csv".into());
-        let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
-
-        self.command_handler
-            .save_header_stats(start_height, end_height, filename, algo)
             .await
     }
 }

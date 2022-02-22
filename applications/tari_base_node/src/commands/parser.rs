@@ -40,7 +40,6 @@ pub enum BaseNodeCommand {
     Help,
     GetPeer,
     PeriodStats,
-    HeaderStats,
     Quit,
     Exit,
 }
