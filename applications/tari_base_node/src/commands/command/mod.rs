@@ -1,5 +1,6 @@
 mod ban_peer;
 mod block_timing;
+mod check_db;
 mod check_for_updates;
 mod dial_peer;
 mod get_chain_metadata;
@@ -68,7 +69,7 @@ pub enum Command {
     ListBannedPeers(list_banned_peers::Args),
     ListConnections(list_connections::Args),
     ListHeaders(list_headers::Args),
-    // CheckDb,
+    CheckDb(check_db::Args),
     // PeriodStats,
     // HeaderStats,
     BlockTiming(block_timing::Args),
@@ -153,6 +154,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::ResetOfflinePeers(args) => self.handle_command(args).await,
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListHeaders(args) => self.handle_command(args).await,
+            Command::CheckDb(args) => self.handle_command(args).await,
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,

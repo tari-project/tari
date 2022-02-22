@@ -66,7 +66,6 @@ impl Performer {
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
             RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
-            CheckDb => self.command_handler.check_db().await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
             ListReorgs => self.process_list_reorgs().await,
@@ -112,9 +111,6 @@ impl Performer {
                 println!("Rewinds the blockchain to the given height.");
                 println!("Usage: {} [new_height]", command);
                 println!("new_height must be less than the current height.");
-            },
-            CheckDb => {
-                println!("Checks the blockchain database for missing blocks and headers");
             },
             HeaderStats => {
                 println!(

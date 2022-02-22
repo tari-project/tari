@@ -40,7 +40,6 @@ pub enum BaseNodeCommand {
     Help,
     GetPeer,
     RewindBlockchain,
-    CheckDb,
     PeriodStats,
     HeaderStats,
     ListReorgs,
