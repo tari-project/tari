@@ -876,7 +876,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 debug!(
                     target: LOG_TARGET,
                     "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
-                    output.commitment.to_hex(),
+                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
                     output.mined_mmr_position,
                     tx_id
                 );
@@ -891,7 +891,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 debug!(
                     target: LOG_TARGET,
                     "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
-                    output.commitment.to_hex(),
+                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
                     output.mined_mmr_position,
                     tx_id
                 );
