@@ -73,8 +73,6 @@ impl Performer {
             GetBlock => self.process_get_block(typed_args).await,
             SearchUtxo => self.process_search_utxo(typed_args).await,
             SearchKernel => self.process_search_kernel(typed_args).await,
-            GetMempoolState => self.command_handler.get_mempool_state(None).await,
-            GetMempoolTx => self.get_mempool_state_tx(typed_args).await,
             Whoami => self.command_handler.whoami(),
             GetNetworkStats => self.command_handler.get_network_stats(),
             Exit | Quit => {
@@ -171,12 +169,6 @@ impl Performer {
                 println!("This searches for the kernel via the excess signature");
                 println!("search-kernel [hex of nonce] [Hex of signature]");
             },
-            GetMempoolState => {
-                println!("Retrieves your mempools state");
-            },
-            GetMempoolTx => {
-                println!("Filters and retrieves details about transactions from the mempool's state");
-            },
             Whoami => {
                 println!(
                     "Display identity information about this node, including: public key, node ID and the public \
@@ -222,11 +214,6 @@ impl Performer {
         let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
         let kernel_sig = Signature::new(public_nonce.0, signature.0);
         self.command_handler.search_kernel(kernel_sig).await
-    }
-
-    async fn get_mempool_state_tx<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let filter = args.take_next("filter").ok();
-        self.command_handler.get_mempool_state(filter).await
     }
 
     /// Function to process the discover-peer command

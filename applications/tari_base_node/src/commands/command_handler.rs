@@ -177,43 +177,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    /// Function to process the get-mempool-state command
-    pub async fn get_mempool_state(&mut self, filter: Option<String>) -> Result<(), Error> {
-        let state = self.mempool_service.get_mempool_state().await?;
-        println!("----------------- Mempool -----------------");
-        println!("--- Unconfirmed Pool ---");
-        for tx in &state.unconfirmed_pool {
-            let tx_sig = tx
-                .first_kernel_excess_sig()
-                .map(|sig| sig.get_signature().to_hex())
-                .unwrap_or_else(|| "N/A".to_string());
-            if let Some(ref filter) = filter {
-                if !tx_sig.contains(filter) {
-                    println!("--- TX: {} ---", tx_sig);
-                    println!("{}", tx.body);
-                    continue;
-                }
-            } else {
-                println!(
-                    "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
-                    tx_sig,
-                    tx.body.get_total_fee(),
-                    tx.body.outputs().len(),
-                    tx.body.kernels().len(),
-                    tx.body.inputs().len(),
-                    tx.body.sum_metadata_size(),
-                );
-            }
-        }
-        if filter.is_none() {
-            println!("--- Reorg Pool ---");
-            for excess_sig in &state.reorg_pool {
-                println!("    {}", excess_sig.get_signature().to_hex());
-            }
-        }
-        Ok(())
-    }
-
     pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
         let start = Instant::now();
         println!("🌎 Peer discovery started.");

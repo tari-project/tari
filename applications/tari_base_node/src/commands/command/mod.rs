@@ -4,6 +4,7 @@ mod check_for_updates;
 mod dial_peer;
 mod get_chain_metadata;
 mod get_db_stats;
+mod get_mempool_state;
 mod get_mempool_stats;
 mod get_state_info;
 mod list_banned_peers;
@@ -78,8 +79,8 @@ pub enum Command {
     // SearchUtxo,
     // SearchKernel,
     GetMempoolStats(get_mempool_stats::Args),
-    // GetMempoolState,
-    // GetMempoolTx,
+    GetMempoolState(get_mempool_state::Args),
+    GetMempoolTx(get_mempool_state::ArgsTx),
     // Whoami,
     GetStateInfo(get_state_info::Args),
     /* GetStateInfo,
@@ -155,6 +156,8 @@ impl HandleCommand<Command> for CommandContext {
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,
+            Command::GetMempoolState(args) => self.handle_command(args).await,
+            Command::GetMempoolTx(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
         }
     }
