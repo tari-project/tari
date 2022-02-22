@@ -873,6 +873,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         for output in outputs.iter() {
             if output.received_in_tx_id == Some(i64::from(tx_id)) {
+                info!(
+                    target: LOG_TARGET,
+                    "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
+                    output.mined_mmr_position,
+                    tx_id
+                );
                 output.update(
                     UpdateOutput {
                         status: Some(OutputStatus::CancelledInbound),
@@ -881,10 +888,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     &conn,
                 )?;
             } else if output.spent_in_tx_id == Some(i64::from(tx_id)) {
+                info!(
+                    target: LOG_TARGET,
+                    "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
+                    output.mined_mmr_position,
+                    tx_id
+                );
                 output.update(
                     UpdateOutput {
                         status: Some(OutputStatus::Unspent),
                         spent_in_tx_id: Some(None),
+                        mined_in_block: Some(None),
                         ..Default::default()
                     },
                     &conn,
@@ -1289,6 +1304,7 @@ pub struct UpdateOutput {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_in_block: Option<Option<Vec<u8>>>,
 }
 
 #[derive(AsChangeset)]
@@ -1301,6 +1317,7 @@ pub struct UpdateOutputSql {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_in_block: Option<Option<Vec<u8>>>,
 }
 
 #[derive(AsChangeset)]
@@ -1323,6 +1340,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             metadata_signature_u_key: u.metadata_signature_u_key,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(i64::from)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(i64::from)),
+            mined_in_block: u.mined_in_block,
         }
     }
 }
