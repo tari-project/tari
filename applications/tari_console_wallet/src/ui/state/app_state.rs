@@ -239,7 +239,7 @@ impl AppState {
             },
         };
 
-        let contact = Contact { alias, public_key };
+        let contact = Contact::new(alias, public_key, None, None);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;

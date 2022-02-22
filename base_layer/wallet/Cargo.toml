@@ -47,6 +47,7 @@ tempfile = "3.1.0"
 thiserror = "1.0.26"
 tokio = { version = "1.11", features = ["sync", "macros"] }
 tower = "0.4"
+prost = "0.9"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
