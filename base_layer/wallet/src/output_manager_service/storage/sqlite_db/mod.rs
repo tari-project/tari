@@ -873,7 +873,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         for output in outputs.iter() {
             if output.received_in_tx_id == Some(i64::from(tx_id)) {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
                     output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
@@ -888,7 +888,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     &conn,
                 )?;
             } else if output.spent_in_tx_id == Some(i64::from(tx_id)) {
-                debug!(
+                info!(
                     target: LOG_TARGET,
                     "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
                     output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
