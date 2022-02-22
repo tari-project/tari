@@ -66,91 +66,92 @@ const DB_RESIZE_THRESHOLD_MIN_MB: i64 = 10;
 pub struct GlobalConfig {
     pub autoupdate_check_interval: Option<Duration>,
     pub autoupdate_dns_hosts: Vec<String>,
-    pub autoupdate_hashes_url: String,
     pub autoupdate_hashes_sig_url: String,
-    pub network: Network,
-    pub comms_transport: CommsTransport,
+    pub autoupdate_hashes_url: String,
     pub auxilary_tcp_listener_address: Option<Multiaddr>,
-    pub allow_test_addresses: bool,
-    pub listnener_liveness_max_sessions: usize,
-    pub listener_liveness_allowlist_cidrs: Vec<String>,
-    pub rpc_max_simultaneous_sessions: Option<usize>,
-    pub data_dir: PathBuf,
-    pub db_type: DatabaseType,
-    pub db_config: LMDBConfig,
-    pub orphan_storage_capacity: usize,
-    pub orphan_db_clean_out_threshold: usize,
-    pub pruning_horizon: u64,
-    pub pruned_mode_cleanup_interval: u64,
-    pub core_threads: Option<usize>,
-    pub base_node_identity_file: PathBuf,
-    pub public_address: Option<Multiaddr>,
+    pub base_node_bypass_range_proof_verification: bool,
     pub base_node_config: Option<BaseNodeConfig>,
-    pub wallet_config: Option<WalletConfig>,
-    pub peer_seeds: Vec<String>,
+    pub base_node_event_channel_size: usize,
+    pub base_node_identity_file: PathBuf,
+    pub base_node_query_timeout: Duration,
+    pub base_node_status_line_interval: Duration,
+    pub base_node_tor_identity_file: PathBuf,
+    pub base_node_use_libtor: bool,
+    pub blockchain_track_reorgs: bool,
+    pub blocks_behind_before_considered_lagging: u64,
+    pub buffer_rate_limit_base_node: usize,
+    pub buffer_rate_limit_console_wallet: usize,
+    pub buffer_size_base_node: usize,
+    pub buffer_size_console_wallet: usize,
+    pub collectibles_config: Option<CollectiblesConfig>,
+    pub comms_allow_test_addresses: bool,
+    pub comms_listener_liveness_allowlist_cidrs: Vec<String>,
+    pub comms_listener_liveness_max_sessions: usize,
+    pub comms_peer_db_path: PathBuf,
+    pub comms_public_address: Option<Multiaddr>,
+    pub comms_rpc_max_simultaneous_sessions: Option<usize>,
+    pub comms_transport: CommsTransport,
+    pub console_wallet_db_file: PathBuf,
+    pub console_wallet_notify_file: Option<PathBuf>,
+    pub console_wallet_password: Option<String>,
+    pub console_wallet_peer_db_path: PathBuf,
+    pub console_wallet_use_libtor: bool,
+    pub contacts_auto_ping_interval: u64,
+    pub core_threads: Option<usize>,
+    pub data_dir: PathBuf,
+    pub db_config: LMDBConfig,
+    pub db_type: DatabaseType,
+    pub dht_dedup_cache_capacity: usize,
     pub dns_seeds: Vec<String>,
     pub dns_seeds_name_server: DnsNameServer,
     pub dns_seeds_use_dnssec: bool,
-    pub peer_db_path: PathBuf,
-    pub num_mining_threads: usize,
-    pub base_node_tor_identity_file: PathBuf,
-    pub wallet_db_file: PathBuf,
-    pub console_wallet_db_file: PathBuf,
-    pub wallet_peer_db_path: PathBuf,
-    pub console_wallet_peer_db_path: PathBuf,
-    pub buffer_size_base_node: usize,
-    pub buffer_size_console_wallet: usize,
-    pub buffer_rate_limit_base_node: usize,
-    pub buffer_rate_limit_console_wallet: usize,
-    pub dedup_cache_capacity: usize,
     pub fetch_blocks_timeout: Duration,
     pub fetch_utxos_timeout: Duration,
-    pub service_request_timeout: Duration,
-    pub base_node_query_timeout: Duration,
-    pub saf_expiry_duration: Duration,
-    pub transaction_broadcast_monitoring_timeout: Duration,
-    pub transaction_chain_monitoring_timeout: Duration,
-    pub transaction_direct_send_timeout: Duration,
-    pub transaction_broadcast_send_timeout: Duration,
-    pub transaction_routing_mechanism: String,
-    pub transaction_num_confirmations_required: u64,
-    pub transaction_event_channel_size: usize,
-    pub base_node_event_channel_size: usize,
-    pub output_manager_event_channel_size: usize,
-    pub wallet_connection_manager_pool_size: usize,
-    pub wallet_recovery_retry_limit: usize,
-    pub console_wallet_password: Option<String>,
-    pub wallet_command_send_wait_stage: String,
-    pub wallet_command_send_wait_timeout: u64,
-    pub wallet_base_node_service_peers: Vec<String>,
-    pub wallet_custom_base_node: Option<String>,
-    pub wallet_base_node_service_refresh_interval: u64,
-    pub wallet_base_node_service_request_max_age: u64,
-    pub wallet_balance_enquiry_cooldown_period: u64,
-    pub prevent_fee_gt_amount: bool,
-    pub transcoder_host_address: SocketAddr,
-    pub proxy_submit_to_origin: bool,
-    pub force_sync_peers: Vec<String>,
-    pub wait_for_initial_sync_at_startup: bool,
-    pub max_randomx_vms: usize,
-    pub console_wallet_notify_file: Option<PathBuf>,
-    pub metadata_auto_ping_interval: u64,
-    pub contacts_auto_ping_interval: u64,
-    pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
+    pub force_sync_peers: Vec<String>,
+    pub max_randomx_vms: usize,
+    pub merge_mining_config: Option<MergeMiningConfig>,
+    pub metadata_auto_ping_interval: u64,
+    pub wallet_peer_db_path: PathBuf,
+    pub metrics: MetricsConfig,
     pub mine_on_tip_only: bool,
-    pub validate_tip_timeout_sec: u64,
-    pub validator_node: Option<ValidatorNodeConfig>,
     pub mining_pool_address: String,
     pub mining_wallet_address: String,
     pub mining_worker_name: String,
-    pub base_node_bypass_range_proof_verification: bool,
-    pub metrics: MetricsConfig,
-    pub base_node_use_libtor: bool,
-    pub console_wallet_use_libtor: bool,
-    pub merge_mining_config: Option<MergeMiningConfig>,
-    pub blockchain_track_reorgs: bool,
-    pub collectibles_config: Option<CollectiblesConfig>,
+    pub network: Network,
+    pub num_mining_threads: usize,
+    pub orphan_db_clean_out_threshold: usize,
+    pub orphan_storage_capacity: usize,
+    pub output_manager_event_channel_size: usize,
+    pub peer_seeds: Vec<String>,
+    pub prevent_fee_gt_amount: bool,
+    pub proxy_submit_to_origin: bool,
+    pub pruned_mode_cleanup_interval: u64,
+    pub pruning_horizon: u64,
+    pub saf_expiry_duration: Duration,
+    pub service_request_timeout: Duration,
+    pub transaction_broadcast_monitoring_timeout: Duration,
+    pub transaction_broadcast_send_timeout: Duration,
+    pub transaction_chain_monitoring_timeout: Duration,
+    pub transaction_direct_send_timeout: Duration,
+    pub transaction_event_channel_size: usize,
+    pub transaction_num_confirmations_required: u64,
+    pub transaction_routing_mechanism: String,
+    pub transcoder_host_address: SocketAddr,
+    pub validate_tip_timeout_sec: u64,
+    pub validator_node: Option<ValidatorNodeConfig>,
+    pub wait_for_initial_sync_at_startup: bool,
+    pub wallet_balance_enquiry_cooldown_period: u64,
+    pub wallet_base_node_service_peers: Vec<String>,
+    pub wallet_recovery_retry_limit: usize,
+    pub wallet_base_node_service_refresh_interval: u64,
+    pub wallet_base_node_service_request_max_age: u64,
+    pub wallet_command_send_wait_stage: String,
+    pub wallet_command_send_wait_timeout: u64,
+    pub wallet_config: Option<WalletConfig>,
+    pub wallet_connection_manager_pool_size: usize,
+    pub wallet_custom_base_node: Option<String>,
+    pub wallet_db_file: PathBuf,
 }
 
 impl GlobalConfig {
@@ -328,11 +329,11 @@ fn convert_node_config(
         .transpose()?;
 
     let key = config_string("base_node", net_str, "allow_test_addresses");
-    let allow_test_addresses = cfg.get_bool(&key).unwrap_or(false);
+    let comms_allow_test_addresses = cfg.get_bool(&key).unwrap_or(false);
 
     // Public address
     let key = config_string("base_node", net_str, "public_address");
-    let public_address = optional(cfg.get_str(&key))?
+    let comms_public_address = optional(cfg.get_str(&key))?
         .map(|addr| {
             addr.parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
@@ -434,7 +435,7 @@ fn convert_node_config(
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     // Peer DB path
-    let peer_db_path = data_dir.join("peer_db");
+    let comms_peer_db_path = data_dir.join("peer_db");
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
@@ -564,7 +565,7 @@ fn convert_node_config(
     };
 
     let key = config_string("wallet", net_str, "custom_base_node");
-    let custom_peer: Option<String> = match cfg.get_int(&key) {
+    let wallet_custom_base_node: Option<String> = match cfg.get_int(&key) {
         Ok(peer) => Some(peer.to_string()),
         Err(ConfigError::NotFound(_)) => None,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
@@ -598,20 +599,20 @@ fn convert_node_config(
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_max_sessions";
-    let liveness_max_sessions = cfg
+    let comms_listener_liveness_max_sessions = cfg
         .get_int(key)
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
         .try_into()
         .map_err(|e: TryFromIntError| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_allowlist_cidrs";
-    let liveness_allowlist_cidrs = cfg
+    let comms_listener_liveness_allowlist_cidrs = cfg
         .get_array(key)
         .map(|values| values.iter().map(ToString::to_string).collect())
         .unwrap_or_else(|_| vec!["127.0.0.1/32".to_string()]);
 
     let key = "common.rpc_max_simultaneous_sessions";
-    let rpc_max_simultaneous_sessions = cfg
+    let comms_rpc_max_simultaneous_sessions = cfg
         .get_int(key)
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
         .and_then(|v| match v {
@@ -645,7 +646,7 @@ fn convert_node_config(
             .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.dedup_cache_capacity";
-    let dedup_cache_capacity = cfg
+    let dht_dedup_cache_capacity = cfg
         .get_int(key)
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
@@ -794,6 +795,11 @@ fn convert_node_config(
     let key = config_string("common", net_str, "auto_update.hashes_sig_url");
     let autoupdate_hashes_sig_url = optional(cfg.get_str(&key))?.unwrap_or_default();
 
+    let key = "base_node. status_line_interval_secs";
+    let base_node_status_line_interval = optional(cfg.get_int(key))?
+        .map(|s| Duration::from_secs(s as u64))
+        .unwrap_or_else(|| Duration::from_secs(30));
+
     let key = "mining_node.mining_pool_address";
     let mining_pool_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());
     let key = "mining_node.mining_wallet_address";
@@ -812,91 +818,92 @@ fn convert_node_config(
     Ok(GlobalConfig {
         autoupdate_check_interval,
         autoupdate_dns_hosts,
-        autoupdate_hashes_url,
         autoupdate_hashes_sig_url,
-        network,
-        comms_transport,
+        autoupdate_hashes_url,
         auxilary_tcp_listener_address,
-        allow_test_addresses,
-        listnener_liveness_max_sessions: liveness_max_sessions,
-        listener_liveness_allowlist_cidrs: liveness_allowlist_cidrs,
-        rpc_max_simultaneous_sessions,
-        data_dir,
-        db_type,
-        db_config,
-        orphan_storage_capacity,
-        orphan_db_clean_out_threshold,
-        pruning_horizon,
-        pruned_mode_cleanup_interval,
-        core_threads,
-        base_node_identity_file,
-        public_address,
+        base_node_bypass_range_proof_verification,
         base_node_config,
-        wallet_config,
-        peer_seeds,
+        base_node_event_channel_size,
+        base_node_identity_file,
+        base_node_query_timeout,
+        base_node_status_line_interval,
+        base_node_tor_identity_file,
+        base_node_use_libtor,
+        blockchain_track_reorgs,
+        blocks_behind_before_considered_lagging,
+        buffer_rate_limit_base_node,
+        buffer_rate_limit_console_wallet,
+        buffer_size_base_node,
+        buffer_size_console_wallet,
+        collectibles_config: CollectiblesConfig::convert_if_present(&cfg)?,
+        comms_allow_test_addresses,
+        comms_listener_liveness_allowlist_cidrs,
+        comms_listener_liveness_max_sessions,
+        comms_peer_db_path,
+        comms_public_address,
+        comms_rpc_max_simultaneous_sessions,
+        comms_transport,
+        console_wallet_db_file,
+        console_wallet_notify_file,
+        console_wallet_password,
+        console_wallet_peer_db_path,
+        console_wallet_use_libtor,
+        contacts_auto_ping_interval,
+        core_threads,
+        data_dir,
+        db_config,
+        db_type,
+        dht_dedup_cache_capacity,
         dns_seeds,
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
-        peer_db_path,
-        num_mining_threads,
-        base_node_tor_identity_file,
-        wallet_db_file,
-        console_wallet_db_file,
-        wallet_peer_db_path,
-        console_wallet_peer_db_path,
-        buffer_size_base_node,
-        buffer_size_console_wallet,
-        buffer_rate_limit_base_node,
-        buffer_rate_limit_console_wallet,
-        dedup_cache_capacity,
         fetch_blocks_timeout,
         fetch_utxos_timeout,
-        service_request_timeout,
-        base_node_query_timeout,
-        saf_expiry_duration,
-        transaction_broadcast_monitoring_timeout,
-        transaction_chain_monitoring_timeout,
-        transaction_direct_send_timeout,
-        transaction_broadcast_send_timeout,
-        transaction_routing_mechanism,
-        transaction_num_confirmations_required,
-        transaction_event_channel_size,
-        base_node_event_channel_size,
-        wallet_connection_manager_pool_size,
-        wallet_recovery_retry_limit,
-        output_manager_event_channel_size,
-        console_wallet_password,
-        wallet_command_send_wait_stage,
-        wallet_command_send_wait_timeout,
-        wallet_base_node_service_peers,
-        wallet_custom_base_node: custom_peer,
-        wallet_base_node_service_refresh_interval,
-        wallet_base_node_service_request_max_age,
-        wallet_balance_enquiry_cooldown_period,
-        prevent_fee_gt_amount,
-        transcoder_host_address,
-        proxy_submit_to_origin,
-        force_sync_peers,
-        wait_for_initial_sync_at_startup,
-        max_randomx_vms,
-        console_wallet_notify_file,
-        metadata_auto_ping_interval,
-        contacts_auto_ping_interval,
-        blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
+        force_sync_peers,
+        max_randomx_vms,
+        merge_mining_config,
+        metadata_auto_ping_interval,
+        metrics,
         mine_on_tip_only,
-        validate_tip_timeout_sec,
-        validator_node: ValidatorNodeConfig::convert_if_present(cfg.clone())?,
         mining_pool_address,
         mining_wallet_address,
         mining_worker_name,
-        base_node_bypass_range_proof_verification,
-        metrics,
-        base_node_use_libtor,
-        console_wallet_use_libtor,
-        merge_mining_config,
-        blockchain_track_reorgs,
-        collectibles_config: CollectiblesConfig::convert_if_present(cfg)?,
+        network,
+        num_mining_threads,
+        orphan_db_clean_out_threshold,
+        orphan_storage_capacity,
+        output_manager_event_channel_size,
+        peer_seeds,
+        prevent_fee_gt_amount,
+        proxy_submit_to_origin,
+        pruned_mode_cleanup_interval,
+        pruning_horizon,
+        saf_expiry_duration,
+        service_request_timeout,
+        transaction_broadcast_monitoring_timeout,
+        transaction_broadcast_send_timeout,
+        transaction_chain_monitoring_timeout,
+        transaction_direct_send_timeout,
+        transaction_event_channel_size,
+        transaction_num_confirmations_required,
+        transaction_routing_mechanism,
+        transcoder_host_address,
+        validate_tip_timeout_sec,
+        validator_node: ValidatorNodeConfig::convert_if_present(&cfg)?,
+        wait_for_initial_sync_at_startup,
+        wallet_balance_enquiry_cooldown_period,
+        wallet_base_node_service_peers,
+        wallet_base_node_service_refresh_interval,
+        wallet_base_node_service_request_max_age,
+        wallet_command_send_wait_stage,
+        wallet_command_send_wait_timeout,
+        wallet_config,
+        wallet_connection_manager_pool_size,
+        wallet_custom_base_node,
+        wallet_db_file,
+        wallet_peer_db_path,
+        wallet_recovery_retry_limit,
     })
 }
 
