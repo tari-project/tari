@@ -108,35 +108,6 @@ impl CommandHandler {
         self.config.clone()
     }
 
-    pub async fn get_block(&self, height: u64, format: Format) -> Result<(), Error> {
-        let mut data = self.blockchain_db.fetch_blocks(height..=height).await?;
-        match (data.pop(), format) {
-            (Some(block), Format::Text) => {
-                let block_data = self
-                    .blockchain_db
-                    .fetch_block_accumulated_data(block.hash().clone())
-                    .await?;
-
-                println!("{}", block);
-                println!("-- Accumulated data --");
-                println!("{}", block_data);
-            },
-            (Some(block), Format::Json) => println!("{}", block.to_json()?),
-            (None, _) => println!("Block not found at height {}", height),
-        }
-        Ok(())
-    }
-
-    pub async fn get_block_by_hash(&self, hash: HashOutput, format: Format) -> Result<(), Error> {
-        let data = self.blockchain_db.fetch_block_by_hash(hash).await?;
-        match (data, format) {
-            (Some(block), Format::Text) => println!("{}", block),
-            (Some(block), Format::Json) => println!("{}", block.to_json()?),
-            (None, _) => println!("Block not found"),
-        }
-        Ok(())
-    }
-
     pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
         let start = Instant::now();
         println!("🌎 Peer discovery started.");
@@ -390,15 +361,12 @@ impl CommandHandler {
     }
 }
 
-async fn fetch_banned_peers(pm: &PeerManager) -> Result<Vec<Peer>, PeerManagerError> {
-    let query = PeerQuery::new().select_where(|p| p.is_banned());
-    pm.perform_query(query).await
-}
-
 #[derive(Debug, Error)]
 #[error("invalid format '{0}'")]
 pub struct FormatParseError(String);
 
+#[derive(Debug, Display, EnumString)]
+#[strum(serialize_all = "kebab-case")]
 pub enum Format {
     Json,
     Text,
@@ -407,18 +375,6 @@ pub enum Format {
 impl Default for Format {
     fn default() -> Self {
         Self::Text
-    }
-}
-
-impl FromStr for Format {
-    type Err = FormatParseError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_ascii_lowercase().as_ref() {
-            "json" => Ok(Self::Json),
-            "text" => Ok(Self::Text),
-            _ => Err(FormatParseError(s.into())),
-        }
     }
 }
 

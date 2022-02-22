@@ -3,6 +3,7 @@ mod block_timing;
 mod check_db;
 mod check_for_updates;
 mod dial_peer;
+mod get_block;
 mod get_chain_metadata;
 mod get_db_stats;
 mod get_mempool_state;
@@ -82,7 +83,7 @@ pub enum Command {
     CalcTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
     // DiscoverPeer,
-    // GetBlock,
+    GetBlock(get_block::Args),
     SearchUtxo(search_utxo::Args),
     SearchKernel(search_kernel::Args),
     GetMempoolStats(get_mempool_stats::Args),
@@ -164,6 +165,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::CheckDb(args) => self.handle_command(args).await,
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
+            Command::GetBlock(args) => self.handle_command(args).await,
             Command::SearchUtxo(args) => self.handle_command(args).await,
             Command::SearchKernel(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,

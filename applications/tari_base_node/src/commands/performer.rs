@@ -66,7 +66,6 @@ impl Performer {
             GetPeer => self.process_get_peer(typed_args).await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
-            GetBlock => self.process_get_block(typed_args).await,
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -120,38 +119,9 @@ impl Performer {
                      in unix timestamp]"
                 );
             },
-            GetBlock => {
-                println!("Display a block by height or hash:");
-                println!("get-block [height or hash of the block] [format]");
-                println!(
-                    "[height or hash of the block] The height or hash of the block to fetch from the main chain. The \
-                     genesis block has height zero."
-                );
-                println!(
-                    "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
-                );
-            },
             Exit | Quit => {
                 println!("Exits the base node");
             },
-        }
-    }
-
-    /// Function to process the get-block command
-    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
-        let height = args.try_take_next("height")?;
-        let hash: Option<FromHex<Vec<u8>>> = args.try_take_next("hash")?;
-        args.shift_one();
-        let format = args.try_take_next("format")?.unwrap_or_default();
-
-        match (height, hash) {
-            (Some(height), _) => self.command_handler.get_block(height, format).await,
-            (_, Some(hash)) => self.command_handler.get_block_by_hash(hash.0, format).await,
-            _ => Err(ArgsError::new(
-                "height",
-                "Invalid block height or hash provided. Height must be an integer.",
-            )
-            .into()),
         }
     }
 

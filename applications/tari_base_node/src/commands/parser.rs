@@ -42,7 +42,6 @@ pub enum BaseNodeCommand {
     PeriodStats,
     HeaderStats,
     DiscoverPeer,
-    GetBlock,
     Quit,
     Exit,
 }
