@@ -63,7 +63,6 @@ impl Performer {
                 Ok(())
             },
             GetPeer => self.process_get_peer(typed_args).await,
-            PeriodStats => self.process_period_stats(typed_args).await,
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -123,14 +122,5 @@ impl Performer {
         }
         self.command_handler.get_peer(partial, original_str).await;
         Ok(())
-    }
-
-    async fn process_period_stats<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let period_end = args.take_next("period_end")?;
-        let period_ticker_end = args.take_next("period_ticker_end")?;
-        let period = args.take_next("period")?;
-        self.command_handler
-            .period_stats(period_end, period_ticker_end, period)
-            .await
     }
 }

@@ -39,7 +39,6 @@ use strum_macros::{Display, EnumIter, EnumString};
 pub enum BaseNodeCommand {
     Help,
     GetPeer,
-    PeriodStats,
     Quit,
     Exit,
 }

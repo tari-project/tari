@@ -17,6 +17,7 @@ mod list_connections;
 mod list_headers;
 mod list_peers;
 mod list_reorgs;
+mod period_stats;
 mod ping_peer;
 mod reset_offline_peers;
 mod rewind_blockchain;
@@ -79,7 +80,7 @@ pub enum Command {
     ListConnections(list_connections::Args),
     ListHeaders(list_headers::Args),
     CheckDb(check_db::Args),
-    // PeriodStats,
+    PeriodStats(period_stats::Args),
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
     CalcTiming(block_timing::Args),
@@ -164,6 +165,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListHeaders(args) => self.handle_command(args).await,
             Command::CheckDb(args) => self.handle_command(args).await,
+            Command::PeriodStats(args) => self.handle_command(args).await,
             Command::HeaderStats(args) => self.handle_command(args).await,
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
