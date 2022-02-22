@@ -177,13 +177,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    /// Function to process the get-mempool-stats command
-    pub async fn get_mempool_stats(&mut self) -> Result<(), Error> {
-        let stats = self.mempool_service.get_mempool_stats().await?;
-        println!("{}", stats);
-        Ok(())
-    }
-
     /// Function to process the get-mempool-state command
     pub async fn get_mempool_state(&mut self, filter: Option<String>) -> Result<(), Error> {
         let state = self.mempool_service.get_mempool_state().await?;

@@ -48,7 +48,6 @@ pub enum BaseNodeCommand {
     GetBlock,
     SearchUtxo,
     SearchKernel,
-    GetMempoolStats,
     GetMempoolState,
     GetMempoolTx,
     Whoami,

@@ -73,7 +73,6 @@ impl Performer {
             GetBlock => self.process_get_block(typed_args).await,
             SearchUtxo => self.process_search_utxo(typed_args).await,
             SearchKernel => self.process_search_kernel(typed_args).await,
-            GetMempoolStats => self.command_handler.get_mempool_stats().await,
             GetMempoolState => self.command_handler.get_mempool_state(None).await,
             GetMempoolTx => self.get_mempool_state_tx(typed_args).await,
             Whoami => self.command_handler.whoami(),
@@ -171,9 +170,6 @@ impl Performer {
                 );
                 println!("This searches for the kernel via the excess signature");
                 println!("search-kernel [hex of nonce] [Hex of signature]");
-            },
-            GetMempoolStats => {
-                println!("Retrieves your mempools stats");
             },
             GetMempoolState => {
                 println!("Retrieves your mempools state");
