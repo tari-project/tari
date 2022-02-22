@@ -22,8 +22,10 @@
 
 use std::convert::TryFrom;
 
+use chrono::NaiveDateTime;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use tari_common_types::types::PublicKey;
+use tari_comms::peer_manager::NodeId;
 use tari_crypto::tari_utilities::ByteArray;
 
 use crate::{
@@ -52,7 +54,12 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
 
         let result = match key {
-            DbKey::Contact(pk) => match ContactSql::find(&pk.to_vec(), &conn) {
+            DbKey::Contact(pk) => match ContactSql::find_by_public_key(&pk.to_vec(), &conn) {
+                Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
+                Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
+                Err(e) => return Err(e),
+            },
+            DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_vec(), &conn) {
                 Ok(c) => Some(DbValue::Contact(Box::new(Contact::try_from(c)?))),
                 Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => None,
                 Err(e) => return Err(e),
@@ -73,17 +80,55 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 
         match op {
             WriteOperation::Upsert(kvp) => match *kvp {
-                DbKeyValuePair::Contact(k, c) => match ContactSql::find(&k.to_vec(), &conn) {
+                DbKeyValuePair::Contact(k, c) => match ContactSql::find_by_public_key(&k.to_vec(), &conn) {
                     Ok(found_c) => {
-                        let _ = found_c.update(UpdateContact { alias: Some(c.alias) }, &conn)?;
+                        let _ = found_c.update(
+                            UpdateContact {
+                                alias: Some(c.alias),
+                                last_seen: None,
+                                latency: None,
+                            },
+                            &conn,
+                        )?;
                     },
                     Err(_) => {
                         ContactSql::from(c).commit(&conn)?;
                     },
                 },
+                DbKeyValuePair::LastSeen(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
+            },
+            WriteOperation::UpdateLastSeen(kvp) => match *kvp {
+                DbKeyValuePair::LastSeen(node_id, date_time, latency) => {
+                    match ContactSql::find_by_node_id(&node_id.to_vec(), &conn) {
+                        Ok(found_c) => {
+                            let contact = found_c.update(
+                                UpdateContact {
+                                    alias: None,
+                                    last_seen: Some(Some(date_time)),
+                                    latency: Some(latency),
+                                },
+                                &conn,
+                            )?;
+                            return Ok(Some(DbValue::PublicKey(Box::new(
+                                PublicKey::from_vec(&contact.public_key)
+                                    .map_err(|_| ContactsServiceStorageError::ConversionError)?,
+                            ))));
+                        },
+                        Err(e) => return Err(e),
+                    }
+                },
+                DbKeyValuePair::Contact(..) => return Err(ContactsServiceStorageError::OperationNotSupported),
             },
             WriteOperation::Remove(k) => match k {
-                DbKey::Contact(k) => match ContactSql::find(&k.to_vec(), &conn) {
+                DbKey::Contact(k) => match ContactSql::find_by_public_key(&k.to_vec(), &conn) {
+                    Ok(c) => {
+                        c.delete(&conn)?;
+                        return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
+                    },
+                    Err(ContactsServiceStorageError::DieselError(DieselError::NotFound)) => (),
+                    Err(e) => return Err(e),
+                },
+                DbKey::ContactId(id) => match ContactSql::find_by_node_id(&id.to_vec(), &conn) {
                     Ok(c) => {
                         c.delete(&conn)?;
                         return Ok(Some(DbValue::Contact(Box::new(Contact::try_from(c)?))));
@@ -104,7 +149,10 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
 #[table_name = "contacts"]
 struct ContactSql {
     public_key: Vec<u8>,
+    node_id: Vec<u8>,
     alias: String,
+    last_seen: Option<NaiveDateTime>,
+    latency: Option<i32>,
 }
 
 impl ContactSql {
@@ -121,10 +169,20 @@ impl ContactSql {
         Ok(contacts::table.load::<ContactSql>(conn)?)
     }
 
-    /// Find a particular Contact, if it exists
-    pub fn find(public_key: &[u8], conn: &SqliteConnection) -> Result<ContactSql, ContactsServiceStorageError> {
+    /// Find a particular Contact by their public key, if it exists
+    pub fn find_by_public_key(
+        public_key: &[u8],
+        conn: &SqliteConnection,
+    ) -> Result<ContactSql, ContactsServiceStorageError> {
         Ok(contacts::table
             .filter(contacts::public_key.eq(public_key))
+            .first::<ContactSql>(conn)?)
+    }
+
+    /// Find a particular Contact by their node ID, if it exists
+    pub fn find_by_node_id(node_id: &[u8], conn: &SqliteConnection) -> Result<ContactSql, ContactsServiceStorageError> {
+        Ok(contacts::table
+            .filter(contacts::node_id.eq(node_id))
             .first::<ContactSql>(conn)?)
     }
 
@@ -149,7 +207,7 @@ impl ContactSql {
             .execute(conn)
             .num_rows_affected_or_not_found(1)?;
 
-        ContactSql::find(&self.public_key, conn)
+        ContactSql::find_by_public_key(&self.public_key, conn)
     }
 }
 
@@ -158,19 +216,29 @@ impl TryFrom<ContactSql> for Contact {
     type Error = ContactsServiceStorageError;
 
     fn try_from(o: ContactSql) -> Result<Self, Self::Error> {
+        let public_key =
+            PublicKey::from_vec(&o.public_key).map_err(|_| ContactsServiceStorageError::ConversionError)?;
         Ok(Self {
-            public_key: PublicKey::from_vec(&o.public_key).map_err(|_| ContactsServiceStorageError::ConversionError)?,
+            public_key: public_key.clone(),
+            // Public key must always be the master data source for node ID here
+            node_id: NodeId::from_key(&public_key),
             alias: o.alias,
+            last_seen: o.last_seen,
+            latency: o.latency.map(|val| val as u32),
         })
     }
 }
 
-/// Conversion from an Contact to the Sql datatype form
+/// Conversion from a Contact to the Sql datatype form
 impl From<Contact> for ContactSql {
     fn from(o: Contact) -> Self {
         Self {
             public_key: o.public_key.to_vec(),
+            // Public key must always be the master data source for node ID here
+            node_id: NodeId::from_key(&o.public_key).to_vec(),
             alias: o.alias,
+            last_seen: o.last_seen,
+            latency: o.latency.map(|val| val as i32),
         }
     }
 }
@@ -179,6 +247,8 @@ impl From<Contact> for ContactSql {
 #[table_name = "contacts"]
 pub struct UpdateContact {
     alias: Option<String>,
+    last_seen: Option<Option<NaiveDateTime>>,
+    latency: Option<Option<i32>>,
 }
 
 #[cfg(test)]
@@ -218,10 +288,7 @@ mod test {
             let mut contacts = Vec::new();
             for i in 0..names.len() {
                 let pub_key = PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng));
-                contacts.push(Contact {
-                    alias: names[i].clone(),
-                    public_key: pub_key,
-                });
+                contacts.push(Contact::new(names[i].clone(), pub_key, None, None));
                 ContactSql::from(contacts[i].clone()).commit(&conn).unwrap();
             }
 
@@ -233,7 +300,8 @@ mod test {
 
             assert_eq!(
                 contacts[1],
-                Contact::try_from(ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap()).unwrap()
+                Contact::try_from(ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap())
+                    .unwrap()
             );
 
             ContactSql::from(contacts[0].clone()).delete(&conn).unwrap();
@@ -245,16 +313,18 @@ mod test {
                 .iter()
                 .any(|v| v == &ContactSql::from(contacts[0].clone())));
 
-            let c = ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap();
+            let c = ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap();
             c.update(
                 UpdateContact {
                     alias: Some("Fred".to_string()),
+                    last_seen: None,
+                    latency: None,
                 },
                 &conn,
             )
             .unwrap();
 
-            let c_updated = ContactSql::find(&contacts[1].public_key.to_vec(), &conn).unwrap();
+            let c_updated = ContactSql::find_by_public_key(&contacts[1].public_key.to_vec(), &conn).unwrap();
             assert_eq!(c_updated.alias, "Fred".to_string());
         });
     }

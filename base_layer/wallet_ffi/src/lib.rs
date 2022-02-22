@@ -1339,10 +1339,7 @@ pub unsafe extern "C" fn contact_create(
         return ptr::null_mut();
     }
 
-    let contact = Contact {
-        alias: alias_string,
-        public_key: (*public_key).clone(),
-    };
+    let contact = Contact::new(alias_string, (*public_key).clone(), None, None);
     Box::into_raw(Box::new(contact))
 }
 
@@ -3470,6 +3467,7 @@ pub unsafe extern "C" fn wallet_create(
         }),
         None,
         Network::Dibbler.into(),
+        None,
         None,
         None,
         None,

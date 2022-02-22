@@ -134,7 +134,8 @@ pub struct GlobalConfig {
     pub wait_for_initial_sync_at_startup: bool,
     pub max_randomx_vms: usize,
     pub console_wallet_notify_file: Option<PathBuf>,
-    pub auto_ping_interval: u64,
+    pub metadata_auto_ping_interval: u64,
+    pub contacts_auto_ping_interval: u64,
     pub blocks_behind_before_considered_lagging: u64,
     pub flood_ban_max_msg_count: usize,
     pub mine_on_tip_only: bool,
@@ -453,10 +454,18 @@ fn convert_node_config(
     };
 
     // Liveness auto ping interval
-    let key = config_string("base_node", net_str, "auto_ping_interval");
-    let auto_ping_interval = match cfg.get_int(&key) {
+    let key = config_string("base_node", net_str, "metadata_auto_ping_interval");
+    let metadata_auto_ping_interval = match cfg.get_int(&key) {
         Ok(seconds) => seconds as u64,
         Err(ConfigError::NotFound(_)) => 30,
+        Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
+    };
+
+    // Liveness auto ping interval
+    let key = config_string("wallet", net_str, "contacts_auto_ping_interval");
+    let contacts_auto_ping_interval = match cfg.get_int(&key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 20,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
@@ -871,7 +880,8 @@ fn convert_node_config(
         wait_for_initial_sync_at_startup,
         max_randomx_vms,
         console_wallet_notify_file,
-        auto_ping_interval,
+        metadata_auto_ping_interval,
+        contacts_auto_ping_interval,
         blocks_behind_before_considered_lagging,
         flood_ban_max_msg_count,
         mine_on_tip_only,

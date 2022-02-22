@@ -27,6 +27,8 @@ pub mod storage;
 
 use futures::future;
 use log::*;
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -34,6 +36,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tokio::sync::broadcast;
 
 use crate::contacts_service::{
     handle::ContactsServiceHandle,
@@ -63,8 +66,10 @@ where T: ContactsBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
+        // Buffer size set to 1 because only the most recent metadata is applicable
+        let (publisher, _) = broadcast::channel(1);
 
-        let contacts_handle = ContactsServiceHandle::new(sender);
+        let contacts_handle = ContactsServiceHandle::new(sender, publisher.clone());
 
         // Register handle before waiting for handles to be ready
         context.register_handle(contacts_handle);
@@ -77,8 +82,18 @@ where T: ContactsBackend + 'static
         let shutdown_signal = context.get_shutdown_signal();
 
         context.spawn_when_ready(move |handles| async move {
-            let service =
-                ContactsService::new(receiver, ContactsDatabase::new(backend), handles.get_shutdown_signal()).start();
+            let liveness = handles.expect_handle::<LivenessHandle>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
+
+            let service = ContactsService::new(
+                ContactsDatabase::new(backend),
+                receiver,
+                handles.get_shutdown_signal(),
+                liveness,
+                connectivity,
+                publisher,
+            )
+            .start();
             futures::pin_mut!(service);
             future::select(service, shutdown_signal).await;
             info!(target: LOG_TARGET, "Contacts service shutdown");
