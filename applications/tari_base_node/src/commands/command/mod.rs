@@ -1,4 +1,5 @@
 mod ban_peer;
+mod block_timing;
 mod check_for_updates;
 mod dial_peer;
 mod get_chain_metadata;
@@ -6,6 +7,7 @@ mod get_db_stats;
 mod get_state_info;
 mod list_banned_peers;
 mod list_connections;
+mod list_headers;
 mod list_peers;
 mod ping_peer;
 mod reset_offline_peers;
@@ -28,6 +30,7 @@ use tari_comms::{
 use tari_comms_dht::{DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
+    blocks::ChainHeader,
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
@@ -62,12 +65,12 @@ pub enum Command {
     UnbanAllPeers(unban_all_peers::Args),
     ListBannedPeers(list_banned_peers::Args),
     ListConnections(list_connections::Args),
-    // ListHeaders,
+    ListHeaders(list_headers::Args),
     // CheckDb,
     // PeriodStats,
     // HeaderStats,
-    // BlockTiming,
-    // CalcTiming,
+    BlockTiming(block_timing::Args),
+    CalcTiming(block_timing::Args),
     // ListReorgs,
     // DiscoverPeer,
     // GetBlock,
@@ -147,6 +150,8 @@ impl HandleCommand<Command> for CommandContext {
             Command::UnbanPeer(args) => self.handle_command(args).await,
             Command::ResetOfflinePeers(args) => self.handle_command(args).await,
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
+            Command::ListHeaders(args) => self.handle_command(args).await,
+            Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
         }
@@ -158,5 +163,24 @@ impl CommandContext {
         let pm = &self.peer_manager;
         let query = PeerQuery::new().select_where(|p| p.is_banned());
         pm.perform_query(query).await
+    }
+
+    /// Function to process the get-headers command
+    async fn get_chain_headers(&self, start: u64, end: Option<u64>) -> Result<Vec<ChainHeader>, Error> {
+        let blockchain_db = &self.blockchain_db;
+        match end {
+            Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
+            None => {
+                let from_tip = start;
+                if from_tip == 0 {
+                    return Ok(Vec::new());
+                }
+                let tip = blockchain_db.fetch_tip_header().await?.height();
+                blockchain_db
+                    .fetch_chain_headers(tip.saturating_sub(from_tip - 1)..=tip)
+                    .await
+                    .map_err(Into::into)
+            },
+        }
     }
 }

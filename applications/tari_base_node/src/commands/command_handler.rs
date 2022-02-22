@@ -281,67 +281,6 @@ impl CommandHandler {
         }
     }
 
-    pub async fn list_headers(&self, start: u64, end: Option<u64>) {
-        let headers = match Self::get_chain_headers(&self.blockchain_db, start, end).await {
-            Ok(h) if h.is_empty() => {
-                println!("No headers found");
-                return;
-            },
-            Ok(h) => h,
-            Err(err) => {
-                println!("Failed to retrieve headers: {:?}", err);
-                warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-                return;
-            },
-        };
-
-        for header in headers {
-            println!("\n\nHeader hash: {}", header.hash().to_hex());
-            println!("{}", header);
-        }
-    }
-
-    /// Function to process the get-headers command
-    async fn get_chain_headers(
-        blockchain_db: &AsyncBlockchainDb<LMDBDatabase>,
-        start: u64,
-        end: Option<u64>,
-    ) -> Result<Vec<ChainHeader>, anyhow::Error> {
-        match end {
-            Some(end) => blockchain_db.fetch_chain_headers(start..=end).await.map_err(Into::into),
-            None => {
-                let from_tip = start;
-                if from_tip == 0 {
-                    return Ok(Vec::new());
-                }
-                let tip = blockchain_db.fetch_tip_header().await?.height();
-                blockchain_db
-                    .fetch_chain_headers(tip.saturating_sub(from_tip - 1)..=tip)
-                    .await
-                    .map_err(Into::into)
-            },
-        }
-    }
-
-    pub async fn block_timing(&self, start: u64, end: Option<u64>) -> Result<(), Error> {
-        let headers = Self::get_chain_headers(&self.blockchain_db, start, end).await?;
-        if !headers.is_empty() {
-            let headers = headers.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>();
-            let (max, min, avg) = BlockHeader::timing_stats(&headers);
-            println!(
-                "Timing for blocks #{} - #{}",
-                headers.first().unwrap().height,
-                headers.last().unwrap().height
-            );
-            println!("Max block time: {}", max);
-            println!("Min block time: {}", min);
-            println!("Avg block time: {}", avg);
-        } else {
-            println!("No headers found");
-        }
-        Ok(())
-    }
-
     /// Function to process the check-db command
     pub async fn check_db(&mut self) -> Result<(), Error> {
         let meta = self.node_service.get_metadata().await?;

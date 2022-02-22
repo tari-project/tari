@@ -69,8 +69,6 @@ impl Performer {
             CheckDb => self.command_handler.check_db().await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
-            ListHeaders => self.process_list_headers(typed_args).await,
-            BlockTiming | CalcTiming => self.process_block_timing(typed_args).await,
             ListReorgs => self.process_list_reorgs().await,
             GetBlock => self.process_get_block(typed_args).await,
             SearchUtxo => self.process_search_utxo(typed_args).await,
@@ -140,16 +138,6 @@ impl Performer {
                     "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time \
                      in unix timestamp]"
                 );
-            },
-            ListHeaders => {
-                println!("List the amount of headers, can be called in the following two ways: ");
-                println!("list-headers [first header height] [last header height]");
-                println!("list-headers [number of headers starting from the chain tip back]");
-            },
-            BlockTiming | CalcTiming => {
-                println!("Calculates the maximum, minimum, and average time taken to mine a given range of blocks.");
-                println!("block-timing [start height] [end height]");
-                println!("block-timing [number of blocks from chain tip]");
             },
             ListReorgs => {
                 println!("List tracked reorgs.");
@@ -265,25 +253,6 @@ impl Performer {
         }
         self.command_handler.get_peer(partial, original_str).await;
         Ok(())
-    }
-
-    /// Function to process the list-headers command
-    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
-        let start = args.take_next("start")?;
-        let end = args.try_take_next("end")?;
-        self.command_handler.list_headers(start, end).await;
-        Ok(())
-    }
-
-    /// Function to process the calc-timing command
-    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
-        let start = args.take_next("start")?;
-        let end = args.try_take_next("end")?;
-        if end.is_none() && start < 2 {
-            Err(ArgsError::new("start", "Number of headers must be at least 2.").into())
-        } else {
-            self.command_handler.block_timing(start, end).await
-        }
     }
 
     async fn process_period_stats<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
