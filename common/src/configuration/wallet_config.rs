@@ -22,7 +22,17 @@
 
 use multiaddr::Multiaddr;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct WalletConfig {
     pub grpc_address: Option<Multiaddr>,
+    pub fee_per_gram: u64,
+}
+
+impl Default for WalletConfig {
+    fn default() -> Self {
+        Self {
+            grpc_address: None,
+            fee_per_gram: 5,
+        }
+    }
 }
