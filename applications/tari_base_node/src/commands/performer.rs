@@ -63,7 +63,6 @@ impl Performer {
                 self.print_help(command);
                 Ok(())
             },
-            Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
             Version => self.command_handler.print_version(),
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
@@ -73,7 +72,6 @@ impl Performer {
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
             UnbanAllPeers => self.command_handler.unban_all_peers().await,
-            ListBannedPeers => self.command_handler.list_banned_peers().await,
             ListConnections => self.command_handler.list_connections().await,
             ListHeaders => self.process_list_headers(typed_args).await,
             BlockTiming | CalcTiming => self.process_block_timing(typed_args).await,
@@ -111,9 +109,6 @@ impl Performer {
                     .join(", ");
                 println!("{}", joined);
             },
-            Status => {
-                println!("Prints out the status of this node");
-            },
             Version => {
                 println!("Gets the current application version");
             },
@@ -135,9 +130,6 @@ impl Performer {
             },
             UnbanAllPeers => {
                 println!("Unbans all peers");
-            },
-            ListBannedPeers => {
-                println!("Lists peers that have been banned by the node or wallet");
             },
             CheckDb => {
                 println!("Checks the blockchain database for missing blocks and headers");

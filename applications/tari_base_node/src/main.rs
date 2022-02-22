@@ -376,7 +376,8 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
             }
 
             _ = interval => {
-               command_handler.status(StatusLineOutput::Log).await.ok();
+                // TODO: Fix it
+                // command_handler.status(StatusLineOutput::Log).await.ok();
             },
         }
     }

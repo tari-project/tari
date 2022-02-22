@@ -9,6 +9,7 @@ use tari_app_utilities::consts;
 use super::{CommandContext, HandleCommand};
 use crate::{commands::status_line::StatusLine, StatusLineOutput};
 
+/// Prints out the status of this node
 #[derive(Debug, Parser)]
 pub struct Args {
     #[clap(default_value_t = StatusLineOutput::StdOutAndLog)]
@@ -18,7 +19,12 @@ pub struct Args {
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        let output = args.output;
+        self.status(args.output).await
+    }
+}
+
+impl CommandContext {
+    pub async fn status(&mut self, output: StatusLineOutput) -> Result<(), Error> {
         let mut full_log = false;
         if self.last_time_full.elapsed() > Duration::from_secs(120) {
             self.last_time_full = Instant::now();
