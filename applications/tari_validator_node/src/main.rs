@@ -97,10 +97,10 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError
         .as_ref()
         .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "validator_node configuration not found"))?;
 
-    fs::create_dir_all(&config.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
+    fs::create_dir_all(&config.comms_peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
-        &config.public_address,
+        &config.comms_public_address,
         create_id,
         PeerFeatures::NONE,
     )?;

@@ -13,7 +13,7 @@ use tari_utilities::ByteArray;
 
 use super::{
     args::{Args, ArgsError, ArgsReason, FromHex},
-    command_handler::{CommandHandler, StatusOutput},
+    command_handler::{CommandHandler, StatusLineOutput},
     parser::BaseNodeCommand,
 };
 use crate::LOG_TARGET;
@@ -65,7 +65,7 @@ impl Performer {
                 self.print_help(command);
                 Ok(())
             },
-            Status => self.command_handler.status(StatusOutput::Full).await,
+            Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
             GetStateInfo => self.command_handler.state_info(),
             Version => self.command_handler.print_version(),
             CheckForUpdates => self.command_handler.check_for_updates().await,

@@ -102,7 +102,7 @@ use std::{
 };
 
 use commands::{
-    command_handler::{CommandHandler, StatusOutput},
+    command_handler::{CommandHandler, StatusLineOutput},
     parser::Parser,
     performer::Performer,
     reader::{CommandEvent, CommandReader},
@@ -163,7 +163,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
-        &config.public_address,
+        &config.comms_public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
@@ -293,7 +293,7 @@ async fn run_node(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(command_handler, shutdown));
+        task::spawn(cli_loop(command_handler, config.clone(), shutdown));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -353,10 +353,10 @@ async fn run_grpc(
     Ok(())
 }
 
-fn status_interval(start_time: Instant) -> time::Sleep {
+fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sleep {
     let duration = match start_time.elapsed().as_secs() {
         0..=120 => Duration::from_secs(5),
-        _ => Duration::from_secs(30),
+        _ => long_interval,
     };
     time::sleep(duration)
 }
@@ -364,8 +364,9 @@ fn status_interval(start_time: Instant) -> time::Sleep {
 async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
+    let status_interval = command_handler.global_config().base_node_status_line_interval;
     loop {
-        let interval = status_interval(start_time);
+        let interval = get_status_interval(start_time, status_interval);
         tokio::select! {
             biased;
             _ = shutdown_signal.wait() => {
@@ -373,7 +374,7 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
             }
 
             _ = interval => {
-               command_handler.status(StatusOutput::Log).await.ok();
+               command_handler.status(StatusLineOutput::Log).await.ok();
             },
         }
     }
@@ -386,12 +387,11 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
+async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mut shutdown: Shutdown) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
     let mut performer = Performer::new(command_handler);
-
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -408,8 +408,10 @@ async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
     let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
     let mut first_signal = false;
     // TODO: Add heartbeat here
+    // Show status immediately on startup
+    let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
     loop {
-        let interval = status_interval(start_time);
+        let interval = get_status_interval(start_time, config.base_node_status_line_interval);
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {
@@ -454,7 +456,7 @@ async fn cli_loop(command_handler: CommandHandler, mut shutdown: Shutdown) {
             }
             _ = interval => {
                 // TODO: Execute `watch` command here + use the result
-                performer.status(StatusOutput::Full).await.ok();
+                let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
             },
             _ = shutdown_signal.wait() => {
                 break;
