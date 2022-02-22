@@ -479,15 +479,15 @@ impl<B: Backend> Component<B> for TransactionsTab {
             " Up↑/Down↓",
             Style::default().add_modifier(Modifier::BOLD),
         ));
-        span_vec.push(Span::raw(" selects Tx, "));
-        span_vec.push(Span::styled("C", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" cancels selected Pending Tx, "));
-        span_vec.push(Span::styled("A", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" shows abandoned coinbase Txs, "));
-        span_vec.push(Span::styled("R", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" rebroadcast all Broadcast, "));
-        span_vec.push(Span::styled("Esc", Style::default().add_modifier(Modifier::BOLD)));
-        span_vec.push(Span::raw(" exits list."));
+        span_vec.push(Span::raw(" select Tx "));
+        span_vec.push(Span::styled("(C)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" cancel selected pending Txs "));
+        span_vec.push(Span::styled("(A)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" show/hide abandoned coinbases "));
+        span_vec.push(Span::styled("(R)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" rebroadcast Txs "));
+        span_vec.push(Span::styled("(Esc)", Style::default().add_modifier(Modifier::BOLD)));
+        span_vec.push(Span::raw(" exit list"));
 
         let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: false });
         f.render_widget(instructions, areas[1]);
