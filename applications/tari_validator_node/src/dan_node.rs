@@ -126,7 +126,7 @@ impl DanNode {
                         if !allow_list.contains(&asset.public_key.to_hex()) {
                             debug!(
                                 target: LOG_TARGET,
-                                "Asset '{}' is not whitelisted for processing ", asset.public_key
+                                "Asset '{}' is not allowlisted for processing ", asset.public_key
                             );
                             continue;
                         }
@@ -162,7 +162,7 @@ impl DanNode {
     //     todo!()
     // }
 
-    async fn start_asset_worker(
+    pub async fn start_asset_worker(
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
         mempool_service: MempoolServiceHandle,
@@ -234,10 +234,10 @@ impl DanNode {
             validator_node_client_factory,
         );
 
-        consensus_worker
-            .run(shutdown.clone(), None)
-            .await
-            .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
+        if let Err(err) = consensus_worker.run(shutdown.clone(), None).await {
+            error!(target: LOG_TARGET, "Consensus worker failed with error: {}", err);
+            return Err(ExitError::new(ExitCode::UnknownError, err));
+        }
 
         Ok(())
     }

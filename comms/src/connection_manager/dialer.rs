@@ -97,7 +97,6 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         config: ConnectionManagerConfig,
         node_identity: Arc<NodeIdentity>,
@@ -361,7 +360,6 @@ where
         Ok(authenticated_public_key)
     }
 
-    #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(
         level = "trace",
         skip(peer_manager, socket, conn_man_notifier, config, cancel_signal)

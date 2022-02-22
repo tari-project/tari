@@ -1179,6 +1179,18 @@ pub struct MmrRoots {
     pub output_mmr_size: u64,
 }
 
+impl std::fmt::Display for MmrRoots {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "MMR Roots")?;
+        writeln!(f, "Input MR        : {}", &self.input_mr.to_hex())?;
+        writeln!(f, "Witness MR      : {}", &self.witness_mr.to_hex())?;
+        writeln!(f, "Kernel MR       : {}", &self.kernel_mr.to_hex())?;
+        writeln!(f, "Kernel MMR Size : {}", &self.kernel_mmr_size)?;
+        writeln!(f, "Output MR       : {}", &self.output_mr.to_hex())?;
+        writeln!(f, "Output MMR Size : {}", &self.output_mmr_size)
+    }
+}
+
 pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;

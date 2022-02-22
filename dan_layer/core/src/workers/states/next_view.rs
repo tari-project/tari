@@ -25,8 +25,8 @@ use tari_shutdown::ShutdownSignal;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Committee, HotStuffMessage, Payload, View},
-    services::infrastructure_services::{NodeAddressable, OutboundService},
+    models::{AssetDefinition, Committee, HotStuffMessage, HotStuffTreeNode, QuorumCertificate, StateRoot, View},
+    services::{infrastructure_services::OutboundService, PayloadProvider},
     storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
 };
@@ -37,29 +37,46 @@ const LOG_TARGET: &str = "tari::dan::workers::states::next_view";
 pub struct NextViewState {}
 
 impl NextViewState {
-    pub async fn next_event<
-        TPayload: Payload,
-        TOutboundService: OutboundService<TAddr, TPayload>,
-        TAddr: NodeAddressable + Clone + Send,
-        TDbFactory: DbFactory,
-    >(
+    pub async fn next_event<TOutboundService, TPayloadProvider, TDbFactory>(
         &mut self,
         current_view: &View,
         db_factory: &TDbFactory,
         broadcast: &mut TOutboundService,
-        committee: &Committee<TAddr>,
-        node_id: TAddr,
+        committee: &Committee<TOutboundService::Addr>,
+        node_id: TOutboundService::Addr,
         asset_definition: &AssetDefinition,
+        payload_provider: &TPayloadProvider,
         _shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        let db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
-        let prepare_qc = db.find_highest_prepared_qc()?;
-        let message = HotStuffMessage::new_view(prepare_qc, current_view.view_id, asset_definition.public_key.clone());
-        let next_view = current_view.view_id.next();
-        let leader = committee.leader_for_view(next_view);
-        broadcast.send(node_id, leader.clone(), message).await?;
-        info!(target: LOG_TARGET, "End of view: {}", current_view.view_id.0);
-        debug!(target: LOG_TARGET, "--------------------------------");
-        Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>
+    where
+        TOutboundService: OutboundService,
+        TDbFactory: DbFactory,
+        TPayloadProvider: PayloadProvider<TOutboundService::Payload>,
+    {
+        let chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
+        if chain_db.is_empty()? {
+            info!(target: LOG_TARGET, "Database is empty. Proposing genesis block");
+            let node = HotStuffTreeNode::genesis(
+                payload_provider.create_genesis_payload(asset_definition),
+                StateRoot::initial(),
+            );
+            let genesis_qc = QuorumCertificate::genesis(*node.hash());
+            let genesis_view_no = genesis_qc.view_number();
+            let leader = committee.leader_for_view(genesis_view_no);
+            let message = HotStuffMessage::new_view(genesis_qc, genesis_view_no, asset_definition.public_key.clone());
+            broadcast.send(node_id, leader.clone(), message).await?;
+            Ok(ConsensusWorkerStateEvent::NewView {
+                new_view: genesis_view_no,
+            })
+        } else {
+            let prepare_qc = chain_db.find_highest_prepared_qc()?;
+            let next_view = current_view.view_id.next();
+            let message = HotStuffMessage::new_view(prepare_qc, next_view, asset_definition.public_key.clone());
+            let leader = committee.leader_for_view(next_view);
+            broadcast.send(node_id, leader.clone(), message).await?;
+            info!(target: LOG_TARGET, "End of view: {}", current_view.view_id.0);
+            debug!(target: LOG_TARGET, "--------------------------------");
+            Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
+        }
     }
 }

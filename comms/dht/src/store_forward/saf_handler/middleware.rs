@@ -51,7 +51,6 @@ pub struct MessageHandlerMiddleware<S> {
 }
 
 impl<S> MessageHandlerMiddleware<S> {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: SafConfig,
         next_service: S,

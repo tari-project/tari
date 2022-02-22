@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, PartialOrd)]
 #[repr(u8)]
 pub enum TransactionKernelVersion {
     V0 = 0,

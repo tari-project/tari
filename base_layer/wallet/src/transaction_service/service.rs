@@ -156,7 +156,6 @@ pub struct TransactionService<
     last_seen_tip_height: Option<u64>,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl<
         TTxStream,
         TTxReplyStream,

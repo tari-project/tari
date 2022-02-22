@@ -74,17 +74,17 @@ impl From<StorageError> for Status {
       StorageError::DieselError { source } => match source {
         Error::NotFound => Self::NotFound {
           code: 404,
-          message: format!("Not found:{}", source),
+          message: format!("Not found: {}", source),
           entity: "Unknown".to_string(),
         },
         _ => Self::Internal {
           code: 502,
-          message: format!("Internal diesel storage error:{}", source),
+          message: format!("Internal diesel storage error: {}", source),
         },
       },
       _ => Self::Internal {
         code: 501,
-        message: format!("Internal storage error:{}", source),
+        message: format!("Internal storage error: {}", source),
       },
     }
   }
@@ -121,7 +121,7 @@ impl From<CollectiblesError> for Status {
   fn from(ce: CollectiblesError) -> Self {
     Self::Internal {
       code: 504,
-      message: format!("Error:{}", ce),
+      message: format!("Error: {}", ce),
     }
   }
 }

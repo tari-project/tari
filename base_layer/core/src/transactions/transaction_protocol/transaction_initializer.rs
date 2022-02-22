@@ -496,7 +496,6 @@ impl SenderTransactionInitializer {
         }
 
         // Create transaction outputs
-
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
