@@ -368,6 +368,10 @@ fn convert_node_config(
     // TODO: Create Mining node config, do the same for above
     if application == ApplicationType::ConsoleWallet || application == ApplicationType::MiningNode {
         let mut config = WalletConfig::default();
+        let key = "wallet.fee_per_gram";
+        let fee_per_gram = cfg.get_int(key).unwrap_or(5) as u64;
+        config.fee_per_gram = fee_per_gram;
+
         // GPRC enabled
         let key = "wallet.grpc_enabled";
         let grpc_enabled = cfg.get_bool(key).unwrap_or_default();
