@@ -227,6 +227,7 @@ impl From<UniPublicKey> for PublicKey {
     }
 }
 
+#[derive(Debug)]
 pub enum UniNodeId {
     PublicKey(PublicKey),
     NodeId(NodeId),
