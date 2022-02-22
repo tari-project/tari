@@ -11,7 +11,7 @@ use tari_utilities::ByteArray;
 
 use super::{
     args::{Args, ArgsError, ArgsReason, FromHex},
-    command_handler::{CommandHandler, StatusLineOutput},
+    command_handler::CommandHandler,
     parser::BaseNodeCommand,
 };
 use crate::LOG_TARGET;
@@ -68,7 +68,6 @@ impl Performer {
             RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
-            ListReorgs => self.process_list_reorgs().await,
             GetBlock => self.process_get_block(typed_args).await,
             SearchUtxo => self.process_search_utxo(typed_args).await,
             SearchKernel => self.process_search_kernel(typed_args).await,
@@ -130,13 +129,6 @@ impl Performer {
                 println!(
                     "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time \
                      in unix timestamp]"
-                );
-            },
-            ListReorgs => {
-                println!("List tracked reorgs.");
-                println!(
-                    "This feature must be enabled by setting `track_reorgs = true` in the [base_node] section of your \
-                     config."
                 );
             },
             GetBlock => {
@@ -259,9 +251,5 @@ impl Performer {
     async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let new_height = args.take_next("new_height")?;
         self.command_handler.rewind_blockchain(new_height).await
-    }
-
-    async fn process_list_reorgs(&self) -> Result<(), Error> {
-        self.command_handler.list_reorgs()
     }
 }

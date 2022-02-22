@@ -12,6 +12,7 @@ mod list_banned_peers;
 mod list_connections;
 mod list_headers;
 mod list_peers;
+mod list_reorgs;
 mod ping_peer;
 mod reset_offline_peers;
 mod status;
@@ -74,7 +75,7 @@ pub enum Command {
     // HeaderStats,
     BlockTiming(block_timing::Args),
     CalcTiming(block_timing::Args),
-    // ListReorgs,
+    ListReorgs(list_reorgs::Args),
     // DiscoverPeer,
     // GetBlock,
     // SearchUtxo,
@@ -156,6 +157,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::ListHeaders(args) => self.handle_command(args).await,
             Command::CheckDb(args) => self.handle_command(args).await,
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
+            Command::ListReorgs(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,
             Command::GetMempoolState(args) => self.handle_command(args).await,

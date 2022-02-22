@@ -42,7 +42,6 @@ pub enum BaseNodeCommand {
     RewindBlockchain,
     PeriodStats,
     HeaderStats,
-    ListReorgs,
     DiscoverPeer,
     GetBlock,
     SearchUtxo,
