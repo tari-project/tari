@@ -93,7 +93,7 @@ pub struct CipherSeed {
 }
 
 impl CipherSeed {
-    #[cfg(not(feature = "js"))]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
         let days = chrono::Utc::now().timestamp() as u64 / SECONDS_PER_DAY;
@@ -101,7 +101,7 @@ impl CipherSeed {
         CipherSeed::new_with_birthday(birthday)
     }
 
-    #[cfg(feature = "js")]
+    #[cfg(target_arch = "wasm32")]
     pub fn new() -> Self {
         const MILLISECONDS_PER_DAY: u64 = 24 * 60 * 60 * 1000;
         let millis = js_sys::Date::now() as u64;

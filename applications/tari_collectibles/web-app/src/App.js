@@ -122,9 +122,23 @@ const AccountsMenu = (props) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function inner() {
-      console.log("refreshing accounts");
+  useEffect(async () => {
+    console.log("refreshing accounts");
+    setError("");
+    await binding
+      .command_asset_wallets_list()
+      .then((accounts) => {
+        console.log("accounts", accounts);
+        setAccounts(accounts);
+      })
+      .catch((e) => {
+        // todo error handling
+        console.error("accounts_list error:", e);
+        setError(e.message);
+      });
+
+    await listen("asset_wallets::updated", (event) => {
+      console.log("accounts have changed");
       setError("");
       binding
         .command_asset_wallets_list()
@@ -137,24 +151,7 @@ const AccountsMenu = (props) => {
           console.error("accounts_list error:", e);
           setError(e.message);
         });
-
-      await listen("asset_wallets::updated", (event) => {
-        console.log("accounts have changed");
-        setError("");
-        binding
-          .command_asset_wallets_list()
-          .then((accounts) => {
-            console.log("accounts", accounts);
-            setAccounts(accounts);
-          })
-          .catch((e) => {
-            // todo error handling
-            console.error("accounts_list error:", e);
-            setError(e.message);
-          });
-      });
-    }
-    inner();
+    });
   }, [props.walletId]);
 
   // todo: hide accounts when not authenticated
@@ -211,7 +208,8 @@ ProtectedRoute.propTypes = {
 };
 
 function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState("");
   const setPassword = useState("")[1];
@@ -223,9 +221,13 @@ function App() {
     binding
       .command_create_db()
       .then((r) => setLoading(false))
-      .catch((e) => console.error(e));
+      .catch((e) => {
+        setLoading(false);
+        setError(e);
+      });
   }, []);
   if (loading) return <Spinner />;
+  if (error) return <Alert severity="error">{error.toString()}</Alert>;
 
   return (
     <div className="App">
@@ -246,7 +248,7 @@ function App() {
                   to="/dashboard"
                   icon={<DashboardIcon />}
                 />
-                <Divider></Divider>
+                <Divider />
                 <AccountsMenu walletId={walletId} />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink

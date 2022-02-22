@@ -408,7 +408,6 @@ struct RpcClientWorker<TSubstream> {
 impl<TSubstream> RpcClientWorker<TSubstream>
 where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 {
-    #[allow(clippy::too_many_arguments)]
     pub(self) fn new(
         config: RpcClientConfig,
         node_id: NodeId,

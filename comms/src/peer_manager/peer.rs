@@ -178,7 +178,7 @@ impl Peer {
     }
 
     #[allow(clippy::option_option)]
-    #[allow(clippy::too_many_arguments)]
+
     pub fn update(
         &mut self,
         net_addresses: Option<Vec<Multiaddr>>,

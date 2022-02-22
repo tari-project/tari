@@ -278,7 +278,6 @@ impl AppState {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn send_transaction(
         &mut self,
         public_key: String,
@@ -311,7 +310,6 @@ impl AppState {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn send_one_sided_transaction(
         &mut self,
         public_key: String,
@@ -532,11 +530,11 @@ impl AppState {
     }
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
-        use Network::*;
-        // TODO: TBD #LOGGED
-        match self.node_config.network {
-            MainNet | LocalNet | Igor | Dibbler => MicroTari(5),
-            Ridcully | Stibbons | Weatherwax => MicroTari(25),
+        // this should not be empty as we this should have been created, but lets just be safe and use the default value
+        // from the config
+        match self.node_config.wallet_config.as_ref() {
+            Some(config) => config.fee_per_gram.into(),
+            _ => MicroTari::from(5),
         }
     }
 

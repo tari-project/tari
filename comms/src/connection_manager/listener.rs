@@ -90,7 +90,6 @@ where
     TTransport: Transport + Send + Sync + 'static,
     TTransport::Output: AsyncRead + AsyncWrite + Send + Unpin + 'static,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: ConnectionManagerConfig,
         bind_address: Multiaddr,
@@ -334,7 +333,6 @@ where
         self.bounded_executor.spawn(inbound_fut).await;
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn perform_socket_upgrade_procedure(
         node_identity: Arc<NodeIdentity>,
         peer_manager: Arc<PeerManager>,

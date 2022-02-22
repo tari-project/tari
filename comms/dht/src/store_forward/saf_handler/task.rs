@@ -79,7 +79,6 @@ pub struct MessageHandlerTask<S> {
 impl<S> MessageHandlerTask<S>
 where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: SafConfig,
         next_service: S,

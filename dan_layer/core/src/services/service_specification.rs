@@ -53,9 +53,12 @@ pub trait ServiceSpecification: Clone {
     type CommitteeManager: CommitteeManager<Self::Addr>;
     type DbFactory: DbFactory<StateDbBackendAdapter = Self::StateDbBackendAdapter> + Clone + Sync + Send + 'static;
     type EventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>;
-    type InboundConnectionService: InboundConnectionService<Self::Addr, Self::Payload> + 'static + Send + Sync;
+    type InboundConnectionService: InboundConnectionService<Addr = Self::Addr, Payload = Self::Payload>
+        + 'static
+        + Send
+        + Sync;
     type MempoolService: MempoolService + Clone + Sync + Send + 'static;
-    type OutboundService: OutboundService<Self::Addr, Self::Payload>;
+    type OutboundService: OutboundService<Addr = Self::Addr, Payload = Self::Payload>;
     type Payload: Payload;
     type PayloadProcessor: PayloadProcessor<Self::Payload>;
     type PayloadProvider: PayloadProvider<Self::Payload>;

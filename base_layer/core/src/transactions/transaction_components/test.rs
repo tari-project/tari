@@ -440,23 +440,44 @@ mod output_features {
     use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn consensus_encode_minimal() {
-        let features = OutputFeatures::with_maturity(0);
+        let mut features = OutputFeatures::default();
+        features.version = OutputFeaturesVersion::V0;
         let mut buf = Vec::new();
         let written = features.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 9);
         assert_eq!(written, 9);
+
+        let mut features = OutputFeatures::default();
+        features.version = OutputFeaturesVersion::V1;
+        let mut buf = Vec::new();
+        let written = features.consensus_encode(&mut buf).unwrap();
+        assert_eq!(buf.len(), 10);
+        assert_eq!(written, 10);
     }
 
     #[test]
     fn consensus_encode_decode() {
-        let features = OutputFeatures::create_coinbase(u64::MAX);
+        let mut features = OutputFeatures::create_coinbase(u64::MAX);
+        features.version = OutputFeaturesVersion::V0;
         let known_size = features.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size);
         assert_eq!(known_size, 18);
         let written = features.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 18);
         assert_eq!(written, 18);
+        let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
+        assert_eq!(features, decoded_features);
+
+        let mut features = OutputFeatures::create_coinbase(u64::MAX);
+        features.version = OutputFeaturesVersion::V1;
+        let known_size = features.consensus_encode_exact_size();
+        let mut buf = Vec::with_capacity(known_size);
+        assert_eq!(known_size, 19);
+        let written = features.consensus_encode(&mut buf).unwrap();
+        assert_eq!(buf.len(), 19);
+        assert_eq!(written, 19);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features, decoded_features);
     }
