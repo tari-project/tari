@@ -64,12 +64,10 @@ impl Performer {
                 Ok(())
             },
             Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
-            GetStateInfo => self.command_handler.state_info(),
             Version => self.command_handler.print_version(),
             PingPeer => self.process_ping_peer(typed_args).await,
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
-            ListPeers => self.process_list_peers(typed_args).await,
             ResetOfflinePeers => self.command_handler.reset_offline_peers().await,
             RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
             CheckDb => self.command_handler.check_db().await,
@@ -117,9 +115,6 @@ impl Performer {
             Status => {
                 println!("Prints out the status of this node");
             },
-            GetStateInfo => {
-                println!("Prints out the status of the base node state machine");
-            },
             Version => {
                 println!("Gets the current application version");
             },
@@ -134,9 +129,6 @@ impl Performer {
             GetPeer => {
                 println!("Get all available info about peer");
                 println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-            },
-            ListPeers => {
-                println!("Lists the peers that this node knows about");
             },
             ResetOfflinePeers => {
                 println!("Clear offline flag from all peers");
@@ -302,12 +294,6 @@ impl Performer {
         }
         self.command_handler.get_peer(partial, original_str).await;
         Ok(())
-    }
-
-    /// Function to process the list-peers command
-    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let filter = args.take_next("filter").ok();
-        self.command_handler.list_peers(filter).await
     }
 
     /// Function to process the dial-peer command

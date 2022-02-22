@@ -8,6 +8,7 @@ use tari_core::base_node::state_machine_service::states::PeerMetadata;
 use super::{CommandContext, HandleCommand};
 use crate::{table::Table, utils::format_duration_basic};
 
+/// Lists the peers that this node knows about
 #[derive(Debug, Parser)]
 pub struct Args {
     filter: Option<String>,
@@ -16,7 +17,12 @@ pub struct Args {
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        let filter = args.filter;
+        self.list_peers(args.filter).await
+    }
+}
+
+impl CommandContext {
+    pub async fn list_peers(&self, filter: Option<String>) -> Result<(), Error> {
         let mut query = PeerQuery::new();
         if let Some(f) = filter {
             let filter = f.to_lowercase();
@@ -36,7 +42,7 @@ impl HandleCommand<Args> for CommandContext {
 
         for peer in peers {
             let info_str = {
-                let mut s = Vec::new();
+                let mut s = vec![];
 
                 if peer.is_offline() {
                     if !peer.is_banned() {
