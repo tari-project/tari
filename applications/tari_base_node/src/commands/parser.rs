@@ -46,7 +46,6 @@ pub enum BaseNodeCommand {
     GetBlock,
     SearchUtxo,
     SearchKernel,
-    Whoami,
     Quit,
     Exit,
 }

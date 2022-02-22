@@ -19,6 +19,7 @@ mod reset_offline_peers;
 mod status;
 mod unban_all_peers;
 mod version;
+mod whoami;
 
 use std::{sync::Arc, time::Instant};
 
@@ -84,7 +85,7 @@ pub enum Command {
     GetMempoolStats(get_mempool_stats::Args),
     GetMempoolState(get_mempool_state::Args),
     GetMempoolTx(get_mempool_state::ArgsTx),
-    // Whoami,
+    Whoami(whoami::Args),
     GetStateInfo(get_state_info::Args),
     // GetStateInfo,
     GetNetworkStats(get_network_stats::Args),
@@ -163,6 +164,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::GetMempoolStats(args) => self.handle_command(args).await,
             Command::GetMempoolState(args) => self.handle_command(args).await,
             Command::GetMempoolTx(args) => self.handle_command(args).await,
+            Command::Whoami(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
         }
     }

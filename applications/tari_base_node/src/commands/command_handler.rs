@@ -424,12 +424,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    /// Function to process the whoami command
-    pub fn whoami(&self) -> Result<(), Error> {
-        println!("{}", self.base_node_identity);
-        Ok(())
-    }
-
     pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
         self.software_updater.clone()
     }

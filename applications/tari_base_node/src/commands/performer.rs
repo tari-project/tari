@@ -71,7 +71,6 @@ impl Performer {
             GetBlock => self.process_get_block(typed_args).await,
             SearchUtxo => self.process_search_utxo(typed_args).await,
             SearchKernel => self.process_search_kernel(typed_args).await,
-            Whoami => self.command_handler.whoami(),
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -155,12 +154,6 @@ impl Performer {
                 );
                 println!("This searches for the kernel via the excess signature");
                 println!("search-kernel [hex of nonce] [Hex of signature]");
-            },
-            Whoami => {
-                println!(
-                    "Display identity information about this node, including: public key, node ID and the public \
-                     address"
-                );
             },
             Exit | Quit => {
                 println!("Exits the base node");
