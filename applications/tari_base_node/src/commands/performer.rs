@@ -1,144 +1,31 @@
-// Copyright 2019. The Tari Project
-//
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
-//
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::time::Duration;
 
-use std::{string::ToString, sync::Arc, time::Duration};
-
+use anyhow::Error;
+use derive_more::{Deref, DerefMut};
 use log::*;
-use rustyline::{
-    completion::Completer,
-    error::ReadlineError,
-    hint::{Hinter, HistoryHinter},
-    line_buffer::LineBuffer,
-    Context,
-};
-use rustyline_derive::{Helper, Highlighter, Validator};
 use strum::IntoEnumIterator;
-use strum_macros::{Display, EnumIter, EnumString};
 use tari_app_utilities::utilities::{UniNodeId, UniPublicKey};
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
 use tari_utilities::ByteArray;
-use tokio::sync::Mutex;
 
 use super::{
     args::{Args, ArgsError, ArgsReason, FromHex},
-    LOG_TARGET,
+    command_handler::{CommandHandler, StatusOutput},
+    parser::BaseNodeCommand,
 };
-use crate::command_handler::{CommandHandler, StatusOutput};
+use crate::LOG_TARGET;
 
-/// Enum representing commands used by the basenode
-#[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]
-#[strum(serialize_all = "kebab_case")]
-pub enum BaseNodeCommand {
-    Help,
-    Version,
-    CheckForUpdates,
-    Status,
-    GetChainMetadata,
-    GetDbStats,
-    GetPeer,
-    ListPeers,
-    DialPeer,
-    PingPeer,
-    ResetOfflinePeers,
-    RewindBlockchain,
-    BanPeer,
-    UnbanPeer,
-    UnbanAllPeers,
-    ListBannedPeers,
-    ListConnections,
-    ListHeaders,
-    CheckDb,
-    PeriodStats,
-    HeaderStats,
-    BlockTiming,
-    CalcTiming,
-    ListReorgs,
-    DiscoverPeer,
-    GetBlock,
-    SearchUtxo,
-    SearchKernel,
-    GetMempoolStats,
-    GetMempoolState,
-    GetMempoolTx,
-    Whoami,
-    GetStateInfo,
-    GetNetworkStats,
-    Quit,
-    Exit,
+#[derive(Deref, DerefMut)]
+pub struct Performer {
+    command_handler: CommandHandler,
 }
 
-/// This is used to parse commands from the user and execute them
-#[derive(Helper, Validator, Highlighter)]
-pub struct Parser {
-    commands: Vec<String>,
-    hinter: HistoryHinter,
-    command_handler: Arc<Mutex<CommandHandler>>,
-}
-
-/// This will go through all instructions and look for potential matches
-impl Completer for Parser {
-    type Candidate = String;
-
-    fn complete(&self, line: &str, pos: usize, _ctx: &Context<'_>) -> Result<(usize, Vec<String>), ReadlineError> {
-        let completions = self
-            .commands
-            .iter()
-            .filter(|cmd| cmd.starts_with(line))
-            .cloned()
-            .collect();
-
-        Ok((pos, completions))
-    }
-
-    fn update(&self, line: &mut LineBuffer, _: usize, elected: &str) {
-        line.update(elected, elected.len());
-    }
-}
-
-/// This allows us to make hints based on historic inputs
-impl Hinter for Parser {
-    type Hint = String;
-
-    fn hint(&self, line: &str, pos: usize, ctx: &rustyline::Context<'_>) -> Option<String> {
-        self.hinter.hint(line, pos, ctx)
-    }
-}
-
-impl Parser {
-    /// creates a new parser struct
-    pub fn new(command_handler: Arc<Mutex<CommandHandler>>) -> Self {
-        Parser {
-            commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
-            hinter: HistoryHinter {},
-            command_handler,
-        }
-    }
-
-    /// This will return the list of commands from the parser
-    pub fn get_commands(&self) -> Vec<String> {
-        self.commands.clone()
+impl Performer {
+    pub fn new(command_handler: CommandHandler) -> Self {
+        Self { command_handler }
     }
 
     /// This will parse the provided command and execute the task
@@ -164,119 +51,52 @@ impl Parser {
         }
     }
 
-    pub fn get_command_handler(&self) -> Arc<Mutex<CommandHandler>> {
-        self.command_handler.clone()
-    }
-
     /// Function to process commands
     async fn process_command<'a>(
         &mut self,
         command: BaseNodeCommand,
         mut typed_args: Args<'a>,
         shutdown: &mut Shutdown,
-    ) -> Result<(), ArgsError> {
+    ) -> Result<(), Error> {
         use BaseNodeCommand::*;
         match command {
             Help => {
                 let command = typed_args.take_next("help-command")?;
                 self.print_help(command);
+                Ok(())
             },
-            Status => {
-                self.command_handler.lock().await.status(StatusOutput::Full);
-            },
-            GetStateInfo => {
-                self.command_handler.lock().await.state_info();
-            },
-            Version => {
-                self.command_handler.lock().await.print_version();
-            },
-            CheckForUpdates => {
-                self.command_handler.lock().await.check_for_updates();
-            },
-            GetChainMetadata => {
-                self.command_handler.lock().await.get_chain_meta();
-            },
-            GetDbStats => {
-                self.command_handler.lock().await.get_blockchain_db_stats();
-            },
-            DialPeer => {
-                self.process_dial_peer(typed_args).await?;
-            },
-            PingPeer => {
-                self.process_ping_peer(typed_args).await?;
-            },
-            DiscoverPeer => {
-                self.process_discover_peer(typed_args).await?;
-            },
-            GetPeer => {
-                self.process_get_peer(typed_args).await?;
-            },
-            ListPeers => {
-                self.process_list_peers(typed_args).await;
-            },
-            ResetOfflinePeers => {
-                self.command_handler.lock().await.reset_offline_peers();
-            },
-            RewindBlockchain => {
-                self.process_rewind_blockchain(typed_args).await?;
-            },
-            CheckDb => {
-                self.command_handler.lock().await.check_db();
-            },
-            PeriodStats => {
-                self.process_period_stats(typed_args).await?;
-            },
-            HeaderStats => {
-                self.process_header_stats(typed_args).await?;
-            },
-            BanPeer => {
-                self.process_ban_peer(typed_args, true).await?;
-            },
-            UnbanPeer => {
-                self.process_ban_peer(typed_args, false).await?;
-            },
-            UnbanAllPeers => {
-                self.command_handler.lock().await.unban_all_peers();
-            },
-            ListBannedPeers => {
-                self.command_handler.lock().await.list_banned_peers();
-            },
-            ListConnections => {
-                self.command_handler.lock().await.list_connections();
-            },
-            ListHeaders => {
-                self.process_list_headers(typed_args).await?;
-            },
-            BlockTiming | CalcTiming => {
-                self.process_block_timing(typed_args).await?;
-            },
-            ListReorgs => {
-                self.process_list_reorgs().await;
-            },
-            GetBlock => {
-                self.process_get_block(typed_args).await?;
-            },
-            SearchUtxo => {
-                self.process_search_utxo(typed_args).await?;
-            },
-            SearchKernel => {
-                self.process_search_kernel(typed_args).await?;
-            },
-            GetMempoolStats => {
-                self.command_handler.lock().await.get_mempool_stats();
-            },
-            GetMempoolState => {
-                self.command_handler.lock().await.get_mempool_state(None);
-            },
-            GetMempoolTx => {
-                self.get_mempool_state_tx(typed_args).await?;
-            },
-            Whoami => {
-                self.command_handler.lock().await.whoami();
-            },
-            GetNetworkStats => {
-                self.command_handler.lock().await.get_network_stats();
-            },
+            Status => self.command_handler.status(StatusOutput::Full).await,
+            GetStateInfo => self.command_handler.state_info(),
+            Version => self.command_handler.print_version(),
+            CheckForUpdates => self.command_handler.check_for_updates().await,
+            GetChainMetadata => self.command_handler.get_chain_meta().await,
+            GetDbStats => self.command_handler.get_blockchain_db_stats().await,
+            DialPeer => self.process_dial_peer(typed_args).await,
+            PingPeer => self.process_ping_peer(typed_args).await,
+            DiscoverPeer => self.process_discover_peer(typed_args).await,
+            GetPeer => self.process_get_peer(typed_args).await,
+            ListPeers => self.process_list_peers(typed_args).await,
+            ResetOfflinePeers => self.command_handler.reset_offline_peers().await,
+            RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
+            CheckDb => self.command_handler.check_db().await,
+            PeriodStats => self.process_period_stats(typed_args).await,
+            HeaderStats => self.process_header_stats(typed_args).await,
+            BanPeer => self.process_ban_peer(typed_args, true).await,
+            UnbanPeer => self.process_ban_peer(typed_args, false).await,
+            UnbanAllPeers => self.command_handler.unban_all_peers().await,
+            ListBannedPeers => self.command_handler.list_banned_peers().await,
+            ListConnections => self.command_handler.list_connections().await,
+            ListHeaders => self.process_list_headers(typed_args).await,
+            BlockTiming | CalcTiming => self.process_block_timing(typed_args).await,
+            ListReorgs => self.process_list_reorgs().await,
+            GetBlock => self.process_get_block(typed_args).await,
+            SearchUtxo => self.process_search_utxo(typed_args).await,
+            SearchKernel => self.process_search_kernel(typed_args).await,
+            GetMempoolStats => self.command_handler.get_mempool_stats().await,
+            GetMempoolState => self.command_handler.get_mempool_state(None).await,
+            GetMempoolTx => self.get_mempool_state_tx(typed_args).await,
+            Whoami => self.command_handler.whoami(),
+            GetNetworkStats => self.command_handler.get_network_stats(),
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -284,10 +104,9 @@ impl Parser {
                     "Termination signal received from user. Shutting node down."
                 );
                 let _ = shutdown.trigger();
+                Ok(())
             },
         }
-        // TODO: Remove it (use expressions above)
-        Ok(())
     }
 
     /// Displays the commands or context specific help for a given command
@@ -296,7 +115,11 @@ impl Parser {
         match command {
             Help => {
                 println!("Available commands are: ");
-                let joined = self.commands.join(", ");
+                // TODO: Improve that
+                let joined = BaseNodeCommand::iter()
+                    .map(|item| item.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 println!("{}", joined);
             },
             Status => {
@@ -453,58 +276,49 @@ impl Parser {
     }
 
     /// Function to process the get-block command
-    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let height = args.try_take_next("height")?;
         let hash: Option<FromHex<Vec<u8>>> = args.try_take_next("hash")?;
         args.shift_one();
         let format = args.try_take_next("format")?.unwrap_or_default();
 
         match (height, hash) {
-            (Some(height), _) => {
-                self.command_handler.lock().await.get_block(height, format);
-                Ok(())
-            },
-            (_, Some(hash)) => {
-                self.command_handler.lock().await.get_block_by_hash(hash.0, format);
-                Ok(())
-            },
+            (Some(height), _) => self.command_handler.get_block(height, format).await,
+            (_, Some(hash)) => self.command_handler.get_block_by_hash(hash.0, format).await,
             _ => Err(ArgsError::new(
                 "height",
                 "Invalid block height or hash provided. Height must be an integer.",
-            )),
+            )
+            .into()),
         }
     }
 
     /// Function to process the search utxo command
-    async fn process_search_utxo<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_search_utxo<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let commitment: FromHex<Commitment> = args.take_next("hex")?;
-        self.command_handler.lock().await.search_utxo(commitment.0);
-        Ok(())
+        self.command_handler.search_utxo(commitment.0).await
     }
 
     /// Function to process the search kernel command
-    async fn process_search_kernel<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_search_kernel<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
         let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
         let kernel_sig = Signature::new(public_nonce.0, signature.0);
-        self.command_handler.lock().await.search_kernel(kernel_sig);
-        Ok(())
+        self.command_handler.search_kernel(kernel_sig).await
     }
 
-    async fn get_mempool_state_tx<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn get_mempool_state_tx<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let filter = args.take_next("filter").ok();
-        self.command_handler.lock().await.get_mempool_state(filter);
-        Ok(())
+        self.command_handler.get_mempool_state(filter).await
     }
 
     /// Function to process the discover-peer command
-    async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let key: UniPublicKey = args.take_next("id")?;
-        self.command_handler.lock().await.discover_peer(Box::new(key.into()));
-        Ok(())
+        self.command_handler.discover_peer(Box::new(key.into())).await
     }
 
-    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let original_str = args
             .try_take_next("node_id")?
             .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
@@ -516,74 +330,66 @@ impl Parser {
             let data: FromHex<_> = args.take_next("node_id")?;
             partial = data.0;
         }
-        self.command_handler.lock().await.get_peer(partial, original_str);
+        self.command_handler.get_peer(partial, original_str).await;
         Ok(())
     }
 
     /// Function to process the list-peers command
-    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) {
+    async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let filter = args.take_next("filter").ok();
-        self.command_handler.lock().await.list_peers(filter)
+        self.command_handler.list_peers(filter).await
     }
 
     /// Function to process the dial-peer command
-    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.lock().await.dial_peer(dest_node_id.into());
-        Ok(())
+        self.command_handler.dial_peer(dest_node_id.into()).await
     }
 
     /// Function to process the dial-peer command
-    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.lock().await.ping_peer(dest_node_id.into());
-        Ok(())
+        self.command_handler.ping_peer(dest_node_id.into()).await
     }
 
     /// Function to process the ban-peer command
-    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), ArgsError> {
+    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), Error> {
         let node_id: UniNodeId = args.take_next("node-id")?;
         let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
         let duration = Duration::from_secs(secs);
-        self.command_handler
-            .lock()
-            .await
-            .ban_peer(node_id.into(), duration, must_ban);
+        self.command_handler.ban_peer(node_id.into(), duration, must_ban).await;
         Ok(())
     }
 
     /// Function to process the list-headers command
-    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start = args.take_next("start")?;
         let end = args.try_take_next("end")?;
-        self.command_handler.lock().await.list_headers(start, end);
+        self.command_handler.list_headers(start, end).await;
         Ok(())
     }
 
     /// Function to process the calc-timing command
-    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start = args.take_next("start")?;
         let end = args.try_take_next("end")?;
         if end.is_none() && start < 2 {
-            Err(ArgsError::new("start", "Number of headers must be at least 2."))
+            Err(ArgsError::new("start", "Number of headers must be at least 2.").into())
         } else {
-            self.command_handler.lock().await.block_timing(start, end);
-            Ok(())
+            self.command_handler.block_timing(start, end).await
         }
     }
 
-    async fn process_period_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_period_stats<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let period_end = args.take_next("period_end")?;
         let period_ticker_end = args.take_next("period_ticker_end")?;
         let period = args.take_next("period")?;
         self.command_handler
-            .lock()
+            .period_stats(period_end, period_ticker_end, period)
             .await
-            .period_stats(period_end, period_ticker_end, period);
-        Ok(())
     }
 
-    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start_height = args.take_next("start_height")?;
         let end_height = args.take_next("end_height")?;
         let filename = args
@@ -592,19 +398,16 @@ impl Parser {
         let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
 
         self.command_handler
-            .lock()
+            .save_header_stats(start_height, end_height, filename, algo)
             .await
-            .save_header_stats(start_height, end_height, filename, algo);
-        Ok(())
     }
 
-    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), ArgsError> {
+    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let new_height = args.take_next("new_height")?;
-        self.command_handler.lock().await.rewind_blockchain(new_height);
-        Ok(())
+        self.command_handler.rewind_blockchain(new_height).await
     }
 
-    async fn process_list_reorgs(&self) {
-        self.command_handler.lock().await.list_reorgs();
+    async fn process_list_reorgs(&self) -> Result<(), Error> {
+        self.command_handler.list_reorgs()
     }
 }
