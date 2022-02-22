@@ -17,7 +17,7 @@ pub struct Args {
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        let dest_node_id = args.node_id;
+        let dest_node_id = args.node_id.into();
         let start = Instant::now();
         println!("☎️  Dialing peer...");
         let connection = self.connectivity.dial_peer(dest_node_id).await?;
