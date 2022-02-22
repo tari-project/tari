@@ -142,6 +142,12 @@ impl LivenessMock {
             SetMetadataEntry(_, _) => {
                 reply.send(Ok(LivenessResponse::Ok)).unwrap();
             },
+            AddMonitoredPeer(_) => {
+                reply.send(Ok(LivenessResponse::Ok)).unwrap();
+            },
+            RemoveMonitoredPeer(_) => {
+                reply.send(Ok(LivenessResponse::Ok)).unwrap();
+            },
         }
     }
 }
