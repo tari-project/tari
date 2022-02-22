@@ -150,14 +150,14 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
         max_cell_size = 0;
     }
 
-    let banner = include!("../assets/tari_banner.rs");
+    let banner = include!("../../assets/tari_banner.rs");
     let target_line_length = multiline_find_display_length(banner);
 
     for line in banner.lines() {
         println!("{}", line);
     }
     println!("\n{}", box_line(target_line_length, true));
-    let logo = include!("../assets/tari_logo.rs");
+    let logo = include!("../../assets/tari_logo.rs");
     for line in logo.lines() {
         println!("{}", box_data(line.to_string(), target_line_length));
     }

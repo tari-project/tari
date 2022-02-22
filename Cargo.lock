@@ -6553,6 +6553,7 @@ dependencies = [
  "chrono",
  "config 0.9.3",
  "crossterm 0.22.1",
+ "derive_more",
  "either",
  "futures 0.3.21",
  "log",

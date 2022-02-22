@@ -48,7 +48,6 @@ pub struct WalletConfig {
 }
 
 impl WalletConfig {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         comms_config: P2pConfig,
         factories: CryptoFactories,

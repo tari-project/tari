@@ -66,17 +66,24 @@ pub struct Miner {
     num_threads: usize,
     header: BlockHeader,
     target_difficulty: u64,
+    share_mode: bool,
 }
 
 impl Miner {
-    pub fn init_mining(header: BlockHeader, target_difficulty: u64, num_threads: usize) -> Self {
+    pub fn init_mining(header: BlockHeader, target_difficulty: u64, num_threads: usize, share_mode: bool) -> Self {
         Self {
             threads: vec![],
             channels: vec![],
             header,
             num_threads,
             target_difficulty,
+            share_mode,
         }
+    }
+
+    // this will kill all mining threads currently active and attached to this miner
+    pub fn kill_threads(&mut self) {
+        self.channels.clear();
     }
 
     // Start mining threads with async context waker
@@ -95,8 +102,9 @@ impl Miner {
                 let header = self.header.clone();
                 let waker = ctx.waker().clone();
                 let difficulty = self.target_difficulty;
+                let share_mode = self.share_mode;
                 let handle = thread
-                    .spawn(move || mining_task(header, difficulty, tx, waker, i))
+                    .spawn(move || mining_task(header, difficulty, tx, waker, i, share_mode))
                     .expect("Failed to create mining thread");
                 (handle, rx)
             });
@@ -150,7 +158,7 @@ impl Stream for Miner {
                 return Poll::Pending;
             },
         };
-        if report.header.is_some() {
+        if report.header.is_some() && !self.share_mode {
             // Dropping recipients would stop miners next time they try to report
             self.channels.clear();
         }
@@ -166,6 +174,7 @@ pub fn mining_task(
     sender: Sender<MiningReport>,
     waker: Waker,
     miner: usize,
+    share_mode: bool,
 ) {
     let start = Instant::now();
     let mut hasher = BlockHeaderSha3::new(header).unwrap();
@@ -187,14 +196,20 @@ pub fn mining_task(
                 elapsed: start.elapsed(),
                 height: hasher.height(),
                 last_nonce: hasher.nonce,
-                header: Some(hasher.into_header()),
+                header: Some(hasher.create_header()),
                 target_difficulty,
             }) {
                 error!(target: LOG_TARGET, "Miner {} failed to send report: {}", miner, err);
             }
-            waker.wake();
-            trace!(target: LOG_TARGET, "Mining thread {} stopped", miner);
-            return;
+            // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
+            // new job
+            if !share_mode {
+                waker.wake();
+                trace!(target: LOG_TARGET, "Mining thread {} stopped", miner);
+                return;
+            } else {
+                waker.clone().wake();
+            }
         }
         if hasher.nonce % REPORTING_FREQUENCY == 0 {
             let res = sender.try_send(MiningReport {
@@ -213,7 +228,9 @@ pub fn mining_task(
                 info!(target: LOG_TARGET, "Mining thread {} disconnected", miner);
                 return;
             }
-            hasher.set_forward_timestamp(timestamp().seconds as u64);
+            if !(share_mode) {
+                hasher.set_forward_timestamp(timestamp().seconds as u64);
+            }
         }
         hasher.inc_nonce();
     }

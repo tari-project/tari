@@ -74,7 +74,7 @@ message TransactionOutput {
     uint32 version = 8;
 }
 
-// Options for UTXO's
+// Options for UTXOs
 message OutputFeatures {
     // Flags are the feature flags that differentiate between outputs, eg Coinbase all of which has different rules
     uint32 flags = 1;
@@ -95,6 +95,7 @@ message OutputFeatures {
     SideChainCheckpointFeatures sidechain_checkpoint = 8;
     // Version
     uint32 version = 9;
+    CommitteeDefinitionFeatures committee_definition = 10;
 }
 
 message AssetOutputFeatures {
@@ -117,6 +118,11 @@ message MintNonFungibleFeatures {
 message SideChainCheckpointFeatures {
     bytes merkle_root = 1;
     repeated bytes committee = 2;
+}
+
+message CommitteeDefinitionFeatures {
+    repeated bytes committee = 1;
+    uint64 effective_sidechain_height = 2;
 }
 // The components of the block or transaction. The same struct can be used for either, since in Mimblewimble,
 // cut-through means that blocks and transactions have the same structure. The inputs, outputs and kernels should
