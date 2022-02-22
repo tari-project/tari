@@ -1,8 +1,5 @@
-use std::time::{Duration, Instant};
-
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::utilities::UniNodeId;
 use tari_comms::peer_manager::NodeId;
@@ -10,7 +7,6 @@ use tari_p2p::services::liveness::LivenessEvent;
 use tokio::sync::broadcast;
 
 use super::{CommandContext, HandleCommand};
-use crate::{commands::status_line::StatusLine, StatusOutput};
 
 #[derive(Debug, Parser)]
 pub struct Args {

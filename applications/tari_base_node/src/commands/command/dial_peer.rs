@@ -1,14 +1,12 @@
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::utilities::UniNodeId;
 use tari_comms::peer_manager::NodeId;
 
 use super::{CommandContext, HandleCommand};
-use crate::{commands::status_line::StatusLine, StatusOutput};
 
 /// Attempt to connect to a known peer
 #[derive(Debug, Parser)]

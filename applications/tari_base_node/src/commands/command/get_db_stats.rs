@@ -1,20 +1,23 @@
-use std::time::{Duration, Instant};
-
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
 use clap::Parser;
-use tari_app_utilities::consts;
 
 use super::{CommandContext, HandleCommand};
-use crate::{commands::status_line::StatusLine, table::Table, StatusOutput};
+use crate::table::Table;
 
+/// Gets your base node database stats
 #[derive(Debug, Parser)]
 pub struct Args {}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
+        self.get_blockchain_db_stats().await
+    }
+}
+
+impl CommandContext {
+    pub async fn get_blockchain_db_stats(&self) -> Result<(), Error> {
         const BYTES_PER_MB: usize = 1024 * 1024;
 
         let stats = self.blockchain_db.get_stats().await?;

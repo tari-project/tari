@@ -1,15 +1,12 @@
-use std::time::{Duration, Instant};
-
-use anyhow::{anyhow, Error};
+use anyhow::Error;
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use clap::Parser;
-use tari_app_utilities::consts;
 use tari_comms::peer_manager::{PeerFeatures, PeerQuery};
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
 
 use super::{CommandContext, HandleCommand};
-use crate::{commands::status_line::StatusLine, table::Table, utils::format_duration_basic, StatusOutput};
+use crate::{table::Table, utils::format_duration_basic};
 
 #[derive(Debug, Parser)]
 pub struct Args {

@@ -40,8 +40,6 @@ pub enum BaseNodeCommand {
     Help,
     Version,
     Status,
-    GetChainMetadata,
-    GetDbStats,
     GetPeer,
     ListPeers,
     PingPeer,

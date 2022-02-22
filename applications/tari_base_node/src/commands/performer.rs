@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use anyhow::Error;
 use derive_more::{Deref, DerefMut};
 use log::*;
@@ -68,8 +66,6 @@ impl Performer {
             Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
             GetStateInfo => self.command_handler.state_info(),
             Version => self.command_handler.print_version(),
-            GetChainMetadata => self.command_handler.get_chain_meta().await,
-            GetDbStats => self.command_handler.get_blockchain_db_stats().await,
             PingPeer => self.process_ping_peer(typed_args).await,
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
@@ -126,12 +122,6 @@ impl Performer {
             },
             Version => {
                 println!("Gets the current application version");
-            },
-            GetChainMetadata => {
-                println!("Gets your base node chain meta data");
-            },
-            GetDbStats => {
-                println!("Gets your base node database stats");
             },
             PingPeer => {
                 println!("Send a ping to a known peer and wait for a pong reply");
