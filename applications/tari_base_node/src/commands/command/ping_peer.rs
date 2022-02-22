@@ -8,15 +8,23 @@ use tokio::sync::broadcast;
 
 use super::{CommandContext, HandleCommand};
 
+/// Send a ping to a known peer and wait for a pong reply
 #[derive(Debug, Parser)]
 pub struct Args {
+    /// hex public key or emoji id
     node_id: UniNodeId,
 }
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        let dest_node_id: NodeId = args.node_id.into();
+        self.ping_peer(args.node_id.into()).await
+    }
+}
+
+impl CommandContext {
+    /// Function to process the dial-peer command
+    pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
         println!("🏓 Pinging peer...");
         let mut liveness_events = self.liveness.get_event_stream();
 

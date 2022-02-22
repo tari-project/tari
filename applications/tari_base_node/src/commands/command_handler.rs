@@ -395,33 +395,6 @@ impl CommandHandler {
         }
     }
 
-    pub async fn ping_peer(&mut self, dest_node_id: NodeId) -> Result<(), Error> {
-        println!("🏓 Pinging peer...");
-        let mut liveness_events = self.liveness.get_event_stream();
-
-        self.liveness.send_ping(dest_node_id.clone()).await?;
-        loop {
-            match liveness_events.recv().await {
-                Ok(event) => {
-                    if let LivenessEvent::ReceivedPong(pong) = &*event {
-                        if pong.node_id == dest_node_id {
-                            println!(
-                                "🏓️ Pong received, latency in is {:.2?}!",
-                                pong.latency.unwrap_or_default()
-                            );
-                            break;
-                        }
-                    }
-                },
-                Err(broadcast::error::RecvError::Closed) => {
-                    break;
-                },
-                _ => {},
-            }
-        }
-        Ok(())
-    }
-
     pub async fn unban_all_peers(&self) -> Result<(), Error> {
         let query = PeerQuery::new().select_where(|p| p.is_banned());
         let peers = self.peer_manager.perform_query(query).await?;

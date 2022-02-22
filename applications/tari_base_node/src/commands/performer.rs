@@ -65,7 +65,6 @@ impl Performer {
             },
             Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
             Version => self.command_handler.print_version(),
-            PingPeer => self.process_ping_peer(typed_args).await,
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
             ResetOfflinePeers => self.command_handler.reset_offline_peers().await,
@@ -117,10 +116,6 @@ impl Performer {
             },
             Version => {
                 println!("Gets the current application version");
-            },
-            PingPeer => {
-                println!("Send a ping to a known peer and wait for a pong reply");
-                println!("ping-peer [hex public key or emoji id]");
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");
@@ -294,12 +289,6 @@ impl Performer {
         }
         self.command_handler.get_peer(partial, original_str).await;
         Ok(())
-    }
-
-    /// Function to process the dial-peer command
-    async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.ping_peer(dest_node_id.into()).await
     }
 
     /// Function to process the list-headers command
