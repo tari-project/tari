@@ -281,23 +281,6 @@ impl CommandHandler {
         }
     }
 
-    pub async fn reset_offline_peers(&self) -> Result<(), Error> {
-        let num_updated = self
-            .peer_manager
-            .update_each(|mut peer| {
-                if peer.is_offline() {
-                    peer.set_offline(false);
-                    Some(peer)
-                } else {
-                    None
-                }
-            })
-            .await?;
-
-        println!("{} peer(s) were unmarked as offline.", num_updated);
-        Ok(())
-    }
-
     pub async fn list_headers(&self, start: u64, end: Option<u64>) {
         let headers = match Self::get_chain_headers(&self.blockchain_db, start, end).await {
             Ok(h) if h.is_empty() => {

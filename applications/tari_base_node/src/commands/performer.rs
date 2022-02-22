@@ -65,7 +65,6 @@ impl Performer {
             },
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
-            ResetOfflinePeers => self.command_handler.reset_offline_peers().await,
             RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
             CheckDb => self.command_handler.check_db().await,
             PeriodStats => self.process_period_stats(typed_args).await,
@@ -113,9 +112,6 @@ impl Performer {
             GetPeer => {
                 println!("Get all available info about peer");
                 println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-            },
-            ResetOfflinePeers => {
-                println!("Clear offline flag from all peers");
             },
             RewindBlockchain => {
                 println!("Rewinds the blockchain to the given height.");
