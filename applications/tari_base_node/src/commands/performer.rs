@@ -70,7 +70,6 @@ impl Performer {
             CheckDb => self.command_handler.check_db().await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
-            UnbanAllPeers => self.command_handler.unban_all_peers().await,
             ListConnections => self.command_handler.list_connections().await,
             ListHeaders => self.process_list_headers(typed_args).await,
             BlockTiming | CalcTiming => self.process_block_timing(typed_args).await,
@@ -123,9 +122,6 @@ impl Performer {
                 println!("Rewinds the blockchain to the given height.");
                 println!("Usage: {} [new_height]", command);
                 println!("new_height must be less than the current height.");
-            },
-            UnbanAllPeers => {
-                println!("Unbans all peers");
             },
             CheckDb => {
                 println!("Checks the blockchain database for missing blocks and headers");

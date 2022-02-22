@@ -8,6 +8,7 @@ mod list_banned_peers;
 mod list_peers;
 mod ping_peer;
 mod status;
+mod unban_all_peers;
 mod version;
 
 use std::{sync::Arc, time::Instant};
@@ -56,8 +57,7 @@ pub enum Command {
     // RewindBlockchain,
     BanPeer(ban_peer::ArgsBan),
     UnbanPeer(ban_peer::ArgsUnban),
-    // UnbanPeer,
-    // UnbanAllPeers,
+    UnbanAllPeers(unban_all_peers::Args),
     ListBannedPeers(list_banned_peers::Args),
     // ListConnections,
     // ListHeaders,
@@ -143,6 +143,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::PingPeer(args) => self.handle_command(args).await,
             Command::BanPeer(args) => self.handle_command(args).await,
             Command::UnbanPeer(args) => self.handle_command(args).await,
+            Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
         }
     }

@@ -281,32 +281,6 @@ impl CommandHandler {
         }
     }
 
-    pub async fn unban_all_peers(&self) -> Result<(), Error> {
-        let query = PeerQuery::new().select_where(|p| p.is_banned());
-        let peers = self.peer_manager.perform_query(query).await?;
-        let num_peers = peers.len();
-        for peer in peers {
-            if let Err(err) = self.peer_manager.unban_peer(&peer.node_id).await {
-                println!("Failed to unban peer: {}", err);
-            }
-        }
-        println!("Unbanned {} peer(s) from node", num_peers);
-        Ok(())
-    }
-
-    pub async fn list_banned_peers(&self) -> Result<(), Error> {
-        let banned = fetch_banned_peers(&self.peer_manager).await?;
-        if banned.is_empty() {
-            println!("No peers banned from node.")
-        } else {
-            println!("Peers banned from node ({}):", banned.len());
-            for peer in banned {
-                println!("{}", peer);
-            }
-        }
-        Ok(())
-    }
-
     /// Function to process the list-connections command
     pub async fn list_connections(&mut self) -> Result<(), Error> {
         let conns = self.connectivity.get_active_connections().await?;
