@@ -49,8 +49,6 @@ pub enum BaseNodeCommand {
     PingPeer,
     ResetOfflinePeers,
     RewindBlockchain,
-    BanPeer,
-    UnbanPeer,
     UnbanAllPeers,
     ListBannedPeers,
     ListConnections,

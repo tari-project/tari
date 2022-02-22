@@ -81,8 +81,6 @@ impl Performer {
             CheckDb => self.command_handler.check_db().await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
-            BanPeer => self.process_ban_peer(typed_args, true).await,
-            UnbanPeer => self.process_ban_peer(typed_args, false).await,
             UnbanAllPeers => self.command_handler.unban_all_peers().await,
             ListBannedPeers => self.command_handler.list_banned_peers().await,
             ListConnections => self.command_handler.list_connections().await,
@@ -166,15 +164,6 @@ impl Performer {
                 println!("Rewinds the blockchain to the given height.");
                 println!("Usage: {} [new_height]", command);
                 println!("new_height must be less than the current height.");
-            },
-            BanPeer => {
-                println!("Bans a peer");
-                println!(
-                    "ban-peer/unban-peer [hex public key or emoji id] (length of time to ban the peer for in seconds)"
-                );
-            },
-            UnbanPeer => {
-                println!("Removes a peer ban");
             },
             UnbanAllPeers => {
                 println!("Unbans all peers");
@@ -350,15 +339,6 @@ impl Performer {
     async fn process_ping_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let dest_node_id: UniNodeId = args.take_next("node-id")?;
         self.command_handler.ping_peer(dest_node_id.into()).await
-    }
-
-    /// Function to process the ban-peer command
-    async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), Error> {
-        let node_id: UniNodeId = args.take_next("node-id")?;
-        let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
-        let duration = Duration::from_secs(secs);
-        self.command_handler.ban_peer(node_id.into(), duration, must_ban).await;
-        Ok(())
     }
 
     /// Function to process the list-headers command

@@ -557,40 +557,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration, must_ban: bool) {
-        if self.base_node_identity.node_id() == &node_id {
-            println!("Cannot ban our own node");
-            return;
-        }
-
-        if must_ban {
-            match self
-                .connectivity
-                .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
-                .await
-            {
-                Ok(_) => println!("Peer was banned in base node."),
-                Err(err) => {
-                    println!("Failed to ban peer: {:?}", err);
-                    error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                },
-            }
-        } else {
-            match self.peer_manager.unban_peer(&node_id).await {
-                Ok(_) => {
-                    println!("Peer ban was removed from base node.");
-                },
-                Err(err) if err.is_peer_not_found() => {
-                    println!("Peer not found in base node");
-                },
-                Err(err) => {
-                    println!("Failed to ban peer: {:?}", err);
-                    error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                },
-            }
-        }
-    }
-
     pub async fn unban_all_peers(&self) -> Result<(), Error> {
         let query = PeerQuery::new().select_where(|p| p.is_banned());
         let peers = self.peer_manager.perform_query(query).await?;

@@ -53,7 +53,8 @@ pub enum Command {
     PingPeer(ping_peer::Args),
     // ResetOfflinePeers,
     // RewindBlockchain,
-    BanPeer(ban_peer::Args),
+    BanPeer(ban_peer::ArgsBan),
+    UnbanPeer(ban_peer::ArgsUnban),
     // UnbanPeer,
     // UnbanAllPeers,
     // ListBannedPeers,
@@ -140,6 +141,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::DialPeer(args) => self.handle_command(args).await,
             Command::PingPeer(args) => self.handle_command(args).await,
             Command::BanPeer(args) => self.handle_command(args).await,
+            Command::UnbanPeer(args) => self.handle_command(args).await,
         }
     }
 }
