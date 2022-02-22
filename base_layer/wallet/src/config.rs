@@ -73,7 +73,7 @@ impl WalletConfig {
             base_node_service_config: base_node_service_config.unwrap_or_default(),
             updater_config,
             autoupdate_check_interval,
-            contacts_auto_ping_interval: contacts_auto_ping_interval.unwrap_or_else(|| Duration::from_secs(90)),
+            contacts_auto_ping_interval: contacts_auto_ping_interval.unwrap_or_else(|| Duration::from_secs(20)),
         }
     }
 }

@@ -247,7 +247,7 @@ fn set_common_network_defaults(cfg: &mut Config) {
         cfg.set_default(&key, 30).unwrap();
 
         let key = format!("wallet.{}.contacts_auto_ping_interval", network);
-        cfg.set_default(&key, 90).unwrap();
+        cfg.set_default(&key, 20).unwrap();
 
         let key = format!("common.{}.peer_seeds", network);
         cfg.set_default(&key, Vec::<String>::new()).unwrap();

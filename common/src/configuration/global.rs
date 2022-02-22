@@ -461,7 +461,7 @@ fn convert_node_config(
     let key = config_string("wallet", net_str, "contacts_auto_ping_interval");
     let contacts_auto_ping_interval = match cfg.get_int(&key) {
         Ok(seconds) => seconds as u64,
-        Err(ConfigError::NotFound(_)) => 90,
+        Err(ConfigError::NotFound(_)) => 20,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
