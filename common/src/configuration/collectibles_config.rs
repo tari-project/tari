@@ -60,7 +60,7 @@ fn default_wallet_grpc_address() -> SocketAddr {
 }
 
 impl CollectiblesConfig {
-    pub fn convert_if_present(cfg: Config) -> Result<Option<CollectiblesConfig>, ConfigurationError> {
+    pub fn convert_if_present(cfg: &Config) -> Result<Option<CollectiblesConfig>, ConfigurationError> {
         let section: Self = match cfg.get("collectibles") {
             Ok(s) => s,
             Err(_e) => {

@@ -74,9 +74,9 @@ use tokio::{
 use super::status_line::StatusLine;
 use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
 
-pub enum StatusOutput {
+pub enum StatusLineOutput {
     Log,
-    Full,
+    StdOutAndLog,
 }
 
 pub struct CommandHandler {
@@ -118,7 +118,11 @@ impl CommandHandler {
         }
     }
 
-    pub async fn status(&mut self, output: StatusOutput) -> Result<(), Error> {
+    pub fn global_config(&self) -> Arc<GlobalConfig> {
+        self.config.clone()
+    }
+
+    pub async fn status(&mut self, output: StatusLineOutput) -> Result<(), Error> {
         let mut full_log = false;
         if self.last_time_full.elapsed() > Duration::from_secs(120) {
             self.last_time_full = Instant::now();
@@ -183,7 +187,7 @@ impl CommandHandler {
                 "{}/{}",
                 num_active_rpc_sessions,
                 self.config
-                    .rpc_max_simultaneous_sessions
+                    .comms_rpc_max_simultaneous_sessions
                     .as_ref()
                     .map(ToString::to_string)
                     .unwrap_or_else(|| "∞".to_string()),
@@ -202,11 +206,11 @@ impl CommandHandler {
 
         let target = "base_node::app::status";
         match output {
-            StatusOutput::Full => {
+            StatusLineOutput::StdOutAndLog => {
                 println!("{}", status_line);
                 info!(target: target, "{}", status_line);
             },
-            StatusOutput::Log => info!(target: target, "{}", status_line),
+            StatusLineOutput::Log => info!(target: target, "{}", status_line),
         };
         Ok(())
     }
