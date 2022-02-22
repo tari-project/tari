@@ -5,12 +5,20 @@ use tari_app_utilities::consts;
 
 use super::{CommandContext, HandleCommand};
 
+/// Gets the current application version
 #[derive(Debug, Parser)]
 pub struct Args {}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
+        self.print_version()
+    }
+}
+
+impl CommandContext {
+    /// Function process the version command
+    pub fn print_version(&self) -> Result<(), Error> {
         println!("Version: {}", consts::APP_VERSION);
         println!("Author: {}", consts::APP_AUTHOR);
         println!("Avx2: {}", match cfg!(feature = "avx2") {

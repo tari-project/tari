@@ -63,7 +63,6 @@ impl Performer {
                 self.print_help(command);
                 Ok(())
             },
-            Version => self.command_handler.print_version(),
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
             ResetOfflinePeers => self.command_handler.reset_offline_peers().await,
@@ -108,9 +107,6 @@ impl Performer {
                     .collect::<Vec<_>>()
                     .join(", ");
                 println!("{}", joined);
-            },
-            Version => {
-                println!("Gets the current application version");
             },
             DiscoverPeer => {
                 println!("Attempt to discover a peer on the Tari network");

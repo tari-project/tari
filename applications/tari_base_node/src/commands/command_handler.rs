@@ -125,27 +125,6 @@ impl CommandHandler {
         self.config.clone()
     }
 
-    /// Function process the version command
-    pub fn print_version(&self) -> Result<(), Error> {
-        println!("Version: {}", consts::APP_VERSION);
-        println!("Author: {}", consts::APP_AUTHOR);
-        println!("Avx2: {}", match cfg!(feature = "avx2") {
-            true => "enabled",
-            false => "disabled",
-        });
-
-        if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
-            println!(
-                "Version {} of the {} is available: {} (sha: {})",
-                update.version(),
-                update.app(),
-                update.download_url(),
-                update.to_hash_hex()
-            );
-        }
-        Ok(())
-    }
-
     pub async fn get_block(&self, height: u64, format: Format) -> Result<(), Error> {
         let mut data = self.blockchain_db.fetch_blocks(height..=height).await?;
         match (data.pop(), format) {
