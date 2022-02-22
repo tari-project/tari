@@ -30,6 +30,8 @@ import "types.proto";
 service Wallet {
     // This returns the current version
     rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+    // This checks if the wallet is healthy and running
+    rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
     // Check for new updates
     rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
     // This returns the identity information
@@ -354,3 +356,14 @@ message SetBaseNodeRequest {
 }
 
 message SetBaseNodeResponse{}
+
+message GetConnectivityRequest{}
+
+message CheckConnectivityResponse{
+    enum OnlineStatus {
+        Connecting = 0;
+        Online = 1;
+        Offline = 2;
+    }
+    OnlineStatus status = 1;
+}
