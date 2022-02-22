@@ -16,6 +16,7 @@ mod list_peers;
 mod list_reorgs;
 mod ping_peer;
 mod reset_offline_peers;
+mod rewind_blockchain;
 mod status;
 mod unban_all_peers;
 mod version;
@@ -65,7 +66,7 @@ pub enum Command {
     DialPeer(dial_peer::Args),
     PingPeer(ping_peer::Args),
     ResetOfflinePeers(reset_offline_peers::Args),
-    // RewindBlockchain,
+    RewindBlockchain(rewind_blockchain::Args),
     BanPeer(ban_peer::ArgsBan),
     UnbanPeer(ban_peer::ArgsUnban),
     UnbanAllPeers(unban_all_peers::Args),
@@ -155,6 +156,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::BanPeer(args) => self.handle_command(args).await,
             Command::UnbanPeer(args) => self.handle_command(args).await,
             Command::ResetOfflinePeers(args) => self.handle_command(args).await,
+            Command::RewindBlockchain(args) => self.handle_command(args).await,
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
             Command::ListHeaders(args) => self.handle_command(args).await,
             Command::CheckDb(args) => self.handle_command(args).await,

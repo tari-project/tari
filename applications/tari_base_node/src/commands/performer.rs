@@ -65,7 +65,6 @@ impl Performer {
             },
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
-            RewindBlockchain => self.process_rewind_blockchain(typed_args).await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
             GetBlock => self.process_get_block(typed_args).await,
@@ -103,11 +102,6 @@ impl Performer {
             GetPeer => {
                 println!("Get all available info about peer");
                 println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-            },
-            RewindBlockchain => {
-                println!("Rewinds the blockchain to the given height.");
-                println!("Usage: {} [new_height]", command);
-                println!("new_height must be less than the current height.");
             },
             HeaderStats => {
                 println!(
@@ -235,10 +229,5 @@ impl Performer {
         self.command_handler
             .save_header_stats(start_height, end_height, filename, algo)
             .await
-    }
-
-    async fn process_rewind_blockchain<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
-        let new_height = args.take_next("new_height")?;
-        self.command_handler.rewind_blockchain(new_height).await
     }
 }

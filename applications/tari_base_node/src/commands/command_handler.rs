@@ -415,15 +415,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn rewind_blockchain(&self, new_height: u64) -> Result<(), Error> {
-        let blocks = self.blockchain_db.rewind_to_height(new_height).await?;
-        if !blocks.is_empty() {
-            self.node_service
-                .publish_block_event(BlockEvent::BlockSyncRewind(blocks));
-        }
-        Ok(())
-    }
-
     pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
         self.software_updater.clone()
     }
