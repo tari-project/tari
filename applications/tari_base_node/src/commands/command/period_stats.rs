@@ -5,10 +5,16 @@ use tokio::io::{self, AsyncWriteExt};
 
 use super::{CommandContext, HandleCommand};
 
+/// Prints out certain aggregated stats to
+/// of the block chain in csv format for
+/// easy copy.
 #[derive(Debug, Parser)]
 pub struct Args {
+    /// start time in unix timestamp
     period_end: u64,
+    /// end time in unix timestamp
     period_ticker_end: u64,
+    /// interval period time in unix timestamp
     period: u64,
 }
 

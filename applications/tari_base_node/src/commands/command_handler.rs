@@ -108,53 +108,6 @@ impl CommandHandler {
         self.config.clone()
     }
 
-    pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) {
-        let peer = match self.peer_manager.find_all_starts_with(&partial).await {
-            Ok(peers) if peers.is_empty() => {
-                if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
-                    if let Ok(Some(peer)) = self.peer_manager.find_by_public_key(&pk).await {
-                        peer
-                    } else {
-                        println!("No peer matching '{}'", original_str);
-                        return;
-                    }
-                } else {
-                    println!("No peer matching '{}'", original_str);
-                    return;
-                }
-            },
-            Ok(mut peers) => peers.remove(0),
-            Err(err) => {
-                println!("{}", err);
-                return;
-            },
-        };
-
-        let eid = EmojiId::from_pubkey(&peer.public_key);
-        println!("Emoji ID: {}", eid);
-        println!("Public Key: {}", peer.public_key);
-        println!("NodeId: {}", peer.node_id);
-        println!("Addresses:");
-        peer.addresses.iter().for_each(|a| {
-            println!("- {}", a);
-        });
-        println!("User agent: {}", peer.user_agent);
-        println!("Features: {:?}", peer.features);
-        println!("Supported protocols:");
-        peer.supported_protocols.iter().for_each(|p| {
-            println!("- {}", String::from_utf8_lossy(p));
-        });
-        if let Some(dt) = peer.banned_until() {
-            println!("Banned until {}, reason: {}", dt, peer.banned_reason);
-        }
-        if let Some(dt) = peer.last_seen() {
-            println!("Last seen: {}", dt);
-        }
-        if let Some(updated_at) = peer.identity_signature.map(|i| i.updated_at()) {
-            println!("Last updated: {} (UTC)", updated_at);
-        }
-    }
-
     pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
         self.software_updater.clone()
     }

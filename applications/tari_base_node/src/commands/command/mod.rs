@@ -10,6 +10,7 @@ mod get_db_stats;
 mod get_mempool_state;
 mod get_mempool_stats;
 mod get_network_stats;
+mod get_peer;
 mod get_state_info;
 mod header_stats;
 mod list_banned_peers;
@@ -28,7 +29,7 @@ mod unban_all_peers;
 mod version;
 mod whoami;
 
-use std::{sync::Arc, time::Instant};
+use std::{str::FromStr, sync::Arc, time::Instant};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -51,7 +52,7 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tokio::sync::watch;
 
-use crate::builder::BaseNodeContext;
+use crate::{builder::BaseNodeContext, commands::args::FromHex};
 
 #[derive(Debug, Parser)]
 #[clap(setting = AppSettings::NoBinaryName)]
@@ -67,7 +68,7 @@ pub enum Command {
     Status(status::Args),
     GetChainMetadata(get_chain_metadata::Args),
     GetDbStats(get_db_stats::Args),
-    // GetPeer,
+    GetPeer(get_peer::Args),
     ListPeers(list_peers::Args),
     DialPeer(dial_peer::Args),
     PingPeer(ping_peer::Args),
@@ -153,6 +154,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Status(args) => self.handle_command(args).await,
             Command::GetChainMetadata(args) => self.handle_command(args).await,
             Command::GetDbStats(args) => self.handle_command(args).await,
+            Command::GetPeer(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
             Command::GetNetworkStats(args) => self.handle_command(args).await,
             Command::ListPeers(args) => self.handle_command(args).await,
@@ -206,6 +208,28 @@ impl CommandContext {
                     .await
                     .map_err(Into::into)
             },
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TypeOrHex<T> {
+    Type(T),
+    Hex(FromHex<Vec<u8>>),
+}
+
+impl<T> FromStr for TypeOrHex<T>
+where
+    T: FromStr,
+    Error: From<T::Err>,
+{
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(hex) = FromHex::<Vec<u8>>::from_str(s) {
+            Ok(Self::Hex(hex))
+        } else {
+            T::from_str(s).map(Self::Type).map_err(Error::from)
         }
     }
 }

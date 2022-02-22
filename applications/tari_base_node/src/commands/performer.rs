@@ -62,7 +62,6 @@ impl Performer {
                 self.print_help(command);
                 Ok(())
             },
-            GetPeer => self.process_get_peer(typed_args).await,
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -88,39 +87,9 @@ impl Performer {
                     .join(", ");
                 println!("{}", joined);
             },
-            GetPeer => {
-                println!("Get all available info about peer");
-                println!("Usage: get-peer [Partial NodeId | PublicKey | EmojiId]");
-            },
-            PeriodStats => {
-                println!(
-                    "Prints out certain aggregated stats to of the block chain in csv format for easy copy, use as \
-                     follows: "
-                );
-                println!(
-                    "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time \
-                     in unix timestamp]"
-                );
-            },
             Exit | Quit => {
                 println!("Exits the base node");
             },
         }
-    }
-
-    async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let original_str = args
-            .try_take_next("node_id")?
-            .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
-        let node_id: Option<UniNodeId> = args.try_take_next("node_id")?;
-        let partial;
-        if let Some(node_id) = node_id {
-            partial = NodeId::from(node_id).to_vec();
-        } else {
-            let data: FromHex<_> = args.take_next("node_id")?;
-            partial = data.0;
-        }
-        self.command_handler.get_peer(partial, original_str).await;
-        Ok(())
     }
 }
