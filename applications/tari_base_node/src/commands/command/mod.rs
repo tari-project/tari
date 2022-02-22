@@ -17,6 +17,7 @@ mod list_reorgs;
 mod ping_peer;
 mod reset_offline_peers;
 mod rewind_blockchain;
+mod search_utxo;
 mod status;
 mod unban_all_peers;
 mod version;
@@ -81,7 +82,7 @@ pub enum Command {
     ListReorgs(list_reorgs::Args),
     // DiscoverPeer,
     // GetBlock,
-    // SearchUtxo,
+    SearchUtxo(search_utxo::Args),
     // SearchKernel,
     GetMempoolStats(get_mempool_stats::Args),
     GetMempoolState(get_mempool_state::Args),
@@ -162,6 +163,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::CheckDb(args) => self.handle_command(args).await,
             Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
+            Command::SearchUtxo(args) => self.handle_command(args).await,
             Command::ListConnections(args) => self.handle_command(args).await,
             Command::GetMempoolStats(args) => self.handle_command(args).await,
             Command::GetMempoolState(args) => self.handle_command(args).await,

@@ -86,6 +86,7 @@ impl<'a> Args<'a> {
     }
 }
 
+#[derive(Debug)]
 pub struct FromHex<T>(pub T);
 
 impl<T: Hex> FromStr for FromHex<T> {

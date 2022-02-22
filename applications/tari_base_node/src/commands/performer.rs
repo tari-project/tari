@@ -68,7 +68,6 @@ impl Performer {
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
             GetBlock => self.process_get_block(typed_args).await,
-            SearchUtxo => self.process_search_utxo(typed_args).await,
             SearchKernel => self.process_search_kernel(typed_args).await,
             Exit | Quit => {
                 println!("Shutting down...");
@@ -134,13 +133,6 @@ impl Performer {
                     "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
                 );
             },
-            SearchUtxo => {
-                println!(
-                    "This will search the main chain for the utxo. If the utxo is found, it will print out the block \
-                     it was found in."
-                );
-                println!("search-utxo [hex of commitment of the utxo]");
-            },
             SearchKernel => {
                 println!(
                     "This will search the main chain for the kernel. If the kernel is found, it will print out the \
@@ -171,12 +163,6 @@ impl Performer {
             )
             .into()),
         }
-    }
-
-    /// Function to process the search utxo command
-    async fn process_search_utxo<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let commitment: FromHex<Commitment> = args.take_next("hex")?;
-        self.command_handler.search_utxo(commitment.0).await
     }
 
     /// Function to process the search kernel command

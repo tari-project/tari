@@ -144,17 +144,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn search_utxo(&mut self, commitment: Commitment) -> Result<(), Error> {
-        let v = self
-            .node_service
-            .fetch_blocks_with_utxos(vec![commitment.clone()])
-            .await?
-            .pop()
-            .ok_or_else(|| anyhow!("Block not found for utxo commitment {}", commitment.to_hex()))?;
-        println!("{}", v.block());
-        Ok(())
-    }
-
     pub async fn search_kernel(&mut self, excess_sig: Signature) -> Result<(), Error> {
         let hex_sig = excess_sig.get_signature().to_hex();
         let v = self
