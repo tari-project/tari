@@ -62,7 +62,6 @@ impl Performer {
                 self.print_help(command);
                 Ok(())
             },
-            DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
@@ -90,10 +89,6 @@ impl Performer {
                     .collect::<Vec<_>>()
                     .join(", ");
                 println!("{}", joined);
-            },
-            DiscoverPeer => {
-                println!("Attempt to discover a peer on the Tari network");
-                println!("discover-peer [hex public key or emoji id]");
             },
             GetPeer => {
                 println!("Get all available info about peer");
@@ -123,12 +118,6 @@ impl Performer {
                 println!("Exits the base node");
             },
         }
-    }
-
-    /// Function to process the discover-peer command
-    async fn process_discover_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let key: UniPublicKey = args.take_next("id")?;
-        self.command_handler.discover_peer(Box::new(key.into())).await
     }
 
     async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {

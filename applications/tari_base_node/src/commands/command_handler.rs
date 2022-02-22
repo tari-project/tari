@@ -108,19 +108,6 @@ impl CommandHandler {
         self.config.clone()
     }
 
-    pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
-        let start = Instant::now();
-        println!("🌎 Peer discovery started.");
-        let peer = self
-            .discovery_service
-            .discover_peer(dest_pubkey.deref().clone(), NodeDestination::PublicKey(dest_pubkey))
-            .await?;
-        println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
-        println!("This peer was found:");
-        println!("{}", peer);
-        Ok(())
-    }
-
     pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) {
         let peer = match self.peer_manager.find_all_starts_with(&partial).await {
             Ok(peers) if peers.is_empty() => {
