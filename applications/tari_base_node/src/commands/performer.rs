@@ -3,7 +3,6 @@ use derive_more::{Deref, DerefMut};
 use log::*;
 use strum::IntoEnumIterator;
 use tari_app_utilities::utilities::{UniNodeId, UniPublicKey};
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms::peer_manager::NodeId;
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;

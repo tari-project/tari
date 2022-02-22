@@ -1,7 +1,6 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_app_utilities::consts;
 use tokio::io::{self, AsyncWriteExt};
 
 use super::{CommandContext, HandleCommand};

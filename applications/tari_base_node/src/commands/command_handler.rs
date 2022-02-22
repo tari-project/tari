@@ -27,43 +27,36 @@ use std::{
     str::FromStr,
     string::ToString,
     sync::Arc,
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use anyhow::{anyhow, Error};
-use chrono::{DateTime, Utc};
 use log::*;
 use strum::{Display, EnumString};
-use tari_app_utilities::{consts, utilities::parse_emoji_id_or_public_key};
+use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
 use tari_common::GlobalConfig;
-use tari_common_types::{
-    emoji::EmojiId,
-    types::{Commitment, HashOutput, Signature},
-};
+use tari_common_types::{emoji::EmojiId, types::HashOutput};
 use tari_comms::{
     connectivity::ConnectivityRequester,
-    peer_manager::{NodeId, Peer, PeerFeatures, PeerManager, PeerManagerError, PeerQuery},
+    peer_manager::PeerManager,
     protocol::rpc::RpcServerHandle,
     NodeIdentity,
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
 use tari_core::{
-    base_node::{comms_interface::BlockEvent, state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
+    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
     chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
     consensus::ConsensusManager,
     mempool::service::LocalMempoolService,
     proof_of_work::PowAlgorithm,
 };
 use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_p2p::{
-    auto_update::SoftwareUpdaterHandle,
-    services::liveness::{LivenessEvent, LivenessHandle},
-};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use thiserror::Error;
 use tokio::{fs::File, io::AsyncWriteExt, sync::watch};
 
-use crate::{builder::BaseNodeContext, table::Table};
+use crate::builder::BaseNodeContext;
 
 #[derive(Debug, Display, EnumString)]
 #[strum(serialize_all = "lowercase")]

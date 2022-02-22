@@ -11,7 +11,7 @@ pub struct Args {}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
+    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
         self.get_blockchain_db_stats().await
     }
 }

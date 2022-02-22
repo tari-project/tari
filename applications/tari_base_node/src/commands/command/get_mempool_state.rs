@@ -1,13 +1,9 @@
 use anyhow::Error;
 use async_trait::async_trait;
-use chrono::Utc;
 use clap::Parser;
-use tari_comms::peer_manager::{PeerFeatures, PeerQuery};
-use tari_core::base_node::state_machine_service::states::PeerMetadata;
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
-use crate::{table::Table, utils::format_duration_basic};
 
 /// Retrieves your mempools state
 #[derive(Debug, Parser)]
@@ -21,7 +17,7 @@ pub struct ArgsTx {
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
+    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
         self.get_mempool_state(None).await
     }
 }
