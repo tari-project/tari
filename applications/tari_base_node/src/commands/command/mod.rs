@@ -7,6 +7,7 @@ mod get_chain_metadata;
 mod get_db_stats;
 mod get_mempool_state;
 mod get_mempool_stats;
+mod get_network_stats;
 mod get_state_info;
 mod list_banned_peers;
 mod list_connections;
@@ -85,11 +86,10 @@ pub enum Command {
     GetMempoolTx(get_mempool_state::ArgsTx),
     // Whoami,
     GetStateInfo(get_state_info::Args),
-    /* GetStateInfo,
-     * GetNetworkStats,
-     * Quit,
-     * Exit,
-     */
+    // GetStateInfo,
+    GetNetworkStats(get_network_stats::Args),
+    /* Quit,
+     * Exit, */
 }
 
 #[async_trait]
@@ -147,6 +147,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::GetChainMetadata(args) => self.handle_command(args).await,
             Command::GetDbStats(args) => self.handle_command(args).await,
             Command::GetStateInfo(args) => self.handle_command(args).await,
+            Command::GetNetworkStats(args) => self.handle_command(args).await,
             Command::ListPeers(args) => self.handle_command(args).await,
             Command::DialPeer(args) => self.handle_command(args).await,
             Command::PingPeer(args) => self.handle_command(args).await,

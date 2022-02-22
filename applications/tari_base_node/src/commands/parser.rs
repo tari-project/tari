@@ -47,7 +47,6 @@ pub enum BaseNodeCommand {
     SearchUtxo,
     SearchKernel,
     Whoami,
-    GetNetworkStats,
     Quit,
     Exit,
 }
