@@ -41,7 +41,6 @@ pub enum BaseNodeCommand {
     GetPeer,
     ResetOfflinePeers,
     RewindBlockchain,
-    ListConnections,
     ListHeaders,
     CheckDb,
     PeriodStats,

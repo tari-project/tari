@@ -5,6 +5,7 @@ mod get_chain_metadata;
 mod get_db_stats;
 mod get_state_info;
 mod list_banned_peers;
+mod list_connections;
 mod list_peers;
 mod ping_peer;
 mod status;
@@ -59,7 +60,7 @@ pub enum Command {
     UnbanPeer(ban_peer::ArgsUnban),
     UnbanAllPeers(unban_all_peers::Args),
     ListBannedPeers(list_banned_peers::Args),
-    // ListConnections,
+    ListConnections(list_connections::Args),
     // ListHeaders,
     // CheckDb,
     // PeriodStats,
@@ -144,6 +145,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::BanPeer(args) => self.handle_command(args).await,
             Command::UnbanPeer(args) => self.handle_command(args).await,
             Command::UnbanAllPeers(args) => self.handle_command(args).await,
+            Command::ListConnections(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
         }
     }

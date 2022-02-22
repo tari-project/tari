@@ -70,7 +70,6 @@ impl Performer {
             CheckDb => self.command_handler.check_db().await,
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
-            ListConnections => self.command_handler.list_connections().await,
             ListHeaders => self.process_list_headers(typed_args).await,
             BlockTiming | CalcTiming => self.process_block_timing(typed_args).await,
             ListReorgs => self.process_list_reorgs().await,
@@ -145,9 +144,6 @@ impl Performer {
                     "Period-stats [start time in unix timestamp] [end time in unix timestamp] [interval period time \
                      in unix timestamp]"
                 );
-            },
-            ListConnections => {
-                println!("Lists the peer connections currently held by this node");
             },
             ListHeaders => {
                 println!("List the amount of headers, can be called in the following two ways: ");
