@@ -144,18 +144,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    pub async fn search_kernel(&mut self, excess_sig: Signature) -> Result<(), Error> {
-        let hex_sig = excess_sig.get_signature().to_hex();
-        let v = self
-            .node_service
-            .get_blocks_with_kernels(vec![excess_sig])
-            .await?
-            .pop()
-            .ok_or_else(|| anyhow!("No kernel with signature {} found", hex_sig))?;
-        println!("{}", v);
-        Ok(())
-    }
-
     pub async fn discover_peer(&mut self, dest_pubkey: Box<RistrettoPublicKey>) -> Result<(), Error> {
         let start = Instant::now();
         println!("🌎 Peer discovery started.");

@@ -43,7 +43,6 @@ pub enum BaseNodeCommand {
     HeaderStats,
     DiscoverPeer,
     GetBlock,
-    SearchKernel,
     Quit,
     Exit,
 }

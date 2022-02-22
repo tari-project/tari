@@ -68,7 +68,6 @@ impl Performer {
             PeriodStats => self.process_period_stats(typed_args).await,
             HeaderStats => self.process_header_stats(typed_args).await,
             GetBlock => self.process_get_block(typed_args).await,
-            SearchKernel => self.process_search_kernel(typed_args).await,
             Exit | Quit => {
                 println!("Shutting down...");
                 info!(
@@ -133,14 +132,6 @@ impl Performer {
                     "[format] Optional. Supported options are 'json' and 'text'. 'text' is the default if omitted."
                 );
             },
-            SearchKernel => {
-                println!(
-                    "This will search the main chain for the kernel. If the kernel is found, it will print out the \
-                     block it was found in."
-                );
-                println!("This searches for the kernel via the excess signature");
-                println!("search-kernel [hex of nonce] [Hex of signature]");
-            },
             Exit | Quit => {
                 println!("Exits the base node");
             },
@@ -163,14 +154,6 @@ impl Performer {
             )
             .into()),
         }
-    }
-
-    /// Function to process the search kernel command
-    async fn process_search_kernel<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let public_nonce: FromHex<PublicKey> = args.take_next("public-key")?;
-        let signature: FromHex<PrivateKey> = args.take_next("private-key")?;
-        let kernel_sig = Signature::new(public_nonce.0, signature.0);
-        self.command_handler.search_kernel(kernel_sig).await
     }
 
     /// Function to process the discover-peer command
