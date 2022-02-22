@@ -68,10 +68,8 @@ impl Performer {
             Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
             GetStateInfo => self.command_handler.state_info(),
             Version => self.command_handler.print_version(),
-            CheckForUpdates => self.command_handler.check_for_updates().await,
             GetChainMetadata => self.command_handler.get_chain_meta().await,
             GetDbStats => self.command_handler.get_blockchain_db_stats().await,
-            DialPeer => self.process_dial_peer(typed_args).await,
             PingPeer => self.process_ping_peer(typed_args).await,
             DiscoverPeer => self.process_discover_peer(typed_args).await,
             GetPeer => self.process_get_peer(typed_args).await,
@@ -129,18 +127,11 @@ impl Performer {
             Version => {
                 println!("Gets the current application version");
             },
-            CheckForUpdates => {
-                println!("Checks for software updates if auto update is enabled");
-            },
             GetChainMetadata => {
                 println!("Gets your base node chain meta data");
             },
             GetDbStats => {
                 println!("Gets your base node database stats");
-            },
-            DialPeer => {
-                println!("Attempt to connect to a known peer");
-                println!("dial-peer [hex public key or emoji id]");
             },
             PingPeer => {
                 println!("Send a ping to a known peer and wait for a pong reply");
@@ -327,12 +318,6 @@ impl Performer {
     async fn process_list_peers<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
         let filter = args.take_next("filter").ok();
         self.command_handler.list_peers(filter).await
-    }
-
-    /// Function to process the dial-peer command
-    async fn process_dial_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let dest_node_id: UniNodeId = args.take_next("node-id")?;
-        self.command_handler.dial_peer(dest_node_id.into()).await
     }
 
     /// Function to process the dial-peer command

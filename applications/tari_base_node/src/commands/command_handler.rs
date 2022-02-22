@@ -224,26 +224,6 @@ impl CommandHandler {
         Ok(())
     }
 
-    /// Check for updates
-    pub async fn check_for_updates(&mut self) -> Result<(), Error> {
-        println!("Checking for updates (current version: {})...", consts::APP_VERSION);
-        match self.software_updater.check_for_updates().await {
-            Some(update) => {
-                println!(
-                    "Version {} of the {} is available: {} (sha: {})",
-                    update.version(),
-                    update.app(),
-                    update.download_url(),
-                    update.to_hash_hex()
-                );
-            },
-            None => {
-                println!("No updates found.",);
-            },
-        }
-        Ok(())
-    }
-
     /// Function process the version command
     pub fn print_version(&self) -> Result<(), Error> {
         println!("Version: {}", consts::APP_VERSION);
@@ -517,16 +497,6 @@ impl CommandHandler {
         table.print_stdout();
 
         println!("{} peer(s) known by this node", num_peers);
-        Ok(())
-    }
-
-    pub async fn dial_peer(&self, dest_node_id: NodeId) -> Result<(), Error> {
-        let start = Instant::now();
-        println!("☎️  Dialing peer...");
-
-        let connection = self.connectivity.dial_peer(dest_node_id).await?;
-        println!("⚡️ Peer connected in {}ms!", start.elapsed().as_millis());
-        println!("Connection: {}", connection);
         Ok(())
     }
 

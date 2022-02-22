@@ -39,13 +39,11 @@ use strum_macros::{Display, EnumIter, EnumString};
 pub enum BaseNodeCommand {
     Help,
     Version,
-    CheckForUpdates,
     Status,
     GetChainMetadata,
     GetDbStats,
     GetPeer,
     ListPeers,
-    DialPeer,
     PingPeer,
     ResetOfflinePeers,
     RewindBlockchain,
