@@ -22,13 +22,12 @@
 
 use std::{
     collections::{HashMap, VecDeque},
-    ops::Sub,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use bitflags::bitflags;
-use chrono::{DateTime, Local, NaiveDateTime, Utc};
+use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
 use tari_common::{configuration::Network, GlobalConfig};
@@ -109,14 +108,7 @@ impl AppState {
     ) -> Self {
         let wallet_connectivity = wallet.wallet_connectivity.clone();
         let output_manager_service = wallet.output_manager_service.clone();
-        let inner = AppStateInner::new(
-            node_identity,
-            network,
-            wallet,
-            base_node_selected,
-            base_node_config,
-            Duration::from_secs(node_config.contacts_auto_ping_interval),
-        );
+        let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
         let cached_data = inner.data.clone();
 
         let inner = Arc::new(RwLock::new(inner));
@@ -563,15 +555,8 @@ impl AppStateInner {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-        contacts_ping_interval: Duration,
     ) -> Self {
-        let data = AppStateData::new(
-            node_identity,
-            network,
-            base_node_selected,
-            base_node_config,
-            contacts_ping_interval,
-        );
+        let data = AppStateData::new(node_identity, network, base_node_selected, base_node_config);
 
         AppStateInner {
             updated: false,
@@ -749,41 +734,26 @@ impl AppStateInner {
         Ok(())
     }
 
-    fn last_seen_within_ping_multiple(&self, last_seen: NaiveDateTime, multiple: u8) -> bool {
-        Utc::now().naive_utc().sub(last_seen) <=
-            chrono::Duration::seconds((multiple as u64 * self.data.contacts_ping_interval.as_secs()) as i64)
-    }
-
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
-        let mut contacts: Vec<UiContact> = self
-            .wallet
-            .contacts_service
-            .get_contacts()
-            .await?
-            .iter()
-            .map(|c| {
-                let online_status = if let Some(last_seen) = c.last_seen {
-                    if self.last_seen_within_ping_multiple(last_seen, 2) {
-                        "Online".to_string()
-                    } else if self.last_seen_within_ping_multiple(last_seen, 5) {
-                        "Connecting".to_string()
-                    } else {
-                        "Offline".to_string()
-                    }
-                } else {
-                    "".to_string()
-                };
-                UiContact::from(c.clone()).with_online_status(online_status)
-            })
-            .collect();
+        let db_contacts = self.wallet.contacts_service.get_contacts().await?;
+        let mut ui_contacts: Vec<UiContact> = vec![];
+        for contact in db_contacts {
+            // A contact's online status is a function of current time and can therefore not be stored in a database
+            let online_status = self
+                .wallet
+                .contacts_service
+                .get_contact_online_status(contact.last_seen)
+                .await?;
+            ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{}", online_status)));
+        }
 
-        contacts.sort_by(|a, b| {
+        ui_contacts.sort_by(|a, b| {
             a.alias
                 .partial_cmp(&b.alias)
                 .expect("Should be able to compare contact aliases")
         });
 
-        self.data.contacts = contacts;
+        self.data.contacts = ui_contacts;
         self.updated = true;
         Ok(())
     }
@@ -1098,7 +1068,6 @@ struct AppStateData {
     all_events: VecDeque<EventListItem>,
     notifications: Vec<(DateTime<Local>, String)>,
     new_notification_count: u32,
-    contacts_ping_interval: Duration,
 }
 
 #[derive(Clone)]
@@ -1113,7 +1082,6 @@ impl AppStateData {
         network: Network,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-        contacts_ping_interval: Duration,
     ) -> Self {
         let eid = EmojiId::from_pubkey(node_identity.public_key()).to_string();
         let qr_link = format!("tari://{}/pubkey/{}", network, &node_identity.public_key().to_hex());
@@ -1175,7 +1143,6 @@ impl AppStateData {
             all_events: VecDeque::new(),
             notifications: Vec::new(),
             new_notification_count: 0,
-            contacts_ping_interval,
         }
     }
 }

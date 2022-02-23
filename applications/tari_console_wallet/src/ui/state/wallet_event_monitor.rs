@@ -220,9 +220,10 @@ impl WalletEventMonitor {
                         match event {
                             Ok(liveness_event) => {
                                 match liveness_event.deref() {
-                                    ContactsLivenessEvent::StatusUpdated(_) => {
+                                    ContactsLivenessEvent::StatusUpdated(data) => {
                                         trace!(target: LOG_TARGET,
-                                            "Contacts Liveness Service Callback Handler event 'StatusUpdated'"
+                                            "Contacts Liveness Service Callback Handler event 'StatusUpdated': {}",
+                                            data.clone(),
                                         );
                                         self.trigger_contacts_refresh().await;
                                     }
