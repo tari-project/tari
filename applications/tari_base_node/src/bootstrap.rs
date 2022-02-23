@@ -83,7 +83,7 @@ where B: BlockchainBackend + 'static
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
         let config = self.config;
 
-        fs::create_dir_all(&config.peer_db_path)?;
+        fs::create_dir_all(&config.comms_peer_db_path)?;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
         let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, config.buffer_rate_limit_base_node);
@@ -144,7 +144,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
-                    auto_ping_interval: Some(Duration::from_secs(config.auto_ping_interval)),
+                    auto_ping_interval: Some(Duration::from_secs(config.metadata_auto_ping_interval)),
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
@@ -218,7 +218,7 @@ where B: BlockchainBackend + 'static
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let builder = RpcServer::builder();
-        let builder = match config.rpc_max_simultaneous_sessions {
+        let builder = match config.comms_rpc_max_simultaneous_sessions {
             Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
             None => {
                 warn!(
@@ -256,7 +256,7 @@ where B: BlockchainBackend + 'static
             node_identity: self.node_identity.clone(),
             transport_type: create_transport_type(self.config),
             auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
-            datastore_path: self.config.peer_db_path.clone(),
+            datastore_path: self.config.comms_peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
             max_concurrent_inbound_tasks: 50,
             max_concurrent_outbound_tasks: 100,
@@ -264,18 +264,18 @@ where B: BlockchainBackend + 'static
             dht: DhtConfig {
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
-                allow_test_addresses: self.config.allow_test_addresses,
+                allow_test_addresses: self.config.comms_allow_test_addresses,
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_config: SafConfig {
                     msg_validity: self.config.saf_expiry_duration,
                     ..Default::default()
                 },
-                dedup_cache_capacity: self.config.dedup_cache_capacity,
+                dedup_cache_capacity: self.config.dht_dedup_cache_capacity,
                 ..Default::default()
             },
-            allow_test_addresses: self.config.allow_test_addresses,
-            listener_liveness_allowlist_cidrs: self.config.listener_liveness_allowlist_cidrs.clone(),
-            listener_liveness_max_sessions: self.config.listnener_liveness_max_sessions,
+            allow_test_addresses: self.config.comms_allow_test_addresses,
+            listener_liveness_allowlist_cidrs: self.config.comms_listener_liveness_allowlist_cidrs.clone(),
+            listener_liveness_max_sessions: self.config.comms_listener_liveness_max_sessions,
             user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
             // Also add sync peers to the peer seed list. Duplicates are acceptable.
             peer_seeds: self

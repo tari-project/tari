@@ -45,6 +45,10 @@ pub enum LivenessRequest {
     GetNetworkAvgLatency,
     /// Set the metadata attached to each ping/pong message
     SetMetadataEntry(MetadataKey, Vec<u8>),
+    /// Add a monitored peer to the basic config
+    AddMonitoredPeer(NodeId),
+    /// Remove a monitored peer from the basic config
+    RemoveMonitoredPeer(NodeId),
 }
 
 /// Response type for `LivenessService`
@@ -146,6 +150,26 @@ impl LivenessHandle {
         match self
             .handle
             .call(LivenessRequest::SetMetadataEntry(key, value))
+            .await??
+        {
+            LivenessResponse::Ok => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Add a monitored peer to the basic config if not present
+    pub async fn check_add_monitored_peer(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+        match self.handle.call(LivenessRequest::AddMonitoredPeer(node_id)).await?? {
+            LivenessResponse::Ok => Ok(()),
+            _ => Err(LivenessError::UnexpectedApiResponse),
+        }
+    }
+
+    /// Remove a monitored peer from the basic config if present
+    pub async fn check_remove_monitored_peer(&mut self, node_id: NodeId) -> Result<(), LivenessError> {
+        match self
+            .handle
+            .call(LivenessRequest::RemoveMonitoredPeer(node_id))
             .await??
         {
             LivenessResponse::Ok => Ok(()),

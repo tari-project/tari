@@ -3606,24 +3606,34 @@ fn test_coinbase_abandoned() {
         .unwrap();
     assert_eq!(balance.pending_incoming_balance, fees1 + reward1);
 
-    runtime
+    let validation_id = runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
 
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(30));
         tokio::pin!(delay);
-        let mut count = 0usize;
+        let mut cancelled = false;
+        let mut completed = false;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionCancelled(tx_id, _) = &*event.unwrap() {
-                        if tx_id == &tx_id1  {
-                            count += 1;
-                        }
-                        if count == 1 {
-                            break;
-                        }
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionValidationCompleted(id) => {
+                            if id == &validation_id  {
+                                completed = true;
+                            }
+                        },
+                        TransactionEvent::TransactionCancelled(tx_id, _) => {
+                             if tx_id == &tx_id1  {
+                                cancelled = true;
+                            }
+                        },
+                        _ => (),
+                    }
+
+                    if cancelled && completed {
+                        break;
                     }
                 },
                 () = &mut delay => {
@@ -3631,7 +3641,8 @@ fn test_coinbase_abandoned() {
                 },
             }
         }
-        assert_eq!(count, 1, "Expected a TransactionCancelled event");
+        assert!(cancelled, "Expected a TransactionCancelled event");
+        assert!(completed, "Expected a TransactionValidationCompleted event");
     });
 
     let txs = runtime
@@ -3727,23 +3738,34 @@ fn test_coinbase_abandoned() {
     }
     alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
 
-    runtime
+    let validation_id = runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
 
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(30));
         tokio::pin!(delay);
-        let mut count = 0usize;
+        let mut completed = false;
+        let mut mined_unconfirmed = false;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations:_, is_valid: _} = &*event.unwrap() {                         if tx_id == &tx_id2  {
-                            count += 1;
-                        }
-                        if count == 1 {
-                            break;
-                        }
+                    match &*event.unwrap() {
+                        TransactionEvent::TransactionValidationCompleted(id) => {
+                            if id == &validation_id  {
+                                completed = true;
+                            }
+                        },
+                        TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations:_, is_valid: _} => {
+                             if tx_id == &tx_id2  {
+                                mined_unconfirmed = true;
+                            }
+                        },
+                        _ => (),
+                    }
+
+                    if mined_unconfirmed && completed {
+                        break;
                     }
                 },
                 () = &mut delay => {
@@ -3751,7 +3773,8 @@ fn test_coinbase_abandoned() {
                 },
             }
         }
-        assert_eq!(count, 1, "Expected a TransactionMinedUnconfirmed event");
+        assert!(mined_unconfirmed, "Expected a TransactionMinedUnconfirmed event");
+        assert!(completed, "Expected a TransactionValidationCompleted event");
     });
 
     let tx = runtime
@@ -3800,44 +3823,50 @@ fn test_coinbase_abandoned() {
     }
     alice_ts_interface.base_node_rpc_mock_state.set_blocks(block_headers);
 
-    runtime
+    let validation_id = runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
 
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(30));
         tokio::pin!(delay);
-        let mut count = 0usize;
+        let mut completed = false;
+        let mut broadcast = false;
+        let mut cancelled = false;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::TransactionBroadcast(tx_id) => {
                             if tx_id == &tx_id2  {
-                                count += 1;
+                               broadcast = true;
                             }
                         },
                         TransactionEvent::TransactionCancelled(tx_id, _) => {
                              if tx_id == &tx_id2  {
-                                count += 1;
+                                cancelled = true;
+                            }
+                        },
+                        TransactionEvent::TransactionValidationCompleted(id) => {
+                            if id == &validation_id  {
+                                completed = true;
                             }
                         },
                         _ => (),
                     }
 
-                    if count == 2 {
-                            break;
-                        }
+                    if cancelled && broadcast && completed {
+                        break;
+                    }
                 },
                 () = &mut delay => {
                     break;
                 },
             }
         }
-        assert_eq!(
-            count, 2,
-            "Expected a TransactionBroadcast and Transaction Cancelled event"
-        );
+        assert!(cancelled, "Expected a TransactionCancelled event");
+        assert!(broadcast, "Expected a TransactionBroadcast event");
+        assert!(completed, "Expected a TransactionValidationCompleted event");
     });
 
     let txs = runtime
@@ -3900,41 +3929,50 @@ fn test_coinbase_abandoned() {
         .base_node_rpc_mock_state
         .set_transaction_query_batch_responses(batch_query_response);
 
-    runtime
+    let validation_id = runtime
         .block_on(alice_ts_interface.transaction_service_handle.validate_transactions())
         .expect("Validation should start");
 
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
-        let mut count = 0usize;
+        let mut mined = false;
+        let mut cancelled = false;
+        let mut completed = false;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
                     match &*event.unwrap() {
                         TransactionEvent::TransactionMined { tx_id, is_valid: _ }  => {
                             if tx_id == &tx_id2  {
-                                count += 1;
+                                mined = true;
                             }
                         },
                         TransactionEvent::TransactionCancelled(tx_id, _) => {
                              if tx_id == &tx_id1  {
-                                count += 1;
+                                cancelled = true;
+                            }
+                        },
+                        TransactionEvent::TransactionValidationCompleted(id) => {
+                            if id == &validation_id  {
+                                completed = true;
                             }
                         },
                         _ => (),
                     }
 
-                    if count == 2 {
-                            break;
-                        }
+                    if mined && cancelled && completed {
+                        break;
+                    }
                 },
                 () = &mut delay => {
                     break;
                 },
             }
         }
-        assert_eq!(count, 2, "Expected a TransactionMined and TransactionCancelled event");
+        assert!(mined, "Expected to received TransactionMined event");
+        assert!(cancelled, "Expected to received TransactionCancelled event");
+        assert!(completed, "Expected a TransactionValidationCompleted event");
     });
 }
 

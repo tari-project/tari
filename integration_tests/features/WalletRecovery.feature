@@ -35,7 +35,7 @@ Feature: Wallet Recovery
         Then I stop all wallets
         When I recover all wallets connected to all seed nodes
         Then I wait for recovered wallets to have at least 15000000000 uT
-        @critical
+        
         Examples:
             | NumWallets |
             | 4        |

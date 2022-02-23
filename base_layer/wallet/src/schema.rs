@@ -32,7 +32,10 @@ table! {
 table! {
     contacts (public_key) {
         public_key -> Binary,
+        node_id -> Binary,
         alias -> Text,
+        last_seen -> Nullable<Timestamp>,
+        latency -> Nullable<Integer>,
     }
 }
 

@@ -116,10 +116,8 @@ impl WalletConnectivityService {
     }
 
     async fn check_connection(&mut self) {
-        debug!(target: LOG_TARGET, "HERE1");
         match self.pools.as_ref() {
             Some(pool) => {
-                debug!(target: LOG_TARGET, "HERE2");
                 if !pool.base_node_wallet_rpc_client.is_connected().await {
                     debug!(target: LOG_TARGET, "Peer connection lost. Attempting to reconnect...");
                     self.set_online_status(OnlineStatus::Offline);

@@ -239,7 +239,7 @@ impl AppState {
             },
         };
 
-        let contact = Contact { alias, public_key };
+        let contact = Contact::new(alias, public_key, None, None);
         inner.wallet.contacts_service.upsert_contact(contact).await?;
 
         inner.refresh_contacts_state().await?;
@@ -530,11 +530,11 @@ impl AppState {
     }
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
-        use Network::*;
-        // TODO: TBD #LOGGED
-        match self.node_config.network {
-            MainNet | LocalNet | Igor | Dibbler => MicroTari(5),
-            Ridcully | Stibbons | Weatherwax => MicroTari(25),
+        // this should not be empty as we this should have been created, but lets just be safe and use the default value
+        // from the config
+        match self.node_config.wallet_config.as_ref() {
+            Some(config) => config.fee_per_gram.into(),
+            _ => MicroTari::from(5),
         }
     }
 

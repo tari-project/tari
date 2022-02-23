@@ -135,16 +135,7 @@ jobs:
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
       - name: Cache cargo files and outputs
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-
-            ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-
+        uses: Swatinem/rust-cache@v1
 
       - name: Compile launchpad GUI
         run: |
@@ -233,7 +224,7 @@ jobs:
             "tari_launchpad"
           )
           for FILE in "${FILES[@]}"; do
-            codesign --force -s "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE" -v
+            codesign --options runtime --force --verify --verbose --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
             codesign --verify --deep --display --verbose=4 "/tmp/tari_testnet/runtime/$FILE"
             cp -vf "/tmp/tari_testnet/runtime/$FILE" "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
           done
