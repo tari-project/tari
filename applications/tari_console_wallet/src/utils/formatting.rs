@@ -35,7 +35,7 @@ pub fn display_compressed_string(string: String, len_first: usize, len_last: usi
     for i in graphemes.iter().take(len_first) {
         result.push_str(i);
     }
-    result.push_str("...");
+    result.push_str("..");
     for i in graphemes.iter().skip(graphemes.len() - len_last) {
         result.push_str(i);
     }
@@ -59,11 +59,11 @@ mod test {
         let short_str = "testing".to_string();
         assert_eq!(display_compressed_string(short_str.clone(), 5, 5), short_str);
         let long_str = "abcdefghijklmnopqrstuvwxyz".to_string();
-        assert_eq!(display_compressed_string(long_str, 3, 3), "abc...xyz".to_string());
+        assert_eq!(display_compressed_string(long_str, 3, 3), "abc..xyz".to_string());
         let emoji_str = "🐾💎🎤🎨📌🍄🎰🍉🚧💉💡👟🚒📌🔌🐶🐾🐢🔭🐨😻💨🐎🐊🚢👟🚧🐞🚜🌂🎩🎱📈".to_string();
         assert_eq!(
             display_compressed_string(emoji_str, 3, 6),
-            "🐾💎🎤...🐞🚜🌂🎩🎱📈".to_string()
+            "🐾💎🎤..🐞🚜🌂🎩🎱📈".to_string()
         );
     }
 }

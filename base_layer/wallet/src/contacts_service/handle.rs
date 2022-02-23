@@ -88,7 +88,8 @@ impl Display for ContactsLivenessData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(
             f,
-            "Node ID {} with latency {:?} last seen {}s ago",
+            "Contact {} ({}) with latency {:?} last seen {}s ago",
+            self.public_key,
             self.node_id,
             self.latency,
             self.time_since_last_status_update().num_seconds()
