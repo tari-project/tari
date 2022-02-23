@@ -25,13 +25,8 @@ use std::convert::TryInto;
 use async_trait::async_trait;
 use log::*;
 use tari_common_types::types::PublicKey;
-use tari_comms::{
-    connection_manager::ConnectionManagerError,
-    connectivity::{ConnectivityError, ConnectivityRequester},
-    peer_manager::{NodeId, PeerManagerError},
-    PeerConnection,
-};
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
+use tari_comms::PeerConnection;
+use tari_comms_dht::DhtRequester;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
     models::{Node, SchemaState, SideChainBlock, StateOpLogEntry, TemplateId, TreeNodeHash},
@@ -44,48 +39,14 @@ use crate::p2p::{proto::validator_node as proto, rpc};
 const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
 
 pub struct TariCommsValidatorNodeRpcClient {
-    connectivity: ConnectivityRequester,
-    dht_discovery: DhtDiscoveryRequester,
+    dht: DhtRequester,
     address: PublicKey,
 }
 
 impl TariCommsValidatorNodeRpcClient {
     async fn create_connection(&mut self) -> Result<PeerConnection, ValidatorNodeClientError> {
-        match self.connectivity.dial_peer(NodeId::from(self.address.clone())).await {
-            Ok(connection) => Ok(connection),
-            Err(connectivity_error) => {
-                dbg!(&connectivity_error);
-                match &connectivity_error {
-                    ConnectivityError::ConnectionFailed(err) => {
-                        match err {
-                            ConnectionManagerError::PeerConnectionError(_) |
-                            ConnectionManagerError::DialConnectFailedAllAddresses |
-                            ConnectionManagerError::PeerIdentityNoValidAddresses |
-                            ConnectionManagerError::PeerManagerError(PeerManagerError::PeerNotFoundError) => {
-                                // Try discover, then dial again
-                                // TODO: Should make discovery and connect the responsibility of the DHT layer
-                                self.dht_discovery
-                                    .discover_peer(
-                                        Box::new(self.address.clone()),
-                                        NodeDestination::PublicKey(Box::new(self.address.clone())),
-                                    )
-                                    .await?;
-                                if let Some(conn) = self
-                                    .connectivity
-                                    .get_connection(NodeId::from(self.address.clone()))
-                                    .await?
-                                {
-                                    return Ok(conn);
-                                }
-                                Ok(self.connectivity.dial_peer(NodeId::from(self.address.clone())).await?)
-                            },
-                            _ => Err(connectivity_error.into()),
-                        }
-                    },
-                    _ => Err(connectivity_error.into()),
-                }
-            },
-        }
+        let conn = self.dht.dial_or_discover_peer(self.address.clone()).await?;
+        Ok(conn)
     }
 }
 
@@ -280,16 +241,12 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
 
 #[derive(Clone)]
 pub struct TariCommsValidatorNodeClientFactory {
-    connectivity_requester: ConnectivityRequester,
-    dht_discovery: DhtDiscoveryRequester,
+    dht: DhtRequester,
 }
 
 impl TariCommsValidatorNodeClientFactory {
-    pub fn new(connectivity_requester: ConnectivityRequester, dht_discovery: DhtDiscoveryRequester) -> Self {
-        Self {
-            connectivity_requester,
-            dht_discovery,
-        }
+    pub fn new(dht: DhtRequester) -> Self {
+        Self { dht }
     }
 }
 
@@ -299,8 +256,7 @@ impl ValidatorNodeClientFactory for TariCommsValidatorNodeClientFactory {
 
     fn create_client(&self, address: &Self::Addr) -> Self::Client {
         TariCommsValidatorNodeRpcClient {
-            connectivity: self.connectivity_requester.clone(),
-            dht_discovery: self.dht_discovery.clone(),
+            dht: self.dht.clone(),
             address: address.clone(),
         }
     }

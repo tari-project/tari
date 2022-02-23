@@ -213,9 +213,7 @@ impl DanNode {
         let chain_storage = SqliteStorageService {};
         let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
         let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
-        let connectivity = handles.expect_handle();
-        let validator_node_client_factory =
-            TariCommsValidatorNodeClientFactory::new(connectivity, dht.discovery_service_requester());
+        let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(dht.dht_requester());
         let mut consensus_worker = ConsensusWorker::<DefaultServiceSpecification>::new(
             receiver,
             outbound,

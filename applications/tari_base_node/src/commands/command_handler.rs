@@ -23,6 +23,7 @@
 use std::{
     cmp,
     io::{self, Write},
+    ops::Deref,
     str::FromStr,
     string::ToString,
     sync::Arc,
@@ -368,7 +369,7 @@ impl CommandHandler {
         println!("🌎 Peer discovery started.");
         let peer = self
             .discovery_service
-            .discover_peer(dest_pubkey.clone(), NodeDestination::PublicKey(dest_pubkey))
+            .discover_peer(dest_pubkey.deref().clone(), NodeDestination::PublicKey(dest_pubkey))
             .await?;
         println!("⚡️ Discovery succeeded in {}ms!", start.elapsed().as_millis());
         println!("This peer was found:");

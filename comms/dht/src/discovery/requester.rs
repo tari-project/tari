@@ -31,7 +31,8 @@ use tokio::{
     time,
 };
 
-use crate::{discovery::DhtDiscoveryError, envelope::NodeDestination, proto::dht::DiscoveryResponseMessage};
+use super::DhtDiscoveryError;
+use crate::{envelope::NodeDestination, proto::dht::DiscoveryResponseMessage};
 
 #[derive(Debug)]
 pub enum DhtDiscoveryRequest {
@@ -85,14 +86,14 @@ impl DhtDiscoveryRequester {
     ///      quicker discovery times.
     pub async fn discover_peer(
         &mut self,
-        dest_public_key: Box<CommsPublicKey>,
+        dest_public_key: CommsPublicKey,
         destination: NodeDestination,
     ) -> Result<Peer, DhtDiscoveryError> {
         let (reply_tx, reply_rx) = oneshot::channel();
 
         self.sender
             .send(DhtDiscoveryRequest::DiscoverPeer(
-                dest_public_key,
+                Box::new(dest_public_key),
                 destination,
                 reply_tx,
             ))
@@ -109,7 +110,7 @@ impl DhtDiscoveryRequester {
             .map_err(|_| DhtDiscoveryError::ReplyCanceled)?
     }
 
-    pub async fn notify_discovery_response_received(
+    pub(crate) async fn notify_discovery_response_received(
         &mut self,
         response: DiscoveryResponseMessage,
     ) -> Result<(), DhtDiscoveryError> {
