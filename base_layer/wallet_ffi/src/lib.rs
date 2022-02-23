@@ -194,6 +194,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 
@@ -3267,6 +3268,8 @@ unsafe fn init_logging(
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
+/// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
+/// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
@@ -3313,6 +3316,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
@@ -3511,6 +3515,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
                 w.wallet_connectivity.get_connectivity_status_watch(),
+                w.contacts_service.get_contacts_liveness_event_stream(),
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -3523,6 +3528,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
+                callback_contacts_liveness_data_updated,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
@@ -6156,6 +6162,7 @@ mod test {
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
+        pub callback_contacts_liveness_data_updated: bool,
         pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
     }
@@ -6175,6 +6182,7 @@ mod test {
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
+                callback_contacts_liveness_data_updated: false,
                 callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
             }
@@ -6338,6 +6346,10 @@ mod test {
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+        // assert!(true); //optimized out by compiler
+    }
+
+    unsafe extern "C" fn contacts_liveness_data_updated_callback(_balance: *mut TariContactsLivenessData) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -6728,6 +6740,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6767,6 +6780,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6872,6 +6886,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6922,6 +6937,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6955,6 +6971,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6983,6 +7000,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7032,6 +7050,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7110,6 +7129,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7319,6 +7339,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7376,6 +7397,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,

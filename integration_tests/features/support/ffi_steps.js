@@ -157,6 +157,40 @@ Then(
   }
 );
 
+Then(
+  "I wait for ffi wallet {word} to have at least {int} contact liveness callback events",
+  { timeout: 125 * 1000 },
+  async function (walletName, amount) {
+    let wallet = this.getWallet(walletName);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        walletName +
+        " to receive at least " +
+        amount +
+        " contact liveness event(s)"
+    );
+
+    await waitForIterate(
+      () => {
+        return wallet.getCounters().livenessDataUpdated >= amount;
+      },
+      true,
+      1000,
+      60
+    );
+
+    if (!(wallet.getCounters().livenessDataUpdated >= amount)) {
+      console.log(wallet.getCounters());
+      console.log("Contact liveness callback counter not adequate!");
+    } else {
+      console.log(wallet.getCounters());
+    }
+    expect(wallet.getCounters().livenessDataUpdated >= amount).to.equal(true);
+  }
+);
+
 When(
   "I set base node {word} for ffi wallet {word}",
   function (node, walletName) {
@@ -208,9 +242,20 @@ Then(
 
 Given(
   "I have a ffi wallet {word} connected to base node {word}",
+  { timeout: 15 * 1000 },
   async function (walletName, nodeName) {
     let ffiWallet = await this.createAndAddFFIWallet(walletName, null);
     let peer = this.nodes[nodeName].peerAddress().split("::");
+    ffiWallet.addBaseNodePeer(peer[0], peer[1]);
+  }
+);
+
+Given(
+  "I have a ffi wallet {word} connected to seed node {word}",
+  { timeout: 15 * 1000 },
+  async function (walletName, nodeName) {
+    let ffiWallet = await this.createAndAddFFIWallet(walletName, null);
+    let peer = this.seeds[nodeName].peerAddress().split("::");
     ffiWallet.addBaseNodePeer(peer[0], peer[1]);
   }
 );

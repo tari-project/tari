@@ -28,6 +28,7 @@ class Wallet {
   transactionMined = 0;
   transactionMinedUnconfirmed = 0;
   transactionFauxConfirmed = 0;
+  contactsLivenessDataUpdated = 0;
   transactionFauxUnconfirmed = 0;
   transactionSafMessageReceived = 0;
   transactionCancelled = 0;
@@ -47,6 +48,7 @@ class Wallet {
   callback_direct_send_result;
   callback_store_and_forward_send_result;
   callback_transaction_cancellation;
+  callback_contacts_liveness_data_updated;
   callback_balance_updated;
   callback_transaction_validation_complete;
   callback_saf_message_received;
@@ -73,6 +75,7 @@ class Wallet {
       this.transactionBroadcast =
       this.transactionMined =
       this.transactionFauxConfirmed =
+      this.contactsLivenessDataUpdated =
       this.transactionSafMessageReceived =
       this.transactionCancelled =
       this.transactionMinedUnconfirmed =
@@ -92,6 +95,7 @@ class Wallet {
       cancelled: this.transactionCancelled,
       mined: this.transactionMined,
       fauxConfirmed: this.transactionFauxConfirmed,
+      livenessDataUpdated: this.contactsLivenessDataUpdated,
       saf: this.transactionSafMessageReceived,
     };
   }
@@ -149,6 +153,10 @@ class Wallet {
       InterfaceFFI.createCallbackTxoValidationComplete(
         this.onTxoValidationComplete
       );
+    this.callback_contacts_liveness_data_updated =
+      InterfaceFFI.createCallbackContactsLivenessUpdated(
+        this.onContactsLivenessUpdated
+      );
     this.callback_balance_updated = InterfaceFFI.createCallbackBalanceUpdated(
       this.onBalanceUpdated
     );
@@ -172,6 +180,7 @@ class Wallet {
     this.transactionBroadcast = 0;
     this.transactionMined = 0;
     this.transactionFauxConfirmed = 0;
+    this.contactsLivenessDataUpdated = 0;
     this.transactionSafMessageReceived = 0;
     this.transactionCancelled = 0;
     this.transactionMinedUnconfirmed = 0;
@@ -206,6 +215,7 @@ class Wallet {
       this.callback_store_and_forward_send_result,
       this.callback_transaction_cancellation,
       this.callback_txo_validation_complete,
+      this.callback_contacts_liveness_data_updated,
       this.callback_balance_updated,
       this.callback_transaction_validation_complete,
       this.callback_saf_message_received,
@@ -322,6 +332,13 @@ class Wallet {
     );
     this.txo_validation_complete = true;
     this.txo_validation_result = validation_results;
+  };
+
+  onContactsLivenessUpdated = (data) => {
+    console.log(
+      `${new Date().toISOString()} callbackContactsLivenessUpdated: ${data}`
+    );
+    this.contactsLivenessDataUpdated += 1;
   };
 
   onBalanceUpdated = (ptr) => {
@@ -514,6 +531,7 @@ class Wallet {
         this.callback_store_and_forward_send_result =
         this.callback_transaction_cancellation =
         this.callback_txo_validation_complete =
+        this.callback_contacts_liveness_data_updated =
         this.callback_balance_updated =
         this.callback_transaction_validation_complete =
         this.callback_saf_message_received =

@@ -297,6 +297,7 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -1166,6 +1167,9 @@ class InterfaceFFI {
   static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
   }
+  static createCallbackContactsLivenessUpdated(fn) {
+    return ffi.Callback(this.void, [this.ptr], fn);
+  }
   static createCallbackBalanceUpdated(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);
   }
@@ -1206,6 +1210,7 @@ class InterfaceFFI {
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
     callback_txo_validation_complete,
+    callback_contacts_liveness_data_updated,
     callback_balance_updated,
     callback_transaction_validation_complete,
     callback_saf_message_received,
@@ -1233,6 +1238,7 @@ class InterfaceFFI {
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
       callback_txo_validation_complete,
+      callback_contacts_liveness_data_updated,
       callback_balance_updated,
       callback_transaction_validation_complete,
       callback_saf_message_received,

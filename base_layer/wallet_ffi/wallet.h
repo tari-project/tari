@@ -509,6 +509,8 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
+/// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
+/// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
@@ -560,6 +562,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_txo_validation_complete)(unsigned long long, bool),
+                                 void (*callback_contacts_liveness_data_updated)(struct TariContactsLivenessData *),
                                  void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, bool),
                                  void (*callback_saf_message_received)(),

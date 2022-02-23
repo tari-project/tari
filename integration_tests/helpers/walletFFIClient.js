@@ -27,9 +27,9 @@ class WalletFFIClient {
       new Date(),
       "yyyymmddHHMM"
     )}/${name}`;
-    this.transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.port}`);
+    this.transport = TransportType.createTCP(`/ip4/127.0.0.1/tcp/${this.port}`);
     this.comms_config = new CommsConfig(
-      `/ip4/0.0.0.0/tcp/${this.port}`,
+      `/ip4/127.0.0.1/tcp/${this.port}`,
       this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
@@ -41,9 +41,9 @@ class WalletFFIClient {
   }
 
   async restart(seed_words_text, pass_phrase) {
-    this.transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.port}`);
+    this.transport = TransportType.createTCP(`/ip4/127.0.0.1/tcp/${this.port}`);
     this.comms_config = new CommsConfig(
-      `/ip4/0.0.0.0/tcp/${this.port}`,
+      `/ip4/127.0.0.1/tcp/${this.port}`,
       this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
