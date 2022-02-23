@@ -44,6 +44,22 @@ pub(crate) async fn tip004_mint_token(
   token: String,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
+  inner_tip004_mint_token(asset_public_key, token, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn tip004_list_tokens(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<(Tip721TokenRow, AddressRow)>, Status> {
+  inner_tip004_list_tokens(asset_public_key, state.inner()).await
+}
+
+pub(crate) async fn inner_tip004_mint_token(
+  asset_public_key: String,
+  token: String,
+  state: &ConcurrentAppState,
+) -> Result<(), Status> {
   let _wallet_id = state
     .current_wallet_id()
     .await
@@ -69,10 +85,9 @@ pub(crate) async fn tip004_mint_token(
   Ok(())
 }
 
-#[tauri::command]
-pub(crate) async fn tip004_list_tokens(
+pub(crate) async fn inner_tip004_list_tokens(
   asset_public_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<Vec<(Tip721TokenRow, AddressRow)>, Status> {
   let wallet_id = state
     .current_wallet_id()

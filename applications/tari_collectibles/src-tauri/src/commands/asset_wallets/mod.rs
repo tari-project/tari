@@ -46,6 +46,62 @@ pub(crate) async fn asset_wallets_create(
   state: tauri::State<'_, ConcurrentAppState>,
   app: tauri::AppHandle,
 ) -> Result<(), Status> {
+  inner_asset_wallets_create(asset_public_key, state.inner(), app).await
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_get_balance(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<u64, Status> {
+  inner_asset_wallets_get_balance(asset_public_key, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_get_unspent_amounts(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<u64>, Status> {
+  inner_asset_wallets_get_unspent_amounts(state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_list(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<AssetRow>, Status> {
+  inner_asset_wallets_list(state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_create_address(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<AddressRow, Status> {
+  inner_asset_wallets_create_address(asset_public_key, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_get_latest_address(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<AddressRow, Status> {
+  inner_asset_wallets_get_latest_address(asset_public_key, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn asset_wallets_send_to(
+  asset_public_key: String,
+  amount: u64,
+  to_address: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  inner_asset_wallets_send_to(asset_public_key, amount, to_address, state.inner()).await
+}
+
+pub(crate) async fn inner_asset_wallets_create(
+  asset_public_key: String,
+  state: &ConcurrentAppState,
+  app: tauri::AppHandle,
+) -> Result<(), Status> {
   let wallet_id = state
     .current_wallet_id()
     .await
@@ -119,10 +175,9 @@ pub(crate) async fn asset_wallets_create(
   Ok(())
 }
 
-#[tauri::command]
-pub(crate) async fn asset_wallets_get_balance(
+pub(crate) async fn inner_asset_wallets_get_balance(
   asset_public_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<u64, Status> {
   debug!(
     target: LOG_TARGET,
@@ -175,9 +230,8 @@ pub(crate) async fn asset_wallets_get_balance(
   Ok(total)
 }
 
-#[tauri::command]
-pub(crate) async fn asset_wallets_get_unspent_amounts(
-  state: tauri::State<'_, ConcurrentAppState>,
+pub(crate) async fn inner_asset_wallets_get_unspent_amounts(
+  state: &ConcurrentAppState,
 ) -> Result<Vec<u64>, Status> {
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -185,9 +239,8 @@ pub(crate) async fn asset_wallets_get_unspent_amounts(
   Ok(result.amount)
 }
 
-#[tauri::command]
-pub(crate) async fn asset_wallets_list(
-  state: tauri::State<'_, ConcurrentAppState>,
+pub(crate) async fn inner_asset_wallets_list(
+  state: &ConcurrentAppState,
 ) -> Result<Vec<AssetRow>, Status> {
   let wallet_id = state
     .current_wallet_id()
@@ -202,10 +255,9 @@ pub(crate) async fn asset_wallets_list(
   Ok(result)
 }
 
-#[tauri::command]
-pub(crate) async fn asset_wallets_create_address(
+pub(crate) async fn inner_asset_wallets_create_address(
   asset_public_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<AddressRow, Status> {
   let wallet_id = state
     .current_wallet_id()
@@ -241,10 +293,9 @@ pub(crate) async fn asset_wallets_create_address(
   Ok(address)
 }
 
-#[tauri::command]
-pub(crate) async fn asset_wallets_get_latest_address(
+pub(crate) async fn inner_asset_wallets_get_latest_address(
   asset_public_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<AddressRow, Status> {
   let wallet_id = state
     .current_wallet_id()
@@ -266,12 +317,11 @@ pub(crate) async fn asset_wallets_get_latest_address(
   )
 }
 
-#[tauri::command]
-pub(crate) async fn asset_wallets_send_to(
+pub(crate) async fn inner_asset_wallets_send_to(
   asset_public_key: String,
   amount: u64,
   to_address: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let wallet_id = state
     .current_wallet_id()
