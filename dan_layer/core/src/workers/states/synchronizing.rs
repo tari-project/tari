@@ -20,14 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryFrom;
+use std::{convert::TryFrom, marker::PhantomData};
 
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_comms::types::CommsPublicKey;
 
 use crate::{
     models::{AssetDefinition, CheckpointOutput},
-    services::{BaseNodeClient, ValidatorNodeClientFactory},
+    services::{BaseNodeClient, ServiceSpecification},
     storage::{state::StateDbUnitOfWorkReader, DbFactory},
     workers::{state_sync::StateSynchronizer, states::ConsensusWorkerStateEvent},
     DigitalAssetError,
@@ -35,28 +35,25 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::starting";
 
-#[derive(Debug, Clone, Default)]
-pub struct Synchronizing;
+#[derive(Debug, Clone)]
+pub struct Synchronizing<TSpecification> {
+    _spec: PhantomData<TSpecification>,
+}
 
-impl Synchronizing {
+impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<TSpecification> {
     pub fn new() -> Self {
-        Self
+        Default::default()
     }
 
     #[allow(unreachable_code, unused_variables)]
-    pub async fn next_event<TDbFactory, TBaseNodeClient, TValidatorNodeClientFactory>(
+    pub async fn next_event(
         &mut self,
-        base_node_client: &mut TBaseNodeClient,
+        base_node_client: &mut TSpecification::BaseNodeClient,
         asset_definition: &AssetDefinition,
-        db_factory: &TDbFactory,
-        validator_node_client_factory: &TValidatorNodeClientFactory,
-        our_address: &TValidatorNodeClientFactory::Addr,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>
-    where
-        TDbFactory: DbFactory,
-        TBaseNodeClient: BaseNodeClient,
-        TValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = PublicKey>,
-    {
+        db_factory: &TSpecification::DbFactory,
+        validator_node_client_factory: &TSpecification::ValidatorNodeClientFactory,
+        our_address: &TSpecification::Addr,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         // TODO: The collectibles app does not post a valid initial merkle root for the initial asset checkpoint. So
         // this is always out-of-sync.
         // return Ok(ConsensusWorkerStateEvent::Synchronized);
@@ -115,5 +112,11 @@ impl Synchronizing {
         synchronizer.sync().await?;
 
         Ok(ConsensusWorkerStateEvent::Synchronized)
+    }
+}
+
+impl<TSpecification: ServiceSpecification> Default for Synchronizing<TSpecification> {
+    fn default() -> Self {
+        Self { _spec: PhantomData }
     }
 }

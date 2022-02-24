@@ -30,7 +30,7 @@ use crate::{
     models::{domain_events::ConsensusWorkerDomainEvent, AssetDefinition, ConsensusWorkerState, View, ViewId},
     services::{CheckpointManager, CommitteeManager, EventsPublisher, PayloadProvider, ServiceSpecification},
     storage::{
-        chain::ChainDbUnitOfWork,
+        chain::{ChainDb, ChainDbUnitOfWork},
         state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader},
         DbFactory,
     },
@@ -116,6 +116,17 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
     ) -> Result<(), DigitalAssetError> {
+        let chain_db = self
+            .db_factory
+            .get_or_create_chain_db(&self.asset_definition.public_key)?;
+        self.current_view_id = chain_db
+            .get_tip_node()?
+            .map(|n| ViewId(n.height() as u64))
+            .unwrap_or_else(|| ViewId(0));
+        info!(
+            target: LOG_TARGET,
+            "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.public_key, self.current_view_id
+        );
         let starting_view = self.current_view_id;
         loop {
             if let Some(max) = max_views_to_process {
@@ -123,7 +134,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                     break;
                 }
             }
-            let next_event = self.next_state_event(&shutdown).await?;
+            let next_event = self.next_state_event(&chain_db, &shutdown).await?;
             if next_event.must_shutdown() {
                 info!(
                     target: LOG_TARGET,
@@ -133,7 +144,10 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                 break;
             }
             let (from, to) = self.transition(next_event)?;
-            debug!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", from, to);
+            debug!(
+                target: LOG_TARGET,
+                "Transitioning from {:?} to {:?} ({})", from, to, self.current_view_id
+            );
 
             self.events_publisher
                 .publish(ConsensusWorkerDomainEvent::StateChanged { from, to });
@@ -144,12 +158,13 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
 
     async fn next_state_event(
         &mut self,
+        chain_db: &ChainDb<TSpecification::ChainDbBackendAdapter>,
         shutdown: &ShutdownSignal,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         use ConsensusWorkerState::*;
         match &mut self.state {
             Starting => {
-                states::Starting::default()
+                states::Starting::<TSpecification>::new()
                     .next_event(
                         &mut self.base_node_client,
                         &self.asset_definition,
@@ -160,7 +175,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                     .await
             },
             Synchronizing => {
-                states::Synchronizing::new()
+                states::Synchronizing::<TSpecification>::new()
                     .next_event(
                         &mut self.base_node_client,
                         &self.asset_definition,
@@ -171,18 +186,17 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                     .await
             },
             Prepare => {
-                let db = self
-                    .db_factory
-                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
-                let mut unit_of_work = db.new_unit_of_work();
+                let mut unit_of_work = chain_db.new_unit_of_work();
                 let mut state_tx = self
                     .db_factory
                     .get_state_db(&self.asset_definition.public_key)?
                     .ok_or(DigitalAssetError::MissingDatabase)?
                     .new_unit_of_work(self.current_view_id.as_u64());
 
-                let mut prepare =
-                    states::Prepare::new(self.node_address.clone(), self.asset_definition.public_key.clone());
+                let mut prepare = states::Prepare::<TSpecification>::new(
+                    self.node_address.clone(),
+                    self.asset_definition.public_key.clone(),
+                );
                 let res = prepare
                     .next_event(
                         &self.get_current_view()?,
@@ -206,11 +220,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                 Ok(res)
             },
             PreCommit => {
-                let db = self
-                    .db_factory
-                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
-                let mut unit_of_work = db.new_unit_of_work();
-                let mut state = states::PreCommitState::new(
+                let mut unit_of_work = chain_db.new_unit_of_work();
+                let mut state = states::PreCommitState::<TSpecification>::new(
                     self.node_address.clone(),
                     self.committee_manager.current_committee()?.clone(),
                     self.asset_definition.public_key.clone(),
@@ -230,11 +241,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             },
 
             Commit => {
-                let db = self
-                    .db_factory
-                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
-                let mut unit_of_work = db.new_unit_of_work();
-                let mut state = states::CommitState::new(
+                let mut unit_of_work = chain_db.new_unit_of_work();
+                let mut state = states::CommitState::<TSpecification>::new(
                     self.node_address.clone(),
                     self.asset_definition.public_key.clone(),
                     self.committee_manager.current_committee()?.clone(),
@@ -255,11 +263,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                 Ok(res)
             },
             Decide => {
-                let db = self
-                    .db_factory
-                    .get_or_create_chain_db(&self.asset_definition.public_key)?;
-                let mut unit_of_work = db.new_unit_of_work();
-                let mut state = states::DecideState::new(
+                let mut unit_of_work = chain_db.new_unit_of_work();
+                let mut state = states::DecideState::<TSpecification>::new(
                     self.node_address.clone(),
                     self.asset_definition.public_key.clone(),
                     self.committee_manager.current_committee()?.clone(),
@@ -300,7 +305,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                     self.payload_provider.get_payload_queue().await,
                 );
                 self.state_db_unit_of_work = None;
-                let mut state = states::NextViewState::default();
+                let mut state = states::NextViewState::<TSpecification>::new();
                 state
                     .next_event(
                         &self.get_current_view()?,
@@ -335,8 +340,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             (_, NotPartOfCommittee) => Idle,
             (Idle, TimedOut) => Starting,
             (_, TimedOut) => {
-                warn!(target: LOG_TARGET, "State timed out");
-                self.current_view_id = self.current_view_id.saturating_sub(1.into());
+                warn!(target: LOG_TARGET, "State timed out for {}", self.current_view_id);
                 NextView
             },
             (NextView, NewView { new_view }) => {
