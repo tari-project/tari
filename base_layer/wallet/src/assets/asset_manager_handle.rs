@@ -24,7 +24,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, FixedHash, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFeatures, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{OutputFeatures, TemplateParameter, Transaction};
 use tari_service_framework::{reply_channel::SenderService, Service};
 
 use crate::{
@@ -73,16 +73,15 @@ impl AssetManagerHandle {
 
     pub async fn create_initial_asset_checkpoint(
         &mut self,
-        public_key: &PublicKey,
+        asset_public_key: &PublicKey,
         merkle_root: FixedHash,
-        committee_public_keys: &[PublicKey],
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
             .call(AssetManagerRequest::CreateInitialCheckpoint {
-                asset_public_key: Box::new(public_key.clone()),
+                asset_public_key: Box::new(asset_public_key.clone()),
                 merkle_root,
-                committee_public_keys: committee_public_keys.to_vec(),
+                committee_public_keys: Vec::new(),
             })
             .await??
         {
@@ -99,7 +98,6 @@ impl AssetManagerHandle {
         public_key: &PublicKey,
         unique_id: &[u8],
         merkle_root: FixedHash,
-        committee_public_keys: &[PublicKey],
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
@@ -107,13 +105,36 @@ impl AssetManagerHandle {
                 asset_public_key: Box::new(public_key.clone()),
                 merkle_root,
                 unique_id: unique_id.to_vec(),
-                committee_public_keys: committee_public_keys.to_vec(),
+                committee_public_keys: Vec::new(),
             })
             .await??
         {
             AssetManagerResponse::CreateFollowOnCheckpoint { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_follow_on_asset_checkpoint".to_string(),
+                api: "AssetManagerService".to_string(),
+            }),
+        }
+    }
+
+    pub async fn create_committee_definition(
+        &mut self,
+        public_key: &PublicKey,
+        committee_public_keys: &[PublicKey],
+        effective_sidechain_height: u64,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        match self
+            .handle
+            .call(AssetManagerRequest::CreateCommitteeCheckpoint {
+                asset_public_key: Box::new(public_key.clone()),
+                committee_public_keys: committee_public_keys.to_vec(),
+                effective_sidechain_height,
+            })
+            .await??
+        {
+            AssetManagerResponse::CreateCommitteeCheckpoint { transaction, tx_id } => Ok((tx_id, *transaction)),
+            _ => Err(WalletError::UnexpectedApiResponse {
+                method: "create_committee_definition".to_string(),
                 api: "AssetManagerService".to_string(),
             }),
         }

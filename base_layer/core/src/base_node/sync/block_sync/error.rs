@@ -20,8 +20,11 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use tari_comms::{
     connectivity::ConnectivityError,
+    peer_manager::NodeId,
     protocol::rpc::{RpcError, RpcStatus},
 };
 
@@ -43,10 +46,16 @@ pub enum BlockSyncError {
     NoSyncPeers,
     #[error("Block validation failed: {0}")]
     ValidationError(#[from] ValidationError),
-    #[error("Failed to ban peer: {0}")]
-    FailedToBan(ConnectivityError),
     #[error("Failed to construct valid chain block")]
     FailedToConstructChainBlock,
     #[error("Peer violated the block sync protocol: {0}")]
     ProtocolViolation(String),
+    #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
+    MaxLatencyExceeded {
+        peer: NodeId,
+        latency: Duration,
+        max_latency: Duration,
+    },
+    #[error("All sync peers exceeded max allowed latency")]
+    AllSyncPeersExceedLatency,
 }

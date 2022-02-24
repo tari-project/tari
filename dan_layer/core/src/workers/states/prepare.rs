@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use std::{collections::HashMap, marker::PhantomData};
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -29,18 +29,18 @@ use tokio::time::{sleep, Duration};
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::{
+        AssetDefinition,
         Committee,
         HotStuffMessage,
         HotStuffMessageType,
         HotStuffTreeNode,
-        Payload,
         QuorumCertificate,
         TreeNodeHash,
         View,
         ViewId,
     },
     services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        infrastructure_services::{InboundConnectionService, OutboundService},
         PayloadProcessor,
         PayloadProvider,
         SigningService,
@@ -51,24 +51,10 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::prepare";
 
-pub struct Prepare<
-    TInboundConnectionService,
-    TOutboundService,
-    TAddr,
-    TSigningService,
-    TPayloadProvider,
-    TPayload,
-    TPayloadProcessor,
-> where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TSigningService: SigningService<TAddr>,
-    TPayload: Payload,
-    TPayloadProvider: PayloadProvider<TPayload>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
+pub struct Prepare<TInboundConnectionService, TOutboundService, TSigningService, TPayloadProvider, TPayloadProcessor>
+where TOutboundService: OutboundService
 {
-    node_id: TAddr,
+    node_id: TOutboundService::Addr,
     asset_public_key: PublicKey,
     // bft_service: Box<dyn BftReplicaService>,
     // TODO remove this hack
@@ -77,37 +63,20 @@ pub struct Prepare<
     phantom_outbound: PhantomData<TOutboundService>,
     phantom_signing: PhantomData<TSigningService>,
     phantom_processor: PhantomData<TPayloadProcessor>,
-    received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
+    received_new_view_messages: HashMap<TOutboundService::Addr, HotStuffMessage<TOutboundService::Payload>>,
 }
 
-impl<
-        TInboundConnectionService,
-        TOutboundService,
-        TAddr,
-        TSigningService,
-        TPayloadProvider,
-        TPayload,
-        TPayloadProcessor,
-    >
-    Prepare<
-        TInboundConnectionService,
-        TOutboundService,
-        TAddr,
-        TSigningService,
-        TPayloadProvider,
-        TPayload,
-        TPayloadProcessor,
-    >
+impl<TInboundConnectionService, TOutboundService, TSigningService, TPayloadProvider, TPayloadProcessor>
+    Prepare<TInboundConnectionService, TOutboundService, TSigningService, TPayloadProvider, TPayloadProcessor>
 where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload> + Send,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TSigningService: SigningService<TAddr>,
-    TPayload: Payload,
-    TPayloadProvider: PayloadProvider<TPayload>,
-    TPayloadProcessor: PayloadProcessor<TPayload>,
+    TOutboundService: OutboundService,
+    TInboundConnectionService:
+        InboundConnectionService<Addr = TOutboundService::Addr, Payload = TOutboundService::Payload> + Send,
+    TSigningService: SigningService<TOutboundService::Addr>,
+    TPayloadProvider: PayloadProvider<TOutboundService::Payload>,
+    TPayloadProcessor: PayloadProcessor<TOutboundService::Payload>,
 {
-    pub fn new(node_id: TAddr, asset_public_key: PublicKey) -> Self {
+    pub fn new(node_id: TOutboundService::Addr, asset_public_key: PublicKey) -> Self {
         Self {
             node_id,
             asset_public_key,
@@ -120,9 +89,8 @@ where
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub async fn next_event<
-        TChainStorageService: ChainStorageService<TPayload>,
+        TChainStorageService: ChainStorageService<TOutboundService::Payload>,
         TUnitOfWork: ChainDbUnitOfWork,
         TStateDbUnitOfWork: StateDbUnitOfWork,
         TDbFactory: DbFactory,
@@ -130,7 +98,8 @@ where
         &mut self,
         current_view: &View,
         timeout: Duration,
-        committee: &Committee<TAddr>,
+        asset_definition: &AssetDefinition,
+        committee: &Committee<TOutboundService::Addr>,
         inbound_services: &TInboundConnectionService,
         outbound_service: &mut TOutboundService,
         payload_provider: &mut TPayloadProvider,
@@ -143,35 +112,67 @@ where
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
 
-        let started = Instant::now();
         let mut chain_tx = chain_tx;
         let next_event_result;
+        let timeout = sleep(timeout);
+        futures::pin_mut!(timeout);
+        if current_view.is_leader() {
+            debug!(
+                target: LOG_TARGET,
+                "Waiting for NewView (view_id = {}) messages",
+                current_view.view_id()
+            );
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Waiting for Prepare (view_id = {}) messages",
+                current_view.view_id()
+            );
+        }
         loop {
             tokio::select! {
-                r = inbound_services.wait_for_message(HotStuffMessageType::NewView, current_view.view_id() - 1.into())  => {
+                r = inbound_services.wait_for_message(HotStuffMessageType::NewView, current_view.view_id())  => {
                     let (from, message) = r?;
-                    debug!(target: LOG_TARGET, "Received leader message");
+                    debug!(target: LOG_TARGET, "Received leader message (is_leader = {:?})", current_view.is_leader());
                     if current_view.is_leader() {
-                        if let Some(result) = self.process_leader_message(current_view, message.clone(),
-                            &from, committee, payload_provider, payload_processor, outbound_service, db_factory).await?{
-                           next_event_result = result;
+                        if let Some(result) = self.process_leader_message(
+                            current_view,
+                            message.clone(),
+                            &from,
+                            asset_definition,
+                            committee,
+                            payload_provider,
+                            payload_processor,
+                            outbound_service,
+                            db_factory,
+                        ).await? {
+                            next_event_result = result;
                             break;
                         }
-
                     }
                 },
                 r = inbound_services.wait_for_message(HotStuffMessageType::Prepare, current_view.view_id()) => {
                     let (from, message) = r?;
                     debug!(target: LOG_TARGET, "Received replica message");
-                    if let Some(result) = self.process_replica_message(&message, current_view, &from,
-                        committee.leader_for_view(current_view.view_id),  outbound_service, signing_service,
-                    payload_processor, payload_provider, &mut chain_tx, chain_storage_service, state_tx).await? {
+                    if let Some(result) = self.process_replica_message(
+                        &message,
+                        current_view,
+                        &from,
+                        committee.leader_for_view(current_view.view_id),
+                        outbound_service,
+                        signing_service,
+                        payload_processor,
+                        payload_provider,
+                        &mut chain_tx,
+                        chain_storage_service,
+                        state_tx,
+                    ).await? {
                         next_event_result = result;
                         break;
                     }
 
                 },
-                _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
+                _ = &mut timeout => {
                     next_event_result = ConsensusWorkerStateEvent::TimedOut;
                     break;
                 }
@@ -186,9 +187,10 @@ where
     async fn process_leader_message<TDbFactory: DbFactory>(
         &mut self,
         current_view: &View,
-        message: HotStuffMessage<TPayload>,
-        sender: &TAddr,
-        committee: &Committee<TAddr>,
+        message: HotStuffMessage<TOutboundService::Payload>,
+        sender: &TOutboundService::Addr,
+        asset_definition: &AssetDefinition,
+        committee: &Committee<TOutboundService::Addr>,
         payload_provider: &TPayloadProvider,
         payload_processor: &mut TPayloadProcessor,
         outbound: &mut TOutboundService,
@@ -220,13 +222,14 @@ where
 
             let temp_state_tx = db_factory
                 .get_or_create_state_db(&self.asset_public_key)?
-                .new_unit_of_work();
+                .new_unit_of_work(current_view.view_id.as_u64());
             let proposal = self
                 .create_proposal(
                     *high_qc.node_hash(),
+                    asset_definition,
                     payload_provider,
                     payload_processor,
-                    0,
+                    current_view.view_id,
                     temp_state_tx,
                 )
                 .await?;
@@ -236,7 +239,7 @@ where
         } else {
             debug!(
                 target: LOG_TARGET,
-                "[PREPARE] Consensus has NOT YET been reached with {:?} out of {} votes",
+                "[PREPARE] Consensus has NOT YET been reached with {} out of {} votes",
                 self.received_new_view_messages.len(),
                 committee.len()
             );
@@ -246,14 +249,14 @@ where
 
     async fn process_replica_message<
         TUnitOfWork: ChainDbUnitOfWork,
-        TChainStorageService: ChainStorageService<TPayload>,
+        TChainStorageService: ChainStorageService<TOutboundService::Payload>,
         TStateDbUnitOfWork: StateDbUnitOfWork,
     >(
         &self,
-        message: &HotStuffMessage<TPayload>,
+        message: &HotStuffMessage<TOutboundService::Payload>,
         current_view: &View,
-        from: &TAddr,
-        view_leader: &TAddr,
+        from: &TOutboundService::Addr,
+        view_leader: &TOutboundService::Addr,
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
         payload_processor: &mut TPayloadProcessor,
@@ -276,46 +279,63 @@ where
             return Ok(None);
         }
         let node = message.node().unwrap();
-        if let Some(justify) = message.justify() {
-            if self.does_extend(node, justify.node_hash()) {
-                if !self.is_safe_node(node, justify, chain_tx)? {
-                    unimplemented!("Node is not safe")
-                }
+        let justify = message
+            .justify()
+            .ok_or(DigitalAssetError::PreparePhaseNoQuorumCertificate)?;
 
-                let res = payload_processor
-                    .process_payload(node.payload(), state_tx.clone())
-                    .await?;
-                if &res == node.state_root() {
-                    chain_storage_service
-                        .add_node::<TUnitOfWork>(node, chain_tx.clone())
-                        .await?;
-
-                    payload_provider.reserve_payload(node.payload(), node.hash()).await?;
-                    self.send_vote_to_leader(
-                        *node.hash(),
-                        outbound,
-                        view_leader,
-                        current_view.view_id,
-                        signing_service,
-                    )
-                    .await?;
-                    Ok(Some(ConsensusWorkerStateEvent::Prepared))
-                } else {
-                    warn!(
-                        target: LOG_TARGET,
-                        "Calculated state root did not match the state root provided by the leader: Expected: {:?} \
-                         Leader provided:{:?}",
-                        res,
-                        node.state_root()
-                    );
-                    Ok(None)
-                }
-            } else {
-                unimplemented!("Did not extend from qc.justify.node")
+        // The genesis does not extend any node
+        if !current_view.view_id().is_genesis() {
+            if !self.does_extend(node, justify.node_hash()) {
+                return Err(DigitalAssetError::PreparePhaseCertificateDoesNotExtendNode);
             }
-        } else {
-            unimplemented!("unexpected Null justify ")
+
+            if !self.is_safe_node(node, justify, chain_tx)? {
+                return Err(DigitalAssetError::PreparePhaseNodeNotSafe);
+            }
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "[PREPARE] Processing prepared payload for view {}",
+            current_view.view_id()
+        );
+
+        let state_root = payload_processor
+            .process_payload(node.payload(), state_tx.clone())
+            .await?;
+
+        if state_root != *node.state_root() {
+            warn!(
+                target: LOG_TARGET,
+                "Calculated state root did not match the state root provided by the leader: Expected: {:?} Leader \
+                 provided:{:?}",
+                state_root,
+                node.state_root()
+            );
+            return Ok(None);
+        }
+
+        debug!(
+            target: LOG_TARGET,
+            "[PREPARE] Merkle root matches payload for view {}. Adding node '{}'",
+            current_view.view_id(),
+            node.hash()
+        );
+
+        chain_storage_service
+            .add_node::<TUnitOfWork>(node, chain_tx.clone())
+            .await?;
+
+        payload_provider.reserve_payload(node.payload(), node.hash()).await?;
+        self.send_vote_to_leader(
+            *node.hash(),
+            outbound,
+            view_leader,
+            current_view.view_id,
+            signing_service,
+        )
+        .await?;
+        Ok(Some(ConsensusWorkerStateEvent::Prepared))
     }
 
     fn find_highest_qc(&self) -> QuorumCertificate {
@@ -339,26 +359,39 @@ where
     async fn create_proposal<TStateDbUnitOfWork: StateDbUnitOfWork>(
         &self,
         parent: TreeNodeHash,
+        asset_definition: &AssetDefinition,
         payload_provider: &TPayloadProvider,
         payload_processor: &mut TPayloadProcessor,
-        height: u32,
+        view_id: ViewId,
         state_db: TStateDbUnitOfWork,
-    ) -> Result<HotStuffTreeNode<TPayload>, DigitalAssetError> {
+    ) -> Result<HotStuffTreeNode<TOutboundService::Payload>, DigitalAssetError> {
         debug!(target: LOG_TARGET, "Creating new proposal");
 
         // TODO: Artificial delay here to set the block time
-        sleep(Duration::from_secs(10)).await;
+        sleep(Duration::from_secs(1)).await;
 
-        let payload = payload_provider.create_payload().await?;
-        let state_root = payload_processor.process_payload(&payload, state_db).await?;
-        Ok(HotStuffTreeNode::from_parent(parent, payload, state_root, height))
+        if view_id.is_genesis() {
+            let payload = payload_provider.create_genesis_payload(asset_definition);
+            let state_root = payload_processor.process_payload(&payload, state_db).await?;
+            Ok(HotStuffTreeNode::genesis(payload, state_root))
+        } else {
+            let payload = payload_provider.create_payload().await?;
+
+            let state_root = payload_processor.process_payload(&payload, state_db).await?;
+            Ok(HotStuffTreeNode::from_parent(
+                parent,
+                payload,
+                state_root,
+                view_id.as_u64() as u32,
+            ))
+        }
     }
 
     async fn broadcast_proposal(
         &self,
         outbound: &mut TOutboundService,
-        committee: &Committee<TAddr>,
-        proposal: HotStuffTreeNode<TPayload>,
+        committee: &Committee<TOutboundService::Addr>,
+        proposal: HotStuffTreeNode<TOutboundService::Payload>,
         high_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
@@ -368,13 +401,13 @@ where
             .await
     }
 
-    fn does_extend(&self, node: &HotStuffTreeNode<TPayload>, from: &TreeNodeHash) -> bool {
+    fn does_extend(&self, node: &HotStuffTreeNode<TOutboundService::Payload>, from: &TreeNodeHash) -> bool {
         from == node.parent()
     }
 
     fn is_safe_node<TUnitOfWork: ChainDbUnitOfWork>(
         &self,
-        node: &HotStuffTreeNode<TPayload>,
+        node: &HotStuffTreeNode<TOutboundService::Payload>,
         quorum_certificate: &QuorumCertificate,
         chain_tx: &mut TUnitOfWork,
     ) -> Result<bool, StorageError> {
@@ -386,7 +419,7 @@ where
         &self,
         node: TreeNodeHash,
         outbound: &mut TOutboundService,
-        view_leader: &TAddr,
+        view_leader: &TOutboundService::Addr,
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {

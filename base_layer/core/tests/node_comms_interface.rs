@@ -42,7 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,

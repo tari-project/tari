@@ -16,12 +16,11 @@ table! {
         status -> Integer,
         message -> Text,
         timestamp -> Timestamp,
-        cancelled -> Integer,
+        cancelled -> Nullable<Integer>,
         direction -> Nullable<Integer>,
         coinbase_block_height -> Nullable<BigInt>,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
-        valid -> Integer,
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
@@ -33,7 +32,10 @@ table! {
 table! {
     contacts (public_key) {
         public_key -> Binary,
+        node_id -> Binary,
         alias -> Text,
+        last_seen -> Nullable<Timestamp>,
+        latency -> Nullable<Integer>,
     }
 }
 

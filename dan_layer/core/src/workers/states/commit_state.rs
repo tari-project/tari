@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use std::{collections::HashMap, marker::PhantomData};
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -28,9 +28,9 @@ use tokio::time::{sleep, Duration};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, TreeNodeHash, View, ViewId},
+    models::{Committee, HotStuffMessage, HotStuffMessageType, QuorumCertificate, TreeNodeHash, View, ViewId},
     services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        infrastructure_services::{InboundConnectionService, OutboundService},
         SigningService,
     },
     storage::chain::ChainDbUnitOfWork,
@@ -40,35 +40,33 @@ use crate::{
 const LOG_TARGET: &str = "tari::dan::workers::states::commit";
 
 // TODO: This is very similar to pre-commit state
-pub struct CommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TSigningService: SigningService<TAddr>,
+pub struct CommitState<TInboundConnectionService, TOutboundService, TSigningService>
+where TOutboundService: OutboundService
 {
-    node_id: TAddr,
+    node_id: TOutboundService::Addr,
     asset_public_key: PublicKey,
-    committee: Committee<TAddr>,
+    committee: Committee<TOutboundService::Addr>,
     phantom_inbound: PhantomData<TInboundConnectionService>,
     phantom_outbound: PhantomData<TOutboundService>,
-    ta: PhantomData<TAddr>,
-    p_p: PhantomData<TPayload>,
+    ta: PhantomData<TOutboundService::Addr>,
+    p_p: PhantomData<TOutboundService::Payload>,
     p_s: PhantomData<TSigningService>,
-    received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
+    received_new_view_messages: HashMap<TOutboundService::Addr, HotStuffMessage<TOutboundService::Payload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
-    CommitState<TAddr, TPayload, TInboundConnectionService, TOutboundService, TSigningService>
+impl<TInboundConnectionService, TOutboundService, TSigningService>
+    CommitState<TInboundConnectionService, TOutboundService, TSigningService>
 where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-    TSigningService: SigningService<TAddr>,
+    TInboundConnectionService:
+        InboundConnectionService<Addr = TOutboundService::Addr, Payload = TOutboundService::Payload>,
+    TOutboundService: OutboundService,
+    TSigningService: SigningService<TOutboundService::Addr>,
 {
-    pub fn new(node_id: TAddr, asset_public_key: PublicKey, committee: Committee<TAddr>) -> Self {
+    pub fn new(
+        node_id: TOutboundService::Addr,
+        asset_public_key: PublicKey,
+        committee: Committee<TOutboundService::Addr>,
+    ) -> Self {
         Self {
             node_id,
             asset_public_key,
@@ -92,37 +90,35 @@ where
         unit_of_work: TUnitOfWork,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
-        let started = Instant::now();
         let mut unit_of_work = unit_of_work;
         let next_event_result;
+        let timeout = sleep(timeout);
+        futures::pin_mut!(timeout);
         loop {
             tokio::select! {
-            r  = inbound_services.wait_for_message(HotStuffMessageType::PreCommit, current_view.view_id()) => {
-                    let (from, message) = r?;
-                 if current_view.is_leader() {
-                           if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
-                     ).await?{
-                              next_event_result = result;
-                               break;
-                           }
-
-                       }
-             },
-             r =  inbound_services.wait_for_qc(HotStuffMessageType::PreCommit, current_view.view_id()) => {
-                    let (from, message) = r?;
-                 let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                       if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
-                           next_event_result = result;
-                           break;
-                       }
-
-               }
-               _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                             // TODO: perhaps this should be from the time the state was entered
-                             next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                             break;
-                         }
-                     }
+               r  = inbound_services.wait_for_message(HotStuffMessageType::PreCommit, current_view.view_id()) => {
+               let (from, message) = r?;
+               if current_view.is_leader() {
+                  if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service).await?{
+                     next_event_result = result;
+                      break;
+                  }
+              }
+            },
+            r =  inbound_services.wait_for_qc(HotStuffMessageType::PreCommit, current_view.view_id()) => {
+                let (from, message) = r?;
+                let leader = self.committee.leader_for_view(current_view.view_id).clone();
+                if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader,  outbound_service, signing_service, &mut unit_of_work).await? {
+                    next_event_result = result;
+                    break;
+                }
+            }
+            _ = &mut timeout =>  {
+                  // TODO: perhaps this should be from the time the state was entered
+                  next_event_result = ConsensusWorkerStateEvent::TimedOut;
+                  break;
+              }
+            }
         }
         Ok(next_event_result)
     }
@@ -130,8 +126,8 @@ where
     async fn process_leader_message(
         &mut self,
         current_view: &View,
-        message: HotStuffMessage<TPayload>,
-        sender: &TAddr,
+        message: HotStuffMessage<TOutboundService::Payload>,
+        sender: &TOutboundService::Addr,
         outbound: &mut TOutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if !message.matches(HotStuffMessageType::PreCommit, current_view.view_id) {
@@ -212,10 +208,10 @@ where
 
     async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
-        message: &HotStuffMessage<TPayload>,
+        message: &HotStuffMessage<TOutboundService::Payload>,
         current_view: &View,
-        from: &TAddr,
-        view_leader: &TAddr,
+        from: &TOutboundService::Addr,
+        view_leader: &TOutboundService::Addr,
         outbound: &mut TOutboundService,
         signing_service: &TSigningService,
         unit_of_work: &mut TUnitOfWork,
@@ -260,7 +256,7 @@ where
         &self,
         node: TreeNodeHash,
         outbound: &mut TOutboundService,
-        view_leader: &TAddr,
+        view_leader: &TOutboundService::Addr,
         view_number: ViewId,
         signing_service: &TSigningService,
     ) -> Result<(), DigitalAssetError> {

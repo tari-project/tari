@@ -37,7 +37,7 @@ impl BaseNodeClient {
   pub async fn connect(endpoint: String) -> Result<Self, CollectiblesError> {
     let client = grpc::base_node_client::BaseNodeClient::connect(endpoint.clone())
       .await
-      .map_err(|err| CollectiblesError::ClientConnectionError {
+      .map_err(|err| CollectiblesError::ClientConnection {
         client: "wallet",
         address: endpoint,
         error: err.to_string(),
@@ -57,14 +57,14 @@ impl BaseNodeClient {
       .list_asset_registrations(request)
       .await
       .map(|response| response.into_inner())
-      .map_err(|source| CollectiblesError::ClientRequestError {
+      .map_err(|source| CollectiblesError::ClientRequest {
         request: "list_asset_registrations".to_string(),
         source,
       })?;
 
     let mut assets = vec![];
     while let Some(result) = stream.next().await {
-      let asset = result.map_err(|source| CollectiblesError::ClientRequestError {
+      let asset = result.map_err(|source| CollectiblesError::ClientRequest {
         request: "list_asset_registrations".to_string(),
         source,
       })?;
@@ -87,7 +87,7 @@ impl BaseNodeClient {
       .get_asset_metadata(request)
       .await
       .map(|response| response.into_inner())
-      .map_err(|s| CollectiblesError::ClientRequestError {
+      .map_err(|s| CollectiblesError::ClientRequest {
         request: "get_asset_metadata".to_string(),
         source: s,
       })?;

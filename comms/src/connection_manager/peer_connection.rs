@@ -68,7 +68,6 @@ const LOG_TARGET: &str = "comms::connection_manager::peer_connection";
 
 static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-#[allow(clippy::too_many_arguments)]
 pub fn create(
     connection: Yamux,
     peer_addr: Multiaddr,
@@ -330,7 +329,6 @@ struct PeerConnectionActor {
 }
 
 impl PeerConnectionActor {
-    #[allow(clippy::too_many_arguments)]
     fn new(
         id: ConnectionId,
         peer_node_id: NodeId,

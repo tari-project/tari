@@ -25,8 +25,9 @@ use std::{
     sync::Arc,
 };
 
+use chrono::NaiveDateTime;
 use log::*;
-use tari_comms::types::CommsPublicKey;
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 
 use crate::contacts_service::error::ContactsServiceStorageError;
 
@@ -36,6 +37,26 @@ const LOG_TARGET: &str = "wallet::contacts_service::database";
 pub struct Contact {
     pub alias: String,
     pub public_key: CommsPublicKey,
+    pub node_id: NodeId,
+    pub last_seen: Option<NaiveDateTime>,
+    pub latency: Option<u32>,
+}
+
+impl Contact {
+    pub fn new(
+        alias: String,
+        public_key: CommsPublicKey,
+        last_seen: Option<NaiveDateTime>,
+        latency: Option<u32>,
+    ) -> Self {
+        Self {
+            alias,
+            public_key: public_key.clone(),
+            node_id: NodeId::from_key(&public_key),
+            last_seen,
+            latency,
+        }
+    }
 }
 
 /// This trait defines the functionality that a database backend need to provide for the Contacts Service
@@ -49,20 +70,25 @@ pub trait ContactsBackend: Send + Sync + Clone {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
     Contact(CommsPublicKey),
+    ContactId(NodeId),
     Contacts,
 }
 
 pub enum DbValue {
     Contact(Box<Contact>),
     Contacts(Vec<Contact>),
+    PublicKey(Box<CommsPublicKey>),
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum DbKeyValuePair {
     Contact(CommsPublicKey, Contact),
+    LastSeen(NodeId, NaiveDateTime, Option<i32>),
 }
 
 pub enum WriteOperation {
     Upsert(Box<DbKeyValuePair>),
+    UpdateLastSeen(Box<DbKeyValuePair>),
     Remove(DbKey),
 }
 
@@ -131,6 +157,34 @@ where T: ContactsBackend + 'static
         Ok(())
     }
 
+    pub async fn update_contact_last_seen(
+        &self,
+        node_id: &NodeId,
+        last_seen: NaiveDateTime,
+        latency: Option<u32>,
+    ) -> Result<CommsPublicKey, ContactsServiceStorageError> {
+        let db_clone = self.db.clone();
+        let node_id_clone = node_id.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            db_clone.write(WriteOperation::UpdateLastSeen(Box::new(DbKeyValuePair::LastSeen(
+                node_id_clone,
+                last_seen,
+                latency.map(|val| val as i32),
+            ))))
+        })
+        .await
+        .map_err(|err| ContactsServiceStorageError::BlockingTaskSpawnError(err.to_string()))
+        .and_then(|inner_result| inner_result)?
+        .ok_or_else(|| ContactsServiceStorageError::ValueNotFound(DbKey::ContactId(node_id.clone())))?;
+        match result {
+            DbValue::PublicKey(k) => Ok(*k),
+            _ => Err(ContactsServiceStorageError::UnexpectedResult(
+                "Incorrect response from backend.".to_string(),
+            )),
+        }
+    }
+
     pub async fn remove_contact(&self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceStorageError> {
         let db_clone = self.db.clone();
         let pub_key_clone = pub_key.clone();
@@ -143,7 +197,7 @@ where T: ContactsBackend + 'static
 
         match result {
             DbValue::Contact(c) => Ok(*c),
-            DbValue::Contacts(_) => Err(ContactsServiceStorageError::UnexpectedResult(
+            DbValue::Contacts(_) | DbValue::PublicKey(_) => Err(ContactsServiceStorageError::UnexpectedResult(
                 "Incorrect response from backend.".to_string(),
             )),
         }
@@ -160,6 +214,7 @@ impl Display for DbKey {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         match self {
             DbKey::Contact(c) => f.write_str(&format!("Contact: {:?}", c)),
+            DbKey::ContactId(id) => f.write_str(&format!("Contact: {:?}", id)),
             DbKey::Contacts => f.write_str(&"Contacts".to_string()),
         }
     }
@@ -170,6 +225,7 @@ impl Display for DbValue {
         match self {
             DbValue::Contact(_) => f.write_str(&"Contact".to_string()),
             DbValue::Contacts(_) => f.write_str(&"Contacts".to_string()),
+            DbValue::PublicKey(_) => f.write_str(&"PublicKey".to_string()),
         }
     }
 }

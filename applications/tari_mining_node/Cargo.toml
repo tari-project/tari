@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari mining node implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.27.3"
+version = "0.28.1"
 edition = "2018"
 
 [dependencies]

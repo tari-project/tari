@@ -36,7 +36,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
+use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{
@@ -271,7 +271,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         // TODO: This is a problem because the keymanager state does not have an index
                         // meaning that update round trips to the database can't be found again.
                         // I would suggest changing this to a different pattern for retrieval, perhaps
-                        // only returning the columns that are needed.
+                        // only returning the columns that are needed. #LOGGED
                         Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?))
                     },
                 }
@@ -873,6 +873,13 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         for output in outputs.iter() {
             if output.received_in_tx_id == Some(i64::from(tx_id)) {
+                info!(
+                    target: LOG_TARGET,
+                    "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
+                    output.mined_mmr_position,
+                    tx_id
+                );
                 output.update(
                     UpdateOutput {
                         status: Some(OutputStatus::CancelledInbound),
@@ -881,10 +888,18 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     &conn,
                 )?;
             } else if output.spent_in_tx_id == Some(i64::from(tx_id)) {
+                info!(
+                    target: LOG_TARGET,
+                    "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
+                    output.commitment.as_ref().unwrap_or(&vec![]).to_hex(),
+                    output.mined_mmr_position,
+                    tx_id
+                );
                 output.update(
                     UpdateOutput {
                         status: Some(OutputStatus::Unspent),
                         spent_in_tx_id: Some(None),
+                        mined_in_block: Some(None),
                         ..Default::default()
                     },
                     &conn,
@@ -1289,6 +1304,7 @@ pub struct UpdateOutput {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_in_block: Option<Option<Vec<u8>>>,
 }
 
 #[derive(AsChangeset)]
@@ -1301,6 +1317,7 @@ pub struct UpdateOutputSql {
     script_private_key: Option<Vec<u8>>,
     metadata_signature_nonce: Option<Vec<u8>>,
     metadata_signature_u_key: Option<Vec<u8>>,
+    mined_in_block: Option<Option<Vec<u8>>>,
 }
 
 #[derive(AsChangeset)]
@@ -1323,6 +1340,7 @@ impl From<UpdateOutput> for UpdateOutputSql {
             metadata_signature_u_key: u.metadata_signature_u_key,
             received_in_tx_id: u.received_in_tx_id.map(|o| o.map(i64::from)),
             spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(i64::from)),
+            mined_in_block: u.mined_in_block,
         }
     }
 }
@@ -1675,7 +1693,7 @@ mod test {
     use tari_core::transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction::{OutputFeatures, TransactionInput, UnblindedOutput},
+        transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
     use tari_crypto::script;
@@ -1749,16 +1767,36 @@ mod test {
             o.commit(&conn).unwrap();
         }
 
-        // #todo: fix tests
-        // assert_eq!(OutputSql::index(&conn).unwrap(), outputs);
-        // assert_eq!(
-        //     OutputSql::index_status(OutputStatus::Unspent, &conn).unwrap(),
-        //     outputs_unspent
-        // );
-        // assert_eq!(
-        //     OutputSql::index_status(OutputStatus::Spent, &conn).unwrap(),
-        //     outputs_spent
-        // );
+        assert_eq!(
+            OutputSql::index(&conn)
+                .unwrap()
+                .iter()
+                .map(|o| o.spending_key.clone())
+                .collect::<Vec<Vec<u8>>>(),
+            outputs.iter().map(|o| o.spending_key.clone()).collect::<Vec<Vec<u8>>>()
+        );
+        assert_eq!(
+            OutputSql::index_status(OutputStatus::Unspent, &conn)
+                .unwrap()
+                .iter()
+                .map(|o| o.spending_key.clone())
+                .collect::<Vec<Vec<u8>>>(),
+            outputs_unspent
+                .iter()
+                .map(|o| o.spending_key.clone())
+                .collect::<Vec<Vec<u8>>>()
+        );
+        assert_eq!(
+            OutputSql::index_status(OutputStatus::Spent, &conn)
+                .unwrap()
+                .iter()
+                .map(|o| o.spending_key.clone())
+                .collect::<Vec<Vec<u8>>>(),
+            outputs_spent
+                .iter()
+                .map(|o| o.spending_key.clone())
+                .collect::<Vec<Vec<u8>>>()
+        );
 
         assert_eq!(
             OutputSql::find(&outputs[0].spending_key, &conn).unwrap().spending_key,

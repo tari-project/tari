@@ -22,28 +22,26 @@
 
 use log::*;
 use prost::Message;
+use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip721;
 
-use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
+use crate::{
+    models::InstructionSet,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    DigitalAssetError,
+};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip721_template";
 
-pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
-    method: String,
-    args: &[u8],
-    state_db: &mut TUnitOfWork,
-) -> Result<(), DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
-        "transferfrom" => transfer_from(args, state_db),
-        _ => todo!(),
-    }
+pub fn initial_instructions(_: &TemplateParameter) -> InstructionSet {
+    InstructionSet::empty()
 }
 
-pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
-    method: String,
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
+    method: &str,
     args: &[u8],
-    state_db: &mut TUnitOfWork,
+    state_db: &TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
     match method.to_lowercase().replace("_", "").as_str() {
         "ownerof" => {
@@ -57,13 +55,24 @@ pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
             };
             Ok(Some(response.encode_to_vec()))
         },
-        _ => todo!(),
+        name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
     }
 }
 
-fn owner_of<TUnitOfWork: StateDbUnitOfWork>(
-    token_id: Vec<u8>,
+pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: &str,
+    args: &[u8],
     state_db: &mut TUnitOfWork,
+) -> Result<(), DigitalAssetError> {
+    match method.to_lowercase().replace("_", "").as_str() {
+        "transferfrom" => transfer_from(args, state_db),
+        name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
+    }
+}
+
+fn owner_of<TUnitOfWork: StateDbUnitOfWorkReader>(
+    token_id: Vec<u8>,
+    state_db: &TUnitOfWork,
 ) -> Result<Vec<u8>, DigitalAssetError> {
     state_db
         .get_value("owners", &token_id)?

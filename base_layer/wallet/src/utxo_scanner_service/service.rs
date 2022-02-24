@@ -52,7 +52,7 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // Cache 1 days worth of headers.
 // TODO Determine a better strategy for maintaining a cache. Logarithmic sampling has been suggested but the problem
 // with it is that as you move on to the next block you need to resample say a 100 headers where a simple window like
-// this only samples 1 header per new block. A ticket has been added to the backlog to think about this
+// this only samples 1 header per new block. A ticket has been added to the backlog to think about this #LOGGED
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
 pub struct UtxoScannerService<TBackend>
@@ -70,7 +70,6 @@ where TBackend: WalletBackend + 'static
 impl<TBackend> UtxoScannerService<TBackend>
 where TBackend: WalletBackend + 'static
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         peer_seeds: Vec<CommsPublicKey>,
         retry_limit: usize,

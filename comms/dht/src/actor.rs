@@ -27,15 +27,17 @@
 //!
 //! [DhtRequest]: ./enum.DhtRequest.html
 
-use std::{cmp, fmt, fmt::Display, sync::Arc};
+use std::{cmp, fmt, fmt::Display, sync::Arc, time::Instant};
 
 use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_comms::{
+    connection_manager::ConnectionManagerError,
     connectivity::{ConnectivityError, ConnectivityRequester, ConnectivitySelection},
     peer_manager::{NodeId, NodeIdentity, PeerFeatures, PeerManager, PeerManagerError, PeerQuery, PeerQuerySortBy},
     types::CommsPublicKey,
+    PeerConnection,
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
@@ -56,6 +58,7 @@ use crate::{
     proto::{dht::JoinMessage, envelope::DhtMessageType},
     storage::{DbConnection, DhtDatabase, DhtMetadataKey, StorageError},
     DhtConfig,
+    DhtDiscoveryRequester,
 };
 
 const LOG_TARGET: &str = "comms::dht::actor";
@@ -107,6 +110,10 @@ pub enum DhtRequest {
     SelectPeers(BroadcastStrategy, oneshot::Sender<Vec<NodeId>>),
     GetMetadata(DhtMetadataKey, oneshot::Sender<Result<Option<Vec<u8>>, DhtActorError>>),
     SetMetadata(DhtMetadataKey, Vec<u8>, oneshot::Sender<Result<(), DhtActorError>>),
+    DialDiscoverPeer {
+        public_key: CommsPublicKey,
+        reply: oneshot::Sender<Result<PeerConnection, DhtActorError>>,
+    },
 }
 
 impl Display for DhtRequest {
@@ -130,6 +137,7 @@ impl Display for DhtRequest {
             SetMetadata(key, value, _) => {
                 write!(f, "SetMetadata (key={}, value={} bytes)", key, value.len())
             },
+            DialDiscoverPeer { public_key, .. } => write!(f, "DialDiscoverPeer(public_key={})", public_key),
         }
     }
 }
@@ -199,6 +207,19 @@ impl DhtRequester {
         self.sender.send(DhtRequest::SetMetadata(key, bytes, reply_tx)).await?;
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
     }
+
+    /// Attempt to dial a peer. If the peer is not known, a discovery will be initiated. If discovery succeeds, a
+    /// connection to the peer will be returned.
+    pub async fn dial_or_discover_peer(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        self.sender
+            .send(DhtRequest::DialDiscoverPeer {
+                public_key,
+                reply: reply_tx,
+            })
+            .await?;
+        reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)?
+    }
 }
 
 pub struct DhtActor {
@@ -208,13 +229,13 @@ pub struct DhtActor {
     outbound_requester: OutboundMessageRequester,
     connectivity: ConnectivityRequester,
     config: Arc<DhtConfig>,
+    discovery: DhtDiscoveryRequester,
     shutdown_signal: ShutdownSignal,
     request_rx: mpsc::Receiver<DhtRequest>,
     msg_hash_dedup_cache: DedupCacheDatabase,
 }
 
 impl DhtActor {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         config: Arc<DhtConfig>,
         conn: DbConnection,
@@ -223,6 +244,7 @@ impl DhtActor {
         connectivity: ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<DhtRequest>,
+        discovery: DhtDiscoveryRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
         debug!(
@@ -239,6 +261,7 @@ impl DhtActor {
             peer_manager,
             connectivity,
             node_identity,
+            discovery,
             shutdown_signal,
             request_rx,
         }
@@ -383,6 +406,17 @@ impl DhtActor {
                             let _ = reply_tx.send(Err(err.into()));
                         },
                     }
+                    Ok(())
+                })
+            },
+            DialDiscoverPeer { public_key, reply } => {
+                let connectivity = self.connectivity.clone();
+                let discovery = self.discovery.clone();
+                let peer_manager = self.peer_manager.clone();
+                Box::pin(async move {
+                    let mut task = DiscoveryDialTask::new(connectivity, peer_manager, discovery);
+                    let result = task.run(public_key).await;
+                    let _ = reply.send(result);
                     Ok(())
                 })
             },
@@ -710,12 +744,78 @@ impl DhtActor {
     }
 }
 
+struct DiscoveryDialTask {
+    connectivity: ConnectivityRequester,
+    peer_manager: Arc<PeerManager>,
+    discovery: DhtDiscoveryRequester,
+}
+
+impl DiscoveryDialTask {
+    pub fn new(
+        connectivity: ConnectivityRequester,
+        peer_manager: Arc<PeerManager>,
+        discovery: DhtDiscoveryRequester,
+    ) -> Self {
+        Self {
+            connectivity,
+            peer_manager,
+            discovery,
+        }
+    }
+
+    pub async fn run(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
+        if self.peer_manager.exists(&public_key).await {
+            let node_id = NodeId::from_public_key(&public_key);
+            match self.connectivity.dial_peer(node_id).await {
+                Ok(conn) => Ok(conn),
+                Err(ConnectivityError::ConnectionFailed(err)) => match err {
+                    ConnectionManagerError::ConnectFailedMaximumAttemptsReached |
+                    ConnectionManagerError::DialConnectFailedAllAddresses => {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Dial failed for peer {}. Attempting discovery.", public_key
+                        );
+                        self.discover_peer(public_key).await
+                    },
+                    err => Err(ConnectivityError::from(err).into()),
+                },
+                Err(err) => Err(err.into()),
+            }
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Peer '{}' not found, initiating discovery", public_key
+            );
+            self.discover_peer(public_key).await
+        }
+    }
+
+    async fn discover_peer(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
+        let node_id = NodeId::from_public_key(&public_key);
+        let timer = Instant::now();
+        let _ = self
+            .discovery
+            .discover_peer(public_key.clone(), public_key.into())
+            .await?;
+        debug!(
+            target: LOG_TARGET,
+            "Discovery succeeded for peer {} in {:.2?}",
+            node_id,
+            timer.elapsed()
+        );
+        let conn = self.connectivity.dial_peer(node_id).await?;
+        Ok(conn)
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
     use chrono::{DateTime, Utc};
     use tari_comms::{
         runtime,
-        test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair},
+        test_utils::mocks::{create_connectivity_mock, create_peer_connection_mock_pair, ConnectivityManagerMockState},
     };
     use tari_shutdown::Shutdown;
     use tari_test_utils::random;
@@ -724,7 +824,13 @@ mod test {
     use crate::{
         broadcast_strategy::BroadcastClosestRequest,
         envelope::NodeDestination,
-        test_utils::{build_peer_manager, make_client_identity, make_node_identity},
+        test_utils::{
+            build_peer_manager,
+            create_dht_discovery_mock,
+            make_client_identity,
+            make_node_identity,
+            DhtDiscoveryMockState,
+        },
     };
 
     async fn db_connection() -> DbConnection {
@@ -743,6 +849,7 @@ mod test {
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
             Default::default(),
@@ -752,6 +859,7 @@ mod test {
             connectivity_manager,
             outbound_requester,
             actor_rx,
+            discovery,
             shutdown.to_signal(),
         );
 
@@ -760,6 +868,94 @@ mod test {
         requester.send_join().await.unwrap();
         let (params, _) = unwrap_oms_send_msg!(out_rx.recv().await.unwrap());
         assert_eq!(params.dht_message_type, DhtMessageType::Join);
+    }
+
+    mod discovery_dial_peer {
+        use super::*;
+        use crate::test_utils::make_peer;
+
+        async fn setup(
+            shutdown_signal: ShutdownSignal,
+        ) -> (
+            DhtRequester,
+            Arc<NodeIdentity>,
+            ConnectivityManagerMockState,
+            DhtDiscoveryMockState,
+            Arc<PeerManager>,
+        ) {
+            let node_identity = make_node_identity();
+            let peer_manager = build_peer_manager();
+            let (out_tx, _) = mpsc::channel(1);
+            let (connectivity_manager, mock) = create_connectivity_mock();
+            let connectivity_mock = mock.get_shared_state();
+            mock.spawn();
+            let (actor_tx, actor_rx) = mpsc::channel(1);
+            let requester = DhtRequester::new(actor_tx);
+            let outbound_requester = OutboundMessageRequester::new(out_tx);
+            let (discovery, mock) = create_dht_discovery_mock(Duration::from_secs(10));
+            let discovery_mock = mock.get_shared_state();
+            mock.spawn();
+            DhtActor::new(
+                Default::default(),
+                db_connection().await,
+                node_identity.clone(),
+                peer_manager.clone(),
+                connectivity_manager,
+                outbound_requester,
+                actor_rx,
+                discovery,
+                shutdown_signal,
+            )
+            .spawn();
+
+            (
+                requester,
+                node_identity,
+                connectivity_mock,
+                discovery_mock,
+                peer_manager,
+            )
+        }
+
+        #[runtime::test]
+        async fn it_discovers_a_peer() {
+            let shutdown = Shutdown::new();
+            let (mut dht, node_identity, connectivity_mock, discovery_mock, _) = setup(shutdown.to_signal()).await;
+            let peer = make_peer();
+            discovery_mock.set_discover_peer_response(peer.clone());
+            let (conn1, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
+            connectivity_mock.add_active_connection(conn1).await;
+
+            let conn = dht.dial_or_discover_peer(peer.public_key).await.unwrap();
+            assert_eq!(*conn.peer_node_id(), peer.node_id);
+            assert_eq!(discovery_mock.call_count(), 1);
+        }
+
+        #[runtime::test]
+        async fn it_gets_active_peer_connection() {
+            let shutdown = Shutdown::new();
+            let (mut dht, node_identity, connectivity_mock, discovery_mock, peer_manager) =
+                setup(shutdown.to_signal()).await;
+            let peer = make_peer();
+            peer_manager.add_peer(peer.clone()).await.unwrap();
+            let (conn1, _, _, _) = create_peer_connection_mock_pair(node_identity.to_peer(), peer.clone()).await;
+            connectivity_mock.add_active_connection(conn1).await;
+
+            let conn = dht.dial_or_discover_peer(peer.public_key).await.unwrap();
+            assert_eq!(*conn.peer_node_id(), peer.node_id);
+            assert_eq!(discovery_mock.call_count(), 0);
+            assert_eq!(connectivity_mock.call_count().await, 1);
+        }
+
+        #[runtime::test]
+        async fn it_errors_if_discovery_fails_for_unknown_peer() {
+            let shutdown = Shutdown::new();
+            let (mut dht, _, connectivity_mock, discovery_mock, _) = setup(shutdown.to_signal()).await;
+            let peer = make_peer();
+            let _ = dht.dial_or_discover_peer(peer.public_key.clone()).await.unwrap_err();
+            assert_eq!(discovery_mock.call_count(), 1);
+            assert_eq!(connectivity_mock.call_count().await, 0);
+        }
     }
 
     #[runtime::test]
@@ -771,6 +967,7 @@ mod test {
         let (out_tx, _) = mpsc::channel(1);
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let mut requester = DhtRequester::new(actor_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let shutdown = Shutdown::new();
         let actor = DhtActor::new(
@@ -781,6 +978,7 @@ mod test {
             connectivity_manager,
             outbound_requester,
             actor_rx,
+            discovery,
             shutdown.to_signal(),
         );
 
@@ -814,6 +1012,7 @@ mod test {
         let (actor_tx, actor_rx) = mpsc::channel(1);
         let mut requester = DhtRequester::new(actor_tx);
         let outbound_requester = OutboundMessageRequester::new(out_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let shutdown = Shutdown::new();
         // Note: This must be equal or larger than the minimum dedup cache capacity for DedupCacheDatabase
         let capacity = 10;
@@ -828,6 +1027,7 @@ mod test {
             connectivity_manager,
             outbound_requester,
             actor_rx,
+            discovery,
             shutdown.to_signal(),
         );
 
@@ -900,6 +1100,7 @@ mod test {
         let connectivity_manager_mock_state = mock.get_shared_state();
         mock.spawn();
 
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let (conn_in, _, conn_out, _) =
             create_peer_connection_mock_pair(client_node_identity.to_peer(), node_identity.to_peer()).await;
         connectivity_manager_mock_state.add_active_connection(conn_in).await;
@@ -919,6 +1120,7 @@ mod test {
             connectivity_manager,
             outbound_requester,
             actor_rx,
+            discovery,
             shutdown.to_signal(),
         );
 
@@ -1008,6 +1210,7 @@ mod test {
         let (connectivity_manager, mock) = create_connectivity_mock();
         mock.spawn();
         let mut requester = DhtRequester::new(actor_tx);
+        let (discovery, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let outbound_requester = OutboundMessageRequester::new(out_tx);
         let mut shutdown = Shutdown::new();
         let actor = DhtActor::new(
@@ -1018,6 +1221,7 @@ mod test {
             connectivity_manager,
             outbound_requester,
             actor_rx,
+            discovery,
             shutdown.to_signal(),
         );
 

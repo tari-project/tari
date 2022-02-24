@@ -192,7 +192,7 @@ pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
         validate_address(addr, allow_test_addrs)?;
     }
     if !has_address {
-        return Err(ConnectionManagerError::PeerHasNoAddresses);
+        return Err(ConnectionManagerError::PeerIdentityNoAddresses);
     }
     Ok(())
 }

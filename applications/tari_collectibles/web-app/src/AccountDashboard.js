@@ -176,14 +176,23 @@ class AccountDashboard extends React.Component {
   };
 
   onSendToAmountChanged = async (e) => {
-    this.setState({ sendToAmount: parseInt(e.target.value) });
+    if (
+      RegExp(`^\\d*(\\.\\d{0,${this.state.tip002Data.decimals}})?$`).test(
+        e.target.value
+      )
+    )
+      this.setState({ sendToAmount: e.target.value });
   };
   onSend = async () => {
     try {
       this.setState({ error: "" });
+      let sendToAmount = Math.round(
+        Number(this.state.sendToAmount) *
+          Math.pow(10, this.state.tip002Data.decimals)
+      );
       let result = await binding.command_asset_wallets_send_to(
         this.state.assetPublicKey,
-        this.state.sendToAmount,
+        sendToAmount,
         this.state.sendToAddress
       );
       console.log(result);
@@ -242,7 +251,7 @@ class AccountDashboard extends React.Component {
               <span />
             )}
             <Typography variant="h3" sx={{ mb: "30px" }}>
-              {this.state.assetInfo.name}{" "}
+              {this.state.assetInfo.name}
               {this.state.hasAssetWallet ? (
                 <StarIcon></StarIcon>
               ) : (
@@ -271,9 +280,9 @@ class AccountDashboard extends React.Component {
                 <Stack spacing={2}>
                   <Typography variant="h5">TIP002</Typography>
                   <Typography>
-                    Balance:{" "}
+                    Balance:
                     {this.state.balance /
-                      Math.pow(10, this.state.tip002Data.decimals)}{" "}
+                      Math.pow(10, this.state.tip002Data.decimals)}
                     {this.state.tip002Data.symbol}
                   </Typography>
 
@@ -286,7 +295,7 @@ class AccountDashboard extends React.Component {
                   <TextField
                     onChange={this.onSendToAmountChanged}
                     value={this.state.sendToAmount}
-                    type="number"
+                    type="text"
                     label="Amount"
                   ></TextField>
                   <Button onClick={this.onSend}>Send</Button>
@@ -365,6 +374,6 @@ AccountDashboard.propTypes = {
       assetPubKey: PropTypes.string,
     }),
   }).isRequired,
-}
+};
 
 export default withRouter(AccountDashboard);

@@ -22,7 +22,7 @@
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use log::info;
+use log::*;
 use tari_common::{
     configuration::ValidatorNodeConfig,
     exit_codes::{ExitCode, ExitError},
@@ -59,6 +59,7 @@ use crate::{
         inbound_connection_service::TariCommsInboundConnectionService,
         outbound_connection_service::TariCommsOutboundService,
     },
+    TariCommsValidatorNodeClientFactory,
 };
 
 const LOG_TARGET: &str = "tari::validator_node::app";
@@ -108,16 +109,29 @@ impl DanNode {
                     .get_assets_for_dan_node(node_identity.public_key().clone())
                     .await
                     .unwrap();
+                info!(
+                    target: LOG_TARGET,
+                    "Base node returned {} asset(s) to process",
+                    assets.len()
+                );
                 for asset in assets {
                     if tasks.contains_key(&asset.public_key) {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Asset task already running for asset '{}'", asset.public_key
+                        );
                         continue;
                     }
                     if let Some(allow_list) = &dan_config.assets_allow_list {
                         if !allow_list.contains(&asset.public_key.to_hex()) {
+                            debug!(
+                                target: LOG_TARGET,
+                                "Asset '{}' is not allowlisted for processing ", asset.public_key
+                            );
                             continue;
                         }
                     }
-                    info!(target: LOG_TARGET, "Adding asset {:?}", asset.public_key);
+                    info!(target: LOG_TARGET, "Adding asset '{}'", asset.public_key);
                     let node_identity = node_identity.as_ref().clone();
                     let mempool = mempool_service.clone();
                     let handles = handles.clone();
@@ -128,7 +142,7 @@ impl DanNode {
                     tasks.insert(
                         asset.public_key.clone(),
                         task::spawn(DanNode::start_asset_worker(
-                            asset.clone(),
+                            asset,
                             node_identity,
                             mempool,
                             handles,
@@ -148,7 +162,7 @@ impl DanNode {
     //     todo!()
     // }
 
-    async fn start_asset_worker(
+    pub async fn start_asset_worker(
         asset_definition: AssetDefinition,
         node_identity: NodeIdentity,
         mempool_service: MempoolServiceHandle,
@@ -199,6 +213,7 @@ impl DanNode {
         let chain_storage = SqliteStorageService {};
         let wallet_client = GrpcWalletClient::new(config.wallet_grpc_address);
         let checkpoint_manager = ConcreteCheckpointManager::new(asset_definition.clone(), wallet_client);
+        let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(dht.dht_requester());
         let mut consensus_worker = ConsensusWorker::<DefaultServiceSpecification>::new(
             receiver,
             outbound,
@@ -214,12 +229,13 @@ impl DanNode {
             db_factory,
             chain_storage,
             checkpoint_manager,
+            validator_node_client_factory,
         );
 
-        consensus_worker
-            .run(shutdown.clone(), None)
-            .await
-            .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
+        if let Err(err) = consensus_worker.run(shutdown.clone(), None).await {
+            error!(target: LOG_TARGET, "Consensus worker failed with error: {}", err);
+            return Err(ExitError::new(ExitCode::UnknownError, err));
+        }
 
         Ok(())
     }

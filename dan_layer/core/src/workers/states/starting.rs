@@ -27,15 +27,9 @@ use tari_utilities::hex::Hex;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, HotStuffTreeNode, Payload, QuorumCertificate},
-    services::{
-        infrastructure_services::NodeAddressable,
-        BaseNodeClient,
-        CommitteeManager,
-        PayloadProcessor,
-        PayloadProvider,
-    },
-    storage::{chain::ChainDbUnitOfWork, state::StateDbUnitOfWork, ChainStorageService, DbFactory},
+    models::AssetDefinition,
+    services::{infrastructure_services::NodeAddressable, BaseNodeClient, CommitteeManager},
+    storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
 };
 
@@ -59,20 +53,13 @@ where TBaseNodeClient: BaseNodeClient
     pub async fn next_event<
         TAddr: NodeAddressable,
         TCommitteeManager: CommitteeManager<TAddr>,
-        TPayload: Payload,
-        TPayloadProvider: PayloadProvider<TPayload>,
-        TPayloadProcessor: PayloadProcessor<TPayload>,
         TDbFactory: DbFactory,
-        TChainStorageService: ChainStorageService<TPayload>,
     >(
         &self,
         base_node_client: &mut TBaseNodeClient,
         asset_definition: &AssetDefinition,
         committee_manager: &mut TCommitteeManager,
         db_factory: &TDbFactory,
-        payload_provider: &TPayloadProvider,
-        payload_processor: &TPayloadProcessor,
-        chain_storage_service: &TChainStorageService,
         node_id: &TAddr,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         info!(
@@ -105,6 +92,7 @@ where TBaseNodeClient: BaseNodeClient
             );
             return Ok(ConsensusWorkerStateEvent::NotPartOfCommittee);
         }
+
         info!(
             target: LOG_TARGET,
             "Validator node is a committee member for asset public key '{}'",
@@ -112,46 +100,7 @@ where TBaseNodeClient: BaseNodeClient
         );
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
-        let chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
-        if chain_db.is_empty()? {
-            info!(target: LOG_TARGET, "DB is empty, initializing");
-            let mut tx = chain_db.new_unit_of_work();
-
-            let state_db = db_factory.get_or_create_state_db(&asset_definition.public_key)?;
-            let mut state_tx = state_db.new_unit_of_work();
-
-            info!(target: LOG_TARGET, "Loading initial state");
-            let initial_state = asset_definition.initial_state();
-            for schema in &initial_state.schemas {
-                debug!(target: LOG_TARGET, "Setting initial state for {}", schema.name);
-                for key_value in &schema.items {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Setting {:?} = {:?}", key_value.key, key_value.value
-                    );
-                    state_tx.set_value(schema.name.clone(), key_value.key.clone(), key_value.value.clone())?;
-                }
-            }
-            dbg!(&asset_definition);
-            for template in &asset_definition.template_parameters {
-                debug!(
-                    target: LOG_TARGET,
-                    "Setting template parameters for: {}", template.template_id
-                );
-                payload_processor.init_template(template, asset_definition, &mut state_tx)?;
-            }
-            info!(target: LOG_TARGET, "Saving genesis node");
-            let node = HotStuffTreeNode::genesis(payload_provider.create_genesis_payload());
-            let genesis_qc = QuorumCertificate::genesis(*node.hash());
-            chain_storage_service.add_node(&node, tx.clone()).await?;
-            tx.commit_node(node.hash())?;
-            debug!(target: LOG_TARGET, "Setting locked QC");
-            tx.set_locked_qc(&genesis_qc)?;
-            debug!(target: LOG_TARGET, "Committing state");
-            state_tx.commit()?;
-            debug!(target: LOG_TARGET, "Committing node");
-            tx.commit()?;
-        }
+        let _ = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
 
         Ok(ConsensusWorkerStateEvent::Initialized)
     }

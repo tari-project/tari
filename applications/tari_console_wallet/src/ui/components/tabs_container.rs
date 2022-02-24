@@ -91,7 +91,6 @@ impl<B: Backend> TabsContainer<B> {
 impl<B: Backend> Component<B> for TabsContainer<B> {
     fn draw(&mut self, _: &mut Frame<B>, _: Rect, _: &AppState) {
         // Use draw_titles and draw_content instead,
-        // TODO: Create a layout and draw both
         unimplemented!()
     }
 

@@ -26,14 +26,18 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use log::*;
+
 use crate::{
-    models::{Instruction, QuorumCertificate, TreeNodeHash},
+    models::{Instruction, Node, QuorumCertificate, TreeNodeHash},
     storage::{
         chain::{db_node::DbNode, ChainDbBackendAdapter, DbInstruction, DbQc},
         unit_of_work_tracker::UnitOfWorkTracker,
         StorageError,
     },
 };
+
+const LOG_TARGET: &str = "tari::dan::chain_db::unit_of_work";
 
 pub trait ChainDbUnitOfWork: Clone + Send + Sync {
     fn commit(&mut self) -> Result<(), StorageError>;
@@ -45,6 +49,7 @@ pub trait ChainDbUnitOfWork: Clone + Send + Sync {
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError>;
     fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError>;
     // fn find_proposed_node(&mut self, node_hash: TreeNodeHash) -> Result<(Self::Id, UnitOfWorkTracker), StorageError>;
+    fn get_tip_node(&self) -> Result<Option<Node>, StorageError>;
 }
 
 // Cloneable, Send, Sync wrapper
@@ -211,6 +216,12 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
                 true,
             ));
         }
+
+        debug!(
+            target: LOG_TARGET,
+            "Marking proposed node '{}' as committed",
+            qc.node_hash()
+        );
         let found_node = inner.find_proposed_node(qc.node_hash())?;
         let mut node = found_node.1.get_mut();
         let mut n = node.deref_mut();
@@ -286,6 +297,11 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
         node.is_committed = true;
         Ok(())
     }
+
+    fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
+        let inner = self.inner.read().unwrap();
+        inner.get_tip_node()
+    }
 }
 
 pub struct ChainDbUnitOfWorkInner<TBackendAdapter: ChainDbBackendAdapter> {
@@ -330,5 +346,13 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWorkInner<TBackendAdap
         let tracker = UnitOfWorkTracker::new(item, false);
         self.nodes.push((Some(id), tracker.clone()));
         Ok((Some(id), tracker))
+    }
+
+    pub fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
+        let node = self
+            .backend_adapter
+            .get_tip_node()
+            .map_err(TBackendAdapter::Error::into)?;
+        Ok(node.map(Into::into))
     }
 }

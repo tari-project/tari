@@ -50,7 +50,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelSum,
             OutputFlags,
             TransactionError,
@@ -586,7 +586,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header kernel MMR roots in {} do not match calculated roots. Expected: {}, Actual:{}",
+            "Block header kernel MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
+            header.height,
             header.hash().to_hex(),
             header.kernel_mr.to_hex(),
             mmr_roots.kernel_mr.to_hex()
@@ -598,7 +599,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.kernel_mmr_size != mmr_roots.kernel_mmr_size {
         warn!(
             target: LOG_TARGET,
-            "Block header kernel MMR size in {} does not match. Expected: {}, Actual:{}",
+            "Block header kernel MMR size in #{} {} does not match. Expected: {}, Actual:{}",
+            header.height,
             header.hash().to_hex(),
             header.kernel_mmr_size,
             mmr_roots.kernel_mmr_size
@@ -612,7 +614,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.output_mr != mmr_roots.output_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header output MMR roots in {} do not match calculated roots. Expected: {}, Actual:{}",
+            "Block header output MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
+            header.height,
             header.hash().to_hex(),
             header.output_mr.to_hex(),
             mmr_roots.output_mr.to_hex()
@@ -634,7 +637,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.output_mmr_size != mmr_roots.output_mmr_size {
         warn!(
             target: LOG_TARGET,
-            "Block header output MMR size in {} does not match. Expected: {}, Actual:{}",
+            "Block header output MMR size in {} does not match. Expected: {}, Actual: {}",
             header.hash().to_hex(),
             header.output_mmr_size,
             mmr_roots.output_mmr_size
@@ -850,7 +853,7 @@ mod test {
 
     mod check_maturity {
         use super::*;
-        use crate::transactions::transaction::{OutputFeatures, TransactionInputVersion};
+        use crate::transactions::transaction_components::{OutputFeatures, TransactionInputVersion};
 
         #[test]
         fn it_checks_the_input_maturity() {

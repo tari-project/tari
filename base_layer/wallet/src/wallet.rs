@@ -26,7 +26,7 @@ use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
-    transaction::TxId,
+    transaction::{ImportStatus, TxId},
     types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -43,7 +43,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction_components::{OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -61,6 +61,7 @@ use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
+    services::liveness::{LivenessConfig, LivenessInitializer},
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
@@ -168,11 +169,20 @@ where
             ))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                peer_message_subscription_factory,
+                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
                 wallet_database.clone(),
+            ))
+            .add_initializer(LivenessInitializer::new(
+                LivenessConfig {
+                    auto_ping_interval: Some(config.contacts_auto_ping_interval),
+                    num_peers_per_round: 0,       // No random peers
+                    max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
+                    ..Default::default()
+                },
+                peer_message_subscription_factory,
             ))
             .add_initializer(ContactsServiceInitializer::new(contacts_backend))
             .add_initializer(BaseNodeServiceInitializer::new(
@@ -370,7 +380,7 @@ where
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// EncumberedToBeReceived. A faux incoming transaction will be created to provide a record of the event. The TxId
     /// of the generated transaction is returned.
-    #[allow(clippy::too_many_arguments)]
+
     pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
@@ -401,7 +411,15 @@ where
 
         let tx_id = self
             .transaction_service
-            .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
+            .import_utxo_with_status(
+                amount,
+                source_public_key.clone(),
+                message,
+                Some(features.maturity),
+                ImportStatus::Imported,
+                None,
+                None,
+            )
             .await?;
 
         let commitment_hex = unblinded_output
@@ -416,7 +434,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet", commitment_hex
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'", commitment_hex
         );
 
         Ok(tx_id)
@@ -433,11 +451,14 @@ where
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
-            .import_utxo(
+            .import_utxo_with_status(
                 unblinded_output.value,
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
+                ImportStatus::Imported,
+                None,
+                None,
             )
             .await?;
 
@@ -447,12 +468,12 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
-                .to_hex()
+                .to_hex(),
         );
 
         Ok(tx_id)

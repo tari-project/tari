@@ -42,6 +42,24 @@ pub(crate) async fn tip721_transfer_from(
   from_address_id: Uuid,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<(), Status> {
+  inner_tip721_transfer_from(
+    asset_public_key,
+    token_id,
+    send_to_address,
+    from_address_id,
+    state.inner(),
+  )
+  .await
+}
+
+#[tauri::command]
+pub(crate) async fn inner_tip721_transfer_from(
+  asset_public_key: String,
+  token_id: String,
+  send_to_address: String,
+  from_address_id: Uuid,
+  state: &ConcurrentAppState,
+) -> Result<(), Status> {
   let wallet_id = state
     .current_wallet_id()
     .await

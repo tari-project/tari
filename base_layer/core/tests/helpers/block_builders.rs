@@ -43,7 +43,7 @@ use tari_core::{
             TestParams,
             TransactionSchema,
         },
-        transaction::{
+        transaction_components::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -132,13 +132,15 @@ fn print_new_genesis_block() {
         .unwrap();
 
     header.kernel_mr = kernel.hash();
+    header.kernel_mmr_size += 1;
     header.output_mr = utxo.hash();
     header.witness_mr = utxo.witness_hash();
+    header.output_mmr_size += 1;
 
     let block = header.into_builder().with_coinbase_utxo(utxo, kernel).build();
-    println!("{}", &block);
-    println!("spending key: {}", &key.to_hex());
-    println!("range proof: {}", &block.body.outputs()[0].proof.to_hex());
+    println!("{}", block);
+    println!("spending key: {}", key.to_hex());
+    println!("range proof: {}", block.body.outputs()[0].proof.to_hex());
 }
 
 /// Create a genesis block returning it with the spending key for the coinbase utxo

@@ -41,7 +41,7 @@ use crate::{
 };
 
 /// The public and private identity of this node on the network
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct NodeIdentity {
     #[serde(serialize_with = "serialize_to_hex")]
     #[serde(deserialize_with = "deserialize_node_id_from_hex")]
@@ -219,5 +219,18 @@ impl fmt::Display for NodeIdentity {
         writeln!(f, "Features: {:?}", self.features)?;
 
         Ok(())
+    }
+}
+
+impl fmt::Debug for NodeIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("NodeIdentity")
+            .field("public_key", &self.public_key)
+            .field("node_id", &self.node_id)
+            .field("public_address", &self.public_address)
+            .field("features", &self.features)
+            .field("secret_key", &"<secret>")
+            .field("identity_signature", &*acquire_read_lock!(self.identity_signature))
+            .finish()
     }
 }

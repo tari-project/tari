@@ -14,15 +14,17 @@ use tari_launchpad::{
     commands::*,
     docker::{DockerWrapper, Workspaces},
 };
-use tauri::{api::cli::get_matches, async_runtime::block_on, utils::config::CliConfig, Event, Manager};
+use tauri::{api::cli::get_matches, async_runtime::block_on, utils::config::CliConfig, Manager, PackageInfo, RunEvent};
 
 fn main() {
     env_logger::init();
     let context = tauri::generate_context!();
     let cli_config = context.config().tauri.cli.clone().unwrap();
 
+    // We're going to attach this to the AppState because Tauri does not expose it for some reason
+    let package_info = context.package_info().clone();
     // Handle --help and --version. Exits after printing
-    handle_cli_options(&cli_config);
+    handle_cli_options(&cli_config, &package_info);
 
     let docker = match DockerWrapper::new() {
         Ok(docker) => docker,
@@ -34,8 +36,6 @@ fn main() {
 
     // TODO - Load workspace definitions from persistent storage here
     let workspaces = Workspaces::default();
-    // We're going to attach this to the AppState because Tauri does not expose it for some reason
-    let package_info = context.package_info().clone();
     info!("Using Docker version: {}", docker.version());
 
     let app = tauri::Builder::default()
@@ -55,7 +55,7 @@ fn main() {
         .expect("error while running Launchpad");
 
     app.run(|app, event| {
-        if let Event::Exit = event {
+        if let RunEvent::Exit = event {
             info!("Received Exit event");
             block_on(async move {
                 let state = app.state();
@@ -65,8 +65,8 @@ fn main() {
     });
 }
 
-fn handle_cli_options(cli_config: &CliConfig) {
-    match get_matches(cli_config) {
+fn handle_cli_options(cli_config: &CliConfig, pkg_info: &PackageInfo) {
+    match get_matches(cli_config, pkg_info) {
         Ok(matches) => {
             if let Some(arg_data) = matches.args.get("help") {
                 debug!("{}", arg_data.value.as_str().unwrap_or("No help available"));

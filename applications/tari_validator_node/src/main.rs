@@ -44,7 +44,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     GlobalConfig,
 };
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
@@ -92,11 +92,15 @@ fn main_inner() -> Result<(), ExitError> {
 
 async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
+    let validator_node_config = config
+        .validator_node
+        .as_ref()
+        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "validator_node configuration not found"))?;
 
-    fs::create_dir_all(&config.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
+    fs::create_dir_all(&config.comms_peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
-        &config.public_address,
+        &config.comms_public_address,
         create_id,
         PeerFeatures::NONE,
     )?;
@@ -120,12 +124,10 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError
     .await?;
 
     let asset_processor = ConcreteAssetProcessor::default();
-    let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(
-        handles.expect_handle::<ConnectivityRequester>(),
-        handles.expect_handle::<Dht>().discovery_service_requester(),
-    );
+    let validator_node_client_factory =
+        TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        GrpcBaseNodeClient::new(config.validator_node.clone().unwrap().base_node_grpc_address),
+        GrpcBaseNodeClient::new(validator_node_config.base_node_grpc_address),
         validator_node_client_factory,
         5,
         mempool_service.clone(),
@@ -197,7 +199,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
         .serve_with_shutdown(grpc_address, shutdown_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
             err
         })?;
 

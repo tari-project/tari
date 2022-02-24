@@ -22,24 +22,17 @@
 
 use std::convert::TryInto;
 
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Instruction, TemplateId},
-    storage::state::StateDbUnitOfWork,
+    models::{Instruction, InstructionSet, TemplateId},
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
     template_command::ExecutionResult,
     templates::{tip002_template, tip004_template, tip721_template},
 };
 
 pub trait AssetProcessor: Sync + Send + 'static {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        template_parameter: &TemplateParameter,
-        asset_definition: &AssetDefinition,
-        state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError>;
-
     // purposefully made sync, because instructions should be run in order, and complete before the
     // next one starts. There may be a better way to enforce this though...
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
@@ -48,12 +41,10 @@ pub trait AssetProcessor: Sync + Send + 'static {
         db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError>;
 
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+    fn invoke_read_method<TUnitOfWorkReader: StateDbUnitOfWorkReader>(
         &self,
-        template_id: TemplateId,
-        method: String,
-        args: &[u8],
-        state_db: &mut TUnifOfWork,
+        instruction: &Instruction,
+        state_db: &TUnitOfWorkReader,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
 }
 
@@ -63,79 +54,20 @@ pub struct ConcreteAssetProcessor {
 }
 
 impl AssetProcessor for ConcreteAssetProcessor {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        template_parameter: &TemplateParameter,
-        asset_definition: &AssetDefinition,
-        state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        self.template_factory
-            .init(template_parameter, asset_definition, state_db)
-    }
-
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         instruction: &Instruction,
-        db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        self.execute(
-            instruction.template_id(),
-            instruction.method().to_owned(),
-            instruction.args().into(),
-            // InstructionCaller {
-            //     owner_token_id: instruction.from_owner().to_owned(),
-            // },
-            db,
-        )
-    }
-
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
-        &self,
-        template_id: TemplateId,
-        method: String,
-        args: &[u8],
-        state_db: &mut TUnifOfWork,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        match template_id {
-            TemplateId::Tip002 => tip002_template::invoke_read_method(method, args, state_db),
-            TemplateId::Tip004 => tip004_template::invoke_read_method(method, args, state_db),
-            TemplateId::Tip721 => tip721_template::invoke_read_method(method, args, state_db),
-            _ => {
-                todo!()
-            },
-        }
-    }
-}
-
-impl ConcreteAssetProcessor {
-    pub fn execute<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        template_id: TemplateId,
-        method: String,
-        args: Vec<u8>,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        match template_id {
-            TemplateId::Tip002 => {
-                tip002_template::invoke_method(method, &args, state_db)?;
-            },
-            TemplateId::Tip004 => {
-                tip004_template::invoke_method(method, &args, state_db)?;
-            },
-            TemplateId::Tip721 => {
-                tip721_template::invoke_method(method, &args, state_db)?;
-            },
-            _ => {
-                todo!()
-            },
-        }
-        // let instruction = self.template_factory.create_command(template_id, method, args)?;
-        // let unit_of_work = state_db.new_unit_of_work();
-        // let result = instruction.try_execute(db)?;
-        // unit_of_work.commit()?;
-        // self.instruction_log.store(hash, result);
-        // Ok(())
-        Ok(())
+        self.template_factory.invoke_write_method(instruction, state_db)
+    }
+
+    fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
+        &self,
+        instruction: &Instruction,
+        state_db: &TUnitOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        self.template_factory.invoke_read_method(instruction, state_db)
     }
 }
 
@@ -143,28 +75,54 @@ impl ConcreteAssetProcessor {
 pub struct TemplateFactory {}
 
 impl TemplateFactory {
-    pub fn init<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        template: &TemplateParameter,
-        asset_definition: &AssetDefinition,
-        state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        match template.template_id.try_into()? {
-            TemplateId::Tip002 => tip002_template::init(template, asset_definition, state_db)?,
-            _ => unimplemented!(),
+    pub fn initial_instructions(&self, template_param: &TemplateParameter) -> InstructionSet {
+        use TemplateId::*;
+        // TODO: We may want to use the TemplateId type, so that we know it is known/valid
+        let template_id = template_param.template_id.try_into().unwrap();
+        match template_id {
+            Tip002 => tip002_template::initial_instructions(template_param),
+            Tip003 => todo!(),
+            Tip004 => tip004_template::initial_instructions(template_param),
+            Tip721 => tip721_template::initial_instructions(template_param),
+            EditableMetadata => {
+                todo!()
+            },
         }
-        Ok(())
     }
 
-    // pub fn create_command(
-    //     &self,
-    //     _template: TemplateId,
-    //     _method: String,
-    //     _args: VecDeque<Vec<u8>>,
-    //     // caller: InstructionCaller,
-    // ) -> Result<(), DigitalAssetError> {
-    //     todo!()
-    // }
+    pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
+        &self,
+        instruction: &Instruction,
+        state_db: &TUnitOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        use TemplateId::*;
+        match instruction.template_id() {
+            Tip002 => tip002_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
+            Tip003 => todo!(),
+            Tip004 => tip004_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
+            Tip721 => tip721_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
+            EditableMetadata => {
+                todo!()
+            },
+        }
+    }
+
+    pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        instruction: &Instruction,
+        state_db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        use TemplateId::*;
+        match instruction.template_id() {
+            Tip002 => tip002_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
+            Tip003 => todo!(),
+            Tip004 => tip004_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
+            Tip721 => tip721_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
+            EditableMetadata => {
+                todo!()
+            },
+        }
+    }
 }
 
 pub trait InstructionLog {

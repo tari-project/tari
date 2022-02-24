@@ -33,8 +33,40 @@ use uuid::Uuid;
 #[tauri::command]
 pub(crate) async fn wallets_create(
   name: Option<String>,
-  _passphrase: Option<String>,
+  passphrase: Option<String>,
   state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<WalletRow, Status> {
+  inner_wallets_create(name, passphrase, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn wallets_list(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<WalletRow>, Status> {
+  inner_wallets_list(state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn wallets_unlock(
+  id: Uuid,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<WalletRow, Status> {
+  inner_wallets_unlock(id, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn wallets_seed_words(
+  id: Uuid,
+  passphrase: Option<String>,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<String>, Status> {
+  inner_wallets_seed_words(id, passphrase, state.inner()).await
+}
+
+pub async fn inner_wallets_create(
+  name: Option<String>,
+  _passphrase: Option<String>,
+  state: &ConcurrentAppState,
 ) -> Result<WalletRow, Status> {
   let new_wallet = WalletRow {
     id: Uuid::new_v4(),
@@ -50,9 +82,8 @@ pub(crate) async fn wallets_create(
   Ok(new_wallet)
 }
 
-#[tauri::command]
-pub(crate) async fn wallets_list(
-  state: tauri::State<'_, ConcurrentAppState>,
+pub(crate) async fn inner_wallets_list(
+  state: &ConcurrentAppState,
 ) -> Result<Vec<WalletRow>, Status> {
   let db = state.create_db().await?;
 
@@ -60,10 +91,9 @@ pub(crate) async fn wallets_list(
   Ok(result)
 }
 
-#[tauri::command]
-pub(crate) async fn wallets_unlock(
+pub(crate) async fn inner_wallets_unlock(
   id: Uuid,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<WalletRow, Status> {
   let db = state.create_db().await?;
 
@@ -73,11 +103,10 @@ pub(crate) async fn wallets_unlock(
   Ok(result)
 }
 
-#[tauri::command]
-pub(crate) async fn wallets_seed_words(
+pub(crate) async fn inner_wallets_seed_words(
   id: Uuid,
   passphrase: Option<String>,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<Vec<String>, Status> {
   let db = state.create_db().await?;
 

@@ -9,8 +9,8 @@ if [ $# -eq 0 ]; then
 fi
 rm -f "./$1.tar.gz" >/dev/null
 
-tarball_parent=/tmp
-tarball_source=tari_testnet
+tarball_parent=${tarball_parent:-/tmp}
+tarball_source=${tarball_source:-tari_testnet}
 tarball_folder=${tarball_parent}/${tarball_source}
 if [ -d "${tarball_folder}" ]; then
     rm -f -r "${tarball_folder:?}"
@@ -76,7 +76,8 @@ cp -f "${project_dir}/target/release/tari_collectibles" "${tarball_folder}/runti
 # Validator node
 cp -f "${project_dir}/target/release/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
 
-# todo: launchpad
+# Launchpad
+cp -f "${project_dir}/target/release/tari_launchpad" "${tarball_folder}/runtime/tari_launchpad"
 
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"

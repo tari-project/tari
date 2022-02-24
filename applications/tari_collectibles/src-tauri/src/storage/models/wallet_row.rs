@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WalletRow {
   pub id: Uuid,
   pub name: Option<String>,

@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
-    transaction::Transaction,
+    transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
@@ -45,11 +45,10 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
-        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction},
+            models::{CompletedTransaction, InboundTransaction, TxCancellationReason},
         },
         tasks::send_transaction_reply::send_transaction_reply,
         utc::utc_duration_since,
@@ -451,6 +450,7 @@ where
                 inbound_tx.timestamp,
                 TransactionDirection::Inbound,
                 None,
+                None,
             );
 
             self.resources
@@ -508,7 +508,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 self.id,
-                TxRejection::Timeout,
+                TxCancellationReason::Timeout,
             )))
             .map_err(|e| {
                 trace!(

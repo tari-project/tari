@@ -30,7 +30,6 @@
 //! of Callbacks that the client must implement and provide to the Wallet module to receive asynchronous replies and
 //! updates.
 
-// TODO: Improve documentation
 #ifndef wallet_ffi_h
 #define wallet_ffi_h
 
@@ -263,14 +262,19 @@ unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction
 const char *completed_transaction_get_message(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the status of a TariCompletedTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int completed_transaction_get_status(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
@@ -278,9 +282,6 @@ unsigned long long completed_transaction_get_transaction_id(struct TariCompleted
 
 // Gets the timestamp of a TariCompletedTransaction
 unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction, int *error_out);
-
-// Check if a TariCompletedTransaction is Valid or not
-bool completed_transaction_is_valid(struct TariCompletedTransaction *tx, int *error_out);
 
 // Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
 // i.e the transaction was originally sent from the wallet
@@ -291,6 +292,30 @@ unsigned long long completed_transaction_get_confirmations(struct TariCompletedT
 
 // Gets the TariTransactionKernel of a TariCompletedTransaction
 struct TariTransactionKernel *completed_transaction_get_transaction_kernel(struct TariCompletedTransaction *transaction, int *error_out);
+
+/// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the reason for cancellation which corresponds to:
+/// | Value | Interpretation    |
+/// |---  |---                  |
+/// |  -1 | Not Cancelled       |
+/// |   0 | Unknown             |
+/// |   1 | UserCancelled       |
+/// |   2 | Timeout             |
+/// |   3 | DoubleSpend         |
+/// |   4 | Orphan              |
+/// |   5 | TimeLocked          |
+/// |   6 | InvalidTransaction  |
+/// |   7 | AbandonedCoinbase   |
+/// # Safety
+/// None
+int completed_transaction_get_cancellation_reason(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
@@ -341,14 +366,19 @@ const char *pending_outbound_transaction_get_message(struct TariPendingOutboundT
 unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Gets the status of a TariPendingOutboundTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int pending_outbound_transaction_get_status(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingOutboundTactions
@@ -383,14 +413,19 @@ unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInbo
 unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Gets the status of a TariPendingInboundTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed |
+// |   9 | FauxConfirmed   |
 int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingInboundTransaction
@@ -451,14 +486,18 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
+/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be called
+/// when a one-sided transaction is detected as mined AND confirmed.
+/// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This will
+/// be called  when a one-sided transaction is detected as mined but not yet confirmed.
 /// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
 /// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
 /// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
 /// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
-/// why said transaction failed that is mapped to the `TxRejection` enum:
-/// pub enum TxRejection {
+/// why said transaction failed that is mapped to the `TxCancellationReason` enum:
+/// pub enum TxCancellationReason {
 ///     Unknown,                // 0
 ///     UserCancelled,          // 1
 ///     Timeout,                // 2
@@ -515,6 +554,8 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_broadcast)(struct TariCompletedTransaction *),
                                  void (*callback_transaction_mined)(struct TariCompletedTransaction *),
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
+                                 void (*callback_faux_transaction_confirmed)(struct TariCompletedTransaction *),
+                                 void (*callback_faux_transaction_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),

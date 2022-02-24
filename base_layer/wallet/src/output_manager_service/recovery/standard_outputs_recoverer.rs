@@ -24,14 +24,18 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
+use tari_common_types::{
+    transaction::TxId,
+    types::{PrivateKey, PublicKey, RangeProof},
+};
 use tari_core::transactions::{
-    transaction::{TransactionOutput, UnblindedOutput},
+    transaction_components::{TransactionOutput, UnblindedOutput},
     CryptoFactories,
 };
 use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
     tari_utilities::hex::Hex,
 };
 
@@ -73,6 +77,7 @@ where TBackend: OutputManagerBackend + 'static
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
@@ -86,17 +91,15 @@ where TBackend: OutputManagerBackend + 'static
                         &self.master_key_manager.rewind_data().rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| ( v, output ) )
+                    .map(|v| (v, output))
             })
-            //TODO: This needs some investigation. We assume Nop script here and recovery here might create an
-            //TODO:   unspendable output if the script does not equal Nop.
-            .map(
-                |(rewind_result, output)| {
-                    // Todo we need to look here that we might want to fail a specific output and not recover it as this
-                    // will only work if the script is a Nop script. If this is not a Nop script the recovered input
-                    // will not be spendable.
-                    let script_key = PrivateKey::random(&mut OsRng);
-                    (UnblindedOutput::new(
+            .filter_map(|(rewind_result, output)| {
+                if output.script != script!(Nop) {
+                    return None;
+                }
+                let script_key = PrivateKey::random(&mut OsRng);
+                Some((
+                    UnblindedOutput::new(
                         output.version,
                         rewind_result.committed_value,
                         rewind_result.blinding_factor,
@@ -107,11 +110,11 @@ where TBackend: OutputManagerBackend + 'static
                         output.sender_offset_public_key,
                         output.metadata_signature,
                         0,
-                        output.covenant
+                        output.covenant,
                     ),
-                     output.proof)
-                },
-            )
+                    output.proof,
+                ))
+            })
             .collect();
         let rewind_time = start.elapsed();
         trace!(
@@ -133,7 +136,7 @@ where TBackend: OutputManagerBackend + 'static
                 Some(proof),
             )?;
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output(db_output).await {
+            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         info!(

@@ -35,6 +35,7 @@ use tari_crypto::{
     script::{ExecutionStack, TariScript},
 };
 
+use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     consensus::{ConsensusEncodingSized, ConsensusManager},
     covenants::Covenant,
@@ -42,7 +43,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -97,6 +98,16 @@ pub struct UtxoTestParams {
     pub features: OutputFeatures,
     pub input_data: Option<ExecutionStack>,
     pub covenant: Covenant,
+    pub output_version: Option<TransactionOutputVersion>,
+}
+
+impl UtxoTestParams {
+    pub fn with_value(value: MicroTari) -> Self {
+        Self {
+            value,
+            ..Default::default()
+        }
+    }
 }
 
 impl Default for UtxoTestParams {
@@ -107,6 +118,7 @@ impl Default for UtxoTestParams {
             features: Default::default(),
             input_data: None,
             covenant: Covenant::default(),
+            output_version: None,
         }
     }
 }
@@ -150,7 +162,10 @@ impl TestParams {
         )
         .unwrap();
 
-        UnblindedOutput::new_current_version(
+        UnblindedOutput::new(
+            params
+                .output_version
+                .unwrap_or_else(TransactionOutputVersion::get_current_version),
             params.value,
             self.spend_key.clone(),
             params.features,
@@ -307,6 +322,8 @@ macro_rules! txn_schema {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }
     }};
 
@@ -319,7 +336,8 @@ macro_rules! txn_schema {
             features: $features.clone()
         )
     }};
-   (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
+
+    (from: $input:expr, to: $outputs:expr, features: $features:expr) => {{
         txn_schema!(
             from: $input,
             to:$outputs,
@@ -328,13 +346,14 @@ macro_rules! txn_schema {
             features: $features
         )
     }};
+
     (from: $input:expr, to: $outputs:expr, fee: $fee:expr) => {
         txn_schema!(
             from: $input,
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transactions::transaction::OutputFeatures::default()
+            features: $crate::transactions::transaction_components::OutputFeatures::default()
         )
     };
 
@@ -361,6 +380,8 @@ pub struct TransactionSchema {
     pub script: TariScript,
     pub input_data: Option<ExecutionStack>,
     pub covenant: Covenant,
+    pub input_version: Option<TransactionInputVersion>,
+    pub output_version: Option<TransactionOutputVersion>,
 }
 
 /// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
@@ -388,7 +409,6 @@ pub fn create_tx(
     (tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn create_unblinded_txos(
     amount: MicroTari,
     input_count: usize,
@@ -501,7 +521,7 @@ pub fn create_sender_transaction_protocol_with(
     Ok(stx_protocol)
 }
 
-/// Spend the provided UTXOs by to the given amounts. Change will be created with any outstanding amount.
+/// Spend the provided UTXOs to the given amounts. Change will be created with any outstanding amount.
 /// You only need to provide the unblinded outputs to spend. This function will calculate the commitment for you.
 /// This is obviously less efficient, but is offered as a convenience.
 /// The output features will be applied to every output
@@ -538,9 +558,12 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
 
     for tx_input in &schema.from {
         let input = tx_input.clone();
-        let utxo = input
+        let mut utxo = input
             .as_transaction_input(&factories.commitment)
             .expect("Should be able to make a transaction input");
+        utxo.version = schema
+            .input_version
+            .unwrap_or_else(TransactionInputVersion::get_current_version);
         stx_builder.with_input(utxo, input.clone());
     }
     let mut outputs = Vec::with_capacity(schema.to.len());
@@ -552,6 +575,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             script: schema.script.clone(),
             input_data: schema.input_data.clone(),
             covenant: schema.covenant.clone(),
+            output_version: None,
         });
         outputs.push(utxo.clone());
         stx_builder

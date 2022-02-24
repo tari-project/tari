@@ -1,6 +1,6 @@
 {
   "package": {
-    "productName": "tari_collectibles",
+    "productName": "Tari Collectibles",
     "version": "0.1.0"
   },
   "build": {
@@ -53,7 +53,7 @@
     },
     "windows": [
       {
-        "title": "tari_collectibles",
+        "title": "Tari Collectibles",
         "width": 1524,
         "height": 800,
         "resizable": true,

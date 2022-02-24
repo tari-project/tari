@@ -6,13 +6,13 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.27.3"
+version = "0.28.1"
 edition = "2018"
 
 [dependencies]
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_storage = { version = "^0.27", path = "../infrastructure/storage" }
-tari_shutdown = { version = "^0.27", path = "../infrastructure/shutdown" }
+tari_storage = { version = "^0.28", path = "../infrastructure/storage" }
+tari_shutdown = { version = "^0.28", path = "../infrastructure/shutdown" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
@@ -52,7 +52,7 @@ yamux = "=0.9.0"
 tari_metrics = { path = "../infrastructure/metrics" }
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.27", path = "../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.28", path = "../infrastructure/test_utils" }
 tari_comms_rpc_macros = { version = "*", path = "./rpc_macros" }
 
 env_logger = "0.7.0"
@@ -60,7 +60,7 @@ serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { version = "^0.27", path = "../common", features = ["build"] }
+tari_common = { version = "^0.28", path = "../common", features = ["build"] }
 
 [features]
 c_integration = []

@@ -48,4 +48,5 @@
 
   - [RFC-0130: Mining](RFC-0130_Mining.md)
 
+- [RFC template](RFC_template.md)
 - [Glossary](Glossary.md)

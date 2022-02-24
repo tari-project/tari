@@ -20,16 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Error, Formatter},
+};
+
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{TransactionConversionError, TransactionDirection, TransactionStatus, TxId},
     types::{BlockHash, PrivateKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::Transaction,
+    transaction_components::Transaction,
     ReceiverTransactionProtocol,
     SenderTransactionProtocol,
 };
@@ -93,7 +98,6 @@ pub struct OutboundTransaction {
 }
 
 impl OutboundTransaction {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tx_id: TxId,
         destination_public_key: CommsPublicKey,
@@ -133,12 +137,11 @@ pub struct CompletedTransaction {
     pub status: TransactionStatus,
     pub message: String,
     pub timestamp: NaiveDateTime,
-    pub cancelled: bool,
+    pub cancelled: Option<TxCancellationReason>,
     pub direction: TransactionDirection,
     pub coinbase_block_height: Option<u64>,
     pub send_count: u32,
     pub last_send_timestamp: Option<NaiveDateTime>,
-    pub valid: bool,
     pub transaction_signature: Signature,
     pub confirmations: Option<u64>,
     pub mined_height: Option<u64>,
@@ -146,7 +149,6 @@ pub struct CompletedTransaction {
 }
 
 impl CompletedTransaction {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         tx_id: TxId,
         source_public_key: CommsPublicKey,
@@ -159,6 +161,7 @@ impl CompletedTransaction {
         timestamp: NaiveDateTime,
         direction: TransactionDirection,
         coinbase_block_height: Option<u64>,
+        mined_height: Option<u64>,
     ) -> Self {
         let transaction_signature = if let Some(excess_sig) = transaction.first_kernel_excess_sig() {
             excess_sig.clone()
@@ -175,15 +178,14 @@ impl CompletedTransaction {
             status,
             message,
             timestamp,
-            cancelled: false,
+            cancelled: None,
             direction,
             coinbase_block_height,
             send_count: 0,
             last_send_timestamp: None,
-            valid: true,
             transaction_signature,
             confirmations: None,
-            mined_height: None,
+            mined_height,
             mined_in_block: None,
         }
     }
@@ -224,7 +226,7 @@ impl From<CompletedTransaction> for InboundTransaction {
             status: ct.status,
             message: ct.message,
             timestamp: ct.timestamp,
-            cancelled: ct.cancelled,
+            cancelled: ct.cancelled.is_some(),
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
@@ -243,7 +245,7 @@ impl From<CompletedTransaction> for OutboundTransaction {
             status: ct.status,
             message: ct.message,
             timestamp: ct.timestamp,
-            cancelled: ct.cancelled,
+            cancelled: ct.cancelled.is_some(),
             direct_send_success: false,
             send_count: 0,
             last_send_timestamp: None,
@@ -275,13 +277,16 @@ impl From<OutboundTransaction> for CompletedTransaction {
             status: tx.status,
             message: tx.message,
             timestamp: tx.timestamp,
-            cancelled: tx.cancelled,
+            cancelled: if tx.cancelled {
+                Some(TxCancellationReason::UserCancelled)
+            } else {
+                None
+            },
             transaction,
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
-            valid: true,
             transaction_signature,
             confirmations: None,
             mined_height: None,
@@ -301,13 +306,16 @@ impl From<InboundTransaction> for CompletedTransaction {
             status: tx.status,
             message: tx.message,
             timestamp: tx.timestamp,
-            cancelled: tx.cancelled,
+            cancelled: if tx.cancelled {
+                Some(TxCancellationReason::UserCancelled)
+            } else {
+                None
+            },
             transaction: Transaction::new(vec![], vec![], vec![], PrivateKey::default(), PrivateKey::default()),
             direction: TransactionDirection::Inbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
-            valid: true,
             transaction_signature: Signature::default(),
             confirmations: None,
             mined_height: None,
@@ -331,5 +339,52 @@ impl From<WalletTransaction> for CompletedTransaction {
             WalletTransaction::PendingOutbound(tx) => CompletedTransaction::from(tx),
             WalletTransaction::Completed(tx) => tx,
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum TxCancellationReason {
+    Unknown,            // 0
+    UserCancelled,      // 1
+    Timeout,            // 2
+    DoubleSpend,        // 3
+    Orphan,             // 4
+    TimeLocked,         // 5
+    InvalidTransaction, // 6
+    AbandonedCoinbase,  // 7
+}
+
+impl TryFrom<u32> for TxCancellationReason {
+    type Error = TransactionConversionError;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(TxCancellationReason::Unknown),
+            1 => Ok(TxCancellationReason::UserCancelled),
+            2 => Ok(TxCancellationReason::Timeout),
+            3 => Ok(TxCancellationReason::DoubleSpend),
+            4 => Ok(TxCancellationReason::Orphan),
+            5 => Ok(TxCancellationReason::TimeLocked),
+            6 => Ok(TxCancellationReason::InvalidTransaction),
+            7 => Ok(TxCancellationReason::AbandonedCoinbase),
+            code => Err(TransactionConversionError { code: code as i32 }),
+        }
+    }
+}
+
+impl Display for TxCancellationReason {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        use TxCancellationReason::*;
+        let response = match self {
+            Unknown => "Unknown",
+            UserCancelled => "User Cancelled",
+            Timeout => "Timeout",
+            DoubleSpend => "Double Spend",
+            Orphan => "Orphan",
+            TimeLocked => "TimeLocked",
+            InvalidTransaction => "Invalid Transaction",
+            AbandonedCoinbase => "Abandoned Coinbase",
+        };
+        fmt.write_str(response)
     }
 }

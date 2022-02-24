@@ -21,23 +21,16 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use async_trait::async_trait;
-use tari_core::transactions::transaction::TemplateParameter;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{AssetDefinition, Payload, StateRoot, TariDanPayload},
+    models::{Payload, StateRoot, TariDanPayload},
     services::AssetProcessor,
     storage::state::StateDbUnitOfWork,
 };
 
 #[async_trait]
 pub trait PayloadProcessor<TPayload: Payload> {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        template_parameter: &TemplateParameter,
-        asset_definition: &AssetDefinition,
-        state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError>;
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         payload: &TPayload,
@@ -61,16 +54,6 @@ impl<TAssetProcessor: AssetProcessor> TariDanPayloadProcessor<TAssetProcessor> {
 impl<TAssetProcessor: AssetProcessor + Send + Sync> PayloadProcessor<TariDanPayload>
     for TariDanPayloadProcessor<TAssetProcessor>
 {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        template_parameter: &TemplateParameter,
-        asset_definition: &AssetDefinition,
-        state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        self.asset_processor
-            .init_template(template_parameter, asset_definition, state_db)
-    }
-
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         payload: &TariDanPayload,

@@ -20,7 +20,7 @@ env:
 
 jobs:
   builds:
-    name: Build and deploy tari_base_node
+    name: Build and upload Binaries
     strategy:
       fail-fast: false
       matrix:
@@ -94,6 +94,7 @@ jobs:
             libappindicator3-dev \
             patchelf \
             librsvg2-dev
+
       - name: Install macOS dependencies
         if: startsWith(runner.os,'macOS')
         run: brew install cmake zip coreutils automake autoconf
@@ -134,13 +135,7 @@ jobs:
           echo "C:\Strawberry\perl\bin" >> $GITHUB_PATH
 
       - name: Cache cargo files and outputs
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
+        uses: Swatinem/rust-cache@v1
 
       - name: Compile launchpad GUI
         run: |
@@ -154,6 +149,12 @@ jobs:
           npm install
           npm run build
 
+      - name: Info - Pre-Compile Space Check for Nix
+        if: "!startsWith(runner.os,'Windows')"
+        shell: bash
+        run: |
+          df -h
+
       - name: Build rust binaries
         env:
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
@@ -161,6 +162,12 @@ jobs:
         run: |
           echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
           cargo build --release
+
+      - name: Info - Post-Compile Space Check for Nix
+        if: "!startsWith(runner.os,'Windows')"
+        shell: bash
+        run: |
+          df -h
 
       - name: Copy binaries to folder for zipping
         shell: bash
@@ -185,8 +192,9 @@ jobs:
           cp -v "$GITHUB_WORKSPACE/target/release/tari_launchpad${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
 
-      - name: Build the macos pkg
+      - name: Build the macOS pkg
         if: startsWith(runner.os,'macOS')
+        continue-on-error: true
         env:
           MACOS_KEYCHAIN_PASS: ${{ secrets.MACOS_KEYCHAIN_PASS }}
           MACOS_APPLICATION_ID: ${{ secrets.MACOS_APPLICATION_ID }}
@@ -206,10 +214,19 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k $MACOS_KEYCHAIN_PASS build.keychain
           cd buildtools
           ./create_osx_install_zip.sh unused nozip
-          FILES=("tari_base_node" "tari_console_wallet" "tari_mining_node" "tari_merge_mining_proxy")
+          FILES=(
+            "tari_base_node"
+            "tari_console_wallet"
+            "tari_mining_node"
+            "tari_merge_mining_proxy"
+            "tari_validator_node"
+            "tari_collectibles"
+            "tari_launchpad"
+          )
           for FILE in "${FILES[@]}"; do
-            codesign --force -s "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE" -v
+            codesign --options runtime --force --verify --verbose --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
             codesign --verify --deep --display --verbose=4 "/tmp/tari_testnet/runtime/$FILE"
+            cp -vf "/tmp/tari_testnet/runtime/$FILE" "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
           done
           pkgbuild --root /tmp/tari_testnet \
           --identifier "com.tarilabs.pkg" \
@@ -218,15 +235,17 @@ jobs:
           --scripts "/tmp/tari_testnet/scripts" \
           --sign "Developer ID Installer: $MACOS_INSTALLER_ID" \
           "${{ github.workspace }}${{ env.TBN_DIST }}/tari-${{ env.VERSION }}.pkg"
-      - name: Artifact macos pkg
+
+      - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
+        continue-on-error: true
         uses: actions/upload-artifact@v2
         with:
           name: tari-${{ env.VERSION }}.pkg
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari-${{ env.VERSION }}.pkg"
 
       # unlike inno script studio, iscc.exe doesn't run the [precompile] step generate_config.bat
-      - name: Build the windows installer
+      - name: Build the Windows installer
         shell: cmd
         if: startsWith(runner.os,'Windows')
         run: |
@@ -234,7 +253,7 @@ jobs:
           call generate_config.bat
           "%programfiles(x86)%\Inno Setup 6\iscc.exe" "/DMyAppVersion=${{ env.VERSION }}-${{ env.VSHA_SHORT }}-release" "windows_inno_installer.iss"
 
-      - name: Upload artifact for Windows installer
+      - name: Artifact upload for Windows installer
         uses: actions/upload-artifact@v2
         if: startsWith(runner.os,'Windows')
         with:
@@ -255,14 +274,14 @@ jobs:
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
           #rm -f "${BINFILE}"
 
-      - name: Artifact archive
+      - name: Artifact upload for Archive
         uses: actions/upload-artifact@v2
         with:
           #name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
           name: tari_binary_archive-${{ matrix.os }}-${{ matrix.target_cpu }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
-      - name: Artifact miner
+      - name: Artifact upload for Miner
         uses: actions/upload-artifact@v2
         with:
           name: tari_mining_node-${{ matrix.os }}-${{ matrix.target_cpu }}

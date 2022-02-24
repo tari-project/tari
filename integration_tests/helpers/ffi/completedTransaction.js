@@ -62,10 +62,6 @@ class CompletedTransaction {
     return InterfaceFFI.completedTransactionGetTimestamp(this.ptr);
   }
 
-  isValid() {
-    return InterfaceFFI.completedTransactionIsValid(this.ptr);
-  }
-
   getConfirmations() {
     return InterfaceFFI.completedTransactionGetConfirmations(this.ptr);
   }

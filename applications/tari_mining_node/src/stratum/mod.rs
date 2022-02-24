@@ -23,7 +23,5 @@
 pub mod controller;
 pub mod error;
 pub mod stratum_controller;
-pub mod stratum_miner;
-pub mod stratum_statistics;
 pub mod stratum_types;
 pub mod stream;

@@ -30,6 +30,8 @@ import "types.proto";
 service Wallet {
     // This returns the current version
     rpc GetVersion (GetVersionRequest) returns (GetVersionResponse);
+    // This checks if the wallet is healthy and running
+    rpc CheckConnectivity(GetConnectivityRequest) returns (CheckConnectivityResponse);
     // Check for new updates
     rpc CheckForUpdates (Empty) returns (SoftwareUpdate);
     // This returns the identity information
@@ -70,6 +72,7 @@ service Wallet {
     rpc CreateInitialAssetCheckpoint(CreateInitialAssetCheckpointRequest) returns (CreateInitialAssetCheckpointResponse);
     // TODO: Needs a better name pls
     rpc CreateFollowOnAssetCheckpoint(CreateFollowOnAssetCheckpointRequest) returns (CreateFollowOnAssetCheckpointResponse);
+    rpc CreateCommitteeDefinition(CreateCommitteeDefinitionRequest) returns (CreateCommitteeDefinitionResponse);
 
     rpc GetOwnedAssets(Empty) returns (GetOwnedAssetsResponse);
 
@@ -77,6 +80,8 @@ service Wallet {
     rpc MintTokens(MintTokensRequest) returns (MintTokensResponse);
 
     rpc GetOwnedTokens(GetOwnedTokensRequest) returns (GetOwnedTokensResponse);
+
+    rpc SetBaseNode(SetBaseNodeRequest) returns (SetBaseNodeResponse);
 }
 
 message GetVersionRequest { }
@@ -164,7 +169,6 @@ message TransactionInfo {
     bytes excess_sig = 9;
     google.protobuf.Timestamp timestamp = 10;
     string message = 11;
-    bool valid = 12;
 }
 
 enum TransactionDirection {
@@ -192,6 +196,10 @@ enum TransactionStatus {
     TRANSACTION_STATUS_NOT_FOUND = 7;
     // The transaction was rejected by the mempool
     TRANSACTION_STATUS_REJECTED = 8;
+    // This is faux transaction mainly for one-sided transaction outputs or wallet recovery outputs have been found
+    TRANSACTION_STATUS_FAUX_UNCONFIRMED = 9;
+    // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
+    TRANSACTION_STATUS_FAUX_CONFIRMED = 10;
 }
 
 message GetCompletedTransactionsRequest { }
@@ -276,6 +284,16 @@ message CreateFollowOnAssetCheckpointResponse {
 
 }
 
+message CreateCommitteeDefinitionRequest {
+    bytes asset_public_key = 1;
+    repeated bytes committee = 2;
+    uint64 effective_sidechain_height = 3;
+}
+
+message CreateCommitteeDefinitionResponse {
+
+}
+
 message GetOwnedAssetsResponse {
     repeated Asset assets = 1;
 }
@@ -331,3 +349,21 @@ message CancelTransactionResponse {
 message RevalidateRequest{}
 
 message RevalidateResponse{}
+
+message SetBaseNodeRequest {
+    string public_key_hex = 1;
+    string net_address = 2;
+}
+
+message SetBaseNodeResponse{}
+
+message GetConnectivityRequest{}
+
+message CheckConnectivityResponse{
+    enum OnlineStatus {
+        Connecting = 0;
+        Online = 1;
+        Offline = 2;
+    }
+    OnlineStatus status = 1;
+}

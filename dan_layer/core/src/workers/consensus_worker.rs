@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
+use tari_common_types::types::PublicKey;
 use tari_shutdown::ShutdownSignal;
 use tokio::time::Duration;
 
@@ -30,7 +31,7 @@ use crate::{
     services::{CheckpointManager, CommitteeManager, EventsPublisher, PayloadProvider, ServiceSpecification},
     storage::{
         chain::ChainDbUnitOfWork,
-        state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl},
+        state::{StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader},
         DbFactory,
     },
     workers::{states, states::ConsensusWorkerStateEvent},
@@ -45,7 +46,7 @@ pub struct ConsensusWorker<TSpecification: ServiceSpecification> {
     current_view_id: ViewId,
     committee_manager: TSpecification::CommitteeManager,
     timeout: Duration,
-    node_id: TSpecification::Addr,
+    node_address: TSpecification::Addr,
     payload_provider: TSpecification::PayloadProvider,
     events_publisher: TSpecification::EventsPublisher,
     signing_service: TSpecification::SigningService,
@@ -56,9 +57,10 @@ pub struct ConsensusWorker<TSpecification: ServiceSpecification> {
     chain_storage_service: TSpecification::ChainStorageService,
     state_db_unit_of_work: Option<StateDbUnitOfWorkImpl<TSpecification::StateDbBackendAdapter>>,
     checkpoint_manager: TSpecification::CheckpointManager,
+    validator_node_client_factory: TSpecification::ValidatorNodeClientFactory,
 }
 
-impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
+impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSpecification> {
     pub fn new(
         inbound_connections: TSpecification::InboundConnectionService,
         outbound_service: TSpecification::OutboundService,
@@ -74,6 +76,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
         db_factory: TSpecification::DbFactory,
         chain_storage_service: TSpecification::ChainStorageService,
         checkpoint_manager: TSpecification::CheckpointManager,
+        validator_node_client_factory: TSpecification::ValidatorNodeClientFactory,
     ) -> Self {
         Self {
             inbound_connections,
@@ -82,7 +85,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
             timeout,
             outbound_service,
             committee_manager,
-            node_id,
+            node_address: node_id,
             payload_provider,
             events_publisher,
             signing_service,
@@ -93,6 +96,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
             chain_storage_service,
             state_db_unit_of_work: None,
             checkpoint_manager,
+            validator_node_client_factory,
         }
     }
 
@@ -103,7 +107,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                 .committee_manager
                 .current_committee()?
                 .leader_for_view(self.current_view_id) ==
-                &self.node_id,
+                &self.node_address,
         })
     }
 
@@ -128,13 +132,11 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                 );
                 break;
             }
-            let trns = self.transition(next_event)?;
-            debug!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", trns.0, trns.1);
+            let (from, to) = self.transition(next_event)?;
+            debug!(target: LOG_TARGET, "Transitioning from {:?} to {:?}", from, to);
 
-            self.events_publisher.publish(ConsensusWorkerDomainEvent::StateChanged {
-                old: trns.0,
-                new: trns.1,
-            });
+            self.events_publisher
+                .publish(ConsensusWorkerDomainEvent::StateChanged { from, to });
         }
 
         Ok(())
@@ -153,10 +155,18 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                         &self.asset_definition,
                         &mut self.committee_manager,
                         &self.db_factory,
-                        &self.payload_provider,
-                        &self.payload_processor,
-                        &self.chain_storage_service,
-                        &self.node_id,
+                        &self.node_address,
+                    )
+                    .await
+            },
+            Synchronizing => {
+                states::Synchronizing::new()
+                    .next_event(
+                        &mut self.base_node_client,
+                        &self.asset_definition,
+                        &self.db_factory,
+                        &self.validator_node_client_factory,
+                        &self.node_address,
                     )
                     .await
             },
@@ -169,13 +179,15 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                     .db_factory
                     .get_state_db(&self.asset_definition.public_key)?
                     .ok_or(DigitalAssetError::MissingDatabase)?
-                    .new_unit_of_work();
+                    .new_unit_of_work(self.current_view_id.as_u64());
 
-                let mut p = states::Prepare::new(self.node_id.clone(), self.asset_definition.public_key.clone());
-                let res = p
+                let mut prepare =
+                    states::Prepare::new(self.node_address.clone(), self.asset_definition.public_key.clone());
+                let res = prepare
                     .next_event(
                         &self.get_current_view()?,
                         self.timeout,
+                        &self.asset_definition,
                         self.committee_manager.current_committee()?,
                         &self.inbound_connections,
                         &mut self.outbound_service,
@@ -199,7 +211,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                     .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::PreCommitState::new(
-                    self.node_id.clone(),
+                    self.node_address.clone(),
                     self.committee_manager.current_committee()?.clone(),
                     self.asset_definition.public_key.clone(),
                 );
@@ -223,7 +235,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                     .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::CommitState::new(
-                    self.node_id.clone(),
+                    self.node_address.clone(),
                     self.asset_definition.public_key.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
@@ -248,7 +260,7 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                     .get_or_create_chain_db(&self.asset_definition.public_key)?;
                 let mut unit_of_work = db.new_unit_of_work();
                 let mut state = states::DecideState::new(
-                    self.node_id.clone(),
+                    self.node_address.clone(),
                     self.asset_definition.public_key.clone(),
                     self.committee_manager.current_committee()?.clone(),
                 );
@@ -295,8 +307,9 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
                         &self.db_factory,
                         &mut self.outbound_service,
                         self.committee_manager.current_committee()?,
-                        self.node_id.clone(),
+                        self.node_address.clone(),
                         &self.asset_definition,
+                        &self.payload_provider,
                         shutdown,
                     )
                     .await
@@ -317,22 +330,24 @@ impl<TSpecification: ServiceSpecification> ConsensusWorker<TSpecification> {
         use ConsensusWorkerStateEvent::*;
         let from = self.state;
         self.state = match (&self.state, event) {
-            (Starting, Initialized) => NextView,
+            (Starting, Initialized) => Synchronizing,
+            (Synchronizing, Synchronized) => NextView,
             (_, NotPartOfCommittee) => Idle,
             (Idle, TimedOut) => Starting,
             (_, TimedOut) => {
                 warn!(target: LOG_TARGET, "State timed out");
+                self.current_view_id = self.current_view_id.saturating_sub(1.into());
                 NextView
             },
-            (NextView, NewView { .. }) => {
-                self.current_view_id = self.current_view_id.next();
+            (NextView, NewView { new_view }) => {
+                self.current_view_id = new_view;
                 Prepare
             },
             (Prepare, Prepared) => PreCommit,
             (PreCommit, PreCommitted) => Commit,
             (Commit, Committed) => Decide,
             (Decide, Decided) => NextView,
-            (Starting, BaseLayerCheckpointNotFound) => {
+            (_, BaseLayerCheckpointNotFound | BaseLayerAssetRegistrationNotFound) => {
                 unimplemented!("Base layer checkpoint not found!")
             },
             (s, e) => {
@@ -454,7 +469,7 @@ mod test {
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
         dbg!(events);
         let mapped_events = events.iter().map(|e| match e {
-            ConsensusWorkerDomainEvent::StateChanged { old: _, new } => Some(new),
+            ConsensusWorkerDomainEvent::StateChanged { from: _, to: new } => Some(new),
         });
         for (state, event) in states.iter().zip(mapped_events) {
             assert_eq!(state, event.unwrap())

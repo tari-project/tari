@@ -45,8 +45,8 @@ Feature: Wallet CLI
         And I wait 30 seconds
         And I stop wallet SENDER
         And I send 1000000 uT from SENDER to RECEIVER via command line
-        Then wallet SENDER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
-        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
+        Then wallet SENDER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
 
@@ -64,7 +64,7 @@ Feature: Wallet CLI
         And I wait 30 seconds
         And I stop wallet SENDER
         And I send one-sided 1000000 uT from SENDER to RECEIVER via command line
-        Then wallet SENDER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
+        Then wallet SENDER has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 1000000 uT
 
@@ -82,8 +82,8 @@ Feature: Wallet CLI
         And I wait 30 seconds
         And I stop wallet SENDER
         And I make it rain from wallet SENDER 1 tx per sec 10 sec 8000 uT 100 increment to RECEIVER via command line
-        Then wallet SENDER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
-        Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
+        Then wallet SENDER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
+        Then wallet RECEIVER has at least 10 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         And mining node MINE mines 5 blocks
         Then I wait for wallet RECEIVER to have at least 84500 uT
 
@@ -100,9 +100,9 @@ Feature: Wallet CLI
         And I wait 30 seconds
         And I stop wallet WALLET
         And I do coin split on wallet WALLET to 10000 uT 10 coins via command line
-        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and valid
+        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_BROADCAST and not cancelled
         And mining node MINE mines 5 blocks
-        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and valid
+        Then wallet WALLET has at least 1 transactions that are all TRANSACTION_STATUS_MINED_CONFIRMED and not cancelled
         And I stop wallet WALLET
         Then I get count of utxos of wallet WALLET and it's at least 10 via command line
 
@@ -136,3 +136,14 @@ Feature: Wallet CLI
         Given I have a base node BASE
         And I have wallet WALLET connected to base node BASE
         Then I run whois BASE on wallet WALLET via command line
+
+    Scenario: As a user I want to set sidechain committee via command line
+        Given I have a base node BASE
+        And I have wallet WALLET connected to base node BASE
+        And I have mining node MINE connected to base node BASE and wallet WALLET
+        And mining node MINE mines 4 blocks
+        Then I wait for wallet WALLET to have at least 1000000 uT
+        And I register asset ONE on wallet WALLET via command line
+        And I create committee checkpoint for asset on wallet WALLET via command line
+        And mining node MINE mines 1 blocks
+        Then WALLET is connected to BASE

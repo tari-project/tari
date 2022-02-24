@@ -29,7 +29,7 @@ use log::*;
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PrivateKey, PublicKey},
+    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_core::{
@@ -39,7 +39,7 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelFeatures,
             OutputFeatures,
             Transaction,
@@ -105,7 +105,6 @@ where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
 {
-    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         config: OutputManagerServiceConfig,
         request_stream: reply_channel::Receiver<
@@ -358,16 +357,16 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.resources.master_key_manager.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
+            OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs)
+            .scan_and_recover_outputs(outputs, tx_id)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs(outputs) => self
-                .scan_outputs_for_one_sided_payments(outputs)
+            OutputManagerRequest::ScanOutputs { outputs, tx_id } => self
+                .scan_outputs_for_one_sided_payments(outputs, tx_id)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
@@ -415,16 +414,36 @@ where
                 .create_htlc_refund_transaction(output, fee_per_gram)
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
-            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => self
-                .get_output_status_by_tx_id(tx_id)
-                .await
-                .map(OutputManagerResponse::OutputStatusesByTxId),
+            OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
+                let (statuses, mined_height, block_hash) = self.get_output_status_by_tx_id(tx_id).await?;
+                Ok(OutputManagerResponse::OutputStatusesByTxId {
+                    statuses,
+                    mined_height,
+                    block_hash,
+                })
+            },
         }
     }
 
-    async fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+    async fn get_output_status_by_tx_id(
+        &self,
+        tx_id: TxId,
+    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
         let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
-        Ok(outputs.into_iter().map(|uo| uo.status).collect())
+        let statuses = outputs.clone().into_iter().map(|uo| uo.status).collect();
+        // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
+        // mined heights)
+        let (mut last_height, mut max_mined_height, mut block_hash) = (0u64, None, None);
+        for uo in outputs {
+            if let Some(height) = uo.mined_height {
+                if last_height < height {
+                    last_height = height;
+                    max_mined_height = uo.mined_height;
+                    block_hash = uo.mined_in_block.clone();
+                }
+            }
+        }
+        Ok((statuses, max_mined_height, block_hash))
     }
 
     async fn claim_sha_atomic_swap_with_hash(
@@ -657,7 +676,7 @@ where
                 spending_key.clone(),
                 single_round_sender_data.features.clone(),
                 single_round_sender_data.script.clone(),
-                // TODO: The input data should be variable; this will only work for a Nop script
+                // TODO: The input data should be variable; this will only work for a Nop script #LOGGED
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
                 script_private_key,
                 single_round_sender_data.sender_offset_public_key.clone(),
@@ -791,7 +810,7 @@ where
             )
             .await?;
 
-        // TODO: improve this logic
+        // TODO: improve this logic #LOGGED
         let output_features = match unique_id {
             Some(ref _unique_id) => match input_selection
                 .utxos
@@ -934,21 +953,22 @@ where
         )?;
 
         // Clear any existing pending coinbase transactions for this blockheight if they exist
-        if let Err(e) = self
+        match self
             .resources
             .db
             .clear_pending_coinbase_transaction_at_block_height(block_height)
             .await
         {
-            match e {
-                OutputManagerStorageError::DieselError(DieselError::NotFound) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "An existing pending coinbase was cleared for block height {}", block_height
-                    )
-                },
+            Ok(_) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "An existing pending coinbase was cleared for block height {}", block_height
+                )
+            },
+            Err(e) => match e {
+                OutputManagerStorageError::DieselError(DieselError::NotFound) => {},
                 _ => return Err(OutputManagerError::from(e)),
-            }
+            },
         };
 
         // Clear any matching outputs for this commitment. Even if the older output is valid
@@ -1893,6 +1913,7 @@ where
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
@@ -1945,7 +1966,7 @@ where
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    match self.resources.db.add_unspent_output(db_output).await {
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                         Ok(_) => {
                             rewound_outputs.push(rewound_output);
                         },
@@ -1978,7 +1999,6 @@ where
 }
 
 /// Different UTXO selection strategies for choosing which UTXO's are used to fulfill a transaction
-/// TODO Investigate and implement more optimal strategies
 #[derive(Debug, PartialEq)]
 pub enum UTXOSelectionStrategy {
     // Start from the smallest UTXOs and work your way up until the amount is covered. Main benefit

@@ -25,18 +25,33 @@ use std::time::Duration;
 use tari_comms::peer_manager::NodeId;
 
 #[derive(Debug, Clone)]
-pub struct BlockSyncConfig {
+pub struct BlockchainSyncConfig {
+    /// The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer
+    /// will be selected. If there are no further peers the sync will be restarted with an increased by
+    /// `max_latency_increase`.
+    pub initial_max_sync_latency: Duration,
+    /// If all sync peers exceed latency, increase allowed latency by this value
+    pub max_latency_increase: Duration,
+    /// Longer ban period for potentially malicious infractions (protocol violations etc.)
     pub ban_period: Duration,
+    /// Short ban period for infractions that are likely not malicious (slow to respond, spotty connections etc)
     pub short_ban_period: Duration,
-    pub sync_peers: Vec<NodeId>,
+    /// An allowlist of sync peers from which to sync. No other peers will be selected for sync. If empty, sync peers
+    /// are chosen based on their advertised chain metadata.
+    pub forced_sync_peers: Vec<NodeId>,
+    /// Number of threads to use for validation
+    pub validation_concurrency: usize,
 }
 
-impl Default for BlockSyncConfig {
+impl Default for BlockchainSyncConfig {
     fn default() -> Self {
         Self {
+            initial_max_sync_latency: Duration::from_secs(3),
+            max_latency_increase: Duration::from_secs(2),
             ban_period: Duration::from_secs(30 * 60),
             short_ban_period: Duration::from_secs(60),
-            sync_peers: Default::default(),
+            forced_sync_peers: Default::default(),
+            validation_concurrency: 6,
         }
     }
 }

@@ -40,7 +40,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
     },
     txn_schema,
 };
@@ -411,6 +411,8 @@ mod add_block {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
         let commitment_hex = txns[0]
             .body
@@ -450,6 +452,8 @@ mod add_block {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
 
         let (block, _) = create_next_block(&db, &prev_block, txns);
@@ -708,7 +712,7 @@ mod fetch_utxo_by_unique_id {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
 
     use super::*;
-    use crate::transactions::transaction::OutputFlags;
+    use crate::transactions::transaction_components::OutputFlags;
 
     #[test]
     fn it_returns_none_if_empty() {

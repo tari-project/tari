@@ -122,7 +122,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
 };
 use tari_crypto::{
     inputs,
@@ -184,10 +184,10 @@ const LOG_TARGET: &str = "wallet_ffi";
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
-pub type TariOutputFeatures = tari_core::transactions::transaction::OutputFeatures;
+pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
 pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
-pub type TariTransactionKernel = tari_core::transactions::transaction::TransactionKernel;
+pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
 
 pub struct TariContacts(Vec<TariContact>);
@@ -1339,10 +1339,7 @@ pub unsafe extern "C" fn contact_create(
         return ptr::null_mut();
     }
 
-    let contact = Contact {
-        alias: alias_string,
-        public_key: (*public_key).clone(),
-    };
+    let contact = Contact::new(alias_string, (*public_key).clone(), None, None);
     Box::into_raw(Box::new(contact))
 }
 
@@ -2071,35 +2068,6 @@ pub unsafe extern "C" fn completed_transaction_get_message(
     result.into_raw()
 }
 
-/// Check if a TariCompletedTransaction is Valid or not
-///
-/// ## Arguments
-/// `transaction` - The pointer to a TariCompletedTransaction
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `bool` - Returns if the transaction was originally sent from the wallet
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn completed_transaction_is_valid(
-    transaction: *mut TariCompletedTransaction,
-    error_out: *mut c_int,
-) -> bool {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-
-    if transaction.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transaction".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
-    }
-
-    (*transaction).valid
-}
-
 /// This function checks to determine if a TariCompletedTransaction was originally a TariPendingOutboundTransaction
 ///
 /// ## Arguments
@@ -2160,6 +2128,48 @@ pub unsafe extern "C" fn completed_transaction_get_confirmations(
     }
 
     (*tx).confirmations.unwrap_or(0)
+}
+
+/// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the reason for cancellation which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | Not Cancelled       |
+/// |   0 | Unknown             |
+/// |   1 | UserCancelled       |
+/// |   2 | Timeout             |
+/// |   3 | DoubleSpend         |
+/// |   4 | Orphan              |
+/// |   5 | TimeLocked          |
+/// |   6 | InvalidTransaction  |
+/// |   7 | AbandonedCoinbase   |
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn completed_transaction_get_cancellation_reason(
+    tx: *mut TariCompletedTransaction,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if tx.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("tx".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
+    match (*tx).cancelled {
+        None => -1i32,
+        Some(reason) => reason as i32,
+    }
 }
 
 /// Frees memory for a TariCompletedTransaction
@@ -3025,7 +3035,7 @@ pub unsafe extern "C" fn comms_config_create(
                             ..Default::default()
                         },
                         // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                        //       docstring for more info.
+                        //       docstring for more info. #LOGGED
                         allow_test_addresses: true,
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
@@ -3231,7 +3241,11 @@ unsafe fn init_logging(
 /// `callback_transaction_mined` - The callback function pointer matching the function signature. This will be called
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
-/// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
+/// be called when a Broadcast transaction is detected as mined but not yet confirmed.
+/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be
+/// called when a one-sided transaction is detected as mined AND confirmed.
+/// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This
+/// will be called when a one-sided transaction is detected as mined but not yet confirmed.
 /// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was
 /// successful or not.
@@ -3240,8 +3254,8 @@ unsafe fn init_logging(
 /// is whether if was successful or not.
 /// `callback_transaction_cancellation` - The callback function pointer matching
 /// the function signature. This is called when a transaction is cancelled. The first parameter is a pointer to the
-/// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the `TxRejection`
-/// enum: pub enum TxRejection {
+/// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the
+/// `TxCancellationReason` enum: pub enum TxCancellationReason {
 ///     Unknown,                // 0
 ///     UserCancelled,          // 1
 ///     Timeout,                // 2
@@ -3293,6 +3307,8 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_broadcast: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
+    callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
+    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
@@ -3456,6 +3472,7 @@ pub unsafe extern "C" fn wallet_create(
         None,
         None,
         None,
+        None,
     );
 
     let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
@@ -3499,6 +3516,8 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_broadcast,
                 callback_transaction_mined,
                 callback_transaction_mined_unconfirmed,
+                callback_faux_transaction_confirmed,
+                callback_faux_transaction_unconfirmed,
                 callback_direct_send_result,
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
@@ -6053,6 +6072,8 @@ mod test {
         pub broadcast_tx_callback_called: bool,
         pub mined_tx_callback_called: bool,
         pub mined_tx_unconfirmed_callback_called: bool,
+        pub scanned_tx_callback_called: bool,
+        pub scanned_tx_unconfirmed_callback_called: bool,
         pub direct_send_callback_called: bool,
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
@@ -6070,6 +6091,8 @@ mod test {
                 broadcast_tx_callback_called: false,
                 mined_tx_callback_called: false,
                 mined_tx_unconfirmed_callback_called: false,
+                scanned_tx_callback_called: false,
+                scanned_tx_unconfirmed_callback_called: false,
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
@@ -6157,6 +6180,48 @@ mod test {
         assert_eq!((*tx).status, TransactionStatus::MinedUnconfirmed);
         let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
         lock.mined_tx_unconfirmed_callback_called = true;
+        let mut error = 0;
+        let error_ptr = &mut error as *mut c_int;
+        let kernel = completed_transaction_get_transaction_kernel(tx, error_ptr);
+        let excess_hex_ptr = transaction_kernel_get_excess_hex(kernel, error_ptr);
+        let excess_hex = CString::from_raw(excess_hex_ptr).to_str().unwrap().to_owned();
+        assert!(!excess_hex.is_empty());
+        let nonce_hex_ptr = transaction_kernel_get_excess_public_nonce_hex(kernel, error_ptr);
+        let nonce_hex = CString::from_raw(nonce_hex_ptr).to_str().unwrap().to_owned();
+        assert!(!nonce_hex.is_empty());
+        let sig_hex_ptr = transaction_kernel_get_excess_signature_hex(kernel, error_ptr);
+        let sig_hex = CString::from_raw(sig_hex_ptr).to_str().unwrap().to_owned();
+        assert!(!sig_hex.is_empty());
+        string_destroy(excess_hex_ptr as *mut c_char);
+        string_destroy(sig_hex_ptr as *mut c_char);
+        string_destroy(nonce_hex_ptr);
+        transaction_kernel_destroy(kernel);
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn scanned_callback(tx: *mut TariCompletedTransaction) {
+        assert!(!tx.is_null());
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::FauxConfirmed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.scanned_tx_callback_called = true;
+        drop(lock);
+        completed_transaction_destroy(tx);
+    }
+
+    unsafe extern "C" fn scanned_unconfirmed_callback(tx: *mut TariCompletedTransaction, _confirmations: u64) {
+        assert!(!tx.is_null());
+        assert_eq!(
+            type_of((*tx).clone()),
+            std::any::type_name::<TariCompletedTransaction>()
+        );
+        assert_eq!((*tx).status, TransactionStatus::FauxUnconfirmed);
+        let mut lock = CALLBACK_STATE_FFI.lock().unwrap();
+        lock.scanned_tx_unconfirmed_callback_called = true;
         let mut error = 0;
         let error_ptr = &mut error as *mut c_int;
         let kernel = completed_transaction_get_transaction_kernel(tx, error_ptr);
@@ -6579,6 +6644,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6616,6 +6683,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6719,6 +6788,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6767,6 +6838,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6798,6 +6871,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6824,6 +6899,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6871,6 +6948,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -6947,6 +7026,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -7154,6 +7235,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
@@ -7209,6 +7292,8 @@ mod test {
                 broadcast_callback,
                 mined_callback,
                 mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
                 direct_send_callback,
                 store_and_forward_send_callback,
                 tx_cancellation_callback,

@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.27.3"
+version = "0.28.1"
 edition = "2018"
 
 [features]
@@ -25,7 +25,7 @@ log4rs = { version = "1.0.0", default_features = false, features = ["config_pars
 multiaddr = { version = "0.13.0" }
 sha2 = "0.9.5"
 path-clean = "0.1.0"
-tari_storage = { version = "^0.27", path = "../infrastructure/storage"}
+tari_storage = { version = "^0.28", path = "../infrastructure/storage"}
 
 anyhow = { version = "1.0.53", optional = true }
 git2 = { version = "0.8", optional = true }
@@ -36,5 +36,5 @@ fs2 = "0.4.3"
 tempfile = "3.1.0"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.27", path = "../infrastructure/test_utils"}
+tari_test_utils = { version = "^0.28", path = "../infrastructure/test_utils"}
 anyhow = "1.0.53"

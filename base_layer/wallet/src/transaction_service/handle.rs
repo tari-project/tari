@@ -23,11 +23,14 @@
 use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
 
 use aes_gcm::Aes256Gcm;
-use tari_common_types::{transaction::TxId, types::PublicKey};
+use tari_common_types::{
+    transaction::{ImportStatus, TxId},
+    types::PublicKey,
+};
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{Transaction, TransactionOutput},
+    transaction_components::{Transaction, TransactionOutput},
 };
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
@@ -37,8 +40,13 @@ use tower::Service;
 use crate::{
     transaction_service::{
         error::TransactionServiceError,
-        protocols::TxRejection,
-        storage::models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        storage::models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
     },
     OperationId,
 };
@@ -72,7 +80,15 @@ pub enum TransactionServiceRequest {
     },
     SendShaAtomicSwapTransaction(CommsPublicKey, MicroTari, MicroTari, String),
     CancelTransaction(TxId),
-    ImportUtxo(MicroTari, CommsPublicKey, String, Option<u64>),
+    ImportUtxoWithStatus {
+        amount: MicroTari,
+        source_public_key: CommsPublicKey,
+        message: String,
+        maturity: Option<u64>,
+        import_status: ImportStatus,
+        tx_id: Option<TxId>,
+        current_height: Option<u64>,
+    },
     SubmitTransactionToSelf(TxId, Transaction, MicroTari, MicroTari, String),
     SetLowPowerMode,
     SetNormalPowerMode,
@@ -123,12 +139,23 @@ impl fmt::Display for TransactionServiceRequest {
                 f.write_str(&format!("SendShaAtomicSwapTransaction (to {}, {}, {})", k, v, msg))
             },
             Self::CancelTransaction(t) => f.write_str(&format!("CancelTransaction ({})", t)),
-            Self::ImportUtxo(v, k, msg, maturity) => f.write_str(&format!(
-                "ImportUtxo (from {}, {}, {} with maturity: {})",
-                k,
-                v,
-                msg,
-                maturity.unwrap_or(0)
+            Self::ImportUtxoWithStatus {
+                amount,
+                source_public_key,
+                message,
+                maturity,
+                import_status,
+                tx_id,
+                current_height,
+            } => f.write_str(&format!(
+                "ImportUtxo (from {}, {}, {} with maturity {} and {:?} and {:?} and {:?})",
+                source_public_key,
+                amount,
+                message,
+                maturity.unwrap_or(0),
+                import_status,
+                tx_id,
+                current_height,
             )),
             Self::SubmitTransactionToSelf(tx_id, _, _, _, _) => f.write_str(&format!("SubmitTransaction ({})", tx_id)),
             Self::SetLowPowerMode => f.write_str("SetLowPowerMode "),
@@ -186,15 +213,23 @@ pub enum TransactionEvent {
     TransactionDirectSendResult(TxId, bool),
     TransactionCompletedImmediately(TxId),
     TransactionStoreForwardSendResult(TxId, bool),
-    TransactionCancelled(TxId, TxRejection),
+    TransactionCancelled(TxId, TxCancellationReason),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
+    FauxTransactionUnconfirmed {
+        tx_id: TxId,
+        num_confirmations: u64,
+        is_valid: bool,
+    },
+    FauxTransactionConfirmed {
+        tx_id: TxId,
+        is_valid: bool,
+    },
     TransactionMined {
         tx_id: TxId,
         is_valid: bool,
     },
     TransactionMinedRequestTimedOut(TxId),
-    // TODO: Split into normal transaction mined and coinbase transaction mined
     TransactionMinedUnconfirmed {
         tx_id: TxId,
         num_confirmations: u64,
@@ -241,6 +276,20 @@ impl fmt::Display for TransactionEvent {
             },
             TransactionEvent::TransactionImported(tx) => {
                 write!(f, "TransactionImported for {}", tx)
+            },
+            TransactionEvent::FauxTransactionUnconfirmed {
+                tx_id,
+                num_confirmations,
+                is_valid,
+            } => {
+                write!(
+                    f,
+                    "FauxTransactionUnconfirmed for {} with num confirmations: {}. is_valid: {}",
+                    tx_id, num_confirmations, is_valid
+                )
+            },
+            TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid } => {
+                write!(f, "FauxTransactionConfirmed for {}. is_valid: {}", tx_id, is_valid)
             },
             TransactionEvent::TransactionMined { tx_id, is_valid } => {
                 write!(f, "TransactionMined for {}. is_valid: {}", tx_id, is_valid)
@@ -517,21 +566,27 @@ impl TransactionServiceHandle {
         }
     }
 
-    pub async fn import_utxo(
+    pub async fn import_utxo_with_status(
         &mut self,
         amount: MicroTari,
         source_public_key: CommsPublicKey,
         message: String,
         maturity: Option<u64>,
+        import_status: ImportStatus,
+        tx_id: Option<TxId>,
+        current_height: Option<u64>,
     ) -> Result<TxId, TransactionServiceError> {
         match self
             .handle
-            .call(TransactionServiceRequest::ImportUtxo(
+            .call(TransactionServiceRequest::ImportUtxoWithStatus {
                 amount,
                 source_public_key,
                 message,
                 maturity,
-            ))
+                import_status,
+                tx_id,
+                current_height,
+            })
             .await??
         {
             TransactionServiceResponse::UtxoImported(tx_id) => Ok(tx_id),

@@ -4,14 +4,14 @@ authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet key management"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.27.3"
+version = "0.28.1"
 edition = "2021"
 
 [lib]
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
-tari_common_types = { version = "^0.27", path = "../../base_layer/common_types" }
+tari_common_types = { version = "^0.28", path = "../../base_layer/common_types" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 
 arrayvec = "0.7.1"

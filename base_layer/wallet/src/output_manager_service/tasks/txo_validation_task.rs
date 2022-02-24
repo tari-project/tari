@@ -356,8 +356,6 @@ where
         Ok(last_mined_header_hash)
     }
 
-    // TODO: remove this duplicated code from transaction validation protocol
-
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,

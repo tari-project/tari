@@ -7,13 +7,12 @@ license = "MIT"
 repository = "https://github.com/tari-project/tari"
 default-run = "tari_collectibles"
 edition = "2018"
-build = "src/build.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 
 [build-dependencies]
-tauri-build = { version = "1.0.0-beta.4" }
+tauri-build = { version = "1.0.0-beta.4", features = [] }
 
 [dependencies]
 tari_app_grpc = { path = "../../tari_app_grpc" }
@@ -25,23 +24,23 @@ tari_key_manager = { path = "../../../base_layer/key_manager" }
 tari_mmr = { path = "../../../base_layer/mmr"}
 tari_utilities = "*"
 tari_dan_common_types = { path = "../../../dan_layer/common_types"}
-log = { version = "0.4.8", features = ["std"] }
 
 blake2 = "^0.9.0"
-futures = "0.3.17"
-rand = "0.8"
-serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-tonic = "0.6.2"
-tauri = { version = "1.0.0-beta.8", features = ["api-all"] }
 diesel = { version = "1.4.8", features = ["sqlite"] }
 diesel_migrations = "1.4.0"
-thiserror = "1.0.30"
-uuid = {  version = "0.8.2", features = ["serde"] }
+futures = "0.3.17"
+log = { version = "0.4.8", features = ["std"] }
 prost = "0.9"
 prost-types = "0.9"
+rand = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 structopt = "0.3.25"
+tauri = { version = "1.0.0-rc.2", features = ["api-all"] }
+thiserror = "1.0.30"
 tokio = { version = "1.11", features = ["signal"] }
+tonic = "0.6.2"
+uuid = {  version = "0.8.2", features = ["serde"] }
 
 [features]
 default = [ "custom-protocol" ]

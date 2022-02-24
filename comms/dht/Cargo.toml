@@ -1,6 +1,6 @@
 [package]
 name = "tari_comms_dht"
-version = "0.27.3"
+version = "0.28.1"
 authors = ["The Tari Development Community"]
 description = "Tari comms DHT module"
 repository = "https://github.com/tari-project/tari"
@@ -10,12 +10,12 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.27", path = "../", features = ["rpc"] }
-tari_comms_rpc_macros = { version = "^0.27", path = "../rpc_macros" }
+tari_comms = { version = "^0.28", path = "../", features = ["rpc"] }
+tari_comms_rpc_macros = { version = "^0.28", path = "../rpc_macros" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_utilities = { version = "^0.3" }
-tari_shutdown = { version = "^0.27", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.27", path = "../../infrastructure/storage" }
+tari_shutdown = { version = "^0.28", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.28", path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 
 anyhow = "1.0.53"
@@ -43,7 +43,7 @@ tower = { version = "0.4", features = ["full"] }
 pin-project = "0.4"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.27", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.28", path = "../../infrastructure/test_utils" }
 
 env_logger = "0.7.0"
 futures-test = { version = "0.3.5" }
@@ -56,7 +56,7 @@ petgraph = "0.5.1"
 clap = "2.33.0"
 
 [build-dependencies]
-tari_common = { version = "^0.27", path = "../../common" }
+tari_common = { version = "^0.28", path = "../../common" }
 
 [features]
 test-mocks = []

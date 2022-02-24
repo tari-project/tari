@@ -35,7 +35,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFlags, TransactionOutput},
+    transaction_components::{OutputFlags, TransactionOutput},
 };
 use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::cipher_seed::CipherSeed;

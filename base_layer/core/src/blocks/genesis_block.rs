@@ -24,7 +24,15 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use tari_common::configuration::Network;
-use tari_common_types::types::{BulletRangeProof, Commitment, PrivateKey, PublicKey, Signature, BLOCK_HASH_LENGTH};
+use tari_common_types::types::{
+    BulletRangeProof,
+    ComSignature,
+    Commitment,
+    PrivateKey,
+    PublicKey,
+    Signature,
+    BLOCK_HASH_LENGTH,
+};
 use tari_crypto::{
     script::TariScript,
     tari_utilities::{hash::Hashable, hex::*},
@@ -37,7 +45,16 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionKernel, TransactionOutput},
+        transaction_components::{
+            KernelFeatures,
+            OutputFeatures,
+            OutputFeaturesVersion,
+            OutputFlags,
+            TransactionKernel,
+            TransactionKernelVersion,
+            TransactionOutput,
+            TransactionOutputVersion,
+        },
     },
 };
 
@@ -220,32 +237,40 @@ fn get_dibbler_genesis_block_raw() -> Block {
         PublicKey::from_hex("58c2fbf8d67f16c383e7f5335eeaca3d8fa0c2b8b8027db04511c75d8f2df211").unwrap(),
         PrivateKey::from_hex("4bb9c5d4504672cb15dce9447801a928f771f2a6f0c4fb9f9d87a3a0aaa18300").unwrap(),
     );
-    let mut body = AggregateBody::new(
-        vec![],
-        vec![TransactionOutput::new_current_version(
+    let coinbase = TransactionOutput::new(
+            TransactionOutputVersion::V0,
             OutputFeatures {
-                flags: OutputFlags::COINBASE_OUTPUT,
-                maturity: 60,
-                ..Default::default()
+                version:OutputFeaturesVersion::V0,
+                flags:OutputFlags::COINBASE_OUTPUT,
+                maturity:60,
+                metadata: Vec::new(),
+                unique_id: None,
+                parent_public_key: None,
+                asset: None,
+                mint_non_fungible: None,
+                sidechain_checkpoint: None,
+                committee_definition: None
             },
             Commitment::from_hex("e2b9ee8fdf05f9fa8fd7598d4568b539eef694e58cdae84c779140271a96d733 ").unwrap(),
             BulletRangeProof::from_hex("0c02c6d9bdbd1c21b29ee0f83bed597ed07f71a60f99ddcbc02550059c4c08020438f8fc25c69160dc6af81f84c037fc79b9f4a7baa93ab4d6ef1640356d9b575efe1f3f8b40f6c64d1a964aab215491f79738ccac1712d756607626442dda37ac30010dc663985153786cc53c865c01bfec186a803c1edb1a34efa3088ec221016a63cdbd2b58fa4c258bfbf0cff6b793ab62f5db0fb781f046effb5f4e7c0a956c2e042e3f0c16a72f20a624625fa6dc0b742e49e0158a50c8abde54834e04bb35baef0c258da30b738256549e3a2612ff89b4f6bfe82d16aa10b38daabe0df6b922717cb4b1604ab97a2a5efa4d325beb56c5419cff185d61e1a0fc9e374098bf4a10404d788141e2c77de222d68c14b421b62f300898c25487f491aff26be85e54c011e90cc96aff6b31993ce74233674fb150de929fbc259bcc7808a84432cf28bf83c2a0fbf2b47a6244fbafa02ca4f5c9d46c5380fe8eaed734f1d56e769e59800137900cb5905191bbb463cbcb4ea0a2073d716f18878ed4455d19426a2c1133bf703510bf0f1b3b70e9e5ee6fbb70a8e710fd0a4b8f37eacfdeef3df66e461f16ffdb270a7181505b1358f56578840bbfa284444c35160794f0294300ecb3fde701a3f5ed9234e4c196b93fd70633069eeb184ab53685b5324c963a7428094f0c7d4306b5da6ef5fb68d085c32adabe004bebcbf335ee8fc92e5e034edcb035872d08f139e9445539241ff9b9fbebbc0e7b248cbd97fa7c6f3d7823085893c9ced1685d69d2a7cf111f81e086927565c301d4e33639def1139bd5245a0ae9085d5ba10cdc1f89fc7a7fa95cc3aa11784ec40ebf57475ffb4f2b2042018e3dbe905ebd5d0ebe533f36f43f709110372c94258a59e53c9b319adca30c8e9f4f92d5937f994ff36a5bb38a15682187dc8734162f45e169a97a36fb5a05").unwrap(),
-            // For genesis block: A default script can never be spent, intentionally
+            // A default script can never be spent, intentionally
             TariScript::default(),
-            // Script offset never checked for coinbase, thus can use default
-            Default::default(),
+            // The Sender offset public key is not checked for coinbase outputs
+            PublicKey::default(),
             // For genesis block: Metadata signature will never be checked
-            Default::default(),
-            Default::default()
-        )],
-        vec![TransactionKernel::new_current_version(
-            KernelFeatures::COINBASE_KERNEL,
-            MicroTari(0),
-            0,
-            Commitment::from_hex("0e834379ebeff1bde0513800c73ac412afdadbb101fee7a97dc7ac5d1296017f").unwrap(),
-            excess_sig,
-        )],
+            ComSignature::default(),
+            // Covenant
+            Covenant::default()
+        );
+    let kernel = TransactionKernel::new(
+        TransactionKernelVersion::V0,
+        KernelFeatures::COINBASE_KERNEL,
+        MicroTari(0),
+        0,
+        Commitment::from_hex("0e834379ebeff1bde0513800c73ac412afdadbb101fee7a97dc7ac5d1296017f").unwrap(),
+        excess_sig,
     );
+    let mut body = AggregateBody::new(vec![], vec![coinbase], vec![kernel]);
     body.sort();
     // set genesis timestamp
     let genesis = DateTime::parse_from_rfc2822("25 Jan 2022 16:00:00 +0200").unwrap();

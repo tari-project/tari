@@ -24,14 +24,14 @@ use async_trait::async_trait;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{InstructionSet, Payload, TariDanPayload, TreeNodeHash},
-    services::MempoolService,
+    models::{AssetDefinition, InstructionSet, Payload, TariDanPayload, TreeNodeHash},
+    services::{asset_processor::TemplateFactory, MempoolService},
 };
 
 #[async_trait]
 pub trait PayloadProvider<TPayload: Payload> {
     async fn create_payload(&self) -> Result<TPayload, DigitalAssetError>;
-    fn create_genesis_payload(&self) -> TPayload;
+    fn create_genesis_payload(&self, asset_definition: &AssetDefinition) -> TPayload;
     async fn get_payload_queue(&self) -> usize;
     async fn reserve_payload(
         &mut self,
@@ -41,13 +41,17 @@ pub trait PayloadProvider<TPayload: Payload> {
     async fn remove_payload(&mut self, reservation_key: &TreeNodeHash) -> Result<(), DigitalAssetError>;
 }
 
-pub struct TariDanPayloadProvider<TMempoolService: MempoolService> {
+pub struct TariDanPayloadProvider<TMempoolService> {
     mempool: TMempoolService,
+    template_factory: TemplateFactory,
 }
 
 impl<TMempoolService: MempoolService> TariDanPayloadProvider<TMempoolService> {
     pub fn new(mempool: TMempoolService) -> Self {
-        Self { mempool }
+        Self {
+            mempool,
+            template_factory: TemplateFactory {},
+        }
     }
 }
 
@@ -60,8 +64,13 @@ impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDa
         Ok(TariDanPayload::new(instruction_set, None))
     }
 
-    fn create_genesis_payload(&self) -> TariDanPayload {
-        TariDanPayload::new(InstructionSet::empty(), None)
+    fn create_genesis_payload(&self, asset_definition: &AssetDefinition) -> TariDanPayload {
+        let mut instruction_set = InstructionSet::empty();
+        for params in asset_definition.template_parameters.iter() {
+            let instructions = self.template_factory.initial_instructions(params);
+            instruction_set.extend(instructions);
+        }
+        TariDanPayload::new(instruction_set, None)
     }
 
     async fn get_payload_queue(&self) -> usize {

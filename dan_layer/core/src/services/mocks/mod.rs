@@ -28,7 +28,6 @@ use std::{
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
-use tari_core::transactions::transaction::TemplateParameter;
 
 use super::CommitteeManager;
 use crate::{
@@ -44,7 +43,6 @@ use crate::{
         Payload,
         Signature,
         StateRoot,
-        TemplateId,
         TreeNodeHash,
     },
     services::{
@@ -57,7 +55,7 @@ use crate::{
         PayloadProvider,
         SigningService,
     },
-    storage::state::StateDbUnitOfWork,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
 };
 
 #[derive(Debug, Clone)]
@@ -114,7 +112,7 @@ impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<
         Ok(self.static_payload.clone())
     }
 
-    fn create_genesis_payload(&self) -> TPayload {
+    fn create_genesis_payload(&self, _: &AssetDefinition) -> TPayload {
         self.static_payload.clone()
     }
 
@@ -207,6 +205,13 @@ impl BaseNodeClient for MockBaseNodeClient {
     ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
         todo!();
     }
+
+    async fn get_asset_registration(
+        &mut self,
+        _asset_public_key: PublicKey,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        todo!()
+    }
 }
 
 pub fn mock_base_node_client() -> MockBaseNodeClient {
@@ -250,15 +255,6 @@ pub struct MockPayloadProcessor {}
 
 #[async_trait]
 impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        _template_parameter: &TemplateParameter,
-        _asset_definition: &AssetDefinition,
-        _state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        todo!()
-    }
-
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         _payload: &TPayload,
@@ -272,15 +268,6 @@ impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
 pub struct MockAssetProcessor;
 
 impl AssetProcessor for MockAssetProcessor {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        _template_parameter: &TemplateParameter,
-        _asset_definition: &AssetDefinition,
-        _state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        todo!()
-    }
-
     fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         _instruction: &Instruction,
@@ -289,12 +276,10 @@ impl AssetProcessor for MockAssetProcessor {
         todo!()
     }
 
-    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWork>(
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWorkReader>(
         &self,
-        _template_id: TemplateId,
-        _method: String,
-        _args: &[u8],
-        _state_db: &mut TUnifOfWork,
+        _instruction: &Instruction,
+        _state_db: &TUnifOfWork,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         todo!()
     }

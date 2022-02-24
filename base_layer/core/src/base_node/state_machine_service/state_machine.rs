@@ -34,18 +34,9 @@ use crate::{
         comms_interface::LocalNodeCommsInterface,
         state_machine_service::{
             states,
-            states::{
-                BaseNodeState,
-                HeaderSyncState,
-                HorizonSyncConfig,
-                StateEvent,
-                StateInfo,
-                StatusInfo,
-                SyncPeerConfig,
-                SyncStatus,
-            },
+            states::{BaseNodeState, HeaderSyncState, StateEvent, StateInfo, StatusInfo, SyncStatus},
         },
-        sync::{BlockSyncConfig, SyncValidators},
+        sync::{BlockchainSyncConfig, SyncValidators},
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     consensus::ConsensusManager,
@@ -57,29 +48,24 @@ const LOG_TARGET: &str = "c::bn::base_node";
 /// Configuration for the BaseNodeStateMachine.
 #[derive(Clone)]
 pub struct BaseNodeStateMachineConfig {
-    pub block_sync_config: BlockSyncConfig,
-    pub horizon_sync_config: HorizonSyncConfig,
-    pub sync_peer_config: SyncPeerConfig,
+    pub blockchain_sync_config: BlockchainSyncConfig,
     pub orphan_db_clean_out_threshold: usize,
     pub pruning_horizon: u64,
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
-    pub sync_validation_concurrency: usize,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for BaseNodeStateMachineConfig {
     fn default() -> Self {
         Self {
-            block_sync_config: Default::default(),
-            horizon_sync_config: Default::default(),
-            sync_peer_config: Default::default(),
+            blockchain_sync_config: Default::default(),
             orphan_db_clean_out_threshold: 0,
             pruning_horizon: 0,
             max_randomx_vms: 0,
             blocks_behind_before_considered_lagging: 0,
             bypass_range_proof_verification: false,
-            sync_validation_concurrency: 8,
         }
     }
 }
@@ -110,7 +96,7 @@ pub struct BaseNodeStateMachine<B: BlockchainBackend> {
 
 impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// Instantiate a new Base Node.
-    #[allow(clippy::too_many_arguments)]
+
     pub fn new(
         db: AsyncBlockchainDb<B>,
         local_node_interface: LocalNodeCommsInterface,
@@ -171,7 +157,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             },
             (HeaderSync(s), HeadersSynchronized(_)) => DecideNextSync(s.into()),
 
-            (DecideNextSync(_), ProceedToHorizonSync(peer)) => HorizonStateSync(peer.into()),
+            (DecideNextSync(_), ProceedToHorizonSync(peers)) => HorizonStateSync(peers.into()),
             (DecideNextSync(s), Continue) => {
                 db.clear_disable_add_block_flag();
                 Listening(s.into())
@@ -182,7 +168,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
                 Waiting(s.into())
             },
 
-            (DecideNextSync(_), ProceedToBlockSync(peer)) => BlockSync(peer.into()),
+            (DecideNextSync(_), ProceedToBlockSync(peers)) => BlockSync(peers.into()),
             (BlockSync(s), BlocksSynchronized) => {
                 db.clear_disable_add_block_flag();
                 Listening(s.into())

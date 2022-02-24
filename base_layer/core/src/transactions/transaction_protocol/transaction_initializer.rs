@@ -47,7 +47,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
-        transaction::{
+        transaction_components::{
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
@@ -290,7 +290,7 @@ impl SenderTransactionInitializer {
             .map(|o| self.fee.weighting().round_up_metadata_size(o.metadata_byte_size()))
             .sum::<usize>();
 
-        // TODO: implement iter for FixedSet to avoid the clone
+        // TODO: implement iter for FixedSet to avoid the clone #LOGGED
         size += self
             .recipient_scripts
             .clone()
@@ -359,7 +359,6 @@ impl SenderTransactionInitializer {
                 let change_amount = v.checked_sub(change_fee);
                 let change_sender_offset_private_key = PrivateKey::random(&mut OsRng);
                 self.change_sender_offset_private_key = Some(change_sender_offset_private_key.clone());
-                // TODO: Add unique id if needed
                 match change_amount {
                     // You can't win. Just add the change to the fee (which is less than the cost of adding another
                     // output and go without a change output
@@ -497,7 +496,6 @@ impl SenderTransactionInitializer {
         }
 
         // Create transaction outputs
-
         let mut outputs = match self
             .sender_custom_outputs
             .iter()
@@ -526,7 +524,6 @@ impl SenderTransactionInitializer {
 
             // If rewind data is present we produce a rewindable output, else a standard output
             let change_output = if let Some(rewind_data) = self.rewind_data.as_ref() {
-                // TODO: Should proof be verified?
                 match change_unblinded_output.as_rewindable_transaction_output(factories, rewind_data, None) {
                     Ok(o) => o,
                     Err(e) => {
@@ -534,7 +531,6 @@ impl SenderTransactionInitializer {
                     },
                 }
             } else {
-                // TODO: Should proof be verified?
                 match change_unblinded_output.as_transaction_output(factories) {
                     Ok(o) => o,
                     Err(e) => {
@@ -680,7 +676,7 @@ mod test {
             fee::Fee,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams, UtxoTestParams},
-            transaction::{OutputFeatures, MAX_TRANSACTION_INPUTS},
+            transaction_components::{OutputFeatures, MAX_TRANSACTION_INPUTS},
             transaction_protocol::{
                 sender::SenderState,
                 transaction_initializer::SenderTransactionInitializer,

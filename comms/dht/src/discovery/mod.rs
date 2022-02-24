@@ -21,8 +21,12 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
+pub use error::DhtDiscoveryError;
+
 mod requester;
-mod service;
+pub use requester::DhtDiscoveryRequester;
 
 pub(crate) use self::requester::DhtDiscoveryRequest;
-pub use self::{error::DhtDiscoveryError, requester::DhtDiscoveryRequester, service::DhtDiscoveryService};
+
+mod service;
+pub use service::DhtDiscoveryService;
