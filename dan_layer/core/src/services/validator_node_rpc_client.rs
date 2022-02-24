@@ -27,7 +27,7 @@ use tari_comms::{
     protocol::rpc::{RpcError, RpcStatus},
     types::CommsPublicKey,
 };
-use tari_comms_dht::DhtDiscoveryError;
+use tari_comms_dht::DhtActorError;
 
 use crate::{
     models::{Node, SchemaState, SideChainBlock, StateOpLogEntry, TemplateId, TreeNodeHash},
@@ -91,6 +91,6 @@ pub enum ValidatorNodeClientError {
     RpcError(#[from] RpcError),
     #[error("Remote node returned error: {0}")]
     RpcStatusError(#[from] RpcStatus),
-    #[error("Dht Discovery error: {0}")]
-    DhtDiscoveryError(#[from] DhtDiscoveryError),
+    #[error("Dht error: {0}")]
+    DhtError(#[from] DhtActorError),
 }

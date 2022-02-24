@@ -32,6 +32,12 @@ use tari_common_types::types::PublicKey;
 pub(crate) async fn next_asset_public_key(
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<PublicKey, Status> {
+  inner_next_asset_public_key(state.inner()).await
+}
+
+pub(crate) async fn inner_next_asset_public_key(
+  state: &ConcurrentAppState,
+) -> Result<PublicKey, Status> {
   let wallet_id = state
     .current_wallet_id()
     .await
