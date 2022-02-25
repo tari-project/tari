@@ -7,19 +7,15 @@ use tui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, ListItem, Paragraph, Row, Table, TableState, Wrap},
+    widgets::{Block, Borders, Paragraph, Row, Table, TableState, Wrap},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
 
-use crate::{
-    ui::{
-        components::{balance::Balance, styles, Component, KeyHandled},
-        state::{AppState, UiTransactionSendStatus},
-        widgets::{draw_dialog, MultiColumnList, WindowedListState},
-        MAX_WIDTH,
-    },
-    utils::formatting::display_compressed_string,
+use crate::ui::{
+    components::{balance::Balance, contacts_tab::ContactsTab, styles, Component, KeyHandled},
+    state::{AppState, UiTransactionSendStatus},
+    widgets::{draw_dialog, WindowedListState},
 };
 
 pub struct SendTab {
@@ -217,27 +213,7 @@ impl SendTab {
         let window = self.contacts_list_state.get_start_end();
         let windowed_view = app_state.get_contacts_slice(window.0, window.1);
 
-        let mut column0_items = Vec::new();
-        let mut column1_items = Vec::new();
-        let mut column2_items = Vec::new();
-        for c in windowed_view.iter() {
-            column0_items.push(ListItem::new(Span::raw(c.alias.clone())));
-            column1_items.push(ListItem::new(Span::raw(c.public_key.to_string())));
-            column2_items.push(ListItem::new(Span::raw(display_compressed_string(
-                c.emoji_id.clone(),
-                3,
-                3,
-            ))));
-        }
-        let column_list = MultiColumnList::new()
-            .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
-            .heading_style(Style::default().fg(Color::Magenta))
-            .max_width(MAX_WIDTH)
-            .add_column(Some("Alias"), Some(25), column0_items)
-            .add_column(None, Some(2), Vec::new())
-            .add_column(Some("Public Key"), Some(64), column1_items)
-            .add_column(None, Some(2), Vec::new())
-            .add_column(Some("Emoji ID"), None, column2_items);
+        let column_list = ContactsTab::create_column_view(windowed_view);
         column_list.render(f, list_areas[1], &mut list_state);
     }
 

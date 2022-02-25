@@ -127,7 +127,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
             },
             peer_message_subscription_factory,
         ))
-        .add_initializer(ContactsServiceInitializer::new(backend))
+        .add_initializer(ContactsServiceInitializer::new(backend, Duration::from_secs(5), 2))
         .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");

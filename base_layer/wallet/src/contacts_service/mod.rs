@@ -25,6 +25,8 @@ pub mod handle;
 pub mod service;
 pub mod storage;
 
+use std::time::Duration;
+
 use futures::future;
 use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
@@ -50,13 +52,19 @@ pub struct ContactsServiceInitializer<T>
 where T: ContactsBackend
 {
     backend: Option<T>,
+    contacts_auto_ping_interval: Duration,
+    contacts_online_ping_window: usize,
 }
 
 impl<T> ContactsServiceInitializer<T>
 where T: ContactsBackend
 {
-    pub fn new(backend: T) -> Self {
-        Self { backend: Some(backend) }
+    pub fn new(backend: T, contacts_auto_ping_interval: Duration, online_ping_window: usize) -> Self {
+        Self {
+            backend: Some(backend),
+            contacts_auto_ping_interval,
+            contacts_online_ping_window: online_ping_window,
+        }
     }
 }
 
@@ -66,8 +74,7 @@ where T: ContactsBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
-        // Buffer size set to 1 because only the most recent metadata is applicable
-        let (publisher, _) = broadcast::channel(1);
+        let (publisher, _) = broadcast::channel(250);
 
         let contacts_handle = ContactsServiceHandle::new(sender, publisher.clone());
 
@@ -81,6 +88,8 @@ where T: ContactsBackend + 'static
 
         let shutdown_signal = context.get_shutdown_signal();
 
+        let contacts_auto_ping_interval = self.contacts_auto_ping_interval;
+        let contacts_online_ping_window = self.contacts_online_ping_window;
         context.spawn_when_ready(move |handles| async move {
             let liveness = handles.expect_handle::<LivenessHandle>();
             let connectivity = handles.expect_handle::<ConnectivityRequester>();
@@ -92,6 +101,8 @@ where T: ContactsBackend + 'static
                 liveness,
                 connectivity,
                 publisher,
+                contacts_auto_ping_interval,
+                contacts_online_ping_window,
             )
             .start();
             futures::pin_mut!(service);
