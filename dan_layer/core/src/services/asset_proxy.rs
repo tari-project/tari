@@ -115,6 +115,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        debug!(target: LOG_TARGET, "Forwarding '{}' instruction to {}", member, method);
         let mut client = self.validator_node_client_factory.create_client(member);
         let resp = client
             .invoke_method(asset_public_key, template_id, method, args)
