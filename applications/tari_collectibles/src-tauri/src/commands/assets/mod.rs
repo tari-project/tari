@@ -289,8 +289,9 @@ pub(crate) async fn inner_assets_create_initial_checkpoint(
   state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-
-  let merkle_root = mmr.get_merkle_root().unwrap();
+  let merkle_root = mmr
+    .get_merkle_root()
+    .map_err(|e| Status::internal(e.to_string()))?;
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -309,26 +310,41 @@ pub(crate) async fn inner_assets_create_initial_checkpoint(
 pub(crate) async fn assets_create_committee_definition(
   asset_public_key: String,
   committee: Vec<String>,
+  is_initial: bool,
   state: tauri::State<'_, ConcurrentAppState>,
-) -> Result<(), Status> {
+) -> Result<Vec<String>, Status> {
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
 
   // TODO: effective sidechain height...
   client
-    .create_committee_definition(&asset_public_key, committee, 0)
+    .create_committee_definition(&asset_public_key, &committee, 0, is_initial)
     .await?;
 
-  Ok(())
+  Ok(committee)
+}
+
+#[tauri::command]
+pub(crate) async fn assets_get_committee_definition(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<String>, Status> {
+  let mut client = state.connect_base_node_client().await?;
+
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let committee = client.get_sidechain_committee(&asset_public_key).await?;
+  let committee = committee.iter().map(Hex::to_hex).collect();
+
+  Ok(committee)
 }
 
 pub(crate) async fn inner_assets_get_registration(
-  asset_pub_key: String,
+  asset_public_key: String,
   state: &ConcurrentAppState,
 ) -> Result<RegisteredAssetInfo, Status> {
   let mut client = state.connect_base_node_client().await?;
-  let asset_pub_key = PublicKey::from_hex(&asset_pub_key)?;
-  let asset = client.get_asset_metadata(&asset_pub_key).await?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let asset = client.get_asset_metadata(&asset_public_key).await?;
 
   debug!(target: LOG_TARGET, "asset {:?}", asset);
   let features = asset.features.unwrap();

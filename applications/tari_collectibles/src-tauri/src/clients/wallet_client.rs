@@ -137,8 +137,9 @@ impl WalletClient {
   pub async fn create_committee_definition(
     &mut self,
     asset_public_key: &str,
-    committee: Vec<String>,
+    committee: &[String],
     effective_sidechain_height: u64,
+    is_initial: bool,
   ) -> Result<grpc::CreateCommitteeDefinitionResponse, CollectiblesError> {
     let inner = self.get_inner_mut()?;
     let committee = committee
@@ -150,6 +151,7 @@ impl WalletClient {
       asset_public_key: Vec::from_hex(asset_public_key)?,
       committee,
       effective_sidechain_height,
+      is_initial,
     };
     let result = inner
       .create_committee_definition(request)

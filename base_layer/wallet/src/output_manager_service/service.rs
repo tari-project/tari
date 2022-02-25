@@ -1356,14 +1356,12 @@ where
     ) -> Result<UtxoSelection, OutputManagerError> {
         let token = match unique_id {
             Some(unique_id) => {
-                warn!(target: LOG_TARGET, "Looking for {:?}", unique_id);
+                debug!(target: LOG_TARGET, "Looking for {:?}", unique_id);
+                // todo: new method to fetch by unique asset id
                 let uo = self.resources.db.fetch_all_unspent_outputs().await?;
-                // for x in uo {
-                //     warn!(target: LOG_TARGET, "{:?}", x.unblinded_output.unique_id);
-                // }
                 if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
                     Some(token_unique_id) => {
-                        warn!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
+                        debug!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
                         token_unique_id == unique_id &&
                             x.unblinded_output.features.parent_public_key.as_ref() == parent_public_key
                     },

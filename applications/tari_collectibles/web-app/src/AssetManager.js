@@ -29,7 +29,7 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
-import { useParams, withRouter } from "react-router-dom";
+import { useParams, withRouter, useHistory } from "react-router-dom";
 import PropTypes from "prop-types";
 import binding from "./binding";
 import { fs, path } from "@tauri-apps/api";
@@ -47,13 +47,13 @@ class AssetManagerContent extends React.Component {
   }
 
   async componentDidMount() {
-    const { assetPubKey } = this.props;
+    const { assetPublicKey } = this.props;
     let registration = await binding.command_assets_get_registration(
-      assetPubKey
+      assetPublicKey
     );
     console.log("registration:", registration);
     let assetDefinition = {
-      public_key: assetPubKey,
+      public_key: assetPublicKey,
       initialCommittee: registration.initialCommitee,
       checkpointUniqueId: registration.checkpointUniqueId,
       template_parameters: registration.features.template_parameters,
@@ -65,12 +65,13 @@ class AssetManagerContent extends React.Component {
   render() {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4, py: 8 }}>
-        <Typography>Asset: {this.props.assetPubKey}</Typography>
+        <Typography>Asset: {this.props.assetPublicKey}</Typography>
 
         <Box>
           <AssetDefinition
-            assetPubKey={this.props.assetPubKey}
+            assetPublicKey={this.props.assetPublicKey}
             assetDefinition={this.state.assetDefinition}
+            manageLink={this.props.manageLink}
           />
         </Box>
       </Container>
@@ -78,9 +79,8 @@ class AssetManagerContent extends React.Component {
   }
 }
 
-
 const AssetDefinition = (props) => {
-  const { assetPubKey, assetDefinition } = props;
+  const { assetPublicKey, assetDefinition } = props;
   const [msg, setMsg] = useState("");
   const [tip004MintTokenName, setTip004MintTokenName] = useState("Token1");
   let tip004 = false;
@@ -91,7 +91,7 @@ const AssetDefinition = (props) => {
   }
   const contents = JSON.stringify(assetDefinition, null, 2);
   async function save() {
-    const filename = `${assetPubKey}.json`;
+    const filename = `${assetPublicKey}.json`;
     try {
       const home = await path.homeDir();
       const filePath = `${home}${filename}`;
@@ -107,7 +107,10 @@ const AssetDefinition = (props) => {
 
   async function mint() {
     try {
-      await binding.command_tip004_mint_token(assetPubKey, tip004MintTokenName);
+      await binding.command_tip004_mint_token(
+        assetPublicKey,
+        tip004MintTokenName
+      );
     } catch (err) {
       console.error(err);
       setMsg(`Error: ${err.message}`);
@@ -123,6 +126,7 @@ const AssetDefinition = (props) => {
       <Button id="download" onClick={save}>
         Save asset definition file
       </Button>
+      <Button onClick={props.manageLink}>Manage committee</Button>
 
       {tip721 ? (
         <Container>
@@ -152,21 +156,27 @@ const AssetDefinition = (props) => {
 };
 
 AssetDefinition.propTypes = {
-  assetPubKey: PropTypes.string,
+  assetPublicKey: PropTypes.string,
   assetDefinition: PropTypes.shape({
-    templateIds: PropTypes.array
-
-  })
-
-}
+    templateIds: PropTypes.array,
+  }),
+  manageLink: PropTypes.func,
+};
 
 AssetManagerContent.propTypes = {
-  assetPubKey: PropTypes.string,
+  assetPublicKey: PropTypes.string,
+  manageLink: PropTypes.func,
 };
 
 function AssetManager() {
-  const { assetPubKey } = useParams();
-  return <AssetManagerContent assetPubKey={assetPubKey} />;
+  const { assetPublicKey } = useParams();
+  const history = useHistory();
+  return (
+    <AssetManagerContent
+      assetPublicKey={assetPublicKey}
+      manageLink={() => history.push(`/assets/committee/${assetPublicKey}`)}
+    />
+  );
 }
 
 export default withRouter(AssetManager);

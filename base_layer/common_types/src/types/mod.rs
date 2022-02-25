@@ -79,3 +79,9 @@ pub type RangeProofService = DalekRangeProofService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
+
+/// The unique ID for committee definition output features
+pub const COMMITTEE_DEFINITION_ID: [u8; 32] = [2; 32];
+
+/// The unique ID for asset checkpoint output features
+pub const ASSET_CHECKPOINT_ID: [u8; 32] = [3; 32];

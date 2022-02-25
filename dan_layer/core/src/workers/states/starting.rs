@@ -23,6 +23,7 @@
 use std::marker::PhantomData;
 
 use log::*;
+use tari_common_types::types::COMMITTEE_DEFINITION_ID;
 use tari_utilities::hex::Hex;
 
 use crate::{
@@ -66,22 +67,21 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
             "Checking base layer to see if we are part of the committee"
         );
         let tip = base_node_client.get_tip_info().await?;
-        // committee service.get latest committee
         // get latest checkpoint on the base layer
-        let last_checkpoint = base_node_client
+        let last_committee_definition = base_node_client
             .get_current_checkpoint(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
                 asset_definition.public_key.clone(),
-                asset_definition.checkpoint_unique_id.clone(),
+                COMMITTEE_DEFINITION_ID.into(),
             )
             .await?;
 
-        let last_checkpoint = match last_checkpoint {
-            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
+        let output = match last_committee_definition {
+            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
             Some(chk) => chk,
         };
 
-        committee_manager.read_from_checkpoint(last_checkpoint)?;
+        committee_manager.read_from_checkpoint(output)?;
 
         if !committee_manager.current_committee()?.contains(node_id) {
             info!(

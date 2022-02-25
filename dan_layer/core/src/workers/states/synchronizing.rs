@@ -23,10 +23,11 @@
 use std::{convert::TryFrom, marker::PhantomData};
 
 use log::*;
+use tari_common_types::types::COMMITTEE_DEFINITION_ID;
 use tari_comms::types::CommsPublicKey;
 
 use crate::{
-    models::{AssetDefinition, CheckpointOutput},
+    models::{AssetDefinition, CheckpointOutput, CommitteeOutput},
     services::{BaseNodeClient, ServiceSpecification},
     storage::{state::StateDbUnitOfWorkReader, DbFactory},
     workers::{state_sync::StateSynchronizer, states::ConsensusWorkerStateEvent},
@@ -68,9 +69,23 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
             .await?;
 
         let last_checkpoint = match last_checkpoint {
-            Some(cp) => CheckpointOutput::try_from(cp)?,
+            Some(o) => CheckpointOutput::try_from(o)?,
             None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
         };
+
+        let last_committee_definition = base_node_client
+            .get_current_checkpoint(
+                tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
+                asset_definition.public_key.clone(),
+                COMMITTEE_DEFINITION_ID.into(),
+            )
+            .await?;
+
+        let last_committee_definition = match last_committee_definition {
+            Some(o) => CommitteeOutput::try_from(o)?,
+            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
+        };
+        let committee = last_committee_definition.committee;
 
         let asset_registration = base_node_client
             .get_asset_registration(asset_definition.public_key.clone())
@@ -108,6 +123,7 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
             &mut state_db,
             validator_node_client_factory,
             our_address,
+            &committee,
         );
         synchronizer.sync().await?;
 
