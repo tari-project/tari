@@ -97,6 +97,7 @@ pub struct GlobalConfig {
     pub console_wallet_peer_db_path: PathBuf,
     pub console_wallet_use_libtor: bool,
     pub contacts_auto_ping_interval: u64,
+    pub contacts_online_ping_window: usize,
     pub core_threads: Option<usize>,
     pub data_dir: PathBuf,
     pub db_config: LMDBConfig,
@@ -467,6 +468,14 @@ fn convert_node_config(
     let contacts_auto_ping_interval = match cfg.get_int(&key) {
         Ok(seconds) => seconds as u64,
         Err(ConfigError::NotFound(_)) => 20,
+        Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
+    };
+
+    // Liveness last seen within multiple of ping interval to be considered 'online'
+    let key = config_string("wallet", net_str, "contacts_online_ping_window");
+    let contacts_online_ping_window = match cfg.get_int(&key) {
+        Ok(window) => window as usize,
+        Err(ConfigError::NotFound(_)) => 2,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
@@ -849,6 +858,7 @@ fn convert_node_config(
         console_wallet_peer_db_path,
         console_wallet_use_libtor,
         contacts_auto_ping_interval,
+        contacts_online_ping_window,
         core_threads,
         data_dir,
         db_config,

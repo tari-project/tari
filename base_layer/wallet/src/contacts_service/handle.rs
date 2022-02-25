@@ -25,21 +25,26 @@ use std::{
     sync::Arc,
 };
 
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Local, NaiveDateTime};
 use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_service_framework::reply_channel::SenderService;
 use tokio::sync::broadcast;
 use tower::Service;
 
-use crate::contacts_service::{error::ContactsServiceError, service::ContactMessageType, storage::database::Contact};
+use crate::contacts_service::{
+    error::ContactsServiceError,
+    service::{ContactMessageType, ContactOnlineStatus},
+    storage::database::Contact,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContactsLivenessData {
     public_key: CommsPublicKey,
     node_id: NodeId,
     latency: Option<u32>,
-    last_seen: DateTime<Utc>,
+    last_seen: Option<NaiveDateTime>,
     message_type: ContactMessageType,
+    online_status: ContactOnlineStatus,
 }
 
 impl ContactsLivenessData {
@@ -47,8 +52,9 @@ impl ContactsLivenessData {
         public_key: CommsPublicKey,
         node_id: NodeId,
         latency: Option<u32>,
-        last_seen: DateTime<Utc>,
+        last_seen: Option<NaiveDateTime>,
         message_type: ContactMessageType,
+        online_status: ContactOnlineStatus,
     ) -> Self {
         Self {
             public_key,
@@ -56,6 +62,7 @@ impl ContactsLivenessData {
             latency,
             last_seen,
             message_type,
+            online_status,
         }
     }
 
@@ -71,16 +78,20 @@ impl ContactsLivenessData {
         self.latency
     }
 
-    pub fn last_ping_pong_received(&self) -> DateTime<Utc> {
+    pub fn last_ping_pong_received(&self) -> Option<NaiveDateTime> {
         self.last_seen
-    }
-
-    pub fn time_since_last_status_update(&self) -> Duration {
-        Utc::now() - self.last_seen
     }
 
     pub fn message_type(&self) -> ContactMessageType {
         self.message_type.clone()
+    }
+
+    pub fn online_status(&self) -> ContactOnlineStatus {
+        self.online_status.clone()
+    }
+
+    pub fn set_offline(&mut self) {
+        self.online_status = ContactOnlineStatus::Offline
     }
 }
 
@@ -88,17 +99,26 @@ impl Display for ContactsLivenessData {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(
             f,
-            "Node ID {} with latency {:?} last seen {}s ago",
+            "Liveness event '{}' for contact {} ({}) {}",
+            self.message_type,
+            self.public_key,
             self.node_id,
-            self.latency,
-            self.time_since_last_status_update().num_seconds()
+            if let Some(time) = self.last_seen {
+                let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
+                    .format("%F %T")
+                    .to_string();
+                format!("last seen {} is '{}'", local_time, self.online_status)
+            } else {
+                " - contact was never seen".to_string()
+            }
         )
     }
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ContactsLivenessEvent {
-    StatusUpdated(Vec<ContactsLivenessData>),
+    StatusUpdated(Box<ContactsLivenessData>),
     NetworkSilence,
 }
 
@@ -108,6 +128,7 @@ pub enum ContactsServiceRequest {
     UpsertContact(Contact),
     RemoveContact(CommsPublicKey),
     GetContacts,
+    GetContactOnlineStatus(Option<NaiveDateTime>),
 }
 
 #[derive(Debug)]
@@ -116,6 +137,7 @@ pub enum ContactsServiceResponse {
     ContactRemoved(Contact),
     Contact(Contact),
     Contacts(Vec<Contact>),
+    OnlineStatus(ContactOnlineStatus),
 }
 
 #[derive(Clone)]
@@ -185,5 +207,20 @@ impl ContactsServiceHandle {
 
     pub fn get_contacts_liveness_event_stream(&self) -> broadcast::Receiver<Arc<ContactsLivenessEvent>> {
         self.liveness_events.subscribe()
+    }
+
+    /// Determines the contact's online status based on their last seen time
+    pub async fn get_contact_online_status(
+        &mut self,
+        last_seen: Option<NaiveDateTime>,
+    ) -> Result<ContactOnlineStatus, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetContactOnlineStatus(last_seen))
+            .await??
+        {
+            ContactsServiceResponse::OnlineStatus(status) => Ok(status),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
     }
 }

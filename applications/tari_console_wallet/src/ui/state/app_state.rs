@@ -54,7 +54,7 @@ use tari_wallet::{
     assets::Asset,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
     connectivity_service::{OnlineStatus, WalletConnectivityHandle, WalletConnectivityInterface},
-    contacts_service::storage::database::Contact,
+    contacts_service::{handle::ContactsLivenessEvent, storage::database::Contact},
     output_manager_service::{handle::OutputManagerEventReceiver, service::Balance},
     tokens::Token,
     transaction_service::{
@@ -64,7 +64,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tokio::{
-    sync::{watch, RwLock},
+    sync::{broadcast, watch, RwLock},
     task,
 };
 
@@ -735,22 +735,25 @@ impl AppStateInner {
     }
 
     pub async fn refresh_contacts_state(&mut self) -> Result<(), UiError> {
-        let mut contacts: Vec<UiContact> = self
-            .wallet
-            .contacts_service
-            .get_contacts()
-            .await?
-            .iter()
-            .map(|c| UiContact::from(c.clone()))
-            .collect();
+        let db_contacts = self.wallet.contacts_service.get_contacts().await?;
+        let mut ui_contacts: Vec<UiContact> = vec![];
+        for contact in db_contacts {
+            // A contact's online status is a function of current time and can therefore not be stored in a database
+            let online_status = self
+                .wallet
+                .contacts_service
+                .get_contact_online_status(contact.last_seen)
+                .await?;
+            ui_contacts.push(UiContact::from(contact.clone()).with_online_status(format!("{}", online_status)));
+        }
 
-        contacts.sort_by(|a, b| {
+        ui_contacts.sort_by(|a, b| {
             a.alias
                 .partial_cmp(&b.alias)
                 .expect("Should be able to compare contact aliases")
         });
 
-        self.data.contacts = contacts;
+        self.data.contacts = ui_contacts;
         self.updated = true;
         Ok(())
     }
@@ -819,6 +822,10 @@ impl AppStateInner {
 
     pub fn get_transaction_service_event_stream(&self) -> TransactionEventReceiver {
         self.wallet.transaction_service.get_event_stream()
+    }
+
+    pub fn get_contacts_liveness_event_stream(&self) -> broadcast::Receiver<Arc<ContactsLivenessEvent>> {
+        self.wallet.contacts_service.get_contacts_liveness_event_stream()
     }
 
     pub fn get_output_manager_service_event_stream(&self) -> OutputManagerEventReceiver {
