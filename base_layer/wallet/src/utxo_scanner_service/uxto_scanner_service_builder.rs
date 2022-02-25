@@ -55,11 +55,25 @@ impl Default for UtxoScannerMode {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct UtxoScannerServiceBuilder {
     retry_limit: usize,
     peers: Vec<CommsPublicKey>,
     mode: Option<UtxoScannerMode>,
+    one_sided_message: String,
+    recovery_message: String,
+}
+
+impl Default for UtxoScannerServiceBuilder {
+    fn default() -> Self {
+        Self {
+            retry_limit: 0,
+            peers: vec![],
+            mode: None,
+            one_sided_message: "Detected one-sided payment on blockchain".to_string(),
+            recovery_message: "Output found on blockchain during Wallet Recovery".to_string(),
+        }
+    }
 }
 
 impl UtxoScannerServiceBuilder {
@@ -80,6 +94,16 @@ impl UtxoScannerServiceBuilder {
         self
     }
 
+    pub fn with_one_sided_message(&mut self, message: String) -> &mut Self {
+        self.one_sided_message = message;
+        self
+    }
+
+    pub fn with_recovery_message(&mut self, message: String) -> &mut Self {
+        self.recovery_message = message;
+        self
+    }
+
     pub fn build_with_wallet(
         &mut self,
         wallet: &WalletSqlite,
@@ -93,6 +117,8 @@ impl UtxoScannerServiceBuilder {
             transaction_service: wallet.transaction_service.clone(),
             node_identity: wallet.comms.node_identity(),
             factories: wallet.factories.clone(),
+            recovery_message: self.recovery_message.clone(),
+            one_sided_payment_message: self.one_sided_message.clone(),
         };
 
         let (event_sender, _) = broadcast::channel(200);
@@ -105,6 +131,8 @@ impl UtxoScannerServiceBuilder {
             shutdown_signal,
             event_sender,
             wallet.base_node_service.clone(),
+            wallet.utxo_scanner_service.get_one_sided_payment_message_watcher(),
+            wallet.utxo_scanner_service.get_recovery_message_watcher(),
         )
     }
 
@@ -120,6 +148,8 @@ impl UtxoScannerServiceBuilder {
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
+        one_sided_message_watch: watch::Receiver<String>,
+        recovery_message_watch: watch::Receiver<String>,
     ) -> UtxoScannerService<TBackend> {
         let resources = UtxoScannerResources {
             db,
@@ -129,6 +159,8 @@ impl UtxoScannerServiceBuilder {
             transaction_service,
             node_identity,
             factories,
+            recovery_message: self.recovery_message.clone(),
+            one_sided_payment_message: self.one_sided_message.clone(),
         };
 
         UtxoScannerService::new(
@@ -139,6 +171,8 @@ impl UtxoScannerServiceBuilder {
             shutdown_signal,
             event_sender,
             base_node_service,
+            one_sided_message_watch,
+            recovery_message_watch,
         )
     }
 }
