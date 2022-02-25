@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use log::*;
 use tari_common_types::transaction::TxId;
@@ -28,6 +28,7 @@ use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
     connectivity_service::WalletConnectivityInterface,
+    contacts_service::handle::ContactsLivenessEvent,
     output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
 };
@@ -79,6 +80,8 @@ impl WalletEventMonitor {
             .get_software_updater()
             .new_update_notifier()
             .clone();
+
+        let mut contacts_liveness_events = self.app_state_inner.read().await.get_contacts_liveness_event_stream();
 
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
@@ -213,6 +216,26 @@ impl WalletEventMonitor {
                             Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
+                    event = contacts_liveness_events.recv() => {
+                        match event {
+                            Ok(liveness_event) => {
+                                match liveness_event.deref() {
+                                    ContactsLivenessEvent::StatusUpdated(data) => {
+                                        trace!(target: LOG_TARGET,
+                                            "Contacts Liveness Service Callback Handler event 'StatusUpdated': {}",
+                                            data.clone(),
+                                        );
+                                        self.trigger_contacts_refresh().await;
+                                    }
+                                    ContactsLivenessEvent::NetworkSilence => {}
+                                }
+                            }
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
                     _ = shutdown_signal.wait() => {
                         info!(target: LOG_TARGET, "Wallet Event Monitor shutting down because the shutdown signal was received");
                         break;
@@ -292,5 +315,13 @@ impl WalletEventMonitor {
     async fn add_notification(&mut self, notification: String) {
         let mut inner = self.app_state_inner.write().await;
         inner.add_notification(notification);
+    }
+
+    async fn trigger_contacts_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_contacts_state().await {
+            warn!(target: LOG_TARGET, "Error refresh contacts state: {}", e);
+        }
     }
 }
