@@ -47,23 +47,31 @@ async function command_assets_list_registered_assets(offset, count) {
   return await invoke("assets_list_registered_assets", { offset, count });
 }
 
-async function command_assets_get_registration(assetPubKey) {
-  return await invoke("assets_get_registration", { assetPubKey });
+async function command_assets_get_registration(assetPublicKey) {
+  return await invoke("assets_get_registration", { assetPublicKey });
 }
 
-async function command_asset_create_initial_checkpoint(assetPubKey) {
+async function command_asset_create_initial_checkpoint(assetPublicKey) {
   return await invoke("assets_create_initial_checkpoint", {
-    assetPubKey,
+    assetPublicKey,
   });
 }
 
 async function command_asset_create_committee_definition(
-  assetPubKey,
-  committee
+  assetPublicKey,
+  committee,
+  isInitial
 ) {
   return await invoke("assets_create_committee_definition", {
-    assetPubKey,
+    assetPublicKey,
     committee,
+    isInitial,
+  });
+}
+
+async function command_asset_get_committee_definition(assetPublicKey) {
+  return await invoke("assets_get_committee_definition", {
+    assetPublicKey,
   });
 }
 
@@ -158,6 +166,7 @@ const commands = {
   command_assets_list_registered_assets,
   command_asset_create_initial_checkpoint,
   command_asset_create_committee_definition,
+  command_asset_get_committee_definition,
   command_next_asset_public_key,
   command_asset_wallets_create,
   command_asset_wallets_get_balance,

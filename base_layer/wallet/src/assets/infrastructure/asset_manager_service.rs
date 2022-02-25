@@ -159,16 +159,22 @@ impl<T: OutputManagerBackend + 'static> AssetManagerService<T> {
                     tx_id,
                 })
             },
-            AssetManagerRequest::CreateCommitteeCheckpoint {
+            AssetManagerRequest::CreateCommitteeDefinition {
                 asset_public_key,
                 committee_public_keys,
                 effective_sidechain_height,
+                is_initial,
             } => {
                 let (tx_id, transaction) = self
                     .manager
-                    .create_committee_definition(*asset_public_key, committee_public_keys, effective_sidechain_height)
+                    .create_committee_definition(
+                        *asset_public_key,
+                        committee_public_keys,
+                        effective_sidechain_height,
+                        is_initial,
+                    )
                     .await?;
-                Ok(AssetManagerResponse::CreateCommitteeCheckpoint {
+                Ok(AssetManagerResponse::CreateCommitteeDefinition {
                     transaction: Box::new(transaction),
                     tx_id,
                 })

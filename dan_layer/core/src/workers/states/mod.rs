@@ -55,6 +55,7 @@ pub enum ConsensusWorkerStateEvent {
     Synchronized,
     BaseLayerCheckpointNotFound,
     BaseLayerAssetRegistrationNotFound,
+    BaseLayerCommitteeDefinitionNotFound,
     NotPartOfCommittee,
     Errored { reason: String },
     Prepared,

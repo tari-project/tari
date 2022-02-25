@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_utilities::hex::HexError;
+use tari_utilities::{hex::HexError, ByteArrayError};
 use tonic::Status;
 
 #[derive(Debug, thiserror::Error)]
@@ -37,4 +37,18 @@ pub enum CollectiblesError {
   NoConnection,
   #[error("Error converting from Hex to Public Key")]
   Hex(#[from] HexError),
+  #[error("Tonic status error: {status}. ")]
+  StatusError { status: Status },
+  #[error("ByteArrayError")]
+  ByteArrayError(#[from] ByteArrayError),
+  #[error("Output missing required data")]
+  OutputMissingData,
+  #[error("Outputs not found")]
+  OutputsNotFound,
+}
+
+impl From<Status> for CollectiblesError {
+  fn from(status: Status) -> Self {
+    Self::StatusError { status }
+  }
 }

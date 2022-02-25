@@ -144,6 +144,6 @@ Feature: Wallet CLI
         And mining node MINE mines 4 blocks
         Then I wait for wallet WALLET to have at least 1000000 uT
         And I register asset ONE on wallet WALLET via command line
-        And I create committee checkpoint for asset on wallet WALLET via command line
+        And I create committee definition for asset on wallet WALLET via command line
         And mining node MINE mines 1 blocks
         Then WALLET is connected to BASE

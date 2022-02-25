@@ -25,8 +25,8 @@ use std::{convert::TryInto, net::SocketAddr};
 use async_trait::async_trait;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common_types::types::PublicKey;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
     services::BaseNodeClient,
@@ -123,16 +123,22 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         while let Some(r) = result.message().await.unwrap() {
             if let Ok(asset_public_key) = PublicKey::from_bytes(r.asset_public_key.as_bytes()) {
                 if let Some(checkpoint) = self
-                    .get_current_checkpoint(tip.height_of_longest_chain, asset_public_key.clone(), vec![3u8; 32])
+                    .get_current_checkpoint(
+                        tip.height_of_longest_chain,
+                        asset_public_key.clone(),
+                        COMMITTEE_DEFINITION_ID.into(),
+                    )
                     .await?
                 {
                     if let Some(committee) = checkpoint.get_side_chain_committee() {
                         if committee.contains(&dan_node_public_key) {
-                            debug!(
+                            info!(
                                 target: LOG_TARGET,
                                 "Node is on committee for asset : {}", asset_public_key
                             );
+                            let committee = committee.iter().map(Hex::to_hex).collect::<Vec<String>>();
                             assets.push(AssetDefinition {
+                                committee,
                                 public_key: asset_public_key,
                                 template_parameters: r
                                     .features
