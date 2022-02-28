@@ -794,6 +794,9 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet, int *error_out);
 ///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
 ///       a new process.
 ///
+/// `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the default
+///     message will be used
+///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -804,7 +807,24 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet, int *error_out);
 ///
 /// # Safety
 /// None
-bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base_node_public_key, void (*recovery_progress_callback)(unsigned char, unsigned long long, unsigned long long), int *error_out);
+bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base_node_public_key, void (*recovery_progress_callback)(unsigned char, unsigned long long, unsigned long long), const char *recovered_output_message , int *error_out);
+
+/// Set the text message that is applied to a detected One-Side payment transaction when it is scanned from the
+/// blockchain
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `message` - The pointer to a Utf8 string representing the Message
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+bool wallet_set_one_sided_payment_message(struct TariWallet *wallet, const char *message, int *error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);

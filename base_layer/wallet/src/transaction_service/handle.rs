@@ -53,6 +53,7 @@ use crate::{
 
 /// API Request enum
 #[allow(clippy::large_enum_variant)]
+#[derive(Clone)]
 pub enum TransactionServiceRequest {
     GetPendingInboundTransactions,
     GetPendingOutboundTransactions,
