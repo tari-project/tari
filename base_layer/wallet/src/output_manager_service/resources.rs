@@ -20,27 +20,54 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::fmt::{Display, Error, Formatter};
 
-use tari_core::{consensus::ConsensusConstants, transactions::CryptoFactories};
+use tari_core::{
+    consensus::ConsensusConstants,
+    transactions::{transaction_protocol::RewindData, CryptoFactories},
+};
 use tari_shutdown::ShutdownSignal;
 
 use crate::output_manager_service::{
     config::OutputManagerServiceConfig,
     handle::OutputManagerEventSender,
     storage::database::OutputManagerDatabase,
-    MasterKeyManager,
 };
 
 /// This struct is a collection of the common resources that a async task in the service requires.
 #[derive(Clone)]
-pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity> {
+pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyManagerInterface> {
     pub config: OutputManagerServiceConfig,
     pub db: OutputManagerDatabase<TBackend>,
     pub factories: CryptoFactories,
     pub event_publisher: OutputManagerEventSender,
-    pub master_key_manager: Arc<MasterKeyManager<TBackend>>,
+    pub master_key_manager: TKeyManagerInterface,
     pub consensus_constants: ConsensusConstants,
     pub connectivity: TWalletConnectivity,
     pub shutdown_signal: ShutdownSignal,
+    pub rewind_data: RewindData,
+}
+
+#[derive(Clone, Copy)]
+pub enum KeyManagerOmsBranch {
+    Spend,
+    SpendScript,
+    Coinbase,
+    CoinbaseScript,
+    RecoveryViewOnly,
+    RecoveryBlinding,
+}
+
+impl Display for KeyManagerOmsBranch {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let response = match self {
+            KeyManagerOmsBranch::Spend => "Spend",
+            KeyManagerOmsBranch::SpendScript => "Script",
+            KeyManagerOmsBranch::Coinbase => "Coinbase",
+            KeyManagerOmsBranch::CoinbaseScript => "Coinbase_script",
+            KeyManagerOmsBranch::RecoveryViewOnly => "Recovery_viewonly",
+            KeyManagerOmsBranch::RecoveryBlinding => "Recovery_blinding",
+        };
+        fmt.write_str(response)
+    }
 }

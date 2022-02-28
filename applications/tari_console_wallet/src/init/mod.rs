@@ -310,7 +310,7 @@ pub async fn init_wallet(
             return Err(e.into());
         },
     };
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) = backends;
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) = backends;
     let wallet_db = WalletDatabase::new(wallet_backend);
 
     debug!(
@@ -463,6 +463,7 @@ pub async fn init_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
         shutdown_signal,
         master_seed,
     )

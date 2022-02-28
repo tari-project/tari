@@ -34,6 +34,7 @@ pub use wallet_db_connection::WalletDbConnection;
 use crate::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
     error::WalletStorageError,
+    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{database::WalletDatabase, sqlite_db::wallet::WalletSqliteDatabase},
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
@@ -136,6 +137,7 @@ pub fn initialize_sqlite_database_backends(
         TransactionServiceSqliteDatabase,
         OutputManagerSqliteDatabase,
         ContactsServiceSqliteDatabase,
+        KeyManagerSqliteDatabase,
     ),
     WalletStorageError,
 > {
@@ -150,12 +152,17 @@ pub fn initialize_sqlite_database_backends(
     let wallet_backend = WalletSqliteDatabase::new(connection.clone(), passphrase)?;
     let transaction_backend = TransactionServiceSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
     let output_manager_backend = OutputManagerSqliteDatabase::new(connection.clone(), wallet_backend.cipher());
-    let contacts_backend = ContactsServiceSqliteDatabase::new(connection);
+    let contacts_backend = ContactsServiceSqliteDatabase::new(connection.clone());
+    let key_manager_backend = KeyManagerSqliteDatabase::new(connection, wallet_backend.cipher()).map_err(|e| {
+        error!(target: LOG_TARGET, "Error migrating key manager database: {:?}", e);
+        WalletStorageError::DatabaseMigrationError(e.to_string())
+    })?;
 
     Ok((
         wallet_backend,
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
     ))
 }

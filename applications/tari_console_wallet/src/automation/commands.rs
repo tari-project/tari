@@ -807,8 +807,8 @@ pub async fn command_runner(
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
-                // todo: key manager #LOGGED
                 let mut rng = rand::thread_rng();
+                // todo add key from key manager service here
                 let (_, public_key) = PublicKey::random_keypair(&mut rng);
                 let public_key_hex = public_key.to_hex();
                 println!("Registering asset named: {name}");

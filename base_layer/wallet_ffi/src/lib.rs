@@ -3379,9 +3379,9 @@ pub unsafe extern "C" fn wallet_create(
         .with_extension("sqlite3");
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         match initialize_sqlite_database_backends(sql_database_path, passphrase_option, 16) {
-            Ok((w, t, o, c)) => (w, t, o, c),
+            Ok((w, t, o, c, x)) => (w, t, o, c, x),
             Err(e) => {
                 error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
@@ -3489,6 +3489,7 @@ pub unsafe extern "C" fn wallet_create(
         transaction_backend.clone(),
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
         shutdown.to_signal(),
         master_seed,
     ));

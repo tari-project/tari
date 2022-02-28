@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use log::*;
 use rand::rngs::OsRng;
@@ -30,38 +30,44 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_protocol::RewindData,
     CryptoFactories,
 };
 use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     tari_utilities::hex::Hex,
 };
 
-use crate::output_manager_service::{
-    error::{OutputManagerError, OutputManagerStorageError},
-    master_key_manager::KeyManagerBranch,
-    storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbUnblindedOutput,
+use crate::{
+    key_manager_service::KeyManagerInterface,
+    output_manager_service::{
+        error::{OutputManagerError, OutputManagerStorageError},
+        resources::KeyManagerOmsBranch,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
     },
-    MasterKeyManager,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
-pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static> {
-    master_key_manager: Arc<MasterKeyManager<TBackend>>,
+pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
+    master_key_manager: TKeyManagerInterface,
     factories: CryptoFactories,
     db: OutputManagerDatabase<TBackend>,
 }
 
-impl<TBackend> StandardUtxoRecoverer<TBackend>
-where TBackend: OutputManagerBackend + 'static
+impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
+where
+    TBackend: OutputManagerBackend + 'static,
+    TKeyManagerInterface: KeyManagerInterface,
 {
     pub fn new(
-        master_key_manager: Arc<MasterKeyManager<TBackend>>,
+        master_key_manager: TKeyManagerInterface,
         factories: CryptoFactories,
         db: OutputManagerDatabase<TBackend>,
     ) -> Self {
@@ -81,15 +87,19 @@ where TBackend: OutputManagerBackend + 'static
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
+        let rewind_key = self
+            .master_key_manager
+            .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)
+            .await?;
+        let rewind_blinding_key = self
+            .master_key_manager
+            .get_key_at_index(KeyManagerOmsBranch::RecoveryBlinding.to_string(), 0)
+            .await?;
         let mut rewound_outputs: Vec<(UnblindedOutput, RangeProof)> = outputs
             .into_iter()
             .filter_map(|output| {
                 output
-                    .full_rewind_range_proof(
-                        &self.factories.range_proof,
-                        &self.master_key_manager.rewind_data().rewind_key,
-                        &self.master_key_manager.rewind_data().rewind_blinding_key,
-                    )
+                    .full_rewind_range_proof(&self.factories.range_proof, &rewind_key, &rewind_blinding_key)
                     .ok()
                     .map(|v| (v, output))
             })
@@ -128,10 +138,23 @@ where TBackend: OutputManagerBackend + 'static
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
                 .await?;
 
+            let rewind_key = self
+                .master_key_manager
+                .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)
+                .await?;
+            let rewind_blinding_key = self
+                .master_key_manager
+                .get_key_at_index(KeyManagerOmsBranch::RecoveryBlinding.to_string(), 0)
+                .await?;
+            let rewind_data = RewindData {
+                rewind_key,
+                rewind_blinding_key,
+                proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
+            };
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
-                self.master_key_manager.rewind_data(),
+                &rewind_data,
                 None,
                 Some(proof),
             )?;
@@ -171,23 +194,28 @@ where TBackend: OutputManagerBackend + 'static
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Coinbase)
+                .find_key_index(KeyManagerOmsBranch::Coinbase.to_string(), output.spending_key.clone())
                 .await?;
 
             self.master_key_manager
-                .get_coinbase_script_key_at_index(found_index)
+                .get_key_at_index(KeyManagerOmsBranch::CoinbaseScript.to_string(), found_index)
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Spend)
+                .find_key_index(KeyManagerOmsBranch::Spend.to_string(), output.spending_key.clone())
                 .await?;
 
             self.master_key_manager
-                .update_current_spend_key_index_if_higher(found_index)
+                .update_current_key_index_if_higher(KeyManagerOmsBranch::Spend.to_string(), found_index)
+                .await?;
+            self.master_key_manager
+                .update_current_key_index_if_higher(KeyManagerOmsBranch::SpendScript.to_string(), found_index)
                 .await?;
 
-            self.master_key_manager.get_script_key_at_index(found_index).await?
+            self.master_key_manager
+                .get_key_at_index(KeyManagerOmsBranch::SpendScript.to_string(), found_index)
+                .await?
         };
 
         output.input_data = inputs!(PublicKey::from_secret_key(&script_key));

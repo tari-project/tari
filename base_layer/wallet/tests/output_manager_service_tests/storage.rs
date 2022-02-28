@@ -27,12 +27,11 @@ use aes_gcm::{
 use rand::{rngs::OsRng, RngCore};
 use tari_common_types::transaction::TxId;
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::output_manager_service::{
     error::OutputManagerStorageError,
     service::Balance,
     storage::{
-        database::{KeyManagerState, OutputManagerBackend, OutputManagerDatabase},
+        database::{OutputManagerBackend, OutputManagerDatabase},
         models::DbUnblindedOutput,
         sqlite_db::OutputManagerSqliteDatabase,
     },
@@ -340,34 +339,6 @@ pub fn test_output_manager_sqlite_db_encrypted() {
     let cipher = Aes256Gcm::new(key);
 
     test_db_backend(OutputManagerSqliteDatabase::new(connection, Some(cipher)));
-}
-
-#[test]
-pub fn test_key_manager_crud() {
-    let runtime = Runtime::new().unwrap();
-    let (connection, _tempdir) = get_temp_sqlite_database_connection();
-    let backend = OutputManagerSqliteDatabase::new(connection, None);
-    let db = OutputManagerDatabase::new(backend);
-
-    assert_eq!(runtime.block_on(db.get_key_manager_state()).unwrap(), None);
-    assert!(runtime.block_on(db.increment_key_index()).is_err());
-
-    let state1 = KeyManagerState {
-        seed: CipherSeed::new(),
-        branch_seed: "blah".to_string(),
-        primary_key_index: 0,
-    };
-
-    runtime.block_on(db.set_key_manager_state(state1.clone())).unwrap();
-
-    let read_state1 = runtime.block_on(db.get_key_manager_state()).unwrap().unwrap();
-    assert_eq!(state1, read_state1);
-
-    runtime.block_on(db.increment_key_index()).unwrap();
-    runtime.block_on(db.increment_key_index()).unwrap();
-
-    let read_state3 = runtime.block_on(db.get_key_manager_state()).unwrap().unwrap();
-    assert_eq!(read_state3.primary_key_index, 2);
 }
 
 #[tokio::test]

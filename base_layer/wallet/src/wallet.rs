@@ -73,6 +73,7 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInitializer},
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -95,7 +96,7 @@ const LOG_TARGET: &str = "wallet";
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W> {
+pub struct Wallet<T, U, V, W, X> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
@@ -114,14 +115,16 @@ pub struct Wallet<T, U, V, W> {
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
+    _x: PhantomData<X>,
 }
 
-impl<T, U, V, W> Wallet<T, U, V, W>
+impl<T, U, V, W, X> Wallet<T, U, V, W, X>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
+    X: KeyManagerBackend + 'static,
 {
     pub async fn start(
         config: WalletConfig,
@@ -129,6 +132,7 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
+        key_manager_backend: X,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
@@ -159,14 +163,14 @@ where
         );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config.clone(), publisher))
-            .add_initializer(OutputManagerServiceInitializer::new(
+            .add_initializer(OutputManagerServiceInitializer::<V, X>::new(
                 config.output_manager_service_config.unwrap_or_default(),
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
-                master_seed,
                 node_identity.clone(),
             ))
+            .add_initializer(KeyManagerInitializer::new(key_manager_backend, master_seed))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
                 peer_message_subscription_factory.clone(),
@@ -275,6 +279,7 @@ where
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
+            _x: PhantomData,
         })
     }
 

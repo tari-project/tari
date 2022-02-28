@@ -57,30 +57,36 @@ use tari_core::{
 use tari_crypto::{
     inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     script::TariScript,
     tari_utilities::{hex::Hex, ByteArray},
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::WalletConnectivityInterface,
+    key_manager_service::{KeyManagerError, KeyManagerInterface},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerProtocolError, OutputManagerStorageError},
-        handle::{OutputManagerEvent, OutputManagerEventSender, OutputManagerRequest, OutputManagerResponse},
+        handle::{
+            OutputManagerEvent,
+            OutputManagerEventSender,
+            OutputManagerRequest,
+            OutputManagerResponse,
+            PublicRewindKeys,
+        },
         recovery::StandardUtxoRecoverer,
-        resources::OutputManagerResources,
+        resources::{KeyManagerOmsBranch, OutputManagerResources},
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript, SpendingPriority},
             OutputStatus,
         },
         tasks::TxoValidationTask,
-        MasterKeyManager,
     },
     types::HashDigest,
 };
@@ -91,8 +97,8 @@ const LOG_TARGET: &str = "wallet::output_manager_service";
 /// The service will assemble transactions to be sent from the wallets available outputs and provide keys to receive
 /// outputs. When the outputs are detected on the blockchain the Transaction service will call this Service to confirm
 /// them to be moved to the spent and unspent output lists respectively.
-pub struct OutputManagerService<TBackend, TWalletConnectivity> {
-    resources: OutputManagerResources<TBackend, TWalletConnectivity>,
+pub struct OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterface> {
+    resources: OutputManagerResources<TBackend, TWalletConnectivity, TKeyManagerInterface>,
     request_stream:
         Option<reply_channel::Receiver<OutputManagerRequest, Result<OutputManagerResponse, OutputManagerError>>>,
     base_node_service: BaseNodeServiceHandle,
@@ -100,10 +106,12 @@ pub struct OutputManagerService<TBackend, TWalletConnectivity> {
     node_identity: Arc<NodeIdentity>,
 }
 
-impl<TBackend, TWalletConnectivity> OutputManagerService<TBackend, TWalletConnectivity>
+impl<TBackend, TWalletConnectivity, TKeyManagerInterface>
+    OutputManagerService<TBackend, TWalletConnectivity, TKeyManagerInterface>
 where
     TBackend: OutputManagerBackend + 'static,
     TWalletConnectivity: WalletConnectivityInterface,
+    TKeyManagerInterface: KeyManagerInterface,
 {
     pub async fn new(
         config: OutputManagerServiceConfig,
@@ -118,14 +126,27 @@ where
         shutdown_signal: ShutdownSignal,
         base_node_service: BaseNodeServiceHandle,
         connectivity: TWalletConnectivity,
-        master_seed: CipherSeed,
         node_identity: Arc<NodeIdentity>,
+        key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager(
+            &key_manager,
+        )
+        .await?;
         db.clear_short_term_encumberances().await?;
-
-        let master_key_manager = MasterKeyManager::new(master_seed, db.clone()).await?;
+        let rewind_key = key_manager
+            .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)
+            .await?;
+        let rewind_blinding_key = key_manager
+            .get_key_at_index(KeyManagerOmsBranch::RecoveryBlinding.to_string(), 0)
+            .await?;
+        let rewind_data = RewindData {
+            rewind_key,
+            rewind_blinding_key,
+            proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
+        };
 
         let resources = OutputManagerResources {
             config,
@@ -133,9 +154,10 @@ where
             factories,
             connectivity,
             event_publisher,
-            master_key_manager: Arc::new(master_key_manager),
+            master_key_manager: key_manager,
             consensus_constants,
             shutdown_signal,
+            rewind_data,
         };
 
         Ok(Self {
@@ -145,6 +167,58 @@ where
             last_seen_tip_height: None,
             node_identity,
         })
+    }
+
+    async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager_branch(
+            KeyManagerOmsBranch::Spend.to_string(),
+            key_manager,
+        )
+        .await?;
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager_branch(
+            KeyManagerOmsBranch::SpendScript.to_string(),
+            key_manager,
+        )
+        .await?;
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager_branch(
+            KeyManagerOmsBranch::Coinbase.to_string(),
+            key_manager,
+        )
+        .await?;
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager_branch(
+            KeyManagerOmsBranch::CoinbaseScript.to_string(),
+            key_manager,
+        )
+        .await?;
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager_branch(
+            KeyManagerOmsBranch::RecoveryViewOnly.to_string(),
+            key_manager,
+        )
+        .await?;
+        OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager_branch(
+            KeyManagerOmsBranch::RecoveryBlinding.to_string(),
+            key_manager,
+        )
+        .await
+    }
+
+    async fn initialise_key_manager_branch(
+        branch: String,
+        key_manager: &TKeyManagerInterface,
+    ) -> Result<(), OutputManagerError> {
+        match key_manager.add_new_branch(branch).await {
+            Ok(()) => return Ok(()),
+            Err(KeyManagerError::BranchAllreadyExists) => return Ok(()),
+            Err(e) => return Err(OutputManagerError::TariKeyManagerError(e)),
+        };
+    }
+
+    /// Return the public rewind keys
+    pub fn get_rewind_public_keys(&self) -> PublicRewindKeys {
+        PublicRewindKeys {
+            rewind_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_key),
+            rewind_blinding_public_key: PublicKey::from_secret_key(&self.resources.rewind_data.rewind_blinding_key),
+        }
     }
 
     pub async fn start(mut self) -> Result<(), OutputManagerError> {
@@ -316,9 +390,13 @@ where
             OutputManagerRequest::GetSeedWords => self
                 .resources
                 .master_key_manager
-                .get_seed_words(&self.resources.config.seed_word_language)
+                .get_seed_words(
+                    KeyManagerOmsBranch::Spend.to_string(),
+                    &self.resources.config.seed_word_language,
+                )
                 .await
-                .map(OutputManagerResponse::SeedWords),
+                .map(OutputManagerResponse::SeedWords)
+                .map_err(OutputManagerError::TariKeyManagerError),
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },
@@ -355,7 +433,7 @@ where
                 .map_err(OutputManagerError::OutputManagerStorageError),
 
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
-                self.resources.master_key_manager.get_rewind_public_keys(),
+                self.get_rewind_public_keys(),
             ))),
             OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
@@ -569,7 +647,7 @@ where
         let rewind_data = if let Some(value) = custom_rewind_data {
             value
         } else {
-            self.resources.master_key_manager.rewind_data().clone()
+            self.resources.rewind_data.clone()
         };
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             output,
@@ -617,14 +695,19 @@ where
     }
 
     async fn create_output_with_features(
-        &self,
+        &mut self,
         value: MicroTari,
         features: OutputFeatures,
     ) -> Result<UnblindedOutputBuilder, OutputManagerError> {
-        let (spending_key, script_private_key) = self
+        let spending_key = self
             .resources
             .master_key_manager
-            .get_next_spend_and_script_key()
+            .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+            .await?;
+        let script_private_key = self
+            .resources
+            .master_key_manager
+            .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
             .await?;
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
@@ -664,10 +747,15 @@ where
             return Err(OutputManagerError::InvalidScriptHash);
         }
 
-        let (spending_key, script_private_key) = self
+        let spending_key = self
             .resources
             .master_key_manager
-            .get_next_spend_and_script_key()
+            .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+            .await?;
+        let script_private_key = self
+            .resources
+            .master_key_manager
+            .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
             .await?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
@@ -694,7 +782,7 @@ where
                 single_round_sender_data.covenant.clone(),
             ),
             &self.resources.factories,
-            self.resources.master_key_manager.rewind_data(),
+            &self.resources.rewind_data,
             None,
             None,
         )?;
@@ -711,7 +799,7 @@ where
             nonce,
             spending_key,
             &self.resources.factories,
-            self.resources.master_key_manager.rewind_data(),
+            &self.resources.rewind_data,
         );
 
         Ok(rtp)
@@ -860,13 +948,18 @@ where
         );
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self
+            let spending_key = self
                 .resources
                 .master_key_manager
-                .get_next_spend_and_script_key()
+                .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+                .await?;
+            let script_private_key = self
+                .resources
+                .master_key_manager
+                .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
                 .await?;
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -893,7 +986,7 @@ where
             change_output.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &self.resources.master_key_manager.rewind_data().clone(),
+                &&self.resources.rewind_data.clone(),
                 None,
                 None,
             )?);
@@ -927,10 +1020,15 @@ where
             "Building coinbase transaction for block_height {} with TxId: {}", block_height, tx_id
         );
 
-        let (spending_key, script_key) = self
+        let spending_key = self
             .resources
             .master_key_manager
-            .get_coinbase_spend_and_script_key_for_height(block_height)
+            .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+            .await?;
+        let script_private_key = self
+            .resources
+            .master_key_manager
+            .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
             .await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
@@ -938,16 +1036,16 @@ where
             .with_block_height(block_height)
             .with_fees(fees)
             .with_spend_key(spending_key.clone())
-            .with_script_key(script_key.clone())
+            .with_script_key(script_private_key.clone())
             .with_script(script!(Nop))
             .with_nonce(nonce)
-            .with_rewind_data(self.resources.master_key_manager.rewind_data().clone())
+            .with_rewind_data(self.resources.rewind_data.clone())
             .build_with_reward(&self.resources.consensus_constants, reward)?;
 
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            self.resources.master_key_manager.rewind_data(),
+            &self.resources.rewind_data,
             None,
             None,
         )?;
@@ -1047,13 +1145,18 @@ where
         }
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self
+            let spending_key = self
                 .resources
                 .master_key_manager
-                .get_next_spend_and_script_key()
+                .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+                .await?;
+            let script_private_key = self
+                .resources
+                .master_key_manager
+                .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
                 .await?;
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1079,7 +1182,7 @@ where
             db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 ub,
                 &self.resources.factories,
-                self.resources.master_key_manager.rewind_data(),
+                &self.resources.rewind_data,
                 None,
                 None,
             )?)
@@ -1097,7 +1200,7 @@ where
         //         .await?;
         //     change_keys = Some((spending_key.clone(), script_private_key.clone()));
         //     builder.with_change_secret(spending_key);
-        //     builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+        //     builder.with_rewindable_outputs(&self.resources.rewind_data.clone());
         //     builder.with_change_script(
         //         script!(Nop),
         //         inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1140,7 +1243,7 @@ where
             db_outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                self.resources.master_key_manager.rewind_data(),
+                &self.resources.rewind_data,
                 None,
                 None,
             )?);
@@ -1217,10 +1320,15 @@ where
             );
         }
 
-        let (spending_key, script_private_key) = self
+        let spending_key = self
             .resources
             .master_key_manager
-            .get_next_spend_and_script_key()
+            .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+            .await?;
+        let script_private_key = self
+            .resources
+            .master_key_manager
+            .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
             .await?;
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             &amount,
@@ -1244,7 +1352,7 @@ where
                 covenant,
             ),
             &self.resources.factories,
-            self.resources.master_key_manager.rewind_data(),
+            &self.resources.rewind_data,
             None,
             None,
         )?;
@@ -1255,13 +1363,18 @@ where
         let mut outputs = vec![utxo];
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self
+            let spending_key = self
                 .resources
                 .master_key_manager
-                .get_next_spend_and_script_key()
+                .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+                .await?;
+            let script_private_key = self
+                .resources
+                .master_key_manager
+                .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
                 .await?;
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1287,7 +1400,7 @@ where
             let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                self.resources.master_key_manager.rewind_data(),
+                &self.resources.rewind_data,
                 None,
                 None,
             )?;
@@ -1547,7 +1660,7 @@ where
             .with_fee_per_gram(fee_per_gram)
             .with_offset(offset.clone())
             .with_private_nonce(nonce.clone())
-            .with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            .with_rewindable_outputs(self.resources.rewind_data.clone());
 
         trace!(target: LOG_TARGET, "Add inputs to coin split transaction.");
         for uo in input_selection.iter() {
@@ -1564,10 +1677,15 @@ where
         for _ in 0..output_count {
             let output_amount = amount_per_split;
 
-            let (spending_key, script_private_key) = self
+            let spending_key = self
                 .resources
                 .master_key_manager
-                .get_next_spend_and_script_key()
+                .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+                .await?;
+            let script_private_key = self
+                .resources
+                .master_key_manager
+                .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
                 .await?;
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
 
@@ -1594,7 +1712,7 @@ where
                     covenant.clone(),
                 ),
                 &self.resources.factories,
-                &self.resources.master_key_manager.rewind_data().clone(),
+                &&self.resources.rewind_data.clone(),
                 None,
                 None,
             )?;
@@ -1605,13 +1723,18 @@ where
         }
 
         if input_selection.requires_change_output() {
-            let (spending_key, script_private_key) = self
+            let spending_key = self
                 .resources
                 .master_key_manager
-                .get_next_spend_and_script_key()
+                .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+                .await?;
+            let script_private_key = self
+                .resources
+                .master_key_manager
+                .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
                 .await?;
             builder.with_change_secret(spending_key);
-            builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+            builder.with_rewindable_outputs(self.resources.rewind_data.clone());
             builder.with_change_script(
                 script!(Nop),
                 inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1645,7 +1768,7 @@ where
             outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &self.resources.master_key_manager.rewind_data().clone(),
+                &&self.resources.rewind_data.clone(),
                 None,
                 None,
             )?);
@@ -1748,13 +1871,18 @@ where
 
         let mut outputs = Vec::new();
 
-        let (spending_key, script_private_key) = self
+        let spending_key = self
             .resources
             .master_key_manager
-            .get_next_spend_and_script_key()
+            .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+            .await?;
+        let script_private_key = self
+            .resources
+            .master_key_manager
+            .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
             .await?;
         builder.with_change_secret(spending_key);
-        builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+        builder.with_rewindable_outputs(self.resources.rewind_data.clone());
         builder.with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1778,7 +1906,7 @@ where
         let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            self.resources.master_key_manager.rewind_data(),
+            &self.resources.rewind_data,
             None,
             None,
         )?;
@@ -1834,13 +1962,18 @@ where
 
         let mut outputs = Vec::new();
 
-        let (spending_key, script_private_key) = self
+        let spending_key = self
             .resources
             .master_key_manager
-            .get_next_spend_and_script_key()
+            .get_next_key(KeyManagerOmsBranch::Spend.to_string())
+            .await?;
+        let script_private_key = self
+            .resources
+            .master_key_manager
+            .get_next_key(KeyManagerOmsBranch::SpendScript.to_string())
             .await?;
         builder.with_change_secret(spending_key);
-        builder.with_rewindable_outputs(self.resources.master_key_manager.rewind_data().clone());
+        builder.with_rewindable_outputs(self.resources.rewind_data.clone());
         builder.with_change_script(
             script!(Nop),
             inputs!(PublicKey::from_secret_key(&script_private_key)),
@@ -1866,7 +1999,7 @@ where
         let change_output = DbUnblindedOutput::rewindable_from_unblinded_output(
             unblinded_output,
             &self.resources.factories,
-            self.resources.master_key_manager.rewind_data(),
+            &self.resources.rewind_data,
             None,
             None,
         )?;
