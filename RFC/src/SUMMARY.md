@@ -43,6 +43,7 @@
   - [RFC-0360: NFT sale using MimbleWimble Invoice](RFC-0360_NFTInvoices.md)
 - [RFC-0500: Tari payment channels](RFC-0500_PaymentChannels.md)
 - [RFC-1000: Tari Use Cases](RFC-1000_TariUseCases.md)
+- [RFC-XXXX: Deep links structure convention](RFC-XXXX_DeepLinksConvencion.md)
 
 - [Deprecated RFCs](deprecated.md)
 
