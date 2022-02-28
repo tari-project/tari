@@ -184,7 +184,11 @@ where
                 },
                 peer_message_subscription_factory,
             ))
-            .add_initializer(ContactsServiceInitializer::new(contacts_backend))
+            .add_initializer(ContactsServiceInitializer::new(
+                contacts_backend,
+                config.contacts_auto_ping_interval,
+                config.contacts_online_ping_window,
+            ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config.clone(),
                 wallet_database.clone(),

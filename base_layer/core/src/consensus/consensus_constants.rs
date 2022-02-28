@@ -112,7 +112,7 @@ fn version_zero() -> (
     (input_version_range, output_version_range, kernel_version_range)
 }
 
-/// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
+/// This is just a convenience struct to put all the info into a hashmap for each algorithm
 #[derive(Clone, Debug)]
 pub struct PowAlgorithmConstants {
     /// NB this is very important to set this as 6 * the target time
@@ -248,14 +248,17 @@ impl ConsensusConstants {
         &self.transaction_weight
     }
 
+    /// The range of acceptable transaction input versions
     pub fn input_version_range(&self) -> &RangeInclusive<TransactionInputVersion> {
         &self.input_version_range
     }
 
+    /// The range of acceptable transaction output and features versions
     pub fn output_version_range(&self) -> &OutputVersionRange {
         &self.output_version_range
     }
 
+    /// The range of acceptable transaction kernel versions
     pub fn kernel_version_range(&self) -> &RangeInclusive<TransactionKernelVersion> {
         &self.kernel_version_range
     }
@@ -399,7 +402,7 @@ impl ConsensusConstants {
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        vec![ConsensusConstants {
+        let constants = ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 360,
             blockchain_version: 2,
@@ -421,7 +424,9 @@ impl ConsensusConstants {
             input_version_range,
             output_version_range,
             kernel_version_range,
-        }]
+        };
+
+        vec![constants]
     }
 
     pub fn mainnet() -> Vec<Self> {

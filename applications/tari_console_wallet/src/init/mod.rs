@@ -454,6 +454,7 @@ pub async fn init_wallet(
         Some(updater_config),
         config.autoupdate_check_interval,
         Some(Duration::from_secs(config.contacts_auto_ping_interval)),
+        Some(config.contacts_online_ping_window),
     );
 
     let mut wallet = Wallet::start(

@@ -55,6 +55,7 @@ import * as React from "react";
 import PropTypes from "prop-types";
 import Manage from "./Manage";
 import AssetManager from "./AssetManager";
+import AssetCommitteeManager from "./AssetCommitteeManager";
 import AccountDashboard from "./AccountDashboard";
 import NewAccount from "./NewAccount";
 import Setup, { UnlockWallet } from "./Setup";
@@ -118,29 +119,15 @@ ListItemLink.propTypes = {
   to: PropTypes.string.isRequired,
 };
 
-const AccountsMenu = (props) => {
+const AccountsMenu = ({ walletId, authenticated }) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
   useEffect(async () => {
-    console.log("refreshing accounts");
-    setError("");
-    await binding
-      .command_asset_wallets_list()
-      .then((accounts) => {
-        console.log("accounts", accounts);
-        setAccounts(accounts);
-      })
-      .catch((e) => {
-        // todo error handling
-        console.error("accounts_list error:", e);
-        setError(e.message);
-      });
-
-    await listen("asset_wallets::updated", (event) => {
-      console.log("accounts have changed");
+    if (authenticated) {
+      console.log("refreshing accounts");
       setError("");
-      binding
+      await binding
         .command_asset_wallets_list()
         .then((accounts) => {
           console.log("accounts", accounts);
@@ -151,10 +138,24 @@ const AccountsMenu = (props) => {
           console.error("accounts_list error:", e);
           setError(e.message);
         });
-    });
-  }, [props.walletId]);
+      await listen("asset_wallets::updated", (event) => {
+        console.log("accounts have changed");
+        setError("");
+        binding
+          .command_asset_wallets_list()
+          .then((accounts) => {
+            console.log("accounts", accounts);
+            setAccounts(accounts);
+          })
+          .catch((e) => {
+            // todo error handling
+            console.error("accounts_list error:", e);
+            setError(e.message);
+          });
+      });
+    }
+  }, [walletId, authenticated]);
 
-  // todo: hide accounts when not authenticated
   return (
     <div>
       <ListSubheader>
@@ -192,6 +193,7 @@ const AccountsMenu = (props) => {
 
 AccountsMenu.propTypes = {
   walletId: PropTypes.string,
+  authenticated: PropTypes.bool,
 };
 
 // only allow access to a Protected Route if the wallet is unlocked
@@ -249,7 +251,10 @@ function App() {
                   icon={<DashboardIcon />}
                 />
                 <Divider />
-                <AccountsMenu walletId={walletId} />
+                <AccountsMenu
+                  walletId={walletId}
+                  authenticated={authenticated}
+                />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -282,7 +287,7 @@ function App() {
                   <NewAccount />
                 </ProtectedRoute>
                 <ProtectedRoute
-                  path="/accounts/:assetPubKey"
+                  path="/accounts/:assetPublicKey"
                   authenticated={authenticated}
                 >
                   <AccountDashboard />
@@ -294,10 +299,16 @@ function App() {
                   <Manage />
                 </ProtectedRoute>
                 <ProtectedRoute
-                  path="/assets/manage/:assetPubKey"
+                  path="/assets/manage/:assetPublicKey"
                   authenticated={authenticated}
                 >
                   <AssetManager />
+                </ProtectedRoute>
+                <ProtectedRoute
+                  path="/assets/committee/:assetPublicKey"
+                  authenticated={authenticated}
+                >
+                  <AssetCommitteeManager />
                 </ProtectedRoute>
 
                 <Route path="/wallets/:id">

@@ -43,6 +43,7 @@ pub struct StateSynchronizer<'a, TStateDbBackendAdapter, TValidatorNodeClientFac
     state_db: &'a mut StateDb<TStateDbBackendAdapter>,
     validator_node_client_factory: &'a TValidatorNodeClientFactory,
     our_address: &'a TValidatorNodeClientFactory::Addr,
+    committee: &'a [TValidatorNodeClientFactory::Addr],
 }
 
 impl<'a, TStateDbBackendAdapter, TValidatorNodeClientFactory>
@@ -56,18 +57,19 @@ where
         state_db: &'a mut StateDb<TStateDbBackendAdapter>,
         validator_node_client_factory: &'a TValidatorNodeClientFactory,
         our_address: &'a TValidatorNodeClientFactory::Addr,
+        committee: &'a [TValidatorNodeClientFactory::Addr],
     ) -> Self {
         Self {
             last_checkpoint,
             state_db,
             validator_node_client_factory,
             our_address,
+            committee,
         }
     }
 
     pub async fn sync(&self) -> Result<(), StateSyncError> {
         let mut committee = self
-            .last_checkpoint
             .committee
             .iter()
             .filter(|address| *self.our_address != **address)

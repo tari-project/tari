@@ -16,7 +16,8 @@ on:
         default: "development-tag"
 
 env:
-  TBN_FILENAME: "tari_base_node"
+  TBN_FILENAME: "tari_suite"
+  TBN_BUNDLEID_BASE: "com.tarilabs.pkg"
 
 jobs:
   builds:
@@ -160,7 +161,6 @@ jobs:
           RUSTFLAGS: "-C target_cpu=${{ matrix.target_cpu }}"
           ROARING_ARCH: "${{ matrix.target_cpu }}"
         run: |
-          echo "Cache Key: ${{ runner.os }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}"
           cargo build --release
 
       - name: Info - Post-Compile Space Check for Nix
@@ -203,6 +203,9 @@ jobs:
           MACOS_INSTALLER_ID: ${{ secrets.MACOS_INSTALLER_ID }}
           MACOS_INSTALLER_CERT: ${{ secrets.MACOS_INSTALLER_CERT }}
           MACOS_INSTALLER_PASS: ${{ secrets.MACOS_INSTALLER_PASS }}
+          MACOS_NOTARIZE_USERNAME: ${{ secrets.MACOS_NOTARIZE_USERNAME }}
+          MACOS_NOTARIZE_PASSWORD: ${{ secrets.MACOS_NOTARIZE_PASSWORD }}
+          MACOS_ASC_PROVIDER: ${{ secrets.MACOS_ASC_PROVIDER }}
         run: |
           echo $MACOS_APPLICATION_CERT | base64 --decode > application.p12
           echo $MACOS_INSTALLER_CERT | base64 --decode > installer.p12
@@ -224,25 +227,62 @@ jobs:
             "tari_launchpad"
           )
           for FILE in "${FILES[@]}"; do
-            codesign --options runtime --force --verify --verbose --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
+            codesign --options runtime --force --verify --verbose --timestamp --sign "Developer ID Application: $MACOS_APPLICATION_ID" "/tmp/tari_testnet/runtime/$FILE"
             codesign --verify --deep --display --verbose=4 "/tmp/tari_testnet/runtime/$FILE"
             cp -vf "/tmp/tari_testnet/runtime/$FILE" "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
           done
+          distDirPKG=$(mktemp -d -t ${{ env.TBN_FILENAME }})
+          echo "${distDirPKG}"
+          echo "distDirPKG=${distDirPKG}" >> $GITHUB_ENV
+          TBN_Temp=${{ env.TBN_FILENAME }}
+          TBN_BUNDLEID_VALID_NAME=$(echo "${TBN_Temp//_/-}")
           pkgbuild --root /tmp/tari_testnet \
-          --identifier "com.tarilabs.pkg" \
-          --version "$VERSION" \
-          --install-location "/tmp/tari" \
-          --scripts "/tmp/tari_testnet/scripts" \
-          --sign "Developer ID Installer: $MACOS_INSTALLER_ID" \
-          "${{ github.workspace }}${{ env.TBN_DIST }}/tari-${{ env.VERSION }}.pkg"
+            --identifier "${{ env.TBN_BUNDLEID_BASE }}.$TBN_BUNDLEID_VALID_NAME" \
+            --version "$VERSION" \
+            --install-location "/tmp/tari" \
+            --scripts "/tmp/tari_testnet/scripts" \
+            --sign "Developer ID Installer: $MACOS_INSTALLER_ID" \
+            "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg"
+          echo -e "Submitting to Apple...\n\n"
+          xcrun altool --notarize-app \
+            --primary-bundle-id "${{ env.TBN_BUNDLEID_BASE }}.$TBN_BUNDLEID_VALID_NAME" \
+            --username "$MACOS_NOTARIZE_USERNAME" --password "$MACOS_NOTARIZE_PASSWORD" \
+            --asc-provider "$MACOS_ASC_PROVIDER" \
+            --file "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg" &> notarisation.result
+          requestUUID=`grep RequestUUID notarisation.result | cut -d" " -f 3`
+          echo $requestUUID
+          if [[ $requestUUID == "" ]]; then
+            echo "could not upload for notarization"
+            exit 1
+          else
+            echo "Notarization RequestUUID: $requestUUID"
+          fi
+          echo -e "\n\nChecking result of notarisation..."
+          request_status="in progress"
+          while [[ "$request_status" == "in progress" ]]; do
+            echo -n "waiting... "
+            sleep 10
+            request_status=$(xcrun altool --notarization-info $requestUUID --username "$MACOS_NOTARIZE_USERNAME" --password "$MACOS_NOTARIZE_PASSWORD" 2>&1)
+            echo "$request_status"
+            request_status=$(echo "$request_status" | awk -F ': ' '/Status:/ { print $2; }' )
+            echo "$request_status"
+          done
+          echo "$request_status"
+          if [[ $request_status != "success" ]]; then
+            echo "## could not notarize - $request_status - ${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg"
+            exit 1
+          else
+            echo -e "\nStapling package...${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg\n"
+            xcrun stapler staple -v "${distDirPKG}/${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg"
+          fi
 
       - name: Artifact upload for macOS pkg
         if: startsWith(runner.os,'macOS')
         continue-on-error: true
         uses: actions/upload-artifact@v2
         with:
-          name: tari-${{ env.VERSION }}.pkg
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari-${{ env.VERSION }}.pkg"
+          name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg
+          path: "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ env.VERSION }}*.pkg"
 
       # unlike inno script studio, iscc.exe doesn't run the [precompile] step generate_config.bat
       - name: Build the Windows installer
@@ -260,7 +300,7 @@ jobs:
           name: "tari_windows_installer"
           path: "${{ github.workspace }}/buildtools/Output/*"
 
-      - name: Archive and Sign Binaries
+      - name: Archive and Checksum Binaries
         shell: bash
         run: |
           echo "Archive ${{ env.BINFILE }} too ${{ env.BINFILE }}.zip"
@@ -272,13 +312,18 @@ jobs:
           cat "${{ env.BINFILE }}.zip.sha256"
           echo "Verifications is "
           ${SHARUN} --check "${{ env.BINFILE }}.zip.sha256"
-          #rm -f "${BINFILE}"
+          if [ -f "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg" ]; then
+            echo "Add PKG to $GITHUB_WORKSPACE${{ env.TBN_DIST }} "
+            cp -v "${{ env.distDirPKG }}/${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg" "$GITHUB_WORKSPACE${{ env.TBN_DIST }}"
+            ${SHARUN} "${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg" >> "${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg.sha256"
+            ${SHARUN} --check "${{ env.TBN_FILENAME }}-${{ env.VERSION }}.pkg.sha256"
+          fi
 
       - name: Artifact upload for Archive
         uses: actions/upload-artifact@v2
         with:
           #name: ${{ env.TBN_FILENAME }}-${{ env.VERSION }}-${{ env.VSHA_SHORT }}-${{ matrix.os }}-${{ matrix.target_cpu }}-${{ matrix.features }}
-          name: tari_binary_archive-${{ matrix.os }}-${{ matrix.target_cpu }}
+          name: ${{ env.TBN_FILENAME }}_archive-${{ matrix.os }}-${{ matrix.target_cpu }}
           path: "${{ github.workspace }}${{ env.TBN_DIST }}/${{ env.BINFILE }}.zip*"
 
       - name: Artifact upload for Miner
@@ -310,12 +355,12 @@ jobs:
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
           DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/"
           S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*"'
           # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
           # S3OPTIONS: '--acl public-read'
 
       - name: Copy tags to latest s3 - Bash
-        #      if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' }}
+        continue-on-error: true # Don't break if s3 upload fails
         if: ${{ env.AWS_SECRET_ACCESS_KEY != '' && matrix.os != 'self-hosted' && startsWith(github.ref, 'refs/tags/v') }}
         shell: bash
         run: |
@@ -327,12 +372,12 @@ jobs:
           fi
 
           aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
-                    "${{ env.SOURCE }}" \
-                    s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
-                    ${{ env.S3OPTIONS }}
+            "${{ env.SOURCE }}" \
+            s3://${{ secrets.AWS_S3_BUCKET }}/current/${{ env.DEST_DIR }} \
+            ${{ env.S3OPTIONS }}
 
           aws s3 rm --region ${{ secrets.AWS_REGION }} \
-                              s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/*
+            s3://${{ secrets.AWS_S3_BUCKET }}/latest/${{ env.DEST_DIR }}/*
 
           aws s3 ${{ env.S3CMD }} --region ${{ secrets.AWS_REGION }} \
             "${{ env.SOURCE }}" \
@@ -346,8 +391,7 @@ jobs:
           SOURCE: "${{ github.workspace }}${{ env.TBN_DIST }}"
           DEST_DIR: "${{ env.S3DESTOVERRIDE }}${{ env.PLATFORM_SPECIFIC_DIR }}/"
           S3CMD: "cp"
-          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
-          # S3OPTIONS: '--recursive --exclude "*" --include "*.zip*"'
+          S3OPTIONS: '--recursive --exclude "*" --include "*.zip*" --include "*.pkg*"'
           # S3OPTIONS: '--acl public-read'
 
   create-release:

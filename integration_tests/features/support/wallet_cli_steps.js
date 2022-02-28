@@ -261,7 +261,7 @@ Then(
 );
 
 Then(
-  "I create committee checkpoint for asset on wallet {word} via command line",
+  "I create committee definition for asset on wallet {word} via command line",
   { timeout: 20 * 1000 },
   async function (wallet_name) {
     // scenario needs "I register asset..." first to populate asset public key
