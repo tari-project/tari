@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use aes_gcm::Aes256Gcm;
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
@@ -59,20 +60,24 @@ where TBackend: KeyManagerBackend + 'static
     }
 
     pub async fn add_key_manager(&mut self, branch: String) -> Result<(), KeyManagerError> {
+        dbg!("pleh");
         if self.key_managers.contains_key(&branch) {
             return Err(KeyManagerError::BranchAllreadyExists);
         }
+        dbg!("pleh1");
         let state = match self.db.get_key_manager_state(branch.clone()).await? {
             None => {
                 let starting_state = KeyManagerState {
                     branch_seed: branch.to_string(),
                     primary_key_index: 0,
                 };
+                dbg!("pleh2");
                 self.db.set_key_manager_state(starting_state.clone()).await?;
                 starting_state
             },
             Some(km) => km,
         };
+        dbg!("pleh3");
         self.key_managers.insert(
             branch,
             Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
@@ -106,6 +111,16 @@ where TBackend: KeyManagerBackend + 'static
         let key = km.derive_key(index)?;
         self.db.set_key_index(branch, index).await?;
         Ok(key.k)
+    }
+
+    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+        self.db.apply_encryption(cipher).await?;
+        Ok(())
+    }
+
+    pub async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+        self.db.remove_encryption().await?;
+        Ok(())
     }
 
     /// Return the Seed words for the current Master Key set in the Key Manager

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use aes_gcm::Aes256Gcm;
 use log::*;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{
@@ -141,6 +142,7 @@ impl KeyManagerMock {
 #[async_trait::async_trait]
 impl KeyManagerInterface for KeyManagerMock {
     async fn add_new_branch(&self, branch: String) -> Result<(), KeyManagerError> {
+        dbg!("dleh");
         self.add_key_manager_mock(branch).await
     }
 
@@ -157,6 +159,14 @@ impl KeyManagerInterface for KeyManagerMock {
 
     async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
         self.get_key_at_index_mock(branch, index).await
+    }
+
+    async fn apply_encryption(&self, _cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+        unimplemented!("Not supported");
+    }
+
+    async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+        unimplemented!("Not supported");
     }
 
     async fn find_key_index(&self, branch: String, key: PrivateKey) -> Result<u64, KeyManagerError> {

@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use aes_gcm::Aes256Gcm;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::mnemonic::MnemonicLanguage;
 
@@ -30,6 +31,10 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     async fn add_new_branch(&self, branch: String) -> Result<(), KeyManagerError>;
 
     async fn add_new_branches(&self, branches: Vec<String>) -> Result<(), KeyManagerError>;
+
+    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError>;
+
+    async fn remove_encryption(&self) -> Result<(), KeyManagerError>;
 
     async fn get_next_key(&self, branch: String) -> Result<PrivateKey, KeyManagerError>;
 

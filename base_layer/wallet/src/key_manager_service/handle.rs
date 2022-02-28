@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::Arc;
+use aes_gcm::Aes256Gcm;
 
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
@@ -61,6 +62,14 @@ where TBackend: KeyManagerBackend + 'static
             self.add_new_branch(branch).await?;
         }
         Ok(())
+    }
+
+    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+        (*self.key_manager_inner).write().await.apply_encryption(cipher).await
+    }
+
+    async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+        (*self.key_manager_inner).write().await.remove_encryption().await
     }
 
     async fn get_next_key(&self, branch: String) -> Result<PrivateKey, KeyManagerError> {

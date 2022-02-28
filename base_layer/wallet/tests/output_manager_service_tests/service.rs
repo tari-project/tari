@@ -34,7 +34,7 @@ use tari_comms::{
 use tari_core::{
     base_node::rpc::BaseNodeWalletRpcServer,
     blocks::BlockHeader,
-    consensus::{ ConsensusEncodingSized},
+    consensus::ConsensusEncodingSized,
     covenants::Covenant,
     proto::base_node::{QueryDeletedResponse, UtxoQueryResponse, UtxoQueryResponses},
     transactions::{
@@ -347,15 +347,15 @@ async fn fee_estimate() {
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
     let factories = CryptoFactories::default();
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     // minimum fpg
     let fee_per_gram = MicroTari::from(1);
-    let fee = oms.output_manager_handle
+    let fee = oms
+        .output_manager_handle
         .fee_estimate(MicroTari::from(100), fee_per_gram, 1, 1)
         .await
         .unwrap();
@@ -366,7 +366,8 @@ async fn fee_estimate() {
 
     let fee_per_gram = MicroTari::from(5);
     for outputs in 1..5 {
-        let fee = oms.output_manager_handle
+        let fee = oms
+            .output_manager_handle
             .fee_estimate(MicroTari::from(100), fee_per_gram, 1, outputs)
             .await
             .unwrap();
@@ -384,7 +385,8 @@ async fn fee_estimate() {
     }
 
     // not enough funds
-    let err = oms.output_manager_handle
+    let err = oms
+        .output_manager_handle
         .fee_estimate(MicroTari::from(2750), fee_per_gram, 1, 1)
         .await
         .unwrap_err();
@@ -696,8 +698,7 @@ async fn send_not_enough_funds() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
     let num_outputs = 20;
     for _i in 0..num_outputs {
         let (_ti, uo) = make_input(
@@ -708,7 +709,8 @@ async fn send_not_enough_funds() {
         oms.output_manager_handle.add_output(uo, None).await.unwrap();
     }
 
-    match oms.output_manager_handle
+    match oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(num_outputs * 2000),
@@ -733,39 +735,41 @@ async fn send_no_change() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
     let fee_without_change =
         Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, default_metadata_byte_size());
     let value1 = 5000;
-    oms.output_manager_handle.add_output(
-        create_unblinded_output(
-            script!(Nop),
-            OutputFeatures::default(),
-            TestParamsHelpers::new(),
-            MicroTari::from(value1),
-        ),
-        None,
-    )
-    .await
-    .unwrap();
+    oms.output_manager_handle
+        .add_output(
+            create_unblinded_output(
+                script!(Nop),
+                OutputFeatures::default(),
+                TestParamsHelpers::new(),
+                MicroTari::from(value1),
+            ),
+            None,
+        )
+        .await
+        .unwrap();
     let value2 = 8000;
-    oms.output_manager_handle.add_output(
-        create_unblinded_output(
-            script!(Nop),
-            OutputFeatures::default(),
-            TestParamsHelpers::new(),
-            MicroTari::from(value2),
-        ),
-        None,
-    )
-    .await
-    .unwrap();
+    oms.output_manager_handle
+        .add_output(
+            create_unblinded_output(
+                script!(Nop),
+                OutputFeatures::default(),
+                TestParamsHelpers::new(),
+                MicroTari::from(value2),
+            ),
+            None,
+        )
+        .await
+        .unwrap();
 
-    let stp = oms.output_manager_handle
+    let stp = oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(value1 + value2) - fee_without_change,
@@ -782,7 +786,11 @@ async fn send_no_change() {
 
     assert_eq!(stp.get_amount_to_self().unwrap(), MicroTari::from(0));
     assert_eq!(
-        oms.output_manager_handle.get_balance().await.unwrap().pending_incoming_balance,
+        oms.output_manager_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .pending_incoming_balance,
         MicroTari::from(0)
     );
 }
@@ -792,38 +800,40 @@ async fn send_not_enough_for_change() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms=
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
     let constants = create_consensus_constants(0);
     let fee_without_change = Fee::new(*constants.transaction_weight()).calculate(fee_per_gram, 1, 2, 1, 0);
     let value1 = MicroTari(500);
-    oms.output_manager_handle.add_output(
-        create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            TestParamsHelpers::new(),
-            value1,
-        ),
-        None,
-    )
-    .await
-    .unwrap();
+    oms.output_manager_handle
+        .add_output(
+            create_unblinded_output(
+                TariScript::default(),
+                OutputFeatures::default(),
+                TestParamsHelpers::new(),
+                value1,
+            ),
+            None,
+        )
+        .await
+        .unwrap();
     let value2 = MicroTari(800);
-    oms.output_manager_handle.add_output(
-        create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            TestParamsHelpers::new(),
-            value2,
-        ),
-        None,
-    )
-    .await
-    .unwrap();
+    oms.output_manager_handle
+        .add_output(
+            create_unblinded_output(
+                TariScript::default(),
+                OutputFeatures::default(),
+                TestParamsHelpers::new(),
+                value2,
+            ),
+            None,
+        )
+        .await
+        .unwrap();
 
-    match oms.output_manager_handle
+    match oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             value1 + value2 + uT - fee_without_change,
@@ -850,8 +860,7 @@ async fn cancel_transaction() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let num_outputs = 20;
     for _i in 0..num_outputs {
@@ -862,7 +871,8 @@ async fn cancel_transaction() {
         );
         oms.output_manager_handle.add_output(uo, None).await.unwrap();
     }
-    let stp = oms.output_manager_handle
+    let stp = oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
@@ -882,9 +892,15 @@ async fn cancel_transaction() {
         _ => panic!("Value should not exist"),
     }
 
-    oms.output_manager_handle.cancel_transaction(stp.get_tx_id().unwrap()).await.unwrap();
+    oms.output_manager_handle
+        .cancel_transaction(stp.get_tx_id().unwrap())
+        .await
+        .unwrap();
 
-    assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), num_outputs);
+    assert_eq!(
+        oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(),
+        num_outputs
+    );
 }
 
 #[tokio::test]
@@ -894,12 +910,15 @@ async fn cancel_transaction_and_reinstate_inbound_tx() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let value = MicroTari::from(5000);
     let (tx_id, sender_message) = generate_sender_transaction_message(value);
-    let _rtp = oms.output_manager_handle.get_recipient_transaction(sender_message).await.unwrap();
+    let _rtp = oms
+        .output_manager_handle
+        .get_recipient_transaction(sender_message)
+        .await
+        .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
@@ -910,7 +929,8 @@ async fn cancel_transaction_and_reinstate_inbound_tx() {
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
 
-    oms.output_manager_handle.reinstate_cancelled_inbound_transaction_outputs(tx_id)
+    oms.output_manager_handle
+        .reinstate_cancelled_inbound_transaction_outputs(tx_id)
         .await
         .unwrap();
 
@@ -927,8 +947,7 @@ async fn test_get_balance() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -945,7 +964,8 @@ async fn test_get_balance() {
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
 
     let send_value = MicroTari::from(1000);
-    let stp = oms.output_manager_handle
+    let stp = oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             send_value,
@@ -964,7 +984,11 @@ async fn test_get_balance() {
 
     let recv_value = MicroTari::from(1500);
     let (_tx_id, sender_message) = generate_sender_transaction_message(recv_value);
-    let _rtp = oms.output_manager_handle.get_recipient_transaction(sender_message).await.unwrap();
+    let _rtp = oms
+        .output_manager_handle
+        .get_recipient_transaction(sender_message)
+        .await
+        .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -982,8 +1006,7 @@ async fn sending_transaction_with_short_term_clear() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
     let available_balance = 10_000 * uT;
     let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
@@ -994,7 +1017,8 @@ async fn sending_transaction_with_short_term_clear() {
     assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
 
     // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
-    let _stp = oms.output_manager_handle
+    let _stp = oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
@@ -1015,15 +1039,15 @@ async fn sending_transaction_with_short_term_clear() {
     assert_eq!(balance.pending_outgoing_balance, available_balance);
 
     drop(oms.output_manager_handle);
-    let mut oms  =
-        setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
+    let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
     assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
-    let stp = oms.output_manager_handle
+    let stp = oms
+        .output_manager_handle
         .prepare_transaction_to_send(
             TxId::new_random(),
             MicroTari::from(1000),
@@ -1038,11 +1062,13 @@ async fn sending_transaction_with_short_term_clear() {
         .await
         .unwrap();
     let sender_tx_id = stp.get_tx_id().unwrap();
-    oms.output_manager_handle.confirm_pending_transaction(sender_tx_id).await.unwrap();
+    oms.output_manager_handle
+        .confirm_pending_transaction(sender_tx_id)
+        .await
+        .unwrap();
 
     drop(oms.output_manager_handle);
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, MicroTari::from(0));
@@ -1056,8 +1082,7 @@ async fn coin_split_with_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
@@ -1071,7 +1096,8 @@ async fn coin_split_with_change() {
 
     let fee_per_gram = MicroTari::from(5);
     let split_count = 8;
-    let (_tx_id, coin_split_tx, amount) = oms.output_manager_handle
+    let (_tx_id, coin_split_tx, amount) = oms
+        .output_manager_handle
         .create_coin_split(1000.into(), split_count, fee_per_gram, None)
         .await
         .unwrap();
@@ -1095,8 +1121,7 @@ async fn coin_split_no_change() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let fee_per_gram = MicroTari::from(4);
     let split_count = 15;
@@ -1119,7 +1144,8 @@ async fn coin_split_no_change() {
     assert!(oms.output_manager_handle.add_output(uo2, None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo3, None).await.is_ok());
 
-    let (_tx_id, coin_split_tx, amount) = oms.output_manager_handle
+    let (_tx_id, coin_split_tx, amount) = oms
+        .output_manager_handle
         .create_coin_split(1000.into(), split_count, fee_per_gram, None)
         .await
         .unwrap();
@@ -1135,8 +1161,7 @@ async fn handle_coinbase() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let reward1 = MicroTari::from(1000);
     let fees1 = MicroTari::from(500);
@@ -1148,25 +1173,46 @@ async fn handle_coinbase() {
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
 
-    let _ = oms.output_manager_handle
+    let _ = oms
+        .output_manager_handle
         .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.output_manager_handle.get_balance().await.unwrap().pending_incoming_balance, value1);
-    let _tx2 = oms.output_manager_handle
+    assert_eq!(
+        oms.output_manager_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .pending_incoming_balance,
+        value1
+    );
+    let _tx2 = oms
+        .output_manager_handle
         .get_coinbase_transaction(2u64.into(), reward2, fees2, 1)
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
-    assert_eq!(oms.output_manager_handle.get_balance().await.unwrap().pending_incoming_balance, value2);
-    let tx3 = oms.output_manager_handle
+    assert_eq!(
+        oms.output_manager_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .pending_incoming_balance,
+        value2
+    );
+    let tx3 = oms
+        .output_manager_handle
         .get_coinbase_transaction(3u64.into(), reward3, fees3, 2)
         .await
         .unwrap();
     assert_eq!(oms.output_manager_handle.get_unspent_outputs().await.unwrap().len(), 0);
     assert_eq!(
-        oms.output_manager_handle.get_balance().await.unwrap().pending_incoming_balance,
+        oms.output_manager_handle
+            .get_balance()
+            .await
+            .unwrap()
+            .pending_incoming_balance,
         value2 + value3
     );
 
@@ -1192,15 +1238,16 @@ async fn test_txo_validation() {
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
     let oms_db = backend.clone();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     oms.wallet_connectivity_mock.notify_base_node_set(oms.node_id.to_peer());
     // Now we add the connection
-    let mut connection = oms.mock_rpc_service
+    let mut connection = oms
+        .mock_rpc_service
         .create_connection(oms.node_id.to_peer(), "t/bnwallet/1".into())
         .await;
-    oms.wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+    oms.wallet_connectivity_mock
+        .set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let output1_value = 1_000_000;
     let output1 = create_unblinded_output(
@@ -1210,7 +1257,8 @@ async fn test_txo_validation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.output_manager_handle.add_output_with_tx_id(1.into(), output1.clone(), None)
+    oms.output_manager_handle
+        .add_output_with_tx_id(1.into(), output1.clone(), None)
         .await
         .unwrap();
 
@@ -1223,7 +1271,8 @@ async fn test_txo_validation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.output_manager_handle.add_output_with_tx_id(2.into(), output2.clone(), None)
+    oms.output_manager_handle
+        .add_output_with_tx_id(2.into(), output2.clone(), None)
         .await
         .unwrap();
 
@@ -1235,7 +1284,8 @@ async fn test_txo_validation() {
         MicroTari::from(output3_value),
     );
 
-    oms.output_manager_handle.add_output_with_tx_id(3.into(), output3.clone(), None)
+    oms.output_manager_handle
+        .add_output_with_tx_id(3.into(), output3.clone(), None)
         .await
         .unwrap();
 
@@ -1273,7 +1323,8 @@ async fn test_txo_validation() {
         responses,
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_utxo_query_response(utxo_query_responses.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_utxo_query_response(utxo_query_responses.clone());
 
     // This response sets output1 as spent in the transaction that produced output4
     let query_deleted_response = QueryDeletedResponse {
@@ -1285,37 +1336,46 @@ async fn test_txo_validation() {
         blocks_deleted_in: vec![],
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response.clone());
     oms.output_manager_handle.validate_txos().await.unwrap();
-    let _utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let _utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
-    let _query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let _query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
 
-    oms.output_manager_handle.prepare_transaction_to_send(
-        4.into(),
-        MicroTari::from(900_000),
-        None,
-        None,
-        MicroTari::from(10),
-        None,
-        "".to_string(),
-        script!(Nop),
-        Covenant::default(),
-    )
-    .await
-    .unwrap();
+    oms.output_manager_handle
+        .prepare_transaction_to_send(
+            4.into(),
+            MicroTari::from(900_000),
+            None,
+            None,
+            MicroTari::from(10),
+            None,
+            "".to_string(),
+            script!(Nop),
+            Covenant::default(),
+        )
+        .await
+        .unwrap();
 
     let recv_value = MicroTari::from(8_000_000);
     let (_recv_tx_id, sender_message) = generate_sender_transaction_message(recv_value);
 
-    let _ = oms.output_manager_handle.get_recipient_transaction(sender_message).await.unwrap();
+    let _ = oms
+        .output_manager_handle
+        .get_recipient_transaction(sender_message)
+        .await
+        .unwrap();
 
-    oms.output_manager_handle.get_coinbase_transaction(6u64.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
+    oms.output_manager_handle
+        .get_coinbase_transaction(6u64.into(), MicroTari::from(15_000_000), MicroTari::from(1_000_000), 2)
         .await
         .unwrap();
 
@@ -1411,7 +1471,8 @@ async fn test_txo_validation() {
         responses,
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_utxo_query_response(utxo_query_responses.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_utxo_query_response(utxo_query_responses.clone());
 
     // This response sets output1 as spent in the transaction that produced output4
     let mut query_deleted_response = QueryDeletedResponse {
@@ -1423,18 +1484,21 @@ async fn test_txo_validation() {
         blocks_deleted_in: vec![block5_header.hash()],
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response.clone());
 
     oms.output_manager_handle.validate_txos().await.unwrap();
 
-    let utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
 
     assert_eq!(utxo_query_calls[0].len(), 4);
 
-    let query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1461,15 +1525,18 @@ async fn test_txo_validation() {
 
     utxo_query_responses.height_of_longest_chain = 8;
     utxo_query_responses.best_block = [8u8; 16].to_vec();
-    oms.base_node_wallet_rpc_mock_state.set_utxo_query_response(utxo_query_responses);
+    oms.base_node_wallet_rpc_mock_state
+        .set_utxo_query_response(utxo_query_responses);
 
     query_deleted_response.height_of_longest_chain = 8;
     query_deleted_response.best_block = [8u8; 16].to_vec();
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response);
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response);
 
     oms.output_manager_handle.validate_txos().await.unwrap();
 
-    let utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1477,7 +1544,8 @@ async fn test_txo_validation() {
     // The spent transaction is not checked during this second validation
     assert_eq!(utxo_query_calls[0].len(), 4);
 
-    let query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1499,7 +1567,8 @@ async fn test_txo_validation() {
     // Trigger another validation and only Output3 should be checked
     oms.output_manager_handle.validate_txos().await.unwrap();
 
-    let utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1556,7 +1625,8 @@ async fn test_txo_validation() {
         responses,
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_utxo_query_response(utxo_query_responses.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_utxo_query_response(utxo_query_responses.clone());
 
     // This response sets output1 as spent in the transaction that produced output4
     let mut query_deleted_response = QueryDeletedResponse {
@@ -1568,24 +1638,28 @@ async fn test_txo_validation() {
         blocks_deleted_in: vec![block5_header_reorg.hash()],
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response.clone());
 
     // Trigger validation through a base_node_service event
     oms.node_event
         .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
         .unwrap();
 
-    let _ = oms.base_node_wallet_rpc_mock_state
+    let _ = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_get_header_by_height_calls(2, Duration::from_secs(60))
         .await
         .unwrap();
 
-    let _utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let _utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
 
-    let _query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let _query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1629,22 +1703,26 @@ async fn test_txo_validation() {
 
     utxo_query_responses.height_of_longest_chain = 8;
     utxo_query_responses.best_block = [8u8; 16].to_vec();
-    oms.base_node_wallet_rpc_mock_state.set_utxo_query_response(utxo_query_responses);
+    oms.base_node_wallet_rpc_mock_state
+        .set_utxo_query_response(utxo_query_responses);
 
     query_deleted_response.height_of_longest_chain = 8;
     query_deleted_response.best_block = [8u8; 16].to_vec();
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response);
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response);
 
     let mut event_stream = oms.output_manager_handle.get_event_stream();
 
     let validation_id = oms.output_manager_handle.validate_txos().await.unwrap();
 
-    let _utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let _utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
 
-    let _query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let _query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1688,15 +1766,16 @@ async fn test_txo_revalidation() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     oms.wallet_connectivity_mock.notify_base_node_set(oms.node_id.to_peer());
     // Now we add the connection
-    let mut connection = oms.mock_rpc_service
+    let mut connection = oms
+        .mock_rpc_service
         .create_connection(oms.node_id.to_peer(), "t/bnwallet/1".into())
         .await;
-    oms.wallet_connectivity_mock.set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
+    oms.wallet_connectivity_mock
+        .set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let output1_value = 1_000_000;
     let output1 = create_unblinded_output(
@@ -1706,7 +1785,8 @@ async fn test_txo_revalidation() {
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
-    oms.output_manager_handle.add_output_with_tx_id(1.into(), output1.clone(), None)
+    oms.output_manager_handle
+        .add_output_with_tx_id(1.into(), output1.clone(), None)
         .await
         .unwrap();
 
@@ -1719,7 +1799,8 @@ async fn test_txo_revalidation() {
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
-    oms.output_manager_handle.add_output_with_tx_id(2.into(), output2.clone(), None)
+    oms.output_manager_handle
+        .add_output_with_tx_id(2.into(), output2.clone(), None)
         .await
         .unwrap();
 
@@ -1757,7 +1838,8 @@ async fn test_txo_revalidation() {
         responses,
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_utxo_query_response(utxo_query_responses.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_utxo_query_response(utxo_query_responses.clone());
 
     // This response sets output1 as spent
     let query_deleted_response = QueryDeletedResponse {
@@ -1769,13 +1851,16 @@ async fn test_txo_revalidation() {
         blocks_deleted_in: vec![],
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response.clone());
     oms.output_manager_handle.validate_txos().await.unwrap();
-    let _utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let _utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
-    let _query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let _query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1793,13 +1878,16 @@ async fn test_txo_revalidation() {
         blocks_deleted_in: vec![block4_header.hash()],
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response.clone());
     oms.output_manager_handle.revalidate_all_outputs().await.unwrap();
-    let _utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let _utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
-    let _query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let _query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1817,13 +1905,16 @@ async fn test_txo_revalidation() {
         blocks_deleted_in: vec![block4_header.hash(), block4_header.hash()],
     };
 
-    oms.base_node_wallet_rpc_mock_state.set_query_deleted_response(query_deleted_response.clone());
+    oms.base_node_wallet_rpc_mock_state
+        .set_query_deleted_response(query_deleted_response.clone());
     oms.output_manager_handle.revalidate_all_outputs().await.unwrap();
-    let _utxo_query_calls = oms.base_node_wallet_rpc_mock_state
+    let _utxo_query_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_utxo_query_calls(1, Duration::from_secs(60))
         .await
         .unwrap();
-    let _query_deleted_calls = oms.base_node_wallet_rpc_mock_state
+    let _query_deleted_calls = oms
+        .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
@@ -1840,16 +1931,25 @@ async fn test_get_status_by_tx_id() {
     let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
     let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
 
-    let mut oms  =
-        setup_output_manager_service(backend, ks_backend, true).await;
+    let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let (_ti, uo1) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
-    oms.output_manager_handle.add_unvalidated_output(TxId::from(1u64), uo1, None).await.unwrap();
+    oms.output_manager_handle
+        .add_unvalidated_output(TxId::from(1u64), uo1, None)
+        .await
+        .unwrap();
 
     let (_ti, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
-    oms.output_manager_handle.add_unvalidated_output(TxId::from(2u64), uo2, None).await.unwrap();
+    oms.output_manager_handle
+        .add_unvalidated_output(TxId::from(2u64), uo2, None)
+        .await
+        .unwrap();
 
-    let (status, _, _) = oms.output_manager_handle.get_output_statuses_by_tx_id(TxId::from(1u64)).await.unwrap();
+    let (status, _, _) = oms
+        .output_manager_handle
+        .get_output_statuses_by_tx_id(TxId::from(1u64))
+        .await
+        .unwrap();
 
     assert_eq!(status.len(), 1);
     assert_eq!(status[0], OutputStatus::EncumberedToBeReceived);

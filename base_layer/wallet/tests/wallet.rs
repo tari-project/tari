@@ -213,7 +213,7 @@ async fn create_wallet(
 }
 
 #[tokio::test]
-async fn test_wallet() {
+async fn test_wallet1() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
     let alice_db_tempdir = tempdir().unwrap();

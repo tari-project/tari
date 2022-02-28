@@ -131,10 +131,12 @@ where
     ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
+        dbg!("meh");
         OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager(
             &key_manager,
         )
         .await?;
+        dbg!("meh2");
         db.clear_short_term_encumberances().await?;
         let rewind_key = key_manager
             .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)

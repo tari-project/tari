@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{marker::PhantomData, sync::Arc};
+use crate::key_manager_service::KeyManagerInterface;
 
 use digest::Digest;
 use log::*;
@@ -73,7 +74,7 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerInitializer},
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -102,6 +103,7 @@ pub struct Wallet<T, U, V, W, X> {
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
+    pub key_manager_service: KeyManagerHandle<X>,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -115,7 +117,6 @@ pub struct Wallet<T, U, V, W, X> {
     _u: PhantomData<U>,
     _v: PhantomData<V>,
     _w: PhantomData<W>,
-    _x: PhantomData<X>,
 }
 
 impl<T, U, V, W, X> Wallet<T, U, V, W, X>
@@ -228,6 +229,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
@@ -264,6 +266,7 @@ where
             dht_service: dht,
             store_and_forward_requester,
             output_manager_service: output_manager_handle,
+            key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
@@ -279,7 +282,6 @@ where
             _u: PhantomData,
             _v: PhantomData,
             _w: PhantomData,
-            _x: PhantomData,
         })
     }
 
@@ -545,7 +547,8 @@ where
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
         let cipher = self.db.apply_encryption(passphrase).await?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
-        self.transaction_service.apply_encryption(cipher).await?;
+        self.transaction_service.apply_encryption(cipher.clone()).await?;
+        self.key_manager_service.apply_encryption(cipher).await?;
         Ok(())
     }
 
@@ -555,6 +558,7 @@ where
         self.db.remove_encryption().await?;
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
+        self.key_manager_service.remove_encryption().await?;
         Ok(())
     }
 
