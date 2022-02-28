@@ -46,6 +46,7 @@ pub struct WalletConfig {
     pub updater_config: Option<AutoUpdateConfig>,
     pub autoupdate_check_interval: Option<Duration>,
     pub contacts_auto_ping_interval: Duration,
+    pub contacts_online_ping_window: usize,
 }
 
 impl WalletConfig {
@@ -61,6 +62,7 @@ impl WalletConfig {
         updater_config: Option<AutoUpdateConfig>,
         autoupdate_check_interval: Option<Duration>,
         contacts_auto_ping_interval: Option<Duration>,
+        contacts_online_ping_window: Option<usize>,
     ) -> Self {
         Self {
             comms_config,
@@ -74,6 +76,7 @@ impl WalletConfig {
             updater_config,
             autoupdate_check_interval,
             contacts_auto_ping_interval: contacts_auto_ping_interval.unwrap_or_else(|| Duration::from_secs(20)),
+            contacts_online_ping_window: contacts_online_ping_window.unwrap_or(2),
         }
     }
 }

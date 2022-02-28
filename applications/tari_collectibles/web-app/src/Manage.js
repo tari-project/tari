@@ -58,10 +58,10 @@ class Manage extends React.Component {
   async componentDidMount() {
     this.setState({ error: "" });
     try {
-      let assets = await binding.command_assets_list_owned();
+      let ownedAssets = await binding.command_assets_list_owned();
       // console.log(assets);
       this.setState({
-        ownedAssets: assets,
+        ownedAssets,
       });
     } catch (err) {
       console.error(err);

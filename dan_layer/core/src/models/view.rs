@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{Display, Formatter};
+
 use crate::models::ViewId;
 
 // TODO: Encapsulate
@@ -36,5 +38,11 @@ impl View {
 
     pub fn view_id(&self) -> ViewId {
         self.view_id
+    }
+}
+
+impl Display for View {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "View(Id: {}, leader: {})", self.view_id.as_u64(), self.is_leader)
     }
 }

@@ -20,9 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{
+    fmt::{Display, Error, Formatter},
+    ops::Sub,
+    sync::Arc,
+    time::Duration,
+};
 
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use futures::{pin_mut, StreamExt};
 use log::*;
 use tari_comms::connectivity::{ConnectivityEvent, ConnectivityRequester};
@@ -44,6 +49,34 @@ const NUM_ROUNDS_NETWORK_SILENCE: u16 = 3;
 pub enum ContactMessageType {
     Ping,
     Pong,
+    NoMessage,
+}
+
+impl Display for ContactMessageType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            ContactMessageType::Ping => write!(f, "Ping"),
+            ContactMessageType::Pong => write!(f, "Pong"),
+            ContactMessageType::NoMessage => write!(f, "NoMessage"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContactOnlineStatus {
+    Online,
+    Offline,
+    NeverSeen,
+}
+
+impl Display for ContactOnlineStatus {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        match self {
+            ContactOnlineStatus::Online => write!(f, "Online"),
+            ContactOnlineStatus::Offline => write!(f, "Offline"),
+            ContactOnlineStatus::NeverSeen => write!(f, "NeverSeen"),
+        }
+    }
 }
 
 pub struct ContactsService<T>
@@ -58,6 +91,8 @@ where T: ContactsBackend + 'static
     connectivity: ConnectivityRequester,
     event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
     number_of_rounds_no_pings: u16,
+    contacts_auto_ping_interval: Duration,
+    contacts_online_ping_window: usize,
 }
 
 impl<T> ContactsService<T>
@@ -73,6 +108,8 @@ where T: ContactsBackend + 'static
         liveness: LivenessHandle,
         connectivity: ConnectivityRequester,
         event_publisher: broadcast::Sender<Arc<ContactsLivenessEvent>>,
+        contacts_auto_ping_interval: Duration,
+        contacts_online_ping_window: usize,
     ) -> Self {
         Self {
             db,
@@ -83,6 +120,8 @@ where T: ContactsBackend + 'static
             connectivity,
             event_publisher,
             number_of_rounds_no_pings: 0,
+            contacts_auto_ping_interval,
+            contacts_online_ping_window,
         }
     }
 
@@ -187,6 +226,10 @@ where T: ContactsBackend + 'static
                 }
                 Ok(result.map(ContactsServiceResponse::Contacts)?)
             },
+            ContactsServiceRequest::GetContactOnlineStatus(last_seen) => {
+                let result = self.get_online_status(last_seen);
+                Ok(result.map(ContactsServiceResponse::OnlineStatus)?)
+            },
         }
     }
 
@@ -209,20 +252,10 @@ where T: ContactsBackend + 'static
         match event {
             // Received a ping, check if it contains ContactsLiveness
             LivenessEvent::ReceivedPing(event) => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Received contact liveness ping from neighbouring node '{}'.",
-                    event.node_id
-                );
                 self.update_with_ping_pong(event, ContactMessageType::Ping).await?;
             },
             // Received a pong, check if our neighbour sent it and it contains ContactsLiveness
             LivenessEvent::ReceivedPong(event) => {
-                trace!(
-                    target: LOG_TARGET,
-                    "Received contact liveness pong from neighbouring node '{}'.",
-                    event.node_id
-                );
                 self.update_with_ping_pong(event, ContactMessageType::Pong).await?;
             },
             // New ping round has begun
@@ -240,10 +273,52 @@ where T: ContactsBackend + 'static
                     }
                 }
                 self.resize_contacts_liveness_data_buffer(*num_peers);
+
+                // Update offline status
+                if let Ok(contacts) = self.db.get_contacts().await {
+                    for contact in contacts {
+                        let online_status = self.get_online_status(contact.last_seen)?;
+                        if online_status == ContactOnlineStatus::Online {
+                            continue;
+                        }
+                        let data = ContactsLivenessData::new(
+                            contact.public_key.clone(),
+                            contact.node_id.clone(),
+                            contact.latency,
+                            contact.last_seen,
+                            ContactMessageType::NoMessage,
+                            online_status,
+                        );
+                        // Send only fails if there are no subscribers.
+                        let _ = self
+                            .event_publisher
+                            .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data.clone()))));
+                        trace!(target: LOG_TARGET, "{}", data);
+                    }
+                };
             },
         }
 
         Ok(())
+    }
+
+    fn get_online_status(&self, last_seen: Option<NaiveDateTime>) -> Result<ContactOnlineStatus, ContactsServiceError> {
+        let mut online_status = ContactOnlineStatus::NeverSeen;
+        if let Some(time) = last_seen {
+            if self.is_online(time) {
+                online_status = ContactOnlineStatus::Online;
+            } else {
+                online_status = ContactOnlineStatus::Offline;
+            }
+        }
+        Ok(online_status)
+    }
+
+    fn is_online(&self, last_seen: NaiveDateTime) -> bool {
+        Utc::now().naive_utc().sub(last_seen) <=
+            chrono::Duration::seconds(
+                (self.contacts_online_ping_window as u64 * self.contacts_auto_ping_interval.as_secs()) as i64,
+            )
     }
 
     async fn update_with_ping_pong(
@@ -277,23 +352,17 @@ where T: ContactsBackend + 'static
                 this_public_key,
                 event.node_id.clone(),
                 latency,
-                last_seen,
+                Some(last_seen.naive_utc()),
                 message_type.clone(),
+                ContactOnlineStatus::Online,
             );
-            self.liveness_data.push(data);
+            self.liveness_data.push(data.clone());
 
-            // send only fails if there are no subscribers.
-            let _ = self.event_publisher.send(Arc::new(ContactsLivenessEvent::StatusUpdated(
-                self.liveness_data.clone(),
-            )));
-            trace!(
-                target: LOG_TARGET,
-                "{:?} from {} last seen at {} with latency {:?} ms",
-                message_type,
-                event.node_id,
-                last_seen,
-                latency
-            );
+            // Send only fails if there are no subscribers.
+            let _ = self
+                .event_publisher
+                .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data.clone()))));
+            trace!(target: LOG_TARGET, "{}", data);
         } else {
             trace!(
                 target: LOG_TARGET,

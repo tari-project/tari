@@ -51,7 +51,7 @@ mod view_id;
 
 pub use asset_definition::{AssetDefinition, InitialState, KeyValue, SchemaState};
 pub use base_layer_metadata::BaseLayerMetadata;
-pub use base_layer_output::{BaseLayerOutput, CheckpointOutput};
+pub use base_layer_output::{BaseLayerOutput, CheckpointOutput, CommitteeOutput};
 pub use committee::Committee;
 pub use error::ModelError;
 pub use hot_stuff_message::HotStuffMessage;

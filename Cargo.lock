@@ -122,22 +122,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "antidote"
-version = "1.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34fde25430d87a9388dadbe6e34d7f72a462c8b43ac8d309b42b0a8505d7e2a5"
-
-[[package]]
 name = "anyhow"
 version = "1.0.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
-
-[[package]]
-name = "arc-swap"
-version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc4662175ead9cd84451d5c35070517777949a2ed84551764129cedb88384841"
 
 [[package]]
 name = "arc-swap"
@@ -3546,35 +3534,12 @@ checksum = "a94d21414c1f4a51209ad204c1776a3d0765002c76c6abcb602a6f09f1e881c7"
 
 [[package]]
 name = "log4rs"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "100052474df98158c0738a7d3f4249c99978490178b5f9f68cd835ac57adbd1b"
-dependencies = [
- "antidote",
- "arc-swap 0.3.11",
- "chrono",
- "fnv",
- "humantime 1.3.0",
- "libc",
- "log",
- "log-mdc",
- "serde 1.0.136",
- "serde-value 0.5.3",
- "serde_derive",
- "serde_yaml",
- "thread-id",
- "typemap",
- "winapi 0.3.9",
-]
-
-[[package]]
-name = "log4rs"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1572a880d1115ff867396eee7ae2bc924554225e67a0d3c85c745b3e60ca211"
 dependencies = [
  "anyhow",
- "arc-swap 0.4.8",
+ "arc-swap",
  "chrono",
  "derivative",
  "fnv",
@@ -3585,7 +3550,7 @@ dependencies = [
  "parking_lot 0.11.2",
  "regex",
  "serde 1.0.136",
- "serde-value 0.7.0",
+ "serde-value",
  "serde_json",
  "serde_yaml",
  "thiserror",
@@ -5823,16 +5788,6 @@ dependencies = [
 
 [[package]]
 name = "serde-value"
-version = "0.5.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a663f873dedc4eac1a559d4c6bc0d0b2c34dc5ac4702e105014b8281489e44f"
-dependencies = [
- "ordered-float 1.1.1",
- "serde 1.0.136",
-]
-
-[[package]]
-name = "serde-value"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
@@ -6652,7 +6607,7 @@ dependencies = [
  "get_if_addrs",
  "git2",
  "log",
- "log4rs 1.0.0",
+ "log4rs",
  "multiaddr",
  "path-clean",
  "prost-build",
@@ -6713,7 +6668,6 @@ dependencies = [
  "multiaddr",
  "nom 5.1.2",
  "once_cell",
- "openssl-sys",
  "pin-project 1.0.10",
  "prost",
  "prost-types",
@@ -7050,7 +7004,7 @@ version = "0.24.0"
 dependencies = [
  "libtor",
  "log",
- "log4rs 1.0.0",
+ "log4rs",
  "multiaddr",
  "rand 0.8.4",
  "tari_common",
@@ -7169,7 +7123,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "lmdb-zero",
  "log",
- "log4rs 0.8.3",
+ "openssl-sys",
  "pgp",
  "prost",
  "rand 0.8.4",
@@ -7392,7 +7346,7 @@ dependencies = [
  "libsqlite3-sys",
  "lmdb-zero",
  "log",
- "log4rs 1.0.0",
+ "log4rs",
  "prost",
  "rand 0.8.4",
  "serde 1.0.136",
@@ -7429,7 +7383,7 @@ dependencies = [
  "lazy_static 1.4.0",
  "libc",
  "log",
- "log4rs 1.0.0",
+ "log4rs",
  "openssl",
  "rand 0.8.4",
  "security-framework",
@@ -7503,9 +7457,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-build"
-version = "1.0.0-rc.0"
+version = "1.0.0-rc.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53075d8ce33827474e1c97ef5c75e4a007e9cae81dba4ce8c61f29a459b5aae8"
+checksum = "b4dab79d01b8e429cb5bd98d9da90cbc1bedbd87d536d16adcf269c584bf6ae0"
 dependencies = [
  "anyhow",
  "cargo_toml",

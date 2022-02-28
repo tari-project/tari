@@ -780,15 +780,28 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .collect::<Result<_, _>>()
             .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
         let effective_sidechain_height = message.effective_sidechain_height;
+        let is_initial = message.is_initial;
 
         let (tx_id, transaction) = asset_manager
-            .create_committee_definition(&asset_public_key, &committee_public_keys, effective_sidechain_height)
+            .create_committee_definition(
+                &asset_public_key,
+                &committee_public_keys,
+                effective_sidechain_height,
+                is_initial,
+            )
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        debug!(
+            target: LOG_TARGET,
+            "Committee definition transaction: {:?}", transaction
+        );
+
         let message = format!(
-            "Committee checkpoint for asset {} with effective sidechain height {}",
-            asset_public_key, effective_sidechain_height
+            "{} member committee for asset {}... at sidechain height {}",
+            committee_public_keys.len(),
+            &asset_public_key.to_hex()[..7],
+            effective_sidechain_height
         );
         let _result = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)

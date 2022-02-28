@@ -3473,6 +3473,7 @@ pub unsafe extern "C" fn wallet_create(
         None,
         None,
         None,
+        None,
     );
 
     let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
@@ -5770,6 +5771,9 @@ pub unsafe extern "C" fn wallet_is_recovery_in_progress(wallet: *mut TariWallet,
 ///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
 ///       a new process.
 ///
+/// `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the
+/// default     message will be used
+///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -5785,6 +5789,7 @@ pub unsafe extern "C" fn wallet_start_recovery(
     wallet: *mut TariWallet,
     base_node_public_key: *mut TariPublicKey,
     recovery_progress_callback: unsafe extern "C" fn(u8, u64, u64),
+    recovered_output_message: *const c_char,
     error_out: *mut c_int,
 ) -> bool {
     let mut error = 0;
@@ -5798,7 +5803,24 @@ pub unsafe extern "C" fn wallet_start_recovery(
 
     let shutdown_signal = (*wallet).shutdown.to_signal();
     let peer_public_keys: Vec<TariPublicKey> = vec![(*base_node_public_key).clone()];
-    let mut recovery_task = UtxoScannerService::<WalletSqliteDatabase>::builder()
+    let mut recovery_task_builder = UtxoScannerService::<WalletSqliteDatabase>::builder();
+
+    if !recovered_output_message.is_null() {
+        let message_str;
+        match CStr::from_ptr(recovered_output_message).to_str() {
+            Ok(v) => {
+                message_str = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("recovered_output_message".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return false;
+            },
+        }
+        recovery_task_builder.with_recovery_message(message_str);
+    }
+
+    let mut recovery_task = recovery_task_builder
         .with_peers(peer_public_keys)
         .with_retry_limit(10)
         .build_with_wallet(&(*wallet).wallet, shutdown_signal);
@@ -5812,6 +5834,62 @@ pub unsafe extern "C" fn wallet_start_recovery(
         recovery_join_handle,
         recovery_progress_callback,
     ));
+
+    true
+}
+
+/// Set the text message that is applied to a detected One-Side payment transaction when it is scanned from the
+/// blockchain
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `message` - The pointer to a Utf8 string representing the Message
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn wallet_set_one_sided_payment_message(
+    wallet: *mut TariWallet,
+    message: *const c_char,
+    error_out: *mut c_int,
+) -> bool {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+
+    if wallet.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("wallet".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    }
+
+    let message_string;
+    if message.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    } else {
+        match CStr::from_ptr(message).to_str() {
+            Ok(v) => {
+                message_string = v.to_owned();
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("message".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return false;
+            },
+        }
+    }
+
+    (*wallet)
+        .wallet
+        .utxo_scanner_service
+        .set_one_sided_payment_message(message_string);
 
     true
 }

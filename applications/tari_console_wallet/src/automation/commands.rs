@@ -890,7 +890,7 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
                 let public_key_hex = asset_public_key.to_hex();
-                println!("Creating Committee Checkpoint for Asset");
+                println!("Creating Committee Definition for Asset");
                 println!("with public key {public_key_hex}");
 
                 let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
@@ -906,15 +906,16 @@ pub async fn command_runner(
                     return Err(CommandError::Config("Committee has no members!".into()));
                 }
                 let message = format!(
-                    "Committee checkpoint with {} members for {}",
+                    "Committee definition with {} members for {}",
                     num_members, asset_public_key
                 );
                 println!("with {num_members} committee members");
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 // todo: effective sidechain height...
+                // todo: updating
                 let (tx_id, transaction) = asset_manager
-                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0)
+                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
                     .await?;
 
                 let _result = transaction_service

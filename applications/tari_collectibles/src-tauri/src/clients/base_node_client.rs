@@ -24,8 +24,8 @@ use crate::error::CollectiblesError;
 use futures::StreamExt;
 use log::debug;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common_types::types::PublicKey;
-use tari_utilities::ByteArray;
+use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_utilities::{ByteArray, ByteArrayError};
 
 const LOG_TARGET: &str = "collectibles::base";
 
@@ -95,50 +95,46 @@ impl BaseNodeClient {
     Ok(response)
   }
 
-  // TODO: probably can get the full checkpoint instead
   pub async fn get_sidechain_committee(
     &mut self,
     asset_public_key: &PublicKey,
-  ) -> Result<Vec<PublicKey>, String> {
+  ) -> Result<Vec<PublicKey>, CollectiblesError> {
     let client = self.client_mut();
     let request = grpc::GetTokensRequest {
       asset_public_key: Vec::from(asset_public_key.as_bytes()),
-      unique_ids: vec![vec![3u8; 32]],
+      unique_ids: vec![COMMITTEE_DEFINITION_ID.into()],
     };
 
-    debug!(target: LOG_TARGET, "request {:?}", request);
+    debug!(target: LOG_TARGET, "get sidechain request {:?}", request);
     let mut stream = client
       .get_tokens(request)
       .await
       .map(|response| response.into_inner())
-      .map_err(|_s| "Could not get asset sidechain checkpoint".to_string())?;
-    let mut i = 0;
-    // Could def do this better
+      .map_err(|source| CollectiblesError::ClientRequest {
+        request: "get_tokens".into(),
+        source,
+      })?;
+
+    // todo: the stream should only ever return 1 UTXO so the loop could be a if let (untested)
     #[allow(clippy::never_loop)]
     while let Some(response) = stream.next().await {
-      i += 1;
-      if i > 10 {
-        break;
-      }
-      debug!(target: LOG_TARGET, "response {:?}", response);
-      let features = response
-        .map_err(|status| format!("Got an error status from GRPC:{}", status))?
-        .features;
-      if let Some(sidechain) = features.and_then(|f| f.sidechain_checkpoint) {
-        let pub_keys = sidechain
+      debug!(target: LOG_TARGET, "GetTokens response {:?}", response);
+      let features = response?.features.and_then(|f| f.committee_definition);
+
+      if let Some(definition) = features {
+        let public_keys = definition
           .committee
           .iter()
-          .map(|s| PublicKey::from_bytes(s).map_err(|e| format!("Not a valid public key:{}", e)))
-          .collect::<Result<_, String>>()?;
-        return Ok(pub_keys);
+          .map(|s| PublicKey::from_bytes(s))
+          .collect::<Result<_, ByteArrayError>>()?;
+
+        return Ok(public_keys);
       } else {
-        return Err("Found utxo but was missing sidechain data".to_string());
+        return Err(CollectiblesError::OutputMissingData);
       }
     }
-    Err(format!(
-      "No side chain tokens were found out of {} streamed",
-      i
-    ))
+
+    Err(CollectiblesError::OutputsNotFound)
   }
 
   fn client_mut(
