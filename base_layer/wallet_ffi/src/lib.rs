@@ -90,6 +90,7 @@ use std::{
     time::Duration,
 };
 
+use chrono::{DateTime, Local};
 use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
@@ -183,6 +184,7 @@ const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
+pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
@@ -1292,6 +1294,8 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     }
 }
 
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Contact -------------------------------------------------///
 
 /// Creates a TariContact
@@ -1422,6 +1426,8 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
     }
 }
 
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Contacts -------------------------------------------------///
 
 /// Gets the length of TariContacts
@@ -1503,6 +1509,204 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
     }
 }
 
+/// -------------------------------------------------------------------------------------------- ///
+
+/// ----------------------------------- Contacts Liveness Data ----------------------------------///
+
+/// Gets the public_key from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut() if
+/// liveness_data is null.
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_public_key(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new((*liveness_data).public_key().clone()))
+}
+
+/// Gets the latency from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_int` - Returns a pointer to a c_int if the optional latency data exists, with a value of '-1' if it is None.
+/// Note that it also returns '-1' if liveness_data is null.
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_latency(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    if let Some(latency) = (*liveness_data).latency() {
+        latency as c_int
+    } else {
+        -1
+    }
+}
+
+/// Gets the last_seen from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array if the optional last_seen data exists, with a value of '?' if it
+/// is None. Note that it returns ptr::null_mut() if liveness_data is null.
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_last_seen(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    if let Some(last_seen) = (*liveness_data).last_ping_pong_received() {
+        let last_seen_local_time = DateTime::<Local>::from_utc(last_seen, Local::now().offset().to_owned())
+            .format("%FT%T")
+            .to_string();
+        let mut return_value = CString::new("").expect("Blank CString will not fail.");
+        match CString::new(last_seen_local_time) {
+            Ok(val) => {
+                return_value = val;
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("liveness_data".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+            },
+        }
+        CString::into_raw(return_value)
+    } else {
+        CString::into_raw(CString::new("?").expect("Single character CString will not fail."))
+    }
+}
+
+/// Gets the message_type from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the status which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | NullError        |
+/// |   0 | Ping             |
+/// |   1 | Pong             |
+/// |   2 | NoMessage        |
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_message_type(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    let status = (*liveness_data).message_type();
+    status as c_int
+}
+
+/// Gets the online_status from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the status which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | NullError        |
+/// |   0 | Online           |
+/// |   1 | Offline          |
+/// |   2 | NeverSeen        |
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_online_status(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    let status = (*liveness_data).online_status();
+    status as c_int
+}
+
+/// Frees memory for a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsLivenessData) {
+    if !liveness_data.is_null() {
+        Box::from_raw(liveness_data);
+    }
+}
 /// -------------------------------------------------------------------------------------------- ///
 
 /// ----------------------------------- CompletedTransactions ----------------------------------- ///

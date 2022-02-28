@@ -10,6 +10,7 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 
 const utf8 = require("utf8");
+const LivenessData = require("./liveness_data");
 
 class WalletBalance {
   available = 0;
@@ -21,6 +22,7 @@ class WalletBalance {
 class Wallet {
   ptr;
   balance = new WalletBalance();
+  livenessData = new Map();
   log_path = "";
   transactionReceived = 0;
   transactionReplyReceived = 0;
@@ -98,6 +100,10 @@ class Wallet {
       livenessDataUpdated: this.contactsLivenessDataUpdated,
       saf: this.transactionSafMessageReceived,
     };
+  }
+
+  getLivenessData() {
+    return this.livenessData;
   }
 
   constructor(
@@ -334,12 +340,39 @@ class Wallet {
     this.txo_validation_result = validation_results;
   };
 
-  onContactsLivenessUpdated = (data) => {
+  onContactsLivenessUpdated = (ptr) => {
+    let data = new LivenessData(ptr);
+    data.pointerAssign(ptr);
+    const public_key = data.getPublicKey();
+    this.addLivenessData(
+      public_key,
+      data.getLatency(),
+      data.getLastSeen(),
+      data.getMessageType(),
+      data.getOnlineStatus()
+    );
     console.log(
-      `${new Date().toISOString()} callbackContactsLivenessUpdated: ${data}`
+      `${new Date().toISOString()} callbackContactsLivenessUpdated: received ${
+        this.livenessData.get(public_key).message_type
+      } from contact ${public_key} with latency ${
+        this.livenessData.get(public_key).latency
+      } at ${this.livenessData.get(public_key).last_seen} and is ${
+        this.livenessData.get(public_key).online_status
+      }`
     );
     this.contactsLivenessDataUpdated += 1;
+    data.destroy();
   };
+
+  addLivenessData(public_key, latency, last_seen, message_type, online_status) {
+    let data = {
+      latency: latency,
+      last_seen: last_seen,
+      message_type: message_type,
+      online_status: online_status,
+    };
+    this.livenessData.set(public_key, data);
+  }
 
   onBalanceUpdated = (ptr) => {
     let b = new Balance();

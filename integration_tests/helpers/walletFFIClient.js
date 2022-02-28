@@ -137,10 +137,15 @@ class WalletFFIClient {
   getCounters() {
     return this.wallet.getCounters();
   }
+
   resetCounters() {
     if (this.wallet) {
       this.wallet.clearCallbackCounters();
     }
+  }
+
+  getLivenessData() {
+    return this.wallet.getLivenessData();
   }
 
   sendTransaction(destination, amount, fee_per_gram, message, one_sided) {

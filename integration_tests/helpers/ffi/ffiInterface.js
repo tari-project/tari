@@ -321,6 +321,11 @@ class InterfaceFFI {
       balance_get_time_locked: [this.ulonglong, [this.ptr, this.intPtr]],
       balance_get_pending_incoming: [this.ulonglong, [this.ptr, this.intPtr]],
       balance_get_pending_outgoing: [this.ulonglong, [this.ptr, this.intPtr]],
+      liveness_data_get_public_key: [this.ptr, [this.ptr, this.intPtr]],
+      liveness_data_get_latency: [this.int, [this.ptr, this.intPtr]],
+      liveness_data_get_last_seen: [this.stringPtr, [this.ptr, this.intPtr]],
+      liveness_data_get_message_type: [this.int, [this.ptr, this.intPtr]],
+      liveness_data_get_online_status: [this.int, [this.ptr, this.intPtr]],
       wallet_get_fee_estimate: [
         this.ulonglong,
         [
@@ -442,6 +447,7 @@ class InterfaceFFI {
       ],
       wallet_destroy: [this.void, [this.ptr]],
       balance_destroy: [this.void, [this.ptr]],
+      liveness_data_destroy: [this.void, [this.ptr]],
       file_partial_backup: [this.void, [this.string, this.string, this.intPtr]],
       log_debug_message: [this.void, [this.string]],
       get_emoji_set: [this.ptr, []],
@@ -1319,7 +1325,7 @@ class InterfaceFFI {
 
   static balanceGetTimeLocked(ptr) {
     let error = this.initError();
-    let result = this.fn.balance_get_available(ptr, error);
+    let result = this.fn.balance_get_time_locked(ptr, error);
     this.checkErrorResult(error, `balanceGetTimeLocked`);
     return result;
   }
@@ -1335,6 +1341,41 @@ class InterfaceFFI {
     let error = this.initError();
     let result = this.fn.balance_get_pending_outgoing(ptr, error);
     this.checkErrorResult(error, `balanceGetPendingOutgoing`);
+    return result;
+  }
+
+  static livenessDataGetPublicKey(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_public_key(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetPublicKey`);
+    return result;
+  }
+
+  static livenessDataGetLatency(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_latency(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetLatency`);
+    return result;
+  }
+
+  static livenessDataGetLastSeen(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_last_seen(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetLastSeen`);
+    return result;
+  }
+
+  static livenessDataGetMessageType(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_message_type(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetMessageType`);
+    return result;
+  }
+
+  static livenessDataGetOnlineStatus(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_online_status(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetOnlineStatus`);
     return result;
   }
 
@@ -1630,6 +1671,10 @@ class InterfaceFFI {
 
   static balanceDestroy(ptr) {
     this.fn.balance_destroy(ptr);
+  }
+
+  static livenessDataDestroy(ptr) {
+    this.fn.liveness_data_destroy(ptr);
   }
   //endregion
 }

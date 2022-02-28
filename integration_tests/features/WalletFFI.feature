@@ -97,10 +97,10 @@ Feature: Wallet FFI
         And I have mining node MINER2 connected to base node SEED and wallet WALLET2
         And mining node MINER1 mines 1 blocks
         And mining node MINER2 mines 5 blocks
-        And I send 100000000 uT from wallet WALLET1 to wallet FFI_WALLET at fee 20
-        And I send 100000000 uT from wallet WALLET2 to wallet FFI_WALLET at fee 20
+        And I send 100000000 uT without waiting for broadcast from wallet WALLET1 to wallet FFI_WALLET at fee 20
+        And I send 100000000 uT without waiting for broadcast from wallet WALLET2 to wallet FFI_WALLET at fee 20
         # If the FFI wallet can send the transactions, P2P connectivity has been established
-        Then I wait for ffi wallet FFI_WALLET to have at least 4 contact liveness callback events
+        Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
         And I stop ffi wallet FFI_WALLET
 
     @critical

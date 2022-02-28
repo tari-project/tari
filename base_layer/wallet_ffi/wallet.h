@@ -600,6 +600,21 @@ unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int
 // Gets the available balance from a TariBalance
 unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
 
+// Gets the public_key from a TariContactsLivenessData
+struct TariPublicKey *liveness_data_get_public_key(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the latency from a TariContactsLivenessData
+int liveness_data_get_latency(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the last_seen from a TariContactsLivenessData
+char *liveness_data_get_last_seen(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the message_type from a TariContactsLivenessData
+int liveness_data_get_message_type(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the online_status from a TariContactsLivenessData
+int liveness_data_get_online_status(struct TariContactsLivenessData *liveness_data, int *error_out);
+
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int *error_out);
 
@@ -834,6 +849,9 @@ void wallet_destroy(struct TariWallet *wallet);
 
 // Frees memory for a TariBalance
 void balance_destroy(struct TariBalance *balance);
+
+// Frees memory for a TariContactsLivenessData
+void liveness_data_destroy(struct TariContactsLivenessData *liveness_data);
 
 // This function will produce a partial backup of the specified wallet database file (full file path must be provided.
 // This backup will be written to the provided file (full path must include the filename and extension) and will include
