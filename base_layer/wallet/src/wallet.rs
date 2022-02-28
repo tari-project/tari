@@ -87,7 +87,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer, RECOVERY_KEY},
+    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
 const LOG_TARGET: &str = "wallet";
