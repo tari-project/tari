@@ -7,11 +7,10 @@ use tokio::{
 use super::parser::Parser;
 use crate::LOG_TARGET;
 
-// TODO: Remove it and use the result from the `rustyline` directly
 pub enum CommandEvent {
     Command(String),
     Interrupt,
-    Error(String),
+    Error(rustyline::error::ReadlineError),
 }
 
 pub struct CommandReader {
@@ -43,7 +42,7 @@ impl CommandReader {
                     },
                     Err(err) => {
                         println!("Error: {:?}", err);
-                        event = CommandEvent::Error(err.to_string());
+                        event = CommandEvent::Error(err);
                     },
                 }
                 if tx_event.blocking_send(event).is_err() {

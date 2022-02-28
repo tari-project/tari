@@ -244,15 +244,12 @@ impl FromStr for UniNodeId {
     type Err = UniIdError;
 
     fn from_str(key: &str) -> Result<Self, Self::Err> {
-        if let Ok(public_key) = EmojiId::str_to_pubkey(&key.trim().replace('|', "")) {
-            Ok(Self::PublicKey(public_key))
-        } else if let Ok(public_key) = PublicKey::from_hex(key) {
-            Ok(Self::PublicKey(public_key))
-        } else if let Ok(node_id) = NodeId::from_hex(key) {
-            Ok(Self::NodeId(node_id))
-        } else {
-            Err(UniIdError::UnknownIdType)
-        }
+        let key = key.trim().replace('|', "");
+        EmojiId::str_to_pubkey(&key)
+            .or_else(|_| PublicKey::from_hex(&key))
+            .map(UniNodeId::PublicKey)
+            .or_else(|_| NodeId::from_hex(&key).map(UniNodeId::NodeId))
+            .map_err(|_| UniIdError::UnknownIdType)
     }
 }
 

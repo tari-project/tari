@@ -26,8 +26,6 @@ impl ArgsError {
 pub enum ArgsReason {
     #[error("argument required")]
     Required,
-    #[error("argument can't be parsed: {details}")]
-    NotParsed { details: String },
     #[error("argument is not valid: {description}")]
     Inconsistent { description: String },
 }
@@ -51,22 +49,22 @@ impl<'a> Args<'a> {
         }
     }
 
-    // TODO: Remove
-    pub fn shift_one(&mut self) {
+    fn shift(&mut self) {
         self.splitted.next();
     }
 
-    // TODO: Use `next` always
-    pub fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
+    /// Try parse the next argument into T. If the parse succeeds, the argument is consumed.
+    pub fn try_take_next<T>(&mut self) -> Result<Option<T>, ArgsError>
     where
         T: FromStr,
         T::Err: ToString,
     {
-        match self.splitted.peek().map(|s| s.parse()) {
-            Some(Ok(value)) => Ok(Some(value)),
-            Some(Err(err)) => Err(ArgsError::new(name, ArgsReason::NotParsed {
-                details: err.to_string(),
-            })),
+        match self.splitted.peek().and_then(|s| s.parse().ok()) {
+            Some(value) => {
+                // Value parse succeeded, shift the arg
+                self.shift();
+                Ok(Some(value))
+            },
             None => Ok(None),
         }
     }
@@ -76,13 +74,8 @@ impl<'a> Args<'a> {
         T: FromStr,
         T::Err: ToString,
     {
-        match self.try_take_next(name)? {
-            Some(value) => {
-                self.shift_one();
-                Ok(value)
-            },
-            None => Err(ArgsError::new(name, ArgsReason::Required)),
-        }
+        self.try_take_next()?
+            .ok_or_else(|| ArgsError::new(name, ArgsReason::Required))
     }
 }
 

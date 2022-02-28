@@ -135,7 +135,7 @@ use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{task, time};
+use tokio::{sync::Mutex, task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
@@ -387,7 +387,9 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mut shutdown: Shutdown) {
+async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, shutdown: Shutdown) {
+    let mut shutdown_signal = shutdown.to_signal();
+    let shutdown = Arc::new(Mutex::new(shutdown));
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
@@ -403,44 +405,30 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
     rustyline.set_helper(Some(parser));
     let mut reader = CommandReader::new(rustyline);
 
-    let mut shutdown_signal = shutdown.to_signal();
     let start_time = Instant::now();
     let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
-    let mut first_signal = false;
     // TODO: Add heartbeat here
     // Show status immediately on startup
     let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+
     loop {
         let interval = get_status_interval(start_time, config.base_node_status_line_interval);
         tokio::select! {
-            res = reader.next_command() => {
-                if let Some(event) = res {
-                    match event {
-                        CommandEvent::Command(line) => {
-                            first_signal = false;
-                            let fut = performer.handle_command(line.as_str(), &mut shutdown);
-                            let res = time::timeout(Duration::from_secs(30), fut).await;
-                            if let Err(_err) = res {
-                                println!("Time for command execution elapsed: `{}`", line);
-                            }
-                        }
-                        CommandEvent::Interrupt => {
-                            if !first_signal {
-                                println!("Are you leaving already? Press Ctrl-C again to terminate the node.");
-                                first_signal = true;
-                            } else {
-                                break;
-                            }
-                        }
-                        CommandEvent::Error(err) => {
-                            // TODO: Not sure we have to break here
-                            // This happens when the node is shutting down.
-                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                            break;
-                        }
+            Some(cmd) = reader.next_command() => {
+                match cmd {
+                    CommandEvent::Command(line) => {
+                        let mut performer = performer.clone();
+                        let shutdown = shutdown.clone();
+                        task::spawn(async move {
+                            performer.handle_command(line.as_str(), shutdown).await
+                        });
                     }
-                } else {
-                    break;
+                    CommandEvent::Interrupt |
+                    CommandEvent::Error(rustyline::error::ReadlineError::Eof) =>  break,
+                    CommandEvent::Error(err) => {
+                        error!(target:  LOG_TARGET, "Could not read line from rustyline: {}", err);
+                        break;
+                    }
                 }
             },
             Ok(_) = software_update_notif.changed() => {

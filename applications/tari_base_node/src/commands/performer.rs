@@ -1,24 +1,23 @@
-use std::time::Duration;
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::Error;
 use derive_more::{Deref, DerefMut};
 use log::*;
 use strum::IntoEnumIterator;
 use tari_app_utilities::utilities::{UniNodeId, UniPublicKey};
-use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
-use tari_comms::peer_manager::NodeId;
+use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
 use tari_core::proof_of_work::PowAlgorithm;
 use tari_shutdown::Shutdown;
-use tari_utilities::ByteArray;
+use tokio::sync::Mutex;
 
 use super::{
-    args::{Args, ArgsError, ArgsReason, FromHex},
+    args::{Args, ArgsError, FromHex},
     command_handler::{CommandHandler, StatusLineOutput},
     parser::BaseNodeCommand,
 };
 use crate::LOG_TARGET;
 
-#[derive(Deref, DerefMut)]
+#[derive(Clone, Deref, DerefMut)]
 pub struct Performer {
     command_handler: CommandHandler,
 }
@@ -29,7 +28,7 @@ impl Performer {
     }
 
     /// This will parse the provided command and execute the task
-    pub async fn handle_command(&mut self, command_str: &str, shutdown: &mut Shutdown) {
+    pub async fn handle_command(&mut self, command_str: &str, shutdown: Arc<Mutex<Shutdown>>) {
         if command_str.trim().is_empty() {
             return;
         }
@@ -52,17 +51,19 @@ impl Performer {
     }
 
     /// Function to process commands
-    async fn process_command<'a>(
+    async fn process_command(
         &mut self,
         command: BaseNodeCommand,
-        mut typed_args: Args<'a>,
-        shutdown: &mut Shutdown,
+        mut typed_args: Args<'_>,
+        shutdown: Arc<Mutex<Shutdown>>,
     ) -> Result<(), Error> {
         use BaseNodeCommand::*;
         match command {
             Help => {
-                let command = typed_args.take_next("help-command")?;
-                self.print_help(command);
+                match typed_args.try_take_next()? {
+                    Some(command) => self.print_help(command),
+                    None => self.print_help(BaseNodeCommand::Help),
+                }
                 Ok(())
             },
             Status => self.command_handler.status(StatusLineOutput::StdOutAndLog).await,
@@ -103,7 +104,7 @@ impl Performer {
                     target: LOG_TARGET,
                     "Termination signal received from user. Shutting node down."
                 );
-                let _ = shutdown.trigger();
+                shutdown.lock().await.trigger();
                 Ok(())
             },
         }
@@ -277,10 +278,9 @@ impl Performer {
 
     /// Function to process the get-block command
     async fn process_get_block<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
-        let height = args.try_take_next("height")?;
-        let hash: Option<FromHex<Vec<u8>>> = args.try_take_next("hash")?;
-        args.shift_one();
-        let format = args.try_take_next("format")?.unwrap_or_default();
+        let height = args.try_take_next()?;
+        let hash = args.try_take_next::<FromHex<HashOutput>>()?;
+        let format = args.try_take_next()?.unwrap_or_default();
 
         match (height, hash) {
             (Some(height), _) => self.command_handler.get_block(height, format).await,
@@ -319,17 +319,8 @@ impl Performer {
     }
 
     async fn process_get_peer<'a>(&mut self, mut args: Args<'a>) -> Result<(), Error> {
-        let original_str = args
-            .try_take_next("node_id")?
-            .ok_or_else(|| ArgsError::new("node_id", ArgsReason::Required))?;
-        let node_id: Option<UniNodeId> = args.try_take_next("node_id")?;
-        let partial;
-        if let Some(node_id) = node_id {
-            partial = NodeId::from(node_id).to_vec();
-        } else {
-            let data: FromHex<_> = args.take_next("node_id")?;
-            partial = data.0;
-        }
+        let original_str = args.take_next::<String>("node_id")?;
+        let partial = FromHex::<Vec<u8>>::from_str(&original_str)?.0;
         self.command_handler.get_peer(partial, original_str).await;
         Ok(())
     }
@@ -355,7 +346,7 @@ impl Performer {
     /// Function to process the ban-peer command
     async fn process_ban_peer<'a>(&mut self, mut args: Args<'a>, must_ban: bool) -> Result<(), Error> {
         let node_id: UniNodeId = args.take_next("node-id")?;
-        let secs = args.try_take_next("length")?.unwrap_or(std::u64::MAX);
+        let secs = args.try_take_next()?.unwrap_or(u64::MAX);
         let duration = Duration::from_secs(secs);
         self.command_handler.ban_peer(node_id.into(), duration, must_ban).await;
         Ok(())
@@ -364,7 +355,7 @@ impl Performer {
     /// Function to process the list-headers command
     async fn process_list_headers<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start = args.take_next("start")?;
-        let end = args.try_take_next("end")?;
+        let end = args.try_take_next()?;
         self.command_handler.list_headers(start, end).await;
         Ok(())
     }
@@ -372,7 +363,7 @@ impl Performer {
     /// Function to process the calc-timing command
     async fn process_block_timing<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start = args.take_next("start")?;
-        let end = args.try_take_next("end")?;
+        let end = args.try_take_next()?;
         if end.is_none() && start < 2 {
             Err(ArgsError::new("start", "Number of headers must be at least 2.").into())
         } else {
@@ -392,10 +383,8 @@ impl Performer {
     async fn process_header_stats<'a>(&self, mut args: Args<'a>) -> Result<(), Error> {
         let start_height = args.take_next("start_height")?;
         let end_height = args.take_next("end_height")?;
-        let filename = args
-            .try_take_next("filename")?
-            .unwrap_or_else(|| "header-data.csv".into());
-        let algo: Option<PowAlgorithm> = args.try_take_next("algo")?;
+        let filename = args.try_take_next()?.unwrap_or_else(|| "header-data.csv".into());
+        let algo: Option<PowAlgorithm> = args.try_take_next()?;
 
         self.command_handler
             .save_header_stats(start_height, end_height, filename, algo)

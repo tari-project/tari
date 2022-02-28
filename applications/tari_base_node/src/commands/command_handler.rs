@@ -79,6 +79,7 @@ pub enum StatusLineOutput {
     StdOutAndLog,
 }
 
+#[derive(Clone)]
 pub struct CommandHandler {
     config: Arc<GlobalConfig>,
     consensus_rules: ConsensusManager,
