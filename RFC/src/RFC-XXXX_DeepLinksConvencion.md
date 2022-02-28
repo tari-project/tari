@@ -59,25 +59,26 @@ Deep links are the URIs with hierarchical components sequence. We can use this s
 The scheme is used to address the client, which will handle the data from the command and data component. In the Tari Aurora project, we're using `tari` scheme to open the wallet app and handle provided data.
 
 #### Command
-The command an optional component used to pass information about the action that should be performed by the client. The handler can use this info to determine which parser/decoder should be used to serialize data and what the app suppose to do with the data afterward.
+The command an path string used to pass information about the action that should be performed by the client. The handler can use this info to determine which parser/decoder should be used to serialize data and what the app suppose to do with the data afterward.
+To support multiple domains/networks the first path component should contain a name of corresponded domain/network. The app before handle the data should first check that active account is pointed to the right domain/network and show the error is there a missmatch. 
 
-For simple actions, the command can be defined as a single phrase. For more complex actions, the command should be defined as a multi-path where the first path component should be the name of the action group.
+For simple actions, the command can be defined as a single phrase. For more complex actions, the command should be defined as a multi-path where the second path component should be the name of the action group.
 
 **Examples**:
 
 Simple Actions:
 ```
-user_profile
-login
+mainnet/user_profile
+testnet/login
 ```
 Complex Actions:
 ```
-payment/send
-payment/request
+mainnet/payment/send
+testnet/payment/request
 ```
 
 #### Data
-The data component is a string of key-value pairs used by the parser/decoder to serialize the data, which the client will later use to handle the action. The data component should be formatted in the same way as a URL query. The sub-component should have a `?` prefix, the key-value pairs should be separated by `&`, and every key should be separated from the value by `=` character.
+The data component is an optional string of key-value pairs used by the parser/decoder to serialize the data, which the client will later use to handle the action. The data component should be formatted in the same way as a URL query. The sub-component should have a `?` prefix, the key-value pairs should be separated by `&`, and every key should be separated from the value by `=` character.
 
 #### The Structure
 Combining all three components, they will form a deep link with a structure presented below:
@@ -86,7 +87,7 @@ Combining all three components, they will form a deep link with a structure pres
 ```
 **Examples**:
 ```
-tari://profile
-tari://profile/username
-tari://payment/send?amount=1.23&pubKey=01234556789abcde
+tari://mainnet/profile
+tari://mainnet/profile/username
+tari://testnet/payment/send?amount=1.23&pubKey=01234556789abcde
 ```
