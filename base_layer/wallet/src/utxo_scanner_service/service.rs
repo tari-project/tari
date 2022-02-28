@@ -65,6 +65,8 @@ where TBackend: WalletBackend + 'static
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) base_node_service: BaseNodeServiceHandle,
+    one_sided_message_watch: watch::Receiver<String>,
+    recovery_message_watch: watch::Receiver<String>,
 }
 
 impl<TBackend> UtxoScannerService<TBackend>
@@ -78,6 +80,8 @@ where TBackend: WalletBackend + 'static
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
+        one_sided_message_watch: watch::Receiver<String>,
+        recovery_message_watch: watch::Receiver<String>,
     ) -> Self {
         Self {
             resources,
@@ -87,6 +91,8 @@ where TBackend: WalletBackend + 'static
             shutdown_signal,
             event_sender,
             base_node_service,
+            one_sided_message_watch,
+            recovery_message_watch,
         }
     }
 
@@ -171,6 +177,12 @@ where TBackend: WalletBackend + 'static
                         info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
                         return Ok(());
                     }
+                    Ok(_) = self.one_sided_message_watch.changed() => {
+                            self.resources.one_sided_payment_message = (*self.one_sided_message_watch.borrow()).clone();
+                    },
+                    Ok(_) = self.recovery_message_watch.changed() => {
+                            self.resources.recovery_message = (*self.recovery_message_watch.borrow()).clone();
+                    },
                 }
             }
         }
@@ -186,6 +198,8 @@ pub struct UtxoScannerResources<TBackend> {
     pub transaction_service: TransactionServiceHandle,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
+    pub recovery_message: String,
+    pub one_sided_payment_message: String,
 }
 
 #[derive(Debug, Clone)]
