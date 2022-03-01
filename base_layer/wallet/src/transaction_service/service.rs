@@ -1366,8 +1366,8 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.pending_transaction_reply_senders.remove(&id.into());
-                let _ = self.send_transaction_cancellation_senders.remove(&id.into());
+                let _ = self.pending_transaction_reply_senders.remove(&id);
+                let _ = self.send_transaction_cancellation_senders.remove(&id);
                 if let TransactionServiceError::Shutdown = error {
                     return;
                 }
@@ -1728,8 +1728,8 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.finalized_transaction_senders.remove(&id.into());
-                let _ = self.receiver_transaction_cancellation_senders.remove(&id.into());
+                let _ = self.finalized_transaction_senders.remove(&id);
+                let _ = self.receiver_transaction_cancellation_senders.remove(&id);
                 match error {
                     TransactionServiceError::RepeatedMessageError => debug!(
                         target: LOG_TARGET,
@@ -1898,9 +1898,7 @@ where
                 );
                 let _ = self
                     .event_publisher
-                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(
-                        OperationId::from(id),
-                    )));
+                    .send(Arc::new(TransactionEvent::TransactionValidationFailed(id)));
             },
         }
     }
@@ -2007,7 +2005,7 @@ where
                 let _ = self.active_transaction_broadcast_protocols.remove(&id);
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.active_transaction_broadcast_protocols.remove(&TxId::from(id));
+                let _ = self.active_transaction_broadcast_protocols.remove(&id);
 
                 if let TransactionServiceError::Shutdown = error {
                     return;
