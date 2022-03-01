@@ -59,17 +59,13 @@ impl<T> ServiceInitializer for KeyManagerInitializer<T>
 where T: KeyManagerBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        dbg!("hello");
         let backend = self
             .backend
             .take()
             .expect("Cannot start Key Manager Service without setting a storage backend");
 
-        dbg!("hello2");
         let key_manager = KeyManagerHandle::new(self.master_seed.clone(), KeyManagerDatabase::new(backend));
-        dbg!("hello3");
         context.register_handle(key_manager);
-        dbg!("hello4");
 
         Ok(())
     }

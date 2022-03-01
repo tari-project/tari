@@ -194,7 +194,7 @@ where
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(KeyManagerOmsBranch::Coinbase.to_string(), output.spending_key.clone())
+                .find_key_index(KeyManagerOmsBranch::Coinbase.to_string(), &output.spending_key)
                 .await?;
 
             self.master_key_manager
@@ -203,7 +203,7 @@ where
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(KeyManagerOmsBranch::Spend.to_string(), output.spending_key.clone())
+                .find_key_index(KeyManagerOmsBranch::Spend.to_string(), &output.spending_key)
                 .await?;
 
             self.master_key_manager

@@ -41,11 +41,11 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     contacts_service::error::ContactsServiceError,
+    key_manager_service::KeyManagerError as KeyManagerServiceError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
     utxo_scanner_service::error::UtxoScannerError,
-    key_manager_service::KeyManagerError as KeyManagerServiceError,
 };
 
 #[derive(Debug, Error)]

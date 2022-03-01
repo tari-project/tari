@@ -20,13 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod asset_manager;
-pub(crate) use asset_manager::AssetManager;
-pub use asset_manager::KeyManagerAssetBranch;
-
-mod asset;
-pub use asset::Asset;
-
-mod asset_manager_handle;
-pub use asset_manager_handle::AssetManagerHandle;
-pub(crate) mod infrastructure;
+mod key_manager_service_tests;
+pub mod support;

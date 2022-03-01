@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{marker::PhantomData, sync::Arc};
-use crate::key_manager_service::KeyManagerInterface;
 
 use digest::Digest;
 use log::*;
@@ -74,7 +73,12 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
-    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle, KeyManagerInitializer},
+    key_manager_service::{
+        storage::database::KeyManagerBackend,
+        KeyManagerHandle,
+        KeyManagerInitializer,
+        KeyManagerInterface,
+    },
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,

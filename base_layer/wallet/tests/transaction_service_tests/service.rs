@@ -346,7 +346,7 @@ pub fn setup_transaction_service_no_comms(
     );
     let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection.clone(), None));
     let cipher = CipherSeed::new();
-    let key_manager = KeyManagerMock::new(cipher.clone());
+    let key_manager = KeyManagerMock::new(cipher);
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, None));
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(

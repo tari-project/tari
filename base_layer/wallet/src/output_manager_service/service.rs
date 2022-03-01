@@ -131,12 +131,10 @@ where
     ) -> Result<Self, OutputManagerError> {
         // Clear any encumberances for transactions that were being negotiated but did not complete to become official
         // Pending Transactions.
-        dbg!("meh");
         OutputManagerService::<TBackend, TWalletConnectivity, TKeyManagerInterface>::initialise_key_manager(
             &key_manager,
         )
         .await?;
-        dbg!("meh2");
         db.clear_short_term_encumberances().await?;
         let rewind_key = key_manager
             .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)
@@ -209,10 +207,10 @@ where
         key_manager: &TKeyManagerInterface,
     ) -> Result<(), OutputManagerError> {
         match key_manager.add_new_branch(branch).await {
-            Ok(()) => return Ok(()),
-            Err(KeyManagerError::BranchAllreadyExists) => return Ok(()),
-            Err(e) => return Err(OutputManagerError::TariKeyManagerError(e)),
-        };
+            Ok(()) => Ok(()),
+            Err(KeyManagerError::BranchAllreadyExists) => Ok(()),
+            Err(e) => Err(OutputManagerError::TariKeyManagerError(e)),
+        }
     }
 
     /// Return the public rewind keys
@@ -988,7 +986,7 @@ where
             change_output.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &&self.resources.rewind_data.clone(),
+                &self.resources.rewind_data.clone(),
                 None,
                 None,
             )?);
@@ -1714,7 +1712,7 @@ where
                     covenant.clone(),
                 ),
                 &self.resources.factories,
-                &&self.resources.rewind_data.clone(),
+                &self.resources.rewind_data.clone(),
                 None,
                 None,
             )?;
@@ -1770,7 +1768,7 @@ where
             outputs.push(DbUnblindedOutput::rewindable_from_unblinded_output(
                 unblinded_output,
                 &self.resources.factories,
-                &&self.resources.rewind_data.clone(),
+                &self.resources.rewind_data.clone(),
                 None,
                 None,
             )?);

@@ -193,8 +193,6 @@ impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_index = encrypt_bytes_integral_nonce(cipher, self.primary_key_index.clone())?;
         self.primary_key_index = encrypted_index;
-        dbg!("encruption done");
-        dbg!(&self.branch_seed);
         Ok(())
     }
 
@@ -210,8 +208,6 @@ impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
     fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
         let encrypted_index = encrypt_bytes_integral_nonce(cipher, self.primary_key_index.clone())?;
         self.primary_key_index = encrypted_index;
-        dbg!("encryption done");
-        dbg!(&self.branch_seed);
         Ok(())
     }
 

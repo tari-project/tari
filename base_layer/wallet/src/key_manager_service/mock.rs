@@ -77,12 +77,7 @@ impl KeyManagerMock {
     pub async fn get_next_key_mock(&self, branch: String) -> Result<PrivateKey, KeyManagerError> {
         let mut lock = self.key_managers.write().await;
         let km = lock.get_mut(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
-        dbg!(&km.branch_seed);
-        dbg!(&km.key_index());
         let key = km.next_key()?;
-
-        dbg!(&km.branch_seed);
-        dbg!(&km.key_index());
         Ok(key.k)
     }
 
@@ -106,14 +101,14 @@ impl KeyManagerMock {
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index_mock(&self, branch: String, key: PrivateKey) -> Result<u64, KeyManagerError> {
+    pub async fn find_key_index_mock(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
         let lock = self.key_managers.read().await;
         let km = lock.get(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
 
         let current_index = km.key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if km.derive_key(i)?.k == key {
+            if km.derive_key(i)?.k == *key {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }
@@ -142,7 +137,6 @@ impl KeyManagerMock {
 #[async_trait::async_trait]
 impl KeyManagerInterface for KeyManagerMock {
     async fn add_new_branch(&self, branch: String) -> Result<(), KeyManagerError> {
-        dbg!("dleh");
         self.add_key_manager_mock(branch).await
     }
 
@@ -169,7 +163,7 @@ impl KeyManagerInterface for KeyManagerMock {
         unimplemented!("Not supported");
     }
 
-    async fn find_key_index(&self, branch: String, key: PrivateKey) -> Result<u64, KeyManagerError> {
+    async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
         self.find_key_index_mock(branch, key).await
     }
 

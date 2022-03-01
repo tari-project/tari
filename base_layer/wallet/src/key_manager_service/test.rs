@@ -25,7 +25,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use crate::key_manager_service::KeyManagerMock;
 
 #[tokio::test]
-async fn get_next_key_test() {
+async fn get_next_key_test_mock() {
     let cihper = CipherSeed::new();
     let key_manager_mock = KeyManagerMock::new(cihper);
     let branch = "test_branch_1".to_string();
@@ -45,9 +45,9 @@ async fn get_next_key_test() {
 }
 
 #[tokio::test]
-async fn get_key_at_test() {
-    let cihper = CipherSeed::new();
-    let key_manager_mock = KeyManagerMock::new(cihper);
+async fn get_key_at_test_mock() {
+    let cipher = CipherSeed::new();
+    let key_manager_mock = KeyManagerMock::new(cipher);
     let branch = "test_branch_1".to_string();
     key_manager_mock.add_key_manager_mock(branch.clone()).await.unwrap();
 
@@ -71,4 +71,3 @@ async fn get_key_at_test() {
     assert_ne!(key_2, key_1);
     assert_eq!(key_1, key_1_2);
 }
-// let (connection, _tempdir) = get_temp_sqlite_database_connection();

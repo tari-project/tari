@@ -40,7 +40,7 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
 
     async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError>;
 
-    async fn find_key_index(&self, branch: String, key: PrivateKey) -> Result<u64, KeyManagerError>;
+    async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError>;
 
     async fn update_current_key_index_if_higher(&self, branch: String, index: u64) -> Result<(), KeyManagerError>;
 

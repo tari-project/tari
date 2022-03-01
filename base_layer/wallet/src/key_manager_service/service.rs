@@ -60,24 +60,20 @@ where TBackend: KeyManagerBackend + 'static
     }
 
     pub async fn add_key_manager(&mut self, branch: String) -> Result<(), KeyManagerError> {
-        dbg!("pleh");
         if self.key_managers.contains_key(&branch) {
             return Err(KeyManagerError::BranchAllreadyExists);
         }
-        dbg!("pleh1");
         let state = match self.db.get_key_manager_state(branch.clone()).await? {
             None => {
                 let starting_state = KeyManagerState {
                     branch_seed: branch.to_string(),
                     primary_key_index: 0,
                 };
-                dbg!("pleh2");
                 self.db.set_key_manager_state(starting_state.clone()).await?;
                 starting_state
             },
             Some(km) => km,
         };
-        dbg!("pleh3");
         self.key_managers.insert(
             branch,
             Mutex::new(KeyManager::<PrivateKey, KeyDigest>::from(
@@ -140,7 +136,7 @@ where TBackend: KeyManagerBackend + 'static
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: String, key: PrivateKey) -> Result<u64, KeyManagerError> {
+    pub async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
         let km = self
             .key_managers
             .get(&branch)
@@ -151,7 +147,7 @@ where TBackend: KeyManagerBackend + 'static
         let current_index = km.key_index();
 
         for i in 0u64..current_index + KEY_MANAGER_MAX_SEARCH_DEPTH {
-            if km.derive_key(i)?.k == key {
+            if km.derive_key(i)?.k == *key {
                 trace!(target: LOG_TARGET, "Key found in {} Key Chain at index {}", branch, i);
                 return Ok(i);
             }

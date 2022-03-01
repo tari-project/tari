@@ -65,10 +65,7 @@ impl KeyManagerSqliteDatabase {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
         };
-        dbg!("hi");
         db.do_migration()?;
-
-        dbg!("hi2");
         Ok(db)
     }
 
@@ -83,9 +80,7 @@ impl KeyManagerSqliteDatabase {
 
     fn encrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), KeyManagerStorageError> {
         let cipher = acquire_read_lock!(self.cipher);
-        dbg!("should we encrypt?");
         if let Some(cipher) = cipher.as_ref() {
-            dbg!("yes we should encrypt?");
             o.encrypt(cipher)
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
         }
@@ -106,10 +101,8 @@ impl KeyManagerSqliteDatabase {
     fn do_migration(&self) -> Result<(), KeyManagerStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
 
-        dbg!("lo");
         let old_state = KeyManagerStateSqlOld::index(&conn)?;
-        if old_state.len() > 0 {
-            dbg!("lo2");
+        if !old_state.is_empty() {
             // there should only be 1 if there is an old state.
             let spending_km = DbKeyValuePair::KeyManagerState(KeyManagerState {
                 branch_seed: KeyManagerOmsBranch::Spend.to_string(),
@@ -123,7 +116,6 @@ impl KeyManagerSqliteDatabase {
             self.insert(spending_script_km, &conn)?;
             KeyManagerStateSqlOld::delete(&conn)?;
         }
-        dbg!("lo3");
         Ok(())
     }
 }
@@ -139,9 +131,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
             DbKey::KeyManagerState(branch) => match KeyManagerStateSql::get_state(branch, &conn).ok() {
                 None => None,
                 Some(mut km) => {
-                    dbg!("oleh");
                     self.decrypt_if_necessary(&mut km)?;
-                    dbg!("oleh1");
                     Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?))
                 },
             },
@@ -359,9 +349,7 @@ mod test {
             branch_seed: branch.clone(),
             primary_key_index: 1,
         };
-        NewKeyManagerStateSql::from(starting_state.clone())
-            .commit(&conn)
-            .unwrap();
+        NewKeyManagerStateSql::from(starting_state).commit(&conn).unwrap();
 
         let state_sql = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
 

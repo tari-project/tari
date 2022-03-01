@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::fmt::{Display, Error, Formatter};
+
 use log::*;
 use tari_common_types::{
     transaction::TxId,
@@ -367,4 +369,18 @@ pub struct AssetMetadata {
     name: String,
     description: String,
     image: String,
+}
+
+#[derive(Clone, Copy)]
+pub enum KeyManagerAssetBranch {
+    Asset,
+}
+
+impl Display for KeyManagerAssetBranch {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        let response = match self {
+            KeyManagerAssetBranch::Asset => "Asset",
+        };
+        fmt.write_str(response)
+    }
 }

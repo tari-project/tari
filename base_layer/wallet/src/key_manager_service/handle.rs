@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::sync::Arc;
-use aes_gcm::Aes256Gcm;
 
+use aes_gcm::Aes256Gcm;
 use tari_common_types::types::PrivateKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tokio::sync::RwLock;
@@ -84,7 +84,7 @@ where TBackend: KeyManagerBackend + 'static
             .await
     }
 
-    async fn find_key_index(&self, branch: String, key: PrivateKey) -> Result<u64, KeyManagerError> {
+    async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
         (*self.key_manager_inner).read().await.find_key_index(branch, key).await
     }
 
