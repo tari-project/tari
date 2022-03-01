@@ -44,10 +44,7 @@ use tari_shutdown::Shutdown;
 use tari_test_utils::random;
 use tari_utilities::{epoch_time::EpochTime, Hashable};
 use tari_wallet::{
-    base_node_service::{
-        handle::{BaseNodeEvent, BaseNodeServiceHandle},
-        mock_base_node_service::MockBaseNodeService,
-    },
+    base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityInterface, WalletConnectivityMock},
     output_manager_service::storage::models::DbUnblindedOutput,
     storage::{
@@ -71,6 +68,7 @@ use tokio::{
 pub mod support;
 
 use support::{
+    base_node_service_mock::MockBaseNodeService,
     comms_rpc::{BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState, UtxosByBlock},
     output_manager_service_mock::{make_output_manager_service_mock, OutputManagerMockState},
     transaction_service_mock::make_transaction_service_mock,
