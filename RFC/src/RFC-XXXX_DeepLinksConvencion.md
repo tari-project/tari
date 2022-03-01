@@ -59,7 +59,7 @@ Deep links are the URIs with hierarchical components sequence. We can use this s
 The scheme is used to address the client, which will handle the data from the command and data component. In the Tari Aurora project, we're using `tari` scheme to open the wallet app and handle provided data.
 
 #### Command
-The command an path string used to pass information about the action that should be performed by the client. The handler can use this info to determine which parser/decoder should be used to serialize data and what the app suppose to do with the data afterward.
+The command and path string is used to pass information about the action that should be performed by the client. The handler can use this info to determine which parser/decoder should be used to serialize data and what the app suppose to do with the data afterwards.
 To support multiple domains/networks the first path component should contain a name of corresponded domain/network. The app before handle the data should first check that active account is pointed to the right domain/network and show the error is there a missmatch. 
 
 For simple actions, the command can be defined as a single phrase. For more complex actions, the command should be defined as a multi-path where the second path component should be the name of the action group.
