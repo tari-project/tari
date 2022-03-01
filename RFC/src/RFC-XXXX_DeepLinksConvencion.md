@@ -74,7 +74,7 @@ testnet/login
 Complex Actions:
 ```
 mainnet/payment/send
-testnet/payment/request
+testnet/payments/request
 ```
 
 #### Data
