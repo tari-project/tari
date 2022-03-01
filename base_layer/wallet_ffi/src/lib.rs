@@ -1542,7 +1542,7 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
     Box::into_raw(Box::new((*liveness_data).public_key().clone()))
 }
 
-/// Gets the latency from a TariContactsLivenessData
+/// Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
 ///
 /// ## Arguments
 /// `liveness_data` - The pointer to a TariContactsLivenessData
@@ -1550,8 +1550,8 @@ pub unsafe extern "C" fn liveness_data_get_public_key(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut c_int` - Returns a pointer to a c_int if the optional latency data exists, with a value of '-1' if it is None.
-/// Note that it also returns '-1' if liveness_data is null.
+/// `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
+/// value of '-1' if it is None. Note that it also returns '-1' if liveness_data is null.
 ///
 /// # Safety
 /// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
@@ -1575,7 +1575,7 @@ pub unsafe extern "C" fn liveness_data_get_latency(
     }
 }
 
-/// Gets the last_seen from a TariContactsLivenessData
+/// Gets the last_seen time (in local time) from a TariContactsLivenessData
 ///
 /// ## Arguments
 /// `liveness_data` - The pointer to a TariContactsLivenessData
@@ -1621,7 +1621,7 @@ pub unsafe extern "C" fn liveness_data_get_last_seen(
     }
 }
 
-/// Gets the message_type from a TariContactsLivenessData
+/// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData
 ///
 /// ## Arguments
 /// `liveness_data` - The pointer to a TariContactsLivenessData
@@ -1656,7 +1656,7 @@ pub unsafe extern "C" fn liveness_data_get_message_type(
     status as c_int
 }
 
-/// Gets the online_status from a TariContactsLivenessData
+/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
 ///
 /// ## Arguments
 /// `liveness_data` - The pointer to a TariContactsLivenessData

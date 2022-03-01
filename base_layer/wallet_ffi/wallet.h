@@ -603,16 +603,31 @@ unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int
 // Gets the public_key from a TariContactsLivenessData
 struct TariPublicKey *liveness_data_get_public_key(struct TariContactsLivenessData *liveness_data, int *error_out);
 
-// Gets the latency from a TariContactsLivenessData
+// Gets the optional latency in milli-seconds (ms) from a TariContactsLivenessData. A value of -1 indicates
+// that latency was not measured for the respective ping or pong.
 int liveness_data_get_latency(struct TariContactsLivenessData *liveness_data, int *error_out);
 
-// Gets the last_seen from a TariContactsLivenessData
+// Gets the last_seen time (in local time) from a TariContactsLivenessData
 char *liveness_data_get_last_seen(struct TariContactsLivenessData *liveness_data, int *error_out);
 
-// Gets the message_type from a TariContactsLivenessData
+// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData, which
+// can return the following values:
+// pub enum ContactMessageType {
+//     Ping,         // 0
+//     Pong,         // 1
+//     NoMessage,    // 2
+// }
+// A value of -1 represents a null error.
 int liveness_data_get_message_type(struct TariContactsLivenessData *liveness_data, int *error_out);
 
-// Gets the online_status from a TariContactsLivenessData
+// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData, which
+// can return the following values:
+// pub enum ContactOnlineStatus {
+//     Online,       // 0
+//     Offline,      // 1
+//     NeverSeen,    // 2
+// }
+// A value of -1 represents a null error.
 int liveness_data_get_online_status(struct TariContactsLivenessData *liveness_data, int *error_out);
 
 // Get a fee estimate from a TariWallet for a given amount
