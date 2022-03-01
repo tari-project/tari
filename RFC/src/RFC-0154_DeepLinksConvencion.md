@@ -1,4 +1,4 @@
-# RFC-XXXX/DeepLinksConvention
+# RFC-0154/DeepLinksConvention
 
 ## Deep links structure convention.
 

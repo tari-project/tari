@@ -15,6 +15,7 @@
   - [RFC-0151: Transaction protocol](RFC-0151_TransactionProtocol.md)
   - [RFC-0152: Emoji ID](RFC-0152_EmojiId.md)
   - [RFC-0153: Staged Wallet Security](RFC-0153_StagedWalletSecurity.md)
+  - [RFC-0154: Deep links structure convention](RFC-0154_DeepLinksConvencion.md)
   - [RFC-0160: Block Binary Serialization](RFC-0160_BlockSerialization.md)
   - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
     - [RFC-0171: Message Serialisation](RFC-0171_MessageSerialisation.md)
@@ -43,7 +44,6 @@
   - [RFC-0360: NFT sale using MimbleWimble Invoice](RFC-0360_NFTInvoices.md)
 - [RFC-0500: Tari payment channels](RFC-0500_PaymentChannels.md)
 - [RFC-1000: Tari Use Cases](RFC-1000_TariUseCases.md)
-- [RFC-XXXX: Deep links structure convention](RFC-XXXX_DeepLinksConvencion.md)
 
 - [Deprecated RFCs](deprecated.md)
 
