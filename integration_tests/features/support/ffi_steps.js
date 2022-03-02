@@ -157,6 +157,62 @@ Then(
   }
 );
 
+Then(
+  "I wait for ffi wallet {word} to have at least {int} contacts to be {word}",
+  { timeout: 125 * 1000 },
+  async function (walletName, amount, status) {
+    const online = "Online";
+    const offline = "Offline";
+    const neverSeen = "NeverSeen";
+    expect(
+      status === online || status === offline || status === neverSeen
+    ).to.equal(true);
+
+    let wallet = this.getWallet(walletName);
+
+    console.log("\n");
+    console.log(
+      "Waiting for " +
+        walletName +
+        " to have at least " +
+        amount +
+        " contacts with status '" +
+        status +
+        "'"
+    );
+
+    let contactsWithStatus;
+    await waitForIterate(
+      () => {
+        {
+          contactsWithStatus = 0;
+          wallet.getLivenessData().forEach(function (value, _key) {
+            if (value.online_status === status) {
+              contactsWithStatus++;
+            }
+          });
+          return contactsWithStatus >= amount;
+        }
+      },
+      true,
+      1000,
+      60
+    );
+
+    if (!(contactsWithStatus >= amount)) {
+      console.log(
+        walletName +
+          " does not have at least " +
+          amount +
+          " contacts with status '" +
+          status +
+          "'!"
+      );
+    }
+    expect(contactsWithStatus >= amount).to.equal(true);
+  }
+);
+
 When(
   "I set base node {word} for ffi wallet {word}",
   function (node, walletName) {
@@ -208,9 +264,20 @@ Then(
 
 Given(
   "I have a ffi wallet {word} connected to base node {word}",
+  { timeout: 15 * 1000 },
   async function (walletName, nodeName) {
     let ffiWallet = await this.createAndAddFFIWallet(walletName, null);
     let peer = this.nodes[nodeName].peerAddress().split("::");
+    ffiWallet.addBaseNodePeer(peer[0], peer[1]);
+  }
+);
+
+Given(
+  "I have a ffi wallet {word} connected to seed node {word}",
+  { timeout: 15 * 1000 },
+  async function (walletName, nodeName) {
+    let ffiWallet = await this.createAndAddFFIWallet(walletName, null);
+    let peer = this.seeds[nodeName].peerAddress().split("::");
     ffiWallet.addBaseNodePeer(peer[0], peer[1]);
   }
 );
