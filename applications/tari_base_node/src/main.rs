@@ -104,7 +104,7 @@ use std::{
 use clap::Parser as _;
 use commands::{
     command::{CommandContext, HandleCommand},
-    command_handler::{CommandHandler, StatusLineOutput},
+    command_handler::StatusLineOutput,
     parser::Parser,
     reader::{CommandEvent, CommandReader},
 };
@@ -285,16 +285,15 @@ async fn run_node(
     }
 
     // Run, node, run!
-    let command_handler = CommandHandler::new(&ctx);
+    let context = CommandContext::new(&ctx);
     if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(command_handler, shutdown));
+        task::spawn(status_loop(context, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        let context = CommandContext::new(&ctx);
         task::spawn(cli_loop(context, shutdown));
     }
     if !config.force_sync_peers.is_empty() {
@@ -363,10 +362,10 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
+async fn status_loop(mut context: CommandContext, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
-    let status_interval = command_handler.global_config().base_node_status_line_interval;
+    let status_interval = context.global_config().base_node_status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
         tokio::select! {

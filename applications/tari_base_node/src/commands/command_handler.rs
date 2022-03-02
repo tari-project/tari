@@ -65,54 +65,6 @@ pub enum StatusLineOutput {
     StdOutAndLog,
 }
 
-pub struct CommandHandler {
-    config: Arc<GlobalConfig>,
-    consensus_rules: ConsensusManager,
-    blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
-    discovery_service: DhtDiscoveryRequester,
-    dht_metrics_collector: MetricsCollectorHandle,
-    rpc_server: RpcServerHandle,
-    base_node_identity: Arc<NodeIdentity>,
-    peer_manager: Arc<PeerManager>,
-    connectivity: ConnectivityRequester,
-    liveness: LivenessHandle,
-    node_service: LocalNodeCommsInterface,
-    mempool_service: LocalMempoolService,
-    state_machine_info: watch::Receiver<StatusInfo>,
-    software_updater: SoftwareUpdaterHandle,
-    last_time_full: Instant,
-}
-
-impl CommandHandler {
-    pub fn new(ctx: &BaseNodeContext) -> Self {
-        Self {
-            config: ctx.config(),
-            consensus_rules: ctx.consensus_rules().clone(),
-            blockchain_db: ctx.blockchain_db().into(),
-            discovery_service: ctx.base_node_dht().discovery_service_requester(),
-            dht_metrics_collector: ctx.base_node_dht().metrics_collector(),
-            rpc_server: ctx.rpc_server(),
-            base_node_identity: ctx.base_node_identity(),
-            peer_manager: ctx.base_node_comms().peer_manager(),
-            connectivity: ctx.base_node_comms().connectivity(),
-            liveness: ctx.liveness(),
-            node_service: ctx.local_node(),
-            mempool_service: ctx.local_mempool(),
-            state_machine_info: ctx.get_state_machine_info_channel(),
-            software_updater: ctx.software_updater(),
-            last_time_full: Instant::now(),
-        }
-    }
-
-    pub fn global_config(&self) -> Arc<GlobalConfig> {
-        self.config.clone()
-    }
-
-    pub(crate) fn get_software_updater(&self) -> SoftwareUpdaterHandle {
-        self.software_updater.clone()
-    }
-}
-
 #[derive(Debug, Error)]
 #[error("invalid format '{0}'")]
 pub struct FormatParseError(String);
@@ -129,18 +81,3 @@ impl Default for Format {
         Self::Text
     }
 }
-
-// TODO: This is not currently used, but could be pretty useful (maybe as an iterator)
-// Function to delimit arguments using spaces and pairs of quotation marks, which may include spaces
-// pub fn delimit_command_string(command_str: &str) -> Vec<String> {
-//     // Delimit arguments using spaces and pairs of quotation marks, which may include spaces
-//     let arg_temp = command_str.trim().to_string();
-//     let re = Regex::new(r#"[^\s"]+|"(?:\\"|[^"])+""#).unwrap();
-//     let arg_temp_vec: Vec<&str> = re.find_iter(&arg_temp).map(|mat| mat.as_str()).collect();
-//     // Remove quotation marks left behind by `Regex` - it does not support look ahead and look behind
-//     let mut del_arg_vec = Vec::new();
-//     for arg in arg_temp_vec.iter().skip(1) {
-//         del_arg_vec.push(str::replace(arg, "\"", ""));
-//     }
-//     del_arg_vec
-// }

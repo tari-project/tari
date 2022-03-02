@@ -1,5 +1,4 @@
-use std::time::Instant;
-use std::ops::Deref;
+use std::{ops::Deref, time::Instant};
 
 use anyhow::Error;
 use async_trait::async_trait;
