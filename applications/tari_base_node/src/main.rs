@@ -284,16 +284,16 @@ async fn run_node(
     }
 
     // Run, node, run!
-    let context = CommandContext::new(&ctx);
+    let context = CommandContext::new(&ctx, shutdown);
     if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(context, shutdown));
+        task::spawn(status_loop(context));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(context, shutdown));
+        task::spawn(cli_loop(context));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -361,9 +361,9 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-async fn status_loop(mut context: CommandContext, shutdown: Shutdown) {
+async fn status_loop(context: CommandContext) {
     let start_time = Instant::now();
-    let mut shutdown_signal = shutdown.to_signal();
+    let mut shutdown_signal = context.shutdown.to_signal();
     let status_interval = context.global_config().base_node_status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
@@ -388,7 +388,7 @@ async fn status_loop(mut context: CommandContext, shutdown: Shutdown) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(mut command_context: CommandContext, mut shutdown: Shutdown) {
+async fn cli_loop(mut context: CommandContext) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
@@ -404,14 +404,14 @@ async fn cli_loop(mut command_context: CommandContext, mut shutdown: Shutdown) {
     rustyline.set_helper(Some(parser));
     let mut reader = CommandReader::new(rustyline);
 
-    let mut shutdown_signal = shutdown.to_signal();
+    let mut shutdown_signal = context.shutdown.to_signal();
     let start_time = Instant::now();
     // let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
     let mut first_signal = false;
     // TODO: Add heartbeat here
     // Show status immediately on startup
     // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
-    let config = command_context.config.clone();
+    let config = context.config.clone();
     loop {
         let interval = get_status_interval(start_time, config.base_node_status_line_interval);
         tokio::select! {
@@ -425,7 +425,7 @@ async fn cli_loop(mut command_context: CommandContext, mut shutdown: Shutdown) {
                                 let args = commands::command::Args::try_parse_from(sw);
                                 match args {
                                     Ok(args) => {
-                                        let fut = command_context.handle_command(args.command);
+                                        let fut = context.handle_command(args.command);
                                         let res = time::timeout(Duration::from_secs(70), fut).await;
                                         match res {
                                             Ok(Ok(())) => {

@@ -20,6 +20,7 @@ mod list_peers;
 mod list_reorgs;
 mod period_stats;
 mod ping_peer;
+mod quit;
 mod reset_offline_peers;
 mod rewind_blockchain;
 mod search_kernel;
@@ -51,6 +52,7 @@ use tari_core::{
     mempool::service::LocalMempoolService,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
+use tari_shutdown::Shutdown;
 use tokio::sync::watch;
 
 use crate::{builder::BaseNodeContext, commands::parser::FromHex};
@@ -98,8 +100,8 @@ pub enum Command {
     Whoami(whoami::Args),
     GetStateInfo(get_state_info::Args),
     GetNetworkStats(get_network_stats::Args),
-    /* Quit,
-     * Exit, */
+    Quit(quit::Args),
+    Exit(quit::Args),
 }
 
 impl Command {
@@ -129,10 +131,11 @@ pub struct CommandContext {
     state_machine_info: watch::Receiver<StatusInfo>,
     software_updater: SoftwareUpdaterHandle,
     last_time_full: Instant,
+    pub shutdown: Shutdown,
 }
 
 impl CommandContext {
-    pub fn new(ctx: &BaseNodeContext) -> Self {
+    pub fn new(ctx: &BaseNodeContext, shutdown: Shutdown) -> Self {
         Self {
             config: ctx.config(),
             consensus_rules: ctx.consensus_rules().clone(),
@@ -149,6 +152,7 @@ impl CommandContext {
             state_machine_info: ctx.get_state_machine_info_channel(),
             software_updater: ctx.software_updater(),
             last_time_full: Instant::now(),
+            shutdown,
         }
     }
 }
@@ -189,6 +193,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::GetMempoolTx(args) => self.handle_command(args).await,
             Command::Whoami(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
+            Command::Quit(args) | Command::Exit(args) => self.handle_command(args).await,
         }
     }
 }
