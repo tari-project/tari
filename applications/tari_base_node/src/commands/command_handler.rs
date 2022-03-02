@@ -24,13 +24,6 @@ use log::*;
 use strum::{Display, EnumString};
 use thiserror::Error;
 
-#[derive(Debug, Display, EnumString)]
-#[strum(serialize_all = "lowercase")]
-pub enum StatusLineOutput {
-    Log,
-    StdOutAndLog,
-}
-
 #[derive(Debug, Error)]
 #[error("invalid format '{0}'")]
 pub struct FormatParseError(String);

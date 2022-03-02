@@ -104,7 +104,6 @@ use std::{
 use clap::Parser as _;
 use commands::{
     command::{CommandContext, HandleCommand},
-    command_handler::StatusLineOutput,
     parser::Parser,
     reader::{CommandEvent, CommandReader},
 };

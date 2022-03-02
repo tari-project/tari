@@ -7,7 +7,7 @@ use clap::Parser;
 use tari_app_utilities::consts;
 
 use super::{CommandContext, HandleCommand};
-use crate::{commands::status_line::StatusLine, StatusLineOutput};
+use crate::commands::status_line::{StatusLine, StatusLineOutput};
 
 /// Prints out the status of this node
 #[derive(Debug, Parser)]

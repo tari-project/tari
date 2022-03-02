@@ -4,7 +4,6 @@ use clap::Parser;
 use tari_core::blocks::BlockHeader;
 
 use super::{CommandContext, HandleCommand};
-use crate::commands::args::ArgsError;
 
 /// Calculates the maximum, minimum, and average time taken to mine a given range of blocks
 #[derive(Debug, Parser)]
@@ -20,7 +19,7 @@ impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
         // TODO: is that possible to validate it with clap?
         if args.end.is_none() && args.start < 2 {
-            Err(ArgsError::new("start", "Number of headers must be at least 2.").into())
+            Err(Error::msg("Number of headers must be at least 2."))
         } else {
             self.block_timing(args.start, args.end).await
         }
