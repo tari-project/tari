@@ -9,6 +9,8 @@ const bool = ref.types.bool;
 
 try {
   let seeds = [];
+  let recoveryInProgress = ref.alloc(bool);
+
   if (!process.env.SEED_WORDS) {
     console.error(
       "Set your SEED_WORDS env var to your list of seed words separated by single spaces. eg:"
@@ -104,17 +106,17 @@ try {
   const txCancelled = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txCancelled: ", ptr);
   });
-  // callback_utxo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const utxoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
-    console.log("utxoValidation: ", i, j);
+  // callback_txo_validation_complete: unsafe extern "C" fn(u64, u8),
+  const txoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
+    console.log("txoValidation: ", i, j);
   });
-  // callback_stxo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const stxoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
-    console.log("stxoValidation: ", i, j);
+  // callback_contacts_liveness_data_updated:  unsafe extern "C" fn(*mut ContactsLivenessData),
+  const contactsLivenessDataUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
+    console.log("contactsLivenessDataUpdated: ", ptr);
   });
-  // callback_invalid_txo_validation_complete: unsafe extern "C" fn(u64, u8),
-  const itxoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
-    console.log("itxoValidation: ", i, j);
+  // callback_balance_updated: unsafe extern "C" fn(*mut Balance),
+  const balanceUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
+    console.log("balanceUpdated: ", ptr);
   });
   // callback_transaction_validation_complete: unsafe extern "C" fn(u64, u8),
   const txValidation = ffi.Callback("void", [u64, u8], function (i, j) {
@@ -156,14 +158,17 @@ try {
     txBroadcast,
     txMined,
     txMinedUnconfirmed,
+    txFauxConfirmed,
+    txFauxUnconfirmed,
     directSendResult,
     safResult,
     txCancelled,
-    utxoValidation,
-    stxoValidation,
-    itxoValidation,
+    txoValidation,
+    contactsLivenessDataUpdated,
+    balanceUpdated,
     txValidation,
     safsReceived,
+    recoveryInProgress,
     err
   );
 
