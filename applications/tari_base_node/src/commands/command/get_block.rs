@@ -1,14 +1,11 @@
-use std::str::FromStr;
-
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use strum::EnumString;
 use tari_common_types::types::HashOutput;
 use tari_utilities::message_format::MessageFormat;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
-use crate::commands::{args::FromHex, command_handler::Format};
+use crate::commands::command_handler::Format;
 
 /// Display a block by height or hash
 #[derive(Debug, Parser)]

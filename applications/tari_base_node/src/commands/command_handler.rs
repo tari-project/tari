@@ -20,43 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    cmp,
-    io::{self, Write},
-    ops::Deref,
-    str::FromStr,
-    string::ToString,
-    sync::Arc,
-    time::Instant,
-};
-
-use anyhow::{anyhow, Error};
 use log::*;
 use strum::{Display, EnumString};
-use tari_app_utilities::utilities::parse_emoji_id_or_public_key;
-use tari_common::GlobalConfig;
-use tari_common_types::{emoji::EmojiId, types::HashOutput};
-use tari_comms::{
-    connectivity::ConnectivityRequester,
-    peer_manager::PeerManager,
-    protocol::rpc::RpcServerHandle,
-    NodeIdentity,
-};
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester, MetricsCollectorHandle};
-use tari_core::{
-    base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface},
-    chain_storage::{async_db::AsyncBlockchainDb, LMDBDatabase},
-    consensus::ConsensusManager,
-    mempool::service::LocalMempoolService,
-    proof_of_work::PowAlgorithm,
-};
-use tari_crypto::ristretto::RistrettoPublicKey;
-use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
-use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 use thiserror::Error;
-use tokio::{fs::File, io::AsyncWriteExt, sync::watch};
-
-use crate::builder::BaseNodeContext;
 
 #[derive(Debug, Display, EnumString)]
 #[strum(serialize_all = "lowercase")]

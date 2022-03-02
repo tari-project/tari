@@ -1,7 +1,4 @@
-use std::{
-    iter::Peekable,
-    str::{FromStr, SplitWhitespace},
-};
+use std::str::FromStr;
 
 use tari_utilities::hex::{Hex, HexError};
 use thiserror::Error;
@@ -24,8 +21,6 @@ impl ArgsError {
 
 #[derive(Debug, Error)]
 pub enum ArgsReason {
-    #[error("argument required")]
-    Required,
     #[error("argument can't be parsed: {details}")]
     NotParsed { details: String },
     #[error("argument is not valid: {description}")]
