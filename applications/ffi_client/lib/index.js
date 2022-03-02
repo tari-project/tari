@@ -68,6 +68,7 @@ const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {
       fn,
       fn,
       fn,
+      fn,
       bool,
       errPtr,
     ],
