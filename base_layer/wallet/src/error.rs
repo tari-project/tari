@@ -96,7 +96,7 @@ pub enum WalletError {
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
-    #[error("Key service manager error: `{0}`")]
+    #[error("Key manager service error: `{0}`")]
     KeyManagerServiceError(#[from] KeyManagerServiceError),
 
     #[error("Transport channel error: `{0}`")]
