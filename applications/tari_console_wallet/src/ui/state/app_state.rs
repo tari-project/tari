@@ -529,6 +529,11 @@ impl AppState {
         }
     }
 
+    pub async fn clear_notifications(&mut self) {
+        let mut inner = self.inner.write().await;
+        inner.clear_notifications();
+    }
+
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
         // this should not be empty as we this should have been created, but lets just be safe and use the default value
         // from the config
@@ -958,6 +963,12 @@ impl AppStateInner {
     }
 
     pub fn mark_notifications_as_read(&mut self) {
+        self.data.new_notification_count = 0;
+        self.updated = true;
+    }
+
+    pub fn clear_notifications(&mut self) {
+        self.data.notifications.clear();
         self.data.new_notification_count = 0;
         self.updated = true;
     }
