@@ -63,7 +63,6 @@ use tari_utilities::Hashable;
 use tari_wallet::{
     base_node_service::{
         handle::{BaseNodeEvent, BaseNodeServiceHandle},
-        mock_base_node_service::MockBaseNodeService,
         service::BaseNodeState,
     },
     connectivity_service::{create_wallet_connectivity_mock, WalletConnectivityMock},
@@ -89,6 +88,7 @@ use tokio::{
 };
 
 use crate::support::{
+    base_node_service_mock::MockBaseNodeService,
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     data::get_temp_sqlite_database_connection,
     utils::{make_input, make_input_with_features, TestParams},

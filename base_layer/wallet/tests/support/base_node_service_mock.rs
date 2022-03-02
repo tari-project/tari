@@ -25,14 +25,12 @@ use tari_common_types::chain_metadata::ChainMetadata;
 use tari_comms::peer_manager::Peer;
 use tari_service_framework::reply_channel::Receiver;
 use tari_shutdown::ShutdownSignal;
-
-use crate::base_node_service::{
+use tari_wallet::base_node_service::{
     error::BaseNodeServiceError,
     handle::{BaseNodeServiceRequest, BaseNodeServiceResponse},
     service::BaseNodeState,
 };
 
-/// TODO Move this into the test support utilities when we remove the Test Harness feature from this crate #LOGGED
 pub struct MockBaseNodeService {
     request_stream: Option<Receiver<BaseNodeServiceRequest, Result<BaseNodeServiceResponse, BaseNodeServiceError>>>,
     pub base_node_peer: Option<Peer>,
