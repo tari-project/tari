@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::string::ToString;
+use std::str::FromStr;
 
 use rustyline::{
     completion::Completer,
@@ -30,16 +30,38 @@ use rustyline::{
     Context,
 };
 use rustyline_derive::{Helper, Highlighter, Validator};
-use strum::IntoEnumIterator;
-use strum_macros::{Display, EnumIter, EnumString};
+use strum::{Display, EnumString};
+use tari_utilities::hex::{Hex, HexError};
+use thiserror::Error;
 
-/// Enum representing commands used by the basenode
-#[derive(Clone, Copy, PartialEq, Debug, Display, EnumIter, EnumString)]
-#[strum(serialize_all = "kebab_case")]
-pub enum BaseNodeCommand {
-    Help,
-    Quit,
-    Exit,
+use super::command::Command;
+
+#[derive(Debug, Error)]
+#[error("invalid format '{0}'")]
+pub struct FormatParseError(String);
+
+#[derive(Debug, Display, EnumString)]
+#[strum(serialize_all = "kebab-case")]
+pub enum Format {
+    Json,
+    Text,
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Self::Text
+    }
+}
+
+#[derive(Debug)]
+pub struct FromHex<T>(pub T);
+
+impl<T: Hex> FromStr for FromHex<T> {
+    type Err = HexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        T::from_hex(s).map(Self)
+    }
 }
 
 /// This is used to parse commands from the user and execute them
@@ -82,7 +104,7 @@ impl Parser {
     /// creates a new parser struct
     pub fn new() -> Self {
         Parser {
-            commands: BaseNodeCommand::iter().map(|x| x.to_string()).collect(),
+            commands: Command::variants(),
             hinter: HistoryHinter {},
         }
     }

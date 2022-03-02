@@ -5,7 +5,7 @@ use tari_common_types::types::Commitment;
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
-use crate::commands::args::FromHex;
+use crate::commands::parser::FromHex;
 
 /// This will search the main chain for the utxo.
 /// If the utxo is found, it will print out

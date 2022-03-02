@@ -5,7 +5,7 @@ use tari_common_types::types::{PrivateKey, PublicKey, Signature};
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
-use crate::commands::args::FromHex;
+use crate::commands::parser::FromHex;
 
 /// This will search the main chain for the kernel.
 /// If the kernel is found, it will print out the

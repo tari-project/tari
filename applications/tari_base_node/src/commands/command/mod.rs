@@ -34,6 +34,7 @@ use std::{str::FromStr, sync::Arc, time::Instant};
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::{AppSettings, Parser, Subcommand};
+use strum::{EnumVariantNames, VariantNames};
 use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
@@ -52,7 +53,7 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tokio::sync::watch;
 
-use crate::{builder::BaseNodeContext, commands::args::FromHex};
+use crate::{builder::BaseNodeContext, commands::parser::FromHex};
 
 #[derive(Debug, Parser)]
 #[clap(setting = AppSettings::NoBinaryName)]
@@ -61,7 +62,8 @@ pub struct Args {
     pub command: Command,
 }
 
-#[derive(Debug, Subcommand)]
+#[derive(Debug, Subcommand, EnumVariantNames)]
+#[strum(serialize_all = "kebab-case")]
 pub enum Command {
     Version(version::Args),
     CheckForUpdates(check_for_updates::Args),
@@ -98,6 +100,12 @@ pub enum Command {
     GetNetworkStats(get_network_stats::Args),
     /* Quit,
      * Exit, */
+}
+
+impl Command {
+    pub fn variants() -> Vec<String> {
+        Command::VARIANTS.iter().map(|s| s.to_string()).collect()
+    }
 }
 
 #[async_trait]

@@ -5,7 +5,7 @@ use tari_common_types::types::HashOutput;
 use tari_utilities::message_format::MessageFormat;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
-use crate::commands::command_handler::Format;
+use crate::commands::parser::Format;
 
 /// Display a block by height or hash
 #[derive(Debug, Parser)]
