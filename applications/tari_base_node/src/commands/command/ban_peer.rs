@@ -16,7 +16,7 @@ pub struct ArgsBan {
     node_id: UniNodeId,
     /// length of time to ban the peer for in seconds
     #[clap(default_value_t = std::u64::MAX)]
-    lenght: u64,
+    length: u64,
 }
 
 /// Removes a peer ban
@@ -26,14 +26,14 @@ pub struct ArgsUnban {
     node_id: UniNodeId,
     /// length of time to ban the peer for in seconds
     #[clap(default_value_t = std::u64::MAX)]
-    lenght: u64,
+    length: u64,
 }
 
 #[async_trait]
 impl HandleCommand<ArgsBan> for CommandContext {
     async fn handle_command(&mut self, args: ArgsBan) -> Result<(), Error> {
         let node_id = args.node_id.into();
-        let duration = Duration::from_secs(args.lenght);
+        let duration = Duration::from_secs(args.length);
         self.ban_peer(node_id, duration, true).await
     }
 }
@@ -42,7 +42,7 @@ impl HandleCommand<ArgsBan> for CommandContext {
 impl HandleCommand<ArgsUnban> for CommandContext {
     async fn handle_command(&mut self, args: ArgsUnban) -> Result<(), Error> {
         let node_id = args.node_id.into();
-        let duration = Duration::from_secs(args.lenght);
+        let duration = Duration::from_secs(args.length);
         self.ban_peer(node_id, duration, false).await
     }
 }
