@@ -53,14 +53,14 @@ The primary motivation is to create a simple, human-readable, and scalable way t
 
 ## Description
 
-Deep links are the URIs with hierarchical components sequence. We can use this sequence to pass and handle data in a standardized and predictable way. To do that, we need to pass three components to the target client:
+Deep links are the URIs with hierarchical components sequence. We can use this sequence to pass and handle data in a standardized and predictable way. To do that, we need to pass three components to the target client: the scheme, command, and data.
 
 ### Scheme
-The scheme is used to address the client, which will handle the data from the command and data component. In the Tari Aurora project, we're using `tari` scheme to open the wallet app and handle provided data.
+The scheme is used to address the client, which will handle the command and data components. In the Tari Aurora project, we're using the `tari` scheme to open the wallet app and execute the command.
 
 ### Command
-The command is path string used to pass information about the action that should be performed by the client. The handler can use this info to determine which parser/decoder should be used to deserialize data and what the app suppose to do with the data afterwards.
-To support multiple domains/networks the first path component should contain a name of corresponded domain/network. The app before handle the data should first check that active account is pointed to the right domain/network and show the error is there a missmatch. 
+The command is a path string used to pass information about the action that should be performed by the client. The handler uses this command to determine how to deserialize the data, before passing it to the command function.
+To support multiple networks the first path component should be the name of corresponding network. Before proceeding with the command, the client should first check that the active account is pointed to the correct network, or show an error if there is a mismatch. 
 
 For simple actions, the command can be defined as a single phrase. For more complex actions, the command should be defined as a multi-path where the second path component should be the name of the action group.
 
@@ -78,7 +78,7 @@ testnet/payments/request
 ```
 
 ### Data
-The data component is an optional string of key-value pairs used by the parser/decoder to deserialize the data, which the client will later use to handle the action. The data component should be formatted in the same way as a URL query. The sub-component should have a `?` prefix, the key-value pairs should be separated by `&`, and every key should be separated from the value by `=` character.
+The data component is an optional string of key-value pairs used by the parser/decoder to deserialize the data, which the client passes to the command function. The data component should be formatted in the same way as a URL query. The sub-component should have a `?` prefix, the key-value pairs should be separated by `&`, and every key should be separated from the value by `=` character.
 
 ### The Structure
 Combining all three components, they will form a deep link with a structure presented below:
