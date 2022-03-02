@@ -473,7 +473,6 @@ async fn messaging_flood(
         let mut msgs = vec![];
         while let Some(msg) = inbound_rx.recv().await {
             let msg_id = decode_msg(msg.body);
-            println!("GOT MSG {}", msg_id);
             if msgs.len() == protocol.num_messages as usize {
                 // msg_id == 0 {
                 break;
