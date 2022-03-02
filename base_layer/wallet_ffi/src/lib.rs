@@ -90,6 +90,7 @@ use std::{
     time::Duration,
 };
 
+use chrono::{DateTime, Local};
 use error::LibWalletError;
 use libc::{c_char, c_int, c_longlong, c_uchar, c_uint, c_ulonglong, c_ushort};
 use log::{LevelFilter, *};
@@ -183,6 +184,7 @@ const LOG_TARGET: &str = "wallet_ffi";
 
 pub type TariTransportType = tari_p2p::transport::TransportType;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
+pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
 pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
@@ -194,6 +196,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
 
@@ -1291,6 +1294,8 @@ pub unsafe extern "C" fn seed_words_destroy(seed_words: *mut TariSeedWords) {
     }
 }
 
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Contact -------------------------------------------------///
 
 /// Creates a TariContact
@@ -1421,6 +1426,8 @@ pub unsafe extern "C" fn contact_destroy(contact: *mut TariContact) {
     }
 }
 
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Contacts -------------------------------------------------///
 
 /// Gets the length of TariContacts
@@ -1502,6 +1509,204 @@ pub unsafe extern "C" fn contacts_destroy(contacts: *mut TariContacts) {
     }
 }
 
+/// -------------------------------------------------------------------------------------------- ///
+
+/// ----------------------------------- Contacts Liveness Data ----------------------------------///
+
+/// Gets the public_key from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut TariPublicKey` - Returns a pointer to a TariPublicKey. Note that it returns ptr::null_mut() if
+/// liveness_data is null.
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_public_key(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> *mut TariPublicKey {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new((*liveness_data).public_key().clone()))
+}
+
+/// Gets the latency in milli-seconds (ms) from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_int` - Returns a pointer to a c_int if the optional latency data (in milli-seconds (ms)) exists, with a
+/// value of '-1' if it is None. Note that it also returns '-1' if liveness_data is null.
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_latency(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    if let Some(latency) = (*liveness_data).latency() {
+        latency as c_int
+    } else {
+        -1
+    }
+}
+
+/// Gets the last_seen time (in local time) from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `*mut c_char` - Returns a pointer to a char array if the optional last_seen data exists, with a value of '?' if it
+/// is None. Note that it returns ptr::null_mut() if liveness_data is null.
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_last_seen(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> *mut c_char {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    }
+    if let Some(last_seen) = (*liveness_data).last_ping_pong_received() {
+        let last_seen_local_time = DateTime::<Local>::from_utc(last_seen, Local::now().offset().to_owned())
+            .format("%FT%T")
+            .to_string();
+        let mut return_value = CString::new("").expect("Blank CString will not fail.");
+        match CString::new(last_seen_local_time) {
+            Ok(val) => {
+                return_value = val;
+            },
+            _ => {
+                error = LibWalletError::from(InterfaceError::PointerError("liveness_data".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+            },
+        }
+        CString::into_raw(return_value)
+    } else {
+        CString::into_raw(CString::new("?").expect("Single character CString will not fail."))
+    }
+}
+
+/// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the status which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | NullError        |
+/// |   0 | Ping             |
+/// |   1 | Pong             |
+/// |   2 | NoMessage        |
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_message_type(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    let status = (*liveness_data).message_type();
+    status as c_int
+}
+
+/// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the status which corresponds to:
+/// | Value | Interpretation |
+/// |---|---|
+/// |  -1 | NullError        |
+/// |   0 | Online           |
+/// |   1 | Offline          |
+/// |   2 | NeverSeen        |
+///
+/// # Safety
+/// The ```liveness_data_destroy``` method must be called when finished with a TariContactsLivenessData to prevent a
+/// memory leak
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_get_online_status(
+    liveness_data: *mut TariContactsLivenessData,
+    error_out: *mut c_int,
+) -> c_int {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    if liveness_data.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("liveness_data".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return -1;
+    }
+    let status = (*liveness_data).online_status();
+    status as c_int
+}
+
+/// Frees memory for a TariContactsLivenessData
+///
+/// ## Arguments
+/// `liveness_data` - The pointer to a TariContactsLivenessData
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn liveness_data_destroy(liveness_data: *mut TariContactsLivenessData) {
+    if !liveness_data.is_null() {
+        Box::from_raw(liveness_data);
+    }
+}
 /// -------------------------------------------------------------------------------------------- ///
 
 /// ----------------------------------- CompletedTransactions ----------------------------------- ///
@@ -3267,6 +3472,8 @@ unsafe fn init_logging(
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
+/// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
+/// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
@@ -3313,6 +3520,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut TariBalance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
@@ -3511,6 +3719,7 @@ pub unsafe extern "C" fn wallet_create(
                 w.comms.shutdown_signal(),
                 w.comms.node_identity().public_key().clone(),
                 w.wallet_connectivity.get_connectivity_status_watch(),
+                w.contacts_service.get_contacts_liveness_event_stream(),
                 callback_received_transaction,
                 callback_received_transaction_reply,
                 callback_received_finalized_transaction,
@@ -3523,6 +3732,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_store_and_forward_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
+                callback_contacts_liveness_data_updated,
                 callback_balance_updated,
                 callback_transaction_validation_complete,
                 callback_saf_messages_received,
@@ -6156,6 +6366,7 @@ mod test {
         pub store_and_forward_send_callback_called: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
+        pub callback_contacts_liveness_data_updated: bool,
         pub callback_balance_updated: bool,
         pub callback_transaction_validation_complete: bool,
     }
@@ -6175,6 +6386,7 @@ mod test {
                 store_and_forward_send_callback_called: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
+                callback_contacts_liveness_data_updated: false,
                 callback_balance_updated: false,
                 callback_transaction_validation_complete: false,
             }
@@ -6338,6 +6550,10 @@ mod test {
     }
 
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: c_ulonglong, _result: bool) {
+        // assert!(true); //optimized out by compiler
+    }
+
+    unsafe extern "C" fn contacts_liveness_data_updated_callback(_balance: *mut TariContactsLivenessData) {
         // assert!(true); //optimized out by compiler
     }
 
@@ -6728,6 +6944,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6767,6 +6984,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6872,6 +7090,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6922,6 +7141,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6955,6 +7175,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -6983,6 +7204,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7032,6 +7254,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7110,6 +7333,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7319,6 +7543,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,
@@ -7376,6 +7601,7 @@ mod test {
                 store_and_forward_send_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
                 balance_updated_callback,
                 transaction_validation_complete_callback,
                 saf_messages_received_callback,

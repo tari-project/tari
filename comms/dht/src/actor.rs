@@ -279,6 +279,7 @@ impl DhtActor {
         let offline_ts = self
             .database
             .get_metadata_value::<DateTime<Utc>>(DhtMetadataKey::OfflineTimestamp)
+            .await
             .ok()
             .flatten();
         debug!(
@@ -308,24 +309,25 @@ impl DhtActor {
                 },
 
                 _ = dedup_cache_trim_ticker.tick() => {
-                    if let Err(err) = self.msg_hash_dedup_cache.trim_entries() {
+                    if let Err(err) = self.msg_hash_dedup_cache.trim_entries().await {
                         error!(target: LOG_TARGET, "Error when trimming message dedup cache: {:?}", err);
                     }
                 },
 
                 _ = self.shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "DhtActor is shutting down because it received a shutdown signal.");
-                    self.mark_shutdown_time();
+                    self.mark_shutdown_time().await;
                     break Ok(());
                 },
             }
         }
     }
 
-    fn mark_shutdown_time(&self) {
+    async fn mark_shutdown_time(&self) {
         if let Err(err) = self
             .database
             .set_metadata_value(DhtMetadataKey::OfflineTimestamp, Utc::now())
+            .await
         {
             warn!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
         }
@@ -346,7 +348,7 @@ impl DhtActor {
             } => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    match msg_hash_cache.add_body_hash(message_hash, received_from) {
+                    match msg_hash_cache.add_body_hash(message_hash, received_from).await {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
@@ -364,7 +366,7 @@ impl DhtActor {
             GetMsgHashHitCount(hash, reply_tx) => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    let hit_count = msg_hash_cache.get_hit_count(hash)?;
+                    let hit_count = msg_hash_cache.get_hit_count(hash).await?;
                     let _ = reply_tx.send(hit_count);
                     Ok(())
                 })
@@ -389,14 +391,14 @@ impl DhtActor {
             GetMetadata(key, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    let _ = reply_tx.send(db.get_metadata_value_bytes(key).map_err(Into::into));
+                    let _ = reply_tx.send(db.get_metadata_value_bytes(key).await.map_err(Into::into));
                     Ok(())
                 })
             },
             SetMetadata(key, value, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    match db.set_metadata_value_bytes(key, value) {
+                    match db.set_metadata_value_bytes(key, value).await {
                         Ok(_) => {
                             debug!(target: LOG_TARGET, "Dht metadata '{}' set", key);
                             let _ = reply_tx.send(Ok(()));
@@ -835,7 +837,7 @@ mod test {
 
     async fn db_connection() -> DbConnection {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        conn.migrate().unwrap();
+        conn.migrate().await.unwrap();
         conn
     }
 
@@ -1039,6 +1041,7 @@ mod test {
             let num_hits = actor
                 .msg_hash_dedup_cache
                 .add_body_hash(key.clone(), CommsPublicKey::default())
+                .await
                 .unwrap();
             assert_eq!(num_hits, 1);
         }
@@ -1047,6 +1050,7 @@ mod test {
             let num_hits = actor
                 .msg_hash_dedup_cache
                 .add_body_hash(key.clone(), CommsPublicKey::default())
+                .await
                 .unwrap();
             assert_eq!(num_hits, 2);
         }
@@ -1054,12 +1058,12 @@ mod test {
         let dedup_cache_db = actor.msg_hash_dedup_cache.clone();
         // The cleanup ticker starts when the actor is spawned; the first cleanup event will fire fairly soon after the
         // task is running on a thread. To remove this race condition, we trim the cache in the test.
-        let num_trimmed = dedup_cache_db.trim_entries().unwrap();
+        let num_trimmed = dedup_cache_db.trim_entries().await.unwrap();
         assert_eq!(num_trimmed, 10);
         actor.spawn();
 
         // Verify that the last half of the signatures are still present in the cache
-        for key in signatures.iter().take(capacity * 2).skip(capacity) {
+        for key in signatures.iter().skip(capacity + 1) {
             let num_hits = requester
                 .add_message_to_dedup_cache(key.clone(), CommsPublicKey::default())
                 .await
@@ -1076,7 +1080,7 @@ mod test {
         }
 
         // Trim the database of excess entries
-        dedup_cache_db.trim_entries().unwrap();
+        dedup_cache_db.trim_entries().await.unwrap();
 
         // Verify that the last half of the signatures have been removed and can be re-inserted into cache
         for key in signatures.iter().take(capacity * 2).skip(capacity) {

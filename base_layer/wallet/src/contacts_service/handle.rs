@@ -105,7 +105,7 @@ impl Display for ContactsLivenessData {
             self.node_id,
             if let Some(time) = self.last_seen {
                 let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
-                    .format("%F %T")
+                    .format("%FT%T")
                     .to_string();
                 format!("last seen {} is '{}'", local_time, self.online_status)
             } else {
