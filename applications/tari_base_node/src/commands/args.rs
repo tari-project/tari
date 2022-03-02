@@ -40,52 +40,6 @@ impl<T: AsRef<str>> From<T> for ArgsReason {
     }
 }
 
-pub struct Args<'a> {
-    splitted: Peekable<SplitWhitespace<'a>>,
-}
-
-impl<'a> Args<'a> {
-    pub fn split(s: &'a str) -> Self {
-        Self {
-            splitted: s.split_whitespace().peekable(),
-        }
-    }
-
-    // TODO: Remove
-    pub fn shift_one(&mut self) {
-        self.splitted.next();
-    }
-
-    // TODO: Use `next` always
-    pub fn try_take_next<T>(&mut self, name: &'static str) -> Result<Option<T>, ArgsError>
-    where
-        T: FromStr,
-        T::Err: ToString,
-    {
-        match self.splitted.peek().map(|s| s.parse()) {
-            Some(Ok(value)) => Ok(Some(value)),
-            Some(Err(err)) => Err(ArgsError::new(name, ArgsReason::NotParsed {
-                details: err.to_string(),
-            })),
-            None => Ok(None),
-        }
-    }
-
-    pub fn take_next<T>(&mut self, name: &'static str) -> Result<T, ArgsError>
-    where
-        T: FromStr,
-        T::Err: ToString,
-    {
-        match self.try_take_next(name)? {
-            Some(value) => {
-                self.shift_one();
-                Ok(value)
-            },
-            None => Err(ArgsError::new(name, ArgsReason::Required)),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct FromHex<T>(pub T);
 
