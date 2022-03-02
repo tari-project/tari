@@ -53,13 +53,14 @@
   npm test -- --tags "@critical and not @long-running and not @broken"
   ```
 
-- To run the wallet FFI tests, add `--profile ci` to the command line (_take note of the node version requirements_).
+- To run the wallet FFI tests, add `--profile ci` or `--profile none` to the command line (_take note of the node
+  version requirements_) and take note of the profile definition in `cucumber.js`.
 
   ```shell
   # Runs a specific FFI test
   npm test -- --profile ci --name "My wallet FFI test scenario name"
   # Runs a complete set of FFI tests
-  npm test -- --profile ci --tags "@wallet-ffi"
+  npm test -- --profile none --tags "@wallet-ffi"
   ```
 
 - Runs all @critical tests, but not @long-running
