@@ -28,6 +28,7 @@ use diesel::{
 };
 use log::*;
 use tari_common_sqlite::sqlite_connection_pool::SqliteConnectionPool;
+use tokio::task;
 
 use crate::storage::error::StorageError;
 
@@ -84,10 +85,11 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
-    pub fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+    pub async fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
         let conn = Self::connect_url(db_url)?;
-        let output = conn.migrate()?;
+        let output = conn.migrate().await?;
         debug!(target: LOG_TARGET, "DHT database migration: {}", output.trim());
+
         Ok(conn)
     }
 
@@ -95,18 +97,25 @@ impl DbConnection {
         Self { pool }
     }
 
-    pub fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, StorageError> {
-        self.pool.get_pooled_connection().map_err(StorageError::DieselR2d2Error)
+    pub async fn with_connection<T, F>(&self, f: F) -> Result<T, StorageError>
+    where
+        F: FnOnce(PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<T, StorageError> + Send + 'static,
+        T: Sync + Send + 'static,
+    {
+        let conn = self.pool.get_pooled_connection()?;
+        task::spawn_blocking(move || f(conn)).await?
     }
 
-    pub fn migrate(&self) -> Result<String, StorageError> {
-        embed_migrations!("./migrations");
+    pub async fn migrate(&self) -> Result<String, StorageError> {
+        self.with_connection(|conn| {
+            embed_migrations!("./migrations");
 
-        let mut buf = io::Cursor::new(Vec::new());
-        let conn = self.get_pooled_connection()?;
-        embedded_migrations::run_with_output(&conn, &mut buf)
-            .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {}", err)))?;
-        Ok(String::from_utf8_lossy(&buf.into_inner()).to_string())
+            let mut buf = io::Cursor::new(Vec::new());
+            embedded_migrations::run_with_output(&conn, &mut buf)
+                .map_err(|err| StorageError::DatabaseMigrationFailed(format!("Database migration failed {}", err)))?;
+            Ok(String::from_utf8_lossy(&buf.into_inner()).to_string())
+        })
+        .await
     }
 }
 
@@ -121,7 +130,7 @@ mod test {
     #[runtime::test]
     async fn connect_and_migrate() {
         let conn = DbConnection::connect_memory(random::string(8)).unwrap();
-        let output = conn.migrate().unwrap();
+        let output = conn.migrate().await.unwrap();
         assert!(output.starts_with("Running migration"));
     }
 
@@ -129,11 +138,15 @@ mod test {
     async fn memory_connections() {
         let id = random::string(8);
         let conn = DbConnection::connect_memory(id.clone()).unwrap();
-        conn.migrate().unwrap();
+        conn.migrate().await.unwrap();
         let conn = DbConnection::connect_memory(id).unwrap();
-        let conn = conn.get_pooled_connection().unwrap();
-        let count: i32 = sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
-            .get_result(&conn)
+        let count = conn
+            .with_connection(|conn| {
+                sql::<Integer>("SELECT COUNT(*) FROM stored_messages")
+                    .get_result::<i32>(&conn)
+                    .map_err(Into::into)
+            })
+            .await
             .unwrap();
         assert_eq!(count, 0);
     }
