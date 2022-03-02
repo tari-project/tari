@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #[macro_use]
 pub mod utils;
+pub mod base_node_service_mock;
 pub mod comms_and_services;
 pub mod comms_rpc;
 pub mod data;
