@@ -419,7 +419,7 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
                         CommandEvent::Command(line) => {
                             first_signal = false;
                             let fut = performer.handle_command(line.as_str(), &mut shutdown);
-                            let res = time::timeout(Duration::from_secs(30), fut).await;
+                            let res = time::timeout(Duration::from_secs(70), fut).await;
                             if let Err(_err) = res {
                                 println!("Time for command execution elapsed: `{}`", line);
                             }
