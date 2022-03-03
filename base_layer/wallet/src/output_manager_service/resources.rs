@@ -72,6 +72,7 @@ impl Display for OutputManagerKeyManagerBranch {
     }
 }
 
+#[allow(clippy::from_over_into)]
 impl Into<String> for OutputManagerKeyManagerBranch {
     fn into(self) -> String {
         self.to_string()
