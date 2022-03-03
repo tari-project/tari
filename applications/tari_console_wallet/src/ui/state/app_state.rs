@@ -959,6 +959,12 @@ impl AppStateInner {
     pub fn add_notification(&mut self, notification: String) {
         self.data.notifications.push((Local::now(), notification));
         self.data.new_notification_count += 1;
+
+        const MAX_NOTIFICATIONS: usize = 100;
+        if self.data.notifications.len() > MAX_NOTIFICATIONS {
+            let _ = self.data.notifications.remove(0);
+        }
+
         self.updated = true;
     }
 
