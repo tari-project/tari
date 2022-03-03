@@ -45,4 +45,6 @@ pub enum StorageError {
     UnexpectedResult(String),
     #[error("Diesel R2d2 error: `{0}`")]
     DieselR2d2Error(#[from] SqliteStorageError),
+    #[error("Blocking task error")]
+    BlockingTaskError,
 }

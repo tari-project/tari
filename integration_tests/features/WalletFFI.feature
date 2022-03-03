@@ -83,6 +83,27 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
 
     @critical
+    Scenario: As a client I want to receive contact liveness events
+        Given I have a seed node SEED
+            # Contact liveness is based on P2P messaging; ensure connectivity by forcing 'DirectOnly'
+        And I have non-default wallet WALLET1 connected to all seed nodes using DirectOnly
+        And I have non-default wallet WALLET2 connected to all seed nodes using DirectOnly
+        And I have a ffi wallet FFI_WALLET connected to seed node SEED
+            # Start the contact liveness pings by adding contacts to the FFI wallet
+        And I add contact with alias ALIAS1 and pubkey WALLET1 to ffi wallet FFI_WALLET
+        And I add contact with alias ALIAS2 and pubkey WALLET2 to ffi wallet FFI_WALLET
+            # Do some mining and send transactions to force P2P discovery
+        And I have mining node MINER1 connected to base node SEED and wallet WALLET1
+        And I have mining node MINER2 connected to base node SEED and wallet WALLET2
+        And mining node MINER1 mines 1 blocks
+        And mining node MINER2 mines 5 blocks
+        And I send 100000000 uT without waiting for broadcast from wallet WALLET1 to wallet FFI_WALLET at fee 20
+        And I send 100000000 uT without waiting for broadcast from wallet WALLET2 to wallet FFI_WALLET at fee 20
+        # If the FFI wallet can send the transactions, P2P connectivity has been established
+        Then I wait for ffi wallet FFI_WALLET to have at least 2 contacts to be Online
+        And I stop ffi wallet FFI_WALLET
+
+    @critical
     Scenario: As a client I want to retrieve a list of transactions I have made and received
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes

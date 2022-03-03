@@ -54,6 +54,8 @@
 //! request_key is used to identify which request this callback references and a result of true means it was successful
 //! and false that the process timed out and new one will be started
 
+use std::{ops::Deref, sync::Arc};
+
 use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
@@ -61,6 +63,7 @@ use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     connectivity_service::OnlineStatus,
+    contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -73,7 +76,7 @@ use tari_wallet::{
         },
     },
 };
-use tokio::sync::watch;
+use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -92,6 +95,7 @@ where TBackend: TransactionBackend + 'static
     callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
@@ -105,6 +109,7 @@ where TBackend: TransactionBackend + 'static
     comms_public_key: CommsPublicKey,
     balance_cache: Balance,
     connectivity_status_watch: watch::Receiver<OnlineStatus>,
+    contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
 }
 
 impl<TBackend> CallbackHandler<TBackend>
@@ -120,6 +125,7 @@ where TBackend: TransactionBackend + 'static
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
         connectivity_status_watch: watch::Receiver<OnlineStatus>,
+        contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
@@ -132,6 +138,7 @@ where TBackend: TransactionBackend + 'static
         callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+        callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
         callback_saf_messages_received: unsafe extern "C" fn(),
@@ -187,6 +194,10 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
+            "ContactsLivenessDataUpdatedCallback -> Assigning Fn:  {:?}", callback_contacts_liveness_data_updated
+        );
+        info!(
+            target: LOG_TARGET,
             "BalanceUpdatedCallback -> Assigning Fn:  {:?}", callback_balance_updated
         );
         info!(
@@ -215,6 +226,7 @@ where TBackend: TransactionBackend + 'static
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
             callback_txo_validation_complete,
+            callback_contacts_liveness_data_updated,
             callback_balance_updated,
             callback_transaction_validation_complete,
             callback_saf_messages_received,
@@ -228,6 +240,7 @@ where TBackend: TransactionBackend + 'static
             comms_public_key,
             balance_cache: Balance::zero(),
             connectivity_status_watch,
+            contacts_liveness_events,
         }
     }
 
@@ -347,6 +360,25 @@ where TBackend: TransactionBackend + 'static
                     trace!(target: LOG_TARGET, "Connectivity status change detected: {:?}", status);
                     self.connectivity_status_changed(status);
                 },
+                event = self.contacts_liveness_events.recv() => {
+                    match event {
+                        Ok(liveness_event) => {
+                            match liveness_event.deref() {
+                                ContactsLivenessEvent::StatusUpdated(data) => {
+                                    trace!(target: LOG_TARGET,
+                                        "Contacts Liveness Service Callback Handler event 'StatusUpdated'"
+                                    );
+                                    self.trigger_contacts_refresh(data.deref().clone());
+                                }
+                                ContactsLivenessEvent::NetworkSilence => {}
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {}
+                    }
+                }
                  _ = shutdown_signal.wait() => {
                     info!(target: LOG_TARGET, "Transaction Callback Handler shutting down because the shutdown signal was received");
                     break;
@@ -429,6 +461,18 @@ where TBackend: TransactionBackend + 'static
             Err(e) => {
                 error!(target: LOG_TARGET, "Could not obtain balance ({:?})", e);
             },
+        }
+    }
+
+    fn trigger_contacts_refresh(&mut self, data: ContactsLivenessData) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Contacts Liveness Data Updated callback function for contact {}",
+            data.public_key(),
+        );
+        let boxing = Box::into_raw(Box::new(data));
+        unsafe {
+            (self.callback_contacts_liveness_data_updated)(boxing);
         }
     }
 

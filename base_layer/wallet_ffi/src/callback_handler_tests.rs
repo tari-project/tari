@@ -46,6 +46,11 @@ mod test {
     use tari_shutdown::Shutdown;
     use tari_wallet::{
         connectivity_service::OnlineStatus,
+        contacts_service::{
+            handle::{ContactsLivenessData, ContactsLivenessEvent},
+            service::{ContactMessageType, ContactOnlineStatus},
+            storage::database::Contact,
+        },
         output_manager_service::{
             handle::{OutputManagerEvent, OutputManagerHandle},
             service::Balance,
@@ -84,6 +89,7 @@ mod test {
         pub tx_cancellation_callback_called_inbound: bool,
         pub tx_cancellation_callback_called_outbound: bool,
         pub callback_txo_validation_complete: u32,
+        pub callback_contacts_liveness_data_updated: u32,
         pub callback_balance_updated: u32,
         pub callback_transaction_validation_complete: u32,
         pub saf_messages_received: bool,
@@ -104,6 +110,7 @@ mod test {
                 direct_send_callback_called: false,
                 store_and_forward_send_callback_called: false,
                 callback_txo_validation_complete: 0,
+                callback_contacts_liveness_data_updated: 0,
                 callback_balance_updated: 0,
                 callback_transaction_validation_complete: 0,
                 tx_cancellation_callback_called_completed: false,
@@ -208,6 +215,12 @@ mod test {
     unsafe extern "C" fn txo_validation_complete_callback(_tx_id: u64, result: bool) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
         lock.callback_txo_validation_complete += result as u32;
+        drop(lock);
+    }
+
+    unsafe extern "C" fn contacts_liveness_data_updated_callback(_data: *mut ContactsLivenessData) {
+        let mut lock = CALLBACK_STATE.lock().unwrap();
+        lock.callback_contacts_liveness_data_updated += 1;
         drop(lock);
     }
 
@@ -385,6 +398,8 @@ mod test {
         assert_eq!(balance, runtime.block_on(oms_handle.get_balance()).unwrap());
 
         let (connectivity_tx, connectivity_rx) = watch::channel(OnlineStatus::Offline);
+        let (contacts_liveness_events_sender, _) = broadcast::channel(250);
+        let contacts_liveness_events = contacts_liveness_events_sender.subscribe();
 
         let callback_handler = CallbackHandler::new(
             db,
@@ -395,6 +410,7 @@ mod test {
             shutdown_signal.to_signal(),
             PublicKey::from_secret_key(&PrivateKey::random(&mut OsRng)),
             connectivity_rx,
+            contacts_liveness_events,
             received_tx_callback,
             received_tx_reply_callback,
             received_tx_finalized_callback,
@@ -407,6 +423,7 @@ mod test {
             store_and_forward_send_callback,
             tx_cancellation_callback,
             txo_validation_complete_callback,
+            contacts_liveness_data_updated_callback,
             balance_updated_callback,
             transaction_validation_complete_callback,
             saf_messages_received_callback,
@@ -638,6 +655,35 @@ mod test {
         }
         assert_eq!(callback_balance_updated, 7);
 
+        let contact = Contact::new(
+            "My friend".to_string(),
+            faux_unconfirmed_tx.destination_public_key,
+            None,
+            None,
+        );
+        let data = ContactsLivenessData::new(
+            contact.public_key.clone(),
+            contact.node_id.clone(),
+            contact.latency,
+            contact.last_seen,
+            ContactMessageType::NoMessage,
+            ContactOnlineStatus::NeverSeen,
+        );
+        contacts_liveness_events_sender
+            .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))))
+            .unwrap();
+        let data = ContactsLivenessData::new(
+            contact.public_key.clone(),
+            contact.node_id,
+            Some(1234),
+            Some(Utc::now().naive_utc()),
+            ContactMessageType::Ping,
+            ContactOnlineStatus::Online,
+        );
+        contacts_liveness_events_sender
+            .send(Arc::new(ContactsLivenessEvent::StatusUpdated(Box::new(data))))
+            .unwrap();
+
         dht_event_sender
             .send(Arc::new(DhtEvent::StoreAndForwardMessagesReceived))
             .unwrap();
@@ -668,6 +714,7 @@ mod test {
         assert!(lock.tx_cancellation_callback_called_outbound);
         assert!(lock.saf_messages_received);
         assert_eq!(lock.callback_txo_validation_complete, 3);
+        assert_eq!(lock.callback_contacts_liveness_data_updated, 2);
         assert_eq!(lock.callback_balance_updated, 7);
         assert_eq!(lock.callback_transaction_validation_complete, 7);
         assert_eq!(lock.connectivity_status_callback_called, 7);
