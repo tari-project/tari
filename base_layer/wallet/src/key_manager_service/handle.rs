@@ -30,6 +30,7 @@ use tokio::sync::RwLock;
 use crate::key_manager_service::{
     error::KeyManagerError,
     storage::database::{KeyManagerBackend, KeyManagerDatabase},
+    AddResult,
     KeyManagerInner,
     KeyManagerInterface,
 };
@@ -53,15 +54,12 @@ where TBackend: KeyManagerBackend + 'static
 impl<TBackend> KeyManagerInterface for KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
-    async fn add_new_branch(&self, branch: String) -> Result<(), KeyManagerError> {
-        (*self.key_manager_inner).write().await.add_key_manager(branch).await
-    }
-
-    async fn add_new_branches(&self, branches: Vec<String>) -> Result<(), KeyManagerError> {
-        for branch in branches {
-            self.add_new_branch(branch).await?;
-        }
-        Ok(())
+    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError> {
+        (*self.key_manager_inner)
+            .write()
+            .await
+            .add_key_manager(branch.into())
+            .await
     }
 
     async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
@@ -72,39 +70,55 @@ where TBackend: KeyManagerBackend + 'static
         (*self.key_manager_inner).write().await.remove_encryption().await
     }
 
-    async fn get_next_key(&self, branch: String) -> Result<PrivateKey, KeyManagerError> {
-        (*self.key_manager_inner).read().await.get_next_key(branch).await
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(PrivateKey, u64), KeyManagerError> {
+        (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
     }
 
-    async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .get_key_at_index(branch, index)
-            .await
-    }
-
-    async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
-        (*self.key_manager_inner).read().await.find_key_index(branch, key).await
-    }
-
-    async fn update_current_key_index_if_higher(&self, branch: String, index: u64) -> Result<(), KeyManagerError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .update_current_key_index_if_higher(branch, index)
-            .await
-    }
-
-    async fn get_seed_words(
+    async fn get_key_at_index<T: Into<String> + Send>(
         &self,
-        branch: String,
+        branch: T,
+        index: u64,
+    ) -> Result<PrivateKey, KeyManagerError> {
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .get_key_at_index(branch.into(), index)
+            .await
+    }
+
+    async fn find_key_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        key: &PrivateKey,
+    ) -> Result<u64, KeyManagerError> {
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .find_key_index(branch.into(), key)
+            .await
+    }
+
+    async fn update_current_key_index_if_higher<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<(), KeyManagerError> {
+        (*self.key_manager_inner)
+            .read()
+            .await
+            .update_current_key_index_if_higher(branch.into(), index)
+            .await
+    }
+
+    async fn get_seed_words<T: Into<String> + Send>(
+        &self,
+        branch: T,
         language: &MnemonicLanguage,
     ) -> Result<Vec<String>, KeyManagerError> {
         (*self.key_manager_inner)
             .read()
             .await
-            .get_seed_words(branch, language)
+            .get_seed_words(branch.into(), language)
             .await
     }
 }

@@ -121,64 +121,16 @@ impl KeyManagerStateSql {
         Ok(())
     }
 
-    pub fn increment_index(
-        branch: String,
-        cipher: Option<&Aes256Gcm>,
-        conn: &SqliteConnection,
-    ) -> Result<u64, KeyManagerStorageError> {
-        Ok(match KeyManagerStateSql::get_state(&branch, conn) {
-            Ok(mut km) => {
-                if km.primary_key_index.len() > 8 {
-                    match cipher {
-                        Some(cip) => km.decrypt(cip).map_err(KeyManagerStorageError::AeadError)?,
-                        _ => return Err(KeyManagerStorageError::ValueEncrypted),
-                    }
-                }
-                let mut bytes: [u8; 8] = [0u8; 8];
-                bytes.copy_from_slice(&km.primary_key_index[..8]);
-                let new_index = u64::from_le_bytes(bytes) + 1;
-                km.primary_key_index = new_index.to_le_bytes().to_vec();
-                if let Some(cip) = cipher {
-                    km.encrypt(cip).map_err(KeyManagerStorageError::AeadError)?;
-                }
-                let update = KeyManagerStateUpdateSql {
-                    branch_seed: None,
-                    primary_key_index: Some(km.primary_key_index),
-                };
-                diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(update)
-                    .execute(conn)
-                    .num_rows_affected_or_not_found(1)?;
-                new_index
-            },
-            Err(_) => return Err(KeyManagerStorageError::KeyManagerNotInitialized),
-        })
-    }
-
-    pub fn set_index(
-        branch: String,
-        index: u64,
-        cipher: Option<&Aes256Gcm>,
-        conn: &SqliteConnection,
-    ) -> Result<(), KeyManagerStorageError> {
-        match KeyManagerStateSql::get_state(&branch, conn) {
-            Ok(mut km) => {
-                km.primary_key_index = index.to_le_bytes().to_vec();
-                if let Some(cip) = cipher {
-                    km.encrypt(cip).map_err(KeyManagerStorageError::AeadError)?;
-                }
-                let update = KeyManagerStateUpdateSql {
-                    branch_seed: None,
-                    primary_key_index: Some(km.primary_key_index),
-                };
-                diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(update)
-                    .execute(conn)
-                    .num_rows_affected_or_not_found(1)?;
-                Ok(())
-            },
-            Err(_) => Err(KeyManagerStorageError::KeyManagerNotInitialized),
-        }
+    pub fn set_index(id: i32, index: Vec<u8>, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+        let update = KeyManagerStateUpdateSql {
+            branch_seed: None,
+            primary_key_index: Some(index),
+        };
+        diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&id)))
+            .set(update)
+            .execute(conn)
+            .num_rows_affected_or_not_found(1)?;
+        Ok(())
     }
 }
 
@@ -213,13 +165,5 @@ impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
 
     fn decrypt(&mut self, _cipher: &Aes256Gcm) -> Result<(), String> {
         unimplemented!("Not supported")
-        // let decrypted_master_key = decrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
-        // let decrypted_branch_seed =
-        //     decrypt_bytes_integral_nonce(&cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
-        // self.master_key = decrypted_master_key;
-        // self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
-        //     .map_err(|_| Error)?
-        //     .to_string();
-        // Ok(())
     }
 }

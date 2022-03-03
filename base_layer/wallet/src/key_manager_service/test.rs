@@ -33,10 +33,10 @@ async fn get_next_key_test_mock() {
     key_manager_mock.add_key_manager_mock(branch.clone()).await.unwrap();
     key_manager_mock.add_key_manager_mock(branch2.clone()).await.unwrap();
 
-    let branch_1_key_1 = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
-    let branch_2_key_1 = key_manager_mock.get_next_key_mock(branch2.clone()).await.unwrap();
-    let branch_1_key_2 = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
-    let branch_2_key_2 = key_manager_mock.get_next_key_mock(branch2.clone()).await.unwrap();
+    let (branch_1_key_1, _) = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
+    let (branch_2_key_1, _) = key_manager_mock.get_next_key_mock(branch2.clone()).await.unwrap();
+    let (branch_1_key_2, _) = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
+    let (branch_2_key_2, _) = key_manager_mock.get_next_key_mock(branch2.clone()).await.unwrap();
 
     assert_ne!(branch_1_key_1, branch_1_key_2);
     assert_ne!(branch_2_key_1, branch_2_key_2);
@@ -62,8 +62,8 @@ async fn get_key_at_test_mock() {
 
     assert_ne!(key_10, key_11);
 
-    let key_1 = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
-    let key_2 = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
+    let (key_1, _) = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
+    let (key_2, _) = key_manager_mock.get_next_key_mock(branch.clone()).await.unwrap();
 
     let key_1_2 = key_manager_mock.get_key_at_index_mock(branch.clone(), 1).await.unwrap();
 

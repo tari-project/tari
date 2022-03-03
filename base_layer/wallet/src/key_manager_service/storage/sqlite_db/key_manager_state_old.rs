@@ -25,8 +25,8 @@ use diesel::{prelude::*, SqliteConnection};
 
 use crate::{key_manager_service::error::KeyManagerStorageError, schema::key_manager_states_old};
 
-// NB!!! This is a temporary migration file to convert existing indexes to new ones.
-// Todo Testnet remove
+// This is a temporary migration file to convert existing indexes to new ones.
+// Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
 #[derive(Clone, Debug, Queryable, Identifiable)]
 #[table_name = "key_manager_states_old"]
 #[primary_key(id)]

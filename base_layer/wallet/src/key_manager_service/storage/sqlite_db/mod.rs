@@ -26,7 +26,6 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
-use diesel::SqliteConnection;
 pub use key_manager_state::{KeyManagerStateSql, NewKeyManagerStateSql};
 use log::*;
 use tokio::time::Instant;
@@ -35,11 +34,11 @@ use crate::{
     key_manager_service::{
         error::KeyManagerStorageError,
         storage::{
-            database::{DbKey, DbKeyValuePair, DbValue, KeyManagerBackend, KeyManagerState, WriteOperation},
+            database::{KeyManagerBackend, KeyManagerState},
             sqlite_db::key_manager_state_old::KeyManagerStateSqlOld,
         },
     },
-    output_manager_service::resources::KeyManagerOmsBranch,
+    output_manager_service::resources::OutputManagerKeyManagerBranch,
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::encryption::Encryptable,
 };
@@ -65,6 +64,7 @@ impl KeyManagerSqliteDatabase {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
         };
+        // Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
         db.do_migration()?;
         Ok(db)
     }
@@ -87,33 +87,26 @@ impl KeyManagerSqliteDatabase {
         Ok(())
     }
 
-    fn insert(&self, key_value_pair: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
-        match key_value_pair {
-            DbKeyValuePair::KeyManagerState(km) => {
-                let mut km_sql = NewKeyManagerStateSql::from(km);
-                self.encrypt_if_necessary(&mut km_sql)?;
-                km_sql.commit(conn)?
-            },
-        }
-        Ok(())
-    }
-
+    // Todo remove at next testnet reset (currently on Dibbler) #testnet_reset
     fn do_migration(&self) -> Result<(), KeyManagerStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
-
         let old_state = KeyManagerStateSqlOld::index(&conn)?;
         if !old_state.is_empty() {
             // there should only be 1 if there is an old state.
-            let spending_km = DbKeyValuePair::KeyManagerState(KeyManagerState {
-                branch_seed: KeyManagerOmsBranch::Spend.to_string(),
+            let spending_km = KeyManagerState {
+                branch_seed: OutputManagerKeyManagerBranch::Spend.to_string(),
                 primary_key_index: old_state[0].primary_key_index as u64,
-            });
-            let spending_script_km = DbKeyValuePair::KeyManagerState(KeyManagerState {
-                branch_seed: KeyManagerOmsBranch::SpendScript.to_string(),
+            };
+            let spending_script_km = KeyManagerState {
+                branch_seed: OutputManagerKeyManagerBranch::SpendScript.to_string(),
                 primary_key_index: old_state[0].primary_key_index as u64,
-            });
-            self.insert(spending_km, &conn)?;
-            self.insert(spending_script_km, &conn)?;
+            };
+            let mut km_sql_spending = NewKeyManagerStateSql::from(spending_km);
+            self.encrypt_if_necessary(&mut km_sql_spending)?;
+            km_sql_spending.commit(&conn)?;
+            let mut km_sql_script = NewKeyManagerStateSql::from(spending_script_km);
+            self.encrypt_if_necessary(&mut km_sql_script)?;
+            km_sql_script.commit(&conn)?;
             KeyManagerStateSqlOld::delete(&conn)?;
         }
         Ok(())
@@ -121,26 +114,22 @@ impl KeyManagerSqliteDatabase {
 }
 
 impl KeyManagerBackend for KeyManagerSqliteDatabase {
-    #[allow(clippy::cognitive_complexity)]
-    fn fetch(&self, key: &DbKey) -> Result<Option<DbValue>, KeyManagerStorageError> {
+    fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        let result = match key {
-            DbKey::KeyManagerState(branch) => match KeyManagerStateSql::get_state(branch, &conn).ok() {
-                None => None,
-                Some(mut km) => {
-                    self.decrypt_if_necessary(&mut km)?;
-                    Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?))
-                },
+        let result = match KeyManagerStateSql::get_state(&branch, &conn).ok() {
+            None => None,
+            Some(mut km) => {
+                self.decrypt_if_necessary(&mut km)?;
+                Some(KeyManagerState::try_from(km)?)
             },
         };
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - fetch '{}': lock {} + db_op {} = {} ms",
-                key,
+                "sqlite profile - fetch key_manager: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -150,36 +139,39 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         Ok(result)
     }
 
-    fn write(&self, op: WriteOperation) -> Result<Option<DbValue>, KeyManagerStorageError> {
+    fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
 
-        match op {
-            WriteOperation::Insert(kvp) => self.insert(kvp, &conn)?,
-            WriteOperation::Remove(k) => match k {
-                DbKey::KeyManagerState(_) => return Err(KeyManagerStorageError::OperationNotSupported),
-            },
-        }
+        let mut km_sql = NewKeyManagerStateSql::from(key_manager);
+        self.encrypt_if_necessary(&mut km_sql)?;
+        km_sql.commit(&conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - write Insert: lock {} + db_op {} = {} ms",
+                "sqlite profile - write Insert key manager: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
             );
         }
 
-        Ok(None)
+        Ok(())
     }
 
     fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let cipher = acquire_read_lock!(self.cipher);
-        KeyManagerStateSql::increment_index(branch, cipher.as_ref(), &conn)?;
+        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
+        self.decrypt_if_necessary(&mut km)?;
+        let mut bytes: [u8; 8] = [0u8; 8];
+        bytes.copy_from_slice(&km.primary_key_index[..8]);
+        let index = u64::from_le_bytes(bytes) + 1;
+        km.primary_key_index = index.to_le_bytes().to_vec();
+        self.encrypt_if_necessary(&mut km)?;
+        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -197,8 +189,11 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let cipher = acquire_read_lock!(self.cipher);
-        KeyManagerStateSql::set_index(branch, index, cipher.as_ref(), &conn)?;
+        let mut km = KeyManagerStateSql::get_state(&branch, &conn)?;
+        self.decrypt_if_necessary(&mut km)?;
+        km.primary_key_index = index.to_le_bytes().to_vec();
+        self.encrypt_if_necessary(&mut km)?;
+        KeyManagerStateSql::set_index(km.id, km.primary_key_index, &conn)?;
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
@@ -282,18 +277,11 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
 mod test {
     use std::convert::TryFrom;
 
-    use aes_gcm::{
-        aead::{generic_array::GenericArray, NewAead},
-        Aes256Gcm,
-    };
     use diesel::{Connection, SqliteConnection};
     use tari_test_utils::random;
     use tempfile::tempdir;
 
-    use crate::{
-        key_manager_service::storage::sqlite_db::{KeyManagerState, KeyManagerStateSql, NewKeyManagerStateSql},
-        util::encryption::Encryptable,
-    };
+    use crate::key_manager_service::storage::sqlite_db::{KeyManagerState, KeyManagerStateSql, NewKeyManagerStateSql};
 
     #[test]
     fn test_key_manager_crud() {
@@ -318,54 +306,16 @@ mod test {
 
         NewKeyManagerStateSql::from(state1.clone()).commit(&conn).unwrap();
         let state1_read = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
+        let id = state1_read.id;
 
         assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
 
-        KeyManagerStateSql::increment_index(branch.clone(), None, &conn).unwrap();
-        KeyManagerStateSql::increment_index(branch.clone(), None, &conn).unwrap();
+        let index: u64 = 2;
+        KeyManagerStateSql::set_index(id, index.to_le_bytes().to_vec(), &conn).unwrap();
 
         let state3_read = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
         let mut bytes: [u8; 8] = [0u8; 8];
         bytes.copy_from_slice(&state3_read.primary_key_index[..8]);
         assert_eq!(u64::from_le_bytes(bytes), 2);
-    }
-
-    #[test]
-    fn test_key_manager_encryption() {
-        let db_name = format!("{}.sqlite3", random::string(8).as_str());
-        let temp_dir = tempdir().unwrap();
-        let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
-
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
-
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
-        let branch = "boop boop".to_string();
-        let starting_state = KeyManagerState {
-            branch_seed: branch.clone(),
-            primary_key_index: 1,
-        };
-        NewKeyManagerStateSql::from(starting_state).commit(&conn).unwrap();
-
-        let state_sql = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
-
-        let mut encrypted_state = state_sql;
-        encrypted_state.encrypt(&cipher).unwrap();
-
-        encrypted_state.set_state(&conn).unwrap();
-        assert!(KeyManagerStateSql::increment_index(branch.clone(), None, &conn).is_err());
-        KeyManagerStateSql::increment_index(branch.clone(), Some(&cipher), &conn).unwrap();
-
-        let mut db_state = KeyManagerStateSql::get_state(&branch, &conn).unwrap();
-
-        db_state.decrypt(&cipher).unwrap();
-
-        let decrypted_data = KeyManagerState::try_from(db_state).unwrap();
-
-        assert_eq!(decrypted_data.primary_key_index, 2);
     }
 }

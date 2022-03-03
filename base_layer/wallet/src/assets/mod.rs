@@ -22,7 +22,7 @@
 
 mod asset_manager;
 pub(crate) use asset_manager::AssetManager;
-pub use asset_manager::KeyManagerAssetBranch;
+pub use asset_manager::KEY_MANAGER_ASSET_BRANCH;
 
 mod asset;
 pub use asset::Asset;

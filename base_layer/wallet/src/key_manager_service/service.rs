@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use aes_gcm::Aes256Gcm;
 use futures::lock::Mutex;
 use log::*;
@@ -32,7 +31,7 @@ use tari_key_manager::{
 
 use crate::types::KeyDigest;
 
-const LOG_TARGET: &str = "wallet::Key_manager";
+const LOG_TARGET: &str = "wallet::key_manager";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 
 use std::collections::HashMap;
@@ -40,6 +39,7 @@ use std::collections::HashMap;
 use crate::key_manager_service::{
     error::KeyManagerError,
     storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
+    AddResult,
 };
 
 pub struct KeyManagerInner<TBackend> {
@@ -59,10 +59,12 @@ where TBackend: KeyManagerBackend + 'static
         }
     }
 
-    pub async fn add_key_manager(&mut self, branch: String) -> Result<(), KeyManagerError> {
-        if self.key_managers.contains_key(&branch) {
-            return Err(KeyManagerError::BranchAllreadyExists);
-        }
+    pub async fn add_key_manager(&mut self, branch: String) -> Result<AddResult, KeyManagerError> {
+        let result = if self.key_managers.contains_key(&branch) {
+            AddResult::AlreadyExists
+        } else {
+            AddResult::NewEntry
+        };
         let state = match self.db.get_key_manager_state(branch.clone()).await? {
             None => {
                 let starting_state = KeyManagerState {
@@ -82,10 +84,10 @@ where TBackend: KeyManagerBackend + 'static
                 state.primary_key_index,
             )),
         );
-        Ok(())
+        Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: String) -> Result<PrivateKey, KeyManagerError> {
+    pub async fn get_next_key(&self, branch: String) -> Result<(PrivateKey, u64), KeyManagerError> {
         let mut km = self
             .key_managers
             .get(&branch)
@@ -94,7 +96,7 @@ where TBackend: KeyManagerBackend + 'static
             .await;
         let key = km.next_key()?;
         self.db.increment_key_index(branch).await?;
-        Ok(key.k)
+        Ok((key.k, km.key_index()))
     }
 
     pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
@@ -105,7 +107,6 @@ where TBackend: KeyManagerBackend + 'static
             .lock()
             .await;
         let key = km.derive_key(index)?;
-        self.db.set_key_index(branch, index).await?;
         Ok(key.k)
     }
 

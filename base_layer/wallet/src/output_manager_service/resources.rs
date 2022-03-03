@@ -49,7 +49,7 @@ pub(crate) struct OutputManagerResources<TBackend, TWalletConnectivity, TKeyMana
 }
 
 #[derive(Clone, Copy)]
-pub enum KeyManagerOmsBranch {
+pub enum OutputManagerKeyManagerBranch {
     Spend,
     SpendScript,
     Coinbase,
@@ -58,16 +58,22 @@ pub enum KeyManagerOmsBranch {
     RecoveryBlinding,
 }
 
-impl Display for KeyManagerOmsBranch {
+impl Display for OutputManagerKeyManagerBranch {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         let response = match self {
-            KeyManagerOmsBranch::Spend => "Spend",
-            KeyManagerOmsBranch::SpendScript => "Script",
-            KeyManagerOmsBranch::Coinbase => "Coinbase",
-            KeyManagerOmsBranch::CoinbaseScript => "Coinbase_script",
-            KeyManagerOmsBranch::RecoveryViewOnly => "Recovery_viewonly",
-            KeyManagerOmsBranch::RecoveryBlinding => "Recovery_blinding",
+            OutputManagerKeyManagerBranch::Spend => "Spend",
+            OutputManagerKeyManagerBranch::SpendScript => "Script",
+            OutputManagerKeyManagerBranch::Coinbase => "Coinbase",
+            OutputManagerKeyManagerBranch::CoinbaseScript => "Coinbase_script",
+            OutputManagerKeyManagerBranch::RecoveryViewOnly => "Recovery_viewonly",
+            OutputManagerKeyManagerBranch::RecoveryBlinding => "Recovery_blinding",
         };
         fmt.write_str(response)
+    }
+}
+
+impl Into<String> for OutputManagerKeyManagerBranch {
+    fn into(self) -> String {
+        self.to_string()
     }
 }

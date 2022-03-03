@@ -30,7 +30,10 @@ use tari_key_manager::{
 };
 use tokio::sync::RwLock;
 
-use crate::{key_manager_service::KeyManagerInterface, types::KeyDigest};
+use crate::{
+    key_manager_service::{AddResult, KeyManagerInterface},
+    types::KeyDigest,
+};
 
 const LOG_TARGET: &str = "wallet::Key_manager_mock";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
@@ -54,10 +57,12 @@ impl KeyManagerMock {
 }
 
 impl KeyManagerMock {
-    pub async fn add_key_manager_mock(&self, branch: String) -> Result<(), KeyManagerError> {
-        if self.key_managers.read().await.contains_key(&branch) {
-            return Err(KeyManagerError::BranchAllreadyExists);
-        }
+    pub async fn add_key_manager_mock(&self, branch: String) -> Result<AddResult, KeyManagerError> {
+        let result = if self.key_managers.read().await.contains_key(&branch) {
+            AddResult::AlreadyExists
+        } else {
+            AddResult::NewEntry
+        };
         let state = KeyManagerState {
             branch_seed: branch.to_string(),
             primary_key_index: 0,
@@ -71,14 +76,14 @@ impl KeyManagerMock {
                 state.primary_key_index,
             ),
         );
-        Ok(())
+        Ok(result)
     }
 
-    pub async fn get_next_key_mock(&self, branch: String) -> Result<PrivateKey, KeyManagerError> {
+    pub async fn get_next_key_mock(&self, branch: String) -> Result<(PrivateKey, u64), KeyManagerError> {
         let mut lock = self.key_managers.write().await;
         let km = lock.get_mut(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
         let key = km.next_key()?;
-        Ok(key.k)
+        Ok((key.k, km.key_index()))
     }
 
     pub async fn get_key_at_index_mock(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
@@ -136,23 +141,20 @@ impl KeyManagerMock {
 
 #[async_trait::async_trait]
 impl KeyManagerInterface for KeyManagerMock {
-    async fn add_new_branch(&self, branch: String) -> Result<(), KeyManagerError> {
-        self.add_key_manager_mock(branch).await
+    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError> {
+        self.add_key_manager_mock(branch.into()).await
     }
 
-    async fn add_new_branches(&self, branches: Vec<String>) -> Result<(), KeyManagerError> {
-        for branch in branches {
-            self.add_new_branch(branch).await?;
-        }
-        Ok(())
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(PrivateKey, u64), KeyManagerError> {
+        self.get_next_key_mock(branch.into()).await
     }
 
-    async fn get_next_key(&self, branch: String) -> Result<PrivateKey, KeyManagerError> {
-        self.get_next_key_mock(branch).await
-    }
-
-    async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
-        self.get_key_at_index_mock(branch, index).await
+    async fn get_key_at_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<PrivateKey, KeyManagerError> {
+        self.get_key_at_index_mock(branch.into(), index).await
     }
 
     async fn apply_encryption(&self, _cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
@@ -163,19 +165,27 @@ impl KeyManagerInterface for KeyManagerMock {
         unimplemented!("Not supported");
     }
 
-    async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
-        self.find_key_index_mock(branch, key).await
-    }
-
-    async fn update_current_key_index_if_higher(&self, branch: String, index: u64) -> Result<(), KeyManagerError> {
-        self.update_current_key_index_if_higher_mock(branch, index).await
-    }
-
-    async fn get_seed_words(
+    async fn find_key_index<T: Into<String> + Send>(
         &self,
-        branch: String,
+        branch: T,
+        key: &PrivateKey,
+    ) -> Result<u64, KeyManagerError> {
+        self.find_key_index_mock(branch.into(), key).await
+    }
+
+    async fn update_current_key_index_if_higher<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        index: u64,
+    ) -> Result<(), KeyManagerError> {
+        self.update_current_key_index_if_higher_mock(branch.into(), index).await
+    }
+
+    async fn get_seed_words<T: Into<String> + Send>(
+        &self,
+        branch: T,
         language: &MnemonicLanguage,
     ) -> Result<Vec<String>, KeyManagerError> {
-        self.get_seed_words_mock(branch, language).await
+        self.get_seed_words_mock(branch.into(), language).await
     }
 }

@@ -31,8 +31,6 @@ use crate::error::WalletStorageError;
 pub enum KeyManagerError {
     #[error("Branch does not exist")]
     UnknownKeyBranch,
-    #[error("Branch all ready exists")]
-    BranchAllreadyExists,
     #[error("Master seed does not match stored version")]
     MasterSeedMismatch,
     #[error("Could not find key in key manager")]
@@ -51,7 +49,7 @@ pub enum KeyManagerStorageError {
     ValueNotFound,
     #[error("Unexpected result: `{0}`")]
     UnexpectedResult(String),
-    #[error("If an pending transaction does not exist to be confirmed")]
+    #[error("Pending transaction does not exist to be confirmed")]
     PendingTransactionNotFound,
     #[error("This write operation is not supported for provided DbKey")]
     OperationNotSupported,
@@ -61,8 +59,8 @@ pub enum KeyManagerStorageError {
     ConversionError { reason: String },
     #[error("Key Manager not initialized")]
     KeyManagerNotInitialized,
-    #[error("Diesel R2d2 error: `{0}`")]
-    DieselR2d2Error(#[from] WalletStorageError),
+    #[error("Wallet storage error: `{0}`")]
+    WalletStorageError(#[from] WalletStorageError),
     #[error("Diesel error: `{0}`")]
     DieselError(#[from] DieselError),
     #[error("Diesel connection error: `{0}`")]

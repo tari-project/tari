@@ -36,7 +36,6 @@ use tari_core::transactions::{
 use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    range_proof::REWIND_USER_MESSAGE_LENGTH,
     script,
     tari_utilities::hex::Hex,
 };
@@ -45,7 +44,7 @@ use crate::{
     key_manager_service::KeyManagerInterface,
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},
-        resources::KeyManagerOmsBranch,
+        resources::OutputManagerKeyManagerBranch,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
             models::DbUnblindedOutput,
@@ -57,6 +56,7 @@ const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
 pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
     master_key_manager: TKeyManagerInterface,
+    rewind_data: RewindData,
     factories: CryptoFactories,
     db: OutputManagerDatabase<TBackend>,
 }
@@ -68,11 +68,13 @@ where
 {
     pub fn new(
         master_key_manager: TKeyManagerInterface,
+        rewind_data: RewindData,
         factories: CryptoFactories,
         db: OutputManagerDatabase<TBackend>,
     ) -> Self {
         Self {
             master_key_manager,
+            rewind_data,
             factories,
             db,
         }
@@ -87,19 +89,15 @@ where
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
-        let rewind_key = self
-            .master_key_manager
-            .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)
-            .await?;
-        let rewind_blinding_key = self
-            .master_key_manager
-            .get_key_at_index(KeyManagerOmsBranch::RecoveryBlinding.to_string(), 0)
-            .await?;
         let mut rewound_outputs: Vec<(UnblindedOutput, RangeProof)> = outputs
             .into_iter()
             .filter_map(|output| {
                 output
-                    .full_rewind_range_proof(&self.factories.range_proof, &rewind_key, &rewind_blinding_key)
+                    .full_rewind_range_proof(
+                        &self.factories.range_proof,
+                        &self.rewind_data.rewind_key,
+                        &self.rewind_data.rewind_blinding_key,
+                    )
                     .ok()
                     .map(|v| (v, output))
             })
@@ -138,23 +136,10 @@ where
             self.update_outputs_script_private_key_and_update_key_manager_index(output)
                 .await?;
 
-            let rewind_key = self
-                .master_key_manager
-                .get_key_at_index(KeyManagerOmsBranch::RecoveryViewOnly.to_string(), 0)
-                .await?;
-            let rewind_blinding_key = self
-                .master_key_manager
-                .get_key_at_index(KeyManagerOmsBranch::RecoveryBlinding.to_string(), 0)
-                .await?;
-            let rewind_data = RewindData {
-                rewind_key,
-                rewind_blinding_key,
-                proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
-            };
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
-                &rewind_data,
+                &self.rewind_data,
                 None,
                 Some(proof),
             )?;
@@ -194,27 +179,30 @@ where
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(KeyManagerOmsBranch::Coinbase.to_string(), &output.spending_key)
+                .find_key_index(
+                    OutputManagerKeyManagerBranch::Coinbase.to_string(),
+                    &output.spending_key,
+                )
                 .await?;
 
             self.master_key_manager
-                .get_key_at_index(KeyManagerOmsBranch::CoinbaseScript.to_string(), found_index)
+                .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript, found_index)
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(KeyManagerOmsBranch::Spend.to_string(), &output.spending_key)
+                .find_key_index(OutputManagerKeyManagerBranch::Spend, &output.spending_key)
                 .await?;
 
             self.master_key_manager
-                .update_current_key_index_if_higher(KeyManagerOmsBranch::Spend.to_string(), found_index)
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend, found_index)
                 .await?;
             self.master_key_manager
-                .update_current_key_index_if_higher(KeyManagerOmsBranch::SpendScript.to_string(), found_index)
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::SpendScript, found_index)
                 .await?;
 
             self.master_key_manager
-                .get_key_at_index(KeyManagerOmsBranch::SpendScript.to_string(), found_index)
+                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, found_index)
                 .await?
         };
 

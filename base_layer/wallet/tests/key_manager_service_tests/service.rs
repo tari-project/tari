@@ -27,6 +27,7 @@ use aes_gcm::{
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_wallet::key_manager_service::{
     storage::{database::KeyManagerDatabase, sqlite_db::KeyManagerSqliteDatabase},
+    AddResult,
     KeyManagerHandle,
     KeyManagerInterface,
 };
@@ -43,16 +44,16 @@ async fn get_key_at_test_no_encryption() {
             cipher.clone(),
             KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap()),
         );
-        key_manager.add_new_branch("branch1".to_string()).await.unwrap();
-        let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-        let key_2 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-        let key_3 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
+        key_manager.add_new_branch("branch1").await.unwrap();
+        let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+        let (key_2, _) = key_manager.get_next_key("branch1").await.unwrap();
+        let (key_3, _) = key_manager.get_next_key("branch1").await.unwrap();
 
         assert_ne!(key_1, key_2);
         assert_ne!(key_1, key_3);
         assert_ne!(key_2, key_3);
 
-        key1 = Some(key_manager.get_key_at_index("branch1".to_string(), 1).await.unwrap());
+        key1 = Some(key_manager.get_key_at_index("branch1", 1).await.unwrap());
 
         assert_eq!(key_1, key1.clone().unwrap());
     }
@@ -61,11 +62,11 @@ async fn get_key_at_test_no_encryption() {
             cipher,
             KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
         );
-        key_manager.add_new_branch("branch1".to_string()).await.unwrap();
-        let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
+        key_manager.add_new_branch("branch1").await.unwrap();
+        let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
 
         assert_ne!(key_1, key1.clone().unwrap());
-        let key_1_2 = key_manager.get_key_at_index("branch1".to_string(), 1).await.unwrap();
+        let key_1_2 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
 
         assert_eq!(key1.unwrap(), key_1_2);
     }
@@ -81,16 +82,16 @@ async fn get_key_at_test_with_encryption() {
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, Some(db_cipher)).unwrap()),
     );
-    key_manager.add_new_branch("branch1".to_string()).await.unwrap();
-    let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let key_2 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let key_3 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
+    key_manager.add_new_branch("branch1").await.unwrap();
+    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let (key_2, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let (key_3, _) = key_manager.get_next_key("branch1").await.unwrap();
 
     assert_ne!(key_1, key_2);
     assert_ne!(key_1, key_3);
     assert_ne!(key_2, key_3);
 
-    let key_1_2 = key_manager.get_key_at_index("branch1".to_string(), 1).await.unwrap();
+    let key_1_2 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
 
     assert_eq!(key_1, key_1_2);
 }
@@ -103,22 +104,28 @@ async fn key_manager_multiple_branches() {
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
     );
-    key_manager.add_new_branch("branch1".to_string()).await.unwrap();
-    assert!(key_manager.add_new_branch("branch1".to_string()).await.is_err());
-    key_manager.add_new_branch("branch2".to_string()).await.unwrap();
-    key_manager.add_new_branch("branch3".to_string()).await.unwrap();
-    let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let key_2 = key_manager.get_next_key("branch2".to_string()).await.unwrap();
-    let key_3 = key_manager.get_next_key("branch3".to_string()).await.unwrap();
-    assert!(key_manager.get_next_key("branch4".to_string()).await.is_err());
+    assert_eq!(
+        key_manager.add_new_branch("branch1").await.unwrap(),
+        AddResult::NewEntry
+    );
+    assert_eq!(
+        key_manager.add_new_branch("branch1").await.unwrap(),
+        AddResult::AlreadyExists
+    );
+    key_manager.add_new_branch("branch2").await.unwrap();
+    key_manager.add_new_branch("branch3").await.unwrap();
+    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let (key_2, _) = key_manager.get_next_key("branch2").await.unwrap();
+    let (key_3, _) = key_manager.get_next_key("branch3").await.unwrap();
+    assert!(key_manager.get_next_key("branch4").await.is_err());
 
     assert_ne!(key_1, key_2);
     assert_ne!(key_1, key_3);
     assert_ne!(key_2, key_3);
 
-    let key_1 = key_manager.get_key_at_index("branch1".to_string(), 1).await.unwrap();
-    let key_2 = key_manager.get_key_at_index("branch2".to_string(), 1).await.unwrap();
-    let key_3 = key_manager.get_key_at_index("branch3".to_string(), 1).await.unwrap();
+    let key_1 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
+    let key_2 = key_manager.get_key_at_index("branch2", 1).await.unwrap();
+    let key_3 = key_manager.get_key_at_index("branch3", 1).await.unwrap();
 
     assert_ne!(key_1, key_2);
     assert_ne!(key_1, key_3);
@@ -134,11 +141,11 @@ async fn key_manager_find_index() {
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
     );
-    key_manager.add_new_branch("branch1".to_string()).await.unwrap();
-    let _ = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let _ = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let index = key_manager.find_key_index("branch1".to_string(), &key_1).await.unwrap();
+    key_manager.add_new_branch("branch1").await.unwrap();
+    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1).await.unwrap();
 
     assert_eq!(index, 3);
 }
@@ -152,21 +159,41 @@ async fn key_manager_update_current_key_index_if_higher() {
         cipher,
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
     );
-    key_manager.add_new_branch("branch1".to_string()).await.unwrap();
-    let _ = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let _ = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let index = key_manager.find_key_index("branch1".to_string(), &key_1).await.unwrap();
+    key_manager.add_new_branch("branch1").await.unwrap();
+    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1).await.unwrap();
 
     assert_eq!(index, 3);
 
     key_manager
-        .update_current_key_index_if_higher("branch1".to_string(), 6)
+        .update_current_key_index_if_higher("branch1", 6)
         .await
         .unwrap();
-    let key_1 = key_manager.get_next_key("branch1".to_string()).await.unwrap();
-    let key_1_2 = key_manager.get_key_at_index("branch1".to_string(), 7).await.unwrap();
-    let index = key_manager.find_key_index("branch1".to_string(), &key_1).await.unwrap();
+    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let key_1_2 = key_manager.get_key_at_index("branch1", 7).await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1).await.unwrap();
     assert_eq!(index, 7);
     assert_eq!(key_1_2, key_1);
+}
+
+#[tokio::test]
+async fn key_manager_test_index() {
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let cipher = CipherSeed::new();
+
+    let key_manager = KeyManagerHandle::new(
+        cipher,
+        KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
+    );
+    key_manager.add_new_branch("branch1").await.unwrap();
+    key_manager.add_new_branch("branch2").await.unwrap();
+    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let (key_1, index) = key_manager.get_next_key("branch1").await.unwrap();
+    let key_2 = key_manager.get_key_at_index("branch2", index).await.unwrap();
+
+    assert_eq!(index, key_manager.find_key_index("branch1", &key_1).await.unwrap());
+    assert_eq!(index, key_manager.find_key_index("branch2", &key_2).await.unwrap());
 }

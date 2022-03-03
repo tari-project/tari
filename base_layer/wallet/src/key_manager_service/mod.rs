@@ -32,13 +32,12 @@ pub use initializer::KeyManagerInitializer;
 mod service;
 pub use service::KeyManagerInner;
 
-#[cfg(test)]
-mod test;
-
 mod mock;
 pub use mock::KeyManagerMock;
+#[cfg(test)]
+mod test;
 
 mod interface;
 pub mod storage;
 
-pub use interface::KeyManagerInterface;
+pub use interface::{AddResult, KeyManagerInterface};
