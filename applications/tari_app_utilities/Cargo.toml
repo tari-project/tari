@@ -3,6 +3,7 @@ name = "tari_app_utilities"
 version = "0.28.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
+license = "BSD-3-Clause"
 
 [dependencies]
 tari_comms = { path = "../../comms" }
