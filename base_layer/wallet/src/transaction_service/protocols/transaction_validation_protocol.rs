@@ -95,13 +95,13 @@ where
         }
     }
 
-    pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
         let mut base_node_wallet_client = self
             .connectivity
             .obtain_base_node_wallet_rpc_client()
             .await
             .ok_or(TransactionServiceError::Shutdown)
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         self.check_for_reorgs(&mut *base_node_wallet_client).await?;
         debug!(
@@ -113,7 +113,7 @@ where
             .db
             .fetch_unconfirmed_transactions_info()
             .await
-            .for_protocol(self.operation_id.as_u64())
+            .for_protocol(self.operation_id)
             .unwrap();
 
         let mut state_changed = false;
@@ -121,7 +121,7 @@ where
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
                 .await
-                .for_protocol(self.operation_id.as_u64())?;
+                .for_protocol(self.operation_id)?;
             debug!(
                 target: LOG_TARGET,
                 "Base node returned {} as mined and {} as unmined (Operation ID: {})",
@@ -207,7 +207,7 @@ where
     async fn check_for_reorgs(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         debug!(
             target: LOG_TARGET,
             "Checking last mined transactions to see if the base node has re-orged (Operation ID: {})",
@@ -386,7 +386,7 @@ where
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_mined_height(
                 tx_id,
@@ -397,7 +397,7 @@ where
                 status.is_faux(),
             )
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         if num_confirmations >= self.config.num_confirmations_required {
             if status.is_faux() {
@@ -441,7 +441,7 @@ where
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_mined_height(
                 tx_id,
@@ -452,12 +452,12 @@ where
                 false,
             )
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         self.db
             .abandon_coinbase_transaction(tx_id)
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, true).await {
             warn!(
@@ -479,11 +479,11 @@ where
         &mut self,
         tx_id: TxId,
         status: &TransactionStatus,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_as_unmined(tx_id)
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         if *status == TransactionStatus::Coinbase {
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {

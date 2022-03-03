@@ -96,6 +96,7 @@ impl WalletEventMonitor {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_received(tx_id);
+                                        self.add_notification(format!("Finalized Transaction Received - TxId: {}", tx_id)).await;
                                     },
                                     TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
                                     TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _}=> {
@@ -103,6 +104,7 @@ impl WalletEventMonitor {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
+                                        self.add_notification(format!("Transaction Mined Unconfirmed with {} confirmations - TxId: {}", num_confirmations, tx_id)).await;
                                     },
                                     TransactionEvent::TransactionMined{tx_id, is_valid: _} |
                                     TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _}=> {
@@ -110,15 +112,28 @@ impl WalletEventMonitor {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined(tx_id);
+                                        self.add_notification(format!("Transaction Confirmed - TxId: {}", tx_id)).await;
                                     },
                                     TransactionEvent::TransactionCancelled(tx_id, _) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_cancelled(tx_id);
                                     },
-                                    TransactionEvent::ReceivedTransaction(tx_id) |
-                                    TransactionEvent::ReceivedTransactionReply(tx_id) |
-                                    TransactionEvent::TransactionBroadcast(tx_id) |
+                                    TransactionEvent::ReceivedTransaction(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
+                                        self.add_notification(format!("Transaction Received - TxId: {}", tx_id)).await;
+                                    },
+                                    TransactionEvent::ReceivedTransactionReply(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
+                                        self.add_notification(format!("Transaction Reply Received - TxId: {}", tx_id)).await;
+                                    },
+                                    TransactionEvent::TransactionBroadcast(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
+                                        self.add_notification(format!("Transaction Broadcast to Mempool - TxId: {}", tx_id)).await;
+                                    },
                                     TransactionEvent::TransactionMinedRequestTimedOut(tx_id) |
                                     TransactionEvent::TransactionImported(tx_id)  => {
                                         self.trigger_tx_state_refresh(tx_id).await;
@@ -222,7 +237,7 @@ impl WalletEventMonitor {
                                 match liveness_event.deref() {
                                     ContactsLivenessEvent::StatusUpdated(data) => {
                                         trace!(target: LOG_TARGET,
-                                            "Contacts Liveness Service Callback Handler event 'StatusUpdated': {}",
+                                            "Contacts Liveness Service event 'StatusUpdated': {}",
                                             data.clone(),
                                         );
                                         self.trigger_contacts_refresh().await;
