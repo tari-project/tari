@@ -1152,8 +1152,9 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
-        let result = diesel::update(completed_transactions::table.filter(completed_transactions::cancelled.is_null()))
+        let result = diesel::update(completed_transactions::table)
             .set((
+                completed_transactions::cancelled.eq::<Option<i32>>(None),
                 completed_transactions::mined_height.eq::<Option<i64>>(None),
                 completed_transactions::mined_in_block.eq::<Option<Vec<u8>>>(None),
             ))
