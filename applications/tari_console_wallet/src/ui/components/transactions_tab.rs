@@ -174,7 +174,7 @@ impl TransactionsTab {
         self.completed_list_state.set_num_items(completed_txs.len());
         if let Some(detailed_tx) = &self.detailed_transaction {
             if self.selected_tx_list == SelectedTransactionList::CompletedTxs {
-                 let found_index = completed_txs.iter().position(|tx| tx.tx_id == detailed_tx.tx_id);
+                let found_index = completed_txs.iter().position(|tx| tx.tx_id == detailed_tx.tx_id);
                 self.completed_list_state.select(found_index);
             }
         }
