@@ -1,4 +1,4 @@
-// Copyright 2021. The Tari Project
+// Copyright 2022. The Tari Project
 //
 // Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 // following conditions are met:
@@ -20,13 +20,5 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-mod asset_manager;
-pub(crate) use asset_manager::AssetManager;
-pub use asset_manager::KEY_MANAGER_ASSET_BRANCH;
-
-mod asset;
-pub use asset::Asset;
-
-mod asset_manager_handle;
-pub use asset_manager_handle::AssetManagerHandle;
-pub(crate) mod infrastructure;
+pub mod database;
+pub mod sqlite_db;
