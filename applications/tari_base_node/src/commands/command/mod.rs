@@ -28,6 +28,7 @@ mod search_utxo;
 mod status;
 mod unban_all_peers;
 mod version;
+mod watch_command;
 mod whoami;
 
 use std::{str::FromStr, sync::Arc, time::Instant};
@@ -101,6 +102,7 @@ pub enum Command {
     GetNetworkStats(get_network_stats::Args),
     Quit(quit::Args),
     Exit(quit::Args),
+    Watch(watch_command::Args),
 }
 
 impl Command {
@@ -193,6 +195,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::Whoami(args) => self.handle_command(args).await,
             Command::ListBannedPeers(args) => self.handle_command(args).await,
             Command::Quit(args) | Command::Exit(args) => self.handle_command(args).await,
+            Command::Watch(args) => self.handle_command(args).await,
         }
     }
 }
