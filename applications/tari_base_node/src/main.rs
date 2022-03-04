@@ -405,14 +405,14 @@ async fn cli_loop(mut context: CommandContext) {
 
     let mut shutdown_signal = context.shutdown.to_signal();
     let start_time = Instant::now();
-    // let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
+    // TODO: Repair it
+    // let mut software_update_notif = context.get_software_updater().new_update_notifier().clone();
     let mut first_signal = false;
-    // TODO: Add heartbeat here
     // Show status immediately on startup
     // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
     let config = context.config.clone();
     loop {
-        let interval = get_status_interval(start_time, config.base_node_status_line_interval);
+        let mut watch_task = None;
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {
@@ -424,9 +424,9 @@ async fn cli_loop(mut context: CommandContext) {
                                     Err(err) => {
                                         println!("Command `{}` failed: {}", line, err);
                                     }
-                                    Ok(Some(watch_task)) => {
+                                    Ok(command) => {
+                                        watch_task = command;
                                     }
-                                    Ok(None) => {}
                                 }
                             }
                         }
@@ -449,25 +449,35 @@ async fn cli_loop(mut context: CommandContext) {
                     break;
                 }
             },
-            /*
-            Ok(_) = software_update_notif.changed() => {
-                if let Some(ref update) = *software_update_notif.borrow() {
-                    println!(
-                        "Version {} of the {} is available: {} (sha: {})",
-                        update.version(),
-                        update.app(),
-                        update.download_url(),
-                        update.to_hash_hex()
-                    );
-                }
-            }
-            */
-            _ = interval => {
-                // TODO: Execute `watch` command here + use the result
-                // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
-            },
             _ = shutdown_signal.wait() => {
                 break;
+            }
+        }
+        if let Some(line) = watch_task {
+            let interval = get_status_interval(start_time, config.base_node_status_line_interval);
+            tokio::select! {
+                _ = interval => {
+                    if let Err(err) = context.handle_command_str(&line).await {
+                        println!("Watched command `{}` failed: {}", line, err);
+                    }
+                    // TODO: Execute `watch` command here + use the result
+                    // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+                },
+                // TODO: How about to check it on start as well?
+                /*
+                Ok(_) = software_update_notif.changed() => {
+                    if let Some(ref update) = *software_update_notif.borrow() {
+                        println!(
+                            "Version {} of the {} is available: {} (sha: {})",
+                            update.version(),
+                            update.app(),
+                            update.download_url(),
+                            update.to_hash_hex()
+                        );
+                    }
+                }
+                */
+                // TODO: Process async ctrl-c here
             }
         }
     }

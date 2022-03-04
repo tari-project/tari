@@ -161,11 +161,10 @@ impl CommandContext {
         }
     }
 
-    pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<Command>, Error> {
+    pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<String>, Error> {
         let args: Args = line.parse()?;
-        if let Command::Watch(watch_args) = args.command {
-            let args: Args = watch_args.command.parse()?;
-            // TODO: Add timeout as well
+        if let Command::Watch(args) = args.command {
+            // TODO: Add interval as well
             Ok(Some(args.command))
         } else {
             let fut = self.handle_command(args.command);
