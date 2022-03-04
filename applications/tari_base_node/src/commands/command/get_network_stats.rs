@@ -12,7 +12,7 @@ pub struct Args {}
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.get_chain_meta().await
+        self.get_network_stats()
     }
 }
 
