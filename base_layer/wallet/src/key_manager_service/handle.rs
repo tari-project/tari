@@ -29,6 +29,7 @@ use tokio::sync::RwLock;
 
 use crate::key_manager_service::{
     error::KeyManagerError,
+    interface::NextKeyResult,
     storage::database::{KeyManagerBackend, KeyManagerDatabase},
     AddResult,
     KeyManagerInner,
@@ -58,7 +59,7 @@ where TBackend: KeyManagerBackend + 'static
         (*self.key_manager_inner)
             .write()
             .await
-            .add_key_manager(branch.into())
+            .add_key_manager_branch(branch.into())
             .await
     }
 
@@ -70,7 +71,7 @@ where TBackend: KeyManagerBackend + 'static
         (*self.key_manager_inner).write().await.remove_encryption().await
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(PrivateKey, u64), KeyManagerError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError> {
         (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
     }
 

@@ -31,7 +31,7 @@ use tari_key_manager::{
 use tokio::sync::RwLock;
 
 use crate::{
-    key_manager_service::{AddResult, KeyManagerInterface},
+    key_manager_service::{interface::NextKeyResult, AddResult, KeyManagerInterface},
     types::KeyDigest,
 };
 
@@ -79,11 +79,14 @@ impl KeyManagerMock {
         Ok(result)
     }
 
-    pub async fn get_next_key_mock(&self, branch: String) -> Result<(PrivateKey, u64), KeyManagerError> {
+    pub async fn get_next_key_mock(&self, branch: String) -> Result<NextKeyResult, KeyManagerError> {
         let mut lock = self.key_managers.write().await;
         let km = lock.get_mut(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
         let key = km.next_key()?;
-        Ok((key.k, km.key_index()))
+        Ok(NextKeyResult {
+            key: key.k,
+            index: km.key_index(),
+        })
     }
 
     pub async fn get_key_at_index_mock(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
@@ -145,7 +148,7 @@ impl KeyManagerInterface for KeyManagerMock {
         self.add_key_manager_mock(branch.into()).await
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(PrivateKey, u64), KeyManagerError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError> {
         self.get_next_key_mock(branch.into()).await
     }
 

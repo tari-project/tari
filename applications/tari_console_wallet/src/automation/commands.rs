@@ -811,8 +811,8 @@ pub async fn command_runner(
                 let mut manager = wallet.asset_manager.clone();
                 let key_manager = wallet.key_manager_service.clone();
                 key_manager.add_new_branch(KEY_MANAGER_ASSET_BRANCH).await?;
-                let (key, _) = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
-                let public_key = PublicKey::from_secret_key(&key);
+                let result = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
+                let public_key = PublicKey::from_secret_key(&result.key);
                 let public_key_hex = public_key.to_hex();
                 println!("Registering asset named: {name}");
                 println!("with public key: {public_key_hex}");

@@ -45,17 +45,17 @@ async fn get_key_at_test_no_encryption() {
             KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap()),
         );
         key_manager.add_new_branch("branch1").await.unwrap();
-        let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
-        let (key_2, _) = key_manager.get_next_key("branch1").await.unwrap();
-        let (key_3, _) = key_manager.get_next_key("branch1").await.unwrap();
+        let key_1 = key_manager.get_next_key("branch1").await.unwrap();
+        let key_2 = key_manager.get_next_key("branch1").await.unwrap();
+        let key_3 = key_manager.get_next_key("branch1").await.unwrap();
 
-        assert_ne!(key_1, key_2);
-        assert_ne!(key_1, key_3);
-        assert_ne!(key_2, key_3);
+        assert_ne!(key_1.key, key_2.key);
+        assert_ne!(key_1.key, key_3.key);
+        assert_ne!(key_2.key, key_3.key);
 
         key1 = Some(key_manager.get_key_at_index("branch1", 1).await.unwrap());
 
-        assert_eq!(key_1, key1.clone().unwrap());
+        assert_eq!(key_1.key, key1.clone().unwrap());
     }
     {
         let key_manager = KeyManagerHandle::new(
@@ -63,9 +63,9 @@ async fn get_key_at_test_no_encryption() {
             KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
         );
         key_manager.add_new_branch("branch1").await.unwrap();
-        let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+        let key_1 = key_manager.get_next_key("branch1").await.unwrap();
 
-        assert_ne!(key_1, key1.clone().unwrap());
+        assert_ne!(key_1.key, key1.clone().unwrap());
         let key_1_2 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
 
         assert_eq!(key1.unwrap(), key_1_2);
@@ -83,17 +83,17 @@ async fn get_key_at_test_with_encryption() {
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, Some(db_cipher)).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
-    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
-    let (key_2, _) = key_manager.get_next_key("branch1").await.unwrap();
-    let (key_3, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let key_1 = key_manager.get_next_key("branch1").await.unwrap();
+    let key_2 = key_manager.get_next_key("branch1").await.unwrap();
+    let key_3 = key_manager.get_next_key("branch1").await.unwrap();
 
-    assert_ne!(key_1, key_2);
-    assert_ne!(key_1, key_3);
-    assert_ne!(key_2, key_3);
+    assert_ne!(key_1.key, key_2.key);
+    assert_ne!(key_1.key, key_3.key);
+    assert_ne!(key_2.key, key_3.key);
 
     let key_1_2 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
 
-    assert_eq!(key_1, key_1_2);
+    assert_eq!(key_1.key, key_1_2);
 }
 
 #[tokio::test]
@@ -114,14 +114,14 @@ async fn key_manager_multiple_branches() {
     );
     key_manager.add_new_branch("branch2").await.unwrap();
     key_manager.add_new_branch("branch3").await.unwrap();
-    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
-    let (key_2, _) = key_manager.get_next_key("branch2").await.unwrap();
-    let (key_3, _) = key_manager.get_next_key("branch3").await.unwrap();
+    let key_1 = key_manager.get_next_key("branch1").await.unwrap();
+    let key_2 = key_manager.get_next_key("branch2").await.unwrap();
+    let key_3 = key_manager.get_next_key("branch3").await.unwrap();
     assert!(key_manager.get_next_key("branch4").await.is_err());
 
-    assert_ne!(key_1, key_2);
-    assert_ne!(key_1, key_3);
-    assert_ne!(key_2, key_3);
+    assert_ne!(key_1.key, key_2.key);
+    assert_ne!(key_1.key, key_3.key);
+    assert_ne!(key_2.key, key_3.key);
 
     let key_1 = key_manager.get_key_at_index("branch1", 1).await.unwrap();
     let key_2 = key_manager.get_key_at_index("branch2", 1).await.unwrap();
@@ -144,8 +144,8 @@ async fn key_manager_find_index() {
     key_manager.add_new_branch("branch1").await.unwrap();
     let _ = key_manager.get_next_key("branch1").await.unwrap();
     let _ = key_manager.get_next_key("branch1").await.unwrap();
-    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1).await.unwrap();
+    let key_1 = key_manager.get_next_key("branch1").await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
 
     assert_eq!(index, 3);
 }
@@ -162,8 +162,8 @@ async fn key_manager_update_current_key_index_if_higher() {
     key_manager.add_new_branch("branch1").await.unwrap();
     let _ = key_manager.get_next_key("branch1").await.unwrap();
     let _ = key_manager.get_next_key("branch1").await.unwrap();
-    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1).await.unwrap();
+    let key_1 = key_manager.get_next_key("branch1").await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
 
     assert_eq!(index, 3);
 
@@ -171,11 +171,11 @@ async fn key_manager_update_current_key_index_if_higher() {
         .update_current_key_index_if_higher("branch1", 6)
         .await
         .unwrap();
-    let (key_1, _) = key_manager.get_next_key("branch1").await.unwrap();
+    let key_1 = key_manager.get_next_key("branch1").await.unwrap();
     let key_1_2 = key_manager.get_key_at_index("branch1", 7).await.unwrap();
-    let index = key_manager.find_key_index("branch1", &key_1).await.unwrap();
+    let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
     assert_eq!(index, 7);
-    assert_eq!(key_1_2, key_1);
+    assert_eq!(key_1_2, key_1.key);
 }
 
 #[tokio::test]
@@ -191,9 +191,15 @@ async fn key_manager_test_index() {
     key_manager.add_new_branch("branch2").await.unwrap();
     let _ = key_manager.get_next_key("branch1").await.unwrap();
     let _ = key_manager.get_next_key("branch1").await.unwrap();
-    let (key_1, index) = key_manager.get_next_key("branch1").await.unwrap();
-    let key_2 = key_manager.get_key_at_index("branch2", index).await.unwrap();
+    let result = key_manager.get_next_key("branch1").await.unwrap();
+    let key_2 = key_manager.get_key_at_index("branch2", result.index).await.unwrap();
 
-    assert_eq!(index, key_manager.find_key_index("branch1", &key_1).await.unwrap());
-    assert_eq!(index, key_manager.find_key_index("branch2", &key_2).await.unwrap());
+    assert_eq!(
+        result.index,
+        key_manager.find_key_index("branch1", &result.key).await.unwrap()
+    );
+    assert_eq!(
+        result.index,
+        key_manager.find_key_index("branch2", &key_2).await.unwrap()
+    );
 }

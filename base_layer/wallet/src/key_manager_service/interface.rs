@@ -32,6 +32,11 @@ pub enum AddResult {
     AlreadyExists,
 }
 
+pub struct NextKeyResult {
+    pub key: PrivateKey,
+    pub index: u64,
+}
+
 #[async_trait::async_trait]
 pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError>;
@@ -40,7 +45,7 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
 
     async fn remove_encryption(&self) -> Result<(), KeyManagerError>;
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<(PrivateKey, u64), KeyManagerError>;
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError>;
 
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,

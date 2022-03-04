@@ -38,6 +38,7 @@ use std::collections::HashMap;
 
 use crate::key_manager_service::{
     error::KeyManagerError,
+    interface::NextKeyResult,
     storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
     AddResult,
 };
@@ -59,7 +60,7 @@ where TBackend: KeyManagerBackend + 'static
         }
     }
 
-    pub async fn add_key_manager(&mut self, branch: String) -> Result<AddResult, KeyManagerError> {
+    pub async fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerError> {
         let result = if self.key_managers.contains_key(&branch) {
             AddResult::AlreadyExists
         } else {
@@ -87,7 +88,7 @@ where TBackend: KeyManagerBackend + 'static
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: String) -> Result<(PrivateKey, u64), KeyManagerError> {
+    pub async fn get_next_key(&self, branch: String) -> Result<NextKeyResult, KeyManagerError> {
         let mut km = self
             .key_managers
             .get(&branch)
@@ -96,7 +97,10 @@ where TBackend: KeyManagerBackend + 'static
             .await;
         let key = km.next_key()?;
         self.db.increment_key_index(branch).await?;
-        Ok((key.k, km.key_index()))
+        Ok(NextKeyResult {
+            key: key.k,
+            index: km.key_index(),
+        })
     }
 
     pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {

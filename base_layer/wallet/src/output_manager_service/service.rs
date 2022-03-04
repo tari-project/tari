@@ -672,7 +672,7 @@ where
     }
 
     async fn get_spend_and_script_keys(&self) -> Result<(PrivateKey, PrivateKey), OutputManagerError> {
-        let (spend_key, index) = self
+        let result = self
             .resources
             .master_key_manager
             .get_next_key(OutputManagerKeyManagerBranch::Spend)
@@ -680,9 +680,9 @@ where
         let script_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, index)
+            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, result.index)
             .await?;
-        Ok((spend_key, script_key))
+        Ok((result.key, script_key))
     }
 
     async fn create_output_with_features(
