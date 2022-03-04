@@ -13,4 +13,3 @@ impl HandleCommand<Args> for CommandContext {
         Ok(())
     }
 }
-

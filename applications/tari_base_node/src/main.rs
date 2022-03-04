@@ -101,9 +101,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::{CommandFactory, FromArgMatches};
 use commands::{
-    command::{Args, CommandContext, HandleCommand},
+    command::CommandContext,
     parser::Parser,
     reader::{CommandEvent, CommandReader},
 };
@@ -421,28 +420,8 @@ async fn cli_loop(mut context: CommandContext) {
                         CommandEvent::Command(line) => {
                             first_signal = false;
                             if !line.is_empty() {
-                                let sw = line.split_whitespace();
-                                let args = Args::command().no_binary_name(true)
-                                    .try_get_matches_from(sw)
-                                    .and_then(|matches| Args::from_arg_matches(&matches));
-                                match args {
-                                    Ok(args) => {
-                                        let fut = context.handle_command(args.command);
-                                        let res = time::timeout(Duration::from_secs(70), fut).await;
-                                        match res {
-                                            Ok(Ok(())) => {
-                                            }
-                                            Ok(Err(err)) => {
-                                                println!("Command failed: {}", err);
-                                            }
-                                            Err(_timeout) => {
-                                                println!("Time for command execution elapsed: `{}`", line);
-                                            }
-                                        }
-                                    }
-                                    Err(err) => {
-                                        println!("Invalid args: {}\n", err);
-                                    }
+                                if let Err(err) = context.handle_command_str(&line).await {
+                                    println!("Command `{}` failed: {}", line, err);
                                 }
                             }
                         }

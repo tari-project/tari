@@ -31,11 +31,15 @@ mod version;
 mod watch_command;
 mod whoami;
 
-use std::{str::FromStr, sync::Arc, time::Instant};
+use std::{
+    str::FromStr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_common::GlobalConfig;
 use tari_comms::{
@@ -54,7 +58,7 @@ use tari_core::{
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_shutdown::Shutdown;
-use tokio::sync::watch;
+use tokio::{sync::watch, time};
 
 use crate::{builder::BaseNodeContext, commands::parser::FromHex};
 
@@ -156,6 +160,15 @@ impl CommandContext {
             shutdown,
         }
     }
+
+    pub async fn handle_command_str(&mut self, line: &str) -> Result<(), Error> {
+        let sw = line.split_whitespace();
+        let matches = Args::command().no_binary_name(true).try_get_matches_from(sw)?;
+        let args = Args::from_arg_matches(&matches)?;
+        let fut = self.handle_command(args.command);
+        time::timeout(Duration::from_secs(70), fut).await??;
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -245,7 +258,7 @@ where
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(hex) = FromHex::<Vec<u8>>::from_str(s) {
+        if let Ok(hex) = FromHex::from_str(s) {
             Ok(Self::Hex(hex))
         } else {
             T::from_str(s).map(Self::Type).map_err(Error::from)
