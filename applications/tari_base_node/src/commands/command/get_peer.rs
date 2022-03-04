@@ -12,7 +12,7 @@ use super::{CommandContext, HandleCommand, TypeOrHex};
 #[derive(Debug, Parser)]
 pub struct Args {
     /// Partial NodeId | PublicKey | EmojiId
-    value: TypeOrHex<UniNodeId>,
+    value: String,
 }
 
 impl From<TypeOrHex<UniNodeId>> for Vec<u8> {
@@ -27,8 +27,8 @@ impl From<TypeOrHex<UniNodeId>> for Vec<u8> {
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
-        let original_string = todo!();
-        self.get_peer(args.value.into(), original_string).await
+        let value: TypeOrHex<UniNodeId> = args.value.parse()?;
+        self.get_peer(value.into(), args.value).await
     }
 }
 
