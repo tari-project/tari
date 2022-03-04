@@ -20,9 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{iter, time::Duration};
-
-use rand::{distributions::Alphanumeric, rngs::OsRng, Rng};
+use std::time::Duration;
 
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
@@ -115,14 +113,8 @@ impl DhtConfig {
     }
 
     pub fn default_local_test() -> Self {
-        let db_name = iter::repeat(())
-            .map(|_| OsRng.sample(Alphanumeric))
-            .map(char::from)
-            .take(8)
-            .collect::<String>();
-
         Self {
-            database_url: DbConnectionUrl::MemoryShared(format!("/tmp/{}", db_name)),
+            database_url: DbConnectionUrl::Memory,
             saf_config: SafConfig {
                 auto_request: false,
                 ..Default::default()
