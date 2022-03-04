@@ -59,6 +59,7 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_shutdown::Shutdown;
 use tokio::{sync::watch, time};
+use watch_command::WatchCommand;
 
 use crate::{builder::BaseNodeContext, commands::parser::FromHex};
 
@@ -161,11 +162,10 @@ impl CommandContext {
         }
     }
 
-    pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<String>, Error> {
+    pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<WatchCommand>, Error> {
         let args: Args = line.parse()?;
-        if let Command::Watch(args) = args.command {
-            // TODO: Add interval as well
-            Ok(Some(args.command))
+        if let Command::Watch(command) = args.command {
+            Ok(Some(command))
         } else {
             let fut = self.handle_command(args.command);
             time::timeout(Duration::from_secs(70), fut).await??;
