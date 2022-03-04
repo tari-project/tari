@@ -97,6 +97,7 @@ pub enum WalletCommand {
     MintTokens,
     CreateInitialCheckpoint,
     CreateCommitteeDefinition,
+    RevalidateWalletDb,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -925,6 +926,16 @@ pub async fn command_runner(
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
                 println!("Done!");
+            },
+            RevalidateWalletDb => {
+                output_service
+                    .revalidate_all_outputs()
+                    .await
+                    .map_err(CommandError::OutputManagerError)?;
+                transaction_service
+                    .revalidate_all_transactions()
+                    .await
+                    .map_err(CommandError::TransactionServiceError)?;
             },
         }
     }

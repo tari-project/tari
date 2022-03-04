@@ -141,7 +141,7 @@ where
     }
 
     /// Execute the Transaction Send Protocol as an async task.
-    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -161,7 +161,9 @@ where
         Ok(self.id)
     }
 
-    async fn prepare_transaction(&mut self) -> Result<SenderTransactionProtocol, TransactionServiceProtocolError> {
+    async fn prepare_transaction(
+        &mut self,
+    ) -> Result<SenderTransactionProtocol, TransactionServiceProtocolError<TxId>> {
         let service_reply_channel = match self.service_request_reply_channel.take() {
             Some(src) => src,
             None => {
@@ -220,7 +222,7 @@ where
     async fn initial_send_transaction(
         &mut self,
         mut sender_protocol: SenderTransactionProtocol,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<TxId>> {
         if !sender_protocol.is_single_round_message_ready() {
             error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
             return Err(TransactionServiceProtocolError::new(
@@ -321,7 +323,7 @@ where
         Ok(())
     }
 
-    async fn wait_for_reply(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn wait_for_reply(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         // Waiting  for Transaction Reply
         let tx_id = self.id;
         let mut receiver = self
@@ -561,7 +563,7 @@ where
     async fn send_transaction(
         &mut self,
         msg: SingleRoundSenderData,
-    ) -> Result<SendResult, TransactionServiceProtocolError> {
+    ) -> Result<SendResult, TransactionServiceProtocolError<TxId>> {
         let mut result = SendResult {
             direct_send_result: false,
             store_and_forward_send_result: false,
@@ -586,7 +588,7 @@ where
     async fn send_transaction_direct(
         &mut self,
         msg: SingleRoundSenderData,
-    ) -> Result<SendResult, TransactionServiceProtocolError> {
+    ) -> Result<SendResult, TransactionServiceProtocolError<TxId>> {
         let proto_message = proto::TransactionSenderMessage::single(msg.clone().into());
         let mut store_and_forward_send_result = false;
         let mut direct_send_result = false;
@@ -692,7 +694,7 @@ where
     async fn send_transaction_store_and_forward(
         &mut self,
         msg: SingleRoundSenderData,
-    ) -> Result<bool, TransactionServiceProtocolError> {
+    ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         if self.resources.config.transaction_routing_mechanism == TransactionRoutingMechanism::DirectOnly {
             return Ok(false);
         }
@@ -758,7 +760,7 @@ where
         }
     }
 
-    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Cancelling Transaction Send Protocol (TxId: {}) due to timeout after no counterparty response", self.id

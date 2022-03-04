@@ -104,7 +104,7 @@ where
         }
     }
 
-    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Receive protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -123,7 +123,7 @@ where
         Ok(self.id)
     }
 
-    async fn accept_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn accept_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = self.sender_message.clone() {
             // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
@@ -225,7 +225,7 @@ where
         }
     }
 
-    async fn wait_for_finalization(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn wait_for_finalization(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         let mut receiver = self
             .transaction_finalize_receiver
             .take()
@@ -479,7 +479,7 @@ where
         Ok(())
     }
 
-    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Cancelling Transaction Receive Protocol (TxId: {}) due to timeout after no counterparty response", self.id

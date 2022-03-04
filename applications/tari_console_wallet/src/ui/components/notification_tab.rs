@@ -4,9 +4,6 @@
 // are cleared.
 // Currently notifications are only added from the wallet_event_monitor which has
 // add_notification method.
-// TODO: auto delete old notifications. #LOGGED
-// TODO: add interaction with the notifications, e.g. if I have a pending transaction
-//       notification, the UI should go there if I click on it. #LOGGED
 
 use tari_comms::runtime::Handle;
 use tui::{
@@ -29,13 +26,21 @@ impl NotificationTab {
 
     fn draw_notifications<B>(&mut self, f: &mut Frame<B>, area: Rect, app_state: &AppState)
     where B: Backend {
+        let span_vec = vec![
+            Span::raw("Press "),
+            Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
+            Span::raw(" to clear notifications"),
+        ];
+
+        let instructions = Paragraph::new(Spans::from(span_vec)).wrap(Wrap { trim: false });
+
         let block = Block::default().borders(Borders::ALL).title(Span::styled(
             "Notifications",
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
         ));
         f.render_widget(block, area);
         let notifications_area = Layout::default()
-            .constraints([Constraint::Min(42)].as_ref())
+            .constraints([Constraint::Length(1), Constraint::Min(42)].as_ref())
             .margin(1)
             .split(area);
         let text = app_state
@@ -53,7 +58,9 @@ impl NotificationTab {
             })
             .collect::<Vec<_>>();
         let paragraph = Paragraph::new(text).wrap(Wrap { trim: true });
-        f.render_widget(paragraph, notifications_area[0]);
+
+        f.render_widget(instructions, notifications_area[0]);
+        f.render_widget(paragraph, notifications_area[1]);
     }
 }
 
@@ -78,6 +85,12 @@ impl<B: Backend> Component<B> for NotificationTab {
                 Style::default().fg(Color::LightGreen),
             )),
             false => Spans::from(Span::styled(title.to_owned(), Style::default().fg(Color::White))),
+        }
+    }
+
+    fn on_key(&mut self, app_state: &mut AppState, c: char) {
+        if c == 'c' {
+            Handle::current().block_on(app_state.clear_notifications());
         }
     }
 }

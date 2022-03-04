@@ -3244,7 +3244,7 @@ pub unsafe extern "C" fn comms_config_create(
                         allow_test_addresses: true,
                         listener_liveness_allowlist_cidrs: Vec::new(),
                         listener_liveness_max_sessions: 0,
-                        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+                        user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                         dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER
                             .parse()
                             .expect("Default dns name server constant should always be correct"),

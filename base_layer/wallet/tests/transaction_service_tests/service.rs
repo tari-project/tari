@@ -102,12 +102,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_utilities::Hashable;
 use tari_wallet::{
-    base_node_service::{
-        config::BaseNodeServiceConfig,
-        handle::BaseNodeServiceHandle,
-        mock_base_node_service::MockBaseNodeService,
-        BaseNodeServiceInitializer,
-    },
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
         create_wallet_connectivity_mock,
         WalletConnectivityHandle,
@@ -156,6 +151,7 @@ use tokio::{
 };
 
 use crate::support::{
+    base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
