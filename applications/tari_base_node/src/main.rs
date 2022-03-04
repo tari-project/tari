@@ -420,8 +420,13 @@ async fn cli_loop(mut context: CommandContext) {
                         CommandEvent::Command(line) => {
                             first_signal = false;
                             if !line.is_empty() {
-                                if let Err(err) = context.handle_command_str(&line).await {
-                                    println!("Command `{}` failed: {}", line, err);
+                                match context.handle_command_str(&line).await {
+                                    Err(err) => {
+                                        println!("Command `{}` failed: {}", line, err);
+                                    }
+                                    Ok(Some(watch_task)) => {
+                                    }
+                                    Ok(None) => {}
                                 }
                             }
                         }

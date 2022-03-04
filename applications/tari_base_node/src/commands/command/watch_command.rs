@@ -5,7 +5,9 @@ use clap::Parser;
 use super::{CommandContext, HandleCommand};
 
 #[derive(Debug, Parser)]
-pub struct Args {}
+pub struct Args {
+    pub command: String,
+}
 
 #[async_trait]
 impl HandleCommand<Args> for CommandContext {

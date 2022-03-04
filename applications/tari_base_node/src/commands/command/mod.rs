@@ -161,13 +161,28 @@ impl CommandContext {
         }
     }
 
-    pub async fn handle_command_str(&mut self, line: &str) -> Result<(), Error> {
+    pub async fn handle_command_str(&mut self, line: &str) -> Result<Option<Command>, Error> {
+        let args: Args = line.parse()?;
+        if let Command::Watch(watch_args) = args.command {
+            let args: Args = watch_args.command.parse()?;
+            // TODO: Add timeout as well
+            Ok(Some(args.command))
+        } else {
+            let fut = self.handle_command(args.command);
+            time::timeout(Duration::from_secs(70), fut).await??;
+            Ok(None)
+        }
+    }
+}
+
+impl FromStr for Args {
+    type Err = Error;
+
+    fn from_str(line: &str) -> Result<Self, Self::Err> {
         let sw = line.split_whitespace();
         let matches = Args::command().no_binary_name(true).try_get_matches_from(sw)?;
-        let args = Args::from_arg_matches(&matches)?;
-        let fut = self.handle_command(args.command);
-        time::timeout(Duration::from_secs(70), fut).await??;
-        Ok(())
+        let command = Args::from_arg_matches(&matches)?;
+        Ok(command)
     }
 }
 
