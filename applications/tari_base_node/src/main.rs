@@ -101,9 +101,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::Parser as _;
+use clap::{CommandFactory, FromArgMatches};
 use commands::{
-    command::{CommandContext, HandleCommand},
+    command::{Args, CommandContext, HandleCommand},
     parser::Parser,
     reader::{CommandEvent, CommandReader},
 };
@@ -422,7 +422,9 @@ async fn cli_loop(mut context: CommandContext) {
                             first_signal = false;
                             if !line.is_empty() {
                                 let sw = line.split_whitespace();
-                                let args = commands::command::Args::try_parse_from(sw);
+                                let args = Args::command().no_binary_name(true)
+                                    .try_get_matches_from(sw)
+                                    .and_then(|matches| Args::from_arg_matches(&matches));
                                 match args {
                                     Ok(args) => {
                                         let fut = context.handle_command(args.command);

@@ -34,7 +34,7 @@ use std::{str::FromStr, sync::Arc, time::Instant};
 
 use anyhow::Error;
 use async_trait::async_trait;
-use clap::{AppSettings, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
 use tari_common::GlobalConfig;
 use tari_comms::{
@@ -58,7 +58,6 @@ use tokio::sync::watch;
 use crate::{builder::BaseNodeContext, commands::parser::FromHex};
 
 #[derive(Debug, Parser)]
-#[clap(setting = AppSettings::NoBinaryName)]
 pub struct Args {
     #[clap(subcommand)]
     pub command: Command,
