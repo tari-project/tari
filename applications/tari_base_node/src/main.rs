@@ -413,77 +413,79 @@ async fn cli_loop(mut context: CommandContext) {
     let config = context.config.clone();
     loop {
         let mut watch_task = None;
-        loop {
-            tokio::select! {
-                res = reader.next_command() => {
-                    if let Some(event) = res {
-                        match event {
-                            CommandEvent::Command(line) => {
-                                first_signal = false;
-                                if !line.is_empty() {
-                                    match context.handle_command_str(&line).await {
-                                        Err(err) => {
-                                            println!("Command `{}` failed: {}", line, err);
-                                        }
-                                        Ok(command) => {
-                                            watch_task = command;
-                                        }
+        tokio::select! {
+            res = reader.next_command() => {
+                if let Some(event) = res {
+                    match event {
+                        CommandEvent::Command(line) => {
+                            first_signal = false;
+                            if !line.is_empty() {
+                                match context.handle_command_str(&line).await {
+                                    Err(err) => {
+                                        println!("Command `{}` failed: {}", line, err);
+                                    }
+                                    Ok(command) => {
+                                        watch_task = command;
                                     }
                                 }
                             }
-                            CommandEvent::Interrupt => {
-                                if !first_signal {
-                                    println!("Are you leaving already? Press Ctrl-C again to terminate the node.");
-                                    first_signal = true;
-                                } else {
-                                    break;
-                                }
-                            }
-                            CommandEvent::Error(err) => {
-                                // TODO: Not sure we have to break here
-                                // This happens when the node is shutting down.
-                                debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                        }
+                        CommandEvent::Interrupt => {
+                            if !first_signal {
+                                println!("Are you leaving already? Press Ctrl-C again to terminate the node.");
+                                first_signal = true;
+                            } else {
                                 break;
                             }
                         }
-                    } else {
-                        break;
+                        CommandEvent::Error(err) => {
+                            // TODO: Not sure we have to break here
+                            // This happens when the node is shutting down.
+                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                            break;
+                        }
                     }
-                },
-                _ = shutdown_signal.wait() => {
+                } else {
                     break;
                 }
+            },
+            _ = shutdown_signal.wait() => {
+                break;
             }
         }
         if let Some(command) = watch_task.as_ref() {
             let line = command.line();
-            loop {
-                let interval = get_status_interval(start_time, config.base_node_status_line_interval);
-                tokio::select! {
-                    _ = interval => {
-                        if let Err(err) = context.handle_command_str(line).await {
-                            println!("Watched command `{}` failed: {}", line, err);
+            if let Err(err) = context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                loop {
+                    let interval = get_status_interval(start_time, config.base_node_status_line_interval);
+                    tokio::select! {
+                        _ = interval => {
+                            if let Err(err) = context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                            // TODO: Execute `watch` command here + use the result
+                            // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+                        },
+                        _ = signal::ctrl_c() => {
+                            break;
                         }
-                        // TODO: Execute `watch` command here + use the result
-                        // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
-                    },
-                    _ = signal::ctrl_c() => {
-                        break;
-                    }
-                    // TODO: How about to check it on start as well?
-                    /*
-                    Ok(_) = software_update_notif.changed() => {
-                        if let Some(ref update) = *software_update_notif.borrow() {
-                            println!(
-                                "Version {} of the {} is available: {} (sha: {})",
-                                update.version(),
-                                update.app(),
-                                update.download_url(),
-                                update.to_hash_hex()
-                            );
+                        // TODO: How about to check it on start as well?
+                        /*
+                        Ok(_) = software_update_notif.changed() => {
+                            if let Some(ref update) = *software_update_notif.borrow() {
+                                println!(
+                                    "Version {} of the {} is available: {} (sha: {})",
+                                    update.version(),
+                                    update.app(),
+                                    update.download_url(),
+                                    update.to_hash_hex()
+                                );
+                            }
                         }
+                        */
                     }
-                    */
                 }
             }
         }
