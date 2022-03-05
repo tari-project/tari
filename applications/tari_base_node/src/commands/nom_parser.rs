@@ -1,7 +1,7 @@
 use derive_more::IntoIterator;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, take_until},
+    bytes::complete::{tag, take_until, take_while1},
     character::complete::multispace1,
     error::Error,
     multi::many0,
@@ -42,9 +42,18 @@ fn parse_parameters(input: &str) -> IResult<&str, Vec<&str>> {
 const PQ: &str = "\"";
 const SQ: &str = "'";
 
+fn is_valid_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
+}
+
+fn valid_item(input: &str) -> IResult<&str, &str> {
+    take_while1(is_valid_char)(input)
+}
+
 fn parse_pair(input: &str) -> IResult<&str, &str> {
     alt((
         delimited(tag(PQ), take_until(PQ), tag(PQ)),
         delimited(tag(SQ), take_until(SQ), tag(SQ)),
+        valid_item,
     ))(input)
 }
