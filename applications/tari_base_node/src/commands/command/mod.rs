@@ -61,7 +61,10 @@ use tari_shutdown::Shutdown;
 use tokio::{sync::watch, time};
 use watch_command::WatchCommand;
 
-use crate::{builder::BaseNodeContext, commands::parser::FromHex};
+use crate::{
+    builder::BaseNodeContext,
+    commands::{nom_parser::ParsedCommand, parser::FromHex},
+};
 
 #[derive(Debug, Parser)]
 pub struct Args {
@@ -178,8 +181,8 @@ impl FromStr for Args {
     type Err = Error;
 
     fn from_str(line: &str) -> Result<Self, Self::Err> {
-        let sw = line.split_whitespace();
-        let matches = Args::command().no_binary_name(true).try_get_matches_from(sw)?;
+        let args = ParsedCommand::parse(line)?;
+        let matches = Args::command().no_binary_name(true).try_get_matches_from(args)?;
         let command = Args::from_arg_matches(&matches)?;
         Ok(command)
     }

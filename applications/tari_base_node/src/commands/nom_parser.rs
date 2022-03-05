@@ -1,23 +1,28 @@
+use derive_more::IntoIterator;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_until, take_while1},
-    character::complete::{char, multispace0, multispace1},
-    combinator::rest,
+    bytes::complete::{tag, take_until},
+    character::complete::multispace1,
     error::Error,
     multi::many0,
-    sequence::{delimited, preceded, separated_pair},
+    sequence::{delimited, preceded},
     Err,
     IResult,
 };
 
+#[derive(IntoIterator)]
 pub struct ParsedCommand<'a> {
     items: Vec<&'a str>,
 }
 
 impl<'a> ParsedCommand<'a> {
-    pub fn parse(input: &'a str) -> Result<ParsedCommand<'a>, Err<Error<&str>>> {
-        parse_command(input).map(|pair| pair.1)
+    pub fn parse(line: &'a str) -> Result<Self, anyhow::Error> {
+        parse(line).map_err(|err| anyhow::Error::msg(err.to_string()))
     }
+}
+
+fn parse(input: &str) -> Result<ParsedCommand<'_>, Err<Error<&str>>> {
+    parse_command(input).map(|pair| pair.1)
 }
 
 fn parse_command(input: &str) -> IResult<&str, ParsedCommand<'_>> {
