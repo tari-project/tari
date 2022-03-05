@@ -36,6 +36,7 @@ futures = { version = "^0.3.16", default-features = false, features = ["alloc"] 
 log = { version = "0.4.8", features = ["std"] }
 log-mdc = "0.1.0"
 num_cpus = "1"
+nom = "7.1.0"
 regex = "1"
 rustyline = "9.0"
 rustyline-derive = "0.5"

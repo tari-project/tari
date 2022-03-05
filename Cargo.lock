@@ -6553,6 +6553,7 @@ dependencies = [
  "futures 0.3.21",
  "log",
  "log-mdc",
+ "nom 7.1.0",
  "num_cpus",
  "opentelemetry",
  "opentelemetry-jaeger",
