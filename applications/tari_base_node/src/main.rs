@@ -452,11 +452,15 @@ async fn cli_loop(mut context: CommandContext) {
         }
         if let Some(command) = watch_task.as_ref() {
             let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
             if let Err(err) = context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
                 loop {
-                    let interval = get_status_interval(start_time, config.base_node_status_line_interval);
+                    let interval = get_status_interval(start_time, interval);
                     tokio::select! {
                         _ = interval => {
                             if let Err(err) = context.handle_command_str(line).await {

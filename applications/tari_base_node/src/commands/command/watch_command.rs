@@ -14,10 +14,13 @@ impl fmt::Display for WatchCommand {
     }
 }
 
+/// Repeat a command within an interval.
 #[derive(Debug, Parser)]
 pub struct Args {
+    /// Interval in seconds
     #[clap(short, long)]
     pub interval: Option<u64>,
+    /// The command to perform. `status` if empty.
     pub command: Option<String>,
 }
 
