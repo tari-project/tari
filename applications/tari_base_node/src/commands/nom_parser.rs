@@ -2,7 +2,7 @@ use derive_more::IntoIterator;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_until, take_while1},
-    character::complete::multispace1,
+    character::complete::multispace0,
     error::Error,
     multi::many0,
     sequence::{delimited, preceded},
@@ -27,16 +27,13 @@ fn parse(input: &str) -> Result<ParsedCommand<'_>, Err<Error<&str>>> {
 
 fn parse_command(input: &str) -> IResult<&str, ParsedCommand<'_>> {
     let input = input.trim();
-
     let (input, pairs) = parse_parameters(input)?;
-
     let command = ParsedCommand { items: pairs };
-
     Ok((input, command))
 }
 
 fn parse_parameters(input: &str) -> IResult<&str, Vec<&str>> {
-    many0(preceded(multispace1, parse_pair))(input)
+    many0(preceded(multispace0, parse_item))(input)
 }
 
 const PQ: &str = "\"";
@@ -50,10 +47,35 @@ fn valid_item(input: &str) -> IResult<&str, &str> {
     take_while1(is_valid_char)(input)
 }
 
-fn parse_pair(input: &str) -> IResult<&str, &str> {
+fn parse_item(input: &str) -> IResult<&str, &str> {
     alt((
         delimited(tag(PQ), take_until(PQ), tag(PQ)),
         delimited(tag(SQ), take_until(SQ), tag(SQ)),
         valid_item,
     ))(input)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parser() {
+        let items = parse("command").unwrap().items;
+        assert_eq!(items, vec!["command"]);
+        let items = parse("command with parameters").unwrap().items;
+        assert_eq!(items, vec!["command", "with", "parameters"]);
+        let items = parse("command with 'quoted long' \"parameters in\" \"a different \" format")
+            .unwrap()
+            .items;
+        assert_eq!(items, vec![
+            "command",
+            "with",
+            "quoted long",
+            "parameters in",
+            "a different ",
+            "format"
+        ]);
+        // TODO: Support emojis
+    }
 }
