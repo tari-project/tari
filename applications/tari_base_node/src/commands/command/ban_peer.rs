@@ -51,33 +51,31 @@ impl CommandContext {
     pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration, must_ban: bool) -> Result<(), Error> {
         if self.base_node_identity.node_id() == &node_id {
             println!("Cannot ban our own node");
+        } else if must_ban {
+            // TODO: Use errors
+            match self
+                .connectivity
+                .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
+                .await
+            {
+                Ok(_) => println!("Peer was banned in base node."),
+                Err(err) => {
+                    println!("Failed to ban peer: {:?}", err);
+                    log::error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                },
+            }
         } else {
-            if must_ban {
-                // TODO: Use errors
-                match self
-                    .connectivity
-                    .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
-                    .await
-                {
-                    Ok(_) => println!("Peer was banned in base node."),
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        log::error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                    },
-                }
-            } else {
-                match self.peer_manager.unban_peer(&node_id).await {
-                    Ok(_) => {
-                        println!("Peer ban was removed from base node.");
-                    },
-                    Err(err) if err.is_peer_not_found() => {
-                        println!("Peer not found in base node");
-                    },
-                    Err(err) => {
-                        println!("Failed to ban peer: {:?}", err);
-                        log::error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                    },
-                }
+            match self.peer_manager.unban_peer(&node_id).await {
+                Ok(_) => {
+                    println!("Peer ban was removed from base node.");
+                },
+                Err(err) if err.is_peer_not_found() => {
+                    println!("Peer not found in base node");
+                },
+                Err(err) => {
+                    println!("Failed to ban peer: {:?}", err);
+                    log::error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
+                },
             }
         }
         Ok(())
