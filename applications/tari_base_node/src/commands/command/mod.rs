@@ -138,7 +138,7 @@ pub struct CommandContext {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
     state_machine_info: watch::Receiver<StatusInfo>,
-    software_updater: SoftwareUpdaterHandle,
+    pub software_updater: SoftwareUpdaterHandle,
     last_time_full: Instant,
     pub shutdown: Shutdown,
 }

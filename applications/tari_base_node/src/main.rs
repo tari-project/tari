@@ -105,6 +105,7 @@ use commands::{
     command::CommandContext,
     parser::Parser,
     reader::{CommandEvent, CommandReader},
+    status_line::StatusLineOutput,
 };
 use futures::FutureExt;
 use log::*;
@@ -360,7 +361,7 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-async fn status_loop(context: CommandContext) {
+async fn status_loop(mut context: CommandContext) {
     let start_time = Instant::now();
     let mut shutdown_signal = context.shutdown.to_signal();
     let status_interval = context.global_config().base_node_status_line_interval;
@@ -373,8 +374,7 @@ async fn status_loop(context: CommandContext) {
             }
 
             _ = interval => {
-                // TODO: Fix it
-                // command_handler.status(StatusLineOutput::Log).await.ok();
+                context.status(StatusLineOutput::Log).await.ok();
             },
         }
     }
@@ -391,7 +391,7 @@ async fn cli_loop(mut context: CommandContext) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
-    // TODO: Check new version
+    // TODO: Check for a new version here
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -405,11 +405,8 @@ async fn cli_loop(mut context: CommandContext) {
 
     let mut shutdown_signal = context.shutdown.to_signal();
     let start_time = Instant::now();
-    // TODO: Repair it
-    // let mut software_update_notif = context.get_software_updater().new_update_notifier().clone();
+    let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
-    // Show status immediately on startup
-    // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
     let config = context.config.clone();
     loop {
         let mut watch_task = None;
@@ -465,14 +462,11 @@ async fn cli_loop(mut context: CommandContext) {
                             if let Err(err) = context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
                             }
-                            // TODO: Execute `watch` command here + use the result
-                            // let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
                         },
                         _ = signal::ctrl_c() => {
                             break;
                         }
-                        // TODO: How about to check it on start as well?
-                        /*
+                        // TODO: Is that good idea? Or add a separate command?
                         Ok(_) = software_update_notif.changed() => {
                             if let Some(ref update) = *software_update_notif.borrow() {
                                 println!(
@@ -484,7 +478,6 @@ async fn cli_loop(mut context: CommandContext) {
                                 );
                             }
                         }
-                        */
                     }
                 }
             }
