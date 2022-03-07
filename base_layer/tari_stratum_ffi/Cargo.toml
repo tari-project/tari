@@ -11,7 +11,7 @@ tari_comms = { version = "^0.28", path = "../../comms" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_common = {  path = "../../common" }
 tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
-tari_utilities = "^0.3"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 libc = "0.2.65"
 thiserror = "1.0.26"
 hex = "0.4.2"
