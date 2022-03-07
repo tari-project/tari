@@ -102,6 +102,7 @@ pub use dedup::DedupLayer;
 
 mod filter;
 mod logging_middleware;
+mod origin_mac;
 mod peer_validator;
 mod proto;
 mod rpc;

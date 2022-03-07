@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, sync::Arc};
+use std::{
+    convert::{TryFrom, TryInto},
+    sync::Arc,
+};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::{future, stream, StreamExt};
@@ -30,8 +33,7 @@ use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::{NodeId, NodeIdentity, Peer, PeerFeatures, PeerManager, PeerManagerError},
     pipeline::PipelineError,
-    types::{Challenge, CommsPublicKey},
-    utils::signature,
+    types::CommsPublicKey,
 };
 use tari_utilities::{convert::try_convert_all, ByteArray};
 use tokio::sync::mpsc;
@@ -41,11 +43,12 @@ use crate::{
     actor::DhtRequester,
     crypt,
     dedup,
-    envelope::{timestamp_to_datetime, DhtMessageFlags, DhtMessageHeader, NodeDestination},
+    envelope::{timestamp_to_datetime, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
+    origin_mac::{OriginMac, OriginMacError, ProtoOriginMac},
     outbound::{OutboundMessageRequester, SendMessageParams},
     proto::{
-        envelope::{DhtMessageType, OriginMac},
+        envelope::DhtMessageType,
         store_forward::{
             stored_messages_response::SafResponseType,
             StoredMessage as ProtoStoredMessage,
@@ -552,7 +555,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         header: &DhtMessageHeader,
         body: &[u8],
     ) -> Result<(Option<CommsPublicKey>, EnvelopeBody), StoreAndForwardError> {
-        if header.flags.contains(DhtMessageFlags::ENCRYPTED) {
+        if header.flags.is_encrypted() {
             let ephemeral_public_key = header.ephemeral_public_key.as_ref().expect(
                 "[store and forward] DHT header is invalid after validity check because it did not contain an \
                  ephemeral_public_key",
@@ -565,8 +568,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             );
             let shared_secret = crypt::generate_ecdh_secret(node_identity.secret_key(), ephemeral_public_key);
             let decrypted = crypt::decrypt(&shared_secret, &header.origin_mac)?;
-            let mac_challenge = crypt::create_origin_mac_challenge(header, body);
-            let authenticated_pk = Self::authenticate_message(&decrypted, mac_challenge)?;
+            let authenticated_pk = Self::authenticate_message(&decrypted, header, body)?;
 
             trace!(
                 target: LOG_TARGET,
@@ -584,8 +586,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             let authenticated_pk = if header.origin_mac.is_empty() {
                 None
             } else {
-                let mac_challenge = crypt::create_origin_mac_challenge(header, body);
-                Some(Self::authenticate_message(&header.origin_mac, mac_challenge)?)
+                Some(Self::authenticate_message(&header.origin_mac, header, body)?)
             };
             let envelope_body = EnvelopeBody::decode(body).map_err(|_| StoreAndForwardError::MalformedMessage)?;
             Ok((authenticated_pk, envelope_body))
@@ -593,17 +594,21 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn authenticate_message(
-        origin_mac_body: &[u8],
-        challenge: Challenge,
+        cleartext_origin_mac_body: &[u8],
+        header: &DhtMessageHeader,
+        body: &[u8],
     ) -> Result<CommsPublicKey, StoreAndForwardError> {
-        let origin_mac = OriginMac::decode(origin_mac_body)?;
-        let public_key =
-            CommsPublicKey::from_bytes(&origin_mac.public_key).map_err(|_| StoreAndForwardError::InvalidOriginMac)?;
+        let origin_mac = ProtoOriginMac::decode(cleartext_origin_mac_body)?;
+        let origin_mac = OriginMac::try_from(origin_mac)?;
 
-        if signature::verify_challenge(&public_key, &origin_mac.signature, challenge) {
-            Ok(public_key)
+        let challenge = crypt::create_message_challenge(header, body);
+
+        if origin_mac.verify(&challenge) {
+            Ok(origin_mac.into_signer_public_key())
         } else {
-            Err(StoreAndForwardError::InvalidOriginMac)
+            Err(StoreAndForwardError::InvalidOriginMac(
+                OriginMacError::VerificationFailed,
+            ))
         }
     }
 

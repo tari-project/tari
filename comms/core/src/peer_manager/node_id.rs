@@ -32,7 +32,7 @@ use std::{
 
 use blake2::{
     digest::{Update, VariableOutput},
-    VarBlake2b,
+    Blake2bVar,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
 use tari_utilities::{
@@ -74,13 +74,11 @@ impl NodeId {
     pub fn from_key<K: ByteArray>(key: &K) -> Self {
         let bytes = key.as_bytes();
         let mut buf = [0u8; NodeId::byte_size()];
-        VarBlake2b::new(NodeId::byte_size())
+        Blake2bVar::new(NodeId::byte_size())
             .expect("NodeId::byte_size() is invalid")
             .chain(bytes)
-            .finalize_variable(|hash| {
-                // Safety: output size and buf size are equal
-                buf.copy_from_slice(hash)
-            });
+            // Safety: output size and buf size are equal
+            .finalize_variable(&mut buf).unwrap();
         NodeId(buf)
     }
 

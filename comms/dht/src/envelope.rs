@@ -140,8 +140,8 @@ impl DhtMessageType {
 pub struct DhtMessageHeader {
     pub version: DhtProtocolVersion,
     pub destination: NodeDestination,
-    /// Encoded DhtOrigin. This can refer to the same peer that sent the message
-    /// or another peer if the message is being propagated.
+    /// Encoded OriginMac. Depending on message flags, this may be encrypted. This can refer to the same peer that sent
+    /// the message or another peer if the message is being propagated.
     pub origin_mac: Vec<u8>,
     pub ephemeral_public_key: Option<CommsPublicKey>,
     pub message_type: DhtMessageType,
@@ -152,7 +152,7 @@ pub struct DhtMessageHeader {
 
 impl DhtMessageHeader {
     pub fn is_valid(&self) -> bool {
-        if self.flags.contains(DhtMessageFlags::ENCRYPTED) {
+        if self.flags.is_encrypted() {
             !self.origin_mac.is_empty() && self.ephemeral_public_key.is_some()
         } else {
             true
@@ -203,7 +203,7 @@ impl TryFrom<DhtHeader> for DhtMessageHeader {
         };
 
         let expires = header.expires.and_then(timestamp_to_datetime);
-        let version = DhtProtocolVersion::try_from((header.major, header.minor))?;
+        let version = DhtProtocolVersion::try_from(header.major)?;
 
         Ok(Self {
             version,
@@ -234,7 +234,6 @@ impl From<DhtMessageHeader> for DhtHeader {
         let expires = header.expires.map(epochtime_to_datetime);
         Self {
             major: header.version.as_major(),
-            minor: header.version.as_minor(),
             ephemeral_public_key: header
                 .ephemeral_public_key
                 .as_ref()
@@ -260,7 +259,7 @@ impl DhtEnvelope {
 }
 
 /// Represents the ways a destination node can be represented.
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NodeDestination {
     /// The sender has chosen not to disclose the message destination, or the destination is
     /// the peer being sent to.
@@ -272,14 +271,24 @@ pub enum NodeDestination {
 }
 
 impl NodeDestination {
-    /// Returns the slice of bytes of the `CommsPublicKey` or `NodeId`. Returns an empty slice if the destination is
+    /// Returns the bytes of the `CommsPublicKey` or `NodeId`. Returns an empty slice if the destination is
     /// `Unknown`.
-    pub fn as_inner_bytes(&self) -> &[u8] {
-        use NodeDestination::{NodeId, PublicKey, Unknown};
+    pub fn to_inner_bytes(&self) -> [u8; 33] {
+        // It is important that there is no ambiguity between fields when e.g. using bytes as part of hash pre-image
+        // so each type of NodeDestination is assigned a value that differentiates them.
+        let mut buf = [0u8; 33];
         match self {
-            Unknown => &[],
-            PublicKey(pk) => pk.as_bytes(),
-            NodeId(node_id) => node_id.as_bytes(),
+            NodeDestination::Unknown => buf,
+            NodeDestination::PublicKey(pk) => {
+                buf[0] = 1;
+                buf[1..].copy_from_slice(pk.as_bytes());
+                buf
+            },
+            NodeDestination::NodeId(node_id) => {
+                buf[0] = 2;
+                buf[1..=NodeId::byte_size()].copy_from_slice(node_id.as_bytes());
+                buf
+            },
         }
     }
 
@@ -398,6 +407,31 @@ impl From<NodeDestination> for Destination {
             Unknown => Destination::Unknown(true),
             PublicKey(pk) => Destination::PublicKey(pk.to_vec()),
             NodeId(node_id) => Destination::NodeId(node_id.to_vec()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod node_destination {
+        use rand::rngs::OsRng;
+        use tari_crypto::keys::PublicKey;
+        use tari_utilities::hex::{to_hex, Hex};
+
+        use super::*;
+
+        #[test]
+        fn to_inner_bytes() {
+            assert!(NodeDestination::Unknown.to_inner_bytes().iter().all(|b| *b == 0));
+            let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
+            assert!(to_hex(&NodeDestination::PublicKey(Box::new(pk.clone())).to_inner_bytes()).contains(&pk.to_hex()));
+            let node_id = NodeId::from_public_key(&pk);
+            assert!(
+                to_hex(&NodeDestination::NodeId(Box::new(node_id.clone())).to_inner_bytes())
+                    .contains(&node_id.to_hex())
+            );
         }
     }
 }

@@ -28,7 +28,7 @@ use chacha20::{
     Key,
     Nonce,
 };
-use digest::Digest;
+use digest::{Digest, FixedOutput};
 use rand::{rngs::OsRng, RngCore};
 use tari_comms::types::{Challenge, CommsPublicKey};
 use tari_crypto::{
@@ -80,21 +80,16 @@ pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Vec<u8> {
     let nonce_ga = Nonce::from_slice(&nonce);
     let mut cipher = ChaCha20::new(&cipher_key.0, nonce_ga);
 
-    // Cloning the plain text to avoid a caller thinking we have encrypted in place and losing the integral nonce added
-    // below
-    let mut plain_text_clone = plain_text.to_vec();
-
-    cipher.apply_keystream(plain_text_clone.as_mut_slice());
-
-    let mut ciphertext_integral_nonce = Vec::with_capacity(nonce.len() + plain_text_clone.len());
-    ciphertext_integral_nonce.extend(&nonce);
-    ciphertext_integral_nonce.append(&mut plain_text_clone);
-    ciphertext_integral_nonce
+    let mut buf = vec![0u8; plain_text.len() + nonce.len()];
+    buf[..nonce.len()].copy_from_slice(&nonce[..]);
+    buf[nonce.len()..].copy_from_slice(plain_text);
+    cipher.apply_keystream(&mut buf[nonce.len()..]);
+    buf
 }
 
-/// Generates a challenge for the origin MAC.
-pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Challenge {
-    create_origin_mac_challenge_parts(
+/// Generates a 32-byte hashed challenge that commits to the message header and body
+pub fn create_message_challenge(header: &DhtMessageHeader, body: &[u8]) -> [u8; 32] {
+    create_message_challenge_parts(
         header.version,
         &header.destination,
         header.message_type,
@@ -105,8 +100,8 @@ pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Ch
     )
 }
 
-/// Generates a challenge for the origin MAC.
-pub fn create_origin_mac_challenge_parts(
+/// Generates a 32-byte hashed challenge that commits to all message parts
+pub fn create_message_challenge_parts(
     protocol_version: DhtProtocolVersion,
     destination: &NodeDestination,
     message_type: DhtMessageType,
@@ -114,20 +109,27 @@ pub fn create_origin_mac_challenge_parts(
     expires: Option<EpochTime>,
     ephemeral_public_key: Option<&CommsPublicKey>,
     body: &[u8],
-) -> Challenge {
+) -> [u8; 32] {
     let mut mac_challenge = Challenge::new();
-    mac_challenge.update(&protocol_version.to_bytes());
-    mac_challenge.update(destination.as_inner_bytes());
+    mac_challenge.update(&protocol_version.as_bytes());
+    mac_challenge.update(destination.to_inner_bytes());
     mac_challenge.update(&(message_type as i32).to_le_bytes());
     mac_challenge.update(&flags.bits().to_le_bytes());
-    if let Some(t) = expires {
-        mac_challenge.update(&t.as_u64().to_le_bytes());
-    }
-    if let Some(e_pk) = ephemeral_public_key.as_ref() {
-        mac_challenge.update(e_pk.as_bytes());
-    }
+    let expires = expires.map(|t| t.as_u64().to_le_bytes()).unwrap_or_default();
+    mac_challenge.update(&expires);
+
+    let e_pk = ephemeral_public_key
+        .map(|e_pk| {
+            let mut buf = [0u8; 32];
+            // CommsPublicKey::as_bytes returns 32-bytes
+            buf.copy_from_slice(e_pk.as_bytes());
+            buf
+        })
+        .unwrap_or_default();
+    mac_challenge.update(&e_pk);
+
     mac_challenge.update(&body);
-    mac_challenge
+    mac_challenge.finalize_fixed().into()
 }
 
 #[cfg(test)]

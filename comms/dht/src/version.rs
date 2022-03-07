@@ -21,10 +21,9 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::{TryFrom, TryInto},
+    convert::TryFrom,
     fmt,
     fmt::{Display, Formatter},
-    io::Write,
 };
 
 use serde::{Deserialize, Serialize};
@@ -35,8 +34,8 @@ use crate::envelope::DhtMessageError;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "u32", into = "u32")]
 pub enum DhtProtocolVersion {
-    V1 { minor: u32 },
-    V2 { minor: u32 },
+    V1 = 1,
+    V2,
 }
 
 impl DhtProtocolVersion {
@@ -47,44 +46,28 @@ impl DhtProtocolVersion {
 
     /// Returns v1 version
     pub fn v1() -> Self {
-        DhtProtocolVersion::V1 { minor: 0 }
+        DhtProtocolVersion::V1
     }
 
     /// Returns v2 version
     pub fn v2() -> Self {
-        DhtProtocolVersion::V2 { minor: 0 }
+        DhtProtocolVersion::V2
     }
 
     /// Returns the byte representation for the version
-    pub fn to_bytes(self) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(4 * 2);
-        buf.write_all(&self.as_major().to_le_bytes()).unwrap();
-        buf.write_all(&self.as_minor().to_le_bytes()).unwrap();
-        buf
+    pub fn as_bytes(self) -> [u8; 4] {
+        self.as_major().to_le_bytes()
     }
 
     /// Returns the major version number
     pub fn as_major(&self) -> u32 {
-        use DhtProtocolVersion::{V1, V2};
-        match self {
-            V1 { .. } => 1,
-            V2 { .. } => 2,
-        }
-    }
-
-    /// Returns the minor version number
-    pub fn as_minor(&self) -> u32 {
-        use DhtProtocolVersion::{V1, V2};
-        match self {
-            V1 { minor } => *minor,
-            V2 { minor } => *minor,
-        }
+        *self as u32
     }
 }
 
 impl Display for DhtProtocolVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "v{}.{}", self.as_major(), self.as_minor())
+        write!(f, "v{}", self.as_major())
     }
 }
 
@@ -92,19 +75,12 @@ impl TryFrom<u32> for DhtProtocolVersion {
     type Error = DhtMessageError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        (value, 0).try_into()
-    }
-}
-
-impl TryFrom<(u32, u32)> for DhtProtocolVersion {
-    type Error = DhtMessageError;
-
-    fn try_from((major, minor): (u32, u32)) -> Result<Self, Self::Error> {
-        use DhtProtocolVersion::{V1, V2};
-        match major {
-            0..=1 => Ok(V1 { minor }),
-            2 => Ok(V2 { minor }),
-            n => Err(DhtMessageError::InvalidProtocolVersion(n)),
+        if value == DhtProtocolVersion::V1 as u32 {
+            Ok(DhtProtocolVersion::V1)
+        } else if value == DhtProtocolVersion::V2 as u32 {
+            Ok(DhtProtocolVersion::V2)
+        } else {
+            Err(DhtMessageError::InvalidProtocolVersion(value))
         }
     }
 }

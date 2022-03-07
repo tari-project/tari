@@ -24,7 +24,7 @@ enum DhtMessageType {
 
 message DhtHeader {
     uint32 major = 1;
-    uint32 minor = 2;
+//    uint32 minor = 2;
     oneof destination {
         // The sender has chosen not to disclose the message destination
         bool unknown = 3;
@@ -55,8 +55,3 @@ message DhtEnvelope {
     bytes body = 2;
 }
 
-// The Message Authentication Code (MAC) message format of the decrypted `DhtHeader::origin_mac` field
-message OriginMac {
-    bytes public_key = 1;
-    bytes signature = 2;
-}
