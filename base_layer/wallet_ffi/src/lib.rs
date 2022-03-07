@@ -5245,14 +5245,13 @@ pub unsafe extern "C" fn wallet_import_utxo(
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
 
-    let recovery_byte;
-    match (*wallet).runtime.block_on(
+    let recovery_byte = match (*wallet).runtime.block_on(
         (*wallet)
             .wallet
             .output_manager_service
             .calculate_recovery_byte((*spending_key).clone(), amount),
     ) {
-        Ok(v) => recovery_byte = v,
+        Ok(v) => v,
         Err(e) => {
             error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);

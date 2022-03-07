@@ -273,7 +273,9 @@ where
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::ConvertToRewindableTransactionOutput(uo) => {
                 let transaction_output = self.convert_to_rewindable_transaction_output(*uo).await?;
-                Ok(OutputManagerResponse::ConvertedToTransactionOutput(transaction_output))
+                Ok(OutputManagerResponse::ConvertedToTransactionOutput(Box::new(
+                    transaction_output,
+                )))
             },
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
@@ -608,7 +610,7 @@ where
         Ok(recovery_byte)
     }
 
-    /// Add an unblinded non-rewindable output to the outputs table and marks is as `Unspent`.
+    /// Add an unblinded non-rewindable output to the outputs table and mark it as `Unspent`.
     pub async fn add_output(
         &mut self,
         tx_id: Option<TxId>,

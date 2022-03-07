@@ -42,7 +42,12 @@ use tari_common_types::{
     types::{BlockHash, PrivateKey, PublicKey, Signature},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures};
+use tari_core::transactions::{
+    tari_amount::MicroTari,
+    transaction_components::{OutputFeatures, Transaction},
+    ReceiverTransactionProtocol,
+    SenderTransactionProtocol,
+};
 use tari_crypto::tari_utilities::{
     hex::{from_hex, Hex},
     ByteArray,
@@ -83,10 +88,131 @@ pub struct TransactionServiceSqliteDatabase {
 
 impl TransactionServiceSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        Self {
+        let res = Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
+        };
+
+        // TODO: Remove this migration for the next testnet reset (currently on Dibbler) #testnet_reset
+        let _ = TransactionServiceSqliteDatabase::update_json_output_features_to_v1(res.clone());
+
+        res
+    }
+
+    // TODO: Remove this migration for the next testnet reset (currently on Dibbler) #testnet_reset
+    fn update_json_output_features_to_v1(
+        service_db: TransactionServiceSqliteDatabase,
+    ) -> Result<(), TransactionStorageError> {
+        let conn = service_db.database_connection.get_pooled_connection()?;
+
+        // Migrate completed transactions
+        let start = Instant::now();
+        let mut count = 0u32;
+        for c_txn in CompletedTransactionSql::index(&conn)?.iter_mut() {
+            service_db.decrypt_if_necessary(c_txn)?;
+            let new_protocol_json =
+                OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(c_txn.transaction_protocol.clone());
+            if c_txn.transaction_protocol != new_protocol_json {
+                let mut c = c_txn.clone();
+                let transaction_protocol: Transaction = serde_json::from_str(&new_protocol_json).map_err(|e| {
+                    error!(target: LOG_TARGET, "Could not convert json into Transaction: {}", e);
+                    e
+                })?;
+                c.transaction_protocol = serde_json::to_string(&transaction_protocol).map_err(|e| {
+                    error!(
+                        target: LOG_TARGET,
+                        "Could not parse transaction protocol from JSON: {}", e
+                    );
+                    e
+                })?;
+                service_db.encrypt_if_necessary(&mut c)?;
+                diesel::update(completed_transactions::table.filter(completed_transactions::tx_id.eq(&c.tx_id)))
+                    .set(completed_transactions::transaction_protocol.eq::<String>(c.transaction_protocol))
+                    .execute(&conn)
+                    .num_rows_affected_or_not_found(1)?;
+                count += 1;
+            }
         }
+        trace!(
+            target: LOG_TARGET,
+            "migrated {} completed transaction json transaction protocols: {} ms",
+            count,
+            start.elapsed().as_millis()
+        );
+
+        // Migrate inbound transactions
+        let start = Instant::now();
+        count = 0u32;
+        for i_txn in InboundTransactionSql::index(&conn)?.iter_mut() {
+            service_db.decrypt_if_necessary(i_txn)?;
+            let new_protocol_json =
+                OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(i_txn.receiver_protocol.clone());
+            if i_txn.receiver_protocol != new_protocol_json {
+                let mut i = i_txn.clone();
+                let receiver_protocol: ReceiverTransactionProtocol =
+                    serde_json::from_str(&new_protocol_json).map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Could not convert json into ReceiverTransactionProtocol: {}", e
+                        );
+                        e
+                    })?;
+                i.receiver_protocol = serde_json::to_string(&receiver_protocol).map_err(|e| {
+                    error!(target: LOG_TARGET, "Could not parse receiver protocol from JSON: {}", e);
+                    e
+                })?;
+                service_db.encrypt_if_necessary(&mut i)?;
+                diesel::update(inbound_transactions::table.filter(inbound_transactions::tx_id.eq(&i.tx_id)))
+                    .set(inbound_transactions::receiver_protocol.eq::<String>(i.receiver_protocol))
+                    .execute(&conn)
+                    .num_rows_affected_or_not_found(1)?;
+                count += 1;
+            }
+        }
+        trace!(
+            target: LOG_TARGET,
+            "migrated {} inbound transaction json receiver protocols: {} ms",
+            count,
+            start.elapsed().as_millis()
+        );
+
+        // Migrate outbound transactions
+        let start = Instant::now();
+        count = 0u32;
+        for o_txn in OutboundTransactionSql::index(&conn)?.iter_mut() {
+            service_db.decrypt_if_necessary(o_txn)?;
+            let new_protocol_json =
+                OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(o_txn.sender_protocol.clone());
+            if o_txn.sender_protocol != new_protocol_json {
+                let mut o = o_txn.clone();
+                let sender_protocol: SenderTransactionProtocol =
+                    serde_json::from_str(&new_protocol_json).map_err(|e| {
+                        error!(
+                            target: LOG_TARGET,
+                            "Could not convert json into SenderTransactionProtocol: {}", e
+                        );
+                        e
+                    })?;
+                o.sender_protocol = serde_json::to_string(&sender_protocol).map_err(|e| {
+                    error!(target: LOG_TARGET, "Could not parse sender protocol from JSON: {}", e);
+                    e
+                })?;
+                service_db.encrypt_if_necessary(&mut o)?;
+                diesel::update(outbound_transactions::table.filter(outbound_transactions::tx_id.eq(&o.tx_id)))
+                    .set(outbound_transactions::sender_protocol.eq::<String>(o.sender_protocol))
+                    .execute(&conn)
+                    .num_rows_affected_or_not_found(1)?;
+                count += 1;
+            }
+        }
+        trace!(
+            target: LOG_TARGET,
+            "migrated {} outbound transaction json sender protocols: {} ms",
+            count,
+            start.elapsed().as_millis()
+        );
+
+        Ok(())
     }
 
     fn insert(&self, kvp: DbKeyValuePair, conn: &SqliteConnection) -> Result<(), TransactionStorageError> {
@@ -1485,9 +1611,7 @@ impl TryFrom<InboundTransactionSql> for InboundTransaction {
             tx_id: (i.tx_id as u64).into(),
             source_public_key: PublicKey::from_vec(&i.source_public_key).map_err(TransactionKeyError::Source)?,
             amount: MicroTari::from(i.amount as u64),
-            receiver_protocol: serde_json::from_str(&OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(
-                i.receiver_protocol.clone(),
-            ))?,
+            receiver_protocol: serde_json::from_str(&i.receiver_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: i.message,
             timestamp: i.timestamp,
@@ -1660,9 +1784,7 @@ impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(o.amount as u64),
             fee: MicroTari::from(o.fee as u64),
-            sender_protocol: serde_json::from_str(&OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(
-                o.sender_protocol.clone(),
-            ))?,
+            sender_protocol: serde_json::from_str(&o.sender_protocol.clone())?,
             status: TransactionStatus::Pending,
             message: o.message,
             timestamp: o.timestamp,
@@ -2015,9 +2137,7 @@ impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
                 .map_err(TransactionKeyError::Destination)?,
             amount: MicroTari::from(c.amount as u64),
             fee: MicroTari::from(c.fee as u64),
-            transaction: serde_json::from_str(&OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(
-                c.transaction_protocol.clone(),
-            ))?,
+            transaction: serde_json::from_str(&c.transaction_protocol.clone())?,
             status: TransactionStatus::try_from(c.status)?,
             message: c.message,
             timestamp: c.timestamp,

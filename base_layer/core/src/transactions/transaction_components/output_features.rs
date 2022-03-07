@@ -151,7 +151,8 @@ impl OutputFeatures {
             &[]
         };
         const RECOVERY_BYTE_SIZE: usize = 1;
-        let blake2_hasher = VarBlake2b::new(RECOVERY_BYTE_SIZE).expect("Should be able to create blake2 hasher");
+        let blake2_hasher = VarBlake2b::new(RECOVERY_BYTE_SIZE)
+            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
         let mut hash = [OutputFeatures::RECOVERY_BYTE_DEFAULT; RECOVERY_BYTE_SIZE];
         let mut salt = 0u64;
         loop {
@@ -319,7 +320,7 @@ impl OutputFeatures {
     }
 
     fn consensus_encode_recovery_byte<W: Write>(recovery_byte: u8, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write_all(&[recovery_byte][..])?;
+        writer.write_all(&[recovery_byte])?;
         Ok(1)
     }
 

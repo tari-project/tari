@@ -484,12 +484,10 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
-        let mut features: OutputFeatures = serde_json::from_str(
-            &OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(o.features_json.clone()),
-        )
-        .map_err(|s| OutputManagerStorageError::ConversionError {
-            reason: format!("Could not convert json into OutputFeatures:{}", s),
-        })?;
+        let mut features: OutputFeatures =
+            serde_json::from_str(&o.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
+                reason: format!("Could not convert json into OutputFeatures:{}", s),
+            })?;
 
         features.flags = OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError {
             reason: "Flags could not be converted from bits".to_string(),

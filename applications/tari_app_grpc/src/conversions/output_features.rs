@@ -62,7 +62,7 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
-            features.recovery_byte as u8,
+            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             parent_public_key,

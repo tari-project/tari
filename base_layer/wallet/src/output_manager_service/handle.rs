@@ -224,11 +224,10 @@ impl fmt::Display for OutputManagerRequest {
 
 /// API Reply enum
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
-    ConvertedToTransactionOutput(TransactionOutput),
+    ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     CoinbaseTransaction(Transaction),
@@ -413,7 +412,7 @@ impl OutputManagerHandle {
             )))
             .await??
         {
-            OutputManagerResponse::ConvertedToTransactionOutput(val) => Ok(val),
+            OutputManagerResponse::ConvertedToTransactionOutput(val) => Ok(*val),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
