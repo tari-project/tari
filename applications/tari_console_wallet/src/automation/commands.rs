@@ -53,7 +53,9 @@ use tari_crypto::{
 };
 use tari_utilities::hex::Hex;
 use tari_wallet::{
+    assets::KEY_MANAGER_ASSET_BRANCH,
     error::WalletError,
+    key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
@@ -808,9 +810,10 @@ pub async fn command_runner(
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
-                // todo: key manager #LOGGED
-                let mut rng = rand::thread_rng();
-                let (_, public_key) = PublicKey::random_keypair(&mut rng);
+                let key_manager = wallet.key_manager_service.clone();
+                key_manager.add_new_branch(KEY_MANAGER_ASSET_BRANCH).await?;
+                let result = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
+                let public_key = PublicKey::from_secret_key(&result.key);
                 let public_key_hex = public_key.to_hex();
                 println!("Registering asset named: {name}");
                 println!("with public key: {public_key_hex}");

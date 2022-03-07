@@ -83,6 +83,7 @@ use tari_wallet::{
         storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     },
     error::{WalletError, WalletStorageError},
+    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -169,7 +170,7 @@ async fn create_wallet(
         .join(database_name)
         .with_extension("sqlite3");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
@@ -204,6 +205,7 @@ async fn create_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
         shutdown_signal,
         master_seed,
     )
@@ -750,6 +752,7 @@ async fn test_import_utxo() {
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection.clone(), None),
         ContactsServiceSqliteDatabase::new(connection.clone()),
+        KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
     )

@@ -2,7 +2,7 @@
 
 ## Deep links structure convention.
 
-![status: raw](theme/images/status-raw.svg)
+![status: raw](theme/images/status-draft.svg)
 
 **Maintainer(s)**: [Adrian Truszczyński](https://github.com/TruszczynskiA)
 
@@ -91,3 +91,24 @@ tari://mainnet/profile
 tari://mainnet/profile/username
 tari://testnet/payments/send?amount=1.23&pubKey=01234556789abcde
 ```
+
+### Deeplinks in use:
+
+* `/transactions/send`
+   
+The data contains transaction information used in the send tokens process.
+
+| Value Name | Value Type | Note                         |
+| ---------- | :--------: | ---------------------------- |
+| publicKey  | String     | Receiver's public key        |
+| amount     | UInt64?    | The amount in micro Tari     |
+| note       | String?    | Note passed with transaction |
+
+* `/base_nodes/add`
+
+The data contains a custom base node configuration. This deep link adds a new base node configuration to the pool and switches to the added base node. 
+
+| Value Name | Value Type | Note                                                        |
+| ---------- | :--------: | ----------------------------------------------------------- |
+| name       | String     | The name of the base node                                   |
+| peer       | String     | Base node's public link and onion address combined together |  

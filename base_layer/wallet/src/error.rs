@@ -41,6 +41,7 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     contacts_service::error::ContactsServiceError,
+    key_manager_service::KeyManagerError as KeyManagerServiceError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
@@ -95,6 +96,8 @@ pub enum WalletError {
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
+    #[error("Key manager service error: `{0}`")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),

@@ -368,3 +368,5 @@ pub struct AssetMetadata {
     description: String,
     image: String,
 }
+
+pub const KEY_MANAGER_ASSET_BRANCH: &str = "Asset";

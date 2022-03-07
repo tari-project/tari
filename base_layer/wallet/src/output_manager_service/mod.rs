@@ -24,10 +24,8 @@ use std::sync::Arc;
 
 use futures::future;
 use log::*;
-pub(crate) use master_key_manager::MasterKeyManager;
 use tari_comms::NodeIdentity;
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
-use tari_key_manager::cipher_seed::CipherSeed;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -40,6 +38,7 @@ use tokio::sync::broadcast;
 use crate::{
     base_node_service::handle::BaseNodeServiceHandle,
     connectivity_service::WalletConnectivityHandle,
+    key_manager_service::{storage::database::KeyManagerBackend, KeyManagerHandle},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::OutputManagerHandle,
@@ -51,27 +50,27 @@ use crate::{
 pub mod config;
 pub mod error;
 pub mod handle;
-mod master_key_manager;
 mod recovery;
 pub mod resources;
 pub mod service;
 pub mod storage;
 mod tasks;
+use std::marker::PhantomData;
 
 const LOG_TARGET: &str = "wallet::output_manager_service::initializer";
 
-pub struct OutputManagerServiceInitializer<T>
+pub struct OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where T: OutputManagerBackend
 {
     config: OutputManagerServiceConfig,
     backend: Option<T>,
     factories: CryptoFactories,
     network: NetworkConsensus,
-    master_seed: CipherSeed,
     node_identity: Arc<NodeIdentity>,
+    phantom: PhantomData<TKeyManagerInterface>,
 }
 
-impl<T> OutputManagerServiceInitializer<T>
+impl<T, TKeyManagerInterface> OutputManagerServiceInitializer<T, TKeyManagerInterface>
 where T: OutputManagerBackend + 'static
 {
     pub fn new(
@@ -79,7 +78,6 @@ where T: OutputManagerBackend + 'static
         backend: T,
         factories: CryptoFactories,
         network: NetworkConsensus,
-        master_seed: CipherSeed,
         node_identity: Arc<NodeIdentity>,
     ) -> Self {
         Self {
@@ -87,15 +85,17 @@ where T: OutputManagerBackend + 'static
             backend: Some(backend),
             factories,
             network,
-            master_seed,
             node_identity,
+            phantom: PhantomData,
         }
     }
 }
 
 #[async_trait]
-impl<T> ServiceInitializer for OutputManagerServiceInitializer<T>
-where T: OutputManagerBackend + 'static
+impl<T, TKeyManagerInterface> ServiceInitializer for OutputManagerServiceInitializer<T, TKeyManagerInterface>
+where
+    T: OutputManagerBackend + 'static,
+    TKeyManagerInterface: KeyManagerBackend + 'static,
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         trace!(
@@ -118,11 +118,11 @@ where T: OutputManagerBackend + 'static
         let factories = self.factories.clone();
         let config = self.config.clone();
         let constants = self.network.create_consensus_constants().pop().unwrap();
-        let master_seed = self.master_seed.clone();
         let node_identity = self.node_identity.clone();
         context.spawn_when_ready(move |handles| async move {
             let base_node_service_handle = handles.expect_handle::<BaseNodeServiceHandle>();
             let connectivity = handles.expect_handle::<WalletConnectivityHandle>();
+            let key_manager = handles.expect_handle::<KeyManagerHandle<TKeyManagerInterface>>();
 
             let service = OutputManagerService::new(
                 config,
@@ -134,8 +134,8 @@ where T: OutputManagerBackend + 'static
                 handles.get_shutdown_signal(),
                 base_node_service_handle,
                 connectivity,
-                master_seed,
                 node_identity,
+                key_manager,
             )
             .await
             .expect("Could not initialize Output Manager Service")
