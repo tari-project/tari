@@ -75,6 +75,7 @@ pub struct GlobalConfig {
     pub base_node_event_channel_size: usize,
     pub base_node_identity_file: PathBuf,
     pub base_node_query_timeout: Duration,
+    pub base_node_resize_terminal_on_startup: bool,
     pub base_node_status_line_interval: Duration,
     pub base_node_tor_identity_file: PathBuf,
     pub base_node_use_libtor: bool,
@@ -434,6 +435,9 @@ fn convert_node_config(
 
     let key = config_string("base_node", net_str, "bypass_range_proof_verification");
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
+
+    let key = "base_node.resize_terminal_on_startup".to_string();
+    let base_node_resize_terminal_on_startup = cfg.get_bool(&key).unwrap_or(true);
 
     // Peer DB path
     let comms_peer_db_path = data_dir.join("peer_db");
@@ -835,6 +839,7 @@ fn convert_node_config(
         base_node_event_channel_size,
         base_node_identity_file,
         base_node_query_timeout,
+        base_node_resize_terminal_on_startup,
         base_node_status_line_interval,
         base_node_tor_identity_file,
         base_node_use_libtor,

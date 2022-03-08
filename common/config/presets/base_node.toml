@@ -30,6 +30,8 @@ grpc_enabled = true
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
 track_reorgs = true
+# Resize the base node terminal on startup equal to the banner size [default = true]
+#resize_terminal_on_startup = true
 
 # Configuration options for testnet dibbler
 [base_node.dibbler]

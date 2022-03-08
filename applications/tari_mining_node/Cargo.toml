@@ -16,6 +16,7 @@ tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
+crossterm = { version = "0.17" }
 crossbeam = "0.8"
 futures = "0.3"
 log = { version = "0.4", features = ["std"] }
