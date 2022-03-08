@@ -66,6 +66,8 @@ struct TariCompletedTransactions;
 
 struct TariBalance;
 
+struct TariTransactionSendStatus;
+
 struct TariCompletedTransaction;
 
 struct TariPendingOutboundTransactions;
@@ -490,10 +492,10 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a one-sided transaction is detected as mined AND confirmed.
 /// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a one-sided transaction is detected as mined but not yet confirmed.
-/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
-/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
-/// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
-/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
+/// `callback_transaction_send_result` - The callback function pointer matching the function signature. This is called
+/// when a transaction send is completed. The first parameter is the transaction id and the second contains the
+/// transaction send status, weather it was send direct and/or send via saf on the one hand or queued for further retry
+/// sending on the other hand.
 /// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
 /// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
 /// why said transaction failed that is mapped to the `TxCancellationReason` enum:
@@ -558,8 +560,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_faux_transaction_confirmed)(struct TariCompletedTransaction *),
                                  void (*callback_faux_transaction_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
-                                 void (*callback_direct_send_result)(unsigned long long, bool),
-                                 void (*callback_store_and_forward_send_result)(unsigned long long, bool),
+                                 void (*callback_transaction_send_result)(unsigned long long, struct TariTransactionSendStatus *),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_txo_validation_complete)(unsigned long long, bool),
                                  void (*callback_contacts_liveness_data_updated)(struct TariContactsLivenessData *),

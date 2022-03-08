@@ -13,7 +13,8 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 
 const utf8 = require("utf8");
-const LivenessData = require("./liveness_data");
+const LivenessData = require("./livenessData");
+const TransactionSendStatus = require("./transactionSendStatus");
 
 class WalletBalance {
   available = 0;
@@ -50,8 +51,7 @@ class Wallet {
   callback_transaction_mined_unconfirmed;
   callback_faux_transaction_confirmed;
   callback_faux_transaction_unconfirmed;
-  callback_direct_send_result;
-  callback_store_and_forward_send_result;
+  callback_transaction_send_result;
   callback_transaction_cancellation;
   callback_contacts_liveness_data_updated;
   callback_balance_updated;
@@ -148,11 +148,9 @@ class Wallet {
       InterfaceFFI.createCallbackFauxTransactionUnconfirmed(
         this.onFauxTransactionUnconfirmed
       );
-    this.callback_direct_send_result =
-      InterfaceFFI.createCallbackDirectSendResult(this.onDirectSendResult);
-    this.callback_store_and_forward_send_result =
-      InterfaceFFI.createCallbackStoreAndForwardSendResult(
-        this.onStoreAndForwardSendResult
+    this.callback_transaction_send_result =
+      InterfaceFFI.createCallbackTransactionSendResult(
+        this.onTransactionSendResult
       );
     this.callback_transaction_cancellation =
       InterfaceFFI.createCallbackTransactionCancellation(
@@ -220,8 +218,7 @@ class Wallet {
       this.callback_transaction_mined_unconfirmed,
       this.callback_faux_transaction_confirmed,
       this.callback_faux_transaction_unconfirmed,
-      this.callback_direct_send_result,
-      this.callback_store_and_forward_send_result,
+      this.callback_transaction_send_result,
       this.callback_transaction_cancellation,
       this.callback_txo_validation_complete,
       this.callback_contacts_liveness_data_updated,
@@ -323,16 +320,13 @@ class Wallet {
     this.transactionCancelled += 1;
   };
 
-  onDirectSendResult = (id, success) => {
+  onTransactionSendResult = (id, ptr) => {
+    let status = new TransactionSendStatus(ptr);
+    status.pointerAssign(ptr);
     console.log(
-      `${new Date().toISOString()} callbackDirectSendResult(${id},${success})`
+      `${new Date().toISOString()} callbackTransactionSendResult(${id}: send_direct(${status.getSendDirect()}), send_saf(${status.getSendSaf()}), queued(${status.getQueued()}))`
     );
-  };
-
-  onStoreAndForwardSendResult = (id, success) => {
-    console.log(
-      `${new Date().toISOString()} callbackStoreAndForwardSendResult(${id},${success})`
-    );
+    status.destroy();
   };
 
   onTxoValidationComplete = (request_key, validation_results) => {
@@ -563,8 +557,7 @@ class Wallet {
         this.callback_transaction_mined_unconfirmed =
         this.callback_faux_transaction_confirmed =
         this.callback_faux_transaction_unconfirmed =
-        this.callback_direct_send_result =
-        this.callback_store_and_forward_send_result =
+        this.callback_transaction_send_result =
         this.callback_transaction_cancellation =
         this.callback_txo_validation_complete =
         this.callback_contacts_liveness_data_updated =

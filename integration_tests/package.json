@@ -14,11 +14,11 @@
   "author": "The Tari Project",
   "license": "ISC",
   "devDependencies": {
-    "@babel/core": "^7.16.0",
+    "@babel/core": "^7.17.7",
     "@babel/eslint-parser": "^7.16.3",
-    "@babel/eslint-plugin": "^7.14.5",
+    "@babel/eslint-plugin": "^7.17.7",
     "@cucumber/cucumber": "^8.0.0-rc.1",
-    "@grpc/grpc-js": "^1.4.4",
+    "@grpc/grpc-js": "^1.5.9",
     "@grpc/proto-loader": "^0.5.5",
     "blakejs": "^1.1.0",
     "chai": "^4.3.6",
@@ -30,7 +30,7 @@
     "ffi-napi": "^4.0.3",
     "grpc-promise": "^1.4.0",
     "husky": "^6.0.0",
-    "prettier": "^2.5.1",
+    "prettier": "^2.6.0",
     "ref-napi": "^3.0.3"
   },
   "dependencies": {

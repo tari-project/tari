@@ -192,6 +192,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
@@ -2833,6 +2834,114 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 
 /// -------------------------------------------------------------------------------------------- ///
 
+/// ----------------------------------- Transport Send Status -----------------------------------///
+
+/// Gets the direct send status of a TariTransactionSendStatus
+///
+/// ## Arguments
+/// `status` - The pointer to a TariTransactionSendStatus
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_uint` - Returns 1 if the transaction was sent directly, zero if it was not
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_send_status_get_direct(
+    status: *const TariTransactionSendStatus,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut direct_send = 0;
+    if status.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        direct_send = (*status).direct_send_result as c_uint;
+    }
+    direct_send
+}
+
+/// Gets the store and forward send status of a TariTransactionSendStatus
+///
+/// ## Arguments
+/// `status` - The pointer to a TariTransactionSendStatus
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_uint` - Returns 1 if the transaction was sent directly, zero if it was not
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_send_status_get_saf(
+    status: *const TariTransactionSendStatus,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut saf_send = 0;
+    if status.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        saf_send = (*status).store_and_forward_send_result as c_uint;
+    }
+    saf_send
+}
+
+/// Gets the queued for further retry sending send status of a TariTransactionSendStatus
+///
+/// ## Arguments
+/// `status` - The pointer to a TariTransactionSendStatus
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_uint` - Returns 1 if the transaction was queued for further retry sending, zero if it was not
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_send_status_get_queued(
+    status: *const TariTransactionSendStatus,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut queued = 0;
+    if status.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else {
+        queued = (*status).queued_for_retry as c_uint;
+    }
+    queued
+}
+
+/// Frees memory for a TariTransactionSendStatus
+///
+/// ## Arguments
+/// `status` - The pointer to a TariPendingInboundTransaction
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus) {
+    if !status.is_null() {
+        Box::from_raw(status);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Transport Types -----------------------------------------///
 
 /// Creates a memory transport type
@@ -3435,9 +3544,11 @@ unsafe fn init_logging(
 /// `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
 /// If this is null, then a new master key is created for the wallet.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
-/// called when an inbound transaction is received. `callback_received_transaction_reply` - The callback function
+/// called when an inbound transaction is received.
+/// `callback_received_transaction_reply` - The callback function
 /// pointer matching the function signature. This will be called when a reply is received for a pending outbound
-/// transaction `callback_received_finalized_transaction` - The callback function pointer matching the function
+/// transaction
+/// `callback_received_finalized_transaction` - The callback function pointer matching the function
 /// signature. This will be called when a Finalized version on an Inbound transaction is received
 /// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
 /// called when a Finalized transaction is detected a Broadcast to a base node mempool.
@@ -3449,12 +3560,10 @@ unsafe fn init_logging(
 /// called when a one-sided transaction is detected as mined AND confirmed.
 /// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This
 /// will be called when a one-sided transaction is detected as mined but not yet confirmed.
-/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
-/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was
-/// successful or not.
-/// `callback_store_and_forward_send_result` - The callback function pointer matching the function
-/// signature. This is called when a direct send is completed. The first parameter is the transaction id and the second
-/// is whether if was successful or not.
+/// `callback_transaction_send_result` - The callback function pointer matching the function signature. This is called
+/// when a transaction send is completed. The first parameter is the transaction id and the second contains the
+/// transaction send status, weather it was send direct and/or send via saf on the one hand or queued for further retry
+/// sending on the other hand.
 /// `callback_transaction_cancellation` - The callback function pointer matching
 /// the function signature. This is called when a transaction is cancelled. The first parameter is a pointer to the
 /// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the
@@ -3514,8 +3623,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-    callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
@@ -3727,8 +3835,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_mined_unconfirmed,
                 callback_faux_transaction_confirmed,
                 callback_faux_transaction_unconfirmed,
-                callback_direct_send_result,
-                callback_store_and_forward_send_result,
+                callback_transaction_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
                 callback_contacts_liveness_data_updated,
@@ -6351,7 +6458,10 @@ mod test {
     use tari_core::transactions::test_helpers::{create_unblinded_output, TestParams};
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
-    use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
+    use tari_wallet::{
+        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+        transaction_service::handle::TransactionSendStatus,
+    };
     use tempfile::tempdir;
 
     use crate::*;
@@ -6371,8 +6481,7 @@ mod test {
         pub mined_tx_unconfirmed_callback_called: bool,
         pub scanned_tx_callback_called: bool,
         pub scanned_tx_unconfirmed_callback_called: bool,
-        pub direct_send_callback_called: bool,
-        pub store_and_forward_send_callback_called: bool,
+        pub transaction_send_result_callback: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
         pub callback_contacts_liveness_data_updated: bool,
@@ -6391,8 +6500,7 @@ mod test {
                 mined_tx_unconfirmed_callback_called: false,
                 scanned_tx_callback_called: false,
                 scanned_tx_unconfirmed_callback_called: false,
-                direct_send_callback_called: false,
-                store_and_forward_send_callback_called: false,
+                transaction_send_result_callback: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
                 callback_contacts_liveness_data_updated: false,
@@ -6541,12 +6649,13 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn direct_send_callback(_tx_id: c_ulonglong, _result: bool) {
-        // assert!(true); //optimized out by compiler
-    }
-
-    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: c_ulonglong, _result: bool) {
-        // assert!(true); //optimized out by compiler
+    unsafe extern "C" fn transaction_send_result_callback(_tx_id: c_ulonglong, status: *mut TransactionSendStatus) {
+        assert!(!status.is_null());
+        assert_eq!(
+            type_of((*status).clone()),
+            std::any::type_name::<TransactionSendStatus>()
+        );
+        transaction_send_status_destroy(status);
     }
 
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction, _reason: u64) {
@@ -6659,6 +6768,29 @@ mod test {
             let _address = transport_memory_get_address(transport, error_ptr);
             assert_eq!(error, 0);
             transport_type_destroy(transport);
+        }
+    }
+
+    #[test]
+    fn test_transaction_send_status() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: true,
+                queued_for_retry: false,
+            }));
+            let sent_direct = transaction_send_status_get_direct(status, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(sent_direct, 1);
+            let sent_saf = transaction_send_status_get_saf(status, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(sent_saf, 1);
+            let queued = transaction_send_status_get_queued(status, error_ptr);
+            assert_eq!(error, 0);
+            assert_eq!(queued, 0);
+            transaction_send_status_destroy(status);
         }
     }
 
@@ -6949,8 +7081,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -6989,8 +7120,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7095,8 +7225,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7146,8 +7275,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7180,8 +7308,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7209,8 +7336,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7259,8 +7385,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7338,8 +7463,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7520,8 +7644,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7751,8 +7874,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7809,8 +7931,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,

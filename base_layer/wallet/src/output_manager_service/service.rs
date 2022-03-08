@@ -129,9 +129,6 @@ where
         node_identity: Arc<NodeIdentity>,
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
-        // Clear any encumberances for transactions that were being negotiated but did not complete to become official
-        // Pending Transactions.
-        db.clear_short_term_encumberances()?;
         Self::initialise_key_manager(&key_manager).await?;
         let rewind_key = key_manager
             .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
