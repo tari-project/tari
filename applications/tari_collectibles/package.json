@@ -9,9 +9,6 @@
   "devDependencies": {
     "@tauri-apps/cli": "^1.0.0-rc.4"
   },
-  "dependencies": {
-    "@tauri-apps/api": "^1.0.0-rc.1"
-  },
   "author": "",
   "license": "ISC",
   "description": ""
