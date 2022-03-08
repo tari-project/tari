@@ -12,7 +12,7 @@ tari_common_types = { version = "^0.28", path = "../../base_layer/common_types"}
 tari_core = {  path = "../../base_layer/core"}
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_comms = { path = "../../comms"}
-tari_utilities = "0.3.0"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 
 chrono = { version = "0.4.19", default-features = false }
 prost = "0.9"
