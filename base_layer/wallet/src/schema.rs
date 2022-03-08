@@ -57,6 +57,15 @@ table! {
 table! {
     key_manager_states (id) {
         id -> Integer,
+        branch_seed -> Text,
+        primary_key_index -> Binary,
+        timestamp -> Timestamp,
+    }
+}
+
+table! {
+    key_manager_states_old (id) {
+        id -> Integer,
         seed -> Binary,
         branch_seed -> Text,
         primary_key_index -> BigInt,
@@ -148,6 +157,7 @@ allow_tables_to_appear_in_same_query!(
     contacts,
     inbound_transactions,
     key_manager_states,
+    key_manager_states_old,
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,

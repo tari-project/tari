@@ -22,12 +22,10 @@
 
 use std::{
     convert::{TryFrom, TryInto},
-    str::from_utf8,
     sync::{Arc, RwLock},
 };
 
 use aes_gcm::Aes256Gcm;
-use chrono::{NaiveDateTime, Utc};
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
 pub use new_output_sql::NewOutputSql;
@@ -39,12 +37,8 @@ use tari_common_types::{
 use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
-    tari_utilities::{
-        hex::{from_hex, Hex},
-        ByteArray,
-    },
+    tari_utilities::{hex::Hex, ByteArray},
 };
-use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::time::Instant;
 
 use crate::{
@@ -52,12 +46,12 @@ use crate::{
         error::OutputManagerStorageError,
         service::{Balance, UTXOSelectionStrategy},
         storage::{
-            database::{DbKey, DbKeyValuePair, DbValue, KeyManagerState, OutputManagerBackend, WriteOperation},
+            database::{DbKey, DbKeyValuePair, DbValue, OutputManagerBackend, WriteOperation},
             models::{DbUnblindedOutput, KnownOneSidedPaymentScript},
             OutputStatus,
         },
     },
-    schema::{key_manager_states, known_one_sided_payment_scripts, outputs, outputs::columns},
+    schema::{known_one_sided_payment_scripts, outputs, outputs::columns},
     storage::sqlite_utilities::wallet_db_connection::WalletDbConnection,
     util::{
         diesel_ext::ExpectedRowsExtension,
@@ -134,11 +128,7 @@ impl OutputManagerSqliteDatabase {
                 self.encrypt_if_necessary(&mut new_output)?;
                 new_output.commit(conn)?
             },
-            DbKeyValuePair::KeyManagerState(km) => {
-                let mut km_sql = NewKeyManagerStateSql::from(km);
-                self.encrypt_if_necessary(&mut km_sql)?;
-                km_sql.commit(conn)?
-            },
+
             DbKeyValuePair::KnownOneSidedPaymentScripts(script) => {
                 let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
                 self.encrypt_if_necessary(&mut script_sql)?;
@@ -261,20 +251,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                         .map(|o| DbUnblindedOutput::try_from(o.clone()))
                         .collect::<Result<Vec<_>, _>>()?,
                 ))
-            },
-            DbKey::KeyManagerState => {
-                match KeyManagerStateSql::get_state(&conn).ok() {
-                    None => None,
-                    Some(mut km) => {
-                        self.decrypt_if_necessary(&mut km)?;
-
-                        // TODO: This is a problem because the keymanager state does not have an index
-                        // meaning that update round trips to the database can't be found again.
-                        // I would suggest changing this to a different pattern for retrieval, perhaps
-                        // only returning the columns that are needed. #LOGGED
-                        Some(DbValue::KeyManagerState(KeyManagerState::try_from(km)?))
-                    },
-                }
             },
             DbKey::InvalidOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Invalid, &conn)?;
@@ -430,7 +406,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 DbKey::UnspentOutput(_k) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::UnspentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::SpentOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
-                DbKey::KeyManagerState => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::InvalidOutputs => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::TimeLockedUnspentOutputs(_) => return Err(OutputManagerStorageError::OperationNotSupported),
                 DbKey::KnownOneSidedPaymentScripts => return Err(OutputManagerStorageError::OperationNotSupported),
@@ -919,44 +894,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         Ok(())
     }
 
-    fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        KeyManagerStateSql::increment_index(&conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - increment_key_index: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
-    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
-        let start = Instant::now();
-        let conn = self.database_connection.get_pooled_connection()?;
-        let acquire_lock = start.elapsed();
-
-        KeyManagerStateSql::set_index(index, &conn)?;
-        if start.elapsed().as_millis() > 0 {
-            trace!(
-                target: LOG_TARGET,
-                "sqlite profile - set_key_index: lock {} + db_op {} = {} ms",
-                acquire_lock.as_millis(),
-                (start.elapsed() - acquire_lock).as_millis(),
-                start.elapsed().as_millis()
-            );
-        }
-
-        Ok(())
-    }
-
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
@@ -1038,21 +975,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             o.update_encryption(&conn)?;
         }
 
-        let mut key_manager_state = KeyManagerStateSql::get_state(&conn)?;
-
-        let _ = CipherSeed::from_enciphered_bytes(&key_manager_state.seed, None).map_err(|_| {
-            error!(
-                target: LOG_TARGET,
-                "Could not create Cipher Seed from stored bytes, They might already be encrypted"
-            );
-            OutputManagerStorageError::AlreadyEncrypted
-        })?;
-
-        key_manager_state
-            .encrypt(&cipher)
-            .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
-        key_manager_state.set_state(&conn)?;
-
         let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
 
         for script in known_one_sided_payment_scripts.iter_mut() {
@@ -1100,12 +1022,6 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                 .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
             o.update_encryption(&conn)?;
         }
-
-        let mut key_manager_state = KeyManagerStateSql::get_state(&conn)?;
-        key_manager_state
-            .decrypt(&cipher)
-            .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
-        key_manager_state.set_state(&conn)?;
 
         let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
 
@@ -1345,182 +1261,6 @@ impl From<UpdateOutput> for UpdateOutputSql {
     }
 }
 
-#[derive(Clone, Debug, Queryable, Identifiable)]
-#[table_name = "key_manager_states"]
-struct KeyManagerStateSql {
-    id: i32,
-    seed: Vec<u8>,
-    branch_seed: String,
-    primary_key_index: i64,
-    timestamp: NaiveDateTime,
-}
-
-#[derive(Clone, Debug, Insertable)]
-#[table_name = "key_manager_states"]
-struct NewKeyManagerStateSql {
-    seed: Vec<u8>,
-    branch_seed: String,
-    primary_key_index: i64,
-    timestamp: NaiveDateTime,
-}
-
-impl From<KeyManagerState> for NewKeyManagerStateSql {
-    fn from(km: KeyManagerState) -> Self {
-        Self {
-            seed: km
-                .seed
-                .encipher(None)
-                .expect("The only way for enciphering to fail is that the Crypto libraries are broken"),
-            branch_seed: km.branch_seed,
-            primary_key_index: km.primary_key_index as i64,
-            timestamp: Utc::now().naive_utc(),
-        }
-    }
-}
-impl TryFrom<KeyManagerStateSql> for KeyManagerState {
-    type Error = OutputManagerStorageError;
-
-    fn try_from(km: KeyManagerStateSql) -> Result<Self, Self::Error> {
-        Ok(Self {
-            seed: CipherSeed::from_enciphered_bytes(&km.seed, None)?,
-            branch_seed: km.branch_seed,
-            primary_key_index: km.primary_key_index as u64,
-        })
-    }
-}
-
-impl NewKeyManagerStateSql {
-    fn commit(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        diesel::insert_into(key_manager_states::table)
-            .values(self.clone())
-            .execute(conn)?;
-        Ok(())
-    }
-}
-
-impl KeyManagerStateSql {
-    pub fn get_state(conn: &SqliteConnection) -> Result<KeyManagerStateSql, OutputManagerStorageError> {
-        key_manager_states::table
-            .first::<KeyManagerStateSql>(conn)
-            .map_err(|_| OutputManagerStorageError::KeyManagerNotInitialized)
-    }
-
-    pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        match KeyManagerStateSql::get_state(conn) {
-            Ok(km) => {
-                let update = KeyManagerStateUpdateSql {
-                    seed: Some(self.seed.clone()),
-                    branch_seed: Some(self.branch_seed.clone()),
-                    primary_key_index: Some(self.primary_key_index),
-                };
-
-                diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(update)
-                    .execute(conn)
-                    .num_rows_affected_or_not_found(1)?;
-            },
-            Err(_) => {
-                let inserter = NewKeyManagerStateSql {
-                    seed: self.seed.clone(),
-                    branch_seed: self.branch_seed.clone(),
-                    primary_key_index: self.primary_key_index,
-                    timestamp: self.timestamp,
-                };
-                inserter.commit(conn)?;
-            },
-        }
-        Ok(())
-    }
-
-    pub fn increment_index(conn: &SqliteConnection) -> Result<i64, OutputManagerStorageError> {
-        Ok(match KeyManagerStateSql::get_state(conn) {
-            Ok(km) => {
-                let current_index = km.primary_key_index + 1;
-                let update = KeyManagerStateUpdateSql {
-                    seed: None,
-                    branch_seed: None,
-                    primary_key_index: Some(current_index),
-                };
-                diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(update)
-                    .execute(conn)
-                    .num_rows_affected_or_not_found(1)?;
-                current_index
-            },
-            Err(_) => return Err(OutputManagerStorageError::KeyManagerNotInitialized),
-        })
-    }
-
-    pub fn set_index(index: u64, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        match KeyManagerStateSql::get_state(conn) {
-            Ok(km) => {
-                let update = KeyManagerStateUpdateSql {
-                    seed: None,
-                    branch_seed: None,
-                    primary_key_index: Some(index as i64),
-                };
-                diesel::update(key_manager_states::table.filter(key_manager_states::id.eq(&km.id)))
-                    .set(update)
-                    .execute(conn)
-                    .num_rows_affected_or_not_found(1)?;
-                Ok(())
-            },
-            Err(_) => Err(OutputManagerStorageError::KeyManagerNotInitialized),
-        }
-    }
-}
-
-#[derive(AsChangeset)]
-#[table_name = "key_manager_states"]
-struct KeyManagerStateUpdateSql {
-    seed: Option<Vec<u8>>,
-    branch_seed: Option<String>,
-    primary_key_index: Option<i64>,
-}
-
-impl Encryptable<Aes256Gcm> for KeyManagerStateSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_seed = encrypt_bytes_integral_nonce(cipher, self.seed.clone())?;
-        let encrypted_branch_seed = encrypt_bytes_integral_nonce(cipher, self.branch_seed.clone().into_bytes())?;
-        self.seed = encrypted_seed;
-        self.branch_seed = encrypted_branch_seed.to_hex();
-        Ok(())
-    }
-
-    fn decrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let decrypted_seed = decrypt_bytes_integral_nonce(cipher, self.seed.clone())?;
-        let decrypted_branch_seed =
-            decrypt_bytes_integral_nonce(cipher, from_hex(self.branch_seed.as_str()).map_err(|e| e.to_string())?)?;
-        self.seed = decrypted_seed;
-        self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
-            .map_err(|e| e.to_string())?
-            .to_string();
-        Ok(())
-    }
-}
-
-impl Encryptable<Aes256Gcm> for NewKeyManagerStateSql {
-    fn encrypt(&mut self, cipher: &Aes256Gcm) -> Result<(), String> {
-        let encrypted_seed = encrypt_bytes_integral_nonce(cipher, self.seed.clone())?;
-        let encrypted_branch_seed = encrypt_bytes_integral_nonce(cipher, self.branch_seed.clone().as_bytes().to_vec())?;
-        self.seed = encrypted_seed;
-        self.branch_seed = encrypted_branch_seed.to_hex();
-        Ok(())
-    }
-
-    fn decrypt(&mut self, _cipher: &Aes256Gcm) -> Result<(), String> {
-        unimplemented!("Not supported")
-        // let decrypted_master_key = decrypt_bytes_integral_nonce(&cipher, self.master_key.clone())?;
-        // let decrypted_branch_seed =
-        //     decrypt_bytes_integral_nonce(&cipher, from_hex(self.branch_seed.as_str()).map_err(|_| Error)?)?;
-        // self.master_key = decrypted_master_key;
-        // self.branch_seed = from_utf8(decrypted_branch_seed.as_slice())
-        //     .map_err(|_| Error)?
-        //     .to_string();
-        // Ok(())
-    }
-}
-
 #[derive(Clone, Debug, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
 #[table_name = "known_one_sided_payment_scripts"]
 #[primary_key(script_hash)]
@@ -1680,7 +1420,7 @@ impl Encryptable<Aes256Gcm> for KnownOneSidedPaymentScriptSql {
 
 #[cfg(test)]
 mod test {
-    use std::{convert::TryFrom, time::Duration};
+    use std::time::Duration;
 
     use aes_gcm::{
         aead::{generic_array::GenericArray, NewAead},
@@ -1697,19 +1437,16 @@ mod test {
         CryptoFactories,
     };
     use tari_crypto::script;
-    use tari_key_manager::cipher_seed::CipherSeed;
     use tari_test_utils::random;
     use tempfile::tempdir;
 
     use crate::{
         output_manager_service::storage::{
-            database::{DbKey, KeyManagerState, OutputManagerBackend},
+            database::{DbKey, OutputManagerBackend},
             models::DbUnblindedOutput,
             sqlite_db::{
                 new_output_sql::NewOutputSql,
                 output_sql::OutputSql,
-                KeyManagerStateSql,
-                NewKeyManagerStateSql,
                 OutputManagerSqliteDatabase,
                 OutputStatus,
                 UpdateOutput,
@@ -1846,41 +1583,6 @@ mod test {
     }
 
     #[test]
-    fn test_key_manager_crud() {
-        let db_name = format!("{}.sqlite3", random::string(8).as_str());
-        let temp_dir = tempdir().unwrap();
-        let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
-
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
-
-        conn.execute("PRAGMA foreign_keys = ON").unwrap();
-
-        assert!(KeyManagerStateSql::get_state(&conn).is_err());
-
-        let state1 = KeyManagerState {
-            seed: CipherSeed::new(),
-            branch_seed: random::string(8),
-            primary_key_index: 0,
-        };
-
-        NewKeyManagerStateSql::from(state1.clone()).commit(&conn).unwrap();
-        let state1_read = KeyManagerStateSql::get_state(&conn).unwrap();
-
-        assert_eq!(state1, KeyManagerState::try_from(state1_read).unwrap());
-
-        KeyManagerStateSql::increment_index(&conn).unwrap();
-        KeyManagerStateSql::increment_index(&conn).unwrap();
-
-        let state3_read = KeyManagerStateSql::get_state(&conn).unwrap();
-
-        assert_eq!(state3_read.primary_key_index, 2);
-    }
-
-    #[test]
     fn test_output_encryption() {
         let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let tempdir = tempdir().unwrap();
@@ -1940,51 +1642,6 @@ mod test {
     }
 
     #[test]
-    fn test_key_manager_encryption() {
-        let db_name = format!("{}.sqlite3", random::string(8).as_str());
-        let temp_dir = tempdir().unwrap();
-        let db_folder = temp_dir.path().to_str().unwrap().to_string();
-        let db_path = format!("{}{}", db_folder, db_name);
-
-        embed_migrations!("./migrations");
-        let conn = SqliteConnection::establish(&db_path).unwrap_or_else(|_| panic!("Error connecting to {}", db_path));
-
-        embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
-
-        let key = GenericArray::from_slice(b"an example very very secret key.");
-        let cipher = Aes256Gcm::new(key);
-
-        let starting_state = KeyManagerState {
-            seed: CipherSeed::new(),
-            branch_seed: "boop boop".to_string(),
-            primary_key_index: 1,
-        };
-
-        NewKeyManagerStateSql::from(starting_state.clone())
-            .commit(&conn)
-            .unwrap();
-
-        let state_sql = KeyManagerStateSql::get_state(&conn).unwrap();
-
-        let mut encrypted_state = state_sql;
-        encrypted_state.encrypt(&cipher).unwrap();
-
-        encrypted_state.set_state(&conn).unwrap();
-        KeyManagerStateSql::increment_index(&conn).unwrap();
-        let mut db_state = KeyManagerStateSql::get_state(&conn).unwrap();
-
-        assert!(KeyManagerState::try_from(db_state.clone()).is_err());
-        assert_eq!(db_state.primary_key_index, 2);
-
-        db_state.decrypt(&cipher).unwrap();
-        let decrypted_data = KeyManagerState::try_from(db_state).unwrap();
-
-        assert_eq!(decrypted_data.seed, starting_state.seed);
-        assert_eq!(decrypted_data.branch_seed, starting_state.branch_seed);
-        assert_eq!(decrypted_data.primary_key_index, 2);
-    }
-
-    #[test]
     fn test_apply_remove_encryption() {
         let db_name = format!("{}.sqlite3", random::string(8).as_str());
         let temp_dir = tempdir().unwrap();
@@ -2004,14 +1661,6 @@ mod test {
 
             embedded_migrations::run_with_output(&conn, &mut std::io::stdout()).expect("Migration failed");
             let factories = CryptoFactories::default();
-
-            let starting_state = KeyManagerState {
-                seed: CipherSeed::new(),
-                branch_seed: "boop boop".to_string(),
-                primary_key_index: 1,
-            };
-
-            let _state_sql = NewKeyManagerStateSql::from(starting_state).commit(&conn).unwrap();
 
             let (_, uo) = make_input(MicroTari::from(100 + OsRng.next_u64() % 1000));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
