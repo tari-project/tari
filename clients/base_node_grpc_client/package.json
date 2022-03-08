@@ -13,8 +13,6 @@
     "grpc-promise": "^1.4.0"
   },
   "devDependencies": {
-    "jest": "^27.1.1",
-    "md5": "^2.3.0",
-    "node-fetch": "^3.1.1"
+    "jest": "^27.1.1"
   }
 }
