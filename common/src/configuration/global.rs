@@ -126,7 +126,6 @@ pub struct GlobalConfig {
     pub output_manager_event_channel_size: usize,
     pub peer_seeds: Vec<String>,
     pub prevent_fee_gt_amount: bool,
-    pub proxy_submit_to_origin: bool,
     pub pruned_mode_cleanup_interval: u64,
     pub pruning_horizon: u64,
     pub saf_expiry_duration: Duration,
@@ -141,7 +140,6 @@ pub struct GlobalConfig {
     pub transcoder_host_address: SocketAddr,
     pub validate_tip_timeout_sec: u64,
     pub validator_node: Option<ValidatorNodeConfig>,
-    pub wait_for_initial_sync_at_startup: bool,
     pub wallet_balance_enquiry_cooldown_period: u64,
     pub wallet_base_node_service_peers: Vec<String>,
     pub wallet_recovery_retry_limit: usize,
@@ -679,14 +677,47 @@ fn convert_node_config(
 
     let merge_mining_config = match application {
         ApplicationType::MergeMiningProxy => {
-            let key = "merge_mining_proxy.monerod_url";
+            //---------------------------------- Common merge_mining_proxy defaults -------------------------------//
+            let key = "merge_mining_proxy.proxy_host_address";
+            let addr = cfg
+                .get_str(key)
+                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/7878".to_string());
+            // .unwrap_or_else(|_| "127.0.0.1:7878".to_string());
+            let proxy_host_address = addr.parse::<Multiaddr>()
+                // let proxy_host_address = addr.parse::<SocketAddr>()
+                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
+
+            let key = "merge_mining_proxy.base_node_grpc_address";
+            let addr = cfg
+                .get_str(key)
+                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/18142".to_string());
+            let base_node_grpc_address = addr
+                .parse::<Multiaddr>()
+                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
+
+            let key = "merge_mining_proxy.wallet_grpc_address";
+            let addr = cfg
+                .get_str(key)
+                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/18143".to_string());
+            let wallet_grpc_address = addr
+                .parse::<Multiaddr>()
+                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
+
+            let key = "merge_mining_proxy.proxy_submit_to_origin";
+            let proxy_submit_to_origin = cfg.get_bool(key).unwrap_or(true);
+
+            let key = "merge_mining_proxy.wait_for_initial_sync_at_startup";
+            let wait_for_initial_sync_at_startup = cfg.get_bool(key).unwrap_or(true);
+
+            //---------------------------------- Network specific merge_mining_proxy defaults ----------------------//
+            let key = config_string("merge_mining_proxy", net_str, "monerod_url");
             let mut monerod_url: Vec<String> = cfg
-                .get_array(key)
+                .get_array(&key)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|v| {
                     v.into_str()
-                        .map_err(|err| ConfigurationError::new(key, None, &err.to_string()))
+                        .map_err(|err| ConfigurationError::new(&key, None, &err.to_string()))
                 })
                 .collect::<Result<_, _>>()?;
 
@@ -694,53 +725,21 @@ fn convert_node_config(
             if monerod_url.is_empty() {
                 monerod_url = vec![
                     "http://stagenet.xmr-tw.org:38081".to_string(),
-                    "http://singapore.node.xmr.pm:38081".to_string(),
-                    "http://xmr-lux.boldsuck.org:38081".to_string(),
+                    "http://stagenet.community.xmr.to:38081".to_string(),
                     "http://monero-stagenet.exan.tech:38081".to_string(),
+                    "http://xmr-lux.boldsuck.org:38081".to_string(),
+                    "http://singapore.node.xmr.pm:38081".to_string(),
                 ];
             }
 
-            let key = "merge_mining_proxy.monerod_use_auth";
-            let monerod_use_auth = cfg
-                .get_bool(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
+            let key = config_string("merge_mining_proxy", net_str, "monerod_use_auth");
+            let monerod_use_auth = cfg.get_bool(&key).unwrap_or(false);
 
-            let key = "merge_mining_proxy.monerod_username";
-            let monerod_username = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
+            let key = config_string("merge_mining_proxy", net_str, "monerod_username");
+            let monerod_username = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
 
-            let key = "merge_mining_proxy.monerod_password";
-            let monerod_password = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
-
-            let key = "merge_mining_proxy.proxy_host_address";
-            let proxy_host_address = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<SocketAddr>()
-                        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                })?;
-
-            let key = "merge_mining_proxy.base_node_grpc_address";
-            let base_node_grpc_address = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
-                })?;
-
-            let key = "merge_mining_proxy.wallet_grpc_address";
-            let wallet_grpc_address = cfg
-                .get_str(key)
-                .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
-                .and_then(|addr| {
-                    addr.parse::<Multiaddr>()
-                        .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))
-                })?;
+            let key = config_string("merge_mining_proxy", net_str, "monerod_password");
+            let monerod_password = cfg.get_str(&key).unwrap_or_else(|_| "".to_string());
 
             Some(MergeMiningConfig {
                 monerod_url,
@@ -750,6 +749,8 @@ fn convert_node_config(
                 proxy_host_address,
                 base_node_grpc_address,
                 wallet_grpc_address,
+                proxy_submit_to_origin,
+                wait_for_initial_sync_at_startup,
             })
         },
         _ => None,
@@ -763,14 +764,6 @@ fn convert_node_config(
             addr.parse::<SocketAddr>()
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })?;
-
-    let key = config_string("merge_mining_proxy", net_str, "wait_for_initial_sync_at_startup");
-    let wait_for_initial_sync_at_startup = cfg
-        .get_bool(&key)
-        .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?;
-
-    let key = config_string("merge_mining_proxy", net_str, "proxy_submit_to_origin");
-    let proxy_submit_to_origin = cfg.get_bool(&key).unwrap_or(true);
 
     let key = "mining_node.num_mining_threads";
     let num_mining_threads = optional(cfg.get_int(key))?.unwrap_or(1) as usize;
@@ -886,7 +879,6 @@ fn convert_node_config(
         output_manager_event_channel_size,
         peer_seeds,
         prevent_fee_gt_amount,
-        proxy_submit_to_origin,
         pruned_mode_cleanup_interval,
         pruning_horizon,
         saf_expiry_duration,
@@ -901,7 +893,6 @@ fn convert_node_config(
         transcoder_host_address,
         validate_tip_timeout_sec,
         validator_node: ValidatorNodeConfig::convert_if_present(&cfg)?,
-        wait_for_initial_sync_at_startup,
         wallet_balance_enquiry_cooldown_period,
         wallet_base_node_service_peers,
         wallet_base_node_service_refresh_interval,
