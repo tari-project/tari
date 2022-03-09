@@ -123,7 +123,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, CryptoFactories},
 };
 use tari_crypto::{
     inputs,
@@ -5206,11 +5206,12 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    let mut features = if features.is_null() {
-        OutputFeatures::default()
-    } else {
-        (*features).clone()
-    };
+    if features.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("features".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
     let covenant = if covenant.is_null() {
         Covenant::default()
     } else {
@@ -5245,21 +5246,6 @@ pub unsafe extern "C" fn wallet_import_utxo(
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
 
-    let recovery_byte = match (*wallet).runtime.block_on(
-        (*wallet)
-            .wallet
-            .output_manager_service
-            .calculate_recovery_byte((*spending_key).clone(), amount),
-    ) {
-        Ok(v) => v,
-        Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return 0;
-        },
-    };
-    features.set_recovery_byte(recovery_byte);
-
     // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
@@ -5267,7 +5253,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        features,
+        (*features).clone(),
         message_string,
         (*metadata_signature).clone(),
         &(*script_private_key).clone(),

@@ -177,7 +177,7 @@ impl TestParams {
             .commitment_factory
             .commit_value(&self.spend_key, params.value.as_u64());
         let updated_features =
-            OutputFeatures::update_recovery_byte_if_required(&commitment, rewind_data, &params.features);
+            OutputFeatures::features_with_updated_recovery_byte(&commitment, rewind_data, &params.features);
 
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
             &params.value,
@@ -745,7 +745,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
-    let updated_features = OutputFeatures::update_recovery_byte_if_required(&commitment, None, &features);
+    let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, &features);
 
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         &value,

@@ -65,6 +65,9 @@ pub async fn make_input<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
     let mut utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params.clone(), val);
+    // If an 'OutputManagerHandle' is present it will have its own internal 'RewindData', thus do not use those provided
+    // by 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
+    // further down the line
     if let Some(mut oms) = oms {
         if let Ok(val) = oms
             .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64())
@@ -94,6 +97,9 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
     let mut utxo = create_unblinded_output(script!(Nop), features.unwrap_or_default(), test_params.clone(), value);
+    // 'OutputManagerHandle' has its own internal 'RewindData', thus do not use those provided by
+    // 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
+    // further down the line
     if let Ok(val) = oms
         .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64())
         .await

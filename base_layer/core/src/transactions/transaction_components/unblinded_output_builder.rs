@@ -74,10 +74,7 @@ impl UnblindedOutputBuilder {
         rewind_data: Option<&RewindData>,
     ) -> Result<(), TransactionError> {
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
-        if self.features.recovery_byte != recovery_byte {
-            self.features.set_recovery_byte(recovery_byte);
-        }
+        self.features.update_recovery_byte(&commitment, rewind_data);
         Ok(())
     }
 

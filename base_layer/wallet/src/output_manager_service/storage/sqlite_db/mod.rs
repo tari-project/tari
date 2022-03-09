@@ -34,7 +34,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PrivateKey, PublicKey},
 };
-use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags, TransactionOutput};
+use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
 use tari_crypto::{
     script::{ExecutionStack, TariScript},
     tari_utilities::{hex::Hex, ByteArray},
@@ -73,53 +73,10 @@ pub struct OutputManagerSqliteDatabase {
 
 impl OutputManagerSqliteDatabase {
     pub fn new(database_connection: WalletDbConnection, cipher: Option<Aes256Gcm>) -> Self {
-        // TODO: Remove this migration for the next testnet reset (currently on Dibbler) #testnet_reset
-        let _ = OutputManagerSqliteDatabase::update_json_output_features_to_v1(database_connection.clone());
-
         Self {
             database_connection,
             cipher: Arc::new(RwLock::new(cipher)),
         }
-    }
-
-    // TODO: Remove this migration for the next testnet reset (currently on Dibbler) #testnet_reset
-    fn update_json_output_features_to_v1(
-        database_connection: WalletDbConnection,
-    ) -> Result<(), OutputManagerStorageError> {
-        let conn = database_connection.get_pooled_connection()?;
-        let start = Instant::now();
-        let outputs = OutputSql::index(&conn)?;
-        let mut count = 0u32;
-        for output in outputs {
-            let new_features_json =
-                OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(output.features_json.clone());
-            if output.features_json != new_features_json {
-                let features: OutputFeatures = serde_json::from_str(&new_features_json).map_err(|e| {
-                    error!(target: LOG_TARGET, "Could not convert json into OutputFeatures:{}", e);
-                    OutputManagerStorageError::ConversionError {
-                        reason: format!("Could not convert json into OutputFeatures:{}", e),
-                    }
-                })?;
-                let updated_features_json = serde_json::to_string(&features).map_err(|e| {
-                    error!(target: LOG_TARGET, "Could not parse features from JSON:{}", e);
-                    OutputManagerStorageError::ConversionError {
-                        reason: format!("Could not parse features from JSON:{}", e),
-                    }
-                })?;
-                diesel::update(outputs::table.filter(outputs::hash.eq(output.hash)))
-                    .set(outputs::features_json.eq::<String>(updated_features_json))
-                    .execute(&conn)
-                    .num_rows_affected_or_not_found(1)?;
-                count += 1;
-            }
-        }
-        trace!(
-            target: LOG_TARGET,
-            "migrated {} output json output features: {} ms",
-            count,
-            start.elapsed().as_millis()
-        );
-        Ok(())
     }
 
     fn decrypt_if_necessary<T: Encryptable<Aes256Gcm>>(&self, o: &mut T) -> Result<(), OutputManagerStorageError> {

@@ -145,22 +145,13 @@ class TransactionBuilder {
   create_unique_recovery_byte(commitment, recovery_byte_key) {
     let KEY = null; // optional key
     const OUTPUT_LENGTH = 1; // bytes
-    const RECOVERY_BYTE_DEFAULT = 0;
-    let salt = 0;
-    let final = RECOVERY_BYTE_DEFAULT;
-    while (final === RECOVERY_BYTE_DEFAULT) {
-      const context = blake2bInit(OUTPUT_LENGTH, KEY);
-      blake2bUpdate(context, Buffer.from(commitment, "hex"));
-      if (recovery_byte_key != undefined) {
-        blake2bUpdate(context, Buffer.from(recovery_byte_key, "hex"));
-      }
-      blake2bUpdate(context, Buffer.from("hash my recovery byte", "hex"));
-      blake2bUpdate(context, toLittleEndian(salt, 64));
-      final = blake2bFinal(context);
-      if (final === RECOVERY_BYTE_DEFAULT) {
-        salt++;
-      }
+    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    blake2bUpdate(context, Buffer.from(commitment, "hex"));
+    if (recovery_byte_key != undefined) {
+      blake2bUpdate(context, Buffer.from(recovery_byte_key, "hex"));
     }
+    blake2bUpdate(context, Buffer.from("hash my recovery byte", "hex"));
+    const final = blake2bFinal(context);
     return final;
   }
 

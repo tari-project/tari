@@ -731,11 +731,16 @@ where
         let input_data = inputs!(PublicKey::from_secret_key(&script_private_key));
         let script = script!(Nop);
 
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), value.as_u64())?;
-        let mut updated_features = features;
-        if updated_features.recovery_byte != recovery_byte {
-            updated_features.set_recovery_byte(recovery_byte);
-        }
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, value.as_u64());
+        let updated_features = OutputFeatures::features_with_updated_recovery_byte(
+            &commitment,
+            Some(&self.resources.rewind_data),
+            &features.clone(),
+        );
 
         Ok(UnblindedOutputBuilder::new(value, spending_key)
             .with_features(updated_features)
@@ -774,12 +779,16 @@ where
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
 
-        let mut updated_features = single_round_sender_data.features.clone();
-        let recovery_byte =
-            self.calculate_recovery_byte(spending_key.clone(), single_round_sender_data.amount.as_u64())?;
-        if recovery_byte != single_round_sender_data.features.recovery_byte {
-            updated_features.set_recovery_byte(recovery_byte);
-        }
+        let commitment = self
+            .resources
+            .factories
+            .commitment
+            .commit_value(&spending_key, single_round_sender_data.amount.as_u64());
+        let updated_features = OutputFeatures::features_with_updated_recovery_byte(
+            &commitment,
+            Some(&self.resources.rewind_data),
+            &single_round_sender_data.features.clone(),
+        );
         let output = DbUnblindedOutput::rewindable_from_unblinded_output(
             UnblindedOutput::new_current_version(
                 single_round_sender_data.amount,
@@ -846,13 +855,14 @@ where
         );
         // TODO: Include asset metadata here if required
         // We assume that default OutputFeatures and Nop TariScript is used
-        let output_features = OutputFeatures { ..Default::default() };
         let metadata_byte_size = self
             .resources
             .consensus_constants
             .transaction_weight()
             .round_up_metadata_size(
-                output_features.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+                OutputFeatures::default().consensus_encode_exact_size() +
+                    script![Nop].consensus_encode_exact_size() +
+                    Covenant::new().consensus_encode_exact_size(),
             );
 
         let utxo_selection = self
@@ -896,7 +906,7 @@ where
             unique_id,
             fee_per_gram,
         );
-        let output_features_estimate = OutputFeatures { ..Default::default() };
+        let output_features_estimate = OutputFeatures::default();
         let metadata_byte_size = self
             .resources
             .consensus_constants
@@ -1540,7 +1550,7 @@ where
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         // Assumes that default Outputfeatures are used for change utxo
-        let output_features_estimate = OutputFeatures { ..Default::default() };
+        let output_features_estimate = OutputFeatures::default();
         let default_metadata_size = fee_calc.weighting().round_up_metadata_size(
             output_features_estimate.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
         );
@@ -1621,7 +1631,7 @@ where
         let output_count = split_count;
         let script = script!(Nop);
         let covenant = Covenant::default();
-        let output_features_estimate = OutputFeatures { ..Default::default() };
+        let output_features_estimate = OutputFeatures::default();
         let metadata_byte_size = self
             .resources
             .consensus_constants

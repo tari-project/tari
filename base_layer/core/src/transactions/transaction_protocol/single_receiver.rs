@@ -104,8 +104,11 @@ impl SingleReceiverTransactionProtocol {
                 .construct_proof(spending_key, sender_info.amount.into())?
         };
 
-        let sender_features =
-            OutputFeatures::update_recovery_byte_if_required(&commitment, rewind_data, &sender_info.features.clone());
+        let sender_features = OutputFeatures::features_with_updated_recovery_byte(
+            &commitment,
+            rewind_data,
+            &sender_info.features.clone(),
+        );
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
             &sender_info.amount,

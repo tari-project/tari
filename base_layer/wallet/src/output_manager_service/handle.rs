@@ -111,6 +111,7 @@ pub enum OutputManagerRequest {
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
     CalculateRecoveryByte {
         spending_key: PrivateKey,
         value: u64,
@@ -633,6 +634,7 @@ impl OutputManagerHandle {
         }
     }
 
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
     pub async fn calculate_recovery_byte(
         &mut self,
         spending_key: PrivateKey,

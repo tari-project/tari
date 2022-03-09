@@ -216,7 +216,7 @@ impl SenderTransactionInitializer {
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
         if recovery_byte != output.features.recovery_byte {
-            self.clone().build_err(&*format!(
+            return self.clone().build_err(&*format!(
                 "Recovery byte not valid (expected {}, got {}), cannot add output: {:?}",
                 recovery_byte, output.features.recovery_byte, output
             ))?;
@@ -234,7 +234,7 @@ impl SenderTransactionInitializer {
             &e.finalize_fixed(),
             &commitment_factory,
         ) {
-            self.clone().build_err(&*format!(
+            return self.clone().build_err(&*format!(
                 "Metadata signature not valid, cannot add output: {:?}",
                 output
             ))?;
@@ -384,9 +384,7 @@ impl SenderTransactionInitializer {
                             .as_ref()
                             .ok_or("Change spending key was not provided")?;
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
-                        let recovery_byte =
-                            OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
-                        output_features.set_recovery_byte(recovery_byte);
+                        output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
                             &v,
                             &change_key.clone(),
@@ -515,11 +513,7 @@ impl SenderTransactionInitializer {
             .map(|o| {
                 let commitment = factories.commitment.commit_value(&o.spending_key, o.value.as_u64());
                 let mut uo = o.clone();
-                uo.features = OutputFeatures::update_recovery_byte_if_required(
-                    &commitment,
-                    self.rewind_data.as_ref(),
-                    &o.features.clone(),
-                );
+                uo.features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
 
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
                     uo.as_rewindable_transaction_output(factories, rewind_data, None)

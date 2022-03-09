@@ -507,7 +507,7 @@ mod output_features {
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         // Recovery byte is not encoded for OutputFeaturesVersion::V0; the default is returned when decoded
         assert_ne!(features_u8_max, decoded_features);
-        features_u8_max.set_recovery_byte(OutputFeatures::RECOVERY_BYTE_DEFAULT);
+        features_u8_max.set_recovery_byte(0);
         assert_eq!(features_u8_max, decoded_features);
 
         features_u8_max.version = OutputFeaturesVersion::V1;
