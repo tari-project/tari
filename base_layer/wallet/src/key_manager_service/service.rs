@@ -23,11 +23,7 @@ use aes_gcm::Aes256Gcm;
 use futures::lock::Mutex;
 use log::*;
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager::KeyManager,
-    mnemonic::{Mnemonic, MnemonicLanguage},
-};
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 
 use crate::types::KeyDigest;
 
@@ -122,22 +118,6 @@ where TBackend: KeyManagerBackend + 'static
     pub async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
         self.db.remove_encryption().await?;
         Ok(())
-    }
-
-    /// Return the Seed words for the current Master Key set in the Key Manager
-    pub async fn get_seed_words(
-        &self,
-        branch: String,
-        language: &MnemonicLanguage,
-    ) -> Result<Vec<String>, KeyManagerError> {
-        let km = self
-            .key_managers
-            .get(&branch)
-            .ok_or(KeyManagerError::UnknownKeyBranch)?
-            .lock()
-            .await;
-        let seed_words = (*km).cipher_seed().to_mnemonic(language, None)?;
-        Ok(seed_words)
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.

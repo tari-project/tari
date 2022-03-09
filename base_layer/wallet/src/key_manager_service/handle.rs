@@ -24,7 +24,7 @@ use std::sync::Arc;
 
 use aes_gcm::Aes256Gcm;
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
 use crate::key_manager_service::{
@@ -108,18 +108,6 @@ where TBackend: KeyManagerBackend + 'static
             .read()
             .await
             .update_current_key_index_if_higher(branch.into(), index)
-            .await
-    }
-
-    async fn get_seed_words<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        language: &MnemonicLanguage,
-    ) -> Result<Vec<String>, KeyManagerError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .get_seed_words(branch.into(), language)
             .await
     }
 }

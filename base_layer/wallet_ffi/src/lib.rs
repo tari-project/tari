@@ -131,7 +131,7 @@ use tari_crypto::{
     script,
     tari_utilities::ByteArray,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
@@ -1168,7 +1168,7 @@ pub unsafe extern "C" fn seed_words_push_word(
     word: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
-    use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
+    use tari_key_manager::mnemonic::Mnemonic;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -5563,11 +5563,11 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_seed_words())
+        .block_on((*wallet).wallet.get_seed_words(&MnemonicLanguage::English))
     {
         Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
         Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
