@@ -2,6 +2,7 @@
 name = "tari_libtor"
 version = "0.24.0"
 edition = "2021"
+license = "BSD-3-Clause"
 
 [dependencies]
 tari_common = { path = "../../common" }
