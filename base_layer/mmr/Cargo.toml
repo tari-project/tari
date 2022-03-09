@@ -13,7 +13,7 @@ native_bitmap = ["croaring"]
 benches = ["criterion"]
 
 [dependencies]
-tari_utilities = "^0.3"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 thiserror = "1.0.26"
 digest = "0.9.0"
 log = "0.4"

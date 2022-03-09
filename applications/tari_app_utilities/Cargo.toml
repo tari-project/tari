@@ -3,6 +3,7 @@ name = "tari_app_utilities"
 version = "0.28.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
+license = "BSD-3-Clause"
 
 [dependencies]
 tari_comms = { path = "../../comms" }
@@ -10,7 +11,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch 
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
-tari_utilities = "0.3.0"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 
 config = { version = "0.9.3" }
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }

@@ -290,17 +290,16 @@ impl SenderTransactionInitializer {
             .map(|o| self.fee.weighting().round_up_metadata_size(o.metadata_byte_size()))
             .sum::<usize>();
 
-        // TODO: implement iter for FixedSet to avoid the clone #LOGGED
         size += self
             .recipient_scripts
-            .clone()
-            .into_vec()
             .iter()
-            .map(|script| {
-                self.fee.weighting().round_up_metadata_size(
-                    self.get_recipient_output_features().consensus_encode_exact_size() +
-                        script.consensus_encode_exact_size(),
-                )
+            .filter_map(|script| {
+                script.map(|s| {
+                    self.fee.weighting().round_up_metadata_size(
+                        self.get_recipient_output_features().consensus_encode_exact_size() +
+                            s.consensus_encode_exact_size(),
+                    )
+                })
             })
             .sum::<usize>();
 
