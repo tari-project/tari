@@ -86,20 +86,19 @@ impl SqliteConnectionPool {
     pub fn get_pooled_connection(
         &self,
     ) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, SqliteStorageError> {
-        let pool = self
-            .pool
-            .as_ref()
-            .ok_or_else(|| SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))?;
-
-        pool.get().map_err(|e| {
-            warn!(
-                target: LOG_TARGET,
-                "Connection pool state {:?}: {}",
-                pool.state(),
-                e.to_string()
-            );
-            SqliteStorageError::DieselR2d2Error(e.to_string())
-        })
+        if let Some(pool) = self.pool.clone() {
+            pool.get().map_err(|e| {
+                warn!(
+                    target: LOG_TARGET,
+                    "Connection pool state {:?}: {}",
+                    pool.state(),
+                    e.to_string()
+                );
+                SqliteStorageError::DieselR2d2Error(e.to_string())
+            })
+        } else {
+            Err(SqliteStorageError::DieselR2d2Error("Pool does not exist".to_string()))
+        }
     }
 
     /// Return a pooled sqlite connection managed by the pool connection manager, waits for at most supplied
