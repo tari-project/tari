@@ -577,9 +577,11 @@ where
     }
 
     pub async fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
-        let master_seed = self.db.get_master_seed().await?.ok_or(WalletError::WalletStorageError(
-            WalletStorageError::RecoverySeedError("Cipher Seed not found".to_string()),
-        ))?;
+        let master_seed = self.db.get_master_seed().await?.ok_or_else(|| {
+            WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
+                "Cipher Seed not found".to_string(),
+            ))
+        })?;
 
         let seed_words = master_seed.to_mnemonic(language, None)?;
         Ok(seed_words)
