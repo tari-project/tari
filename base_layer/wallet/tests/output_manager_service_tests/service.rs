@@ -50,12 +50,10 @@ use tari_core::{
 };
 use tari_crypto::{
     common::Blake256,
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    script::TariScript,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_utilities::Hashable;

@@ -43,7 +43,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
 use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;

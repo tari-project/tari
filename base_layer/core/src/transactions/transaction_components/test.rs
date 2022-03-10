@@ -29,10 +29,9 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     range_proof::{RangeProofError, RangeProofService},
     ristretto::pedersen::PedersenCommitmentFactory,
-    script,
-    script::{ExecutionStack, StackItem},
     tari_utilities::{hex::Hex, Hashable},
 };
+use tari_script::{script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
 

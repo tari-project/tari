@@ -31,10 +31,8 @@ use tari_core::transactions::{
     },
     transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_script::script;
 use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 pub struct TestParams {

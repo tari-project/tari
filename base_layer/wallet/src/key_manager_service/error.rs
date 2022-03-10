@@ -21,8 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_crypto::script::ScriptError;
 use tari_key_manager::error::KeyManagerError as KMError;
+use tari_script::ScriptError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
 use crate::error::WalletStorageError;

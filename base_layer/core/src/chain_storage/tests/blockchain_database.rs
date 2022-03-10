@@ -26,7 +26,7 @@ use rand::rngs::OsRng;
 use tari_common_types::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
@@ -377,7 +377,6 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-    use tari_utilities::hex::Hex;
 
     use super::*;
 
@@ -411,7 +410,7 @@ mod add_block {
             fee: 5.into(),
             lock_height: 0,
             features,
-            script: tari_crypto::script![Nop],
+            script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
             input_version: None,
@@ -452,7 +451,7 @@ mod add_block {
             fee: 5.into(),
             lock_height: 0,
             features: Default::default(),
-            script: tari_crypto::script![Nop],
+            script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
             input_version: None,

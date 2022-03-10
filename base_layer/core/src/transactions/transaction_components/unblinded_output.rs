@@ -44,9 +44,9 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{RangeProofError, RangeProofService},
-    script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
+use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{

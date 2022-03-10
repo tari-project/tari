@@ -33,10 +33,8 @@ use tari_common_types::types::{
     Signature,
     BLOCK_HASH_LENGTH,
 };
-use tari_crypto::{
-    script::TariScript,
-    tari_utilities::{hash::Hashable, hex::*},
-};
+use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
+use tari_script::TariScript;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},

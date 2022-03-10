@@ -27,7 +27,7 @@ use std::{
 
 use integer_encoding::VarIntWriter;
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::script::TariScript;
+use tari_script::TariScript;
 use tari_utilities::hex::{to_hex, Hex};
 
 use crate::{
@@ -262,7 +262,7 @@ mod test {
 
     mod write_to {
         use tari_common_types::types::Commitment;
-        use tari_crypto::script;
+        use tari_script::script;
         use tari_utilities::hex::from_hex;
 
         use super::*;

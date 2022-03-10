@@ -66,8 +66,9 @@ use tari_core::{
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
+use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
 
@@ -1113,7 +1114,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: tari_crypto::script![Nop],
+        script: script![Nop],
         input_data: None,
         covenant: Default::default(),
         input_version: Some(TransactionInputVersion::V1),
@@ -1133,7 +1134,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: tari_crypto::script![Nop],
+        script: script![Nop],
         input_data: None,
         covenant: Default::default(),
         input_version: None,
@@ -1153,7 +1154,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: tari_crypto::script![Nop],
+        script: script![Nop],
         input_data: None,
         covenant: Default::default(),
         input_version: None,

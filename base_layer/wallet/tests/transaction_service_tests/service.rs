@@ -90,13 +90,11 @@ use tari_core::{
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
-    inputs,
     keys::{PublicKey as PK, SecretKey as SK},
-    script,
-    script::{ExecutionStack, TariScript},
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 use tari_p2p::{comms_connector::pubsub_connector, domain_message::DomainMessage, Network};
+use tari_script::{inputs, script, ExecutionStack, TariScript};
 use tari_service_framework::{reply_channel, RegisterHandle, StackBuilder};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;

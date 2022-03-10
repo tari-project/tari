@@ -28,7 +28,7 @@ use tari_core::transactions::{
     transaction_protocol::RewindData,
     CryptoFactories,
 };
-use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hash::Hashable;
 
 use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};

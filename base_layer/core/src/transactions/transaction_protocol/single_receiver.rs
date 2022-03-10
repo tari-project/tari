@@ -141,8 +141,8 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
-        script::TariScript,
     };
+    use tari_script::TariScript;
 
     use crate::transactions::{
         crypto_factories::CryptoFactories,

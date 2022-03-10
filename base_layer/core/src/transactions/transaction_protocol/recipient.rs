@@ -206,8 +206,8 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
-        script::TariScript,
     };
+    use tari_script::TariScript;
 
     use crate::{
         covenants::Covenant,

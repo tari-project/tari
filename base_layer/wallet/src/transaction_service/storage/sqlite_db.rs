@@ -2150,11 +2150,8 @@ mod test {
             SenderTransactionProtocol,
         },
     };
-    use tari_crypto::{
-        keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-        script,
-        script::{ExecutionStack, TariScript},
-    };
+    use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+    use tari_script::{script, ExecutionStack, TariScript};
     use tari_test_utils::random::string;
     use tempfile::tempdir;
 

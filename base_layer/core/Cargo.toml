@@ -27,6 +27,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = { version = "^0.29", path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = { version = "^0.29", path = "../../base_layer/p2p" }
+tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = { version = "^0.29", path = "../service_framework" }
 tari_shutdown = { version = "^0.29", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.29", path = "../../infrastructure/storage" }

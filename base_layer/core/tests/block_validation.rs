@@ -56,7 +56,7 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::{inputs, script};
+use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 

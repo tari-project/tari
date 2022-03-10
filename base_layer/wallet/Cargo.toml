@@ -14,6 +14,7 @@ tari_comms_dht = { version = "^0.29", path = "../../comms/dht" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
 tari_key_manager = { version = "^0.29", path = "../key_manager" }
 tari_p2p = { version = "^0.29", path = "../p2p", features = ["auto-update"] }
+tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = { version = "^0.29", path = "../service_framework" }
 tari_shutdown = { version = "^0.29", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.29", path = "../../infrastructure/storage" }
