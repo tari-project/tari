@@ -22,6 +22,7 @@
 
 use std::marker::PhantomData;
 
+use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
@@ -31,17 +32,23 @@ use tari_crypto::{
 
 use crate::cipher_seed::CipherSeed;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct DerivedKey<K>
 where K: SecretKey
 {
+    #[derivative(Debug = "ignore")]
+    #[serde(skip_serializing)]
     pub k: K,
     pub key_index: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
+    #[derivative(Debug = "ignore")]
     seed: CipherSeed,
+    #[derivative(Debug = "ignore")]
     pub branch_seed: String,
     primary_key_index: u64,
     digest_type: PhantomData<D>,
