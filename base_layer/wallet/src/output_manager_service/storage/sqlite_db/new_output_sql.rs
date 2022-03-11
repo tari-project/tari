@@ -23,7 +23,7 @@ use aes_gcm::Aes256Gcm;
 use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use crate::{
     output_manager_service::{

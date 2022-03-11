@@ -39,11 +39,8 @@ use tari_comms::{
     types::{Challenge, CommsPublicKey},
     utils::signature,
 };
-use tari_crypto::{
-    keys::PublicKey,
-    tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
-};
-use tari_utilities::hex::Hex;
+use tari_crypto::keys::PublicKey;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::sync::oneshot;
 use tower::{layer::Layer, Service, ServiceExt};
 

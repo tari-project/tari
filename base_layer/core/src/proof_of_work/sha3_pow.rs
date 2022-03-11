@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use sha3::{Digest, Sha3_256};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use crate::{
     blocks::BlockHeader,
@@ -67,6 +67,7 @@ fn sha3_difficulty_with_hash(header: &BlockHeader) -> (Difficulty, Vec<u8>) {
 #[cfg(test)]
 pub mod test {
     use chrono::{DateTime, NaiveDate, Utc};
+    use tari_utilities::epoch_time::EpochTime;
 
     use crate::{
         blocks::BlockHeader,
@@ -87,7 +88,9 @@ pub mod test {
 
     pub fn get_header() -> BlockHeader {
         let mut header = BlockHeader::new(0);
-        header.timestamp = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).into();
+        header.timestamp = EpochTime::from_secs_since_epoch(
+            DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).timestamp() as u64,
+        );
         header.pow.pow_algo = PowAlgorithm::Sha3;
         header
     }

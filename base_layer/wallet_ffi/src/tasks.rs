@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tari_wallet::{error::WalletError, utxo_scanner_service::handle::UtxoScannerEvent};
 use tokio::{sync::broadcast, task::JoinHandle};
 

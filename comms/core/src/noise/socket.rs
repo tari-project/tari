@@ -37,7 +37,7 @@ use std::{
 use futures::ready;
 use log::*;
 use snow::{error::StateProblem, HandshakeState, TransportState};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 use crate::types::CommsPublicKey;

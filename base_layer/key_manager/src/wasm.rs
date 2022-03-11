@@ -162,7 +162,7 @@ where T: for<'a> Deserialize<'a> {
 }
 
 mod test {
-    use tari_crypto::tari_utilities::hex::Hex;
+    use tari_utilities::hex::Hex;
     use wasm_bindgen_test::*;
 
     use super::*;
