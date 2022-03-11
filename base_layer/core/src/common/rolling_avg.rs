@@ -1,4 +1,4 @@
-//  Copyright 2020, The Tari Project
+//  Copyright 2022, The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,42 +20,43 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{convert::TryFrom, time::Duration};
 
-use tari_comms::{
-    connectivity::ConnectivityError,
-    peer_manager::NodeId,
-    protocol::rpc::{RpcError, RpcStatus},
-};
+use crate::common::rolling_vec::RollingVec;
 
-use crate::{chain_storage::ChainStorageError, validation::ValidationError};
+#[derive(Debug, Clone)]
+pub struct RollingAverageTime {
+    samples: RollingVec<Duration>,
+}
 
-#[derive(Debug, thiserror::Error)]
-pub enum BlockSyncError {
-    #[error("RPC error: {0}")]
-    RpcError(#[from] RpcError),
-    #[error("RPC request failed: {0}")]
-    RpcRequestError(#[from] RpcStatus),
-    #[error("Chain storage error: {0}")]
-    ChainStorageError(#[from] ChainStorageError),
-    #[error("Peer sent a block that did not form a chain. Expected hash = {expected}, got = {got}")]
-    PeerSentBlockThatDidNotFormAChain { expected: String, got: String },
-    #[error("Connectivity Error: {0}")]
-    ConnectivityError(#[from] ConnectivityError),
-    #[error("No sync peers available")]
-    NoSyncPeers,
-    #[error("Block validation failed: {0}")]
-    ValidationError(#[from] ValidationError),
-    #[error("Failed to construct valid chain block")]
-    FailedToConstructChainBlock,
-    #[error("Peer violated the block sync protocol: {0}")]
-    ProtocolViolation(String),
-    #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}, max: {max_latency:.2?}")]
-    MaxLatencyExceeded {
-        peer: NodeId,
-        latency: Duration,
-        max_latency: Duration,
-    },
-    #[error("All sync peers exceeded max allowed latency")]
-    AllSyncPeersExceedLatency,
+impl RollingAverageTime {
+    pub fn new(num_samples: usize) -> Self {
+        Self {
+            samples: RollingVec::new(num_samples),
+        }
+    }
+
+    pub fn add_sample(&mut self, sample: Duration) {
+        self.samples.push(sample);
+    }
+
+    pub fn calc_samples_per_second(&self) -> Option<f64> {
+        if self.samples.is_empty() {
+            return None;
+        }
+
+        let total_time = self.samples.iter().sum::<Duration>();
+        Some((self.samples.len() as f64 / total_time.as_micros() as f64) * 1_000_000.0)
+    }
+
+    pub fn calculate_average(&self) -> Option<Duration> {
+        if self.samples.is_empty() {
+            return None;
+        }
+
+        let total_time = self.samples.iter().sum::<Duration>();
+        Some(Duration::from_nanos(
+            u64::try_from(total_time.as_nanos()).unwrap_or(u64::MAX) / self.samples.len() as u64,
+        ))
+    }
 }
