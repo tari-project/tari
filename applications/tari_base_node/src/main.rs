@@ -102,7 +102,7 @@ use std::{
 };
 
 use commands::{
-    command::CommandContext,
+    command::{CommandContext, WatchCommand},
     parser::Parser,
     reader::{CommandEvent, CommandReader},
     status_line::StatusLineOutput,
@@ -408,8 +408,44 @@ async fn cli_loop(mut context: CommandContext) {
     let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
     let config = context.config.clone();
+    let mut watch_task = Some(WatchCommand::default());
     loop {
-        let mut watch_task = None;
+        if let Some(command) = watch_task.take() {
+            let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
+            if let Err(err) = context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                loop {
+                    let interval = get_status_interval(start_time, interval);
+                    tokio::select! {
+                        _ = interval => {
+                            if let Err(err) = context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                        },
+                        _ = signal::ctrl_c() => {
+                            break;
+                        }
+                        // TODO: Is that good idea? Or add a separate command?
+                        Ok(_) = software_update_notif.changed() => {
+                            if let Some(ref update) = *software_update_notif.borrow() {
+                                println!(
+                                    "Version {} of the {} is available: {} (sha: {})",
+                                    update.version(),
+                                    update.app(),
+                                    update.download_url(),
+                                    update.to_hash_hex()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {
@@ -448,42 +484,6 @@ async fn cli_loop(mut context: CommandContext) {
             },
             _ = shutdown_signal.wait() => {
                 break;
-            }
-        }
-        if let Some(command) = watch_task.as_ref() {
-            let line = command.line();
-            let interval = command
-                .interval
-                .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
-            if let Err(err) = context.handle_command_str(line).await {
-                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
-            } else {
-                loop {
-                    let interval = get_status_interval(start_time, interval);
-                    tokio::select! {
-                        _ = interval => {
-                            if let Err(err) = context.handle_command_str(line).await {
-                                println!("Watched command `{}` failed: {}", line, err);
-                            }
-                        },
-                        _ = signal::ctrl_c() => {
-                            break;
-                        }
-                        // TODO: Is that good idea? Or add a separate command?
-                        Ok(_) = software_update_notif.changed() => {
-                            if let Some(ref update) = *software_update_notif.borrow() {
-                                println!(
-                                    "Version {} of the {} is available: {} (sha: {})",
-                                    update.version(),
-                                    update.app(),
-                                    update.download_url(),
-                                    update.to_hash_hex()
-                                );
-                            }
-                        }
-                    }
-                }
             }
         }
     }

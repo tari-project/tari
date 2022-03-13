@@ -59,7 +59,7 @@ use tari_core::{
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_shutdown::Shutdown;
 use tokio::{sync::watch, time};
-use watch_command::WatchCommand;
+pub use watch_command::WatchCommand;
 
 use crate::{
     builder::BaseNodeContext,
