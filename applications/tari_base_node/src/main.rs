@@ -293,7 +293,7 @@ async fn run_node(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(context));
+        task::spawn(cli_loop(context, bootstrap.watch_mode));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -372,7 +372,6 @@ async fn status_loop(mut context: CommandContext) {
             _ = shutdown_signal.wait() => {
                 break;
             }
-
             _ = interval => {
                 context.status(StatusLineOutput::Log).await.ok();
             },
@@ -387,7 +386,7 @@ async fn status_loop(mut context: CommandContext) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(mut context: CommandContext) {
+async fn cli_loop(mut context: CommandContext, watch_mode: bool) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
@@ -408,7 +407,11 @@ async fn cli_loop(mut context: CommandContext) {
     let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
     let config = context.config.clone();
-    let mut watch_task = Some(WatchCommand::default());
+    let mut watch_task = if watch_mode {
+        Some(WatchCommand::default())
+    } else {
+        None
+    };
     loop {
         if let Some(command) = watch_task.take() {
             let line = command.line();
@@ -445,6 +448,9 @@ async fn cli_loop(mut context: CommandContext) {
                     }
                 }
             }
+        }
+        if watch_mode {
+            break;
         }
         tokio::select! {
             res = reader.next_command() => {
