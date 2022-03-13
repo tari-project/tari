@@ -14,15 +14,26 @@ impl fmt::Display for WatchCommand {
     }
 }
 
+const DEFAULT_WATCH: &str = "status";
+
 /// Repeat a command within an interval.
-#[derive(Debug, Parser, Default)]
+#[derive(Debug, Parser)]
 pub struct Args {
     /// Interval in seconds
     #[clap(short, long)]
     pub interval: Option<u64>,
     /// The command to perform. `status` if empty.
-    #[clap(default_value = "status")]
+    #[clap(default_value = DEFAULT_WATCH)]
     pub command: String,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            interval: None,
+            command: DEFAULT_WATCH.into(),
+        }
+    }
 }
 
 impl Args {
