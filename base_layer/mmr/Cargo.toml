@@ -13,7 +13,7 @@ native_bitmap = ["croaring"]
 benches = ["criterion"]
 
 [dependencies]
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 thiserror = "1.0.26"
 digest = "0.9.0"
 log = "0.4"
@@ -24,7 +24,7 @@ criterion = { version="0.2", optional = true }
 [dev-dependencies]
 rand="0.8.0"
 blake2 = "0.9.0"
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
 serde_json = "1.0"
 bincode = "1.1"
 [lib]

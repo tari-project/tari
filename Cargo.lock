@@ -6880,17 +6880,17 @@ dependencies = [
 
 [[package]]
 name = "tari_crypto"
-version = "0.12.0"
-source = "git+https://github.com/tari-project/tari-crypto.git?branch=main#1b74d944218587dd0fa60bc75db2eca1d5d7057d"
+version = "0.12.1"
+source = "git+https://github.com/tari-project/tari-crypto.git?tag=v0.12.1#8d88d0956e27963dcd888aac058d04f6af7d606b"
 dependencies = [
  "base64 0.10.1",
  "blake2",
  "cbindgen",
- "clear_on_drop",
  "curve25519-dalek-ng",
  "digest 0.9.0",
  "lazy_static 1.4.0",
  "merlin",
+ "once_cell",
  "rand 0.8.5",
  "rmp-serde",
  "serde 1.0.136",
@@ -6900,6 +6900,7 @@ dependencies = [
  "tari_bulletproofs",
  "tari_utilities",
  "thiserror",
+ "zeroize",
 ]
 
 [[package]]
@@ -7290,8 +7291,8 @@ dependencies = [
 
 [[package]]
 name = "tari_utilities"
-version = "0.3.0"
-source = "git+https://github.com/tari-project/tari_utilities.git?branch=main#d0acbf011841a47d1b55084db1d7c9096c54c1fe"
+version = "0.3.1"
+source = "git+https://github.com/tari-project/tari_utilities.git?tag=v0.3.1#056603a99ac1d09723fadd955baf5d5dc53a909a"
 dependencies = [
  "base58-monero 0.2.1",
  "base64 0.10.1",
