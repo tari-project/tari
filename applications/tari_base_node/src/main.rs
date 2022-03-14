@@ -102,7 +102,7 @@ use std::{
 };
 
 use commands::{
-    command::{CommandContext, WatchCommand},
+    command::CommandContext,
     parser::Parser,
     reader::{CommandEvent, CommandReader},
     status_line::StatusLineOutput,
@@ -286,14 +286,14 @@ async fn run_node(
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
     if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(context));
+        task::spawn(status_loop(context, bootstrap.watch));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(context, bootstrap.watch_mode));
+        task::spawn(cli_loop(context));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -361,7 +361,7 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-async fn status_loop(mut context: CommandContext) {
+async fn status_loop(mut context: CommandContext, watch_command: Option<String>) {
     let start_time = Instant::now();
     let mut shutdown_signal = context.shutdown.to_signal();
     let status_interval = context.global_config().base_node_status_line_interval;
@@ -373,7 +373,13 @@ async fn status_loop(mut context: CommandContext) {
                 break;
             }
             _ = interval => {
-                context.status(StatusLineOutput::Log).await.ok();
+                if let Some(line) = watch_command.as_ref() {
+                    if let Err(err) = context.handle_command_str(line).await {
+                        println!("Watched command `{}` failed: {}", line, err);
+                    }
+                } else {
+                    context.status(StatusLineOutput::Log).await.ok();
+                }
             },
         }
     }
@@ -386,7 +392,7 @@ async fn status_loop(mut context: CommandContext) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(mut context: CommandContext, watch_mode: bool) {
+async fn cli_loop(mut context: CommandContext) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
@@ -407,51 +413,8 @@ async fn cli_loop(mut context: CommandContext, watch_mode: bool) {
     let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
     let config = context.config.clone();
-    let mut watch_task = if watch_mode {
-        Some(WatchCommand::default())
-    } else {
-        None
-    };
+    let mut watch_task = None;
     loop {
-        if let Some(command) = watch_task.take() {
-            let line = command.line();
-            let interval = command
-                .interval
-                .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
-            if let Err(err) = context.handle_command_str(line).await {
-                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
-            } else {
-                loop {
-                    let interval = get_status_interval(start_time, interval);
-                    tokio::select! {
-                        _ = interval => {
-                            if let Err(err) = context.handle_command_str(line).await {
-                                println!("Watched command `{}` failed: {}", line, err);
-                            }
-                        },
-                        _ = signal::ctrl_c() => {
-                            break;
-                        }
-                        // TODO: Is that good idea? Or add a separate command?
-                        Ok(_) = software_update_notif.changed() => {
-                            if let Some(ref update) = *software_update_notif.borrow() {
-                                println!(
-                                    "Version {} of the {} is available: {} (sha: {})",
-                                    update.version(),
-                                    update.app(),
-                                    update.download_url(),
-                                    update.to_hash_hex()
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if watch_mode {
-            break;
-        }
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {
@@ -490,6 +453,42 @@ async fn cli_loop(mut context: CommandContext, watch_mode: bool) {
             },
             _ = shutdown_signal.wait() => {
                 break;
+            }
+        }
+        if let Some(command) = watch_task.take() {
+            let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
+            if let Err(err) = context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                loop {
+                    let interval = get_status_interval(start_time, interval);
+                    tokio::select! {
+                        _ = interval => {
+                            if let Err(err) = context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                        },
+                        _ = signal::ctrl_c() => {
+                            break;
+                        }
+                        // TODO: Is that good idea? Or add a separate command?
+                        Ok(_) = software_update_notif.changed() => {
+                            if let Some(ref update) = *software_update_notif.borrow() {
+                                println!(
+                                    "Version {} of the {} is available: {} (sha: {})",
+                                    update.version(),
+                                    update.app(),
+                                    update.download_url(),
+                                    update.to_hash_hex()
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
     }
