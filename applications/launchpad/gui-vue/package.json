@@ -20,7 +20,8 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.0.0-beta.10",
-    "eslint-plugin-vue": "^7.0.0"
+    "eslint-plugin-vue": "^7.0.0",
+    "@vue/cli-service" : "^5.0.1"
   },
   "eslintConfig": {
     "root": true,
