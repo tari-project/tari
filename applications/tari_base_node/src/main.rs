@@ -372,6 +372,9 @@ async fn status_loop(mut context: CommandContext, watch_command: Option<String>)
             _ = shutdown_signal.wait() => {
                 break;
             }
+            _ = signal::ctrl_c() => {
+                break;
+            }
             _ = interval => {
                 if let Some(line) = watch_command.as_ref() {
                     if let Err(err) = context.handle_command_str(line).await {
