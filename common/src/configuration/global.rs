@@ -39,13 +39,7 @@ use multiaddr::{Error, Multiaddr, Protocol};
 use tari_storage::lmdb_store::LMDBConfig;
 
 use crate::{
-    configuration::{
-        bootstrap::ApplicationType,
-        name_server::DnsNameServer,
-        CollectiblesConfig,
-        Network,
-        WalletConfig,
-    },
+    configuration::{bootstrap::ApplicationType, name_server::DnsNameServer, CollectiblesConfig, Network},
     ConfigurationError,
 };
 
@@ -77,7 +71,6 @@ pub struct GlobalConfig {
     pub pruned_mode_cleanup_interval: u64,
     pub core_threads: Option<usize>,
     pub public_address: Option<Multiaddr>,
-    pub wallet_config: Option<WalletConfig>,
     pub peer_seeds: Vec<String>,
     pub dns_seeds: Vec<String>,
     pub dns_seeds_name_server: DnsNameServer,
@@ -293,30 +286,6 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })
         .transpose()?;
-
-    let mut wallet_config = None;
-    if application == ApplicationType::ConsoleWallet {
-        let mut config = WalletConfig::default();
-        // GPRC enabled
-        let key = "wallet.grpc_enabled";
-        let grpc_enabled = cfg.get_bool(key).unwrap_or_default();
-
-        config.grpc_address = if grpc_enabled {
-            let key = "wallet.grpc_address";
-            let addr = cfg
-                .get_str(key)
-                .unwrap_or_else(|_| "/ip4/127.0.0.1/tcp/18143".to_string());
-
-            let grpc_address = addr
-                .parse::<Multiaddr>()
-                .map_err(|e| ConfigurationError::new(key, Some(addr), &e.to_string()))?;
-
-            Some(grpc_address)
-        } else {
-            None
-        };
-        wallet_config = Some(config);
-    }
 
     // Peer and DNS seeds
     let key = config_string("common", net_str, "peer_seeds");
@@ -597,7 +566,6 @@ fn convert_node_config(
         pruned_mode_cleanup_interval,
         core_threads,
         public_address,
-        wallet_config,
         peer_seeds,
         dns_seeds,
         dns_seeds_name_server,

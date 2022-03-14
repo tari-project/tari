@@ -58,14 +58,14 @@ pub enum WalletMode {
 }
 
 #[derive(Debug, Clone)]
-pub struct WalletModeConfig {
+pub struct ConsoleWalletConfig {
     pub base_node_config: PeerConfig,
     pub base_node_selected: Peer,
     pub bootstrap: ConfigBootstrap,
     pub global_config: GlobalConfig,
-    pub handle: Handle,
     pub notify_script: Option<PathBuf>,
     pub wallet_mode: WalletMode,
+    pub grpc_address: Option<Multiaddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -134,10 +134,12 @@ impl PeerConfig {
     }
 }
 
-pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: String) -> Result<(), ExitError> {
-    let WalletModeConfig {
-        global_config, handle, ..
-    } = config.clone();
+pub fn command_mode(
+    handle: Handle,
+    config: ConsoleWalletConfig,
+    wallet: WalletSqlite,
+    command: String,
+) -> Result<(), ExitError> {
     let commands = vec![parse_command(&command)?];
 
     // Do not remove this println!
@@ -145,7 +147,7 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
+    handle.block_on(command_runner(commands, wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Command mode completed)";
@@ -153,13 +155,15 @@ pub fn command_mode(config: WalletModeConfig, wallet: WalletSqlite, command: Str
 
     info!(target: LOG_TARGET, "Completed wallet command mode");
 
-    wallet_or_exit(config, wallet)
+    wallet_or_exit(handle, config, wallet)
 }
 
-pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf) -> Result<(), ExitError> {
-    let WalletModeConfig {
-        global_config, handle, ..
-    } = config.clone();
+pub fn script_mode(
+    handle: Handle,
+    config: ConsoleWalletConfig,
+    wallet: WalletSqlite,
+    path: PathBuf,
+) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
     let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
@@ -185,7 +189,7 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting the command runner!");
-    handle.block_on(command_runner(commands, wallet.clone(), global_config))?;
+    handle.block_on(command_runner(commands, wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
@@ -193,11 +197,11 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
 
     info!(target: LOG_TARGET, "Completed wallet script mode");
 
-    wallet_or_exit(config, wallet)
+    wallet_or_exit(handle, config, wallet)
 }
 
 /// Prompts the user to continue to the wallet, or exit.
-fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
+fn wallet_or_exit(handle: Handle, config: ConsoleWalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     if config.bootstrap.command_mode_auto_exit {
         info!(target: LOG_TARGET, "Auto exit argument supplied - exiting.");
         return Ok(());
@@ -205,7 +209,7 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
 
     if config.bootstrap.non_interactive_mode {
         info!(target: LOG_TARGET, "Starting GRPC server.");
-        grpc_mode(config, wallet)
+        grpc_mode(handle, config, wallet)
     } else {
         debug!(target: LOG_TARGET, "Prompting for run or exit key.");
         println!("\nPress Enter to continue to the wallet, or type q (or quit) followed by Enter.");
@@ -221,28 +225,24 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
             },
             _ => {
                 info!(target: LOG_TARGET, "Starting TUI.");
-                tui_mode(config, wallet)
+                tui_mode(handle, config, wallet)
             },
         }
     }
 }
 
-pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<(), ExitError> {
-    let WalletModeConfig {
+pub fn tui_mode(handle: Handle, config: ConsoleWalletConfig, mut wallet: WalletSqlite) -> Result<(), ExitError> {
+    let ConsoleWalletConfig {
         base_node_config,
         mut base_node_selected,
         global_config,
-        handle,
         notify_script,
+        grpc_address,
         ..
     } = config;
-    if let Some(grpc_address) = global_config
-        .wallet_config
-        .as_ref()
-        .and_then(|c| c.grpc_address.as_ref())
-    {
+    if let Some(grpc_address) = grpc_address {
         let grpc = WalletGrpcServer::new(wallet.clone());
-        handle.spawn(run_grpc(grpc, grpc_address.clone()));
+        handle.spawn(run_grpc(grpc, grpc_address));
     }
 
     let notifier = Notifier::new(notify_script, handle.clone(), wallet.clone());
@@ -284,10 +284,9 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
     Ok(())
 }
 
-pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
-    let WalletModeConfig {
+pub fn recovery_mode(handle: Handle, config: ConsoleWalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
+    let ConsoleWalletConfig {
         base_node_config,
-        handle,
         wallet_mode,
         ..
     } = config.clone();
@@ -321,8 +320,8 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
     println!("Starting TUI.");
 
     match wallet_mode {
-        WalletMode::RecoveryDaemon => grpc_mode(config, wallet),
-        WalletMode::RecoveryTui => tui_mode(config, wallet),
+        WalletMode::RecoveryDaemon => grpc_mode(handle, config, wallet),
+        WalletMode::RecoveryTui => tui_mode(handle, config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
             "Unsupported post recovery mode",
@@ -330,12 +329,9 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
     }
 }
 
-pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
-    let WalletModeConfig {
-        global_config, handle, ..
-    } = config;
+pub fn grpc_mode(handle: Handle, config: ConsoleWalletConfig, wallet: WalletSqlite) -> Result<(), ExitError> {
     info!(target: LOG_TARGET, "Starting grpc server");
-    if let Some(grpc_address) = global_config.wallet_config.and_then(|c| c.grpc_address) {
+    if let Some(grpc_address) = config.grpc_address {
         let grpc = WalletGrpcServer::new(wallet);
         handle
             .block_on(run_grpc(grpc, grpc_address))

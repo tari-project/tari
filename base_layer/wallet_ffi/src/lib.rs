@@ -3353,7 +3353,7 @@ pub unsafe extern "C" fn wallet_create(
         },
     };
     let factories = CryptoFactories::default();
-    let w;
+    // let w;
 
     let sql_database_path = (*config)
         .datastore_path
@@ -3374,161 +3374,162 @@ pub unsafe extern "C" fn wallet_create(
 
     debug!(target: LOG_TARGET, "Databases Initialized");
 
+    todo!()
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
-    let mut comms_config = (*config).clone();
-    comms_config.transport_type = match comms_config.transport_type {
-        Tor(mut tor_config) => {
-            tor_config.identity = match runtime.block_on(wallet_database.get_tor_id()) {
-                Ok(Some(v)) => Some(Box::new(v)),
-                _ => None,
-            };
-            Tor(tor_config)
-        },
-        _ => comms_config.transport_type,
-    };
-
-    let result = runtime.block_on(async {
-        let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
-            .await
-            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-        let comms_secret_key = derive_comms_secret_key(&master_seed)
-            .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-        let node_features = comms_config.node_identity.features();
-        let node_address = comms_config.node_identity.public_address();
-        let identity_sig = wallet_database.get_comms_identity_signature().await?;
-
-        // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
-        // to None
-        let identity_sig = identity_sig.filter(|sig| {
-            let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-            sig.is_valid(&comms_public_key, node_features, [&node_address])
-        });
-
-        // SAFETY: we are manually checking the validity of this signature before adding Some(..)
-        let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-            comms_secret_key,
-            node_address,
-            node_features,
-            identity_sig,
-        ));
-        if !node_identity.is_signed() {
-            node_identity.sign();
-            // unreachable panic: signed above
-            wallet_database
-                .set_comms_identity_signature(
-                    node_identity
-                        .identity_signature_read()
-                        .as_ref()
-                        .expect("unreachable panic")
-                        .clone(),
-                )
-                .await?;
-        }
-        Ok((master_seed, node_identity))
-    });
-    let master_seed;
-    match result {
-        Ok((seed, node_identity)) => {
-            master_seed = seed;
-            comms_config.node_identity = node_identity;
-        },
-        Err(e) => {
-            error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            return ptr::null_mut();
-        },
-    }
-
-    let shutdown = Shutdown::new();
-    let wallet_config = WalletConfig::new(
-        comms_config,
-        factories,
-        Some(TransactionServiceConfig {
-            direct_send_timeout: (*config).dht.discovery_request_timeout,
-            ..Default::default()
-        }),
-        None,
-        Network::Dibbler.into(),
-        None,
-        None,
-        None,
-        None,
-    );
-
-    let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
-        Err(_) => false,
-        Ok(None) => false,
-        Ok(Some(_)) => true,
-    };
-    ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
-
-    w = runtime.block_on(Wallet::start(
-        wallet_config,
-        wallet_database,
-        transaction_backend.clone(),
-        output_manager_backend,
-        contacts_backend,
-        shutdown.to_signal(),
-        master_seed,
-    ));
-
-    match w {
-        Ok(mut w) => {
-            // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
-            if let Some(hs) = w.comms.hidden_service() {
-                if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
-                    warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
-                }
-            }
-            // Start Callback Handler
-            let callback_handler = CallbackHandler::new(
-                TransactionDatabase::new(transaction_backend),
-                w.transaction_service.get_event_stream(),
-                w.output_manager_service.get_event_stream(),
-                w.output_manager_service.clone(),
-                w.dht_service.subscribe_dht_events(),
-                w.comms.shutdown_signal(),
-                w.comms.node_identity().public_key().clone(),
-                w.wallet_connectivity.get_connectivity_status_watch(),
-                callback_received_transaction,
-                callback_received_transaction_reply,
-                callback_received_finalized_transaction,
-                callback_transaction_broadcast,
-                callback_transaction_mined,
-                callback_transaction_mined_unconfirmed,
-                callback_direct_send_result,
-                callback_store_and_forward_send_result,
-                callback_transaction_cancellation,
-                callback_txo_validation_complete,
-                callback_balance_updated,
-                callback_transaction_validation_complete,
-                callback_saf_messages_received,
-                callback_connectivity_status,
-            );
-
-            runtime.spawn(callback_handler.start());
-
-            if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
-                warn!(
-                    target: LOG_TARGET,
-                    "Could not restart transaction negotiation protocols: {:?}", e
-                );
-            }
-
-            let tari_wallet = TariWallet {
-                wallet: w,
-                runtime,
-                shutdown,
-            };
-
-            Box::into_raw(Box::new(tari_wallet))
-        },
-        Err(e) => {
-            error = LibWalletError::from(e).code;
-            ptr::swap(error_out, &mut error as *mut c_int);
-            ptr::null_mut()
-        },
-    }
+    // let mut comms_config = (*config).clone();
+    // comms_config.transport_type = match comms_config.transport_type {
+    //     Tor(mut tor_config) => {
+    //         tor_config.identity = match runtime.block_on(wallet_database.get_tor_id()) {
+    //             Ok(Some(v)) => Some(Box::new(v)),
+    //             _ => None,
+    //         };
+    //         Tor(tor_config)
+    //     },
+    //     _ => comms_config.transport_type,
+    // };
+    //
+    // let result = runtime.block_on(async {
+    //     let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
+    //         .await
+    //         .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
+    //     let comms_secret_key = derive_comms_secret_key(&master_seed)
+    //         .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
+    //     let node_features = comms_config.node_identity.features();
+    //     let node_address = comms_config.node_identity.public_address();
+    //     let identity_sig = wallet_database.get_comms_identity_signature().await?;
+    //
+    //     // This checks if anything has changed by validating the previous signature and if invalid, setting
+    // identity_sig     // to None
+    //     let identity_sig = identity_sig.filter(|sig| {
+    //         let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+    //         sig.is_valid(&comms_public_key, node_features, [&node_address])
+    //     });
+    //
+    //     // SAFETY: we are manually checking the validity of this signature before adding Some(..)
+    //     let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
+    //         comms_secret_key,
+    //         node_address,
+    //         node_features,
+    //         identity_sig,
+    //     ));
+    //     if !node_identity.is_signed() {
+    //         node_identity.sign();
+    //         // unreachable panic: signed above
+    //         wallet_database
+    //             .set_comms_identity_signature(
+    //                 node_identity
+    //                     .identity_signature_read()
+    //                     .as_ref()
+    //                     .expect("unreachable panic")
+    //                     .clone(),
+    //             )
+    //             .await?;
+    //     }
+    //     Ok((master_seed, node_identity))
+    // });
+    // let master_seed;
+    // match result {
+    //     Ok((seed, node_identity)) => {
+    //         master_seed = seed;
+    //         comms_config.node_identity = node_identity;
+    //     },
+    //     Err(e) => {
+    //         error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
+    //         ptr::swap(error_out, &mut error as *mut c_int);
+    //         return ptr::null_mut();
+    //     },
+    // }
+    //
+    // let shutdown = Shutdown::new();
+    // let wallet_config = WalletConfig::new(
+    //     comms_config,
+    //     factories,
+    //     Some(TransactionServiceConfig {
+    //         direct_send_timeout: (*config).dht.discovery_request_timeout,
+    //         ..Default::default()
+    //     }),
+    //     None,
+    //     Network::Dibbler.into(),
+    //     None,
+    //     None,
+    //     None,
+    //     None,
+    // );
+    //
+    // let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
+    //     Err(_) => false,
+    //     Ok(None) => false,
+    //     Ok(Some(_)) => true,
+    // };
+    // ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
+    //
+    // w = runtime.block_on(Wallet::start(
+    //     wallet_config,
+    //     wallet_database,
+    //     transaction_backend.clone(),
+    //     output_manager_backend,
+    //     contacts_backend,
+    //     shutdown.to_signal(),
+    //     master_seed,
+    // ));
+    //
+    // match w {
+    //     Ok(mut w) => {
+    //         // lets ensure the wallet tor_id is saved, this could have been changed during wallet startup
+    //         if let Some(hs) = w.comms.hidden_service() {
+    //             if let Err(e) = runtime.block_on(w.db.set_tor_identity(hs.tor_identity().clone())) {
+    //                 warn!(target: LOG_TARGET, "Could not save tor identity to db: {:?}", e);
+    //             }
+    //         }
+    //         // Start Callback Handler
+    //         let callback_handler = CallbackHandler::new(
+    //             TransactionDatabase::new(transaction_backend),
+    //             w.transaction_service.get_event_stream(),
+    //             w.output_manager_service.get_event_stream(),
+    //             w.output_manager_service.clone(),
+    //             w.dht_service.subscribe_dht_events(),
+    //             w.comms.shutdown_signal(),
+    //             w.comms.node_identity().public_key().clone(),
+    //             w.wallet_connectivity.get_connectivity_status_watch(),
+    //             callback_received_transaction,
+    //             callback_received_transaction_reply,
+    //             callback_received_finalized_transaction,
+    //             callback_transaction_broadcast,
+    //             callback_transaction_mined,
+    //             callback_transaction_mined_unconfirmed,
+    //             callback_direct_send_result,
+    //             callback_store_and_forward_send_result,
+    //             callback_transaction_cancellation,
+    //             callback_txo_validation_complete,
+    //             callback_balance_updated,
+    //             callback_transaction_validation_complete,
+    //             callback_saf_messages_received,
+    //             callback_connectivity_status,
+    //         );
+    //
+    //         runtime.spawn(callback_handler.start());
+    //
+    //         if let Err(e) = runtime.block_on(w.transaction_service.restart_transaction_protocols()) {
+    //             warn!(
+    //                 target: LOG_TARGET,
+    //                 "Could not restart transaction negotiation protocols: {:?}", e
+    //             );
+    //         }
+    //
+    //         let tari_wallet = TariWallet {
+    //             wallet: w,
+    //             runtime,
+    //             shutdown,
+    //         };
+    //
+    //         Box::into_raw(Box::new(tari_wallet))
+    //     },
+    //     Err(e) => {
+    //         error = LibWalletError::from(e).code;
+    //         ptr::swap(error_out, &mut error as *mut c_int);
+    //         ptr::null_mut()
+    //     },
+    // }
 }
 
 /// Retrieves the balance from a wallet

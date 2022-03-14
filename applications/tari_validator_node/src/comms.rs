@@ -68,108 +68,109 @@ pub async fn build_service_and_comms_stack(
     db_factory: SqliteDbFactory,
     asset_processor: ConcreteAssetProcessor,
 ) -> Result<(ServiceHandles, SubscriptionFactory), ExitError> {
-    // this code is duplicated from the base node
-    let comms_config = create_comms_config(config, node_identity.clone());
+    todo!()
+    // // this code is duplicated from the base node
+    // let comms_config = create_comms_config(config, node_identity.clone());
+    //
+    // let (publisher, peer_message_subscriptions) = pubsub_connector(100, config.buffer_rate_limit_base_node);
+    //
+    // let mut handles = StackBuilder::new(shutdown.clone())
+    //     .add_initializer(P2pInitializer::new(comms_config, node_identity.clone(), publisher))
+    //     .build()
+    //     .await
+    //     .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
+    //
+    // let comms = handles
+    //     .take_handle::<UnspawnedCommsNode>()
+    //     .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
-    let (publisher, peer_message_subscriptions) = pubsub_connector(100, config.buffer_rate_limit_base_node);
-
-    let mut handles = StackBuilder::new(shutdown.clone())
-        .add_initializer(P2pInitializer::new(comms_config, node_identity.clone(), publisher))
-        .build()
-        .await
-        .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
-
-    let comms = handles
-        .take_handle::<UnspawnedCommsNode>()
-        .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
-
-    let comms = setup_p2p_rpc(config, comms, &handles, mempool, db_factory, asset_processor);
-
-    let comms = spawn_comms_using_transport(comms, create_transport_type(config))
-        .await
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport:{}", e)))?;
-
-    // Save final node identity after comms has initialized. This is required because the public_address can be
-    // changed by comms during initialization when using tor.
-    identity_management::save_as_json(&validator_node_config.identity_file, &*comms.node_identity())
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save node identity: {}", e)))?;
-    if let Some(hs) = comms.hidden_service() {
-        identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save tor identity: {}", e)))?;
-    }
-
-    handles.register(comms);
-    Ok((handles, peer_message_subscriptions))
+    // let comms = setup_p2p_rpc(config, comms, &handles, mempool, db_factory, asset_processor);
+    //
+    // let comms = spawn_comms_using_transport(comms, create_transport_type(config))
+    //     .await
+    //     .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport:{}", e)))?;
+    //
+    // // Save final node identity after comms has initialized. This is required because the public_address can be
+    // // changed by comms during initialization when using tor.
+    // identity_management::save_as_json(&validator_node_config.identity_file, &*comms.node_identity())
+    //     .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save node identity: {}", e)))?;
+    // if let Some(hs) = comms.hidden_service() {
+    //     identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
+    //         .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save tor identity: {}", e)))?;
+    // }
+    //
+    // handles.register(comms);
+    // Ok((handles, peer_message_subscriptions))
 }
 
-fn setup_p2p_rpc(
-    config: &GlobalConfig,
-    comms: UnspawnedCommsNode,
-    handles: &ServiceHandles,
-    mempool: MempoolServiceHandle,
-    db_factory: SqliteDbFactory,
-    asset_processor: ConcreteAssetProcessor,
-) -> UnspawnedCommsNode {
-    let dht = handles.expect_handle::<Dht>();
-    let builder = RpcServer::builder();
-    let builder = match config.rpc_max_simultaneous_sessions {
-        Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
-        None => {
-            warn!(
-                target: LOG_TARGET,
-                "Node is configured to allow unlimited RPC sessions."
-            );
-            builder.with_unlimited_simultaneous_sessions()
-        },
-    };
-    let rpc_server = builder.finish();
+// fn setup_p2p_rpc(
+//     config: &GlobalConfig,
+//     comms: UnspawnedCommsNode,
+//     handles: &ServiceHandles,
+//     mempool: MempoolServiceHandle,
+//     db_factory: SqliteDbFactory,
+//     asset_processor: ConcreteAssetProcessor,
+// ) -> UnspawnedCommsNode {
+//     let dht = handles.expect_handle::<Dht>();
+//     let builder = RpcServer::builder();
+//     let builder = match config.rpc_max_simultaneous_sessions {
+//         Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
+//         None => {
+//             warn!(
+//                 target: LOG_TARGET,
+//                 "Node is configured to allow unlimited RPC sessions."
+//             );
+//             builder.with_unlimited_simultaneous_sessions()
+//         },
+//     };
+//     let rpc_server = builder.finish();
+//
+//     // Add your RPC services here ‍🏴‍☠️️☮️🌊
+//     let rpc_server = rpc_server
+//         .add_service(dht.rpc_service())
+//         .add_service(create_validator_node_rpc_service(mempool, db_factory, asset_processor));
+//
+//     comms.add_protocol_extension(rpc_server)
+// }
 
-    // Add your RPC services here ‍🏴‍☠️️☮️🌊
-    let rpc_server = rpc_server
-        .add_service(dht.rpc_service())
-        .add_service(create_validator_node_rpc_service(mempool, db_factory, asset_processor));
-
-    comms.add_protocol_extension(rpc_server)
-}
-
-fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -> P2pConfig {
-    P2pConfig {
-        network: config.network,
-        node_identity,
-        transport_type: create_transport_type(config),
-        datastore_path: config.peer_db_path.clone(),
-        peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 50,
-        max_concurrent_outbound_tasks: 100,
-        outbound_buffer_size: 100,
-        dht: DhtConfig {
-            database_url: DbConnectionUrl::File(config.data_dir.join("dht.db")),
-            auto_join: true,
-            allow_test_addresses: config.allow_test_addresses,
-            flood_ban_max_msg_count: config.flood_ban_max_msg_count,
-            saf_config: SafConfig {
-                msg_validity: config.saf_expiry_duration,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-        allow_test_addresses: config.allow_test_addresses,
-        listener_liveness_allowlist_cidrs: config.listener_liveness_allowlist_cidrs.clone(),
-        listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
-        user_agent: format!("tari/dannode/{}", env!("CARGO_PKG_VERSION")),
-        // Also add sync peers to the peer seed list. Duplicates are acceptable.
-        peer_seeds: config
-            .peer_seeds
-            .iter()
-            .cloned()
-            .chain(config.force_sync_peers.clone())
-            .collect(),
-        dns_seeds: config.dns_seeds.clone(),
-        dns_seeds_name_server: config.dns_seeds_name_server.clone(),
-        dns_seeds_use_dnssec: config.dns_seeds_use_dnssec,
-        auxilary_tcp_listener_address: config.auxilary_tcp_listener_address.clone(),
-    }
-}
+// fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) -> P2pConfig {
+//     P2pConfig {
+//         network: config.network,
+//         node_identity,
+//         transport_type: create_transport_type(config),
+//         datastore_path: config.peer_db_path.clone(),
+//         peer_database_name: "peers".to_string(),
+//         max_concurrent_inbound_tasks: 50,
+//         max_concurrent_outbound_tasks: 100,
+//         outbound_buffer_size: 100,
+//         dht: DhtConfig {
+//             database_url: DbConnectionUrl::File(config.data_dir.join("dht.db")),
+//             auto_join: true,
+//             allow_test_addresses: config.allow_test_addresses,
+//             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
+//             saf_config: SafConfig {
+//                 msg_validity: config.saf_expiry_duration,
+//                 ..Default::default()
+//             },
+//             ..Default::default()
+//         },
+//         allow_test_addresses: config.allow_test_addresses,
+//         listener_liveness_allowlist_cidrs: config.listener_liveness_allowlist_cidrs.clone(),
+//         listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
+//         user_agent: format!("tari/dannode/{}", env!("CARGO_PKG_VERSION")),
+//         // Also add sync peers to the peer seed list. Duplicates are acceptable.
+//         peer_seeds: config
+//             .peer_seeds
+//             .iter()
+//             .cloned()
+//             .chain(config.force_sync_peers.clone())
+//             .collect(),
+//         dns_seeds: config.dns_seeds.clone(),
+//         dns_seeds_name_server: config.dns_seeds_name_server.clone(),
+//         dns_seeds_use_dnssec: config.dns_seeds_use_dnssec,
+//         auxilary_tcp_listener_address: config.auxilary_tcp_listener_address.clone(),
+//     }
+// }
 
 /// Creates a transport type from the given configuration
 ///

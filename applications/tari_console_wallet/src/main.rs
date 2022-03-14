@@ -52,15 +52,17 @@ use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
     ConfigBootstrap,
+    DefaultConfigLoader,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
+use tari_wallet::WalletConfig;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
-use crate::{recovery::get_seed_from_seed_words, wallet_modes::WalletModeConfig};
+use crate::{recovery::get_seed_from_seed_words, wallet_modes::ConsoleWalletConfig};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -135,9 +137,11 @@ fn main_inner() -> Result<(), ExitError> {
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
+    let wallet_config = <WalletConfig as DefaultConfigLoader>::load_from(&global_config.inner)?;
+
     if bootstrap.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(&global_config, arg_password, shutdown_signal));
+        return runtime.block_on(change_password(wallet_config, arg_password, shutdown_signal));
     }
 
     // Run our own Tor instance, if configured
@@ -157,7 +161,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
-        &global_config,
+        wallet_config,
         arg_password,
         seed_words_file_name,
         recovery_seed,
@@ -185,33 +189,33 @@ fn main_inner() -> Result<(), ExitError> {
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
-    let config = WalletModeConfig {
-        base_node_config,
-        base_node_selected,
-        bootstrap,
-        global_config,
-        handle,
-        notify_script,
-        wallet_mode: wallet_mode.clone(),
-    };
-    let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(config, wallet.clone()),
-        WalletMode::Grpc => grpc_mode(config, wallet.clone()),
-        WalletMode::Script(path) => script_mode(config, wallet.clone(), path),
-        WalletMode::Command(command) => command_mode(config, wallet.clone(), command),
-        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
-        WalletMode::Invalid => Err(ExitError::new(
-            ExitCode::InputError,
-            "Invalid wallet mode - are you trying too many command options at once?",
-        )),
-    };
-
-    print!("\nShutting down wallet... ");
-    shutdown.trigger();
-    runtime.block_on(wallet.wait_until_shutdown());
-    println!("Done.");
-
-    result
+    todo!("Need to fix console wallet")
+    // let config = ConsoleWalletConfig {
+    //     base_node_config,
+    //     base_node_selected,
+    //     bootstrap,
+    //     global_config,
+    //     notify_script,
+    //     wallet_mode: wallet_mode.clone(),
+    // };
+    // let result = match wallet_mode {
+    //     WalletMode::Tui => tui_mode(config, wallet.clone()),
+    //     WalletMode::Grpc => grpc_mode(config, wallet.clone()),
+    //     WalletMode::Script(path) => script_mode(config, wallet.clone(), path),
+    //     WalletMode::Command(command) => command_mode(config, wallet.clone(), command),
+    //     WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
+    //     WalletMode::Invalid => Err(ExitError::new(
+    //         ExitCode::InputError,
+    //         "Invalid wallet mode - are you trying too many command options at once?",
+    //     )),
+    // };
+    //
+    // print!("\nShutting down wallet... ");
+    // shutdown.trigger();
+    // runtime.block_on(wallet.wait_until_shutdown());
+    // println!("Done.");
+    //
+    // result
 }
 
 fn get_recovery_seed(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<CipherSeed>, ExitError> {

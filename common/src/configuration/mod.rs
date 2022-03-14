@@ -45,10 +45,8 @@ mod common_config;
 pub mod name_server;
 pub mod serializers;
 pub mod utils;
-mod wallet_config;
 pub mod writer;
 
 pub use collectibles_config::CollectiblesConfig;
 pub use common_config::CommonConfig;
 pub use config;
-pub use wallet_config::WalletConfig;

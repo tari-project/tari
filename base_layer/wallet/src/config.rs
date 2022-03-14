@@ -20,8 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::{path::PathBuf, str::FromStr};
+
 use serde::{Deserialize, Serialize};
-use tari_common::configuration::Network;
+use tari_common::{configuration::Network, SubConfigPath};
+use tari_comms::multiaddr::Multiaddr;
 use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
 use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
 
@@ -34,6 +37,7 @@ use crate::{
 pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct WalletConfig {
     pub comms_config: P2pConfig,
     // pub factories: CryptoFactories,
@@ -44,6 +48,10 @@ pub struct WalletConfig {
     pub network: Network,
     pub base_node_service_config: BaseNodeServiceConfig,
     pub updater_config: AutoUpdateConfig,
+    pub db_file: PathBuf,
+    pub connection_manager_pool_size: usize,
+    pub password: Option<String>, // TODO: Make clear on drop
+    pub public_address: Option<Multiaddr>,
 }
 
 impl Default for WalletConfig {
@@ -51,7 +59,15 @@ impl Default for WalletConfig {
         Self {
             buffer_size: 0,
             rate_limit: 0,
+            db_file: PathBuf::from_str("to_populate").unwrap(),
+            connection_manager_pool_size: 5, // TODO: get actual default
             ..Default::default()
         }
+    }
+}
+
+impl SubConfigPath for WalletConfig {
+    fn main_key_prefix() -> &'static str {
+        "wallet"
     }
 }

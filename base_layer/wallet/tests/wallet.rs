@@ -731,7 +731,7 @@ async fn test_import_utxo() {
     };
 
     let mut alice_wallet = Wallet::start(
-        factories,
+        factories.clone(),
         TransportType::Tcp {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_config: None,

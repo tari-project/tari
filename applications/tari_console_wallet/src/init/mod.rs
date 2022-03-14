@@ -123,7 +123,7 @@ fn prompt_password(prompt: &str) -> Result<String, ExitError> {
 
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
-    config: &GlobalConfig,
+    config: WalletConfig,
     arg_password: Option<String>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitError> {
@@ -272,7 +272,8 @@ pub fn get_notify_script(bootstrap: &ConfigBootstrap, config: &GlobalConfig) -> 
 
 /// Set up the app environment and state for use by the UI
 pub async fn init_wallet(
-    config: &GlobalConfig,
+    // config: &GlobalConfig,
+    config: WalletConfig,
     arg_password: Option<String>,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
@@ -280,20 +281,20 @@ pub async fn init_wallet(
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         &config
-            .console_wallet_db_file
+            .db_file
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
-    fs::create_dir_all(&config.console_wallet_peer_db_path)
+    fs::create_dir_all(&config.comms_config.datastore_path)
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
     // test encryption by initializing with no passphrase...
-    let db_path = config.console_wallet_db_file.clone();
+    let db_path = config.db_file.clone();
 
-    let result = initialize_sqlite_database_backends(db_path.clone(), None, config.wallet_connection_manager_pool_size);
+    let result = initialize_sqlite_database_backends(db_path.clone(), None, config.connection_manager_pool_size);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
             // wallet is not encrypted
@@ -301,10 +302,9 @@ pub async fn init_wallet(
         },
         Err(WalletStorageError::NoPasswordError) => {
             // get supplied or prompt password
-            let passphrase = get_or_prompt_password(arg_password.clone(), config.console_wallet_password.clone())?;
+            let passphrase = get_or_prompt_password(arg_password.clone(), config.password.clone())?;
             let backends =
-                initialize_sqlite_database_backends(db_path, passphrase, config.wallet_connection_manager_pool_size)?;
-
+                initialize_sqlite_database_backends(db_path, passphrase, config.connection_manager_pool_size)?;
             (backends, true)
         },
         Err(e) => {
@@ -365,160 +365,170 @@ pub async fn init_wallet(
             .await?;
     }
 
-    let transport_type = create_transport_type(config);
-    let transport_type = match transport_type {
-        Tor(mut tor_config) => {
-            tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
-            Tor(tor_config)
-        },
-        _ => transport_type,
-    };
-
-    let comms_config = P2pConfig {
-        network: config.network,
-        node_identity,
-        user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
-        transport_type,
-        auxilary_tcp_listener_address: None,
-        datastore_path: config.console_wallet_peer_db_path.clone(),
-        peer_database_name: "peers".to_string(),
-        max_concurrent_inbound_tasks: 10,
-        max_concurrent_outbound_tasks: 10,
-        outbound_buffer_size: 10,
-        dht: DhtConfig {
-            database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
-            auto_join: true,
-            allow_test_addresses: config.allow_test_addresses,
-            flood_ban_max_msg_count: config.flood_ban_max_msg_count,
-            saf_config: SafConfig {
-                msg_validity: config.saf_expiry_duration,
-                ..Default::default()
-            },
-            dedup_cache_capacity: config.dedup_cache_capacity,
-            ..Default::default()
-        },
-        // This should be false unless testing locally
-        allow_test_addresses: config.allow_test_addresses,
-        listener_liveness_allowlist_cidrs: Vec::new(),
-        listener_liveness_max_sessions: 0,
-        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-        peer_seeds: Default::default(),
-        dns_seeds: Default::default(),
-        dns_seeds_use_dnssec: true,
-    };
-
-    let base_node_service_config = BaseNodeServiceConfig::new(
-        config.wallet_base_node_service_refresh_interval,
-        config.wallet_base_node_service_request_max_age,
-        config.base_node_event_channel_size,
-    );
-
-    let updater_config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&config.inner)?;
-
-    let factories = CryptoFactories::default();
-    let wallet_config = WalletConfig::new(
-        comms_config.clone(),
-        factories,
-        Some(TransactionServiceConfig {
-            broadcast_monitoring_timeout: config.transaction_broadcast_monitoring_timeout,
-            chain_monitoring_timeout: config.transaction_chain_monitoring_timeout,
-            direct_send_timeout: config.transaction_direct_send_timeout,
-            broadcast_send_timeout: config.transaction_broadcast_send_timeout,
-            transaction_routing_mechanism: TransactionRoutingMechanism::from(
-                config.transaction_routing_mechanism.clone(),
-            ),
-            num_confirmations_required: config.transaction_num_confirmations_required,
-            transaction_event_channel_size: config.transaction_event_channel_size,
-            ..Default::default()
-        }),
-        Some(OutputManagerServiceConfig {
-            base_node_query_timeout: config.base_node_query_timeout,
-            prevent_fee_gt_amount: config.prevent_fee_gt_amount,
-            event_channel_size: config.output_manager_event_channel_size,
-            num_confirmations_required: config.transaction_num_confirmations_required,
-            ..Default::default()
-        }),
-        config.network.into(),
-        Some(base_node_service_config),
-        Some(std::cmp::max(
-            BASE_NODE_BUFFER_MIN_SIZE,
-            config.buffer_size_console_wallet,
-        )),
-        Some(config.buffer_rate_limit_console_wallet),
-        Some(updater_config),
-    );
-
-    let mut wallet = Wallet::start(
-        wallet_config,
-        wallet_db,
-        transaction_backend,
-        output_manager_backend,
-        contacts_backend,
-        shutdown_signal,
-        master_seed,
-    )
-    .await
-    .map_err(|e| {
-        if let WalletError::CommsInitializationError(e) = e {
-            ExitError::new(ExitCode::WalletError, e.to_friendly_string())
-        } else {
-            ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e))
-        }
-    })?;
-    if let Some(hs) = wallet.comms.hidden_service() {
-        wallet
-            .db
-            .set_tor_identity(hs.tor_identity().clone())
-            .await
-            .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
-    }
-
-    if !wallet_encrypted {
-        debug!(target: LOG_TARGET, "Wallet is not encrypted.");
-
-        // create using --password arg if supplied and skip seed words confirmation
-        let (passphrase, interactive) = if let Some(password) = arg_password {
-            debug!(target: LOG_TARGET, "Setting password from command line argument.");
-
-            (password, false)
-        } else {
-            debug!(target: LOG_TARGET, "Prompting for password.");
-            let password = prompt_password("Create wallet password: ")?;
-            let confirmed = prompt_password("Confirm wallet password: ")?;
-
-            if password != confirmed {
-                return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
-            }
-
-            (password, true)
-        };
-
-        wallet.apply_encryption(passphrase).await?;
-
-        debug!(target: LOG_TARGET, "Wallet encrypted.");
-
-        if interactive && recovery_seed.is_none() {
-            match confirm_seed_words(&mut wallet).await {
-                Ok(()) => {
-                    print!("\x1Bc"); // Clear the screen
-                },
-                Err(error) => {
-                    return Err(error);
-                },
-            };
-        }
-    }
-    if let Some(file_name) = seed_words_file_name {
-        let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
-        let _ = fs::write(file_name, seed_words).map_err(|e| {
-            ExitError::new(
-                ExitCode::WalletError,
-                format!("Problem writing seed words to file: {}", e),
-            )
-        });
-    };
-
-    Ok(wallet)
+    todo!()
+    // let transport_type = create_transport_type(config);
+    // let transport_type = match transport_type {
+    //     Tor(mut tor_config) => {
+    //         tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
+    //         Tor(tor_config)
+    //     },
+    //     _ => transport_type,
+    // };
+    //
+    // let comms_config = P2pConfig {
+    //     network: config.network,
+    //     user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
+    //     auxilary_tcp_listener_address: None,
+    //     datastore_path: config.console_wallet_peer_db_path.clone(),
+    //     peer_database_name: "peers".to_string(),
+    //     max_concurrent_inbound_tasks: 10,
+    //     max_concurrent_outbound_tasks: 10,
+    //     outbound_buffer_size: 10,
+    //     dht: DhtConfig {
+    //         database_url: DbConnectionUrl::File(config.data_dir.join("dht-console-wallet.db")),
+    //         auto_join: true,
+    //         allow_test_addresses: config.allow_test_addresses,
+    //         flood_ban_max_msg_count: config.flood_ban_max_msg_count,
+    //         saf_config: SafConfig {
+    //             msg_validity: config.saf_expiry_duration,
+    //             ..Default::default()
+    //         },
+    //         dedup_cache_capacity: config.dedup_cache_capacity,
+    //         ..Default::default()
+    //     },
+    //     // This should be false unless testing locally
+    //     allow_test_addresses: config.allow_test_addresses,
+    //     listener_liveness_allowlist_cidrs: Vec::new(),
+    //     listener_liveness_max_sessions: 0,
+    //     dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
+    //     peer_seeds: Default::default(),
+    //     dns_seeds: Default::default(),
+    //     dns_seeds_use_dnssec: true,
+    // };
+    //
+    // let base_node_service_config = BaseNodeServiceConfig::new(
+    //     config.wallet_base_node_service_refresh_interval,
+    //     config.wallet_base_node_service_request_max_age,
+    //     config.base_node_event_channel_size,
+    // );
+    //
+    // let updater_config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&config.inner)?;
+    //
+    // let factories = CryptoFactories::default();
+    // let wallet_config = WalletConfig {
+    //     //     comms_config.clone(),
+    //     //     factories,
+    //     //     Some(TransactionServiceConfig {
+    //     //     broadcast_monitoring_timeout: config.transaction_broadcast_monitoring_timeout,
+    //     //     chain_monitoring_timeout: config.transaction_chain_monitoring_timeout,
+    //     //     direct_send_timeout: config.transaction_direct_send_timeout,
+    //     //     broadcast_send_timeout: config.transaction_broadcast_send_timeout,
+    //     //     transaction_routing_mechanism: TransactionRoutingMechanism::from(
+    //     //         config.transaction_routing_mechanism.clone(),
+    //     //     ),
+    //     //     num_confirmations_required: config.transaction_num_confirmations_required,
+    //     //     transaction_event_channel_size: config.transaction_event_channel_size,
+    //     //     ..Default::default()
+    //     // }),
+    //     // Some(OutputManagerServiceConfig {
+    //     //     base_node_query_timeout: config.base_node_query_timeout,
+    //     //     prevent_fee_gt_amount: config.prevent_fee_gt_amount,
+    //     //     event_channel_size: config.output_manager_event_channel_size,
+    //     //     num_confirmations_required: config.transaction_num_confirmations_required,
+    //     //     ..Default::default()
+    //     // }),
+    //     // config.network.into(),
+    //     // Some(base_node_service_config),
+    //     // Some(std::cmp::max(
+    //     //     BASE_NODE_BUFFER_MIN_SIZE,
+    //     //     config.buffer_size_console_wallet,
+    //     // )),
+    //     // Some(config.buffer_rate_limit_console_wallet),
+    //     // Some(updater_config),
+    //     comms_config,
+    //     transaction_service_config: Default::default(),
+    //     output_manager_service_config: Default::default(),
+    //     buffer_size: 0,
+    //     rate_limit: 0,
+    //     network: Default::default(),
+    //     base_node_service_config,
+    //     updater_config,
+    // };
+    //
+    // let mut wallet = Wallet::start(
+    //     factories,
+    //     transport_type,
+    //     wallet_config,
+    //     node_identity,
+    //     wallet_db,
+    //     transaction_backend,
+    //     output_manager_backend,
+    //     contacts_backend,
+    //     shutdown_signal,
+    //     master_seed,
+    // )
+    // .await
+    // .map_err(|e| {
+    //     if let WalletError::CommsInitializationError(e) = e {
+    //         ExitError::new(ExitCode::WalletError, e.to_friendly_string())
+    //     } else {
+    //         ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e))
+    //     }
+    // })?;
+    // if let Some(hs) = wallet.comms.hidden_service() {
+    //     wallet
+    //         .db
+    //         .set_tor_identity(hs.tor_identity().clone())
+    //         .await
+    //         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Problem writing tor identity. {}", e)))?;
+    // }
+    //
+    // if !wallet_encrypted {
+    //     debug!(target: LOG_TARGET, "Wallet is not encrypted.");
+    //
+    //     // create using --password arg if supplied and skip seed words confirmation
+    //     let (passphrase, interactive) = if let Some(password) = arg_password {
+    //         debug!(target: LOG_TARGET, "Setting password from command line argument.");
+    //
+    //         (password, false)
+    //     } else {
+    //         debug!(target: LOG_TARGET, "Prompting for password.");
+    //         let password = prompt_password("Create wallet password: ")?;
+    //         let confirmed = prompt_password("Confirm wallet password: ")?;
+    //
+    //         if password != confirmed {
+    //             return Err(ExitError::new(ExitCode::InputError, "Passwords don't match!"));
+    //         }
+    //
+    //         (password, true)
+    //     };
+    //
+    //     wallet.apply_encryption(passphrase).await?;
+    //
+    //     debug!(target: LOG_TARGET, "Wallet encrypted.");
+    //
+    //     if interactive && recovery_seed.is_none() {
+    //         match confirm_seed_words(&mut wallet).await {
+    //             Ok(()) => {
+    //                 print!("\x1Bc"); // Clear the screen
+    //             },
+    //             Err(error) => {
+    //                 return Err(error);
+    //             },
+    //         };
+    //     }
+    // }
+    // if let Some(file_name) = seed_words_file_name {
+    //     let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
+    //     let _ = fs::write(file_name, seed_words).map_err(|e| {
+    //         ExitError::new(
+    //             ExitCode::WalletError,
+    //             format!("Problem writing seed words to file: {}", e),
+    //         )
+    //     });
+    // };
+    //
+    // Ok(wallet)
 }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.
