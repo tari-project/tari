@@ -33,7 +33,7 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, OutputFlags, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, UnblindedOutput},
         CryptoFactories,
     },
 };
@@ -72,11 +72,13 @@ pub struct OutputSql {
     pub value: i64,
     pub flags: i32,
     pub maturity: i64,
+    pub recovery_byte: i32,
     pub status: i32,
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
     pub script_private_key: Vec<u8>,
+    pub script_lock_height: i64,
     pub sender_offset_public_key: Vec<u8>,
     pub metadata_signature_nonce: Vec<u8>,
     pub metadata_signature_u_key: Vec<u8>,
@@ -92,9 +94,8 @@ pub struct OutputSql {
     pub metadata: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
     pub features_unique_id: Option<Vec<u8>>,
-    pub script_lock_height: i64,
-    pub spending_priority: i32,
     pub features_json: String,
+    pub spending_priority: i32,
     pub covenant: Vec<u8>,
 }
 
@@ -451,7 +452,6 @@ impl OutputSql {
         Ok(())
     }
 
-    // TODO: This method needs to be checked for concurrency
     pub fn update(
         &self,
         updated_output: UpdateOutput,
@@ -485,7 +485,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
 
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         let mut features: OutputFeatures =
-            serde_json::from_str(o.features_json.as_str()).map_err(|s| OutputManagerStorageError::ConversionError {
+            serde_json::from_str(&o.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
@@ -499,7 +499,7 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             .features_parent_public_key
             .map(|p| PublicKey::from_bytes(&p))
             .transpose()?;
-
+        features.recovery_byte = o.recovery_byte as u8;
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {

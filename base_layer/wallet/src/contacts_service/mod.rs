@@ -25,8 +25,12 @@ pub mod handle;
 pub mod service;
 pub mod storage;
 
+use std::time::Duration;
+
 use futures::future;
 use log::*;
+use tari_comms::connectivity::ConnectivityRequester;
+use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{
     async_trait,
     reply_channel,
@@ -34,6 +38,7 @@ use tari_service_framework::{
     ServiceInitializer,
     ServiceInitializerContext,
 };
+use tokio::sync::broadcast;
 
 use crate::contacts_service::{
     handle::ContactsServiceHandle,
@@ -47,13 +52,19 @@ pub struct ContactsServiceInitializer<T>
 where T: ContactsBackend
 {
     backend: Option<T>,
+    contacts_auto_ping_interval: Duration,
+    contacts_online_ping_window: usize,
 }
 
 impl<T> ContactsServiceInitializer<T>
 where T: ContactsBackend
 {
-    pub fn new(backend: T) -> Self {
-        Self { backend: Some(backend) }
+    pub fn new(backend: T, contacts_auto_ping_interval: Duration, online_ping_window: usize) -> Self {
+        Self {
+            backend: Some(backend),
+            contacts_auto_ping_interval,
+            contacts_online_ping_window: online_ping_window,
+        }
     }
 }
 
@@ -63,8 +74,9 @@ where T: ContactsBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();
+        let (publisher, _) = broadcast::channel(250);
 
-        let contacts_handle = ContactsServiceHandle::new(sender);
+        let contacts_handle = ContactsServiceHandle::new(sender, publisher.clone());
 
         // Register handle before waiting for handles to be ready
         context.register_handle(contacts_handle);
@@ -76,9 +88,23 @@ where T: ContactsBackend + 'static
 
         let shutdown_signal = context.get_shutdown_signal();
 
+        let contacts_auto_ping_interval = self.contacts_auto_ping_interval;
+        let contacts_online_ping_window = self.contacts_online_ping_window;
         context.spawn_when_ready(move |handles| async move {
-            let service =
-                ContactsService::new(receiver, ContactsDatabase::new(backend), handles.get_shutdown_signal()).start();
+            let liveness = handles.expect_handle::<LivenessHandle>();
+            let connectivity = handles.expect_handle::<ConnectivityRequester>();
+
+            let service = ContactsService::new(
+                ContactsDatabase::new(backend),
+                receiver,
+                handles.get_shutdown_signal(),
+                liveness,
+                connectivity,
+                publisher,
+                contacts_auto_ping_interval,
+                contacts_online_ping_window,
+            )
+            .start();
             futures::pin_mut!(service);
             future::select(service, shutdown_signal).await;
             info!(target: LOG_TARGET, "Contacts service shutdown");

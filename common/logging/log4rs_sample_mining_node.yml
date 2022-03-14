@@ -36,9 +36,8 @@ appenders:
 
 # Set the default logging level to "warn" and attach the "stdout" appender to the root
 root:
-  level: info
+  level: warn
   appenders:
-    - mining_node
     - stdout
 
 loggers:
@@ -47,8 +46,14 @@ loggers:
     level: debug
     appenders:
       - mining_node
+    additive: false
   tari_mining_node:
     level: debug
     appenders:
       - mining_node
-
+    additive: false
+  tari_mining_node:
+    level: info
+    appenders:
+      - stdout
+    additive: false

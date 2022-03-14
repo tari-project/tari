@@ -24,7 +24,7 @@ pub use lmdb_db::{create_lmdb_database, create_recovery_lmdb_database, LMDBDatab
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
 
-use crate::transactions::transaction::{TransactionInput, TransactionKernel, TransactionOutput};
+use crate::transactions::transaction_components::{TransactionInput, TransactionKernel, TransactionOutput};
 
 pub(crate) mod helpers;
 pub(crate) mod key_prefix_cursor;

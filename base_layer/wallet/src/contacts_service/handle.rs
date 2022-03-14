@@ -20,11 +20,107 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use tari_comms::types::CommsPublicKey;
+use std::{
+    fmt::{Display, Error, Formatter},
+    sync::Arc,
+};
+
+use chrono::{DateTime, Local, NaiveDateTime};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_service_framework::reply_channel::SenderService;
+use tokio::sync::broadcast;
 use tower::Service;
 
-use crate::contacts_service::{error::ContactsServiceError, storage::database::Contact};
+use crate::contacts_service::{
+    error::ContactsServiceError,
+    service::{ContactMessageType, ContactOnlineStatus},
+    storage::database::Contact,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ContactsLivenessData {
+    public_key: CommsPublicKey,
+    node_id: NodeId,
+    latency: Option<u32>,
+    last_seen: Option<NaiveDateTime>,
+    message_type: ContactMessageType,
+    online_status: ContactOnlineStatus,
+}
+
+impl ContactsLivenessData {
+    pub fn new(
+        public_key: CommsPublicKey,
+        node_id: NodeId,
+        latency: Option<u32>,
+        last_seen: Option<NaiveDateTime>,
+        message_type: ContactMessageType,
+        online_status: ContactOnlineStatus,
+    ) -> Self {
+        Self {
+            public_key,
+            node_id,
+            latency,
+            last_seen,
+            message_type,
+            online_status,
+        }
+    }
+
+    pub fn public_key(&self) -> &CommsPublicKey {
+        &self.public_key
+    }
+
+    pub fn node_id(&self) -> &NodeId {
+        &self.node_id
+    }
+
+    pub fn latency(&self) -> Option<u32> {
+        self.latency
+    }
+
+    pub fn last_ping_pong_received(&self) -> Option<NaiveDateTime> {
+        self.last_seen
+    }
+
+    pub fn message_type(&self) -> ContactMessageType {
+        self.message_type.clone()
+    }
+
+    pub fn online_status(&self) -> ContactOnlineStatus {
+        self.online_status.clone()
+    }
+
+    pub fn set_offline(&mut self) {
+        self.online_status = ContactOnlineStatus::Offline
+    }
+}
+
+impl Display for ContactsLivenessData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        writeln!(
+            f,
+            "Liveness event '{}' for contact {} ({}) {}",
+            self.message_type,
+            self.public_key,
+            self.node_id,
+            if let Some(time) = self.last_seen {
+                let local_time = DateTime::<Local>::from_utc(time, Local::now().offset().to_owned())
+                    .format("%FT%T")
+                    .to_string();
+                format!("last seen {} is '{}'", local_time, self.online_status)
+            } else {
+                " - contact was never seen".to_string()
+            }
+        )
+    }
+}
+
+#[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
+pub enum ContactsLivenessEvent {
+    StatusUpdated(Box<ContactsLivenessData>),
+    NetworkSilence,
+}
 
 #[derive(Debug)]
 pub enum ContactsServiceRequest {
@@ -32,6 +128,7 @@ pub enum ContactsServiceRequest {
     UpsertContact(Contact),
     RemoveContact(CommsPublicKey),
     GetContacts,
+    GetContactOnlineStatus(Option<NaiveDateTime>),
 }
 
 #[derive(Debug)]
@@ -40,28 +137,47 @@ pub enum ContactsServiceResponse {
     ContactRemoved(Contact),
     Contact(Contact),
     Contacts(Vec<Contact>),
+    OnlineStatus(ContactOnlineStatus),
 }
 
 #[derive(Clone)]
 pub struct ContactsServiceHandle {
-    handle: SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
+    request_response_service:
+        SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
+    liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
 }
+
 impl ContactsServiceHandle {
     pub fn new(
-        handle: SenderService<ContactsServiceRequest, Result<ContactsServiceResponse, ContactsServiceError>>,
+        request_response_service: SenderService<
+            ContactsServiceRequest,
+            Result<ContactsServiceResponse, ContactsServiceError>,
+        >,
+        liveness_events: broadcast::Sender<Arc<ContactsLivenessEvent>>,
     ) -> Self {
-        Self { handle }
+        Self {
+            request_response_service,
+            liveness_events,
+        }
     }
 
     pub async fn get_contact(&mut self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceError> {
-        match self.handle.call(ContactsServiceRequest::GetContact(pub_key)).await?? {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetContact(pub_key))
+            .await??
+        {
             ContactsServiceResponse::Contact(c) => Ok(c),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }
 
     pub async fn get_contacts(&mut self) -> Result<Vec<Contact>, ContactsServiceError> {
-        match self.handle.call(ContactsServiceRequest::GetContacts).await?? {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetContacts)
+            .await??
+        {
             ContactsServiceResponse::Contacts(c) => Ok(c),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
@@ -69,7 +185,7 @@ impl ContactsServiceHandle {
 
     pub async fn upsert_contact(&mut self, contact: Contact) -> Result<(), ContactsServiceError> {
         match self
-            .handle
+            .request_response_service
             .call(ContactsServiceRequest::UpsertContact(contact))
             .await??
         {
@@ -80,11 +196,30 @@ impl ContactsServiceHandle {
 
     pub async fn remove_contact(&mut self, pub_key: CommsPublicKey) -> Result<Contact, ContactsServiceError> {
         match self
-            .handle
+            .request_response_service
             .call(ContactsServiceRequest::RemoveContact(pub_key))
             .await??
         {
             ContactsServiceResponse::ContactRemoved(c) => Ok(c),
+            _ => Err(ContactsServiceError::UnexpectedApiResponse),
+        }
+    }
+
+    pub fn get_contacts_liveness_event_stream(&self) -> broadcast::Receiver<Arc<ContactsLivenessEvent>> {
+        self.liveness_events.subscribe()
+    }
+
+    /// Determines the contact's online status based on their last seen time
+    pub async fn get_contact_online_status(
+        &mut self,
+        last_seen: Option<NaiveDateTime>,
+    ) -> Result<ContactOnlineStatus, ContactsServiceError> {
+        match self
+            .request_response_service
+            .call(ContactsServiceRequest::GetContactOnlineStatus(last_seen))
+            .await??
+        {
+            ContactsServiceResponse::OnlineStatus(status) => Ok(status),
             _ => Err(ContactsServiceError::UnexpectedApiResponse),
         }
     }

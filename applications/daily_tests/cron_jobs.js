@@ -123,6 +123,10 @@ ${logLines.join("\n")}
 
 async function main() {
   console.log("👩‍💻 Updating repo...");
+  await git.reset(__dirname).catch((err) => {
+    console.error("🚨 Failed to do git reset --hard");
+    console.error(err);
+  });
   await git.pull(__dirname).catch((err) => {
     console.error("🚨 Failed to update git repo");
     console.error(err);
@@ -136,11 +140,20 @@ async function main() {
   ).start();
   new CronJob("30 1 * * *", () => runBaseNodeSyncTest(SyncType.Pruned)).start();
   new CronJob("0 0 * * *", () =>
-    git.pull(__dirname).catch((err) => {
-      failed("Failed to update git repo");
-      console.error(err);
-      return Promise.resolve(null);
-    })
+    git
+      .reset(__dirname)
+      .catch((err) => {
+        console.error("🚨 Failed to do git reset --hard");
+        console.error(err);
+        return Promise.resolve(null);
+      })
+      .then(
+        git.pull(__dirname).catch((err) => {
+          failed("Failed to update git repo");
+          console.error(err);
+          return Promise.resolve(null);
+        })
+      )
   ).start();
 
   console.log("⏱ Cron jobs started.");

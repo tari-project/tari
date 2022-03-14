@@ -2,6 +2,7 @@
 name = "tari_dan_core"
 version = "0.1.0"
 edition = "2018"
+license = "BSD-3-Clause"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -19,7 +20,7 @@ tari_storage = { path = "../../infrastructure/storage" }
 tari_core = {path = "../../base_layer/core"}
 tari_dan_common_types = {path = "../common_types"}
 tari_common_types = {path = "../../base_layer/common_types"}
-tari_utilities = "0.3.0"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
@@ -31,6 +32,7 @@ log = { version = "0.4.8", features = ["std"] }
 lmdb-zero = "0.4.4"
 prost = "0.9"
 prost-types = "0.9"
+rand = "0.8.4"
 serde = "1.0.126"
 thiserror = "^1.0.20"
 tokio = { version="1.10", features = ["macros", "time"]}

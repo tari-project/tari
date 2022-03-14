@@ -22,11 +22,16 @@
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
+use tari_comms::{
+    connectivity::ConnectivityError,
+    protocol::rpc::{RpcError, RpcStatus},
+    types::CommsPublicKey,
+};
+use tari_comms_dht::DhtActorError;
 
 use crate::{
-    models::{SideChainBlock, TemplateId, TreeNodeHash},
+    models::{Node, SchemaState, SideChainBlock, StateOpLogEntry, TemplateId, TreeNodeHash},
     services::infrastructure_services::NodeAddressable,
-    DigitalAssetError,
 };
 
 pub trait ValidatorNodeClientFactory {
@@ -43,7 +48,7 @@ pub trait ValidatorNodeRpcClient {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+    ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError>;
 
     async fn invoke_method(
         &mut self,
@@ -51,12 +56,41 @@ pub trait ValidatorNodeRpcClient {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError>;
+    ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError>;
 
     async fn get_sidechain_blocks(
         &mut self,
         asset_public_key: &PublicKey,
         start_hash: TreeNodeHash,
         end_hash: Option<TreeNodeHash>,
-    ) -> Result<Vec<SideChainBlock>, DigitalAssetError>;
+    ) -> Result<Vec<SideChainBlock>, ValidatorNodeClientError>;
+
+    async fn get_sidechain_state(
+        &mut self,
+        asset_public_key: &PublicKey,
+    ) -> Result<Vec<SchemaState>, ValidatorNodeClientError>;
+
+    async fn get_op_logs(
+        &mut self,
+        asset_public_key: &PublicKey,
+        height: u64,
+    ) -> Result<Vec<StateOpLogEntry>, ValidatorNodeClientError>;
+
+    async fn get_tip_node(&mut self, asset_public_key: &PublicKey) -> Result<Option<Node>, ValidatorNodeClientError>;
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ValidatorNodeClientError {
+    #[error("Protocol violations for peer {peer}: {details}")]
+    ProtocolViolation { peer: CommsPublicKey, details: String },
+    #[error("Peer sent an invalid message: {0}")]
+    InvalidPeerMessage(String),
+    #[error("Connectivity error:{0}")]
+    ConnectivityError(#[from] ConnectivityError),
+    #[error("RpcError: {0}")]
+    RpcError(#[from] RpcError),
+    #[error("Remote node returned error: {0}")]
+    RpcStatusError(#[from] RpcStatus),
+    #[error("Dht error: {0}")]
+    DhtError(#[from] DhtActorError),
 }

@@ -240,6 +240,12 @@ impl From<Vec<MessageSendState>> for MessageSendStates {
     }
 }
 
+impl From<MessageSendState> for MessageSendStates {
+    fn from(state: MessageSendState) -> Self {
+        vec![state].into()
+    }
+}
+
 impl Index<usize> for MessageSendStates {
     type Output = MessageSendState;
 

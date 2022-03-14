@@ -7,6 +7,7 @@ const {
 } = require("../helpers/util");
 
 class TransactionBuilder {
+  recovery_byte_key;
   constructor() {
     this.kv = tari_crypto.KeyRing.new();
     this.inputs = [];
@@ -34,6 +35,10 @@ class TransactionBuilder {
 
   featuresToConsensusBytes(features) {
     // base_layer\core\src\transactions\transaction\output_features.rs
+
+    // TODO: Keep this number in sync with 'get_current_version()' in 'output_features_version.rs'
+    const OUTPUT_FEATURES_VERSION = 0x00;
+
     const bufFromOpt = (opt, encoding = "hex") =>
       opt
         ? Buffer.concat([
@@ -49,9 +54,12 @@ class TransactionBuilder {
 
     return Buffer.concat([
       // version
-      Buffer.from([0x00]),
+      Buffer.from([OUTPUT_FEATURES_VERSION]),
       Buffer.from([parseInt(features.maturity || 0)]),
       Buffer.from([features.flags]),
+      OUTPUT_FEATURES_VERSION === 0x00
+        ? Buffer.from([])
+        : Buffer.from([features.recovery_byte]),
       bufFromOpt(features.parent_public_key, "hex"),
       bufFromOpt(unique_id, false),
       // TODO: AssetOutputFeatures
@@ -62,6 +70,8 @@ class TransactionBuilder {
       bufFromOpt(null),
       // TODO: metadata (len is 0)
       Buffer.from([0x00]),
+      // TODO: committee_definition (len is 0)
+      OUTPUT_FEATURES_VERSION === 0x00 ? Buffer.from([]) : bufFromOpt(null),
     ]);
   }
 
@@ -132,6 +142,19 @@ class TransactionBuilder {
     return Buffer.from(final).toString("hex");
   }
 
+  create_unique_recovery_byte(commitment, recovery_byte_key) {
+    let KEY = null; // optional key
+    const OUTPUT_LENGTH = 1; // bytes
+    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    blake2bUpdate(context, Buffer.from(commitment, "hex"));
+    if (recovery_byte_key != undefined) {
+      blake2bUpdate(context, Buffer.from(recovery_byte_key, "hex"));
+    }
+    blake2bUpdate(context, Buffer.from("hash my recovery byte", "hex"));
+    const final = blake2bFinal(context);
+    return final;
+  }
+
   changeFee(fee) {
     this.fee = fee;
   }
@@ -198,19 +221,6 @@ class TransactionBuilder {
   }
 
   addOutput(amount, features = {}) {
-    const outputFeatures = Object.assign({
-      flags: 0,
-      maturity: 0,
-      metadata: [],
-      // In case any of these change, update the buildMetaChallenge function
-      unique_id: features.unique_id
-        ? Buffer.from(features.unique_id, "utf8")
-        : null,
-      parent_public_key: null,
-      asset: null,
-      mint_non_fungible: null,
-      sidechain_checkpoint: null,
-    });
     let key = Math.floor(Math.random() * 500000000000 + 1);
     let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
     let scriptKey = Math.floor(Math.random() * 500000000000 + 1);
@@ -248,6 +258,21 @@ class TransactionBuilder {
       tari_crypto.commit(privateKey, BigInt(amount)).commitment,
       "hex"
     );
+    const recoveryByte = this.create_unique_recovery_byte(commitment);
+    const outputFeatures = Object.assign({
+      flags: 0,
+      maturity: 0,
+      recovery_byte: recoveryByte,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: features.unique_id
+        ? Buffer.from(features.unique_id, "utf8")
+        : null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
+    });
     let meta_challenge = this.buildMetaChallenge(
       nopScriptBytes,
       outputFeatures,
@@ -385,17 +410,6 @@ class TransactionBuilder {
     let coinbase = tari_crypto.commit(privateKey, BigInt(value + fee));
     let nopScriptBytes = Buffer.from([0x73]);
     let covenantBytes = Buffer.from([]);
-    let outputFeatures = {
-      flags: 1,
-      maturity: lockHeight,
-      metadata: [],
-      // In case any of these change, update the buildMetaChallenge function
-      unique_id: null,
-      parent_public_key: null,
-      asset: null,
-      mint_non_fungible: null,
-      sidechain_checkpoint: null,
-    };
     let scriptOffsetPrivateKeyNum = Math.floor(
       Math.random() * 500000000000 + 1
     );
@@ -437,6 +451,19 @@ class TransactionBuilder {
       tari_crypto.commit(privateKey, BigInt(value + fee)).commitment,
       "hex"
     );
+    const recoveryByte = this.create_unique_recovery_byte(commitment);
+    let outputFeatures = {
+      flags: 1,
+      maturity: lockHeight,
+      recovery_byte: recoveryByte,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
+    };
     let meta_challenge = this.buildMetaChallenge(
       nopScriptBytes,
       outputFeatures,

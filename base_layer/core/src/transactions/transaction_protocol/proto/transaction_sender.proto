@@ -37,9 +37,6 @@ message TransactionSenderMessage {
     oneof message {
         bool None = 1;
         SingleRoundSenderData single = 2;
-
-        // TODO: Three round types
-
         bool Multiple = 3;
     }
 }

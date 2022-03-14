@@ -38,7 +38,7 @@ impl GrpcValidatorNodeClient {
     let s = Self {
       client: grpc::validator_node_client::ValidatorNodeClient::connect(endpoint.clone())
         .await
-        .map_err(|e| CollectiblesError::ClientConnectionError {
+        .map_err(|e| CollectiblesError::ClientConnection {
           client: "validator_node",
           address: endpoint,
           error: e.to_string(),
@@ -69,7 +69,7 @@ impl GrpcValidatorNodeClient {
       .map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
 
-        CollectiblesError::ClientRequestError {
+        CollectiblesError::ClientRequest {
           source: e,
           request: "invoke_read_method".to_string(),
         }
@@ -100,7 +100,7 @@ impl GrpcValidatorNodeClient {
       .map_err(|e| {
         error!(target: LOG_TARGET, "{}", e);
 
-        CollectiblesError::ClientRequestError {
+        CollectiblesError::ClientRequest {
           source: e,
           request: "invoke_method".to_string(),
         }

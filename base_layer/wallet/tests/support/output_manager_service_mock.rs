@@ -96,7 +96,10 @@ impl OutputManagerServiceMock {
     ) {
         info!(target: LOG_TARGET, "Handling Request: {}", request);
         match request {
-            OutputManagerRequest::ScanForRecoverableOutputs(requested_outputs) => {
+            OutputManagerRequest::ScanForRecoverableOutputs {
+                outputs: requested_outputs,
+                tx_id: _tx_id,
+            } => {
                 let lock = acquire_lock!(self.state.recoverable_outputs);
                 let outputs = (*lock)
                     .clone()
@@ -117,13 +120,24 @@ impl OutputManagerServiceMock {
                         e
                     });
             },
-            OutputManagerRequest::ScanOutputs(_to) => {
+            OutputManagerRequest::ScanOutputs {
+                outputs: requested_outputs,
+                tx_id: _tx_id,
+            } => {
                 let lock = acquire_lock!(self.state.one_sided_payments);
-                let outputs = (*lock).clone();
+                let outputs = (*lock)
+                    .clone()
+                    .into_iter()
+                    .filter_map(|dbuo| {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
+                            Some(dbuo.unblinded_output)
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 let _ = reply_tx
-                    .send(Ok(OutputManagerResponse::ScanOutputs(
-                        outputs.into_iter().map(|dbuo| dbuo.unblinded_output).collect(),
-                    )))
+                    .send(Ok(OutputManagerResponse::ScanOutputs(outputs)))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e
@@ -153,7 +167,7 @@ impl OutputManagerMockState {
         *lock = outputs;
     }
 
-    pub fn _set_one_sided_payments(&self, outputs: Vec<DbUnblindedOutput>) {
+    pub fn set_one_sided_payments(&self, outputs: Vec<DbUnblindedOutput>) {
         let mut lock = acquire_lock!(self.one_sided_payments);
         *lock = outputs;
     }

@@ -71,7 +71,7 @@ class Create extends React.Component {
       tip003Data: {
         committee: [],
       },
-      newCommitteePubKey: "",
+      newCommitteePublicKey: "",
       committeeEditorError: null,
       isValid: false,
       saveErrors: [],
@@ -157,11 +157,12 @@ class Create extends React.Component {
       }
 
       let outputs = await binding.command_asset_wallets_get_unspent_amounts();
+      console.log("outputs", outputs);
 
       if (outputs.length <= 1) {
         throw { message: "You need at least two unspent outputs" };
       }
-      let publicKey = await binding.command_assets_create(
+      let assetPublicKey = await binding.command_assets_create(
         name,
         description,
         image,
@@ -169,23 +170,26 @@ class Create extends React.Component {
         templateParameters
       );
 
-      // TODO: How to create the initial checkpoint?
+      console.log("tip003", this.state.tip003);
       if (this.state.tip003) {
-        let res = await binding.command_asset_create_initial_checkpoint(
-          publicKey,
-          this.state.tip003Data.committee
+        console.log("register asset...");
+        await binding.command_asset_create_initial_checkpoint(assetPublicKey);
+        console.log("define committee...");
+        await binding.command_asset_create_committee_definition(
+          assetPublicKey,
+          this.state.tip003Data.committee,
+          true
         );
-
-        console.log(res);
+        console.log("done");
       }
       let history = this.props.history;
 
-      history.push(`/assets/manage/${publicKey}`);
+      history.push(`/assets/manage/${assetPublicKey}`);
     } catch (err) {
+      console.error(err);
       this.setState({
         error: "Could not create asset: " + err.message,
       });
-      console.log(err);
     }
     this.setState({ isSaving: false });
   };
@@ -217,24 +221,24 @@ class Create extends React.Component {
     });
   };
 
-  onNewCommitteePubKeyChanged = (e) => {
+  onNewCommitteePublicKeyChanged = (e) => {
     this.setState({
-      newCommitteePubKey: e.target.value,
+      newCommitteePublicKey: e.target.value,
     });
   };
 
   onAddCommitteeMember = () => {
-    let pubKey = this.state.newCommitteePubKey;
-    if (!pubKey) return;
-    pubKey = pubKey.trim();
-    if (!pubKey) return;
-    if (this.state.tip003Data.committee.includes(pubKey)) {
+    let publicKey = this.state.newCommitteePublicKey;
+    if (!publicKey) return;
+    publicKey = publicKey.trim();
+    if (!publicKey) return;
+    if (this.state.tip003Data.committee.includes(publicKey)) {
       this.setState({ committeeEditorError: "Public key already added!" });
       return;
     }
 
     let committee = [...this.state.tip003Data.committee];
-    committee.push(pubKey);
+    committee.push(publicKey);
     let tip003Data = {
       ...this.state.tip003Data,
       ...{ committee: committee },
@@ -244,7 +248,7 @@ class Create extends React.Component {
     this.setState({
       tip003Data,
       saveErrors: [],
-      newCommitteePubKey: "",
+      newCommitteePublicKey: "",
       committeeEditorError: null,
     });
   };
@@ -476,8 +480,8 @@ class Create extends React.Component {
           </FormGroup>
           <CommitteeEditor
             members={this.state.tip003Data.committee}
-            onNewCommitteePubKeyChanged={this.onNewCommitteePubKeyChanged}
-            newCommitteePubKey={this.state.newCommitteePubKey}
+            onNewCommitteePublicKeyChanged={this.onNewCommitteePublicKeyChanged}
+            newCommitteePublicKey={this.state.newCommitteePublicKey}
             onAddCommitteeMember={this.onAddCommitteeMember}
             onDeleteCommitteeMember={this.onDeleteCommitteeMember}
             disabled={this.state.isSaving || !this.state.tip003}
@@ -723,8 +727,8 @@ const CommitteeEditor = ({
   disabled,
   onAddCommitteeMember,
   onDeleteCommitteeMember,
-  onNewCommitteePubKeyChanged,
-  newCommitteePubKey,
+  onNewCommitteePublicKeyChanged,
+  newCommitteePublicKey,
   error,
 }) => {
   return (
@@ -751,9 +755,9 @@ const CommitteeEditor = ({
       </List>
       <TextField
         label="Validator node public key"
-        id="newCommitteePubKey"
-        value={newCommitteePubKey}
-        onChange={onNewCommitteePubKeyChanged}
+        id="newCommitteePublicKey"
+        value={newCommitteePublicKey}
+        onChange={onNewCommitteePublicKeyChanged}
         disabled={disabled}
       />
       <Button onClick={onAddCommitteeMember} disabled={disabled}>
@@ -769,8 +773,8 @@ CommitteeEditor.propTypes = {
   disabled: PropTypes.bool,
   onAddCommitteeMember: PropTypes.func,
   onDeleteCommitteeMember: PropTypes.func,
-  onNewCommitteePubKeyChanged: PropTypes.func,
-  newCommitteePubKey: PropTypes.string,
+  onNewCommitteePublicKeyChanged: PropTypes.func,
+  newCommitteePublicKey: PropTypes.string,
   error: PropTypes.string,
 };
 

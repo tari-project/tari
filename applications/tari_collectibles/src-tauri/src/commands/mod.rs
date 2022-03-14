@@ -31,6 +31,10 @@ pub mod wallets;
 
 #[tauri::command]
 pub async fn create_db(state: tauri::State<'_, ConcurrentAppState>) -> Result<(), String> {
+  inner_create_db(state.inner()).await
+}
+
+pub async fn inner_create_db(state: &ConcurrentAppState) -> Result<(), String> {
   let _db = state
     .create_db()
     .await

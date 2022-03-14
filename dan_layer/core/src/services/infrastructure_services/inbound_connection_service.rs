@@ -29,16 +29,19 @@ use crate::{
 };
 
 #[async_trait]
-pub trait InboundConnectionService<TAddr: NodeAddressable, TPayload: Payload> {
+pub trait InboundConnectionService {
+    type Addr: NodeAddressable;
+    type Payload: Payload;
+
     async fn wait_for_message(
         &self,
         message_type: HotStuffMessageType,
         for_view: ViewId,
-    ) -> Result<(TAddr, HotStuffMessage<TPayload>), DigitalAssetError>;
+    ) -> Result<(Self::Addr, HotStuffMessage<Self::Payload>), DigitalAssetError>;
 
     async fn wait_for_qc(
         &self,
         message_type: HotStuffMessageType,
         for_view: ViewId,
-    ) -> Result<(TAddr, HotStuffMessage<TPayload>), DigitalAssetError>;
+    ) -> Result<(Self::Addr, HotStuffMessage<Self::Payload>), DigitalAssetError>;
 }

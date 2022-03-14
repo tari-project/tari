@@ -26,8 +26,9 @@ use tari_common_types::{
     array::copy_into_fixed_array,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{
+use tari_core::transactions::transaction_components::{
     AssetOutputFeatures,
+    CommitteeDefinitionFeatures,
     MintNonFungibleFeatures,
     OutputFeatures,
     OutputFeaturesVersion,
@@ -61,12 +62,14 @@ impl TryFrom<grpc::OutputFeatures> for OutputFeatures {
             OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
+            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             parent_public_key,
             features.asset.map(|a| a.try_into()).transpose()?,
             features.mint_non_fungible.map(|m| m.try_into()).transpose()?,
-            features.sidechain_checkpoint.map(|m| m.try_into()).transpose()?,
+            features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
+            features.committee_definition.map(|c| c.try_into()).transpose()?,
         ))
     }
 }
@@ -86,6 +89,8 @@ impl From<OutputFeatures> for grpc::OutputFeatures {
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
             sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
             version: features.version as u32,
+            committee_definition: features.committee_definition.map(|c| c.into()),
+            recovery_byte: features.recovery_byte as u32,
         }
     }
 }
@@ -182,5 +187,34 @@ impl TryFrom<grpc::SideChainCheckpointFeatures> for SideChainCheckpointFeatures 
         let merkle_root = copy_into_fixed_array(&value.merkle_root).map_err(|_| "Invalid merkle_root length")?;
 
         Ok(Self { merkle_root, committee })
+    }
+}
+
+impl From<CommitteeDefinitionFeatures> for grpc::CommitteeDefinitionFeatures {
+    fn from(value: CommitteeDefinitionFeatures) -> Self {
+        Self {
+            committee: value.committee.iter().map(|c| c.as_bytes().to_vec()).collect(),
+            effective_sidechain_height: value.effective_sidechain_height,
+        }
+    }
+}
+
+impl TryFrom<grpc::CommitteeDefinitionFeatures> for CommitteeDefinitionFeatures {
+    type Error = String;
+
+    fn try_from(value: grpc::CommitteeDefinitionFeatures) -> Result<Self, Self::Error> {
+        let committee = value
+            .committee
+            .iter()
+            .map(|c| {
+                PublicKey::from_bytes(c).map_err(|err| format!("committee member was not a valid public key: {}", err))
+            })
+            .collect::<Result<_, _>>()?;
+        let effective_sidechain_height = value.effective_sidechain_height;
+
+        Ok(Self {
+            committee,
+            effective_sidechain_height,
+        })
     }
 }

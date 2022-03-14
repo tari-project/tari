@@ -46,7 +46,7 @@ use tari_common::{
     DefaultConfigLoader,
     GlobalConfig,
 };
-use tari_comms::{connectivity::ConnectivityRequester, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_dan_core::services::{ConcreteAssetProcessor, ConcreteAssetProxy, MempoolServiceHandle, ServiceSpecification};
 use tari_dan_storage_sqlite::SqliteDbFactory;
@@ -102,10 +102,14 @@ async fn run_node(
     create_id: bool,
 ) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
+    let validator_node_config = config
+        .validator_node
+        .as_ref()
+        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "validator_node configuration not found"))?;
 
     let node_identity = setup_node_identity(
         &validator_node_config.identity_file,
-        &validator_node_config.public_address,
+        &validator_node_config.comms_public_address,
         create_id,
         PeerFeatures::NONE,
     )?;
@@ -131,10 +135,8 @@ async fn run_node(
     .await?;
 
     let asset_processor = ConcreteAssetProcessor::default();
-    let validator_node_client_factory = TariCommsValidatorNodeClientFactory::new(
-        handles.expect_handle::<ConnectivityRequester>(),
-        handles.expect_handle::<Dht>().discovery_service_requester(),
-    );
+    let validator_node_client_factory =
+        TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
         GrpcBaseNodeClient::new(validator_node_config.base_node_grpc_address),
         validator_node_client_factory,
@@ -208,7 +210,7 @@ async fn run_grpc<TServiceSpecification: ServiceSpecification + 'static>(
         .serve_with_shutdown(grpc_address, shutdown_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
             err
         })?;
 

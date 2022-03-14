@@ -52,6 +52,8 @@ pub struct WalletConfig {
     pub connection_manager_pool_size: usize,
     pub password: Option<String>, // TODO: Make clear on drop
     pub public_address: Option<Multiaddr>,
+    pub contacts_auto_ping_interval: Duration,
+    pub contacts_online_ping_window: usize,
 }
 
 impl Default for WalletConfig {

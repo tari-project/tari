@@ -80,7 +80,7 @@ use crate::{
     common::rolling_vec::RollingVec,
     consensus::{chain_strength_comparer::ChainStrengthComparer, ConsensusConstants, ConsensusManager},
     proof_of_work::{monero_rx::MoneroPowData, PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction::{TransactionInput, TransactionKernel},
+    transactions::transaction_components::{TransactionInput, TransactionKernel},
     validation::{
         helpers::calc_median_timestamp,
         DifficultyCalculator,
@@ -218,7 +218,11 @@ where B: BlockchainBackend
         };
         let genesis_block = Arc::new(blockchain_db.consensus_manager.get_genesis_block());
         if is_empty {
-            info!(target: LOG_TARGET, "Blockchain db is empty. Adding genesis block.");
+            info!(
+                target: LOG_TARGET,
+                "Blockchain db is empty. Adding genesis block {}.",
+                genesis_block.block().body.to_counts_string()
+            );
             blockchain_db.insert_block(genesis_block.clone())?;
             let mut txn = DbTransaction::new();
             let body = &genesis_block.block().body;
@@ -1175,6 +1179,18 @@ pub struct MmrRoots {
     pub output_mr: BlockHash,
     pub witness_mr: BlockHash,
     pub output_mmr_size: u64,
+}
+
+impl std::fmt::Display for MmrRoots {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "MMR Roots")?;
+        writeln!(f, "Input MR        : {}", &self.input_mr.to_hex())?;
+        writeln!(f, "Witness MR      : {}", &self.witness_mr.to_hex())?;
+        writeln!(f, "Kernel MR       : {}", &self.kernel_mr.to_hex())?;
+        writeln!(f, "Kernel MMR Size : {}", &self.kernel_mmr_size)?;
+        writeln!(f, "Output MR       : {}", &self.output_mr.to_hex())?;
+        writeln!(f, "Output MMR Size : {}", &self.output_mmr_size)
+    }
 }
 
 pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {

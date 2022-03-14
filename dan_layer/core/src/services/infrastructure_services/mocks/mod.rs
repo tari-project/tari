@@ -46,9 +46,12 @@ pub struct MockInboundConnectionService<TAddr: NodeAddressable, TPayload: Payloa
 }
 
 #[async_trait]
-impl<TAddr: NodeAddressable + Send, TPayload: Payload> InboundConnectionService<TAddr, TPayload>
+impl<TAddr: NodeAddressable + Send, TPayload: Payload> InboundConnectionService
     for MockInboundConnectionService<TAddr, TPayload>
 {
+    type Addr = TAddr;
+    type Payload = TPayload;
+
     async fn wait_for_message(
         &self,
         _message_type: HotStuffMessageType,
@@ -125,9 +128,12 @@ use std::fmt::Debug;
 use crate::models::{HotStuffMessageType, Payload, ViewId};
 
 #[async_trait]
-impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService<TAddr, TPayload>
+impl<TAddr: NodeAddressable + Send + Sync + Debug, TPayload: Payload> OutboundService
     for MockOutboundService<TAddr, TPayload>
 {
+    type Addr = TAddr;
+    type Payload = TPayload;
+
     async fn send(
         &mut self,
         from: TAddr,

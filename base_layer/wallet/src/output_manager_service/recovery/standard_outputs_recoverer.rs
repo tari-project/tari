@@ -20,49 +20,61 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use log::*;
 use rand::rngs::OsRng;
-use tari_common_types::types::{PrivateKey, PublicKey, RangeProof};
+use tari_common_types::{
+    transaction::TxId,
+    types::{BulletRangeProof, PrivateKey, PublicKey},
+};
 use tari_core::transactions::{
-    transaction::{TransactionOutput, UnblindedOutput},
+    transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_protocol::RewindData,
     CryptoFactories,
 };
 use tari_crypto::{
     inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    script,
     tari_utilities::hex::Hex,
 };
 
-use crate::output_manager_service::{
-    error::{OutputManagerError, OutputManagerStorageError},
-    master_key_manager::KeyManagerBranch,
-    storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbUnblindedOutput,
+use crate::{
+    key_manager_service::KeyManagerInterface,
+    output_manager_service::{
+        error::{OutputManagerError, OutputManagerStorageError},
+        resources::OutputManagerKeyManagerBranch,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
     },
-    MasterKeyManager,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
-pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static> {
-    master_key_manager: Arc<MasterKeyManager<TBackend>>,
+pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
+    master_key_manager: TKeyManagerInterface,
+    rewind_data: RewindData,
     factories: CryptoFactories,
     db: OutputManagerDatabase<TBackend>,
 }
 
-impl<TBackend> StandardUtxoRecoverer<TBackend>
-where TBackend: OutputManagerBackend + 'static
+impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
+where
+    TBackend: OutputManagerBackend + 'static,
+    TKeyManagerInterface: KeyManagerInterface,
 {
     pub fn new(
-        master_key_manager: Arc<MasterKeyManager<TBackend>>,
+        master_key_manager: TKeyManagerInterface,
+        rewind_data: RewindData,
         factories: CryptoFactories,
         db: OutputManagerDatabase<TBackend>,
     ) -> Self {
         Self {
             master_key_manager,
+            rewind_data,
             factories,
             db,
         }
@@ -73,30 +85,29 @@ where TBackend: OutputManagerBackend + 'static
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
-        let mut rewound_outputs: Vec<(UnblindedOutput, RangeProof)> = outputs
+        let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = outputs
             .into_iter()
             .filter_map(|output| {
                 output
                     .full_rewind_range_proof(
                         &self.factories.range_proof,
-                        &self.master_key_manager.rewind_data().rewind_key,
-                        &self.master_key_manager.rewind_data().rewind_blinding_key,
+                        &self.rewind_data.rewind_key,
+                        &self.rewind_data.rewind_blinding_key,
                     )
                     .ok()
-                    .map(|v| ( v, output ) )
+                    .map(|v| (v, output))
             })
-            //TODO: This needs some investigation. We assume Nop script here and recovery here might create an
-            //TODO:   unspendable output if the script does not equal Nop.
-            .map(
-                |(rewind_result, output)| {
-                    // Todo we need to look here that we might want to fail a specific output and not recover it as this
-                    // will only work if the script is a Nop script. If this is not a Nop script the recovered input
-                    // will not be spendable.
-                    let script_key = PrivateKey::random(&mut OsRng);
-                    (UnblindedOutput::new(
+            .filter_map(|(rewind_result, output)| {
+                if output.script != script!(Nop) {
+                    return None;
+                }
+                let script_key = PrivateKey::random(&mut OsRng);
+                Some((
+                    UnblindedOutput::new(
                         output.version,
                         rewind_result.committed_value,
                         rewind_result.blinding_factor,
@@ -107,11 +118,11 @@ where TBackend: OutputManagerBackend + 'static
                         output.sender_offset_public_key,
                         output.metadata_signature,
                         0,
-                        output.covenant
+                        output.covenant,
                     ),
-                     output.proof)
-                },
-            )
+                    output.proof,
+                ))
+            })
             .collect();
         let rewind_time = start.elapsed();
         trace!(
@@ -128,12 +139,12 @@ where TBackend: OutputManagerBackend + 'static
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
-                self.master_key_manager.rewind_data(),
+                &self.rewind_data,
                 None,
                 Some(proof),
             )?;
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output(db_output).await {
+            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         info!(
@@ -168,23 +179,31 @@ where TBackend: OutputManagerBackend + 'static
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Coinbase)
+                .find_key_index(
+                    OutputManagerKeyManagerBranch::Coinbase.to_string(),
+                    &output.spending_key,
+                )
                 .await?;
 
             self.master_key_manager
-                .get_coinbase_script_key_at_index(found_index)
+                .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript, found_index)
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Spend)
+                .find_key_index(OutputManagerKeyManagerBranch::Spend, &output.spending_key)
                 .await?;
 
             self.master_key_manager
-                .update_current_spend_key_index_if_higher(found_index)
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend, found_index)
+                .await?;
+            self.master_key_manager
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::SpendScript, found_index)
                 .await?;
 
-            self.master_key_manager.get_script_key_at_index(found_index).await?
+            self.master_key_manager
+                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, found_index)
+                .await?
         };
 
         output.input_data = inputs!(PublicKey::from_secret_key(&script_key));

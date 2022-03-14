@@ -37,7 +37,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty},
     transactions::{
-        transaction::{Transaction, UnblindedOutput},
+        transaction_components::{Transaction, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },
@@ -110,13 +110,13 @@ pub fn mine_to_difficulty(mut block: Block, difficulty: Difficulty) -> Result<Bl
     // When starting from the same nonce, in tests it becomes common to mine the same block more than once without the
     // hash changing. This introduces the required entropy
     block.header.nonce = rand::thread_rng().gen();
-    for _i in 0..10000 {
+    for _i in 0..20000 {
         if sha3_difficulty(&block.header) == difficulty {
             return Ok(block);
         }
         block.header.nonce += 1;
     }
-    Err("Could not mine to difficulty in 10000 iterations".to_string())
+    Err("Could not mine to difficulty in 20000 iterations".to_string())
 }
 
 pub fn create_peer_manager<P: AsRef<Path>>(data_path: P) -> Arc<PeerManager> {

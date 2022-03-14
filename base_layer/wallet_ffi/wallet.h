@@ -30,7 +30,6 @@
 //! of Callbacks that the client must implement and provide to the Wallet module to receive asynchronous replies and
 //! updates.
 
-// TODO: Improve documentation
 #ifndef wallet_ffi_h
 #define wallet_ffi_h
 
@@ -263,14 +262,19 @@ unsigned long long completed_transaction_get_fee(struct TariCompletedTransaction
 const char *completed_transaction_get_message(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the status of a TariCompletedTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int completed_transaction_get_status(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Gets the TransactionID of a TariCompletedTransaction
@@ -278,9 +282,6 @@ unsigned long long completed_transaction_get_transaction_id(struct TariCompleted
 
 // Gets the timestamp of a TariCompletedTransaction
 unsigned long long completed_transaction_get_timestamp(struct TariCompletedTransaction *transaction, int *error_out);
-
-// Check if a TariCompletedTransaction is Valid or not
-bool completed_transaction_is_valid(struct TariCompletedTransaction *tx, int *error_out);
 
 // Checks if a TariCompletedTransaction was originally a TariPendingOutboundTransaction,
 // i.e the transaction was originally sent from the wallet
@@ -291,6 +292,30 @@ unsigned long long completed_transaction_get_confirmations(struct TariCompletedT
 
 // Gets the TariTransactionKernel of a TariCompletedTransaction
 struct TariTransactionKernel *completed_transaction_get_transaction_kernel(struct TariCompletedTransaction *transaction, int *error_out);
+
+/// Gets the reason a TariCompletedTransaction is cancelled, if it is indeed cancelled
+///
+/// ## Arguments
+/// `tx` - The TariCompletedTransaction
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_int` - Returns the reason for cancellation which corresponds to:
+/// | Value | Interpretation    |
+/// |---  |---                  |
+/// |  -1 | Not Cancelled       |
+/// |   0 | Unknown             |
+/// |   1 | UserCancelled       |
+/// |   2 | Timeout             |
+/// |   3 | DoubleSpend         |
+/// |   4 | Orphan              |
+/// |   5 | TimeLocked          |
+/// |   6 | InvalidTransaction  |
+/// |   7 | AbandonedCoinbase   |
+/// # Safety
+/// None
+int completed_transaction_get_cancellation_reason(struct TariCompletedTransaction *transaction, int *error_out);
 
 // Frees memory for a TariCompletedTransaction
 void completed_transaction_destroy(struct TariCompletedTransaction *transaction);
@@ -341,14 +366,19 @@ const char *pending_outbound_transaction_get_message(struct TariPendingOutboundT
 unsigned long long pending_outbound_transaction_get_timestamp(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Gets the status of a TariPendingOutboundTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed    |
+// |   9 | FauxConfirmed      |
 int pending_outbound_transaction_get_status(struct TariPendingOutboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingOutboundTactions
@@ -383,14 +413,19 @@ unsigned long long pending_inbound_transaction_get_amount(struct TariPendingInbo
 unsigned long long pending_inbound_transaction_get_timestamp(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Gets the status of a TariPendingInboundTransaction
-// | Value | Interpretation |
+// | Value | Interpretation   |
 // |---|---|
-// |  -1 | TxNullError |
-// |   0 | Completed   |
-// |   1 | Broadcast   |
-// |   2 | Mined       |
-// |   3 | Imported    |
-// |   4 | Pending     |
+// |  -1 | TxNullError        |
+// |   0 | Completed          |
+// |   1 | Broadcast          |
+// |   2 | MinedUnconfirmed   |
+// |   3 | Imported           |
+// |   4 | Pending            |
+// |   5 | Coinbase           |
+// |   6 | MinedConfirmed     |
+// |   7 | Rejected           |
+// |   8 | FauxUnconfirmed |
+// |   9 | FauxConfirmed   |
 int pending_inbound_transaction_get_status(struct TariPendingInboundTransaction *transaction, int *error_out);
 
 // Frees memory for a TariPendingInboundTransaction
@@ -451,14 +486,18 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a Broadcast transaction is detected as mined AND confirmed.
 /// `callback_transaction_mined_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a Broadcast transaction is detected as mined but not yet confirmed.
+/// `callback_faux_transaction_confirmed` - The callback function pointer matching the function signature. This will be called
+/// when a one-sided transaction is detected as mined AND confirmed.
+/// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This will
+/// be called  when a one-sided transaction is detected as mined but not yet confirmed.
 /// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
 /// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
 /// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
 /// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
 /// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
-/// why said transaction failed that is mapped to the `TxRejection` enum:
-/// pub enum TxRejection {
+/// why said transaction failed that is mapped to the `TxCancellationReason` enum:
+/// pub enum TxCancellationReason {
 ///     Unknown,                // 0
 ///     UserCancelled,          // 1
 ///     Timeout,                // 2
@@ -470,6 +509,8 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// `callback_txo_validation_complete` - The callback function pointer matching the function signature. This is called
 /// when a TXO validation process is completed. The request_key is used to identify which request this
 /// callback references and the second parameter is a is a bool that returns if the validation was successful or not.
+/// `callback_contacts_liveness_data_updated` - The callback function pointer matching the function signature. This is
+/// called when a contact's liveness status changed. The data represents the contact's updated status information.
 /// `callback_balance_updated` - The callback function pointer matching the function signature. This is called whenever
 /// the balance changes.
 /// `callback_transaction_validation_complete` - The callback function pointer matching the function signature. This is
@@ -515,10 +556,13 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_broadcast)(struct TariCompletedTransaction *),
                                  void (*callback_transaction_mined)(struct TariCompletedTransaction *),
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
+                                 void (*callback_faux_transaction_confirmed)(struct TariCompletedTransaction *),
+                                 void (*callback_faux_transaction_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_direct_send_result)(unsigned long long, bool),
                                  void (*callback_store_and_forward_send_result)(unsigned long long, bool),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_txo_validation_complete)(unsigned long long, bool),
+                                 void (*callback_contacts_liveness_data_updated)(struct TariContactsLivenessData *),
                                  void (*callback_balance_updated)(struct TariBalance *),
                                  void (*callback_transaction_validation_complete)(unsigned long long, bool),
                                  void (*callback_saf_message_received)(),
@@ -555,6 +599,36 @@ unsigned long long balance_get_pending_incoming(struct TariBalance *balance, int
 
 // Gets the available balance from a TariBalance
 unsigned long long balance_get_pending_outgoing(struct TariBalance *balance, int *error_out);
+
+// Gets the public_key from a TariContactsLivenessData
+struct TariPublicKey *liveness_data_get_public_key(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the optional latency in milli-seconds (ms) from a TariContactsLivenessData. A value of -1 indicates
+// that latency was not measured for the respective ping or pong.
+int liveness_data_get_latency(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the last_seen time (in local time) from a TariContactsLivenessData
+char *liveness_data_get_last_seen(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the message_type (ContactMessageType enum) from a TariContactsLivenessData, which
+// can return the following values:
+// pub enum ContactMessageType {
+//     Ping,         // 0
+//     Pong,         // 1
+//     NoMessage,    // 2
+// }
+// A value of -1 represents a null error.
+int liveness_data_get_message_type(struct TariContactsLivenessData *liveness_data, int *error_out);
+
+// Gets the online_status (ContactOnlineStatus enum) from a TariContactsLivenessData, which
+// can return the following values:
+// pub enum ContactOnlineStatus {
+//     Online,       // 0
+//     Offline,      // 1
+//     NeverSeen,    // 2
+// }
+// A value of -1 represents a null error.
+int liveness_data_get_online_status(struct TariContactsLivenessData *liveness_data, int *error_out);
 
 // Get a fee estimate from a TariWallet for a given amount
 unsigned long long wallet_get_fee_estimate(struct TariWallet *wallet, unsigned long long amount, unsigned long long fee_per_gram, unsigned long long num_kernels, unsigned long long num_outputs, int *error_out);
@@ -753,6 +827,9 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet, int *error_out);
 ///     - If a unrecoverable error occurs the `RecoveryFailed` event will be returned and the client will need to start
 ///       a new process.
 ///
+/// `recovered_output_message` - A string that will be used as the message for any recovered outputs. If Null the default
+///     message will be used
+///
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -763,13 +840,33 @@ bool wallet_is_recovery_in_progress(struct TariWallet *wallet, int *error_out);
 ///
 /// # Safety
 /// None
-bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base_node_public_key, void (*recovery_progress_callback)(unsigned char, unsigned long long, unsigned long long), int *error_out);
+bool wallet_start_recovery(struct TariWallet *wallet, struct TariPublicKey *base_node_public_key, void (*recovery_progress_callback)(unsigned char, unsigned long long, unsigned long long), const char *recovered_output_message , int *error_out);
+
+/// Set the text message that is applied to a detected One-Side payment transaction when it is scanned from the
+/// blockchain
+///
+/// ## Arguments
+/// `wallet` - The TariWallet pointer.
+/// `message` - The pointer to a Utf8 string representing the Message
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `bool` - Return a boolean value indicating the operation's success or failure. The error_ptr will hold the error
+/// code if there was a failure
+///
+/// # Safety
+/// None
+bool wallet_set_one_sided_payment_message(struct TariWallet *wallet, const char *message, int *error_out);
 
 // Frees memory for a TariWallet
 void wallet_destroy(struct TariWallet *wallet);
 
 // Frees memory for a TariBalance
 void balance_destroy(struct TariBalance *balance);
+
+// Frees memory for a TariContactsLivenessData
+void liveness_data_destroy(struct TariContactsLivenessData *liveness_data);
 
 // This function will produce a partial backup of the specified wallet database file (full file path must be provided.
 // This backup will be written to the provided file (full path must include the filename and extension) and will include

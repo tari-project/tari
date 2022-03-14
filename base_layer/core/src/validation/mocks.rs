@@ -32,7 +32,7 @@ use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::{sha3_difficulty, AchievedTargetDifficulty, Difficulty, PowAlgorithm},
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
     validation::{
         error::ValidationError,
         BlockSyncBodyValidation,

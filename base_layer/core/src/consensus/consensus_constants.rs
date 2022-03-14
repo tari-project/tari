@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, ops::Add};
+use std::{
+    collections::HashMap,
+    ops::{Add, RangeInclusive},
+};
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
@@ -31,7 +34,13 @@ use crate::{
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
-        transaction::OutputFeatures,
+        transaction_components::{
+            OutputFeatures,
+            OutputFeaturesVersion,
+            TransactionInputVersion,
+            TransactionKernelVersion,
+            TransactionOutputVersion,
+        },
         weight::TransactionWeight,
     },
 };
@@ -72,9 +81,38 @@ pub struct ConsensusConstants {
     transaction_weight: TransactionWeight,
     /// Maximum byte size of TariScript
     max_script_byte_size: usize,
+    /// Range of valid transaction input versions
+    pub(crate) input_version_range: RangeInclusive<TransactionInputVersion>,
+    /// Range of valid transaction output (and features) versions
+    pub(crate) output_version_range: OutputVersionRange,
+    /// Range of valid transaction kernel versions
+    pub(crate) kernel_version_range: RangeInclusive<TransactionKernelVersion>,
 }
 
-/// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
+// todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
+#[derive(Debug, Clone)]
+pub struct OutputVersionRange {
+    pub outputs: RangeInclusive<TransactionOutputVersion>,
+    pub features: RangeInclusive<OutputFeaturesVersion>,
+}
+
+/// All V0 for Inputs, Outputs + Features, Kernels
+fn version_zero() -> (
+    RangeInclusive<TransactionInputVersion>,
+    OutputVersionRange,
+    RangeInclusive<TransactionKernelVersion>,
+) {
+    let input_version_range = TransactionInputVersion::V0..=TransactionInputVersion::V0;
+    let kernel_version_range = TransactionKernelVersion::V0..=TransactionKernelVersion::V0;
+    let output_version_range = OutputVersionRange {
+        outputs: TransactionOutputVersion::V0..=TransactionOutputVersion::V0,
+        features: OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0,
+    };
+
+    (input_version_range, output_version_range, kernel_version_range)
+}
+
+/// This is just a convenience struct to put all the info into a hashmap for each algorithm
 #[derive(Clone, Debug)]
 pub struct PowAlgorithmConstants {
     /// NB this is very important to set this as 6 * the target time
@@ -109,7 +147,7 @@ impl ConsensusConstants {
         self.blockchain_version
     }
 
-    /// This returns the FTL(Future Time Limit) for blocks
+    /// This returns the FTL (Future Time Limit) for blocks.
     /// Any block with a timestamp greater than this is rejected.
     pub fn ftl(&self) -> EpochTime {
         (Utc::now()
@@ -142,8 +180,9 @@ impl ConsensusConstants {
 
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+        let output_features = OutputFeatures { ..Default::default() };
         let metadata_size = self.transaction_weight.round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
         );
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
@@ -210,6 +249,21 @@ impl ConsensusConstants {
         &self.transaction_weight
     }
 
+    /// The range of acceptable transaction input versions
+    pub fn input_version_range(&self) -> &RangeInclusive<TransactionInputVersion> {
+        &self.input_version_range
+    }
+
+    /// The range of acceptable transaction output and features versions
+    pub fn output_version_range(&self) -> &OutputVersionRange {
+        &self.output_version_range
+    }
+
+    /// The range of acceptable transaction kernel versions
+    pub fn kernel_version_range(&self) -> &RangeInclusive<TransactionKernelVersion> {
+        &self.kernel_version_range
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -225,6 +279,7 @@ impl ConsensusConstants {
             max_difficulty: 1.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 2,
@@ -241,6 +296,9 @@ impl ConsensusConstants {
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 
@@ -259,6 +317,7 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
@@ -275,6 +334,9 @@ impl ConsensusConstants {
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 
@@ -293,6 +355,7 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
@@ -312,6 +375,9 @@ impl ConsensusConstants {
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 
@@ -336,7 +402,8 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
-        vec![ConsensusConstants {
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
+        let constants = ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 360,
             blockchain_version: 2,
@@ -355,7 +422,12 @@ impl ConsensusConstants {
             faucet_value: (10 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
-        }]
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
+        };
+
+        vec![constants]
     }
 
     pub fn mainnet() -> Vec<Self> {
@@ -374,6 +446,7 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 1,
@@ -390,6 +463,9 @@ impl ConsensusConstants {
             faucet_value: MicroTari::from(0),
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 }

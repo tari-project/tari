@@ -301,6 +301,7 @@ class WalletProcess {
             features: {
               flags: 0,
               maturity: parseInt(row.maturity) || 0,
+              recovery_byte: parseInt(row.recovery_byte),
             },
             script: Buffer.from(row.script, "hex"),
             input_data: Buffer.from(row.input_data, "hex"),

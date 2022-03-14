@@ -22,7 +22,10 @@
 
 use patricia_tree::PatriciaMap;
 
-use crate::storage::{state::db_key_value::DbKeyValue, StorageError};
+use crate::storage::{
+    state::{db_key_value::DbKeyValue, DbStateOpLogEntry},
+    StorageError,
+};
 
 pub trait StateDbBackendAdapter: Send + Sync + Clone {
     type BackendTransaction;
@@ -52,4 +55,12 @@ pub trait StateDbBackendAdapter: Send + Sync + Clone {
         schema: &str,
         tx: &Self::BackendTransaction,
     ) -> Result<Vec<DbKeyValue>, Self::Error>;
+    fn get_state_op_logs_by_height(
+        &self,
+        height: u64,
+        tx: &Self::BackendTransaction,
+    ) -> Result<Vec<DbStateOpLogEntry>, Self::Error>;
+    fn add_state_oplog_entry(&self, entry: DbStateOpLogEntry, tx: &Self::BackendTransaction)
+        -> Result<(), Self::Error>;
+    fn clear_all_state(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error>;
 }

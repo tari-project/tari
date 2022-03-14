@@ -23,7 +23,7 @@
 use std::{
     cmp::Ordering,
     fmt::{self, Display},
-    ops::Sub,
+    ops::{Add, Sub},
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -34,12 +34,20 @@ impl ViewId {
         (self.0 % committee_size as u64) as usize
     }
 
+    pub fn is_genesis(&self) -> bool {
+        self.0 == 0
+    }
+
     pub fn next(&self) -> ViewId {
         ViewId(self.0 + 1)
     }
 
     pub fn as_u64(&self) -> u64 {
         self.0
+    }
+
+    pub fn saturating_sub(self, other: ViewId) -> ViewId {
+        self.0.saturating_sub(other.0).into()
     }
 }
 
@@ -58,6 +66,14 @@ impl From<u64> for ViewId {
 impl Display for ViewId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "View({})", self.0)
+    }
+}
+
+impl Add for ViewId {
+    type Output = ViewId;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        ViewId(self.0 + rhs.0)
     }
 }
 

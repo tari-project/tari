@@ -65,7 +65,13 @@ pub fn copy_config_file<S: AsRef<Path>>(
     file: &str,
 ) -> Result<(), LauncherError> {
     let path = Path::new("assets").join(file);
-    let config_path = resolve_path(config, package_info, &path, Some(BaseDirectory::Resource))?;
+    let config_path = resolve_path(
+        config,
+        package_info,
+        &Default::default(),
+        &path,
+        Some(BaseDirectory::Resource),
+    )?;
     let cfg = std::fs::read_to_string(&config_path).expect("The config assets were not bundled with the App");
     info!("Log Configuration file ({}) loaded", file);
     debug!("{}", cfg);

@@ -27,6 +27,7 @@ pub enum Error {
     // ResponseError(String),
     Json(String),
     General(String),
+    MissingData(String),
 }
 
 impl From<serde_json::error::Error> for Error {

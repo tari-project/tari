@@ -150,7 +150,7 @@ impl Listening {
                         log_mdc::extend(mdc.clone());
                     }
 
-                    let configured_sync_peers = &shared.config.block_sync_config.sync_peers;
+                    let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                     if !configured_sync_peers.is_empty() {
                         // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
                         // we're out of sync
@@ -366,7 +366,7 @@ fn determine_sync_mode(
         Lagging {
             local: local.clone(),
             network: network.clone(),
-            sync_peers: sync_peers.into_iter().cloned().collect(),
+            sync_peers: sync_peers.into_iter().cloned().map(Into::into).collect(),
         }
     } else {
         info!(

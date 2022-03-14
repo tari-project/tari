@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use log::*;
-use tari_core::transactions::transaction::OutputFlags;
+use tari_core::transactions::transaction_components::OutputFlags;
 
 use crate::{
     error::WalletError,

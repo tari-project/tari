@@ -100,7 +100,7 @@ class BaseNodeProcess {
   }
 
   getGrpcAddress() {
-    const address = "/ip4/127.0.0.1/tcp/" + this.grpcPort;
+    const address = "127.0.0.1:" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
     return address;
   }
@@ -113,14 +113,23 @@ class BaseNodeProcess {
 
       let envs = [];
       if (!this.excludeTestEnvars) {
-        envs = createEnv({
-          nodeFile: this.nodeFile,
-          baseNodeGrpcAddress: this.getGrpcAddress(),
-          baseNodePort: this.port,
-          options: this.options,
-          peerSeed: this.peerSeeds,
-          forceSyncPeers: this.forceSyncPeers,
-        });
+        envs = createEnv(
+          this.name,
+          false,
+          this.nodeFile,
+          "127.0.0.1",
+          "8082",
+          "8081",
+          "127.0.0.1",
+          this.grpcPort,
+          this.port,
+          "/ip4/127.0.0.1/tcp/8080",
+          "127.0.0.1:8085",
+          this.options,
+          this.peerSeeds,
+          "DirectAndStoreAndForward",
+          this.forceSyncPeers
+        );
       }
 
       // clear the .env file

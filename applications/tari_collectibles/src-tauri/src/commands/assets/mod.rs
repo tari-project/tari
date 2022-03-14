@@ -54,6 +54,103 @@ pub(crate) async fn assets_create(
   template_parameters: Vec<TemplateParameter>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<String, Status> {
+  inner_assets_create(
+    name,
+    description,
+    image,
+    template_ids,
+    template_parameters,
+    state.inner(),
+  )
+  .await
+}
+
+#[tauri::command]
+pub(crate) async fn assets_list_owned(
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<AssetInfo>, Status> {
+  inner_assets_list_owned(state.inner()).await
+}
+
+// TODO: remove and use better serializer
+#[derive(Debug)]
+struct AssetMetadata {
+  name: String,
+  description: String,
+  image: String,
+}
+
+trait AssetMetadataDeserializer {
+  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata;
+}
+trait AssetMetadataSerializer {
+  fn serialize(&self, model: &AssetMetadata) -> Vec<u8>;
+}
+
+struct V1AssetMetadataSerializer {}
+
+impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
+  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
+    let m = String::from_utf8(Vec::from(metadata)).unwrap();
+    let mut m = m
+      .as_str()
+      .split('|')
+      .map(|s| s.to_string())
+      .collect::<Vec<String>>()
+      .into_iter();
+    let name = m.next();
+    let description = m.next();
+    let image = m.next();
+
+    AssetMetadata {
+      name: name.unwrap_or_else(|| "".to_string()),
+      description: description.unwrap_or_else(|| "".to_string()),
+      image: image.unwrap_or_else(|| "".to_string()),
+    }
+  }
+}
+
+impl AssetMetadataSerializer for V1AssetMetadataSerializer {
+  fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
+    let str = format!("{}|{}|{}", model.name, model.description, model.image);
+
+    str.into_bytes()
+  }
+}
+
+#[tauri::command]
+pub(crate) async fn assets_list_registered_assets(
+  offset: u64,
+  count: u64,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<RegisteredAssetInfo>, Status> {
+  inner_assets_list_registered_assets(offset, count, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn assets_create_initial_checkpoint(
+  asset_pub_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  inner_assets_create_initial_checkpoint(asset_pub_key, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn assets_get_registration(
+  asset_pub_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<RegisteredAssetInfo, Status> {
+  inner_assets_get_registration(asset_pub_key, state.inner()).await
+}
+
+pub(crate) async fn inner_assets_create(
+  name: String,
+  description: String,
+  image: String,
+  template_ids: Vec<u32>,
+  template_parameters: Vec<TemplateParameter>,
+  state: &ConcurrentAppState,
+) -> Result<String, Status> {
   let wallet_id = state
     .current_wallet_id()
     .await
@@ -134,9 +231,8 @@ pub(crate) async fn assets_create(
   Ok(res)
 }
 
-#[tauri::command]
-pub(crate) async fn assets_list_owned(
-  state: tauri::State<'_, ConcurrentAppState>,
+pub(crate) async fn inner_assets_list_owned(
+  state: &ConcurrentAppState,
 ) -> Result<Vec<AssetInfo>, Status> {
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -155,57 +251,10 @@ pub(crate) async fn assets_list_owned(
   )
 }
 
-// TODO: remove and use better serializer
-#[derive(Debug)]
-struct AssetMetadata {
-  name: String,
-  description: String,
-  image: String,
-}
-
-trait AssetMetadataDeserializer {
-  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata;
-}
-trait AssetMetadataSerializer {
-  fn serialize(&self, model: &AssetMetadata) -> Vec<u8>;
-}
-
-struct V1AssetMetadataSerializer {}
-
-impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
-  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
-    let m = String::from_utf8(Vec::from(metadata)).unwrap();
-    let mut m = m
-      .as_str()
-      .split('|')
-      .map(|s| s.to_string())
-      .collect::<Vec<String>>()
-      .into_iter();
-    let name = m.next();
-    let description = m.next();
-    let image = m.next();
-
-    AssetMetadata {
-      name: name.unwrap_or_else(|| "".to_string()),
-      description: description.unwrap_or_else(|| "".to_string()),
-      image: image.unwrap_or_else(|| "".to_string()),
-    }
-  }
-}
-
-impl AssetMetadataSerializer for V1AssetMetadataSerializer {
-  fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
-    let str = format!("{}|{}|{}", model.name, model.description, model.image);
-
-    str.into_bytes()
-  }
-}
-
-#[tauri::command]
-pub(crate) async fn assets_list_registered_assets(
+pub(crate) async fn inner_assets_list_registered_assets(
   offset: u64,
   count: u64,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<Vec<RegisteredAssetInfo>, Status> {
   let mut client = state.connect_base_node_client().await?;
   let assets = client.list_registered_assets(offset, count).await?;
@@ -235,35 +284,67 @@ pub(crate) async fn assets_list_registered_assets(
     .collect()
 }
 
-#[tauri::command]
-pub(crate) async fn assets_create_initial_checkpoint(
+pub(crate) async fn inner_assets_create_initial_checkpoint(
   asset_pub_key: String,
-  committee: Vec<String>,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-
-  let root = mmr.get_merkle_root().unwrap();
+  let merkle_root = mmr
+    .get_merkle_root()
+    .map_err(|e| Status::internal(e.to_string()))?;
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
 
+  // todo: check for enough utxos first
+
+  // create asset reg checkpoint
   client
-    .create_initial_asset_checkpoint(asset_pub_key, root, committee)
-    .await
-    .unwrap();
+    .create_initial_asset_checkpoint(&asset_pub_key, merkle_root)
+    .await?;
 
   Ok(())
 }
 
 #[tauri::command]
-pub(crate) async fn assets_get_registration(
-  asset_pub_key: String,
+pub(crate) async fn assets_create_committee_definition(
+  asset_public_key: String,
+  committee: Vec<String>,
+  is_initial: bool,
   state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<String>, Status> {
+  let mut client = state.create_wallet_client().await;
+  client.connect().await?;
+
+  // TODO: effective sidechain height...
+  client
+    .create_committee_definition(&asset_public_key, &committee, 0, is_initial)
+    .await?;
+
+  Ok(committee)
+}
+
+#[tauri::command]
+pub(crate) async fn assets_get_committee_definition(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<String>, Status> {
+  let mut client = state.connect_base_node_client().await?;
+
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let committee = client.get_sidechain_committee(&asset_public_key).await?;
+  let committee = committee.iter().map(Hex::to_hex).collect();
+
+  Ok(committee)
+}
+
+pub(crate) async fn inner_assets_get_registration(
+  asset_public_key: String,
+  state: &ConcurrentAppState,
 ) -> Result<RegisteredAssetInfo, Status> {
   let mut client = state.connect_base_node_client().await?;
-  let asset_pub_key = PublicKey::from_hex(&asset_pub_key)?;
-  let asset = client.get_asset_metadata(&asset_pub_key).await?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let asset = client.get_asset_metadata(&asset_public_key).await?;
 
   debug!(target: LOG_TARGET, "asset {:?}", asset);
   let features = asset.features.unwrap();

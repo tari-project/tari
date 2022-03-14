@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::{types::Signature, waiting_requests::RequestKey};
 use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::transactions::transaction::Transaction;
+use crate::transactions::transaction_components::Transaction;
 
 /// API Request enum for Mempool requests.
 #[derive(Debug, Serialize, Deserialize)]

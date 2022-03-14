@@ -63,7 +63,7 @@ use tari_core::{
             TransactionOutput as TransactionOutputProto,
         },
     },
-    transactions::transaction::{Transaction, TransactionOutput},
+    transactions::transaction_components::{Transaction, TransactionOutput},
 };
 use tari_utilities::Hashable;
 use tokio::{sync::mpsc, time::sleep};
@@ -469,15 +469,20 @@ impl BaseNodeWalletRpcMockState {
         timeout: Duration,
     ) -> Result<Vec<Vec<Vec<u8>>>, String> {
         let now = Instant::now();
+        let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.fetch_utxos_calls);
+            count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
             sleep(Duration::from_millis(100)).await;
         }
-        Err("Did not receive enough calls within the timeout period".to_string())
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 
     pub async fn wait_pop_query_deleted(
@@ -486,15 +491,20 @@ impl BaseNodeWalletRpcMockState {
         timeout: Duration,
     ) -> Result<Vec<QueryDeletedRequest>, String> {
         let now = Instant::now();
+        let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.query_deleted_calls);
+            count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
             sleep(Duration::from_millis(100)).await;
         }
-        Err("Did not receive enough calls within the timeout period".to_string())
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 }
 
@@ -558,9 +568,6 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         &self,
         request: Request<SignatureProto>,
     ) -> Result<Response<TxQueryResponseProto>, RpcStatus> {
-        // TODO: delay_lock is blocking any other RPC method from being called (as well as blocking an async task)
-        //       until this method returns.
-        //       Although this is sort of fine in tests it is probably unintentional
         let delay_lock = *acquire_lock!(self.state.response_delay);
         if let Some(delay) = delay_lock {
             sleep(delay).await;
@@ -841,7 +848,7 @@ mod test {
             rpc::{BaseNodeWalletRpcClient, BaseNodeWalletRpcServer},
         },
         proto::base_node::{ChainMetadata, TipInfoResponse},
-        transactions::transaction::Transaction,
+        transactions::transaction_components::Transaction,
     };
     use tokio::time::Duration;
 

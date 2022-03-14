@@ -27,9 +27,9 @@ class WalletFFIClient {
       new Date(),
       "yyyymmddHHMM"
     )}/${name}`;
-    this.transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.port}`);
+    this.transport = TransportType.createTCP(`/ip4/127.0.0.1/tcp/${this.port}`);
     this.comms_config = new CommsConfig(
-      `/ip4/0.0.0.0/tcp/${this.port}`,
+      `/ip4/127.0.0.1/tcp/${this.port}`,
       this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
@@ -41,9 +41,9 @@ class WalletFFIClient {
   }
 
   async restart(seed_words_text, pass_phrase) {
-    this.transport = TransportType.createTCP(`/ip4/0.0.0.0/tcp/${this.port}`);
+    this.transport = TransportType.createTCP(`/ip4/127.0.0.1/tcp/${this.port}`);
     this.comms_config = new CommsConfig(
-      `/ip4/0.0.0.0/tcp/${this.port}`,
+      `/ip4/127.0.0.1/tcp/${this.port}`,
       this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
@@ -137,10 +137,15 @@ class WalletFFIClient {
   getCounters() {
     return this.wallet.getCounters();
   }
+
   resetCounters() {
     if (this.wallet) {
       this.wallet.clearCallbackCounters();
     }
+  }
+
+  getLivenessData() {
+    return this.wallet.getLivenessData();
   }
 
   sendTransaction(destination, amount, fee_per_gram, message, one_sided) {
@@ -157,7 +162,7 @@ class WalletFFIClient {
     seed_words_text,
     pass_phrase,
     rolling_log_files = 50,
-    byte_size_per_log = 102400
+    byte_size_per_log = 1048576
   ) {
     this.pass_phrase = pass_phrase;
     if (seed_words_text) {
@@ -178,6 +183,10 @@ class WalletFFIClient {
 
   getOutboundTransactions() {
     return this.wallet.getOutboundTransactions();
+  }
+
+  getCancelledTransactions() {
+    return this.wallet.walletGetCancelledTransactions();
   }
 
   cancelPendingTransaction(tx_id) {

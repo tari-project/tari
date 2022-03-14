@@ -124,7 +124,10 @@ impl DbFactory for SqliteDbFactory {
     ) -> Result<Option<StateDb<Self::StateDbBackendAdapter>>, StorageError> {
         let database_url = self.database_url_for(asset_public_key);
         match self.try_connect(&database_url)? {
-            Some(_) => Ok(Some(StateDb::new(SqliteStateDbBackendAdapter::new(database_url)))),
+            Some(_) => Ok(Some(StateDb::new(
+                asset_public_key.clone(),
+                SqliteStateDbBackendAdapter::new(database_url),
+            ))),
             None => Ok(None),
         }
     }
@@ -147,6 +150,9 @@ impl DbFactory for SqliteDbFactory {
             })?;
         embed_migrations!("./migrations");
         embedded_migrations::run(&connection).map_err(SqliteStorageError::from)?;
-        Ok(StateDb::new(SqliteStateDbBackendAdapter::new(database_url)))
+        Ok(StateDb::new(
+            asset_public_key.clone(),
+            SqliteStateDbBackendAdapter::new(database_url),
+        ))
     }
 }

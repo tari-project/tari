@@ -37,7 +37,7 @@ use crate::{
         SigningService,
         ValidatorNodeClientFactory,
     },
-    storage::{state::StateDbBackendAdapter, ChainStorageService, DbFactory},
+    storage::{chain::ChainDbBackendAdapter, state::StateDbBackendAdapter, ChainStorageService, DbFactory},
 };
 
 /// A trait to describe a specific configuration of services. This type allows other services to
@@ -48,14 +48,24 @@ pub trait ServiceSpecification: Clone {
     type AssetProcessor: AssetProcessor + Clone + Sync + Send + 'static;
     type AssetProxy: AssetProxy + Clone + Sync + Send + 'static;
     type BaseNodeClient: BaseNodeClient + Clone + Sync + Send + 'static;
+    type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type ChainStorageService: ChainStorageService<Self::Payload>;
     type CheckpointManager: CheckpointManager<Self::Addr>;
     type CommitteeManager: CommitteeManager<Self::Addr>;
-    type DbFactory: DbFactory<StateDbBackendAdapter = Self::StateDbBackendAdapter> + Clone + Sync + Send + 'static;
+    type DbFactory: DbFactory<
+            StateDbBackendAdapter = Self::StateDbBackendAdapter,
+            ChainDbBackendAdapter = Self::ChainDbBackendAdapter,
+        > + Clone
+        + Sync
+        + Send
+        + 'static;
     type EventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>;
-    type InboundConnectionService: InboundConnectionService<Self::Addr, Self::Payload> + 'static + Send + Sync;
+    type InboundConnectionService: InboundConnectionService<Addr = Self::Addr, Payload = Self::Payload>
+        + 'static
+        + Send
+        + Sync;
     type MempoolService: MempoolService + Clone + Sync + Send + 'static;
-    type OutboundService: OutboundService<Self::Addr, Self::Payload>;
+    type OutboundService: OutboundService<Addr = Self::Addr, Payload = Self::Payload>;
     type Payload: Payload;
     type PayloadProcessor: PayloadProcessor<Self::Payload>;
     type PayloadProvider: PayloadProvider<Self::Payload>;

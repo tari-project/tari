@@ -23,7 +23,7 @@
 use patricia_tree::PatriciaMap;
 
 use crate::storage::{
-    state::{DbKeyValue, StateDbBackendAdapter},
+    state::{DbKeyValue, DbStateOpLogEntry, StateDbBackendAdapter},
     StorageError,
 };
 
@@ -81,6 +81,26 @@ impl StateDbBackendAdapter for MockStateDbBackupAdapter {
         _schema: &str,
         _tx: &Self::BackendTransaction,
     ) -> Result<Vec<DbKeyValue>, Self::Error> {
+        todo!()
+    }
+
+    fn get_state_op_logs_by_height(
+        &self,
+        _height: u64,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<Vec<DbStateOpLogEntry>, Self::Error> {
+        todo!()
+    }
+
+    fn add_state_oplog_entry(
+        &self,
+        _entry: DbStateOpLogEntry,
+        _tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        todo!()
+    }
+
+    fn clear_all_state(&self, _tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
         todo!()
     }
 }

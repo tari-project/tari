@@ -134,6 +134,7 @@ impl DhtActorMock {
                 self.state.settings.write().unwrap().insert(key.to_string(), value);
                 reply_tx.send(Ok(())).unwrap();
             },
+            DialDiscoverPeer { .. } => unimplemented!(),
         }
     }
 }

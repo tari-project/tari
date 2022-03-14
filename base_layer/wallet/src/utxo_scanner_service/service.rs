@@ -52,7 +52,7 @@ pub const LOG_TARGET: &str = "wallet::utxo_scanning";
 // Cache 1 days worth of headers.
 // TODO Determine a better strategy for maintaining a cache. Logarithmic sampling has been suggested but the problem
 // with it is that as you move on to the next block you need to resample say a 100 headers where a simple window like
-// this only samples 1 header per new block. A ticket has been added to the backlog to think about this
+// this only samples 1 header per new block. A ticket has been added to the backlog to think about this #LOGGED
 pub const SCANNED_BLOCK_CACHE_SIZE: u64 = 720;
 
 pub struct UtxoScannerService<TBackend>
@@ -65,12 +65,13 @@ where TBackend: WalletBackend + 'static
     pub(crate) shutdown_signal: ShutdownSignal,
     pub(crate) event_sender: broadcast::Sender<UtxoScannerEvent>,
     pub(crate) base_node_service: BaseNodeServiceHandle,
+    one_sided_message_watch: watch::Receiver<String>,
+    recovery_message_watch: watch::Receiver<String>,
 }
 
 impl<TBackend> UtxoScannerService<TBackend>
 where TBackend: WalletBackend + 'static
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         peer_seeds: Vec<CommsPublicKey>,
         retry_limit: usize,
@@ -79,6 +80,8 @@ where TBackend: WalletBackend + 'static
         shutdown_signal: ShutdownSignal,
         event_sender: broadcast::Sender<UtxoScannerEvent>,
         base_node_service: BaseNodeServiceHandle,
+        one_sided_message_watch: watch::Receiver<String>,
+        recovery_message_watch: watch::Receiver<String>,
     ) -> Self {
         Self {
             resources,
@@ -88,6 +91,8 @@ where TBackend: WalletBackend + 'static
             shutdown_signal,
             event_sender,
             base_node_service,
+            one_sided_message_watch,
+            recovery_message_watch,
         }
     }
 
@@ -172,6 +177,12 @@ where TBackend: WalletBackend + 'static
                         info!(target: LOG_TARGET, "UTXO scanning service shutting down because it received the shutdown signal");
                         return Ok(());
                     }
+                    Ok(_) = self.one_sided_message_watch.changed() => {
+                            self.resources.one_sided_payment_message = (*self.one_sided_message_watch.borrow()).clone();
+                    },
+                    Ok(_) = self.recovery_message_watch.changed() => {
+                            self.resources.recovery_message = (*self.recovery_message_watch.borrow()).clone();
+                    },
                 }
             }
         }
@@ -187,6 +198,8 @@ pub struct UtxoScannerResources<TBackend> {
     pub transaction_service: TransactionServiceHandle,
     pub node_identity: Arc<NodeIdentity>,
     pub factories: CryptoFactories,
+    pub recovery_message: String,
+    pub one_sided_payment_message: String,
 }
 
 #[derive(Debug, Clone)]

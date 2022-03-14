@@ -29,18 +29,21 @@ use crate::{
 };
 
 #[async_trait]
-pub trait OutboundService<TAddr: NodeAddressable + Send, TPayload: Payload> {
+pub trait OutboundService {
+    type Addr: NodeAddressable + Send;
+    type Payload: Payload;
+
     async fn send(
         &mut self,
-        from: TAddr,
-        to: TAddr,
-        message: HotStuffMessage<TPayload>,
+        from: Self::Addr,
+        to: Self::Addr,
+        message: HotStuffMessage<Self::Payload>,
     ) -> Result<(), DigitalAssetError>;
 
     async fn broadcast(
         &mut self,
-        from: TAddr,
-        committee: &[TAddr],
-        message: HotStuffMessage<TPayload>,
+        from: Self::Addr,
+        committee: &[Self::Addr],
+        message: HotStuffMessage<Self::Payload>,
     ) -> Result<(), DigitalAssetError>;
 }

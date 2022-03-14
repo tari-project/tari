@@ -40,7 +40,7 @@ pub struct ChainMetadata {
     /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
     /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pruned_height: u64,
-    /// The total accumuated proof of work of the longest chain
+    /// The total accumulated proof of work of the longest chain
     accumulated_difficulty: u128,
 }
 

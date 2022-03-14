@@ -45,7 +45,7 @@ class MergeMiningProxyProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const proxyFullAddress = "127.0.0.1:" + this.port;
+      const proxyFullAddress = "/ip4/127.0.0.1/tcp/" + this.port;
 
       const envs = createEnv({
         walletGrpcAddress: this.walletAddress,
@@ -53,8 +53,7 @@ class MergeMiningProxyProcess {
         proxyFullAddress,
       });
       const extraEnvs = {
-        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
-          this.submitOrigin,
+        TARI_MERGE_MINING_PROXY__PROXY_SUBMIT_TO_ORIGIN: this.submitOrigin,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
       console.log(completeEnvs);

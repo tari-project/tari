@@ -152,7 +152,6 @@ class InterfaceFFI {
         this.ulonglong,
         [this.ptr, this.intPtr],
       ],
-      completed_transaction_is_valid: [this.bool, [this.ptr, this.intPtr]],
       completed_transaction_is_outbound: [this.bool, [this.ptr, this.intPtr]],
       completed_transaction_get_confirmations: [
         this.ulonglong,
@@ -160,6 +159,10 @@ class InterfaceFFI {
       ],
       completed_transaction_destroy: [this.void, [this.ptr]],
       completed_transaction_get_transaction_kernel: [
+        this.ptr,
+        [this.ptr, this.intPtr],
+      ],
+      completed_transaction_get_cancellation_reason: [
         this.ptr,
         [this.ptr, this.intPtr],
       ],
@@ -292,6 +295,9 @@ class InterfaceFFI {
           this.ptr,
           this.ptr,
           this.ptr,
+          this.ptr,
+          this.ptr,
+          this.ptr,
           this.boolPtr,
           this.intPtr,
         ],
@@ -315,6 +321,11 @@ class InterfaceFFI {
       balance_get_time_locked: [this.ulonglong, [this.ptr, this.intPtr]],
       balance_get_pending_incoming: [this.ulonglong, [this.ptr, this.intPtr]],
       balance_get_pending_outgoing: [this.ulonglong, [this.ptr, this.intPtr]],
+      liveness_data_get_public_key: [this.ptr, [this.ptr, this.intPtr]],
+      liveness_data_get_latency: [this.int, [this.ptr, this.intPtr]],
+      liveness_data_get_last_seen: [this.stringPtr, [this.ptr, this.intPtr]],
+      liveness_data_get_message_type: [this.int, [this.ptr, this.intPtr]],
+      liveness_data_get_online_status: [this.int, [this.ptr, this.intPtr]],
       wallet_get_fee_estimate: [
         this.ulonglong,
         [
@@ -436,6 +447,7 @@ class InterfaceFFI {
       ],
       wallet_destroy: [this.void, [this.ptr]],
       balance_destroy: [this.void, [this.ptr]],
+      liveness_data_destroy: [this.void, [this.ptr]],
       file_partial_backup: [this.void, [this.string, this.string, this.intPtr]],
       log_debug_message: [this.void, [this.string]],
       get_emoji_set: [this.ptr, []],
@@ -852,17 +864,10 @@ class InterfaceFFI {
     return result;
   }
 
-  static completedTransactionIsValid(ptr) {
-    let error = this.initError();
-    let result = this.fn.completed_transaction_is_valid(ptr, error);
-    this.checkErrorResult(error, `completedTransactionIsValid`);
-    return result;
-  }
-
   static completedTransactionIsOutbound(ptr) {
     let error = this.initError();
     let result = this.fn.completed_transaction_is_outbound(ptr, error);
-    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    this.checkErrorResult(error, `completedTransactionGetIsOutbound`);
     return result;
   }
 
@@ -879,7 +884,17 @@ class InterfaceFFI {
       ptr,
       error
     );
-    this.checkErrorResult(error, `completedTransactionGetConfirmations`);
+    this.checkErrorResult(error, `completedTransactionGetKernel`);
+    return result;
+  }
+
+  static completedTransactionGetCancellationReason(ptr) {
+    let error = this.initError();
+    let result = this.fn.completed_transaction_get_cancellation_reason(
+      ptr,
+      error
+    );
+    this.checkErrorResult(error, `completedTransactionGetCancellationReason`);
     return result;
   }
 
@@ -1136,6 +1151,14 @@ class InterfaceFFI {
     return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
   }
 
+  static createCallbackFauxTransactionConfirmed(fn) {
+    return ffi.Callback(this.void, [this.ptr], fn);
+  }
+
+  static createCallbackFauxTransactionUnconfirmed(fn) {
+    return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
+  }
+
   static createCallbackDirectSendResult(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.bool], fn);
   }
@@ -1149,6 +1172,9 @@ class InterfaceFFI {
   }
   static createCallbackTxoValidationComplete(fn) {
     return ffi.Callback(this.void, [this.ulonglong, this.uchar], fn);
+  }
+  static createCallbackContactsLivenessUpdated(fn) {
+    return ffi.Callback(this.void, [this.ptr], fn);
   }
   static createCallbackBalanceUpdated(fn) {
     return ffi.Callback(this.void, [this.ptr], fn);
@@ -1184,10 +1210,13 @@ class InterfaceFFI {
     callback_transaction_broadcast,
     callback_transaction_mined,
     callback_transaction_mined_unconfirmed,
+    callback_faux_transaction_confirmed,
+    callback_faux_transaction_unconfirmed,
     callback_direct_send_result,
     callback_store_and_forward_send_result,
     callback_transaction_cancellation,
     callback_txo_validation_complete,
+    callback_contacts_liveness_data_updated,
     callback_balance_updated,
     callback_transaction_validation_complete,
     callback_saf_message_received,
@@ -1209,10 +1238,13 @@ class InterfaceFFI {
       callback_transaction_broadcast,
       callback_transaction_mined,
       callback_transaction_mined_unconfirmed,
+      callback_faux_transaction_confirmed,
+      callback_faux_transaction_unconfirmed,
       callback_direct_send_result,
       callback_store_and_forward_send_result,
       callback_transaction_cancellation,
       callback_txo_validation_complete,
+      callback_contacts_liveness_data_updated,
       callback_balance_updated,
       callback_transaction_validation_complete,
       callback_saf_message_received,
@@ -1293,7 +1325,7 @@ class InterfaceFFI {
 
   static balanceGetTimeLocked(ptr) {
     let error = this.initError();
-    let result = this.fn.balance_get_available(ptr, error);
+    let result = this.fn.balance_get_time_locked(ptr, error);
     this.checkErrorResult(error, `balanceGetTimeLocked`);
     return result;
   }
@@ -1309,6 +1341,41 @@ class InterfaceFFI {
     let error = this.initError();
     let result = this.fn.balance_get_pending_outgoing(ptr, error);
     this.checkErrorResult(error, `balanceGetPendingOutgoing`);
+    return result;
+  }
+
+  static livenessDataGetPublicKey(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_public_key(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetPublicKey`);
+    return result;
+  }
+
+  static livenessDataGetLatency(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_latency(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetLatency`);
+    return result;
+  }
+
+  static livenessDataGetLastSeen(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_last_seen(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetLastSeen`);
+    return result;
+  }
+
+  static livenessDataGetMessageType(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_message_type(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetMessageType`);
+    return result;
+  }
+
+  static livenessDataGetOnlineStatus(ptr) {
+    let error = this.initError();
+    let result = this.fn.liveness_data_get_online_status(ptr, error);
+    this.checkErrorResult(error, `livenessDataGetOnlineStatus`);
     return result;
   }
 
@@ -1604,6 +1671,10 @@ class InterfaceFFI {
 
   static balanceDestroy(ptr) {
     this.fn.balance_destroy(ptr);
+  }
+
+  static livenessDataDestroy(ptr) {
+    this.fn.liveness_data_destroy(ptr);
   }
   //endregion
 }

@@ -52,6 +52,10 @@ impl SqliteChainBackendAdapter {
     pub fn new(database_url: String) -> SqliteChainBackendAdapter {
         Self { database_url }
     }
+
+    pub fn get_connection(&self) -> ConnectionResult<SqliteConnection> {
+        SqliteConnection::establish(self.database_url.as_str())
+    }
 }
 
 impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
@@ -61,7 +65,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
     type Payload = TariDanPayload;
 
     fn is_empty(&self) -> Result<bool, Self::Error> {
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         let n: Option<Node> =
             nodes::table
                 .first(&connection)
@@ -73,24 +77,8 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         Ok(n.is_none())
     }
 
-    fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error> {
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
-        use crate::schema::nodes::dsl;
-        let count = dsl::nodes
-            .filter(nodes::parent.eq(node_hash.as_bytes()))
-            .limit(1)
-            .count()
-            .first::<i64>(&connection)
-            .map_err(|source| SqliteStorageError::DieselError {
-                source,
-                operation: "node_exists: count".to_string(),
-            })?;
-
-        Ok(count > 0)
-    }
-
     fn create_transaction(&self) -> Result<Self::BackendTransaction, Self::Error> {
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         connection
             .execute("PRAGMA foreign_keys = ON;")
             .map_err(|source| SqliteStorageError::DieselError {
@@ -105,6 +93,46 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             })?;
 
         Ok(SqliteTransaction::new(connection))
+    }
+
+    fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error> {
+        let connection = self.get_connection()?;
+        use crate::schema::nodes::dsl;
+        let count = dsl::nodes
+            .filter(nodes::parent.eq(node_hash.as_bytes()))
+            .limit(1)
+            .count()
+            .first::<i64>(&connection)
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "node_exists: count".to_string(),
+            })?;
+
+        Ok(count > 0)
+    }
+
+    fn get_tip_node(&self) -> Result<Option<DbNode>, Self::Error> {
+        use crate::schema::nodes::dsl;
+
+        let connection = self.get_connection()?;
+        let node = dsl::nodes
+            .order_by(dsl::height.desc())
+            .first::<Node>(&connection)
+            .optional()
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_tip_node".to_string(),
+            })?;
+
+        match node {
+            Some(node) => Ok(Some(DbNode {
+                hash: node.hash.try_into()?,
+                parent: node.parent.try_into()?,
+                height: node.height as u32,
+                is_committed: node.is_committed,
+            })),
+            None => Ok(None),
+        }
     }
 
     fn insert_node(&self, item: &DbNode, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
@@ -224,7 +252,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
     }
 
     fn get_prepare_qc(&self) -> Result<Option<QuorumCertificate>, Self::Error> {
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         use crate::schema::prepare_qc::dsl;
         let qc: Option<PrepareQc> = dsl::prepare_qc
             .find(1)
@@ -249,7 +277,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         debug!(target: LOG_TARGET, "Committing transaction");
         transaction
             .connection()
-            .execute("COMMIT TRANSACTION;")
+            .execute("COMMIT TRANSACTION")
             .map_err(|source| SqliteStorageError::DieselError {
                 source,
                 operation: "commit::chain".to_string(),
@@ -267,7 +295,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::locked_qc::dsl;
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         // TODO: this should be a single row
         let result: Option<PrepareQc> = prepare_qc::table
             .order_by(prepare_qc::view_number.desc())
@@ -307,7 +335,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::locked_qc::dsl;
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         let qc: LockedQc = dsl::locked_qc
             .find(self.locked_qc_id())
             .first(&connection)
@@ -323,11 +351,11 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         ))
     }
 
-    fn find_node_by_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
+    fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
         use crate::schema::nodes::dsl;
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         let node = dsl::nodes
-            .filter(nodes::parent.eq(parent_hash.as_bytes()))
+            .filter(nodes::hash.eq(node_hash.as_bytes()))
             .first::<Node>(&connection)
             .optional()
             .map_err(|source| SqliteStorageError::DieselError {
@@ -346,11 +374,11 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         }
     }
 
-    fn find_node_by_parent_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
+    fn find_node_by_parent_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
         use crate::schema::nodes::dsl;
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         let node = dsl::nodes
-            .filter(nodes::parent.eq(node_hash.as_bytes()))
+            .filter(nodes::parent.eq(parent_hash.as_bytes()))
             .first::<Node>(&connection)
             .optional()
             .map_err(|source| SqliteStorageError::DieselError {
@@ -402,7 +430,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn find_all_instructions_by_node(&self, node_id: Self::Id) -> Result<Vec<DbInstruction>, Self::Error> {
         use crate::schema::{instructions::dsl as instructions_dsl, nodes::dsl as nodes_dsl};
-        let connection = SqliteConnection::establish(self.database_url.as_str())?;
+        let connection = self.get_connection()?;
         let node = nodes_dsl::nodes
             .filter(nodes::id.eq(node_id))
             .first::<Node>(&connection)

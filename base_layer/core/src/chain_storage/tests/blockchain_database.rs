@@ -40,7 +40,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
     },
     txn_schema,
 };
@@ -388,7 +388,10 @@ mod add_block {
 
         let prev_block = blocks.last().unwrap();
         // Used to help identify the output we're interrogating in this test
-        let features = OutputFeatures::with_maturity(1);
+        let features = OutputFeatures {
+            maturity: 1,
+            ..Default::default()
+        };
         let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
             from: vec![outputs[0].clone()],
             to: vec![500 * T],
@@ -411,6 +414,8 @@ mod add_block {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
         let commitment_hex = txns[0]
             .body
@@ -450,6 +455,8 @@ mod add_block {
             script: tari_crypto::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
 
         let (block, _) = create_next_block(&db, &prev_block, txns);
@@ -708,7 +715,7 @@ mod fetch_utxo_by_unique_id {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
 
     use super::*;
-    use crate::transactions::transaction::OutputFlags;
+    use crate::transactions::transaction_components::OutputFlags;
 
     #[test]
     fn it_returns_none_if_empty() {
@@ -727,7 +734,7 @@ mod fetch_utxo_by_unique_id {
         // Height 1
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
 
-        let features = OutputFeatures {
+        let mut features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
@@ -738,8 +745,9 @@ mod fetch_utxo_by_unique_id {
             to: vec![500 * T],
             fee: 5.into(),
             lock: 0,
-            features: features
+            features: features.clone()
         )]);
+        features.set_recovery_byte(tx_outputs[0].features.recovery_byte);
 
         let asset_utxo1 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 
@@ -762,7 +770,7 @@ mod fetch_utxo_by_unique_id {
             expected_commitment
         );
 
-        let features = OutputFeatures {
+        let mut features = OutputFeatures {
             flags: OutputFlags::empty(),
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
@@ -775,6 +783,7 @@ mod fetch_utxo_by_unique_id {
             lock: 0,
             features: features
         )]);
+        features.set_recovery_byte(tx_outputs[0].features.recovery_byte);
 
         let asset_utxo2 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 

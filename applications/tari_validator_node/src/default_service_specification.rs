@@ -36,7 +36,12 @@ use tari_dan_core::{
         TariDanPayloadProvider,
     },
 };
-use tari_dan_storage_sqlite::{SqliteDbFactory, SqliteStateDbBackendAdapter, SqliteStorageService};
+use tari_dan_storage_sqlite::{
+    SqliteChainBackendAdapter,
+    SqliteDbFactory,
+    SqliteStateDbBackendAdapter,
+    SqliteStorageService,
+};
 
 use crate::{
     grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
@@ -55,6 +60,7 @@ impl ServiceSpecification for DefaultServiceSpecification {
     type AssetProcessor = ConcreteAssetProcessor;
     type AssetProxy = ConcreteAssetProxy<Self>;
     type BaseNodeClient = GrpcBaseNodeClient;
+    type ChainDbBackendAdapter = SqliteChainBackendAdapter;
     type ChainStorageService = SqliteStorageService;
     type CheckpointManager = ConcreteCheckpointManager<Self::WalletClient>;
     type CommitteeManager = ConcreteCommitteeManager;

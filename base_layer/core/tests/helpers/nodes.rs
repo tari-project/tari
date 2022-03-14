@@ -376,7 +376,6 @@ async fn setup_comms_services(
 }
 
 // Helper function for starting the services of the Base node.
-#[allow(clippy::too_many_arguments)]
 async fn setup_base_node_services(
     node_identity: Arc<NodeIdentity>,
     peers: Vec<Arc<NodeIdentity>>,

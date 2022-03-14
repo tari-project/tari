@@ -2,7 +2,7 @@ use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Span,
+    text::{Span, Spans},
     widgets::{Block, Borders, Paragraph},
     Frame,
 };
@@ -24,84 +24,84 @@ impl ReceiveTab {
         ));
         f.render_widget(block, area);
 
-        let help_body_area = Layout::default()
-            .constraints([Constraint::Min(42)].as_ref())
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(6), Constraint::Length(23)].as_ref())
             .margin(1)
             .split(area);
 
-        let chunks = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(48), Constraint::Min(1)].as_ref())
-            .margin(1)
-            .split(help_body_area[0]);
-
+        // QR Code
         let qr_code = Paragraph::new(app_state.get_identity().qr_code.as_str()).block(Block::default());
+        f.render_widget(qr_code, chunks[1]);
 
-        f.render_widget(qr_code, chunks[0]);
-
-        let info_chunks = Layout::default()
+        // Connection details
+        let details_chunks = Layout::default()
+            .direction(Direction::Vertical)
             .constraints(
                 [
-                    Constraint::Length(1), // Lining up fields with Qr Code
-                    Constraint::Length(3),
-                    Constraint::Length(3),
-                    Constraint::Length(3),
-                    Constraint::Length(3),
-                    Constraint::Min(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
                 ]
                 .as_ref(),
             )
-            .horizontal_margin(1)
-            .split(chunks[1]);
+            .margin(1)
+            .split(chunks[0]);
+
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(Span::styled("Connection Details", Style::default().fg(Color::White)));
+        f.render_widget(block, chunks[0]);
+
+        const ITEM_01: &str = "Public Key:     ";
+        const ITEM_02: &str = "Node ID:        ";
+        const ITEM_03: &str = "Public Address: ";
+        const ITEM_04: &str = "Emoji ID:       ";
 
         // Public Key
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Public Key", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[1]);
-        let label_layout = Layout::default()
-            .constraints([Constraint::Length(1)].as_ref())
-            .margin(1)
-            .split(info_chunks[1]);
-        // Put a space in front of pub key so it's easy to select
-        let public_key = Paragraph::new(format!(" {}", app_state.get_identity().public_key));
-        f.render_widget(public_key, label_layout[0]);
+        let public_key_text = Spans::from(vec![
+            Span::styled(ITEM_01, Style::default().fg(Color::Magenta)),
+            Span::styled(
+                app_state.get_identity().public_key.clone(),
+                Style::default().fg(Color::White),
+            ),
+        ]);
+        let paragraph = Paragraph::new(public_key_text).block(Block::default());
+        f.render_widget(paragraph, details_chunks[0]);
 
         // NodeId
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Node ID", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[2]);
-        let label_layout = Layout::default()
-            .constraints([Constraint::Length(1)].as_ref())
-            .margin(1)
-            .split(info_chunks[2]);
-        let node_id = Paragraph::new(app_state.get_identity().node_id.as_str());
-        f.render_widget(node_id, label_layout[0]);
+        let node_id_text = Spans::from(vec![
+            Span::styled(ITEM_02, Style::default().fg(Color::Magenta)),
+            Span::styled(
+                app_state.get_identity().node_id.clone(),
+                Style::default().fg(Color::White),
+            ),
+        ]);
+        let paragraph = Paragraph::new(node_id_text).block(Block::default());
+        f.render_widget(paragraph, details_chunks[1]);
 
         // Public Address
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Public Address", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[3]);
-        let label_layout = Layout::default()
-            .constraints([Constraint::Length(1)].as_ref())
-            .margin(1)
-            .split(info_chunks[3]);
-        let public_address = Paragraph::new(format!(" {}", app_state.get_identity().public_address));
-        f.render_widget(public_address, label_layout[0]);
+        let public_ddress_text = Spans::from(vec![
+            Span::styled(ITEM_03, Style::default().fg(Color::Magenta)),
+            Span::styled(
+                app_state.get_identity().public_address.clone(),
+                Style::default().fg(Color::White),
+            ),
+        ]);
+        let paragraph = Paragraph::new(public_ddress_text).block(Block::default());
+        f.render_widget(paragraph, details_chunks[2]);
 
         // Emoji ID
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title(Span::styled("Emoji ID", Style::default().fg(Color::White)));
-        f.render_widget(block, info_chunks[4]);
-        let label_layout = Layout::default()
-            .constraints([Constraint::Length(1)].as_ref())
-            .margin(1)
-            .split(info_chunks[4]);
-        let emoji_id = Paragraph::new(app_state.get_identity().emoji_id.as_str());
-        f.render_widget(emoji_id, label_layout[0]);
+        let emoji_id_text = Spans::from(vec![
+            Span::styled(ITEM_04, Style::default().fg(Color::Magenta)),
+            Span::styled(
+                app_state.get_identity().emoji_id.clone(),
+                Style::default().fg(Color::White),
+            ),
+        ]);
+        let paragraph = Paragraph::new(emoji_id_text).block(Block::default());
+        f.render_widget(paragraph, details_chunks[3]);
     }
 }
 

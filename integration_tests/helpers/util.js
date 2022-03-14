@@ -1,6 +1,7 @@
 const net = require("net");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");
+const { expect } = require("chai");
 
 const NO_CONNECTION = 14;
 
@@ -200,24 +201,94 @@ const getFreePort = function () {
   });
 };
 
+const encodeOption = function (value) {
+  let buffer;
+  if (value) {
+    buffer = Buffer.concat([Buffer.from([1]), Buffer.from(value, "utf8")]);
+  } else {
+    buffer = Buffer.from([0]);
+  }
+  return buffer;
+};
+
 const getTransactionOutputHash = function (output) {
   const KEY = null; // optional key
   const OUTPUT_LENGTH = 32; // bytes
   const context = blake2bInit(OUTPUT_LENGTH, KEY);
-  const flags = Buffer.alloc(1);
-  flags[0] = output.features.flags;
-  const buffer = Buffer.concat([
-    Buffer.from([0]), // base_layer\core\src\transactions\transaction\output_features.rs:64 CONSENSUS_ENCODING_VERSION : u8 = 0
+  let encodedBytesLength = 0;
+  // version
+  const version = Buffer.from([0]);
+  encodedBytesLength += version.length;
+  blake2bUpdate(context, version);
+  // features
+  let features = Buffer.concat([
+    // features.version
+    Buffer.from([0]),
+    // features.maturity
     Buffer.from([parseInt(output.features.maturity)]),
+    // features.flags
     Buffer.from([output.features.flags]),
   ]);
-  let nopScriptBytes = Buffer.from([0x73]);
-
-  blake2bUpdate(context, buffer);
+  // features.parent_public_key
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.parent_public_key),
+  ]);
+  // features.unique_id
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.unique_id),
+  ]);
+  // features.asset
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.asset),
+  ]);
+  // features.mint_non_fungible
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.mint_non_fungible),
+  ]);
+  // features.sidechain_checkpoint
+  features = Buffer.concat([
+    Buffer.from(features),
+    encodeOption(output.features.sidechain_checkpoint),
+  ]);
+  // features.metadata
+  features = Buffer.concat([
+    Buffer.from(features),
+    Buffer.from([output.features.metadata.length]),
+    Buffer.from(output.features.metadata),
+  ]);
+  encodedBytesLength += features.length;
+  blake2bUpdate(context, features);
+  // commitment
+  encodedBytesLength += output.commitment.length;
   blake2bUpdate(context, output.commitment);
-  blake2bUpdate(context, nopScriptBytes);
-  let final = blake2bFinal(context);
-  return Buffer.from(final);
+  // script
+  const script = Buffer.concat([
+    Buffer.from([output.script.length]),
+    Buffer.from(output.script),
+  ]);
+  encodedBytesLength += script.length;
+  blake2bUpdate(context, script);
+  // covenant
+  const covenant = Buffer.concat([
+    Buffer.from([output.covenant.length]),
+    Buffer.from(output.covenant),
+  ]);
+  encodedBytesLength += covenant.length;
+  blake2bUpdate(context, covenant);
+
+  expect(context.c).to.equal(encodedBytesLength);
+  const hash = blake2bFinal(context);
+  const hashBuffer = Buffer.from(hash);
+  // console.log(
+  //   "\ngetTransactionOutputHash - hash",
+  //   hashBuffer.toString("hex"),
+  //   "\n"
+  // );
+  return hashBuffer;
 };
 
 function consoleLogTransactionDetails(txnDetails) {
@@ -227,9 +298,7 @@ function consoleLogTransactionDetails(txnDetails) {
       " has status " +
       pad("'" + txnDetails.status + "'", 40) +
       " and " +
-      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21) +
-      " and " +
-      pad("is_valid(" + txnDetails.valid + ")", 16)
+      pad("is_cancelled(" + txnDetails.is_cancelled + ")", 21)
   );
 }
 

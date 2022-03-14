@@ -26,11 +26,12 @@ use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_core::transactions::{
     tari_amount::{MicroTariError, TariConversionError},
-    transaction::TransactionError,
+    transaction_components::TransactionError,
 };
 use tari_utilities::hex::HexError;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
+    key_manager_service::KeyManagerError,
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
@@ -52,6 +53,8 @@ pub enum CommandError {
     TransactionServiceError(#[from] TransactionServiceError),
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
+    #[error("Key manager error: `{0}`")]
+    KeyManagerError(#[from] KeyManagerError),
     #[error("Tokio join error `{0}`")]
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]

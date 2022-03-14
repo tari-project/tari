@@ -22,7 +22,6 @@
 
 use std::{
     collections::HashMap,
-    convert::TryInto,
     time::{Duration, Instant},
 };
 
@@ -167,7 +166,7 @@ impl LivenessState {
 
     /// Records a pong. Specifically, the pong counter is incremented and
     /// a latency sample is added and calculated. The given `peer` must match the recorded peer
-    pub fn record_pong(&mut self, nonce: u64, sent_by: &NodeId) -> Option<u32> {
+    pub fn record_pong(&mut self, nonce: u64, sent_by: &NodeId) -> Option<Duration> {
         self.inc_pongs_received();
         self.failed_pings.remove_entry(sent_by);
 
@@ -198,21 +197,21 @@ impl LivenessState {
         latency
     }
 
-    pub fn get_avg_latency_ms(&self, node_id: &NodeId) -> Option<u32> {
+    pub fn get_avg_latency(&self, node_id: &NodeId) -> Option<Duration> {
         self.peer_latency.get(node_id).map(|latency| latency.calc_average())
     }
 
-    pub fn get_network_avg_latency(&self) -> Option<u32> {
+    pub fn get_network_avg_latency(&self) -> Option<Duration> {
         let num_peers = self.peer_latency.len();
         self.peer_latency
             .values()
             .map(|latency| latency.calc_average())
-            .fold(None, |acc, latency| {
-                let current = acc.unwrap_or(0);
+            .fold(Option::<Duration>::None, |acc, latency| {
+                let current = acc.unwrap_or_default();
                 Some(current + latency)
             })
             // num_peers in map will always be > 0
-            .map(|latency| latency / num_peers as u32)
+            .map(|latency| Duration::from_millis(latency.as_millis() as u64 / num_peers as u64))
     }
 
     pub fn failed_pings_iter(&self) -> impl Iterator<Item = (&NodeId, &usize)> {
@@ -249,15 +248,14 @@ impl AverageLatency {
     }
 
     /// Calculate the average of the recorded samples
-    pub fn calc_average(&self) -> u32 {
+    pub fn calc_average(&self) -> Duration {
         self.samples
             .iter()
             .map(|x| u64::from(*x))
             .fold(0, u64::saturating_add)
             .checked_div(self.samples.len() as u64)
+            .map(Duration::from_millis)
             .unwrap_or_default()
-            .try_into()
-            .unwrap_or(u32::MAX)
     }
 }
 
@@ -324,7 +322,7 @@ mod test {
         state.add_inflight_ping(123, node_id.clone());
 
         let latency = state.record_pong(123, &node_id).unwrap();
-        assert!(latency < 50);
+        assert!(latency < Duration::from_millis(50));
     }
 
     #[test]

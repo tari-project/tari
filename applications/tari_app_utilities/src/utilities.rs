@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{convert::TryFrom, str::FromStr, sync::Arc};
 
 use futures::future::Either;
 use log::*;
@@ -31,7 +31,10 @@ use tari_common::{
     SocksAuthentication,
     TorControlAuthentication,
 };
-use tari_common_types::{emoji::EmojiId, types::BlockHash};
+use tari_common_types::{
+    emoji::EmojiId,
+    types::{BlockHash, PublicKey},
+};
 use tari_comms::{
     peer_manager::NodeId,
     socks,
@@ -43,6 +46,7 @@ use tari_comms::{
 };
 use tari_p2p::transport::{TorConfig, TransportType};
 use tari_utilities::hex::Hex;
+use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
 use crate::identity_management::load_from_json;
@@ -165,6 +169,7 @@ pub fn parse_hash(hash_string: &str) -> Option<BlockHash> {
     BlockHash::from_hex(hash_string).ok()
 }
 
+// TODO: Use `UniNodeId` instead
 /// Returns a CommsPublicKey from either a emoji id, a public key or node id
 pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<CommsPublicKey, NodeId>> {
     parse_emoji_id_or_public_key(key)
@@ -172,9 +177,81 @@ pub fn parse_emoji_id_or_public_key_or_node_id(key: &str) -> Option<Either<Comms
         .or_else(|| NodeId::from_hex(key).ok().map(Either::Right))
 }
 
+// TODO: Use `UniNodeId` instead
 pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
     match either {
         Either::Left(pk) => NodeId::from_public_key(&pk),
         Either::Right(n) => n,
+    }
+}
+
+pub struct UniPublicKey(PublicKey);
+
+impl FromStr for UniPublicKey {
+    type Err = UniIdError;
+
+    fn from_str(key: &str) -> Result<Self, Self::Err> {
+        if let Ok(public_key) = EmojiId::str_to_pubkey(&key.trim().replace('|', "")) {
+            Ok(Self(public_key))
+        } else if let Ok(public_key) = PublicKey::from_hex(key) {
+            Ok(Self(public_key))
+        } else {
+            Err(UniIdError::UnknownIdType)
+        }
+    }
+}
+
+impl From<UniPublicKey> for PublicKey {
+    fn from(id: UniPublicKey) -> Self {
+        id.0
+    }
+}
+
+pub enum UniNodeId {
+    PublicKey(PublicKey),
+    NodeId(NodeId),
+}
+
+#[derive(Debug, Error)]
+pub enum UniIdError {
+    #[error("unknown id type, expected emoji-id, public-key or node-id")]
+    UnknownIdType,
+    #[error("impossible convert a value to the expected type")]
+    Nonconvertible,
+}
+
+impl FromStr for UniNodeId {
+    type Err = UniIdError;
+
+    fn from_str(key: &str) -> Result<Self, Self::Err> {
+        if let Ok(public_key) = EmojiId::str_to_pubkey(&key.trim().replace('|', "")) {
+            Ok(Self::PublicKey(public_key))
+        } else if let Ok(public_key) = PublicKey::from_hex(key) {
+            Ok(Self::PublicKey(public_key))
+        } else if let Ok(node_id) = NodeId::from_hex(key) {
+            Ok(Self::NodeId(node_id))
+        } else {
+            Err(UniIdError::UnknownIdType)
+        }
+    }
+}
+
+impl TryFrom<UniNodeId> for PublicKey {
+    type Error = UniIdError;
+
+    fn try_from(id: UniNodeId) -> Result<Self, Self::Error> {
+        match id {
+            UniNodeId::PublicKey(public_key) => Ok(public_key),
+            UniNodeId::NodeId(_) => Err(UniIdError::Nonconvertible),
+        }
+    }
+}
+
+impl From<UniNodeId> for NodeId {
+    fn from(id: UniNodeId) -> Self {
+        match id {
+            UniNodeId::PublicKey(public_key) => NodeId::from_public_key(&public_key),
+            UniNodeId::NodeId(node_id) => node_id,
+        }
     }
 }

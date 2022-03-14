@@ -19,7 +19,7 @@ use tari_core::{
         tari_amount::{MicroTari, T},
         test_helpers,
         test_helpers::generate_keys,
-        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        transaction_components::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
 };
@@ -147,7 +147,7 @@ impl Iterator for UTXOFeatures {
     type Item = OutputFeatures;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let f = OutputFeatures::with_maturity(0);
+        let f = OutputFeatures::default();
         Some(f)
     }
 }

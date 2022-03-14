@@ -16,12 +16,11 @@ table! {
         status -> Integer,
         message -> Text,
         timestamp -> Timestamp,
-        cancelled -> Integer,
+        cancelled -> Nullable<Integer>,
         direction -> Nullable<Integer>,
         coinbase_block_height -> Nullable<BigInt>,
         send_count -> Integer,
         last_send_timestamp -> Nullable<Timestamp>,
-        valid -> Integer,
         confirmations -> Nullable<BigInt>,
         mined_height -> Nullable<BigInt>,
         mined_in_block -> Nullable<Binary>,
@@ -33,7 +32,10 @@ table! {
 table! {
     contacts (public_key) {
         public_key -> Binary,
+        node_id -> Binary,
         alias -> Text,
+        last_seen -> Nullable<Timestamp>,
+        latency -> Nullable<Integer>,
     }
 }
 
@@ -54,6 +56,15 @@ table! {
 
 table! {
     key_manager_states (id) {
+        id -> Integer,
+        branch_seed -> Text,
+        primary_key_index -> Binary,
+        timestamp -> Timestamp,
+    }
+}
+
+table! {
+    key_manager_states_old (id) {
         id -> Integer,
         seed -> Binary,
         branch_seed -> Text,
@@ -96,11 +107,13 @@ table! {
         value -> BigInt,
         flags -> Integer,
         maturity -> BigInt,
+        recovery_byte -> Integer,
         status -> Integer,
         hash -> Nullable<Binary>,
         script -> Binary,
         input_data -> Binary,
         script_private_key -> Binary,
+        script_lock_height -> BigInt,
         sender_offset_public_key -> Binary,
         metadata_signature_nonce -> Binary,
         metadata_signature_u_key -> Binary,
@@ -116,9 +129,8 @@ table! {
         metadata -> Nullable<Binary>,
         features_parent_public_key -> Nullable<Binary>,
         features_unique_id -> Nullable<Binary>,
-        script_lock_height -> BigInt,
-        spending_priority -> Integer,
         features_json -> Text,
+        spending_priority -> Integer,
         covenant -> Binary,
     }
 }
@@ -146,6 +158,7 @@ allow_tables_to_appear_in_same_query!(
     contacts,
     inbound_transactions,
     key_manager_states,
+    key_manager_states_old,
     known_one_sided_payment_scripts,
     outbound_transactions,
     outputs,

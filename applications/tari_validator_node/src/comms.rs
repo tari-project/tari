@@ -113,7 +113,7 @@ pub async fn build_service_and_comms_stack(
 // ) -> UnspawnedCommsNode {
 //     let dht = handles.expect_handle::<Dht>();
 //     let builder = RpcServer::builder();
-//     let builder = match config.rpc_max_simultaneous_sessions {
+//     let builder = match config.comms_rpc_max_simultaneous_sessions {
 //         Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
 //         None => {
 //             warn!(
@@ -138,7 +138,7 @@ pub async fn build_service_and_comms_stack(
 //         network: config.network,
 //         node_identity,
 //         transport_type: create_transport_type(config),
-//         datastore_path: config.peer_db_path.clone(),
+//         datastore_path: config.comms_peer_db_path.clone(),
 //         peer_database_name: "peers".to_string(),
 //         max_concurrent_inbound_tasks: 50,
 //         max_concurrent_outbound_tasks: 100,
@@ -146,7 +146,7 @@ pub async fn build_service_and_comms_stack(
 //         dht: DhtConfig {
 //             database_url: DbConnectionUrl::File(config.data_dir.join("dht.db")),
 //             auto_join: true,
-//             allow_test_addresses: config.allow_test_addresses,
+//             allow_test_addresses: config.comms_allow_test_addresses,
 //             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
 //             saf_config: SafConfig {
 //                 msg_validity: config.saf_expiry_duration,
@@ -154,9 +154,9 @@ pub async fn build_service_and_comms_stack(
 //             },
 //             ..Default::default()
 //         },
-//         allow_test_addresses: config.allow_test_addresses,
-//         listener_liveness_allowlist_cidrs: config.listener_liveness_allowlist_cidrs.clone(),
-//         listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
+//         allow_test_addresses: config.comms_allow_test_addresses,
+//         listener_liveness_allowlist_cidrs: config.comms_listener_liveness_allowlist_cidrs.clone(),
+//         listener_liveness_max_sessions: config.comms_listener_liveness_max_sessions,
 //         user_agent: format!("tari/dannode/{}", env!("CARGO_PKG_VERSION")),
 //         // Also add sync peers to the peer seed list. Duplicates are acceptable.
 //         peer_seeds: config

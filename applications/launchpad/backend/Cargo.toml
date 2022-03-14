@@ -14,8 +14,8 @@ build = "src/build.rs"
 tauri-build = { version = "1.0.0-beta.4" }
 
 [dependencies]
-tari_app_utilities = { version = "^0.27", path = "../../tari_app_utilities" }
-tari_comms = { version = "^0.27", path = "../../../comms" }
+tari_app_utilities = { version = "^0.29", path = "../../tari_app_utilities" }
+tari_comms = { version = "^0.29", path = "../../../comms" }
 tari_common = { path="../../../common"}
 bollard = "0.11.0"
 config = "0.11.0"

@@ -87,24 +87,47 @@ pub struct GlobalConfig {
     pub dedup_cache_capacity: usize,
     pub fetch_blocks_timeout: Duration,
     pub fetch_utxos_timeout: Duration,
-    pub service_request_timeout: Duration,
-    pub base_node_query_timeout: Duration,
+    pub flood_ban_max_msg_count: usize,
+    pub force_sync_peers: Vec<String>,
+    pub max_randomx_vms: usize,
+    pub merge_mining_config: Option<MergeMiningConfig>,
+    pub metadata_auto_ping_interval: u64,
+    pub wallet_peer_db_path: PathBuf,
+    pub metrics: MetricsConfig,
+    pub mine_on_tip_only: bool,
+    pub mining_pool_address: String,
+    pub mining_wallet_address: String,
+    pub mining_worker_name: String,
+    pub network: Network,
+    pub num_mining_threads: usize,
+    pub orphan_db_clean_out_threshold: usize,
+    pub orphan_storage_capacity: usize,
+    pub output_manager_event_channel_size: usize,
+    pub peer_seeds: Vec<String>,
+    pub prevent_fee_gt_amount: bool,
+    pub pruned_mode_cleanup_interval: u64,
+    pub pruning_horizon: u64,
     pub saf_expiry_duration: Duration,
+    pub service_request_timeout: Duration,
     pub transaction_broadcast_monitoring_timeout: Duration,
+    pub transaction_broadcast_send_timeout: Duration,
     pub transaction_chain_monitoring_timeout: Duration,
     pub transaction_direct_send_timeout: Duration,
-    pub transaction_broadcast_send_timeout: Duration,
-    pub transaction_routing_mechanism: String,
-    pub transaction_num_confirmations_required: u64,
     pub transaction_event_channel_size: usize,
-    pub base_node_event_channel_size: usize,
-    pub output_manager_event_channel_size: usize,
-    pub wallet_connection_manager_pool_size: usize,
+    pub transaction_num_confirmations_required: u64,
+    pub transaction_routing_mechanism: String,
+    pub transcoder_host_address: SocketAddr,
+    pub validate_tip_timeout_sec: u64,
+    pub validator_node: Option<ValidatorNodeConfig>,
+    pub wallet_balance_enquiry_cooldown_period: u64,
+    pub wallet_base_node_service_peers: Vec<String>,
     pub wallet_recovery_retry_limit: usize,
-    pub console_wallet_password: Option<String>,
+    pub wallet_base_node_service_refresh_interval: u64,
+    pub wallet_base_node_service_request_max_age: u64,
     pub wallet_command_send_wait_stage: String,
     pub wallet_command_send_wait_timeout: u64,
-    pub wallet_base_node_service_peers: Vec<String>,
+    pub wallet_config: Option<WalletConfig>,
+    pub wallet_connection_manager_pool_size: usize,
     pub wallet_custom_base_node: Option<String>,
     pub wallet_base_node_service_refresh_interval: u64,
     pub wallet_base_node_service_request_max_age: u64,
@@ -276,11 +299,11 @@ fn convert_node_config(
         .transpose()?;
 
     let key = config_string("base_node", net_str, "allow_test_addresses");
-    let allow_test_addresses = cfg.get_bool(&key).unwrap_or(false);
+    let comms_allow_test_addresses = cfg.get_bool(&key).unwrap_or(false);
 
     // Public address
     let key = config_string("base_node", net_str, "public_address");
-    let public_address = optional(cfg.get_str(&key))?
+    let comms_public_address = optional(cfg.get_str(&key))?
         .map(|addr| {
             addr.parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
@@ -328,7 +351,7 @@ fn convert_node_config(
     let base_node_bypass_range_proof_verification = cfg.get_bool(&key).unwrap_or(false);
 
     // Peer DB path
-    let peer_db_path = data_dir.join("peer_db");
+    let comms_peer_db_path = data_dir.join("peer_db");
     let wallet_peer_db_path = data_dir.join("wallet_peer_db");
     let console_wallet_peer_db_path = data_dir.join("console_wallet_peer_db");
 
@@ -348,10 +371,26 @@ fn convert_node_config(
     };
 
     // Liveness auto ping interval
-    let key = config_string("base_node", net_str, "auto_ping_interval");
-    let auto_ping_interval = match cfg.get_int(&key) {
+    let key = config_string("base_node", net_str, "metadata_auto_ping_interval");
+    let metadata_auto_ping_interval = match cfg.get_int(&key) {
         Ok(seconds) => seconds as u64,
         Err(ConfigError::NotFound(_)) => 30,
+        Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
+    };
+
+    // Liveness auto ping interval
+    let key = config_string("wallet", net_str, "contacts_auto_ping_interval");
+    let contacts_auto_ping_interval = match cfg.get_int(&key) {
+        Ok(seconds) => seconds as u64,
+        Err(ConfigError::NotFound(_)) => 20,
+        Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
+    };
+
+    // Liveness last seen within multiple of ping interval to be considered 'online'
+    let key = config_string("wallet", net_str, "contacts_online_ping_window");
+    let contacts_online_ping_window = match cfg.get_int(&key) {
+        Ok(window) => window as usize,
+        Err(ConfigError::NotFound(_)) => 2,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
@@ -450,7 +489,7 @@ fn convert_node_config(
     };
 
     let key = config_string("wallet", net_str, "custom_base_node");
-    let custom_peer: Option<String> = match cfg.get_int(&key) {
+    let wallet_custom_base_node: Option<String> = match cfg.get_int(&key) {
         Ok(peer) => Some(peer.to_string()),
         Err(ConfigError::NotFound(_)) => None,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
@@ -484,14 +523,14 @@ fn convert_node_config(
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_max_sessions";
-    let liveness_max_sessions = cfg
+    let comms_listener_liveness_max_sessions = cfg
         .get_int(key)
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
         .try_into()
         .map_err(|e: TryFromIntError| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_allowlist_cidrs";
-    let liveness_allowlist_cidrs = cfg
+    let comms_listener_liveness_allowlist_cidrs = cfg
         .get_array(key)
         .map(|values| values.iter().map(ToString::to_string).collect())
         .unwrap_or_else(|_| vec!["127.0.0.1/32".to_string()]);
@@ -517,7 +556,7 @@ fn convert_node_config(
             .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
     let key = "common.dedup_cache_capacity";
-    let dedup_cache_capacity = cfg
+    let dht_dedup_cache_capacity = cfg
         .get_int(key)
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
@@ -582,25 +621,39 @@ fn convert_node_config(
         dedup_cache_capacity,
         fetch_blocks_timeout,
         fetch_utxos_timeout,
-        service_request_timeout,
-        base_node_query_timeout,
+        flood_ban_max_msg_count,
+        force_sync_peers,
+        max_randomx_vms,
+        merge_mining_config,
+        metadata_auto_ping_interval,
+        metrics,
+        mine_on_tip_only,
+        mining_pool_address,
+        mining_wallet_address,
+        mining_worker_name,
+        network,
+        num_mining_threads,
+        orphan_db_clean_out_threshold,
+        orphan_storage_capacity,
+        output_manager_event_channel_size,
+        peer_seeds,
+        prevent_fee_gt_amount,
+        pruned_mode_cleanup_interval,
+        pruning_horizon,
         saf_expiry_duration,
+        service_request_timeout,
         transaction_broadcast_monitoring_timeout,
+        transaction_broadcast_send_timeout,
         transaction_chain_monitoring_timeout,
         transaction_direct_send_timeout,
-        transaction_broadcast_send_timeout,
-        transaction_routing_mechanism,
-        transaction_num_confirmations_required,
         transaction_event_channel_size,
-        base_node_event_channel_size,
-        wallet_connection_manager_pool_size,
-        wallet_recovery_retry_limit,
-        output_manager_event_channel_size,
-        console_wallet_password,
-        wallet_command_send_wait_stage,
-        wallet_command_send_wait_timeout,
+        transaction_num_confirmations_required,
+        transaction_routing_mechanism,
+        transcoder_host_address,
+        validate_tip_timeout_sec,
+        validator_node: ValidatorNodeConfig::convert_if_present(&cfg)?,
+        wallet_balance_enquiry_cooldown_period,
         wallet_base_node_service_peers,
-        wallet_custom_base_node: custom_peer,
         wallet_base_node_service_refresh_interval,
         wallet_base_node_service_request_max_age,
         wallet_balance_enquiry_cooldown_period,
