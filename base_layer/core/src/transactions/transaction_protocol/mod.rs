@@ -144,6 +144,7 @@ pub struct TransactionMetadata {
 pub struct RewindData {
     pub rewind_key: PrivateKey,
     pub rewind_blinding_key: PrivateKey,
+    pub recovery_byte_key: PrivateKey,
     pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
 }
 

@@ -59,10 +59,8 @@ impl DedupCacheDatabase {
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
     /// hash
-    pub async fn add_body_hash(&self, body_hash: Vec<u8>, public_key: CommsPublicKey) -> Result<u32, StorageError> {
-        let hit_count = self
-            .insert_body_hash_or_update_stats(body_hash.to_hex(), public_key.to_hex())
-            .await?;
+    pub fn add_body_hash(&self, body_hash: Vec<u8>, public_key: CommsPublicKey) -> Result<u32, StorageError> {
+        let hit_count = self.insert_body_hash_or_update_stats(body_hash.to_hex(), public_key.to_hex())?;
 
         if hit_count == 0 {
             warn!(
@@ -73,93 +71,79 @@ impl DedupCacheDatabase {
         Ok(hit_count)
     }
 
-    pub async fn get_hit_count(&self, body_hash: Vec<u8>) -> Result<u32, StorageError> {
-        self.connection
-            .with_connection(move |conn| {
-                let hit_count = dedup_cache::table
-                    .select(dedup_cache::number_of_hits)
-                    .filter(dedup_cache::body_hash.eq(&body_hash.to_hex()))
-                    .get_result::<i32>(&conn)
-                    .optional()?;
+    pub fn get_hit_count(&self, body_hash: Vec<u8>) -> Result<u32, StorageError> {
+        let conn = self.connection.get_pooled_connection()?;
+        let hit_count = dedup_cache::table
+            .select(dedup_cache::number_of_hits)
+            .filter(dedup_cache::body_hash.eq(&body_hash.to_hex()))
+            .get_result::<i32>(&conn)
+            .optional()?;
 
-                Ok(hit_count.unwrap_or(0) as u32)
-            })
-            .await
+        Ok(hit_count.unwrap_or(0) as u32)
     }
 
     /// Trims the dedup cache to the configured limit by removing the oldest entries
-    pub async fn trim_entries(&self) -> Result<usize, StorageError> {
+    pub fn trim_entries(&self) -> Result<usize, StorageError> {
         let capacity = self.capacity as i64;
         let mut num_removed = 0;
-        self.connection
-            .with_connection(move |conn| {
-                let msg_count = dedup_cache::table
-                    .select(dsl::count(dedup_cache::id))
-                    .first::<i64>(&conn)?;
-                // Hysteresis added to minimize database impact
-                if msg_count > capacity {
-                    let remove_count = msg_count - capacity;
-                    num_removed = diesel::sql_query(
-                        "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC \
-                         LIMIT $1)",
-                    )
-                    .bind::<sql_types::BigInt, _>(remove_count)
-                    .execute(&conn)?;
-                }
-                debug!(
-                    target: LOG_TARGET,
-                    "Message dedup cache: count {}, capacity {}, removed {}", msg_count, capacity, num_removed,
-                );
-                Ok(num_removed)
-            })
-            .await
+        let conn = self.connection.get_pooled_connection()?;
+        let msg_count = dedup_cache::table
+            .select(dsl::count(dedup_cache::id))
+            .first::<i64>(&conn)?;
+        // Hysteresis added to minimize database impact
+        if msg_count > capacity {
+            let remove_count = msg_count - capacity;
+            num_removed = diesel::sql_query(
+                "DELETE FROM dedup_cache WHERE id IN (SELECT id FROM dedup_cache ORDER BY last_hit_at ASC LIMIT $1)",
+            )
+            .bind::<sql_types::BigInt, _>(remove_count)
+            .execute(&conn)?;
+        }
+        debug!(
+            target: LOG_TARGET,
+            "Message dedup cache: count {}, capacity {}, removed {}", msg_count, capacity, num_removed,
+        );
+        Ok(num_removed)
     }
 
     /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
-    async fn insert_body_hash_or_update_stats(
-        &self,
-        body_hash: String,
-        public_key: String,
-    ) -> Result<u32, StorageError> {
-        self.connection
-            .with_connection(move |conn| {
-                let insert_result = diesel::insert_into(dedup_cache::table)
-                    .values((
-                        dedup_cache::body_hash.eq(&body_hash),
-                        dedup_cache::sender_public_key.eq(&public_key),
-                        dedup_cache::number_of_hits.eq(1),
-                        dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                    ))
-                    .execute(&conn);
-                match insert_result {
-                    Ok(1) => Ok(1),
-                    Ok(n) => Err(StorageError::UnexpectedResult(format!(
-                        "Expected exactly one row to be inserted. Got {}",
-                        n
-                    ))),
-                    Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
-                        DatabaseErrorKind::UniqueViolation => {
-                            // Update hit stats for the message
-                            diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
-                                .set((
-                                    dedup_cache::sender_public_key.eq(&public_key),
-                                    dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
-                                    dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
-                                ))
-                                .execute(&conn)?;
+    fn insert_body_hash_or_update_stats(&self, body_hash: String, public_key: String) -> Result<u32, StorageError> {
+        let conn = self.connection.get_pooled_connection()?;
+        let insert_result = diesel::insert_into(dedup_cache::table)
+            .values((
+                dedup_cache::body_hash.eq(&body_hash),
+                dedup_cache::sender_public_key.eq(&public_key),
+                dedup_cache::number_of_hits.eq(1),
+                dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+            ))
+            .execute(&conn);
+        match insert_result {
+            Ok(1) => Ok(1),
+            Ok(n) => Err(StorageError::UnexpectedResult(format!(
+                "Expected exactly one row to be inserted. Got {}",
+                n
+            ))),
+            Err(diesel::result::Error::DatabaseError(kind, e_info)) => match kind {
+                DatabaseErrorKind::UniqueViolation => {
+                    // Update hit stats for the message
+                    diesel::update(dedup_cache::table.filter(dedup_cache::body_hash.eq(&body_hash)))
+                        .set((
+                            dedup_cache::sender_public_key.eq(&public_key),
+                            dedup_cache::number_of_hits.eq(dedup_cache::number_of_hits + 1),
+                            dedup_cache::last_hit_at.eq(Utc::now().naive_utc()),
+                        ))
+                        .execute(&conn)?;
 
-                            let hits = dedup_cache::table
-                                .select(dedup_cache::number_of_hits)
-                                .filter(dedup_cache::body_hash.eq(&body_hash))
-                                .get_result::<i32>(&conn)?;
+                    let hits = dedup_cache::table
+                        .select(dedup_cache::number_of_hits)
+                        .filter(dedup_cache::body_hash.eq(&body_hash))
+                        .get_result::<i32>(&conn)?;
 
-                            Ok(hits as u32)
-                        },
-                        _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
-                    },
-                    Err(e) => Err(e.into()),
-                }
-            })
-            .await
+                    Ok(hits as u32)
+                },
+                _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),
+            },
+            Err(e) => Err(e.into()),
+        }
     }
 }

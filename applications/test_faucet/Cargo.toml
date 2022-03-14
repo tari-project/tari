@@ -1,8 +1,9 @@
 [package]
 name = "test_faucet"
-version = "0.28.1"
+version = "0.29.0"
 authors = ["The Tari Development Community"]
 edition = "2018"
+license = "BSD-3-Clause"
 
 [features]
 simd = ["tari_crypto/simd"]

@@ -95,7 +95,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     TARI_BASE_NODE__LOCALNET__AUTO_PING_INTERVAL: "15",
     TARI_WALLET__LOCALNET__CONTACTS_AUTO_PING_INTERVAL: "5",
     TARI_BASE_NODE__LOCALNET__FLOOD_BAN_MAX_MSG_COUNT: "100000",
-    TARI_MERGE_MINING_PROXY__MONEROD_URL: [
+    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_URL: [
       "http://stagenet.xmr-tw.org:38081",
       "http://stagenet.community.xmr.to:38081",
       "http://monero-stagenet.exan.tech:38081",
@@ -105,10 +105,10 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: false,
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: '""',
     TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: '""',
+    TARI_MERGE_MINING_PROXY__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
     TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
     TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
-    TARI_MERGE_MINING_PROXY__LOCALNET__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
     TARI_MINING_NODE__NUM_MINING_THREADS: "1",
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 1,
@@ -138,8 +138,8 @@ function createEnv(
   baseNodeGrpcAddress = "127.0.0.1",
   baseNodeGrpcPort = "8080",
   baseNodePort = "8081",
-  proxyFullAddress = "127.0.0.1:8084",
-  transcoderFullAddress = "127.0.0.1:8085",
+  proxyMultiAddress = "/ip4/127.0.0.1/tcp/8084",
+  transcoderMultiAddress = "/ip4/127.0.0.1/tcp/8085",
   options,
   peerSeeds = [],
   _txnSendingMechanism = "DirectAndStoreAndForward",
@@ -168,8 +168,8 @@ function createEnv(
     [`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
     [`TARI_WALLET__${network}__PUBLIC_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
 
-    [`TARI_MERGE_MINING_PROXY__PROXY_HOST_ADDRESS`]: `${proxyFullAddress}`,
-    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderFullAddress}`,
+    [`TARI_MERGE_MINING_PROXY__PROXY_HOST_ADDRESS`]: `${proxyMultiAddress}`,
+    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderMultiAddress}`,
   };
 
   return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };

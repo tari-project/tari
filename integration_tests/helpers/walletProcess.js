@@ -83,7 +83,7 @@ class WalletProcess {
           "127.0.0.1",
           "8080",
           "8081",
-          "127.0.0.1:8084",
+          "/ip4/127.0.0.1/tcp/8084",
           "127.0.0.1:8085",
           this.options,
           this.peerSeeds
@@ -305,6 +305,7 @@ class WalletProcess {
             features: {
               flags: 0,
               maturity: parseInt(row.maturity) || 0,
+              recovery_byte: parseInt(row.recovery_byte),
             },
             script: Buffer.from(row.script, "hex"),
             input_data: Buffer.from(row.input_data, "hex"),

@@ -92,6 +92,12 @@ jobs:
         with:
           command: check
           args: --release --all-targets
+      - name: cargo check ffi separately
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --package tari_wallet_ffi
+
   build-stable:
     name: check stable
     runs-on: ubuntu-18.04
@@ -128,6 +134,11 @@ jobs:
         with:
           command: check
           args: --release --all-targets
+      - name: cargo check ffi separately
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --package tari_wallet_ffi
   test:
     name: test
     runs-on: ubuntu-18.04

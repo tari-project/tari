@@ -859,7 +859,10 @@ mod test {
         fn it_checks_the_input_maturity() {
             let input = TransactionInput::new_with_output_data(
                 TransactionInputVersion::get_current_version(),
-                OutputFeatures::with_maturity(5),
+                OutputFeatures {
+                    maturity: 5,
+                    ..Default::default()
+                },
                 Default::default(),
                 Default::default(),
                 Default::default(),

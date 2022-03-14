@@ -103,7 +103,10 @@ async fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        features: OutputFeatures::with_maturity(1)
+        features: OutputFeatures{
+            maturity: 1,
+            ..Default::default()
+        }
     );
     let tx3 = Arc::new(spend_utxos(tx3).0);
 
@@ -112,7 +115,10 @@ async fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 3,
-        features: OutputFeatures::with_maturity(2)
+        features: OutputFeatures{
+            maturity: 2,
+            ..Default::default()
+        }
     );
     let tx5 = Arc::new(spend_utxos(tx5).0);
     let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default());
@@ -255,7 +261,10 @@ async fn test_time_locked() {
         to: vec![1*T],
         fee: 4*uT,
         lock: 4,
-        features: OutputFeatures::with_maturity(1)
+        features: OutputFeatures{
+            maturity: 1,
+            ..Default::default()
+        }
     );
     tx3.lock_height = 2;
     let tx3 = Arc::new(spend_utxos(tx3).0);
@@ -306,10 +315,16 @@ async fn test_retrieve() {
         txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
-        features: OutputFeatures::with_maturity(4)),
+            features: OutputFeatures{
+                maturity: 4,
+                ..Default::default()
+        }),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
-        features: OutputFeatures::with_maturity(3)),
+            features: OutputFeatures{
+            maturity: 3,
+            ..Default::default()
+        }),
     ];
     let (tx, utxos) = schema_to_transaction(&txs);
     for t in &tx {
@@ -1056,6 +1071,7 @@ async fn consensus_validation_versions() {
     let features = OutputFeatures::new(
         OutputFeaturesVersion::V1,
         OutputFlags::empty(),
+        0,
         0,
         Default::default(),
         None,

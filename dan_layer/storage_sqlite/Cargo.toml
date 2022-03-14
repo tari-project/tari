@@ -2,7 +2,7 @@
 name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 edition = "2018"
-
+license = "BSD-3-Clause"
 
 [dependencies]
 tari_dan_core = {path="../core"}

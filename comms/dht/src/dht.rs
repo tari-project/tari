@@ -138,7 +138,6 @@ impl Dht {
         };
 
         let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
-            .await
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
@@ -592,7 +591,7 @@ mod test {
         let spy = service_spy();
         let mut service = dht.inbound_middleware_layer().layer(spy.to_service());
 
-        let msg = wrap_in_envelope_body!(b"unencryptable".to_vec());
+        let msg = wrap_in_envelope_body!(b"unencrypteable".to_vec());
 
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
