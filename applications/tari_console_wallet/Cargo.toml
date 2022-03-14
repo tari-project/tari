@@ -3,6 +3,7 @@ name = "tari_console_wallet"
 version = "0.28.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
+license = "BSD-3-Clause"
 
 [dependencies]
 tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] }
@@ -17,7 +18,7 @@ tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_key_manager = { path = "../../base_layer/key_manager" }
-tari_utilities = "0.3.0"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 
 sha2 = "0.9.5"
 digest = "0.9.0"

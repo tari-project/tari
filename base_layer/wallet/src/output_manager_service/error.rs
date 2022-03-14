@@ -35,7 +35,11 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 
-use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
+use crate::{
+    base_node_service::error::BaseNodeServiceError,
+    error::WalletStorageError,
+    key_manager_service::KeyManagerError as TariKeyManagerError,
+};
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
@@ -120,8 +124,8 @@ pub enum OutputManagerError {
     },
     #[error("Invalid message received:{0}")]
     InvalidMessageError(String),
-    #[error("Operation not support on this Key Manager branch")]
-    KeyManagerBranchNotSupported,
+    #[error("Key manager error : {0}")]
+    TariKeyManagerError(#[from] TariKeyManagerError),
 }
 
 #[derive(Debug, Error)]

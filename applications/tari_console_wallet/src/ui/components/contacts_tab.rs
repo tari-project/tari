@@ -14,6 +14,7 @@ use crate::{
         components::{Component, KeyHandled},
         state::AppState,
         widgets::{centered_rect_absolute, draw_dialog, MultiColumnList, WindowedListState},
+        UiContact,
         MAX_WIDTH,
     },
     utils::formatting::display_compressed_string,
@@ -76,28 +77,43 @@ impl ContactsTab {
         let window = self.contacts_list_state.get_start_end();
         let windowed_view = app_state.get_contacts_slice(window.0, window.1);
 
+        let column_list = ContactsTab::create_column_view(windowed_view);
+        column_list.render(f, list_areas[1], &mut list_state);
+    }
+
+    // Helper function to create the column list to be rendered
+    pub fn create_column_view(windowed_view: &[UiContact]) -> MultiColumnList<Vec<ListItem>> {
         let mut column0_items = Vec::new();
         let mut column1_items = Vec::new();
         let mut column2_items = Vec::new();
+        let mut column3_items = Vec::new();
+        let mut column4_items = Vec::new();
         for c in windowed_view.iter() {
             column0_items.push(ListItem::new(Span::raw(c.alias.clone())));
-            column1_items.push(ListItem::new(Span::raw(c.public_key.to_string())));
+            column1_items.push(ListItem::new(Span::raw(c.public_key.clone())));
             column2_items.push(ListItem::new(Span::raw(display_compressed_string(
                 c.emoji_id.clone(),
                 3,
                 3,
             ))));
+            column3_items.push(ListItem::new(Span::raw(c.last_seen.clone())));
+            column4_items.push(ListItem::new(Span::raw(c.online_status.clone())));
         }
         let column_list = MultiColumnList::new()
             .highlight_style(Style::default().add_modifier(Modifier::BOLD).fg(Color::Magenta))
             .heading_style(Style::default().fg(Color::Magenta))
             .max_width(MAX_WIDTH)
             .add_column(Some("Alias"), Some(25), column0_items)
-            .add_column(None, Some(2), Vec::new())
+            .add_column(None, Some(1), Vec::new())
             .add_column(Some("Public Key"), Some(64), column1_items)
-            .add_column(None, Some(2), Vec::new())
-            .add_column(Some("Emoji ID"), None, column2_items);
-        column_list.render(f, list_areas[1], &mut list_state);
+            .add_column(None, Some(1), Vec::new())
+            .add_column(Some("Emoji ID"), Some(14), column2_items)
+            .add_column(None, Some(1), Vec::new())
+            .add_column(Some("Last Seen"), Some(11), column3_items)
+            .add_column(None, Some(1), Vec::new())
+            .add_column(Some("Status"), Some(10), column4_items);
+
+        column_list
     }
 
     fn draw_edit_contact<B>(&mut self, f: &mut Frame<B>, area: Rect, _app_state: &AppState)

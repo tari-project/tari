@@ -122,17 +122,19 @@ impl AssetManagerHandle {
         public_key: &PublicKey,
         committee_public_keys: &[PublicKey],
         effective_sidechain_height: u64,
+        is_initial: bool,
     ) -> Result<(TxId, Transaction), WalletError> {
         match self
             .handle
-            .call(AssetManagerRequest::CreateCommitteeCheckpoint {
+            .call(AssetManagerRequest::CreateCommitteeDefinition {
                 asset_public_key: Box::new(public_key.clone()),
                 committee_public_keys: committee_public_keys.to_vec(),
                 effective_sidechain_height,
+                is_initial,
             })
             .await??
         {
-            AssetManagerResponse::CreateCommitteeCheckpoint { transaction, tx_id } => Ok((tx_id, *transaction)),
+            AssetManagerResponse::CreateCommitteeDefinition { transaction, tx_id } => Ok((tx_id, *transaction)),
             _ => Err(WalletError::UnexpectedApiResponse {
                 method: "create_committee_definition".to_string(),
                 api: "AssetManagerService".to_string(),

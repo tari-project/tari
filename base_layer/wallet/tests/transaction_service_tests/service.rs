@@ -102,12 +102,7 @@ use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_utilities::Hashable;
 use tari_wallet::{
-    base_node_service::{
-        config::BaseNodeServiceConfig,
-        handle::BaseNodeServiceHandle,
-        mock_base_node_service::MockBaseNodeService,
-        BaseNodeServiceInitializer,
-    },
+    base_node_service::{config::BaseNodeServiceConfig, handle::BaseNodeServiceHandle, BaseNodeServiceInitializer},
     connectivity_service::{
         create_wallet_connectivity_mock,
         WalletConnectivityHandle,
@@ -115,6 +110,7 @@ use tari_wallet::{
         WalletConnectivityInterface,
         WalletConnectivityMock,
     },
+    key_manager_service::{storage::sqlite_db::KeyManagerSqliteDatabase, KeyManagerInitializer, KeyManagerMock},
     output_manager_service::{
         config::OutputManagerServiceConfig,
         handle::{OutputManagerEvent, OutputManagerHandle},
@@ -155,6 +151,7 @@ use tokio::{
 };
 
 use crate::support::{
+    base_node_service_mock::MockBaseNodeService,
     comms_and_services::{create_dummy_message, get_next_memory_address, setup_comms_services},
     comms_rpc::{connect_rpc_client, BaseNodeWalletRpcMockService, BaseNodeWalletRpcMockState},
     utils::{make_input, TestParams},
@@ -201,17 +198,21 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
     runtime.block_on(db.set_chain_metadata(metadata)).unwrap();
 
     let ts_backend = TransactionServiceSqliteDatabase::new(db_connection.clone(), None);
-    let oms_backend = OutputManagerSqliteDatabase::new(db_connection, None);
+    let oms_backend = OutputManagerSqliteDatabase::new(db_connection.clone(), None);
+    let kms_backend = KeyManagerSqliteDatabase::new(db_connection, None).unwrap();
 
+    let cipher = CipherSeed::new();
     let fut = StackBuilder::new(shutdown_signal)
         .add_initializer(RegisterHandle::new(dht))
         .add_initializer(RegisterHandle::new(comms.connectivity()))
-        .add_initializer(OutputManagerServiceInitializer::new(
+        .add_initializer(OutputManagerServiceInitializer::<
+            OutputManagerSqliteDatabase,
+            KeyManagerSqliteDatabase,
+        >::new(
             OutputManagerServiceConfig::default(),
             oms_backend,
             factories.clone(),
             Network::Weatherwax.into(),
-            CipherSeed::new(),
             comms.node_identity(),
         ))
         .add_initializer(TransactionServiceInitializer::new(
@@ -230,6 +231,7 @@ pub fn setup_transaction_service<P: AsRef<Path>>(
         ))
         .add_initializer(BaseNodeServiceInitializer::new(BaseNodeServiceConfig::default(), db))
         .add_initializer(WalletConnectivityInitializer::new(BaseNodeServiceConfig::default()))
+        .add_initializer(KeyManagerInitializer::new(kms_backend, cipher))
         .build();
 
     let handles = runtime.block_on(fut).expect("Service initialization failed");
@@ -339,6 +341,8 @@ pub fn setup_transaction_service_no_comms(
         WalletSqliteDatabase::new(db_connection.clone(), None).expect("Should be able to create wallet database"),
     );
     let ts_db = TransactionDatabase::new(TransactionServiceSqliteDatabase::new(db_connection.clone(), None));
+    let cipher = CipherSeed::new();
+    let key_manager = KeyManagerMock::new(cipher);
     let oms_db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(db_connection, None));
     let output_manager_service = runtime
         .block_on(OutputManagerService::new(
@@ -351,8 +355,8 @@ pub fn setup_transaction_service_no_comms(
             shutdown.to_signal(),
             base_node_service_handle.clone(),
             wallet_connectivity_service_mock.clone(),
-            CipherSeed::new(),
             base_node_identity.clone(),
+            key_manager,
         ))
         .unwrap();
 

@@ -23,7 +23,6 @@
 pub mod config;
 pub mod error;
 pub mod handle;
-pub mod mock_base_node_service;
 pub mod service;
 
 mod monitor;

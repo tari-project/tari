@@ -47,7 +47,7 @@ class MergeMiningProxyProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const proxyAddress = "127.0.0.1:" + this.port;
+      const proxyAddress = "/ip4/127.0.0.1/tcp/" + this.port;
 
       const envs = createEnv(
         this.name,
@@ -65,8 +65,7 @@ class MergeMiningProxyProcess {
         []
       );
       const extraEnvs = {
-        TARI_MERGE_MINING_PROXY__LOCALNET__PROXY_SUBMIT_TO_ORIGIN:
-          this.submitOrigin,
+        TARI_MERGE_MINING_PROXY__PROXY_SUBMIT_TO_ORIGIN: this.submitOrigin,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
       console.log(completeEnvs);

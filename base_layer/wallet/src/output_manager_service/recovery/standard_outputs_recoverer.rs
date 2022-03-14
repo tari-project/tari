@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use log::*;
 use rand::rngs::OsRng;
@@ -30,6 +30,7 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     transaction_components::{TransactionOutput, UnblindedOutput},
+    transaction_protocol::RewindData,
     CryptoFactories,
 };
 use tari_crypto::{
@@ -39,34 +40,41 @@ use tari_crypto::{
     tari_utilities::hex::Hex,
 };
 
-use crate::output_manager_service::{
-    error::{OutputManagerError, OutputManagerStorageError},
-    master_key_manager::KeyManagerBranch,
-    storage::{
-        database::{OutputManagerBackend, OutputManagerDatabase},
-        models::DbUnblindedOutput,
+use crate::{
+    key_manager_service::KeyManagerInterface,
+    output_manager_service::{
+        error::{OutputManagerError, OutputManagerStorageError},
+        resources::OutputManagerKeyManagerBranch,
+        storage::{
+            database::{OutputManagerBackend, OutputManagerDatabase},
+            models::DbUnblindedOutput,
+        },
     },
-    MasterKeyManager,
 };
 
 const LOG_TARGET: &str = "wallet::output_manager_service::recovery";
 
-pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static> {
-    master_key_manager: Arc<MasterKeyManager<TBackend>>,
+pub(crate) struct StandardUtxoRecoverer<TBackend: OutputManagerBackend + 'static, TKeyManagerInterface> {
+    master_key_manager: TKeyManagerInterface,
+    rewind_data: RewindData,
     factories: CryptoFactories,
     db: OutputManagerDatabase<TBackend>,
 }
 
-impl<TBackend> StandardUtxoRecoverer<TBackend>
-where TBackend: OutputManagerBackend + 'static
+impl<TBackend, TKeyManagerInterface> StandardUtxoRecoverer<TBackend, TKeyManagerInterface>
+where
+    TBackend: OutputManagerBackend + 'static,
+    TKeyManagerInterface: KeyManagerInterface,
 {
     pub fn new(
-        master_key_manager: Arc<MasterKeyManager<TBackend>>,
+        master_key_manager: TKeyManagerInterface,
+        rewind_data: RewindData,
         factories: CryptoFactories,
         db: OutputManagerDatabase<TBackend>,
     ) -> Self {
         Self {
             master_key_manager,
+            rewind_data,
             factories,
             db,
         }
@@ -87,8 +95,8 @@ where TBackend: OutputManagerBackend + 'static
                 output
                     .full_rewind_range_proof(
                         &self.factories.range_proof,
-                        &self.master_key_manager.rewind_data().rewind_key,
-                        &self.master_key_manager.rewind_data().rewind_blinding_key,
+                        &self.rewind_data.rewind_key,
+                        &self.rewind_data.rewind_blinding_key,
                     )
                     .ok()
                     .map(|v| (v, output))
@@ -131,7 +139,7 @@ where TBackend: OutputManagerBackend + 'static
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
-                self.master_key_manager.rewind_data(),
+                &self.rewind_data,
                 None,
                 Some(proof),
             )?;
@@ -171,23 +179,31 @@ where TBackend: OutputManagerBackend + 'static
         let script_key = if output.features.is_coinbase() {
             let found_index = self
                 .master_key_manager
-                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Coinbase)
+                .find_key_index(
+                    OutputManagerKeyManagerBranch::Coinbase.to_string(),
+                    &output.spending_key,
+                )
                 .await?;
 
             self.master_key_manager
-                .get_coinbase_script_key_at_index(found_index)
+                .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript, found_index)
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(output.spending_key.clone(), KeyManagerBranch::Spend)
+                .find_key_index(OutputManagerKeyManagerBranch::Spend, &output.spending_key)
                 .await?;
 
             self.master_key_manager
-                .update_current_spend_key_index_if_higher(found_index)
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend, found_index)
+                .await?;
+            self.master_key_manager
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::SpendScript, found_index)
                 .await?;
 
-            self.master_key_manager.get_script_key_at_index(found_index).await?
+            self.master_key_manager
+                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, found_index)
+                .await?
         };
 
         output.input_data = inputs!(PublicKey::from_secret_key(&script_key));

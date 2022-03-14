@@ -85,7 +85,7 @@ where
     }
 
     /// The task that defines the execution of the protocol.
-    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         let mut shutdown = self.resources.shutdown_signal.clone();
         let mut current_base_node_watcher = self.resources.connectivity.get_current_base_node_watcher();
         let mut timeout_update_receiver = self.timeout_update_receiver.clone();
@@ -183,7 +183,7 @@ where
         &mut self,
         tx: Transaction,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceProtocolError> {
+    ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let response = match client
             .submit_transaction(tx.try_into().map_err(|e| {
                 TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::InvalidMessageError(e))
@@ -303,7 +303,7 @@ where
         &mut self,
         signature: Signature,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceProtocolError> {
+    ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let response = match client.transaction_query(signature.into()).await {
             Ok(r) => match TxQueryResponse::try_from(r) {
                 Ok(r) => r,
@@ -393,7 +393,7 @@ where
         &mut self,
         completed_transaction: CompletedTransaction,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<bool, TransactionServiceProtocolError> {
+    ) -> Result<bool, TransactionServiceProtocolError<TxId>> {
         let signature = completed_transaction
             .transaction
             .first_kernel_excess_sig()

@@ -73,6 +73,12 @@ use crate::{
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
     error::WalletError,
+    key_manager_service::{
+        storage::database::KeyManagerBackend,
+        KeyManagerHandle,
+        KeyManagerInitializer,
+        KeyManagerInterface,
+    },
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -87,7 +93,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer, RECOVERY_KEY},
+    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
 const LOG_TARGET: &str = "wallet";
@@ -95,12 +101,13 @@ const LOG_TARGET: &str = "wallet";
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W> {
+pub struct Wallet<T, U, V, W, X> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
+    pub key_manager_service: KeyManagerHandle<X>,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -116,12 +123,13 @@ pub struct Wallet<T, U, V, W> {
     _w: PhantomData<W>,
 }
 
-impl<T, U, V, W> Wallet<T, U, V, W>
+impl<T, U, V, W, X> Wallet<T, U, V, W, X>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
+    X: KeyManagerBackend + 'static,
 {
     pub async fn start(
         config: WalletConfig,
@@ -129,6 +137,7 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
+        key_manager_backend: X,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
@@ -159,14 +168,14 @@ where
         );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config.clone(), publisher))
-            .add_initializer(OutputManagerServiceInitializer::new(
+            .add_initializer(OutputManagerServiceInitializer::<V, X>::new(
                 config.output_manager_service_config.unwrap_or_default(),
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
-                master_seed,
                 node_identity.clone(),
             ))
+            .add_initializer(KeyManagerInitializer::new(key_manager_backend, master_seed))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
                 peer_message_subscription_factory.clone(),
@@ -184,7 +193,11 @@ where
                 },
                 peer_message_subscription_factory,
             ))
-            .add_initializer(ContactsServiceInitializer::new(contacts_backend))
+            .add_initializer(ContactsServiceInitializer::new(
+                contacts_backend,
+                config.contacts_auto_ping_interval,
+                config.contacts_online_ping_window,
+            ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config.clone(),
                 wallet_database.clone(),
@@ -220,6 +233,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
@@ -256,6 +270,7 @@ where
             dht_service: dht,
             store_and_forward_requester,
             output_manager_service: output_manager_handle,
+            key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
@@ -536,7 +551,8 @@ where
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
         let cipher = self.db.apply_encryption(passphrase).await?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
-        self.transaction_service.apply_encryption(cipher).await?;
+        self.transaction_service.apply_encryption(cipher.clone()).await?;
+        self.key_manager_service.apply_encryption(cipher).await?;
         Ok(())
     }
 
@@ -546,6 +562,7 @@ where
         self.db.remove_encryption().await?;
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
+        self.key_manager_service.remove_encryption().await?;
         Ok(())
     }
 

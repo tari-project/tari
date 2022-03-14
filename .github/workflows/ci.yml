@@ -4,6 +4,8 @@ on:
       - development
       - main
       - ci-*
+      - staging
+      - trying
   pull_request:
     types:
       - opened
@@ -13,9 +15,10 @@ on:
 name: CI
 
 env:
-  CARGO_HTTP_MULTIPLEXING: false
-  PROTOC: protoc
   toolchain: nightly-2021-11-20
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_TERM_COLOR: always
+  PROTOC: protoc
 
 jobs:
   clippy:
@@ -166,4 +169,4 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all-features
+          args: -v --all-features

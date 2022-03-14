@@ -53,7 +53,9 @@ use tari_crypto::{
 };
 use tari_utilities::hex::Hex;
 use tari_wallet::{
+    assets::KEY_MANAGER_ASSET_BRANCH,
     error::WalletError,
+    key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
     WalletSqlite,
@@ -95,6 +97,7 @@ pub enum WalletCommand {
     MintTokens,
     CreateInitialCheckpoint,
     CreateCommitteeDefinition,
+    RevalidateWalletDb,
 }
 
 #[derive(Debug, EnumString, PartialEq, Clone)]
@@ -807,9 +810,10 @@ pub async fn command_runner(
                 let name = parsed.args[0].to_string();
                 let message = format!("Register asset: {}", name);
                 let mut manager = wallet.asset_manager.clone();
-                // todo: key manager #LOGGED
-                let mut rng = rand::thread_rng();
-                let (_, public_key) = PublicKey::random_keypair(&mut rng);
+                let key_manager = wallet.key_manager_service.clone();
+                key_manager.add_new_branch(KEY_MANAGER_ASSET_BRANCH).await?;
+                let result = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
+                let public_key = PublicKey::from_secret_key(&result.key);
                 let public_key_hex = public_key.to_hex();
                 println!("Registering asset named: {name}");
                 println!("with public key: {public_key_hex}");
@@ -890,7 +894,7 @@ pub async fn command_runner(
                     _ => Err(CommandError::Argument),
                 }?;
                 let public_key_hex = asset_public_key.to_hex();
-                println!("Creating Committee Checkpoint for Asset");
+                println!("Creating Committee Definition for Asset");
                 println!("with public key {public_key_hex}");
 
                 let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
@@ -906,21 +910,32 @@ pub async fn command_runner(
                     return Err(CommandError::Config("Committee has no members!".into()));
                 }
                 let message = format!(
-                    "Committee checkpoint with {} members for {}",
+                    "Committee definition with {} members for {}",
                     num_members, asset_public_key
                 );
                 println!("with {num_members} committee members");
 
                 let mut asset_manager = wallet.asset_manager.clone();
                 // todo: effective sidechain height...
+                // todo: updating
                 let (tx_id, transaction) = asset_manager
-                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0)
+                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
                     .await?;
 
                 let _result = transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
                 println!("Done!");
+            },
+            RevalidateWalletDb => {
+                output_service
+                    .revalidate_all_outputs()
+                    .await
+                    .map_err(CommandError::OutputManagerError)?;
+                transaction_service
+                    .revalidate_all_transactions()
+                    .await
+                    .map_err(CommandError::TransactionServiceError)?;
             },
         }
     }

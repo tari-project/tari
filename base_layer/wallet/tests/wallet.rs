@@ -83,6 +83,7 @@ use tari_wallet::{
         storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
     },
     error::{WalletError, WalletStorageError},
+    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -169,7 +170,7 @@ async fn create_wallet(
         .join(database_name)
         .with_extension("sqlite3");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
@@ -189,6 +190,7 @@ async fn create_wallet(
         None,
         None,
         Some(Duration::from_secs(1)),
+        None,
     );
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
@@ -203,6 +205,7 @@ async fn create_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
         shutdown_signal,
         master_seed,
     )
@@ -740,6 +743,7 @@ async fn test_import_utxo() {
         None,
         None,
         None,
+        None,
     );
 
     let mut alice_wallet = Wallet::start(
@@ -748,6 +752,7 @@ async fn test_import_utxo() {
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection.clone(), None),
         ContactsServiceSqliteDatabase::new(connection.clone()),
+        KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
     )
@@ -921,15 +926,13 @@ fn test_contacts_service_liveness() {
         loop {
             tokio::select! {
                 event = liveness_event_stream_alice.recv() => {
-                    if let ContactsLivenessEvent::StatusUpdated(data_vec) = &*event.unwrap() {
-                        if let Some(data) = data_vec.first() {
-                            if data.public_key() == &bob_identity.public_key().clone(){
-                                assert_eq!(data.node_id(), &bob_identity.node_id().clone());
-                                if data.message_type() == ContactMessageType::Ping {
-                                    ping_count += 1;
-                                } else if data.message_type() == ContactMessageType::Pong {
-                                    pong_count += 1;
-                                }
+                    if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
+                        if data.public_key() == &bob_identity.public_key().clone(){
+                            assert_eq!(data.node_id(), &bob_identity.node_id().clone());
+                            if data.message_type() == ContactMessageType::Ping {
+                                ping_count += 1;
+                            } else if data.message_type() == ContactMessageType::Pong {
+                                pong_count += 1;
                             }
                         }
                         if ping_count > 1 && pong_count > 1 {
@@ -955,15 +958,13 @@ fn test_contacts_service_liveness() {
         loop {
             tokio::select! {
                 event = liveness_event_stream_bob.recv() => {
-                    if let ContactsLivenessEvent::StatusUpdated(data_vec) = &*event.unwrap() {
-                        if let Some(data) = data_vec.first() {
-                            if data.public_key() == &alice_identity.public_key().clone(){
-                                assert_eq!(data.node_id(), &alice_identity.node_id().clone());
-                                if data.message_type() == ContactMessageType::Ping {
-                                    ping_count += 1;
-                                } else if data.message_type() == ContactMessageType::Pong {
-                                    pong_count += 1;
-                                }
+                    if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
+                        if data.public_key() == &alice_identity.public_key().clone(){
+                            assert_eq!(data.node_id(), &alice_identity.node_id().clone());
+                            if data.message_type() == ContactMessageType::Ping {
+                                ping_count += 1;
+                            } else if data.message_type() == ContactMessageType::Pong {
+                                pong_count += 1;
                             }
                         }
                         if ping_count > 1 && pong_count > 1 {

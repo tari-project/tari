@@ -23,66 +23,65 @@
 use std::marker::PhantomData;
 
 use log::*;
+use tari_common_types::types::COMMITTEE_DEFINITION_ID;
 use tari_utilities::hex::Hex;
 
 use crate::{
     digital_assets_error::DigitalAssetError,
     models::AssetDefinition,
-    services::{infrastructure_services::NodeAddressable, BaseNodeClient, CommitteeManager},
+    services::{BaseNodeClient, CommitteeManager, ServiceSpecification},
     storage::DbFactory,
     workers::states::ConsensusWorkerStateEvent,
 };
 
 const LOG_TARGET: &str = "tari::dan::workers::states::starting";
 
-pub struct Starting<TBaseNodeClient: BaseNodeClient> {
-    base_node_client: PhantomData<TBaseNodeClient>,
+pub struct Starting<TSpecification> {
+    _spec: PhantomData<TSpecification>,
 }
 
-impl<TBaseNodeClient: BaseNodeClient> Default for Starting<TBaseNodeClient> {
+impl<TSpecification: ServiceSpecification> Default for Starting<TSpecification> {
     fn default() -> Self {
-        Self {
-            base_node_client: PhantomData,
-        }
+        Self { _spec: PhantomData }
     }
 }
 
-impl<TBaseNodeClient> Starting<TBaseNodeClient>
-where TBaseNodeClient: BaseNodeClient
-{
-    pub async fn next_event<
-        TAddr: NodeAddressable,
-        TCommitteeManager: CommitteeManager<TAddr>,
-        TDbFactory: DbFactory,
-    >(
+impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub async fn next_event(
         &self,
-        base_node_client: &mut TBaseNodeClient,
+        base_node_client: &mut TSpecification::BaseNodeClient,
         asset_definition: &AssetDefinition,
-        committee_manager: &mut TCommitteeManager,
-        db_factory: &TDbFactory,
-        node_id: &TAddr,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        committee_manager: &mut TSpecification::CommitteeManager,
+        db_factory: &TSpecification::DbFactory,
+        node_id: &TSpecification::Addr,
+    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError>
+    where
+        TSpecification: ServiceSpecification,
+    {
         info!(
             target: LOG_TARGET,
             "Checking base layer to see if we are part of the committee"
         );
         let tip = base_node_client.get_tip_info().await?;
-        // committee service.get latest committee
         // get latest checkpoint on the base layer
-        let last_checkpoint = base_node_client
+        let last_committee_definition = base_node_client
             .get_current_checkpoint(
                 tip.height_of_longest_chain - asset_definition.base_layer_confirmation_time,
                 asset_definition.public_key.clone(),
-                asset_definition.checkpoint_unique_id.clone(),
+                COMMITTEE_DEFINITION_ID.into(),
             )
             .await?;
 
-        let last_checkpoint = match last_checkpoint {
-            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCheckpointNotFound),
+        let output = match last_committee_definition {
+            None => return Ok(ConsensusWorkerStateEvent::BaseLayerCommitteeDefinitionNotFound),
             Some(chk) => chk,
         };
 
-        committee_manager.read_from_checkpoint(last_checkpoint)?;
+        committee_manager.read_from_checkpoint(output)?;
 
         if !committee_manager.current_committee()?.contains(node_id) {
             info!(

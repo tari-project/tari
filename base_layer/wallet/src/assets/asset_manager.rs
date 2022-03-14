@@ -23,7 +23,7 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, FixedHash, PublicKey},
+    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
 };
 use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
 
@@ -161,7 +161,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 0.into(),
                 OutputFeatures::for_checkpoint(
                     asset_pub_key,
-                    vec![3u8; 32],
+                    ASSET_CHECKPOINT_ID.into(),
                     merkle_root,
                     committee_pub_keys.clone(),
                     true,
@@ -249,24 +249,30 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         asset_public_key: PublicKey,
         committee_pub_keys: Vec<PublicKey>,
         effective_sidechain_height: u64,
+        is_initial: bool,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
             .output_manager
             .create_output_with_features(
                 0.into(),
                 OutputFeatures::for_committee(
-                    asset_public_key,
-                    vec![2u8; 32],
+                    asset_public_key.clone(),
+                    COMMITTEE_DEFINITION_ID.into(),
                     committee_pub_keys.clone(),
                     effective_sidechain_height,
-                    true,
+                    is_initial,
                 ),
             )
             .await?;
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
+            .create_send_to_self_with_output(
+                vec![output],
+                ASSET_FPG.into(),
+                Some(COMMITTEE_DEFINITION_ID.into()),
+                Some(asset_public_key),
+            )
             .await?;
 
         Ok((tx_id, transaction))
@@ -362,3 +368,5 @@ pub struct AssetMetadata {
     description: String,
     image: String,
 }
+
+pub const KEY_MANAGER_ASSET_BRANCH: &str = "Asset";

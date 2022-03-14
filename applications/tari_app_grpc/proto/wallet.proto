@@ -288,6 +288,7 @@ message CreateCommitteeDefinitionRequest {
     bytes asset_public_key = 1;
     repeated bytes committee = 2;
     uint64 effective_sidechain_height = 3;
+    bool is_initial = 4;
 }
 
 message CreateCommitteeDefinitionResponse {

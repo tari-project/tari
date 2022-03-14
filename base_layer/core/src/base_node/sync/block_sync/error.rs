@@ -50,7 +50,7 @@ pub enum BlockSyncError {
     FailedToConstructChainBlock,
     #[error("Peer violated the block sync protocol: {0}")]
     ProtocolViolation(String),
-    #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
+    #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}, max: {max_latency:.2?}")]
     MaxLatencyExceeded {
         peer: NodeId,
         latency: Duration,

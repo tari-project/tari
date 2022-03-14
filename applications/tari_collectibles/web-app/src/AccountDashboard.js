@@ -53,7 +53,7 @@ class AccountDashboard extends React.Component {
       tip721: false,
       tip002Data: {},
       tip721Data: {},
-      assetPublicKey: props.match.params.assetPubKey,
+      assetPublicKey: props.match.params.assetPublicKey,
       assetInfo: {},
       balance: -1,
       receiveAddress: "",
@@ -371,7 +371,7 @@ class AccountDashboard extends React.Component {
 AccountDashboard.propTypes = {
   match: PropTypes.shape({
     params: PropTypes.shape({
-      assetPubKey: PropTypes.string,
+      assetPublicKey: PropTypes.string,
     }),
   }).isRequired,
 };

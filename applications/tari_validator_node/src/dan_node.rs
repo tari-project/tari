@@ -174,7 +174,7 @@ impl DanNode {
     ) -> Result<(), ExitError> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
         let committee = asset_definition
-            .initial_committee
+            .committee
             .iter()
             .map(|s| {
                 CommsPublicKey::from_hex(s)

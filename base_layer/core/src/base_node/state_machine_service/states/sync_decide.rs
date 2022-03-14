@@ -96,7 +96,7 @@ impl DecideNextSync {
                 .sync_peers
                 .drain(..)
                 .filter(|sync_peer| {
-                    sync_peer.claimed_chain_metadata().pruning_horizon() <= local_metadata.height_of_longest_chain()
+                    sync_peer.claimed_chain_metadata().pruned_height() <= local_metadata.height_of_longest_chain()
                 })
                 .collect::<Vec<_>>();
 

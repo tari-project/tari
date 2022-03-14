@@ -310,7 +310,7 @@ pub async fn init_wallet(
             return Err(e.into());
         },
     };
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) = backends;
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) = backends;
     let wallet_db = WalletDatabase::new(wallet_backend);
 
     debug!(
@@ -454,6 +454,7 @@ pub async fn init_wallet(
         Some(updater_config),
         config.autoupdate_check_interval,
         Some(Duration::from_secs(config.contacts_auto_ping_interval)),
+        Some(config.contacts_online_ping_window),
     );
 
     let mut wallet = Wallet::start(
@@ -462,6 +463,7 @@ pub async fn init_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
         shutdown_signal,
         master_seed,
     )

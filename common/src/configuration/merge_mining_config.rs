@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::net::SocketAddr;
-
 use multiaddr::Multiaddr;
 
 #[derive(Debug, Clone)]
@@ -30,7 +28,9 @@ pub struct MergeMiningConfig {
     pub monerod_use_auth: bool,
     pub monerod_username: String,
     pub monerod_password: String,
-    pub proxy_host_address: SocketAddr,
+    pub proxy_host_address: Multiaddr,
     pub base_node_grpc_address: Multiaddr,
     pub wallet_grpc_address: Multiaddr,
+    pub proxy_submit_to_origin: bool,
+    pub wait_for_initial_sync_at_startup: bool,
 }

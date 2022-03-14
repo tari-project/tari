@@ -15,7 +15,7 @@ tari_key_manager = { version = "^0.28", path = "../key_manager" }
 tari_p2p = { version = "^0.28", path = "../p2p" }
 tari_wallet = { version = "^0.28", path = "../wallet", features = ["c_integration"]}
 tari_shutdown = { version = "^0.28", path = "../../infrastructure/shutdown" }
-tari_utilities = "^0.3"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
 
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 futures =  { version = "^0.3.1", features =["compat", "std"]}
