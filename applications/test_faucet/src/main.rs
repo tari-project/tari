@@ -147,7 +147,7 @@ impl Iterator for UTXOFeatures {
     type Item = OutputFeatures;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let f = OutputFeatures::with_maturity(0);
+        let f = OutputFeatures::default();
         Some(f)
     }
 }

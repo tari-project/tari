@@ -22,6 +22,7 @@
 
 use std::sync::Arc;
 
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
 use tari_crypto::{commitment::HomomorphicCommitment, script};
@@ -152,7 +153,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        OutputFeatures::create_coinbase(1),
+        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -204,7 +205,7 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        OutputFeatures::create_coinbase(1),
+        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
     );
