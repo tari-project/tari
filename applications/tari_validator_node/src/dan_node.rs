@@ -89,6 +89,7 @@ impl DanNode {
             .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Missing dan section"))?;
 
         let mut base_node_client = GrpcBaseNodeClient::new(dan_config.base_node_grpc_address);
+        #[allow(clippy::mutable_key_type)]
         let mut tasks = HashMap::new();
         let mut next_scanned_height = 0u64;
         loop {
