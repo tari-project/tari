@@ -72,7 +72,7 @@ use tokio::{
 };
 
 use super::status_line::StatusLine;
-use crate::{builder::BaseNodeContext, table::Table, utils::format_duration_basic, LOG_TARGET};
+use crate::{builder::BaseNodeContext, config::BaseNodeConfig, table::Table, utils::format_duration_basic, LOG_TARGET};
 
 pub enum StatusLineOutput {
     Log,
@@ -80,7 +80,7 @@ pub enum StatusLineOutput {
 }
 
 pub struct CommandHandler {
-    config: Arc<GlobalConfig>,
+    config: Arc<BaseNodeConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
@@ -118,7 +118,7 @@ impl CommandHandler {
         }
     }
 
-    pub fn global_config(&self) -> Arc<GlobalConfig> {
+    pub fn config(&self) -> Arc<BaseNodeConfig> {
         self.config.clone()
     }
 
@@ -185,12 +185,7 @@ impl CommandHandler {
             "Rpc",
             format!(
                 "{}/{}",
-                num_active_rpc_sessions,
-                self.config
-                    .comms_rpc_max_simultaneous_sessions
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "∞".to_string()),
+                num_active_rpc_sessions, self.config.rpc_max_simultaneous_sessions
             ),
         );
         if full_log {
@@ -1138,7 +1133,7 @@ impl CommandHandler {
     }
 
     pub fn list_reorgs(&self) -> Result<(), Error> {
-        if !self.config.blockchain_track_reorgs {
+        if !self.config.storage.track_reorgs {
             // TODO: Return error/report
             println!(
                 "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \

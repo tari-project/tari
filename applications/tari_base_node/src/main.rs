@@ -142,10 +142,7 @@ use tokio::{task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-use crate::{
-    command_handler::{CommandHandler, StatusOutput},
-    config::BaseNodeConfig,
-};
+use crate::config::BaseNodeConfig;
 
 const LOG_TARGET: &str = "base_node::app";
 
@@ -179,7 +176,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &base_node_config.identity_file(&common_config),
-        &base_node_config.comms_public_address,
+        &base_node_config.public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
@@ -322,7 +319,7 @@ async fn run_node(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(command_handler, config.clone(), shutdown));
+        task::spawn(cli_loop(command_handler, base_node_config.clone(), shutdown));
     }
     if !base_node_config.force_sync_peers.is_empty() {
         warn!(
@@ -393,7 +390,7 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
 async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
     let start_time = Instant::now();
     let mut shutdown_signal = shutdown.to_signal();
-    let status_interval = command_handler.global_config().base_node_status_line_interval;
+    let status_interval = command_handler.config().status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
         tokio::select! {
@@ -416,7 +413,7 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mut shutdown: Shutdown) {
+async fn cli_loop(command_handler: CommandHandler, config: Arc<BaseNodeConfig>, mut shutdown: Shutdown) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
@@ -440,7 +437,7 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
     // Show status immediately on startup
     let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
     loop {
-        let interval = get_status_interval(start_time, config.base_node_status_line_interval);
+        let interval = get_status_interval(start_time, config.status_line_interval);
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {

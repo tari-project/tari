@@ -106,26 +106,27 @@ impl AppState {
         base_node_config: PeerConfig,
         node_config: GlobalConfig,
     ) -> Self {
-        let wallet_connectivity = wallet.wallet_connectivity.clone();
-        let output_manager_service = wallet.output_manager_service.clone();
-        let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
-        let cached_data = inner.data.clone();
-
-        let inner = Arc::new(RwLock::new(inner));
-        Self {
-            inner: inner.clone(),
-            cached_data,
-            cache_update_cooldown: None,
-            completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
-            node_config: node_config.clone(),
-            config: AppStateConfig::default(),
-            wallet_connectivity,
-            balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
-                inner,
-                Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
-                output_manager_service,
-            ),
-        }
+        todo!()
+        // let wallet_connectivity = wallet.wallet_connectivity.clone();
+        // let output_manager_service = wallet.output_manager_service.clone();
+        // let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
+        // let cached_data = inner.data.clone();
+        //
+        // let inner = Arc::new(RwLock::new(inner));
+        // Self {
+        //     inner: inner.clone(),
+        //     cached_data,
+        //     cache_update_cooldown: None,
+        //     completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
+        //     node_config: node_config.clone(),
+        //     config: AppStateConfig::default(),
+        //     wallet_connectivity,
+        //     balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
+        //         inner,
+        //         Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
+        //         output_manager_service,
+        //     ),
+        // }
     }
 
     pub async fn start_event_monitor(&self, notifier: Notifier) {
@@ -503,7 +504,8 @@ impl AppState {
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
-        (&self.node_config.transaction_num_confirmations_required).to_owned()
+        todo!()
+        // (&self..transaction_num_confirmations_required).to_owned()
     }
 
     pub fn toggle_abandoned_coinbase_filter(&mut self) {
@@ -535,12 +537,13 @@ impl AppState {
     }
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
-        // this should not be empty as we this should have been created, but lets just be safe and use the default value
-        // from the config
-        match self.node_config.wallet_config.as_ref() {
-            Some(config) => config.fee_per_gram.into(),
-            _ => MicroTari::from(5),
-        }
+        todo!()
+        // // this should not be empty as we this should have been created, but lets just be safe and use the default
+        // value // from the config
+        // match self.node_config.wallet_config.as_ref() {
+        //     Some(config) => config.fee_per_gram.into(),
+        //     _ => MicroTari::from(5),
+        // }
     }
 
     pub fn get_network(&self) -> Network {

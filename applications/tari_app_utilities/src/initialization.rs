@@ -50,18 +50,14 @@ pub fn init_configuration(
                 //     global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
                 // }
                 // global_config.peer_db_path = global_config.data_dir.join("peer_db");
-                global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
-                global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
+                // global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
+                // global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
             },
             Err(e) => {
                 log::error!(target: LOG_TARGET, "Network selection was invalid, exiting.");
                 return Err(e.into());
             },
         }
-    }
-
-    if let Some(str) = bootstrap.custom_base_node.clone() {
-        global_config.wallet_custom_base_node = Some(str);
     }
 
     check_file_paths(&mut global_config, &bootstrap);
@@ -77,31 +73,30 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
         //     config.db_type = DatabaseType::LMDB(config.data_dir.join("db"));
         // }
     }
-
-    if !config.base_node_tor_identity_file.is_absolute() {
-        config.base_node_tor_identity_file =
-            concatenate_paths_normalized(prepend.clone(), config.base_node_tor_identity_file.clone());
-    }
-    if !config.console_wallet_db_file.is_absolute() {
-        config.console_wallet_db_file =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_db_file.clone());
-    }
-    if !config.console_wallet_peer_db_path.is_absolute() {
-        config.console_wallet_peer_db_path =
-            concatenate_paths_normalized(prepend.clone(), config.console_wallet_peer_db_path.clone());
-    }
-
-    if !config.wallet_db_file.is_absolute() {
-        config.wallet_db_file = concatenate_paths_normalized(prepend.clone(), config.wallet_db_file.clone());
-    }
-    if !config.wallet_peer_db_path.is_absolute() {
-        config.wallet_peer_db_path = concatenate_paths_normalized(prepend.clone(), config.wallet_peer_db_path.clone());
-    }
-    if let Some(file_path) = config.console_wallet_notify_file.clone() {
-        if file_path.is_absolute() {
-            config.console_wallet_notify_file = Some(concatenate_paths_normalized(prepend, file_path));
-        }
-    }
+    // if !config.base_node_tor_identity_file.is_absolute() {
+    //     config.base_node_tor_identity_file =
+    //         concatenate_paths_normalized(prepend.clone(), config.base_node_tor_identity_file.clone());
+    // }
+    // if !config.console_wallet_db_file.is_absolute() {
+    //     config.console_wallet_db_file =
+    //         concatenate_paths_normalized(prepend.clone(), config.console_wallet_db_file.clone());
+    // }
+    // if !config.console_wallet_peer_db_path.is_absolute() {
+    //     config.console_wallet_peer_db_path =
+    //         concatenate_paths_normalized(prepend.clone(), config.console_wallet_peer_db_path.clone());
+    // }
+    //
+    // if !config.wallet_db_file.is_absolute() {
+    //     config.wallet_db_file = concatenate_paths_normalized(prepend.clone(), config.wallet_db_file.clone());
+    // }
+    // if !config.wallet_peer_db_path.is_absolute() {
+    //     config.wallet_peer_db_path = concatenate_paths_normalized(prepend.clone(),
+    // config.wallet_peer_db_path.clone()); }
+    // if let Some(file_path) = config.console_wallet_notify_file.clone() {
+    //     if file_path.is_absolute() {
+    //         config.console_wallet_notify_file = Some(concatenate_paths_normalized(prepend, file_path));
+    //     }
+    // }
 }
 
 fn concatenate_paths_normalized(prepend: PathBuf, extension_path: PathBuf) -> PathBuf {

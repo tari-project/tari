@@ -66,6 +66,7 @@ pub struct ConsoleWalletConfig {
     pub notify_script: Option<PathBuf>,
     pub wallet_mode: WalletMode,
     pub grpc_address: Option<Multiaddr>,
+    pub recovery_retry_limit: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -147,7 +148,7 @@ pub fn command_mode(
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting wallet command mode");
-    handle.block_on(command_runner(commands, wallet.clone()))?;
+    handle.block_on(command_runner(&config, commands, wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Command mode completed)";
@@ -189,7 +190,7 @@ pub fn script_mode(
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting the command runner!");
-    handle.block_on(command_runner(commands, wallet.clone()))?;
+    handle.block_on(command_runner(&config, commands, wallet.clone()))?;
 
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_B: &str = "Tari Console Wallet running... (Script mode completed)";
@@ -296,11 +297,7 @@ pub fn recovery_mode(handle: Handle, config: ConsoleWalletConfig, wallet: Wallet
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     println!("Starting recovery...");
-    match handle.block_on(wallet_recovery(
-        &wallet,
-        &base_node_config,
-        config.global_config.wallet_recovery_retry_limit,
-    )) {
+    match handle.block_on(wallet_recovery(&wallet, &base_node_config, config.recovery_retry_limit)) {
         Ok(_) => println!("Wallet recovered!"),
         Err(e) => {
             error!(target: LOG_TARGET, "Recovery failed: {}", e);

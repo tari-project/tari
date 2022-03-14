@@ -102,14 +102,10 @@ async fn run_node(
     create_id: bool,
 ) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
-    let validator_node_config = config
-        .validator_node
-        .as_ref()
-        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "validator_node configuration not found"))?;
 
     let node_identity = setup_node_identity(
         &validator_node_config.identity_file,
-        &validator_node_config.comms_public_address,
+        &validator_node_config.public_address,
         create_id,
         PeerFeatures::NONE,
     )?;

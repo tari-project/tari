@@ -6542,6 +6542,7 @@ dependencies = [
  "regex",
  "rustyline",
  "rustyline-derive",
+ "serde 1.0.136",
  "strum 0.22.0",
  "strum_macros 0.22.0",
  "tari_app_grpc",
@@ -6558,6 +6559,7 @@ dependencies = [
  "tari_p2p",
  "tari_service_framework",
  "tari_shutdown",
+ "tari_storage",
  "tari_utilities",
  "thiserror",
  "tokio 1.17.0",
@@ -7000,7 +7002,7 @@ dependencies = [
 
 [[package]]
 name = "tari_launchpad"
-version = "0.29.0"
+version = "0.27.3"
 dependencies = [
  "bollard",
  "config 0.11.0",
@@ -7008,11 +7010,13 @@ dependencies = [
  "futures 0.3.21",
  "log",
  "rand 0.8.5",
+ "regex",
  "serde 1.0.136",
  "serde_json",
  "strum 0.23.0",
  "strum_macros 0.23.1",
  "tari_app_utilities",
+ "tari_common",
  "tari_comms",
  "tauri",
  "tauri-build",
@@ -7051,6 +7055,7 @@ dependencies = [
  "hyper",
  "jsonrpc",
  "log",
+ "multiaddr",
  "rand 0.8.5",
  "reqwest",
  "serde 1.0.136",

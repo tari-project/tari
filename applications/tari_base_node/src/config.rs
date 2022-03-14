@@ -67,6 +67,10 @@ pub struct BaseNodeConfig {
     pub p2p: P2pConfig,
     // TODO: move to p2p config or rpc config
     pub rpc_max_simultaneous_sessions: usize,
+    pub status_line_interval: Duration,
+    pub buffer_size: usize,
+    pub buffer_rate_limit: usize,
+    pub metadata_auto_ping_interval: Duration,
 }
 
 impl Default for BaseNodeConfig {
@@ -86,6 +90,7 @@ impl Default for BaseNodeConfig {
             force_sync_peers: vec![],
             service_request_timeout: Duration::from_secs(60),
             rpc_max_simultaneous_sessions: 100,
+            metadata_auto_ping_interval: Duration::from_secs(30), // TODO: Get actual default
             ..Default::default()
         }
     }

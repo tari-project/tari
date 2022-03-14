@@ -96,8 +96,8 @@ where B: BlockchainBackend + 'static
 
         // fs::create_dir_all(&config.comms_peer_db_path)?;
 
-        let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
-        let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, config.buffer_rate_limit_base_node);
+        let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, base_node_config.buffer_size);
+        let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, base_node_config.buffer_rate_limit);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = self.base_node_config.mempool.service.clone();
 
@@ -140,7 +140,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
-                    auto_ping_interval: Some(Duration::from_secs(config.metadata_auto_ping_interval)),
+                    auto_ping_interval: Some(base_node_config.metadata_auto_ping_interval),
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
@@ -149,18 +149,19 @@ where B: BlockchainBackend + 'static
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
-                BaseNodeStateMachineConfig {
-                    blockchain_sync_config: BlockchainSyncConfig {
-                        forced_sync_peers: sync_peers,
-                        validation_concurrency: num_cpus::get(),
-                        ..Default::default()
-                    },
-                    pruning_horizon: config.pruning_horizon,
-                    orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
-                    max_randomx_vms: config.max_randomx_vms,
-                    blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                    ..Default::default()
-                },
+                todo!("put config in a better place"),
+                // BaseNodeStateMachineConfig {
+                //     blockchain_sync_config: BlockchainSyncConfig {
+                //         forced_sync_peers: sync_peers,
+                //         validation_concurrency: num_cpus::get(),
+                //         ..Default::default()
+                //     },
+                //     pruning_horizon: base_node.pruning_horizon,
+                //     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
+                //     max_randomx_vms: config.max_randomx_vms,
+                //     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
+                //     ..Default::default()
+                // },
                 self.rules,
                 self.factories,
             ))
