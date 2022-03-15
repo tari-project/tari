@@ -2,9 +2,9 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_utilities::hex::Hex;
+use thiserror::Error;
 
 use super::{CommandContext, HandleCommand};
-use crate::LOG_TARGET;
 
 /// List the amount of headers, can be called in the following two ways:
 #[derive(Debug, Parser)]
@@ -22,26 +22,24 @@ impl HandleCommand<Args> for CommandContext {
     }
 }
 
+#[derive(Error, Debug)]
+enum ArgsError {
+    #[error("No headers found")]
+    NoHeaders,
+}
+
 impl CommandContext {
     /// Function to process the list-headers command
     pub async fn list_headers(&self, start: u64, end: Option<u64>) -> Result<(), Error> {
-        let res = self.get_chain_headers(start, end).await;
-        match res {
-            Ok(h) if h.is_empty() => {
-                println!("No headers found");
-            },
-            Ok(headers) => {
-                for header in headers {
-                    println!("\n\nHeader hash: {}", header.hash().to_hex());
-                    println!("{}", header);
-                }
-            },
-            // TODO: Handle results properly
-            Err(err) => {
-                println!("Failed to retrieve headers: {:?}", err);
-                log::warn!(target: LOG_TARGET, "Error communicating with base node: {}", err,);
-            },
+        let headers = self.get_chain_headers(start, end).await?;
+        if !headers.is_empty() {
+            for header in headers {
+                println!("\n\nHeader hash: {}", header.hash().to_hex());
+                println!("{}", header);
+            }
+            Ok(())
+        } else {
+            Err(ArgsError::NoHeaders.into())
         }
-        Ok(())
     }
 }
