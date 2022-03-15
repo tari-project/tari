@@ -101,6 +101,8 @@ mod tests {
         assert_eq!(items, vec!["command", "with", "parameters"]);
         let items = parse("command 0.5 0.10").unwrap().items;
         assert_eq!(items, vec!["command", "0.5", "0.10"]);
+        let items = parse("🇺🇦🕊️ 🛑⚔️").unwrap().items;
+        assert_eq!(items, vec!["🇺🇦🕊️", "🛑⚔️"]);
         let items = parse("command extra,value check with:other;chars").unwrap().items;
         assert_eq!(items, vec!["command", "extra,value", "check", "with:other;chars"]);
         let items = parse("command with 'quoted long' \"parameters in\" \"a different \" format")
