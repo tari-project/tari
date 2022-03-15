@@ -2,18 +2,18 @@
 
 <h2>Tokens</h2>
 <table>
-    <thead>
+  <thead>
     <tr>
-        <th>Unique ID</th>
-        <th>Owner commitment</th>
+      <th>Unique ID</th>
+      <th>Owner commitment</th>
     </tr>
-    </thead>
-    <tbody>
+  </thead>
+  <tbody>
     {{#each this.tokens}}
-            <tr>
-                <td>{{hex unique_id}}</td>
-                <td>{{hex owner_commitment}}</td>
-            </tr>
-        {{/each}}
-    </tbody>
+      <tr>
+        <td>{{hex unique_id}}</td>
+        <td>{{hex owner_commitment}}</td>
+      </tr>
+    {{/each}}
+  </tbody>
 </table>
