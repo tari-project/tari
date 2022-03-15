@@ -4,7 +4,7 @@ use clap::Parser;
 use tari_app_utilities::utilities::UniNodeId;
 use tari_comms::peer_manager::NodeId;
 use tari_p2p::services::liveness::LivenessEvent;
-use tokio::sync::broadcast;
+use tokio::sync::broadcast::error::RecvError;
 
 use super::{CommandContext, HandleCommand};
 
@@ -42,10 +42,10 @@ impl CommandContext {
                         }
                     }
                 },
-                Err(broadcast::error::RecvError::Closed) => {
+                Err(RecvError::Closed) => {
                     break;
                 },
-                _ => {},
+                Err(RecvError::Lagged(_)) => {},
             }
         }
         Ok(())
