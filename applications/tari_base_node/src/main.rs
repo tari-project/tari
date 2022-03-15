@@ -102,10 +102,10 @@ use std::{
 };
 
 use commands::{
-    command_handler::{CommandHandler, StatusLineOutput},
+    command::CommandContext,
     parser::Parser,
-    performer::Performer,
     reader::{CommandEvent, CommandReader},
+    status_line::StatusLineOutput,
 };
 use futures::FutureExt;
 use log::*;
@@ -135,7 +135,7 @@ use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{task, time};
+use tokio::{signal, task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
@@ -284,16 +284,16 @@ async fn run_node(
     }
 
     // Run, node, run!
-    let command_handler = CommandHandler::new(&ctx);
+    let context = CommandContext::new(&ctx, shutdown);
     if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(command_handler, shutdown));
+        task::spawn(status_loop(context, bootstrap.watch));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(command_handler, config.clone(), shutdown));
+        task::spawn(cli_loop(context));
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -361,10 +361,10 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
+async fn status_loop(mut context: CommandContext, watch_command: Option<String>) {
     let start_time = Instant::now();
-    let mut shutdown_signal = shutdown.to_signal();
-    let status_interval = command_handler.global_config().base_node_status_line_interval;
+    let mut shutdown_signal = context.shutdown.to_signal();
+    let status_interval = context.global_config().base_node_status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
         tokio::select! {
@@ -372,9 +372,17 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
             _ = shutdown_signal.wait() => {
                 break;
             }
-
+            _ = signal::ctrl_c() => {
+                break;
+            }
             _ = interval => {
-               command_handler.status(StatusLineOutput::Log).await.ok();
+                if let Some(line) = watch_command.as_ref() {
+                    if let Err(err) = context.handle_command_str(line).await {
+                        println!("Watched command `{}` failed: {}", line, err);
+                    }
+                } else {
+                    context.status(StatusLineOutput::Log).await.ok();
+                }
             },
         }
     }
@@ -387,11 +395,11 @@ async fn status_loop(mut command_handler: CommandHandler, shutdown: Shutdown) {
 ///
 /// ## Returns
 /// Doesn't return anything
-async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mut shutdown: Shutdown) {
+async fn cli_loop(mut context: CommandContext) {
     let parser = Parser::new();
     commands::cli::print_banner(parser.get_commands(), 3);
 
-    let mut performer = Performer::new(command_handler);
+    // TODO: Check for a new version here
     let cli_config = Config::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
@@ -403,25 +411,28 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
     rustyline.set_helper(Some(parser));
     let mut reader = CommandReader::new(rustyline);
 
-    let mut shutdown_signal = shutdown.to_signal();
+    let mut shutdown_signal = context.shutdown.to_signal();
     let start_time = Instant::now();
-    let mut software_update_notif = performer.get_software_updater().new_update_notifier().clone();
+    let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
-    // TODO: Add heartbeat here
-    // Show status immediately on startup
-    let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
+    let config = context.config.clone();
+    let mut watch_task = None;
     loop {
-        let interval = get_status_interval(start_time, config.base_node_status_line_interval);
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {
                     match event {
                         CommandEvent::Command(line) => {
                             first_signal = false;
-                            let fut = performer.handle_command(line.as_str(), &mut shutdown);
-                            let res = time::timeout(Duration::from_secs(70), fut).await;
-                            if let Err(_err) = res {
-                                println!("Time for command execution elapsed: `{}`", line);
+                            if !line.is_empty() {
+                                match context.handle_command_str(&line).await {
+                                    Err(err) => {
+                                        println!("Command `{}` failed: {}", line, err);
+                                    }
+                                    Ok(command) => {
+                                        watch_task = command;
+                                    }
+                                }
                             }
                         }
                         CommandEvent::Interrupt => {
@@ -443,23 +454,44 @@ async fn cli_loop(command_handler: CommandHandler, config: Arc<GlobalConfig>, mu
                     break;
                 }
             },
-            Ok(_) = software_update_notif.changed() => {
-                if let Some(ref update) = *software_update_notif.borrow() {
-                    println!(
-                        "Version {} of the {} is available: {} (sha: {})",
-                        update.version(),
-                        update.app(),
-                        update.download_url(),
-                        update.to_hash_hex()
-                    );
-                }
-            }
-            _ = interval => {
-                // TODO: Execute `watch` command here + use the result
-                let _ = performer.status(StatusLineOutput::StdOutAndLog).await;
-            },
             _ = shutdown_signal.wait() => {
                 break;
+            }
+        }
+        if let Some(command) = watch_task.take() {
+            let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
+            if let Err(err) = context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                loop {
+                    let interval = get_status_interval(start_time, interval);
+                    tokio::select! {
+                        _ = interval => {
+                            if let Err(err) = context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                        },
+                        _ = signal::ctrl_c() => {
+                            break;
+                        }
+                        // TODO: Is that good idea? Or add a separate command?
+                        Ok(_) = software_update_notif.changed() => {
+                            if let Some(ref update) = *software_update_notif.borrow() {
+                                println!(
+                                    "Version {} of the {} is available: {} (sha: {})",
+                                    update.version(),
+                                    update.app(),
+                                    update.download_url(),
+                                    update.to_hash_hex()
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
     }

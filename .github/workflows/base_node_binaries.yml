@@ -141,13 +141,13 @@ jobs:
       - name: Compile launchpad GUI
         run: |
           cd applications/launchpad/gui-vue
-          npm install
+          npm ci
           npm run build
 
       - name: Compile collectibles GUI
         run: |
           cd applications/tari_collectibles/web-app
-          npm install
+          npm ci
           npm run build
 
       - name: Info - Pre-Compile Space Check for Nix
