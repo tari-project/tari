@@ -2,6 +2,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_core::blocks::BlockHeader;
+use thiserror::Error;
 
 use super::{CommandContext, HandleCommand};
 
@@ -19,11 +20,21 @@ pub struct Args {
 impl HandleCommand<Args> for CommandContext {
     async fn handle_command(&mut self, args: Args) -> Result<(), Error> {
         if args.end.is_none() && args.start < 2 {
-            Err(Error::msg("Number of headers must be at least 2."))
+            Err(ArgsError::AtLeastTwo.into())
         } else {
             self.block_timing(args.start, args.end).await
         }
     }
+}
+
+#[derive(Error, Debug)]
+enum ArgsError {
+    #[error("Number of headers must be at least 2")]
+    AtLeastTwo,
+    #[error("No headers found")]
+    NoHeaders,
+    #[error("No first or last header")]
+    HeaderLost,
 }
 
 impl CommandContext {
@@ -32,15 +43,15 @@ impl CommandContext {
         if !headers.is_empty() {
             let headers = headers.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>();
             let (max, min, avg) = BlockHeader::timing_stats(&headers);
-            let first = headers.first().ok_or_else(|| Error::msg("no first header"))?.height;
-            let last = headers.last().ok_or_else(|| Error::msg("no last header"))?.height;
+            let first = headers.first().ok_or(ArgsError::HeaderLost)?.height;
+            let last = headers.last().ok_or(ArgsError::HeaderLost)?.height;
             println!("Timing for blocks #{} - #{}", first, last);
             println!("Max block time: {}", max);
             println!("Min block time: {}", min);
             println!("Avg block time: {}", avg);
+            Ok(())
         } else {
-            println!("No headers found");
+            Err(ArgsError::NoHeaders.into())
         }
-        Ok(())
     }
 }

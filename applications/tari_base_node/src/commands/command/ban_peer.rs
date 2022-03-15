@@ -5,23 +5,13 @@ use async_trait::async_trait;
 use clap::Parser;
 use tari_app_utilities::utilities::UniNodeId;
 use tari_comms::peer_manager::NodeId;
+use thiserror::Error;
 
 use super::{CommandContext, HandleCommand};
-use crate::LOG_TARGET;
 
 /// Bans a peer
 #[derive(Debug, Parser)]
 pub struct ArgsBan {
-    /// hex public key or emoji id
-    node_id: UniNodeId,
-    /// length of time to ban the peer for in seconds
-    #[clap(default_value_t = std::u64::MAX)]
-    length: u64,
-}
-
-/// Removes a peer ban
-#[derive(Debug, Parser)]
-pub struct ArgsUnban {
     /// hex public key or emoji id
     node_id: UniNodeId,
     /// length of time to ban the peer for in seconds
@@ -38,6 +28,16 @@ impl HandleCommand<ArgsBan> for CommandContext {
     }
 }
 
+/// Removes a peer ban
+#[derive(Debug, Parser)]
+pub struct ArgsUnban {
+    /// hex public key or emoji id
+    node_id: UniNodeId,
+    /// length of time to ban the peer for in seconds
+    #[clap(default_value_t = std::u64::MAX)]
+    length: u64,
+}
+
 #[async_trait]
 impl HandleCommand<ArgsUnban> for CommandContext {
     async fn handle_command(&mut self, args: ArgsUnban) -> Result<(), Error> {
@@ -47,37 +47,26 @@ impl HandleCommand<ArgsUnban> for CommandContext {
     }
 }
 
+#[derive(Error, Debug)]
+enum ArgsError {
+    #[error("Cannot ban our own node")]
+    BanSelf,
+}
+
 impl CommandContext {
     pub async fn ban_peer(&mut self, node_id: NodeId, duration: Duration, must_ban: bool) -> Result<(), Error> {
         if self.base_node_identity.node_id() == &node_id {
-            println!("Cannot ban our own node");
+            Err(ArgsError::BanSelf.into())
         } else if must_ban {
-            // TODO: Use errors
-            match self
-                .connectivity
+            self.connectivity
                 .ban_peer_until(node_id.clone(), duration, "UI manual ban".to_string())
-                .await
-            {
-                Ok(_) => println!("Peer was banned in base node."),
-                Err(err) => {
-                    println!("Failed to ban peer: {:?}", err);
-                    log::error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                },
-            }
+                .await?;
+            println!("Peer was banned in base node.");
+            Ok(())
         } else {
-            match self.peer_manager.unban_peer(&node_id).await {
-                Ok(_) => {
-                    println!("Peer ban was removed from base node.");
-                },
-                Err(err) if err.is_peer_not_found() => {
-                    println!("Peer not found in base node");
-                },
-                Err(err) => {
-                    println!("Failed to ban peer: {:?}", err);
-                    log::error!(target: LOG_TARGET, "Could not ban peer: {:?}", err);
-                },
-            }
+            self.peer_manager.unban_peer(&node_id).await?;
+            println!("Peer ban was removed from base node.");
+            Ok(())
         }
-        Ok(())
     }
 }
