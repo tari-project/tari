@@ -13,11 +13,11 @@ edition = "2018"
 tari_comms = { version = "^0.29", path = "../../comms" }
 tari_comms_dht = { version = "^0.29", path = "../../comms/dht" }
 tari_common = { version = "^0.29", path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
 tari_service_framework = { version = "^0.29", path = "../service_framework" }
 tari_shutdown = { version = "^0.29", path = "../../infrastructure/shutdown" }
 tari_storage = { version = "^0.29", path = "../../infrastructure/storage" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 anyhow = "1.0.53"
 bytes = "0.5"
