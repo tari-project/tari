@@ -53,7 +53,7 @@ impl CommandContext {
                     .peer_manager
                     .find_by_public_key(&pk)
                     .await?
-                    .ok_or_else(|| ArgsError::NoPeerMatching { original_str })?;
+                    .ok_or(ArgsError::NoPeerMatching { original_str })?;
                 peer
             }
         };
