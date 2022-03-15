@@ -1,21 +1,21 @@
 <h1>{{this.title}}</h1>
 
-{{#each sidechains }}
-<div>
+{{#each sidechains}}
+  <div>
     <h2>Asset: {{hex this.asset_public_key}}</h2>
     <table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
-    <thead>
-    <tr>
-    <th>Committed Height</th>
-    <th>Committed Hash</th>
-    </tr>
-    </thead>
-    <tbody>
-    <tr>
-    <td>{{this.committed_height}}</td>
-    <td>{{hex this.committed_hash}}</td>
-    </tr>
-    </tbody>
+      <thead>
+        <tr>
+          <th>Committed Height</th>
+          <th>Committed Hash</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>{{this.committed_height}}</td>
+          <td>{{hex this.committed_hash}}</td>
+        </tr>
+      </tbody>
     </table>
-</div>
+  </div>
 {{/each}}

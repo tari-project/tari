@@ -52,11 +52,13 @@ router.get("/", async function (req, res) {
       from_height: from,
       num_headers: limit + 1,
     });
+    const pows = { 0: "Monero", 1: "SHA-3" };
     for (var i = headers.length - 2; i >= 0; i--) {
       headers[i].kernels =
         headers[i].kernel_mmr_size - headers[i + 1].kernel_mmr_size;
       headers[i].outputs =
         headers[i].output_mmr_size - headers[i + 1].output_mmr_size;
+      headers[i].powText = pows[headers[i].pow.pow_algo];
     }
     let lastHeader = headers[headers.length - 1];
     if (lastHeader.height === "0") {
@@ -74,11 +76,13 @@ router.get("/", async function (req, res) {
     // --  mempool
     let mempool = await client.getMempoolTransactions({});
 
-    console.log(mempool);
+    // console.log(mempool);
     for (let i = 0; i < mempool.length; i++) {
       let sum = 0;
       for (let j = 0; j < mempool[i].transaction.body.kernels.length; j++) {
         sum += parseInt(mempool[i].transaction.body.kernels[j].fee);
+        mempool[i].transaction.body.signature =
+          mempool[i].transaction.body.kernels[j].excess_sig.signature;
       }
       mempool[i].transaction.body.total_fees = sum;
     }
@@ -87,7 +91,7 @@ router.get("/", async function (req, res) {
       tipInfo,
       mempool,
       headers,
-      pows: { 0: "Monero", 1: "SHA-3" },
+      pows,
       nextPage: firstHeight - limit,
       prevPage: firstHeight + limit,
       limit,

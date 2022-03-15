@@ -42,11 +42,17 @@ use crate::{
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
-    validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
+    validation::{
+        header_iter::HeaderIter,
+        header_validator::HeaderValidator,
+        ChainBalanceValidator,
+        FinalHorizonStateValidation,
+    },
 };
 
 mod header_validators {
     use super::*;
+    use crate::validation::{DifficultyCalculator, HeaderValidation, ValidationError};
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -94,6 +100,27 @@ mod header_validators {
         (1..=11).for_each(|i| {
             assert_eq!(headers[i].height, i as u64);
         })
+    }
+
+    #[test]
+    fn it_validates_that_version_is_in_range() {
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let db = create_store_with_consensus(consensus_manager.clone());
+
+        let genesis = db.fetch_chain_header(0).unwrap();
+
+        let mut header = BlockHeader::from_previous(genesis.header());
+        header.version = u16::MAX;
+
+        let validator = HeaderValidator::new(consensus_manager.clone());
+
+        let difficulty_calculator = DifficultyCalculator::new(consensus_manager, Default::default());
+        let err = validator
+            .validate(&*db.db_read_access().unwrap(), &header, &difficulty_calculator)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
+            version: u16::MAX
+        }));
     }
 }
 

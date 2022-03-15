@@ -764,6 +764,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
     Ok(())
 }
 
+pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Result<(), ValidationError> {
+    if constants.valid_blockchain_version_range().contains(&version) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidBlockchainVersion { version })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

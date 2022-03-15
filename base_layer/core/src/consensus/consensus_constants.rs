@@ -55,6 +55,8 @@ pub struct ConsensusConstants {
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
+    /// Current version of the blockchain
+    valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
@@ -146,6 +148,11 @@ impl ConsensusConstants {
     /// Current version of the blockchain.
     pub fn blockchain_version(&self) -> u16 {
         self.blockchain_version
+    }
+
+    /// Returns the valid blockchain version range
+    pub fn valid_blockchain_version_range(&self) -> &RangeInclusive<u16> {
+        &self.valid_blockchain_version_range
     }
 
     /// This returns the FTL (Future Time Limit) for blocks.
@@ -285,6 +292,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 2,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -323,6 +331,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 19500,
@@ -361,6 +370,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 2,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -408,6 +418,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 360,
             blockchain_version: 2,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -452,6 +463,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
