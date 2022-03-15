@@ -367,12 +367,13 @@ async fn status_loop(mut context: CommandContext, watch_command: Option<String>)
     let status_interval = context.global_config().base_node_status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
+        let mut interrupt = signal::ctrl_c().fuse().boxed();
         tokio::select! {
             biased;
-            _ = shutdown_signal.wait() => {
+            _ = &mut interrupt => {
                 break;
             }
-            _ = signal::ctrl_c() => {
+            _ = shutdown_signal.wait() => {
                 break;
             }
             _ = interval => {
@@ -467,17 +468,19 @@ async fn cli_loop(mut context: CommandContext) {
             if let Err(err) = context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
+                // Keep the signal installed (to avoid missed signals)
+                let mut interrupt = signal::ctrl_c().fuse().boxed();
                 loop {
                     let interval = get_status_interval(start_time, interval);
                     tokio::select! {
+                        _ = &mut interrupt => {
+                            break;
+                        }
                         _ = interval => {
                             if let Err(err) = context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
                             }
                         },
-                        _ = signal::ctrl_c() => {
-                            break;
-                        }
                         // TODO: Is that good idea? Or add a separate command?
                         Ok(_) = software_update_notif.changed() => {
                             if let Some(ref update) = *software_update_notif.borrow() {
