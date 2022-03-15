@@ -5,6 +5,7 @@ use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, UniNodeId};
 use tari_common_types::emoji::EmojiId;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
+use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
 
@@ -32,30 +33,29 @@ impl HandleCommand<Args> for CommandContext {
     }
 }
 
+#[derive(Error, Debug)]
+enum ArgsError {
+    #[error("No peer matching: {original_str}")]
+    NoPeerMatching { original_str: String },
+}
+
 impl CommandContext {
     pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) -> Result<(), Error> {
-        let peer = match self.peer_manager.find_all_starts_with(&partial).await {
-            Ok(peers) if peers.is_empty() => {
-                if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
-                    if let Ok(Some(peer)) = self.peer_manager.find_by_public_key(&pk).await {
-                        peer
-                    } else {
-                        println!("No peer matching '{}'", original_str);
-                        // TODO: Return error
-                        return Ok(());
-                    }
-                } else {
-                    println!("No peer matching '{}'", original_str);
-                    // TODO: Return error
-                    return Ok(());
-                }
-            },
-            Ok(mut peers) => peers.remove(0),
-            Err(err) => {
-                println!("{}", err);
-                // TODO: Return error
-                return Ok(());
-            },
+        let peers = self.peer_manager.find_all_starts_with(&partial).await?;
+        let peer = {
+            if let Some(peer) = peers.into_iter().next() {
+                peer
+            } else {
+                let pk = parse_emoji_id_or_public_key(&original_str).ok_or_else(|| ArgsError::NoPeerMatching {
+                    original_str: original_str.clone(),
+                })?;
+                let peer = self
+                    .peer_manager
+                    .find_by_public_key(&pk)
+                    .await?
+                    .ok_or_else(|| ArgsError::NoPeerMatching { original_str })?;
+                peer
+            }
         };
 
         let eid = EmojiId::from_pubkey(&peer.public_key);
