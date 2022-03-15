@@ -105,7 +105,6 @@ pub enum OutputManagerRequest {
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
-    GetSeedWords,
     ValidateUtxos,
     RevalidateTxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
@@ -172,7 +171,6 @@ impl fmt::Display for OutputManagerRequest {
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
-            GetSeedWords => write!(f, "GetSeedWords"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
@@ -241,7 +239,6 @@ pub enum OutputManagerResponse {
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
     InvalidOutputs(Vec<UnblindedOutput>),
-    SeedWords(Vec<String>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
@@ -617,13 +614,6 @@ impl OutputManagerHandle {
     pub async fn get_invalid_outputs(&mut self) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self.handle.call(OutputManagerRequest::GetInvalidOutputs).await?? {
             OutputManagerResponse::InvalidOutputs(s) => Ok(s),
-            _ => Err(OutputManagerError::UnexpectedApiResponse),
-        }
-    }
-
-    pub async fn get_seed_words(&mut self) -> Result<Vec<String>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetSeedWords).await?? {
-            OutputManagerResponse::SeedWords(s) => Ok(s),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

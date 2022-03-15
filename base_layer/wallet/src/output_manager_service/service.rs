@@ -379,16 +379,6 @@ where
                     .collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
-            OutputManagerRequest::GetSeedWords => self
-                .resources
-                .master_key_manager
-                .get_seed_words(
-                    OutputManagerKeyManagerBranch::Spend.to_string(),
-                    &self.resources.config.seed_word_language,
-                )
-                .await
-                .map(OutputManagerResponse::SeedWords)
-                .map_err(OutputManagerError::TariKeyManagerError),
             OutputManagerRequest::ValidateUtxos => {
                 self.validate_outputs().map(OutputManagerResponse::TxoValidationStarted)
             },

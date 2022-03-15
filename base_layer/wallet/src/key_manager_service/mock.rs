@@ -23,11 +23,7 @@
 use aes_gcm::Aes256Gcm;
 use log::*;
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::{
-    cipher_seed::CipherSeed,
-    key_manager::KeyManager,
-    mnemonic::{Mnemonic, MnemonicLanguage},
-};
+use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
 use tokio::sync::RwLock;
 
 use crate::{
@@ -94,18 +90,6 @@ impl KeyManagerMock {
         let km = lock.get(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
         let key = km.derive_key(index)?;
         Ok(key.k)
-    }
-
-    /// Return the Seed words for the current Master Key set in the Key Manager
-    pub async fn get_seed_words_mock(
-        &self,
-        branch: String,
-        language: &MnemonicLanguage,
-    ) -> Result<Vec<String>, KeyManagerError> {
-        let lock = self.key_managers.read().await;
-        let km = lock.get(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
-        let seed_words = (*km).cipher_seed().to_mnemonic(language, None)?;
-        Ok(seed_words)
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
@@ -182,13 +166,5 @@ impl KeyManagerInterface for KeyManagerMock {
         index: u64,
     ) -> Result<(), KeyManagerError> {
         self.update_current_key_index_if_higher_mock(branch.into(), index).await
-    }
-
-    async fn get_seed_words<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        language: &MnemonicLanguage,
-    ) -> Result<Vec<String>, KeyManagerError> {
-        self.get_seed_words_mock(branch.into(), language).await
     }
 }
