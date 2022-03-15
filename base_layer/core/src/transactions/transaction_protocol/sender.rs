@@ -622,7 +622,7 @@ impl SenderTransactionProtocol {
     /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
     /// Transaction from it.
     pub fn load_pending_transaction_to_be_sent(data: String) -> Result<Self, TPE> {
-        let raw_data: RawTransactionInfo = serde_json::from_str(data.as_str()).map_err(|_| TPE::SerializationError)?;
+        let raw_data: RawTransactionInfo = serde_json::from_str(&data).map_err(|_| TPE::SerializationError)?;
         Ok(Self {
             state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
         })
@@ -894,14 +894,13 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let fee_per_gram = MicroTari(4);
         let fee = builder.fee().calculate(fee_per_gram, 1, 1, 1, 0);
-        let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features, PrivateKey::random(&mut OsRng), Covenant::default())
+            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), OutputFeatures::default(), PrivateKey::random(&mut OsRng), Covenant::default())
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
@@ -955,7 +954,6 @@ mod test {
         let expected_fee = builder
             .fee()
             .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_metadata(2));
-        let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
@@ -967,7 +965,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features,
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1034,7 +1032,6 @@ mod test {
         let (utxo, input) = create_test_input((2u64.pow(32) + 2001).into(), 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let features = OutputFeatures::default();
 
         builder
             .with_lock_height(0)
@@ -1047,7 +1044,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features,
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1158,11 +1155,11 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: PrivateKey::random(&mut OsRng),
             proof_message: proof_message.to_owned(),
         };
 
         let script = script!(Nop);
-        let features = OutputFeatures::default();
 
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         builder
@@ -1178,7 +1175,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features,
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )

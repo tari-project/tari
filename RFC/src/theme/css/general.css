@@ -31,7 +31,7 @@ h4, h5 { margin-top: 2em; }
 
 .header + .header h3,
 .header + .header h4,
-.header + .header h5 { 
+.header + .header h5 {
     margin-top: 1em;
 }
 
@@ -84,12 +84,12 @@ a.header:target h4:before {
 }
 
 table {
-    margin: 0 auto;
     border-collapse: collapse;
 }
 table td {
     padding: 3px 20px;
     border: 1px var(--table-border-color) solid;
+    padding: 5px 10px;
 }
 table thead {
     background: var(--table-header-bg);
@@ -97,6 +97,9 @@ table thead {
 table thead td {
     font-weight: 700;
     border: none;
+}
+table thead th {
+  padding: 5px 10px;
 }
 table thead tr {
     border: 1px var(--table-header-bg) solid;
@@ -147,4 +150,3 @@ blockquote {
 .tooltipped .tooltiptext {
     visibility: visible;
 }
-  

@@ -44,7 +44,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_components::{KernelFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -910,7 +910,13 @@ where
         let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
 
         // lets create the HTLC script
-        let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pubkey.clone())) Else CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone())) EndIf);
+        let script = script!(
+            HashSha256 PushHash(Box::new(hash)) Equal IfThen
+                PushPubKey(Box::new(dest_pubkey.clone()))
+            Else
+                CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone()))
+            EndIf
+        );
 
         // Empty covenant
         let covenant = Covenant::default();
@@ -955,12 +961,14 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
 
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
-            rewind_blinding_key: blinding_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: recovery_byte_key.clone(),
             proof_message: [0u8; 21],
         };
 
@@ -977,7 +985,7 @@ where
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
-            OutputFeatures::default(),
+            output.features.clone(),
             script,
             inputs!(PublicKey::from_secret_key(self.node_identity.secret_key())),
             self.node_identity.secret_key().clone(),
@@ -1119,11 +1127,13 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
-            rewind_blinding_key: blinding_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: recovery_byte_key.clone(),
             proof_message: [0u8; 21],
         };
 

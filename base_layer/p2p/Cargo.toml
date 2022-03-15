@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.28.1"
+version = "0.29.0"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -10,14 +10,14 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.28", path = "../../comms" }
-tari_comms_dht = { version = "^0.28", path = "../../comms/dht" }
-tari_common = { version = "^0.28", path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_service_framework = { version = "^0.28", path = "../service_framework" }
-tari_shutdown = { version = "^0.28", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.28", path = "../../infrastructure/storage" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
+tari_comms = { version = "^0.29", path = "../../comms" }
+tari_comms_dht = { version = "^0.29", path = "../../comms/dht" }
+tari_common = { version = "^0.29", path = "../../common" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_service_framework = { version = "^0.29", path = "../service_framework" }
+tari_shutdown = { version = "^0.29", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.29", path = "../../infrastructure/storage" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 anyhow = "1.0.53"
 bytes = "0.5"
@@ -44,14 +44,14 @@ rustls = "0.20.2"
 webpki = "0.21"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.28", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.29", path = "../../infrastructure/test_utils" }
 
 clap = "2.33.0"
 lazy_static = "1.3.0"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { version = "^0.28", path = "../../common", features = ["build"] }
+tari_common = { version = "^0.29", path = "../../common", features = ["build"] }
 
 [features]
 test-mocks = []

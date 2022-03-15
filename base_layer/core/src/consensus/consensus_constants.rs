@@ -180,8 +180,9 @@ impl ConsensusConstants {
 
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+        let output_features = OutputFeatures { ..Default::default() };
         let metadata_size = self.transaction_weight.round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
         );
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }

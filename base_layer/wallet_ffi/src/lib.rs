@@ -123,7 +123,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, CryptoFactories},
 };
 use tari_crypto::{
     inputs,
@@ -5206,11 +5206,12 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    let features = if features.is_null() {
-        OutputFeatures::with_maturity(0)
-    } else {
-        (*features).clone()
-    };
+    if features.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("features".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
     let covenant = if covenant.is_null() {
         Covenant::default()
     } else {
@@ -5244,14 +5245,15 @@ pub unsafe extern "C" fn wallet_import_utxo(
     };
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
-    // Todo the script_lock_height can be something other than 0, for example an HTLC transaction
+
+    // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        features,
+        (*features).clone(),
         message_string,
         (*metadata_signature).clone(),
         &(*script_private_key).clone(),
