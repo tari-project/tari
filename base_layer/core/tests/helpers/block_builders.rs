@@ -57,10 +57,10 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
-    script,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
+use tari_script::script;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,

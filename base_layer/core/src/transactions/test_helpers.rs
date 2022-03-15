@@ -28,12 +28,10 @@ use tari_common_types::types::{Commitment, CommitmentFactory, PrivateKey, Public
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     common::Blake256,
-    inputs,
     keys::{PublicKey as PK, SecretKey},
     range_proof::RangeProofService,
-    script,
-    script::{ExecutionStack, TariScript},
 };
+use tari_script::{inputs, script, ExecutionStack, TariScript};
 
 use super::transaction_components::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
@@ -387,7 +385,7 @@ macro_rules! txn_schema {
             fee: $fee,
             lock_height: $lock,
             features: $features.clone(),
-            script: tari_crypto::script![Nop],
+            script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
             input_version: None,

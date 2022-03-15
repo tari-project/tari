@@ -36,9 +36,9 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::pedersen::PedersenCommitmentFactory,
-    script::{ExecutionStack, TariScript},
     tari_utilities::fixed_set::FixedSet,
 };
+use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
@@ -676,12 +676,8 @@ impl SenderTransactionInitializer {
 mod test {
     use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
-    use tari_crypto::{
-        common::Blake256,
-        keys::SecretKey,
-        script,
-        script::{ExecutionStack, TariScript},
-    };
+    use tari_crypto::{common::Blake256, keys::SecretKey};
+    use tari_script::{script, ExecutionStack, TariScript};
 
     use crate::{
         covenants::Covenant,

@@ -25,7 +25,7 @@ use std::{
     io::{Read, Write},
 };
 
-use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript};
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, MaxSizeBytes};
 
@@ -73,11 +73,11 @@ impl ConsensusDecoding for ExecutionStack {
 #[cfg(test)]
 mod test {
     use tari_common_types::types::PublicKey;
-    use tari_crypto::{inputs, script};
+    use tari_script::{inputs, script};
 
     use crate::consensus::check_consensus_encoding_correctness;
 
-    mod tari_script {
+    mod script {
         use super::*;
         #[test]
         fn it_encodes_and_decodes_correctly() {

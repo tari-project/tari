@@ -23,13 +23,8 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    range_proof::RangeProofService,
-    script,
-    script::TariScript,
-    tari_utilities::hex::Hex,
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, range_proof::RangeProofService, tari_utilities::hex::Hex};
+use tari_script::{script, TariScript};
 use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;

@@ -25,13 +25,13 @@ use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    script::TariScript,
     tari_utilities::{
         epoch_time::EpochTime,
         hash::Hashable,
         hex::{to_hex, Hex},
     },
 };
+use tari_script::TariScript;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},

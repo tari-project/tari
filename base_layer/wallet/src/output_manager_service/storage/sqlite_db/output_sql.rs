@@ -37,11 +37,8 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::ByteArray,
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::ByteArray};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hash::Hashable;
 
 use crate::{

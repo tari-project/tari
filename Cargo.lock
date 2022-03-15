@@ -6510,6 +6510,7 @@ dependencies = [
  "tari_comms",
  "tari_core",
  "tari_crypto",
+ "tari_script",
  "tari_utilities",
  "tonic",
  "tonic-build",
@@ -6883,6 +6884,7 @@ dependencies = [
  "tari_metrics",
  "tari_mmr",
  "tari_p2p",
+ "tari_script",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
@@ -7194,6 +7196,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_script"
+version = "0.12.0"
+dependencies = [
+ "blake2",
+ "digest 0.9.0",
+ "rand 0.8.5",
+ "serde 1.0.136",
+ "sha2 0.9.9",
+ "sha3",
+ "tari_crypto",
+ "tari_utilities",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_service_framework"
 version = "0.29.0"
 dependencies = [
@@ -7406,6 +7423,7 @@ dependencies = [
  "tari_crypto",
  "tari_key_manager",
  "tari_p2p",
+ "tari_script",
  "tari_service_framework",
  "tari_shutdown",
  "tari_storage",
@@ -7437,6 +7455,7 @@ dependencies = [
  "tari_crypto",
  "tari_key_manager",
  "tari_p2p",
+ "tari_script",
  "tari_service_framework",
  "tari_shutdown",
  "tari_test_utils 0.29.0",
@@ -7653,6 +7672,7 @@ dependencies = [
  "tari_common_types",
  "tari_core",
  "tari_crypto",
+ "tari_script",
  "tari_utilities",
  "tokio 1.17.0",
 ]

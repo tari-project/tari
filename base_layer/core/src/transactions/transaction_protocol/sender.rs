@@ -31,9 +31,9 @@ use tari_common_types::{
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
     tari_utilities::ByteArray,
 };
+use tari_script::TariScript;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -753,10 +753,9 @@ mod test {
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::{ExecutionStack, TariScript},
         tari_utilities::{hex::Hex, ByteArray},
     };
+    use tari_script::{script, ExecutionStack, TariScript};
 
     use crate::{
         covenants::Covenant,

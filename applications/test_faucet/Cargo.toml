@@ -13,6 +13,7 @@ avx2 = ["simd"]
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 tari_common_types = { path = "../../base_layer/common_types" }
+tari_script = { path = "../../infrastructure/tari_script" }
 
 rand = "0.8"
 serde = { version = "1.0.97", features = ["derive"] }

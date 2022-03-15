@@ -126,9 +126,7 @@ use tari_core::{
     transactions::{tari_amount::MicroTari, CryptoFactories},
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
     tari_utilities::ByteArray,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
@@ -137,6 +135,7 @@ use tari_p2p::{
     Network,
     DEFAULT_DNS_NAME_SERVER,
 };
+use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{

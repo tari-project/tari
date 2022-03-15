@@ -56,15 +56,13 @@ use tari_core::{
 };
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PublicKeyTrait, SecretKey},
     range_proof::REWIND_USER_MESSAGE_LENGTH,
-    script,
-    script::TariScript,
-    tari_utilities::{hex::Hex, ByteArray},
 };
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     base_node_service::handle::{BaseNodeEvent, BaseNodeServiceHandle},

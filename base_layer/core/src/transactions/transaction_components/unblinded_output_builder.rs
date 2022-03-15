@@ -21,10 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey};
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     covenants::Covenant,

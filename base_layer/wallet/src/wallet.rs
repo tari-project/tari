@@ -50,8 +50,6 @@ use tari_core::{
 use tari_crypto::{
     common::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
@@ -63,6 +61,7 @@ use tari_p2p::{
     initialization::P2pInitializer,
     services::liveness::{LivenessConfig, LivenessInitializer},
 };
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 

@@ -34,11 +34,10 @@ use tari_core::transactions::{
     CryptoFactories,
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
     tari_utilities::hex::Hex,
 };
+use tari_script::{inputs, script};
 
 use crate::{
     key_manager_service::KeyManagerInterface,

@@ -28,10 +28,8 @@ use std::{
 };
 
 use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, BLOCK_HASH_LENGTH};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, ByteArrayError},
-};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
