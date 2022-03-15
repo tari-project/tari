@@ -101,16 +101,11 @@ use std::{
     time::{Duration, Instant},
 };
 
-use commands::{
-    command::CommandContext,
-    parser::Parser,
-    reader::{CommandEvent, CommandReader},
-    status_line::StatusLineOutput,
-};
+use commands::{command::CommandContext, parser::Parser, reader::CommandReader, status_line::StatusLineOutput};
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use rustyline::{config::OutputStreamType, CompletionType, Config, EditMode, Editor};
+use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -423,7 +418,7 @@ async fn cli_loop(mut context: CommandContext) {
             res = reader.next_command() => {
                 if let Some(event) = res {
                     match event {
-                        CommandEvent::Command(line) => {
+                        Ok(line) => {
                             first_signal = false;
                             if !line.is_empty() {
                                 match context.handle_command_str(&line).await {
@@ -436,15 +431,20 @@ async fn cli_loop(mut context: CommandContext) {
                                 }
                             }
                         }
-                        CommandEvent::Interrupt => {
+                        Err(ReadlineError::Interrupted) => {
+                            // If `Ctrl-C` is pressed
                             if !first_signal {
-                                println!("Are you leaving already? Press Ctrl-C again to terminate the node.");
+                                println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
                                 first_signal = true;
                             } else {
                                 break;
                             }
                         }
-                        CommandEvent::Error(err) => {
+                        Err(ReadlineError::Eof) => {
+                            // If `Ctrl-D` is pressed
+                            break;
+                        }
+                        Err(err) => {
                             // TODO: Not sure we have to break here
                             // This happens when the node is shutting down.
                             debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
