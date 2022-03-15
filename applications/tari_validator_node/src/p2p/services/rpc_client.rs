@@ -25,18 +25,12 @@ use std::convert::TryInto;
 use async_trait::async_trait;
 use log::*;
 use tari_common_types::types::PublicKey;
-use tari_comms::{
-    connection_manager::ConnectionManagerError,
-    connectivity::{ConnectivityError, ConnectivityRequester},
-    peer_manager::NodeId,
-    PeerConnection,
-};
-use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
+use tari_comms::PeerConnection;
+use tari_comms_dht::DhtRequester;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
-    models::{SideChainBlock, TemplateId, TreeNodeHash},
-    services::{ValidatorNodeClientFactory, ValidatorNodeRpcClient},
-    DigitalAssetError,
+    models::{Node, SchemaState, SideChainBlock, StateOpLogEntry, TemplateId, TreeNodeHash},
+    services::{ValidatorNodeClientError, ValidatorNodeClientFactory, ValidatorNodeRpcClient},
 };
 use tokio_stream::StreamExt;
 
@@ -45,47 +39,14 @@ use crate::p2p::{proto::validator_node as proto, rpc};
 const LOG_TARGET: &str = "tari::validator_node::p2p::services::rpc_client";
 
 pub struct TariCommsValidatorNodeRpcClient {
-    connectivity: ConnectivityRequester,
-    dht_discovery: DhtDiscoveryRequester,
+    dht: DhtRequester,
     address: PublicKey,
 }
 
 impl TariCommsValidatorNodeRpcClient {
-    async fn create_connection(&mut self) -> Result<PeerConnection, DigitalAssetError> {
-        match self.connectivity.dial_peer(NodeId::from(self.address.clone())).await {
-            Ok(connection) => Ok(connection),
-            Err(connectivity_error) => {
-                dbg!(&connectivity_error);
-                match &connectivity_error {
-                    ConnectivityError::ConnectionFailed(err) => {
-                        match err {
-                            ConnectionManagerError::PeerConnectionError(_) |
-                            ConnectionManagerError::DialConnectFailedAllAddresses |
-                            ConnectionManagerError::PeerIdentityNoValidAddresses => {
-                                // Try discover, then dial again
-                                // TODO: Should make discovery and connect the responsibility of the DHT layer
-                                self.dht_discovery
-                                    .discover_peer(
-                                        Box::new(self.address.clone()),
-                                        NodeDestination::PublicKey(Box::new(self.address.clone())),
-                                    )
-                                    .await?;
-                                if let Some(conn) = self
-                                    .connectivity
-                                    .get_connection(NodeId::from(self.address.clone()))
-                                    .await?
-                                {
-                                    return Ok(conn);
-                                }
-                                Ok(self.connectivity.dial_peer(NodeId::from(self.address.clone())).await?)
-                            },
-                            _ => Err(connectivity_error.into()),
-                        }
-                    },
-                    _ => Err(connectivity_error.into()),
-                }
-            },
-        }
+    async fn create_connection(&mut self) -> Result<PeerConnection, ValidatorNodeClientError> {
+        let conn = self.dht.dial_or_discover_peer(self.address.clone()).await?;
+        Ok(conn)
     }
 }
 
@@ -97,7 +58,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         debug!(
             target: LOG_TARGET,
             r#"Invoking read method "{}" for asset '{}'"#, method, asset_public_key
@@ -125,7 +86,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         template_id: TemplateId,
         method: String,
         args: Vec<u8>,
-    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
         debug!(
             target: LOG_TARGET,
             r#"Invoking method "{}" for asset '{}'"#, method, asset_public_key
@@ -156,7 +117,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         asset_public_key: &PublicKey,
         start_hash: TreeNodeHash,
         end_hash: Option<TreeNodeHash>,
-    ) -> Result<Vec<SideChainBlock>, DigitalAssetError> {
+    ) -> Result<Vec<SideChainBlock>, ValidatorNodeClientError> {
         let mut connection = self.create_connection().await?;
         let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
         let request = proto::GetSidechainBlocksRequest {
@@ -168,36 +129,124 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         let stream = client.get_sidechain_blocks(request).await?;
         // TODO: By first collecting all the blocks, we lose the advantage of streaming. Since you cannot return
         //       `Result<impl Stream<..>, _>`, and the Map type is private in tokio-stream, its a little tricky to
-        //       return the stream and not leak the RPC response type out of the client
+        //       return the stream and not leak the RPC response type out of the client.
+        //       Copying the tokio_stream::Map stream into our code / creating a custom conversion stream wrapper would
+        // solve this.
         let blocks = stream
             .map(|result| {
-                let resp = result.map_err(DigitalAssetError::from)?;
+                let resp = result?;
                 let block: SideChainBlock = resp
                     .block
-                    .ok_or_else(|| DigitalAssetError::ConversionError("Node returned empty block".to_string()))?
+                    .ok_or_else(|| {
+                        ValidatorNodeClientError::InvalidPeerMessage("Node returned empty block".to_string())
+                    })?
                     .try_into()
-                    .map_err(DigitalAssetError::ConversionError)?;
+                    .map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
                 Ok(block)
             })
-            .collect::<Result<_, DigitalAssetError>>()
+            .collect::<Result<_, ValidatorNodeClientError>>()
             .await?;
 
         Ok(blocks)
+    }
+
+    async fn get_sidechain_state(
+        &mut self,
+        asset_public_key: &PublicKey,
+    ) -> Result<Vec<SchemaState>, ValidatorNodeClientError> {
+        let mut connection = self.create_connection().await?;
+        let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
+        let request = proto::GetSidechainStateRequest {
+            asset_public_key: asset_public_key.to_vec(),
+        };
+
+        let mut stream = client.get_sidechain_state(request).await?;
+        // TODO: Same issue as get_sidechain_blocks
+        let mut schemas = Vec::new();
+        let mut current_schema = None;
+        while let Some(resp) = stream.next().await {
+            let resp = resp?;
+
+            match resp.state {
+                Some(proto::get_sidechain_state_response::State::Schema(name)) => {
+                    if let Some(schema) = current_schema.take() {
+                        schemas.push(schema);
+                    }
+                    current_schema = Some(SchemaState::new(name, vec![]));
+                },
+                Some(proto::get_sidechain_state_response::State::KeyValue(kv)) => match current_schema.as_mut() {
+                    Some(schema) => {
+                        let kv = kv.try_into().map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
+                        schema.push_key_value(kv);
+                    },
+                    None => {
+                        return Err(ValidatorNodeClientError::InvalidPeerMessage(format!(
+                            "Peer {} sent a key value response without first defining the schema",
+                            self.address
+                        )))
+                    },
+                },
+                None => {
+                    return Err(ValidatorNodeClientError::ProtocolViolation {
+                        peer: self.address.clone(),
+                        details: "get_sidechain_state: Peer sent response without state".to_string(),
+                    })
+                },
+            }
+        }
+
+        if let Some(schema) = current_schema {
+            schemas.push(schema);
+        }
+
+        Ok(schemas)
+    }
+
+    async fn get_op_logs(
+        &mut self,
+        asset_public_key: &PublicKey,
+        height: u64,
+    ) -> Result<Vec<StateOpLogEntry>, ValidatorNodeClientError> {
+        let mut connection = self.create_connection().await?;
+        let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
+        let request = proto::GetStateOpLogsRequest {
+            asset_public_key: asset_public_key.as_bytes().to_vec(),
+            height,
+        };
+
+        let resp = client.get_op_logs(request).await?;
+        let op_logs = resp
+            .op_logs
+            .into_iter()
+            .map(TryInto::try_into)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
+
+        Ok(op_logs)
+    }
+
+    async fn get_tip_node(&mut self, asset_public_key: &PublicKey) -> Result<Option<Node>, ValidatorNodeClientError> {
+        let mut connection = self.create_connection().await?;
+        let mut client = connection.connect_rpc::<rpc::ValidatorNodeRpcClient>().await?;
+        let request = proto::GetTipNodeRequest {
+            asset_public_key: asset_public_key.as_bytes().to_vec(),
+        };
+        let resp = client.get_tip_node(request).await?;
+        resp.tip_node
+            .map(TryInto::try_into)
+            .transpose()
+            .map_err(ValidatorNodeClientError::InvalidPeerMessage)
     }
 }
 
 #[derive(Clone)]
 pub struct TariCommsValidatorNodeClientFactory {
-    connectivity_requester: ConnectivityRequester,
-    dht_discovery: DhtDiscoveryRequester,
+    dht: DhtRequester,
 }
 
 impl TariCommsValidatorNodeClientFactory {
-    pub fn new(connectivity_requester: ConnectivityRequester, dht_discovery: DhtDiscoveryRequester) -> Self {
-        Self {
-            connectivity_requester,
-            dht_discovery,
-        }
+    pub fn new(dht: DhtRequester) -> Self {
+        Self { dht }
     }
 }
 
@@ -207,8 +256,7 @@ impl ValidatorNodeClientFactory for TariCommsValidatorNodeClientFactory {
 
     fn create_client(&self, address: &Self::Addr) -> Self::Client {
         TariCommsValidatorNodeRpcClient {
-            connectivity: self.connectivity_requester.clone(),
-            dht_discovery: self.dht_discovery.clone(),
+            dht: self.dht.clone(),
             address: address.clone(),
         }
     }

@@ -75,9 +75,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::Signature;
-use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::transactions::transaction::Transaction;
+use crate::transactions::transaction_components::Transaction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
@@ -101,32 +100,6 @@ impl Display for StatsResponse {
 pub struct StateResponse {
     pub unconfirmed_pool: Vec<Arc<Transaction>>,
     pub reorg_pool: Vec<Signature>,
-}
-
-impl Display for StateResponse {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        writeln!(fmt, "----------------- Mempool -----------------")?;
-        writeln!(fmt, "--- Unconfirmed Pool ---")?;
-        for tx in &self.unconfirmed_pool {
-            writeln!(
-                fmt,
-                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes",
-                tx.first_kernel_excess_sig()
-                    .map(|sig| sig.get_signature().to_hex())
-                    .unwrap_or_else(|| "N/A".to_string()),
-                tx.body.get_total_fee(),
-                tx.body.outputs().len(),
-                tx.body.kernels().len(),
-                tx.body.inputs().len(),
-                tx.body.sum_metadata_size(),
-            )?;
-        }
-        writeln!(fmt, "--- Reorg Pool ---")?;
-        for excess_sig in &self.reorg_pool {
-            writeln!(fmt, "    {}", excess_sig.get_signature().to_hex())?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

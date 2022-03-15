@@ -26,7 +26,7 @@ use digest::Digest;
 use log::*;
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_common_types::{
-    transaction::TxId,
+    transaction::{ImportStatus, TxId},
     types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -43,25 +43,29 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, UnblindedOutput},
+        transaction_components::{OutputFeatures, UnblindedOutput},
         CryptoFactories,
     },
 };
 use tari_crypto::{
     common::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager::KeyManager,
+    mnemonic::{Mnemonic, MnemonicLanguage},
+};
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
+    services::liveness::{LivenessConfig, LivenessInitializer},
 };
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
@@ -71,7 +75,13 @@ use crate::{
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
-    error::WalletError,
+    error::{WalletError, WalletStorageError},
+    key_manager_service::{
+        storage::database::KeyManagerBackend,
+        KeyManagerHandle,
+        KeyManagerInitializer,
+        KeyManagerInterface,
+    },
     output_manager_service::{
         error::OutputManagerError,
         handle::OutputManagerHandle,
@@ -86,7 +96,7 @@ use crate::{
         TransactionServiceInitializer,
     },
     types::KeyDigest,
-    utxo_scanner_service::{handle::UtxoScannerHandle, UtxoScannerServiceInitializer, RECOVERY_KEY},
+    utxo_scanner_service::{handle::UtxoScannerHandle, initializer::UtxoScannerServiceInitializer, RECOVERY_KEY},
 };
 
 const LOG_TARGET: &str = "wallet";
@@ -94,12 +104,13 @@ const LOG_TARGET: &str = "wallet";
 /// A structure containing the config and services that a Wallet application will require. This struct will start up all
 /// the services and provide the APIs that applications will use to interact with the services
 #[derive(Clone)]
-pub struct Wallet<T, U, V, W> {
+pub struct Wallet<T, U, V, W, X> {
     pub network: NetworkConsensus,
     pub comms: CommsNode,
     pub dht_service: Dht,
     pub store_and_forward_requester: StoreAndForwardRequester,
     pub output_manager_service: OutputManagerHandle,
+    pub key_manager_service: KeyManagerHandle<X>,
     pub transaction_service: TransactionServiceHandle,
     pub wallet_connectivity: WalletConnectivityHandle,
     pub contacts_service: ContactsServiceHandle,
@@ -115,12 +126,13 @@ pub struct Wallet<T, U, V, W> {
     _w: PhantomData<W>,
 }
 
-impl<T, U, V, W> Wallet<T, U, V, W>
+impl<T, U, V, W, X> Wallet<T, U, V, W, X>
 where
     T: WalletBackend + 'static,
     U: TransactionBackend + 'static,
     V: OutputManagerBackend + 'static,
     W: ContactsBackend + 'static,
+    X: KeyManagerBackend + 'static,
 {
     pub async fn start(
         config: WalletConfig,
@@ -128,6 +140,7 @@ where
         transaction_backend: U,
         output_manager_backend: V,
         contacts_backend: W,
+        key_manager_backend: X,
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
@@ -158,23 +171,36 @@ where
         );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(config.comms_config.clone(), publisher))
-            .add_initializer(OutputManagerServiceInitializer::new(
+            .add_initializer(OutputManagerServiceInitializer::<V, X>::new(
                 config.output_manager_service_config.unwrap_or_default(),
                 output_manager_backend.clone(),
                 factories.clone(),
                 config.network,
-                master_seed,
                 node_identity.clone(),
             ))
+            .add_initializer(KeyManagerInitializer::new(key_manager_backend, master_seed))
             .add_initializer(TransactionServiceInitializer::new(
                 config.transaction_service_config.unwrap_or_default(),
-                peer_message_subscription_factory,
+                peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
                 factories.clone(),
                 wallet_database.clone(),
             ))
-            .add_initializer(ContactsServiceInitializer::new(contacts_backend))
+            .add_initializer(LivenessInitializer::new(
+                LivenessConfig {
+                    auto_ping_interval: Some(config.contacts_auto_ping_interval),
+                    num_peers_per_round: 0,       // No random peers
+                    max_allowed_ping_failures: 0, // Peer with failed ping-pong will never be removed
+                    ..Default::default()
+                },
+                peer_message_subscription_factory,
+            ))
+            .add_initializer(ContactsServiceInitializer::new(
+                contacts_backend,
+                config.contacts_auto_ping_interval,
+                config.contacts_online_ping_window,
+            ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 config.base_node_service_config.clone(),
                 wallet_database.clone(),
@@ -210,6 +236,7 @@ where
         let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
+        let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();
         let transaction_service_handle = handles.expect_handle::<TransactionServiceHandle>();
         let contacts_handle = handles.expect_handle::<ContactsServiceHandle>();
         let dht = handles.expect_handle::<Dht>();
@@ -246,6 +273,7 @@ where
             dht_service: dht,
             store_and_forward_requester,
             output_manager_service: output_manager_handle,
+            key_manager_service: key_manager_handle,
             transaction_service: transaction_service_handle,
             contacts_service: contacts_handle,
             base_node_service: base_node_service_handle,
@@ -370,7 +398,7 @@ where
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
     /// EncumberedToBeReceived. A faux incoming transaction will be created to provide a record of the event. The TxId
     /// of the generated transaction is returned.
-    #[allow(clippy::too_many_arguments)]
+
     pub async fn import_utxo(
         &mut self,
         amount: MicroTari,
@@ -401,7 +429,15 @@ where
 
         let tx_id = self
             .transaction_service
-            .import_utxo(amount, source_public_key.clone(), message, Some(features.maturity))
+            .import_utxo_with_status(
+                amount,
+                source_public_key.clone(),
+                message,
+                Some(features.maturity),
+                ImportStatus::Imported,
+                None,
+                None,
+            )
             .await?;
 
         let commitment_hex = unblinded_output
@@ -416,7 +452,7 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet", commitment_hex
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'", commitment_hex
         );
 
         Ok(tx_id)
@@ -433,11 +469,14 @@ where
     ) -> Result<TxId, WalletError> {
         let tx_id = self
             .transaction_service
-            .import_utxo(
+            .import_utxo_with_status(
                 unblinded_output.value,
                 source_public_key.clone(),
                 message,
                 Some(unblinded_output.features.maturity),
+                ImportStatus::Imported,
+                None,
+                None,
             )
             .await?;
 
@@ -447,12 +486,12 @@ where
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
                 .commitment()
                 .map_err(WalletError::TransactionError)?
-                .to_hex()
+                .to_hex(),
         );
 
         Ok(tx_id)
@@ -515,7 +554,8 @@ where
         debug!(target: LOG_TARGET, "Applying wallet encryption.");
         let cipher = self.db.apply_encryption(passphrase).await?;
         self.output_manager_service.apply_encryption(cipher.clone()).await?;
-        self.transaction_service.apply_encryption(cipher).await?;
+        self.transaction_service.apply_encryption(cipher.clone()).await?;
+        self.key_manager_service.apply_encryption(cipher).await?;
         Ok(())
     }
 
@@ -525,6 +565,7 @@ where
         self.db.remove_encryption().await?;
         self.output_manager_service.remove_encryption().await?;
         self.transaction_service.remove_encryption().await?;
+        self.key_manager_service.remove_encryption().await?;
         Ok(())
     }
 
@@ -532,6 +573,17 @@ where
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
+    }
+
+    pub async fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+        let master_seed = self.db.get_master_seed().await?.ok_or_else(|| {
+            WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
+                "Cipher Seed not found".to_string(),
+            ))
+        })?;
+
+        let seed_words = master_seed.to_mnemonic(language, None)?;
+        Ok(seed_words)
     }
 }
 

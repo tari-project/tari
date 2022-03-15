@@ -30,7 +30,7 @@ use crate::{
     blocks::BlockError,
     chain_storage::MmrTree,
     proof_of_work::PowError,
-    transactions::transaction::TransactionError,
+    transactions::transaction_components::TransactionError,
     validation::ValidationError,
 };
 

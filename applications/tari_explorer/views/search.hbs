@@ -2,13 +2,15 @@
 <br />
 <h1>Found in blocks:</h1>
 {{#if items.length}}
-    <ul>
+  <ul>
     {{#each items}}
-    <li>{{link "/blocks/{{this.block.header.hash}}" this.block.header.height}}</a></li>
-
+      <li>{{link
+          "/blocks/{{this.block.header.hash}}"
+          this.block.header.height
+        }}</li>
 
     {{/each}}
-    </ul>
-    {{else}}
-    <h2>!!! No results found</h2>
+  </ul>
+{{else}}
+  <h2>!!! No results found</h2>
 {{/if}}

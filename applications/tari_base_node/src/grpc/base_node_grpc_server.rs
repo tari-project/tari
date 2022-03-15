@@ -48,7 +48,7 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -602,8 +602,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let response = tari_rpc::ListAssetRegistrationsResponse {
                     asset_public_key: output
                         .features
-                        .mint_non_fungible
-                        .map(|mint| mint.asset_public_key.to_vec())
+                        .asset
+                        .map(|asset| asset.public_key.to_vec())
                         .unwrap_or_default(),
                     unique_id: output.features.unique_id.unwrap_or_default(),
                     owner_commitment: output.commitment.to_vec(),
@@ -1361,11 +1361,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .state_info
             .get_block_sync_info()
             .map(|info| {
-                let node_ids = info.sync_peers.iter().map(|x| x.to_string().into_bytes()).collect();
+                let node_ids = info.sync_peer.node_id().to_string().into_bytes();
                 tari_rpc::SyncInfoResponse {
                     tip_height: info.tip_height,
                     local_height: info.local_height,
-                    peer_node_id: node_ids,
+                    peer_node_id: vec![node_ids],
                 }
             })
             .unwrap_or_default();
@@ -1436,7 +1436,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: latency.unwrap_or_default(),
+            avg_latency_ms: latency
+                .map(|l| u32::try_from(l.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or(0),
             num_node_connections: status.num_connected_nodes() as u32,
         };
 

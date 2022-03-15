@@ -44,6 +44,8 @@ pub enum SqliteStorageError {
     DecodeError(#[from] bytecodec::Error),
     #[error("Encountered malformed hash data")]
     MalformedHashData,
+    #[error("Malformed DB data: {0}")]
+    MalformedDbData(String),
     #[error(transparent)]
     ModelError(#[from] ModelError),
 }

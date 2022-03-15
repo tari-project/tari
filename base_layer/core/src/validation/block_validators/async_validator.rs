@@ -25,7 +25,8 @@ use async_trait::async_trait;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, HashOutput, PublicKey};
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, script::ScriptContext};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_script::ScriptContext;
 use tari_utilities::Hashable;
 use tokio::task;
 
@@ -37,7 +38,7 @@ use crate::{
     iterators::NonOverlappingIntegerPairIter,
     transactions::{
         aggregated_body::AggregateBody,
-        transaction::{
+        transaction_components::{
             KernelSum,
             OutputFlags,
             TransactionError,

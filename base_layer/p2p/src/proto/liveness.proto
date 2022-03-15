@@ -27,4 +27,6 @@ enum MetadataKey {
     MetadataKeyNone = 0;
     // The value for this key contains chain metadata
     MetadataKeyChainMetadata = 1;
+    // The value for this key contains empty data
+    MetadataKeyContactsLiveness = 2;
 }

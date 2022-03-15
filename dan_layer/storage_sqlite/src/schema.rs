@@ -48,6 +48,18 @@ table! {
 }
 
 table! {
+    state_op_log (id) {
+        id -> Integer,
+        height -> BigInt,
+        merkle_root -> Nullable<Binary>,
+        operation -> Text,
+        schema -> Text,
+        key -> Binary,
+        value -> Nullable<Binary>,
+    }
+}
+
+table! {
     state_tree (id) {
         id -> Integer,
         version -> Integer,
@@ -58,4 +70,12 @@ table! {
 
 joinable!(instructions -> nodes (node_id));
 
-allow_tables_to_appear_in_same_query!(instructions, locked_qc, nodes, prepare_qc, state_keys, state_tree,);
+allow_tables_to_appear_in_same_query!(
+    instructions,
+    locked_qc,
+    nodes,
+    prepare_qc,
+    state_keys,
+    state_op_log,
+    state_tree,
+);

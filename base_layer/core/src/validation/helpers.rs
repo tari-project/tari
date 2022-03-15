@@ -25,13 +25,13 @@ use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    script::TariScript,
     tari_utilities::{
         epoch_time::EpochTime,
         hash::Hashable,
         hex::{to_hex, Hex},
     },
 };
+use tari_script::TariScript;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -50,7 +50,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelSum,
             OutputFlags,
             TransactionError,
@@ -586,7 +586,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.kernel_mr != mmr_roots.kernel_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header kernel MMR roots in {} do not match calculated roots. Expected: {}, Actual:{}",
+            "Block header kernel MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
+            header.height,
             header.hash().to_hex(),
             header.kernel_mr.to_hex(),
             mmr_roots.kernel_mr.to_hex()
@@ -598,7 +599,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.kernel_mmr_size != mmr_roots.kernel_mmr_size {
         warn!(
             target: LOG_TARGET,
-            "Block header kernel MMR size in {} does not match. Expected: {}, Actual:{}",
+            "Block header kernel MMR size in #{} {} does not match. Expected: {}, Actual:{}",
+            header.height,
             header.hash().to_hex(),
             header.kernel_mmr_size,
             mmr_roots.kernel_mmr_size
@@ -612,7 +614,8 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.output_mr != mmr_roots.output_mr {
         warn!(
             target: LOG_TARGET,
-            "Block header output MMR roots in {} do not match calculated roots. Expected: {}, Actual:{}",
+            "Block header output MMR roots in #{} {} do not match calculated roots. Expected: {}, Actual:{}",
+            header.height,
             header.hash().to_hex(),
             header.output_mr.to_hex(),
             mmr_roots.output_mr.to_hex()
@@ -634,7 +637,7 @@ pub fn check_mmr_roots(header: &BlockHeader, mmr_roots: &MmrRoots) -> Result<(),
     if header.output_mmr_size != mmr_roots.output_mmr_size {
         warn!(
             target: LOG_TARGET,
-            "Block header output MMR size in {} does not match. Expected: {}, Actual:{}",
+            "Block header output MMR size in {} does not match. Expected: {}, Actual: {}",
             header.hash().to_hex(),
             header.output_mmr_size,
             mmr_roots.output_mmr_size
@@ -761,6 +764,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
     Ok(())
 }
 
+pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Result<(), ValidationError> {
+    if constants.valid_blockchain_version_range().contains(&version) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidBlockchainVersion { version })
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -850,13 +861,16 @@ mod test {
 
     mod check_maturity {
         use super::*;
-        use crate::transactions::transaction::{OutputFeatures, TransactionInputVersion};
+        use crate::transactions::transaction_components::{OutputFeatures, TransactionInputVersion};
 
         #[test]
         fn it_checks_the_input_maturity() {
             let input = TransactionInput::new_with_output_data(
                 TransactionInputVersion::get_current_version(),
-                OutputFeatures::with_maturity(5),
+                OutputFeatures {
+                    maturity: 5,
+                    ..Default::default()
+                },
                 Default::default(),
                 Default::default(),
                 Default::default(),

@@ -27,10 +27,10 @@ use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{TransactionOutputVersion, UnblindedOutput},
+        transaction_components::{TransactionOutputVersion, UnblindedOutput},
     },
 };
-use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;

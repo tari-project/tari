@@ -56,7 +56,7 @@ pub mod sync;
 #[cfg(feature = "base_node")]
 pub use sync::{
     rpc::{create_base_node_sync_rpc_service, BaseNodeSyncService},
-    BlockSyncConfig,
+    BlockchainSyncConfig,
     SyncValidators,
 };
 

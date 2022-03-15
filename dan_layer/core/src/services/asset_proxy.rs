@@ -23,7 +23,7 @@
 use async_trait::async_trait;
 use futures::stream::FuturesUnordered;
 use log::*;
-use tari_common_types::types::PublicKey;
+use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio_stream::StreamExt;
 
@@ -101,9 +101,10 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         let mut client = self.validator_node_client_factory.create_client(member);
-        client
+        let resp = client
             .invoke_read_method(asset_public_key, template_id, method, args)
-            .await
+            .await?;
+        Ok(resp)
     }
 
     async fn forward_invoke_to_node(
@@ -114,8 +115,12 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
         method: String,
         args: Vec<u8>,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+        debug!(target: LOG_TARGET, "Forwarding '{}' instruction to {}", member, method);
         let mut client = self.validator_node_client_factory.create_client(member);
-        client.invoke_method(asset_public_key, template_id, method, args).await
+        let resp = client
+            .invoke_method(asset_public_key, template_id, method, args)
+            .await?;
+        Ok(resp)
     }
 
     #[allow(clippy::for_loops_over_fallibles)]
@@ -134,7 +139,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> ConcreteAsse
                 tip.height_of_longest_chain,
                 asset_public_key.clone(),
                 // TODO: read this from the chain maybe?
-                vec![3u8; 32],
+                ASSET_CHECKPOINT_ID.into(),
             )
             .await?;
 

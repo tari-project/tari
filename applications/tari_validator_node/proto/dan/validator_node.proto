@@ -74,7 +74,48 @@ message GetSidechainBlocksRequest {
   bytes end_hash = 3;
 }
 
-
 message GetSidechainBlocksResponse {
   tari.dan.common.SideChainBlock block = 1;
+}
+
+message GetSidechainStateRequest {
+  bytes asset_public_key = 1;
+}
+
+message GetSidechainStateResponse {
+  oneof state {
+    string schema  = 1;
+    KeyValue key_value = 2;
+  }
+}
+
+message KeyValue {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message GetStateOpLogsRequest {
+  bytes asset_public_key = 1;
+  uint64 height = 2;
+}
+
+message GetStateOpLogsResponse {
+  repeated StateOpLog op_logs = 1;
+}
+
+message StateOpLog {
+  uint64 height = 1;
+  string operation = 2;
+  string schema = 3;
+  bytes key = 4;
+  bytes value = 5;
+  bytes merkle_root = 6;
+}
+
+message GetTipNodeRequest{
+  bytes asset_public_key = 1;
+}
+
+message GetTipNodeResponse {
+  tari.dan.common.Node tip_node = 1;
 }

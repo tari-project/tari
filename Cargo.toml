@@ -20,6 +20,7 @@ members = [
     "infrastructure/metrics",
     "infrastructure/shutdown",
     "infrastructure/storage",
+    "infrastructure/tari_script",
     "infrastructure/test_utils",
     "applications/deps_only",
     "applications/launchpad/backend",

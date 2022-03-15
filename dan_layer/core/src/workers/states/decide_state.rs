@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, marker::PhantomData, time::Instant};
+use std::collections::HashMap;
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -29,10 +29,11 @@ use tokio::time::{sleep, Duration};
 
 use crate::{
     digital_assets_error::DigitalAssetError,
-    models::{Committee, HotStuffMessage, HotStuffMessageType, Payload, QuorumCertificate, View, ViewId},
+    models::{Committee, HotStuffMessage, HotStuffMessageType, QuorumCertificate, View, ViewId},
     services::{
-        infrastructure_services::{InboundConnectionService, NodeAddressable, OutboundService},
+        infrastructure_services::{InboundConnectionService, OutboundService},
         PayloadProvider,
+        ServiceSpecification,
     },
     storage::chain::ChainDbUnitOfWork,
     workers::states::ConsensusWorkerStateEvent,
@@ -41,95 +42,69 @@ use crate::{
 const LOG_TARGET: &str = "tari::dan::workers::states::decide";
 
 // TODO: This is very similar to pre-commit, and commit state
-pub struct DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
-where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-{
-    node_id: TAddr,
+pub struct DecideState<TSpecification: ServiceSpecification> {
+    node_id: TSpecification::Addr,
     asset_public_key: PublicKey,
-    committee: Committee<TAddr>,
-    phantom_inbound: PhantomData<TInboundConnectionService>,
-    phantom_outbound: PhantomData<TOutboundService>,
-    ta: PhantomData<TAddr>,
-    p_p: PhantomData<TPayload>,
-    received_new_view_messages: HashMap<TAddr, HotStuffMessage<TPayload>>,
+    committee: Committee<TSpecification::Addr>,
+    received_new_view_messages: HashMap<TSpecification::Addr, HotStuffMessage<TSpecification::Payload>>,
 }
 
-impl<TAddr, TPayload, TInboundConnectionService, TOutboundService>
-    DecideState<TAddr, TPayload, TInboundConnectionService, TOutboundService>
-where
-    TInboundConnectionService: InboundConnectionService<TAddr, TPayload>,
-    TOutboundService: OutboundService<TAddr, TPayload>,
-    TAddr: NodeAddressable,
-    TPayload: Payload,
-{
-    pub fn new(node_id: TAddr, asset_public_key: PublicKey, committee: Committee<TAddr>) -> Self {
+impl<TSpecification: ServiceSpecification> DecideState<TSpecification> {
+    pub fn new(
+        node_id: TSpecification::Addr,
+        asset_public_key: PublicKey,
+        committee: Committee<TSpecification::Addr>,
+    ) -> Self {
         Self {
             node_id,
             asset_public_key,
             committee,
-            phantom_inbound: PhantomData,
-            phantom_outbound: PhantomData,
-            ta: PhantomData,
-            p_p: PhantomData,
             received_new_view_messages: HashMap::new(),
         }
     }
 
-    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork, TPayloadProvider: PayloadProvider<TPayload>>(
+    pub async fn next_event<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
         timeout: Duration,
         current_view: &View,
-        inbound_services: &mut TInboundConnectionService,
-        outbound_service: &mut TOutboundService,
-        unit_of_work: TUnitOfWork,
-        payload_provider: &mut TPayloadProvider,
+        inbound_services: &mut TSpecification::InboundConnectionService,
+        outbound_service: &mut TSpecification::OutboundService,
+        mut unit_of_work: TUnitOfWork,
+        payload_provider: &mut TSpecification::PayloadProvider,
     ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
         self.received_new_view_messages.clear();
-        let started = Instant::now();
-        let mut unit_of_work = unit_of_work;
-        let next_event_result;
+        let timeout = sleep(timeout);
+        futures::pin_mut!(timeout);
         loop {
             tokio::select! {
-                      r = inbound_services.wait_for_message(HotStuffMessageType::Commit, current_view.view_id()) => {
+                r = inbound_services.wait_for_message(HotStuffMessageType::Commit, current_view.view_id()) => {
                     let (from, message) = r?;
-                        if current_view.is_leader() {
-                              if let Some(result) = self.process_leader_message(current_view, message.clone(), &from, outbound_service
-                        ).await?{
-                                 next_event_result = result;
-                                  break;
-                              }
-
-                          }
+                    if current_view.is_leader() {
+                        if let Some(event) = self.process_leader_message(current_view, message.clone(), &from, outbound_service).await?{
+                          break Ok(event);
+                      }
+                  }
                 },
               r = inbound_services.wait_for_qc(HotStuffMessageType::Prepare, current_view.view_id()) => {
                     let (from, message) = r?;
-                        let leader= self.committee.leader_for_view(current_view.view_id).clone();
-                          if let Some(result) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
-                              next_event_result = result;
-                              break;
-                          }
-
-                          }
-            ,
-                  _ = sleep(timeout.saturating_sub(Instant::now() - started)) =>  {
-                                next_event_result = ConsensusWorkerStateEvent::TimedOut;
-                                break;
-                            }
-                        }
+                    let leader= self.committee.leader_for_view(current_view.view_id).clone();
+                      if let Some(event) = self.process_replica_message(&message, current_view, &from, &leader, &mut unit_of_work, payload_provider).await? {
+                          break Ok(event);
+                      }
+              },
+              _ = &mut timeout =>  {
+                    break Ok( ConsensusWorkerStateEvent::TimedOut);
+                }
+            }
         }
-        Ok(next_event_result)
     }
 
     async fn process_leader_message(
         &mut self,
         current_view: &View,
-        message: HotStuffMessage<TPayload>,
-        sender: &TAddr,
-        outbound: &mut TOutboundService,
+        message: HotStuffMessage<TSpecification::Payload>,
+        sender: &TSpecification::Addr,
+        outbound: &mut TSpecification::OutboundService,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
         if !message.matches(HotStuffMessageType::Commit, current_view.view_id) {
             return Ok(None);
@@ -169,7 +144,7 @@ where
 
     async fn broadcast(
         &self,
-        outbound: &mut TOutboundService,
+        outbound: &mut TSpecification::OutboundService,
         commit_qc: QuorumCertificate,
         view_number: ViewId,
     ) -> Result<(), DigitalAssetError> {
@@ -205,15 +180,16 @@ where
         Some(qc)
     }
 
-    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork, TPayloadProvider: PayloadProvider<TPayload>>(
+    async fn process_replica_message<TUnitOfWork: ChainDbUnitOfWork>(
         &mut self,
-        message: &HotStuffMessage<TPayload>,
+        message: &HotStuffMessage<TSpecification::Payload>,
         current_view: &View,
-        from: &TAddr,
-        view_leader: &TAddr,
+        from: &TSpecification::Addr,
+        view_leader: &TSpecification::Addr,
         unit_of_work: &mut TUnitOfWork,
-        payload_provider: &mut TPayloadProvider,
+        payload_provider: &mut TSpecification::PayloadProvider,
     ) -> Result<Option<ConsensusWorkerStateEvent>, DigitalAssetError> {
+        debug!(target: LOG_TARGET, "[DECIDE] replica message: {:?}", message);
         if let Some(justify) = message.justify() {
             if !justify.matches(HotStuffMessageType::Commit, current_view.view_id) {
                 warn!(

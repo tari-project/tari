@@ -381,7 +381,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Peer not found, let's try and discover it
         match self
             .dht_discovery_requester
-            .discover_peer(dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
+            .discover_peer(*dest_public_key.clone(), NodeDestination::PublicKey(dest_public_key))
             .await
         {
             // Peer found!
@@ -400,7 +400,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn generate_send_messages(
         &mut self,
         selected_peers: Vec<NodeId>,
@@ -484,7 +483,6 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn process_encryption(
         &self,
         encryption: &OutboundEncryption,
@@ -579,7 +577,6 @@ mod test {
             create_dht_discovery_mock,
             make_peer,
             service_spy,
-            DhtDiscoveryMockState,
         },
     };
 
@@ -611,7 +608,7 @@ mod test {
         ));
 
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
-        let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
+        let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
 
         let mock_state = dht_mock.get_shared_state();
         mock_state.set_select_peers_response(vec![example_peer.clone(), other_peer.clone()]);
@@ -660,7 +657,7 @@ mod test {
         );
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         task::spawn(dht_mock.run());
-        let (dht_discover_requester, _) = create_dht_discovery_mock(10, Duration::from_secs(10));
+        let (dht_discover_requester, _) = create_dht_discovery_mock(Duration::from_secs(10));
         let spy = service_spy();
 
         let mut service = BroadcastMiddleware::new(
@@ -702,10 +699,9 @@ mod test {
         );
         let (dht_requester, dht_mock) = create_dht_actor_mock(10);
         task::spawn(dht_mock.run());
-        let (dht_discover_requester, mut discovery_mock) = create_dht_discovery_mock(10, Duration::from_secs(10));
-        let dht_discovery_state = DhtDiscoveryMockState::new();
-        discovery_mock.set_shared_state(dht_discovery_state.clone());
-        task::spawn(discovery_mock.run());
+        let (dht_discover_requester, discovery_mock) = create_dht_discovery_mock(Duration::from_secs(10));
+        let dht_discovery_state = discovery_mock.get_shared_state();
+        discovery_mock.spawn();
 
         let peer_to_discover = make_peer();
         dht_discovery_state.set_discover_peer_response(peer_to_discover.clone());

@@ -132,7 +132,7 @@ class ValidatorNodeProcess {
           "127.0.0.1",
           this.grpcPort,
           this.port,
-          "127.0.0.1:8080",
+          "/ip4/127.0.0.1/tcp/8080",
           "127.0.0.1:8085",
           this.options,
           this.peerSeeds,

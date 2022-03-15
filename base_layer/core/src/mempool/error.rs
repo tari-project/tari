@@ -24,7 +24,7 @@ use tari_service_framework::reply_channel::TransportChannelError;
 use thiserror::Error;
 use tokio::task::JoinError;
 
-use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transactions::transaction::TransactionError};
+use crate::{mempool::unconfirmed_pool::UnconfirmedPoolError, transactions::transaction_components::TransactionError};
 
 #[derive(Debug, Error)]
 pub enum MempoolError {

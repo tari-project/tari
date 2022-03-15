@@ -1,8 +1,7 @@
 #!/bin/bash
 #
 
-if [ $# -eq 0 ]
-then
+if [ $# -eq 0 ]; then
     echo
     echo Please provide archive file name, \'.tar.gz\' will be appended
     echo
@@ -10,11 +9,10 @@ then
 fi
 rm -f "./$1.tar.gz" >/dev/null
 
-tarball_parent=/tmp
-tarball_source=tari_stibbons_testnet
+tarball_parent=${tarball_parent:-/tmp}
+tarball_source=${tarball_source:-tari_testnet}
 tarball_folder=${tarball_parent}/${tarball_source}
-if [ -d "${tarball_folder}" ]
-then
+if [ -d "${tarball_folder}" ]; then
     rm -f -r "${tarball_folder:?}"
 fi
 
@@ -26,8 +24,7 @@ local_dir="$( cd "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 project_dir="$(dirname "$(readlink -e "$local_dir")")"
 app_dir="$(dirname "$(readlink -e "$project_dir/applications/tari_base_node")")"
 
-if [ ! "${app_dir}" == "${project_dir}/applications" ]
-then
+if [ ! "${app_dir}" == "${project_dir}/applications" ]; then
     echo
     echo Please run this script from '/buildtools'
     echo
@@ -70,6 +67,15 @@ cp -f -P "${app_dir}/tari_merge_mining_proxy/linux/start_xmrig" "${tarball_folde
 cp -f "${app_dir}/tari_merge_mining_proxy/linux/runtime/start_tari_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_tari_merge_mining_proxy.sh"
 cp -f "${app_dir}/tari_merge_mining_proxy/linux/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
 cp -f "${project_dir}/target/release/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
+
+# Collectibles
+cp -f "${project_dir}/target/release/tari_collectibles" "${tarball_folder}/runtime/tari_collectibles"
+
+# Validator node
+cp -f "${project_dir}/target/release/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
+
+# Launchpad
+cp -f "${project_dir}/target/release/tari_launchpad" "${tarball_folder}/runtime/tari_launchpad"
 
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"

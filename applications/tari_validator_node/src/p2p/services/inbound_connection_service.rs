@@ -116,18 +116,16 @@ impl TariCommsInboundConnectionService {
             tokio::select! {
                 request = self.request_channel.recv() => {
                     if let Some(request) = request {
-                    self.handle_request(request).await?;
-                        }
-                    else {
+                        self.handle_request(request).await?;
+                    } else {
                         debug!(target: LOG_TARGET, "All requesters have dropped, stopping.");
                         return Ok(())
                     }
                 },
                 message = self.loopback_receiver.recv() => {
                     if let Some((from, message)) = message {
-                  self.process_message(from, message).await?;
-                        }
-                    else {
+                        self.process_message(from, message).await?;
+                    } else {
                         debug!(target: LOG_TARGET, "Loopback senders have all dropped, stopping");
                         return Ok(())
                     }
@@ -158,25 +156,29 @@ impl TariCommsInboundConnectionService {
             } => {
                 // Check for already received messages
                 let mut indexes_to_remove = vec![];
-                let now = Instant::now();
                 let mut result_message = None;
-                for (index, message) in self.buffered_messages.iter().enumerate() {
-                    if now - message.2 > self.expiry_time {
-                        warn!(target: LOG_TARGET, "Message has expired: {:?}", message);
+                for (index, (from_pk, message, msg_time)) in self.buffered_messages.iter().enumerate() {
+                    if msg_time.elapsed() > self.expiry_time {
+                        warn!(
+                            target: LOG_TARGET,
+                            "Message has expired: ({:.2?}) {:?}",
+                            msg_time.elapsed(),
+                            message
+                        );
                         indexes_to_remove.push(index);
                     } else {
                         match wait_for_type {
                             WaitForMessageType::Message => {
-                                if message.1.message_type() == message_type && message.1.view_number() == view_number {
-                                    result_message = Some((message.0.clone(), message.1.clone()));
+                                if message.message_type() == message_type && message.view_number() == view_number {
+                                    result_message = Some((from_pk.clone(), message.clone()));
                                     indexes_to_remove.push(index);
                                     break;
                                 }
                             },
                             WaitForMessageType::QuorumCertificate => {
-                                if let Some(qc) = message.1.justify() {
+                                if let Some(qc) = message.justify() {
                                     if qc.message_type() == message_type && qc.view_number() == view_number {
-                                        result_message = Some((message.0.clone(), message.1.clone()));
+                                        result_message = Some((from_pk.clone(), message.clone()));
                                         indexes_to_remove.push(index);
                                         break;
                                     }
@@ -258,10 +260,10 @@ impl TariCommsInboundConnectionService {
                     "Found waiter for this message, waking task... {:?}",
                     message.message_type()
                 );
-                if let Some(w) = self.waiters.swap_remove_back(index) {
+                if let Some((_, _, _, reply)) = self.waiters.swap_remove_back(index) {
                     // The receiver on the other end of this channel may have dropped naturally
                     // as it moves out of scope and is not longer interested in receiving the message
-                    if w.3.send((from.clone(), message.clone())).is_ok() {
+                    if reply.send((from.clone(), message.clone())).is_ok() {
                         return Ok(());
                     }
                 }
@@ -293,7 +295,10 @@ impl TariCommsInboundReceiverHandle {
 }
 
 #[async_trait]
-impl InboundConnectionService<CommsPublicKey, TariDanPayload> for TariCommsInboundReceiverHandle {
+impl InboundConnectionService for TariCommsInboundReceiverHandle {
+    type Addr = CommsPublicKey;
+    type Payload = TariDanPayload;
+
     async fn wait_for_message(
         &self,
         message_type: HotStuffMessageType,

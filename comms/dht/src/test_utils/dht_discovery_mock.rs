@@ -31,36 +31,36 @@ use std::{
 
 use log::*;
 use tari_comms::peer_manager::Peer;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task};
 
 use crate::{
     discovery::{DhtDiscoveryRequest, DhtDiscoveryRequester},
-    test_utils::make_peer,
+    DhtDiscoveryError,
 };
 
 const LOG_TARGET: &str = "comms::dht::discovery_mock";
 
-pub fn create_dht_discovery_mock(buf_size: usize, timeout: Duration) -> (DhtDiscoveryRequester, DhtDiscoveryMock) {
-    let (tx, rx) = mpsc::channel(buf_size);
+pub fn create_dht_discovery_mock(timeout: Duration) -> (DhtDiscoveryRequester, DhtDiscoveryMock) {
+    let (tx, rx) = mpsc::channel(10);
     (DhtDiscoveryRequester::new(tx, timeout), DhtDiscoveryMock::new(rx))
 }
 
 #[derive(Debug, Clone)]
 pub struct DhtDiscoveryMockState {
     call_count: Arc<AtomicUsize>,
-    discover_peer: Arc<RwLock<Peer>>,
+    discover_peer: Arc<RwLock<Option<Peer>>>,
 }
 
 impl DhtDiscoveryMockState {
     pub fn new() -> Self {
         Self {
             call_count: Arc::new(AtomicUsize::new(0)),
-            discover_peer: Arc::new(RwLock::new(make_peer())),
+            discover_peer: Arc::new(RwLock::new(None)),
         }
     }
 
     pub fn set_discover_peer_response(&self, peer: Peer) -> &Self {
-        *self.discover_peer.write().unwrap() = peer;
+        *self.discover_peer.write().unwrap() = Some(peer);
         self
     }
 
@@ -86,14 +86,16 @@ impl DhtDiscoveryMock {
         }
     }
 
-    pub fn set_shared_state(&mut self, state: DhtDiscoveryMockState) {
-        self.state = state;
+    pub fn get_shared_state(&self) -> DhtDiscoveryMockState {
+        self.state.clone()
     }
 
-    pub async fn run(mut self) {
-        while let Some(req) = self.receiver.recv().await {
-            self.handle_request(req).await;
-        }
+    pub fn spawn(mut self) {
+        task::spawn(async move {
+            while let Some(req) = self.receiver.recv().await {
+                self.handle_request(req).await;
+            }
+        });
     }
 
     async fn handle_request(&self, req: DhtDiscoveryRequest) {
@@ -103,7 +105,9 @@ impl DhtDiscoveryMock {
         match req {
             DiscoverPeer(_, _, reply_tx) => {
                 let lock = self.state.discover_peer.read().unwrap();
-                reply_tx.send(Ok(lock.clone())).unwrap();
+                reply_tx
+                    .send(lock.clone().ok_or(DhtDiscoveryError::DiscoveryTimeout))
+                    .unwrap();
             },
             NotifyDiscoveryResponseReceived(_) => {},
         }

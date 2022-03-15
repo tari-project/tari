@@ -56,7 +56,7 @@ class Create extends React.Component {
       image: "",
       cid: "",
       error: "",
-      ipfsUploadError: null,
+      imageError: null,
       isSaving: false,
       tip001: true,
       tip002: false,
@@ -71,7 +71,7 @@ class Create extends React.Component {
       tip003Data: {
         committee: [],
       },
-      newCommitteePubKey: "",
+      newCommitteePublicKey: "",
       committeeEditorError: null,
       isValid: false,
       saveErrors: [],
@@ -92,9 +92,9 @@ class Create extends React.Component {
       try {
         // only use the first file if multiple are dropped
         let cid = await this.addFileToIPFS(payload[0]);
-        this.setState({ cid, ipfsUploadError: null });
+        this.setState({ cid, imageError: null });
       } catch (e) {
-        this.setState({ ipfsUploadError: e.toString() });
+        this.setState({ imageError: e.toString() });
       }
     }
   }
@@ -157,11 +157,12 @@ class Create extends React.Component {
       }
 
       let outputs = await binding.command_asset_wallets_get_unspent_amounts();
+      console.log("outputs", outputs);
 
       if (outputs.length <= 1) {
         throw { message: "You need at least two unspent outputs" };
       }
-      let publicKey = await binding.command_assets_create(
+      let assetPublicKey = await binding.command_assets_create(
         name,
         description,
         image,
@@ -169,23 +170,26 @@ class Create extends React.Component {
         templateParameters
       );
 
-      // TODO: How to create the initial checkpoint?
+      console.log("tip003", this.state.tip003);
       if (this.state.tip003) {
-        let res = await binding.command_asset_create_initial_checkpoint(
-          publicKey,
-          this.state.tip003Data.committee
+        console.log("register asset...");
+        await binding.command_asset_create_initial_checkpoint(assetPublicKey);
+        console.log("define committee...");
+        await binding.command_asset_create_committee_definition(
+          assetPublicKey,
+          this.state.tip003Data.committee,
+          true
         );
-
-        console.log(res);
+        console.log("done");
       }
       let history = this.props.history;
 
-      history.push(`/assets/manage/${publicKey}`);
+      history.push(`/assets/manage/${assetPublicKey}`);
     } catch (err) {
+      console.error(err);
       this.setState({
         error: "Could not create asset: " + err.message,
       });
-      console.log(err);
     }
     this.setState({ isSaving: false });
   };
@@ -217,24 +221,24 @@ class Create extends React.Component {
     });
   };
 
-  onNewCommitteePubKeyChanged = (e) => {
+  onNewCommitteePublicKeyChanged = (e) => {
     this.setState({
-      newCommitteePubKey: e.target.value,
+      newCommitteePublicKey: e.target.value,
     });
   };
 
   onAddCommitteeMember = () => {
-    let pubKey = this.state.newCommitteePubKey;
-    if (!pubKey) return;
-    pubKey = pubKey.trim();
-    if (!pubKey) return;
-    if (this.state.tip003Data.committee.includes(pubKey)) {
+    let publicKey = this.state.newCommitteePublicKey;
+    if (!publicKey) return;
+    publicKey = publicKey.trim();
+    if (!publicKey) return;
+    if (this.state.tip003Data.committee.includes(publicKey)) {
       this.setState({ committeeEditorError: "Public key already added!" });
       return;
     }
 
     let committee = [...this.state.tip003Data.committee];
-    committee.push(pubKey);
+    committee.push(publicKey);
     let tip003Data = {
       ...this.state.tip003Data,
       ...{ committee: committee },
@@ -244,7 +248,7 @@ class Create extends React.Component {
     this.setState({
       tip003Data,
       saveErrors: [],
-      newCommitteePubKey: "",
+      newCommitteePublicKey: "",
       committeeEditorError: null,
     });
   };
@@ -294,15 +298,16 @@ class Create extends React.Component {
     try {
       let cid = await this.addFileToIPFS(filePath);
       console.info("IPFS cid: ", cid);
-      this.setState({ cid, ipfsUploadError: null });
+      this.setState({ cid, imageError: null });
     } catch (e) {
-      this.setState({ ipfsUploadError: e.toString() });
+      this.setState({ imageError: e.toString() });
     }
   };
 
   addFileToIPFS = async (filePath) => {
     const parts = filePath.split("/");
     const name = parts[parts.length - 1];
+    const timestamp = new Date().valueOf();
     // unfortunately the ipfs http /add api doesn't play nicely with the tauri http client
     // resulting in "file argument 'path' is required"
     // so we'll shell out to the ipfs command
@@ -329,7 +334,14 @@ class Create extends React.Component {
       });
     });
 
-    const cp = new Command("ipfs", ["files", "cp", `/ipfs/${cid}`, `/${name}`]);
+    if (!cid) return;
+
+    const cp = new Command("ipfs", [
+      "files",
+      "cp",
+      `/ipfs/${cid}`,
+      `/${timestamp}${name}`,
+    ]);
     await cp.spawn();
 
     await new Promise((resolve, reject) => {
@@ -347,22 +359,6 @@ class Create extends React.Component {
     });
 
     return cid;
-    // console.log("command", command);
-    // const { success, output, error } = commandOutput(command);
-    // if (success) {
-    //   const cid = output;
-    //   console.log("cid", cid);
-    //   const command = await runCommand("ipfs", [
-    //     "files",
-    //     "cp",
-    //     `/ipfs/${cid}`,
-    //     `/${name}`,
-    //   ]);
-    //   const { error } = commandOutput(command);
-    //   if (error) console.error("error: ", error);
-    // } else {
-    //   console.error("error: ", error);
-    // }
   };
 
   render() {
@@ -424,7 +420,8 @@ class Create extends React.Component {
               cid={this.state.cid}
               setCid={(cid) => this.setState({ cid })}
               image={this.state.image}
-              error={this.state.ipfsUploadError}
+              error={this.state.imageError}
+              setError={(e) => this.setState({ imageError: e })}
             />
           </FormGroup>
           <FormGroup>
@@ -483,8 +480,8 @@ class Create extends React.Component {
           </FormGroup>
           <CommitteeEditor
             members={this.state.tip003Data.committee}
-            onNewCommitteePubKeyChanged={this.onNewCommitteePubKeyChanged}
-            newCommitteePubKey={this.state.newCommitteePubKey}
+            onNewCommitteePublicKeyChanged={this.onNewCommitteePublicKeyChanged}
+            newCommitteePublicKey={this.state.newCommitteePublicKey}
             onAddCommitteeMember={this.onAddCommitteeMember}
             onDeleteCommitteeMember={this.onDeleteCommitteeMember}
             disabled={this.state.isSaving || !this.state.tip003}
@@ -550,7 +547,7 @@ ImageSwitch.propTypes = {
   setMode: PropTypes.func,
 };
 
-const ImageUrl = ({ setImage }) => {
+const ImageUrl = ({ setImage, setMode }) => {
   const [url, setUrl] = useState("");
 
   return (
@@ -565,54 +562,78 @@ const ImageUrl = ({ setImage }) => {
         onChange={(e) => setUrl(e.target.value)}
       />
       <Button onClick={() => setImage(url)}>Save</Button>
+      <Button onClick={() => setMode("")}>Back</Button>
     </div>
   );
 };
 
 ImageUrl.propTypes = {
   setImage: PropTypes.func,
+  setMode: PropTypes.func,
 };
 
-const ImageUpload = ({ selectFile, error }) => {
+const ImageUpload = ({ selectFile, setMode }) => {
   return (
     <div>
       <p>Select an image, or drag and drop an image onto this window</p>
       <Button onClick={selectFile}>Click to Select Image</Button>
-
-      {error ? <Alert severity="error">{error}</Alert> : <span />}
+      <Button onClick={() => setMode("")}>Back</Button>
     </div>
   );
 };
 
 ImageUpload.propTypes = {
   selectFile: PropTypes.func,
+  setMode: PropTypes.func,
   error: PropTypes.string,
 };
 
-const ImageSelector = ({ cid, image, selectFile, setImage, setCid, error }) => {
+const ImageSelector = ({
+  cid,
+  image,
+  selectFile,
+  setImage,
+  setCid,
+  error,
+  setError,
+}) => {
   const [mode, setMode] = useState("");
+  const reset = () => {
+    setError("");
+    setMode("");
+    setImage("");
+  };
+
+  if (error) {
+    return (
+      <div>
+        <Alert severity="error">{error}</Alert>
+        <Button onClick={reset}>Reset</Button>
+      </div>
+    );
+  }
 
   if (image) {
     return (
       <div>
         <img src={image} alt="" width="200px" />
         <br />
-        <p onClick={() => setImage("")}>Change</p>
+        <Button onClick={reset}>Reset</Button>
       </div>
     );
   }
   if (cid) {
-    return <IpfsImage cid={cid} setCid={setCid} />;
+    return <IpfsImage cid={cid} setCid={setCid} reset={reset} />;
   }
 
   let display;
 
   switch (mode) {
     case "url":
-      display = <ImageUrl setImage={setImage} error={error} />;
+      display = <ImageUrl setImage={setImage} setMode={setMode} />;
       break;
     case "upload":
-      display = <ImageUpload selectFile={selectFile} error={error} />;
+      display = <ImageUpload selectFile={selectFile} setMode={setMode} />;
       break;
     default:
       display = <ImageSwitch setMode={setMode} />;
@@ -628,9 +649,10 @@ ImageSelector.propTypes = {
   setImage: PropTypes.func,
   setCid: PropTypes.func,
   error: PropTypes.string,
+  setError: PropTypes.func,
 };
 
-const IpfsImage = ({ cid, setCid, error }) => {
+const IpfsImage = ({ cid, setCid, reset, error }) => {
   const [src, setSrc] = useState("");
   const [httpError, setHttpError] = useState(null);
 
@@ -659,7 +681,15 @@ const IpfsImage = ({ cid, setCid, error }) => {
       <div>
         <img src={src} alt="" width="200px" />
         <br />
-        <p onClick={() => setCid("")}>Change</p>
+        <Button
+          onClick={() => {
+            reset();
+            setSrc("");
+            setCid("");
+          }}
+        >
+          Reset
+        </Button>
       </div>
     );
   }
@@ -667,7 +697,17 @@ const IpfsImage = ({ cid, setCid, error }) => {
   if (error || httpError) {
     return (
       <div>
-        <Alert severity="error">{error || httpError}</Alert>
+        <Alert severity="error">
+          {error || httpError} - is the IPFS daemon running?
+        </Alert>
+        <Button
+          onClick={() => {
+            setCid("");
+            reset();
+          }}
+        >
+          Reset
+        </Button>
       </div>
     );
   }
@@ -678,6 +718,7 @@ const IpfsImage = ({ cid, setCid, error }) => {
 IpfsImage.propTypes = {
   cid: PropTypes.string,
   setCid: PropTypes.func,
+  reset: PropTypes.func,
   error: PropTypes.string,
 };
 
@@ -686,8 +727,8 @@ const CommitteeEditor = ({
   disabled,
   onAddCommitteeMember,
   onDeleteCommitteeMember,
-  onNewCommitteePubKeyChanged,
-  newCommitteePubKey,
+  onNewCommitteePublicKeyChanged,
+  newCommitteePublicKey,
   error,
 }) => {
   return (
@@ -714,9 +755,9 @@ const CommitteeEditor = ({
       </List>
       <TextField
         label="Validator node public key"
-        id="newCommitteePubKey"
-        value={newCommitteePubKey}
-        onChange={onNewCommitteePubKeyChanged}
+        id="newCommitteePublicKey"
+        value={newCommitteePublicKey}
+        onChange={onNewCommitteePublicKeyChanged}
         disabled={disabled}
       />
       <Button onClick={onAddCommitteeMember} disabled={disabled}>
@@ -732,8 +773,8 @@ CommitteeEditor.propTypes = {
   disabled: PropTypes.bool,
   onAddCommitteeMember: PropTypes.func,
   onDeleteCommitteeMember: PropTypes.func,
-  onNewCommitteePubKeyChanged: PropTypes.func,
-  newCommitteePubKey: PropTypes.string,
+  onNewCommitteePublicKeyChanged: PropTypes.func,
+  newCommitteePublicKey: PropTypes.string,
   error: PropTypes.string,
 };
 

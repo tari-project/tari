@@ -264,6 +264,10 @@ impl PeerManager {
             .ban_peer_by_node_id(node_id, duration, reason)
     }
 
+    pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        self.peer_storage.read().await.is_peer_banned(node_id)
+    }
+
     /// Changes the offline flag bit of the peer. Return the previous offline state.
     pub async fn set_offline(&self, node_id: &NodeId, is_offline: bool) -> Result<bool, PeerManagerError> {
         self.peer_storage.write().await.set_offline(node_id, is_offline)

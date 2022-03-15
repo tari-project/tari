@@ -19,17 +19,12 @@ use tari_core::{
         tari_amount::{MicroTari, T},
         test_helpers,
         test_helpers::generate_keys,
-        transaction::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        transaction_components::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    commitment::HomomorphicCommitmentFactory,
-    range_proof::RangeProofService,
-    script,
-    script::TariScript,
-    tari_utilities::hex::Hex,
-};
+use tari_crypto::{commitment::HomomorphicCommitmentFactory, range_proof::RangeProofService, tari_utilities::hex::Hex};
+use tari_script::{script, TariScript};
 use tokio::{sync::mpsc, task};
 
 const NUM_KEYS: usize = 4000;
@@ -147,7 +142,7 @@ impl Iterator for UTXOFeatures {
     type Item = OutputFeatures;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let f = OutputFeatures::with_maturity(0);
+        let f = OutputFeatures::default();
         Some(f)
     }
 }

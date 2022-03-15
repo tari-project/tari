@@ -2,13 +2,13 @@
 name = "tari_dan_storage_sqlite"
 version = "0.1.0"
 edition = "2018"
-
+license = "BSD-3-Clause"
 
 [dependencies]
 tari_dan_core = {path="../core"}
 tari_common = { path = "../../common"}
 tari_common_types = {path = "../../base_layer/common_types"}
-tari_utilities = "0.3.0"
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 
 diesel = { version = "1.4.8", features = ["sqlite"] }

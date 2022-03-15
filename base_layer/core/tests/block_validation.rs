@@ -40,7 +40,7 @@ use tari_core::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
-        transaction::OutputFeatures,
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -56,7 +56,7 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::{inputs, script};
+use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 

@@ -25,9 +25,9 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{BulletRangeProof, Commitment, PublicKey};
 use tari_core::{
     covenants::Covenant,
-    transactions::transaction::{TransactionOutput, TransactionOutputVersion},
+    transactions::transaction_components::{TransactionOutput, TransactionOutputVersion},
 };
-use tari_crypto::script::TariScript;
+use tari_script::TariScript;
 use tari_utilities::{ByteArray, Hashable};
 
 use crate::tari_rpc as grpc;

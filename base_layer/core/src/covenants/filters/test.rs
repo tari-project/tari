@@ -26,7 +26,7 @@ use crate::{
         test::{create_context, create_outputs},
         Covenant,
     },
-    transactions::transaction::{TransactionInput, TransactionOutput},
+    transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
 
 pub fn setup_filter_test<'a, F>(

@@ -20,19 +20,34 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{hash::Hash, iter::FromIterator};
+use std::{convert::TryFrom, hash::Hash, iter::FromIterator};
 
 use tari_crypto::common::Blake256;
 use tari_mmr::MerkleMountainRange;
 
-use crate::models::{ConsensusHash, Instruction};
+use crate::{
+    fixed_hash::FixedHash,
+    models::{ConsensusHash, Instruction},
+};
 
 #[derive(PartialEq, Clone, Debug, Hash)]
-pub struct InstructionSetHash(Vec<u8>);
+pub struct InstructionSetHash(FixedHash);
+
+impl InstructionSetHash {
+    pub fn zero() -> InstructionSetHash {
+        Self(FixedHash::zero())
+    }
+}
 
 impl InstructionSetHash {
     pub fn as_bytes(&self) -> &[u8] {
         self.0.as_slice()
+    }
+}
+
+impl From<FixedHash> for InstructionSetHash {
+    fn from(hash: FixedHash) -> Self {
+        Self(hash)
     }
 }
 
@@ -52,7 +67,7 @@ impl InstructionSet {
     pub fn from_vec(instructions: Vec<Instruction>) -> Self {
         let mut result = Self {
             instructions,
-            hash: InstructionSetHash(vec![]),
+            hash: InstructionSetHash::zero(),
         };
         result.hash = result.calculate_hash();
         result
@@ -65,7 +80,7 @@ impl InstructionSet {
             mmr.push(instruction.calculate_hash().to_vec()).unwrap();
         }
 
-        InstructionSetHash(mmr.get_merkle_root().unwrap())
+        FixedHash::try_from(mmr.get_merkle_root().unwrap()).unwrap().into()
     }
 
     pub fn instructions(&self) -> &[Instruction] {
@@ -89,5 +104,21 @@ impl From<Vec<Instruction>> for InstructionSet {
 impl ConsensusHash for InstructionSet {
     fn consensus_hash(&self) -> &[u8] {
         self.hash.as_bytes()
+    }
+}
+
+impl IntoIterator for InstructionSet {
+    type IntoIter = <Vec<Instruction> as IntoIterator>::IntoIter;
+    type Item = Instruction;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.instructions.into_iter()
+    }
+}
+
+impl Extend<Instruction> for InstructionSet {
+    fn extend<T: IntoIterator<Item = Instruction>>(&mut self, iter: T) {
+        self.instructions.extend(iter);
+        self.hash = self.calculate_hash();
     }
 }

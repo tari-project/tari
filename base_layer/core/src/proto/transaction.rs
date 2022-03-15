@@ -28,10 +28,8 @@ use std::{
 };
 
 use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, BLOCK_HASH_LENGTH};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, ByteArrayError},
-};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
@@ -40,8 +38,9 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             AssetOutputFeatures,
+            CommitteeDefinitionFeatures,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
@@ -289,6 +288,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
+            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             parent_public_key,
@@ -300,7 +300,8 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
                 Some(m) => Some(m.try_into()?),
                 None => None,
             },
-            features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
+            features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
+            features.committee_definition.map(|c| c.try_into()).transpose()?,
         ))
     }
 }
@@ -318,8 +319,10 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
                 .unwrap_or_default(),
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
+            committee_definition: features.committee_definition.map(|c| c.into()),
+            recovery_byte: features.recovery_byte as u32,
         }
     }
 }
@@ -422,6 +425,33 @@ impl From<SideChainCheckpointFeatures> for proto::types::SideChainCheckpointFeat
         Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
             committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::CommitteeDefinitionFeatures> for CommitteeDefinitionFeatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::CommitteeDefinitionFeatures) -> Result<Self, Self::Error> {
+        let committee = value
+            .committee
+            .into_iter()
+            .map(|c| PublicKey::from_bytes(&c).map_err(|err| format!("{:?}", err)))
+            .collect::<Result<_, _>>()?;
+        let effective_sidechain_height = value.effective_sidechain_height;
+
+        Ok(Self {
+            committee,
+            effective_sidechain_height,
+        })
+    }
+}
+
+impl From<CommitteeDefinitionFeatures> for proto::types::CommitteeDefinitionFeatures {
+    fn from(value: CommitteeDefinitionFeatures) -> Self {
+        Self {
+            committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+            effective_sidechain_height: value.effective_sidechain_height,
         }
     }
 }

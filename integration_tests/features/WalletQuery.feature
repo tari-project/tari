@@ -8,7 +8,7 @@ Feature: Wallet Querying
     Then node WalletSeedA is at height 1
     Then the UTXO CB1 has been mined according to WalletSeedA
 
-  @critical @broken
+  @critical
   Scenario: As a wallet I want to submit a transaction
     Given I have a seed node SeedA
     When I mine a block on SeedA with coinbase CB1
@@ -20,7 +20,7 @@ Feature: Wallet Querying
     Then the UTXO UTX1 has been mined according to SeedA
 
 
-  @critical @broken
+  @critical
   Scenario: As a wallet I cannot submit a locked coinbase transaction
     # Using GRPC
     Given I have a seed node SeedA

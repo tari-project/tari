@@ -181,6 +181,7 @@ impl Dht {
             self.connectivity.clone(),
             self.outbound_requester(),
             request_receiver,
+            self.discovery_service_requester(),
             shutdown_signal,
         )
     }

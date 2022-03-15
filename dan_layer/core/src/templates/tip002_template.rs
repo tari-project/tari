@@ -21,57 +21,65 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use prost::Message;
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip002;
 
-use crate::{models::AssetDefinition, storage::state::StateDbUnitOfWork, DigitalAssetError};
+use crate::{
+    models::{Instruction, InstructionSet, TemplateId},
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    DigitalAssetError,
+};
 
-pub fn init<TUnitOfWork: StateDbUnitOfWork>(
-    template_parameter: &TemplateParameter,
-    asset_definition: &AssetDefinition,
+pub fn initial_instructions(template_param: &TemplateParameter) -> InstructionSet {
+    InstructionSet::from_vec(vec![Instruction::new(
+        TemplateId::Tip002,
+        "init".to_string(),
+        template_param.template_data.clone(),
+    )])
+}
+
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
+    method: &str,
+    args: &[u8],
+    state_db: &TUnitOfWork,
+) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    match method.to_lowercase().replace("_", "").as_str() {
+        "balanceof" => balance_of(args, state_db),
+        name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
+    }
+}
+
+pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: &str,
+    args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<(), DigitalAssetError> {
-    let params = tip002::InitRequest::decode(&*template_parameter.template_data).map_err(|e| {
-        DigitalAssetError::ProtoBufDecodeError {
-            source: e,
-            message_type: "tip002::InitRequest".to_string(),
-        }
+    match method.to_lowercase().replace("_", "").as_str() {
+        "init" => init(args, state_db),
+        "transfer" => transfer(args, state_db),
+        name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
+    }
+}
+
+fn init<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfWork) -> Result<(), DigitalAssetError> {
+    let params = tip002::InitRequest::decode(args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
+        source: e,
+        message_type: "tip002::InitRequest".to_string(),
     })?;
     dbg!(&params);
     state_db.set_value(
         "owners".to_string(),
-        asset_definition.public_key.to_vec(),
+        state_db.context().asset_public_key().to_vec(),
+        // TODO: Encode full owner data
         Vec::from(params.total_supply.to_le_bytes()),
     )?;
     Ok(())
 }
 
-pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
-    method: String,
+fn balance_of<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
-    state_db: &mut TUnitOfWork,
-) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
-        "balanceof" => balance_of(args, state_db),
-        _ => todo!(),
-    }
-}
-
-pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
-    method: String,
-    args: &[u8],
-    state_db: &mut TUnitOfWork,
-) -> Result<(), DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
-        "transfer" => transfer(args, state_db),
-        _ => todo!(),
-    }
-}
-
-fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
-    args: &[u8],
-    state_db: &mut TUnitOfWork,
+    state_db: &TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
     let request = tip002::BalanceOfRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
         source: e,
@@ -140,7 +148,7 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
             dbg!(receiver_balance);
             state_db.set_value(
                 "owners".to_string(),
-                request.to.clone(),
+                request.to,
                 Vec::from(receiver_balance.to_le_bytes()),
             )?;
             Ok(())

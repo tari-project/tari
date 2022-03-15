@@ -55,6 +55,7 @@ import * as React from "react";
 import PropTypes from "prop-types";
 import Manage from "./Manage";
 import AssetManager from "./AssetManager";
+import AssetCommitteeManager from "./AssetCommitteeManager";
 import AccountDashboard from "./AccountDashboard";
 import NewAccount from "./NewAccount";
 import Setup, { UnlockWallet } from "./Setup";
@@ -118,15 +119,15 @@ ListItemLink.propTypes = {
   to: PropTypes.string.isRequired,
 };
 
-const AccountsMenu = (props) => {
+const AccountsMenu = ({ walletId, authenticated }) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function inner() {
+  useEffect(async () => {
+    if (authenticated) {
       console.log("refreshing accounts");
       setError("");
-      binding
+      await binding
         .command_asset_wallets_list()
         .then((accounts) => {
           console.log("accounts", accounts);
@@ -137,7 +138,6 @@ const AccountsMenu = (props) => {
           console.error("accounts_list error:", e);
           setError(e.message);
         });
-
       await listen("asset_wallets::updated", (event) => {
         console.log("accounts have changed");
         setError("");
@@ -154,10 +154,8 @@ const AccountsMenu = (props) => {
           });
       });
     }
-    inner();
-  }, [props.walletId]);
+  }, [walletId, authenticated]);
 
-  // todo: hide accounts when not authenticated
   return (
     <div>
       <ListSubheader>
@@ -195,6 +193,7 @@ const AccountsMenu = (props) => {
 
 AccountsMenu.propTypes = {
   walletId: PropTypes.string,
+  authenticated: PropTypes.bool,
 };
 
 // only allow access to a Protected Route if the wallet is unlocked
@@ -211,7 +210,8 @@ ProtectedRoute.propTypes = {
 };
 
 function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState("");
   const setPassword = useState("")[1];
@@ -223,9 +223,13 @@ function App() {
     binding
       .command_create_db()
       .then((r) => setLoading(false))
-      .catch((e) => console.error(e));
+      .catch((e) => {
+        setLoading(false);
+        setError(e);
+      });
   }, []);
   if (loading) return <Spinner />;
+  if (error) return <Alert severity="error">{error.toString()}</Alert>;
 
   return (
     <div className="App">
@@ -246,8 +250,11 @@ function App() {
                   to="/dashboard"
                   icon={<DashboardIcon />}
                 />
-                <Divider></Divider>
-                <AccountsMenu walletId={walletId} />
+                <Divider />
+                <AccountsMenu
+                  walletId={walletId}
+                  authenticated={authenticated}
+                />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -280,7 +287,7 @@ function App() {
                   <NewAccount />
                 </ProtectedRoute>
                 <ProtectedRoute
-                  path="/accounts/:assetPubKey"
+                  path="/accounts/:assetPublicKey"
                   authenticated={authenticated}
                 >
                   <AccountDashboard />
@@ -292,10 +299,16 @@ function App() {
                   <Manage />
                 </ProtectedRoute>
                 <ProtectedRoute
-                  path="/assets/manage/:assetPubKey"
+                  path="/assets/manage/:assetPublicKey"
                   authenticated={authenticated}
                 >
                   <AssetManager />
+                </ProtectedRoute>
+                <ProtectedRoute
+                  path="/assets/committee/:assetPublicKey"
+                  authenticated={authenticated}
+                >
+                  <AssetCommitteeManager />
                 </ProtectedRoute>
 
                 <Route path="/wallets/:id">

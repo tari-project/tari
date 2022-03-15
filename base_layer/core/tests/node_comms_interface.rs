@@ -42,19 +42,14 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction::{OutputFeatures, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::{
-    inputs,
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    script::TariScript,
-    tari_utilities::hash::Hashable,
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hash::Hashable};
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 

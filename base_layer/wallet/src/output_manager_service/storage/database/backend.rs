@@ -3,7 +3,7 @@ use tari_common_types::{
     transaction::TxId,
     types::{Commitment, PublicKey},
 };
-use tari_core::transactions::transaction::{OutputFlags, TransactionOutput};
+use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -76,11 +76,6 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
     /// `UnspentOutputs` pool. The `outputs_to_be_received`'` will be marked as cancelled inbound outputs in case they
     /// need to be recovered.
     fn cancel_pending_transaction(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError>;
-    /// This method will increment the currently stored key index for the key manager config. Increment this after each
-    /// key is generated
-    fn increment_key_index(&self) -> Result<(), OutputManagerStorageError>;
-    /// This method will set the currently stored key index for the key manager
-    fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError>;
     /// This method will update an output's metadata signature, akin to 'finalize output'
     fn update_output_metadata_signature(&self, output: &TransactionOutput) -> Result<(), OutputManagerStorageError>;
     /// If an invalid output is found to be valid this function will turn it back into an unspent output

@@ -23,7 +23,7 @@
 use std::io;
 
 use integer_encoding::VarIntReader;
-use tari_crypto::script::ScriptError;
+use tari_script::ScriptError;
 
 use crate::covenants::token::CovenantToken;
 

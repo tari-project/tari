@@ -1,6 +1,6 @@
 [package]
 name = "tari_p2p"
-version = "0.27.3"
+version = "0.29.0"
 authors = ["The Tari Development community"]
 description = "Tari base layer-specific peer-to-peer communication features"
 repository = "https://github.com/tari-project/tari"
@@ -10,14 +10,14 @@ license = "BSD-3-Clause"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.27", path = "../../comms" }
-tari_comms_dht = { version = "^0.27", path = "../../comms/dht" }
-tari_common = { version = "^0.27", path = "../../common" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_service_framework = { version = "^0.27", path = "../service_framework" }
-tari_shutdown = { version = "^0.27", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.27", path = "../../infrastructure/storage" }
-tari_utilities = "^0.3"
+tari_comms = { version = "^0.29", path = "../../comms" }
+tari_comms_dht = { version = "^0.29", path = "../../comms/dht" }
+tari_common = { version = "^0.29", path = "../../common" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_service_framework = { version = "^0.29", path = "../service_framework" }
+tari_shutdown = { version = "^0.29", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.29", path = "../../infrastructure/storage" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 anyhow = "1.0.53"
 bytes = "0.5"
@@ -26,6 +26,7 @@ fs2 = "0.3.0"
 futures = { version = "^0.3.1" }
 lmdb-zero = "0.4.4"
 log = "0.4.6"
+openssl-sys = { version = "=0.9.66", features = ["vendored"], optional = true }
 pgp = { version = "0.7.2", optional = true }
 prost = "=0.9.0"
 rand = "0.8"
@@ -38,26 +39,24 @@ tokio = { version = "1.11", features = ["macros"] }
 tokio-stream = { version = "0.1.7", default-features = false, features = ["time"] }
 tower = "0.4.11"
 tower-service = { version = "0.3.1" }
-trust-dns-client = { version = "0.21.0-alpha.4", features = ["dns-over-rustls"] }
-rustls = "0.19.1"
+trust-dns-client = { version = "=0.21.0-alpha.5", features = ["dns-over-rustls"] }
+rustls = "0.20.2"
 webpki = "0.21"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.27", path = "../../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.29", path = "../../infrastructure/test_utils" }
 
 clap = "2.33.0"
 lazy_static = "1.3.0"
 tempfile = "3.1.0"
 
-[dev-dependencies.log4rs]
-version = "^0.8"
-features = ["console_appender", "file_appender", "file", "yaml_format"]
-default-features = false
-
 [build-dependencies]
-tari_common = { version = "^0.27", path = "../../common", features = ["build"] }
+tari_common = { version = "^0.29", path = "../../common", features = ["build"] }
 
 [features]
 test-mocks = []
 auto-update = ["reqwest/default", "pgp"]
 avx2 = ["tari_crypto/avx2"]
+
+[package.metadata.cargo-udeps.ignore]
+normal = ["openssl-sys"]

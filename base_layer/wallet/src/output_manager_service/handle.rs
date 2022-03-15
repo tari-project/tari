@@ -25,20 +25,28 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{HashOutput, PublicKey},
+    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction::{OutputFeatures, Transaction, TransactionOutput, UnblindedOutput, UnblindedOutputBuilder},
+        transaction_components::{
+            OutputFeatures,
+            Transaction,
+            TransactionOutput,
+            UnblindedOutput,
+            UnblindedOutputBuilder,
+        },
         transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{script::TariScript, tari_utilities::hex::Hex};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_script::TariScript;
 use tari_service_framework::reply_channel::SenderService;
+use tari_utilities::hex::Hex;
 use tokio::sync::broadcast;
 use tower::Service;
 
@@ -56,8 +64,12 @@ use crate::output_manager_service::{
 pub enum OutputManagerRequest {
     GetBalance,
     AddOutput((Box<UnblindedOutput>, Option<SpendingPriority>)),
+    // ToDo: This API request could probably be removed by expanding test utils if only needed for testing
+    AddRewindableOutput((Box<UnblindedOutput>, Option<SpendingPriority>, Option<RewindData>)),
     AddOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     AddRewindableOutputWithTxId((TxId, Box<UnblindedOutput>, Option<SpendingPriority>, Option<RewindData>)),
+    // ToDo: This API request could probably be removed by expanding test utils if only needed for testing
+    ConvertToRewindableTransactionOutput(Box<UnblindedOutput>),
     AddUnvalidatedOutput((TxId, Box<UnblindedOutput>, Option<SpendingPriority>)),
     UpdateOutputMetadataSignature(Box<TransactionOutput>),
     GetRecipientTransaction(TransactionSenderMessage),
@@ -93,21 +105,31 @@ pub enum OutputManagerRequest {
     GetSpentOutputs,
     GetUnspentOutputs,
     GetInvalidOutputs,
-    GetSeedWords,
     ValidateUtxos,
     RevalidateTxos,
     CreateCoinSplit((MicroTari, usize, MicroTari, Option<u64>)),
     ApplyEncryption(Box<Aes256Gcm>),
     RemoveEncryption,
     GetPublicRewindKeys,
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
+    CalculateRecoveryByte {
+        spending_key: PrivateKey,
+        value: u64,
+    },
     FeeEstimate {
         amount: MicroTari,
         fee_per_gram: MicroTari,
         num_kernels: usize,
         num_outputs: usize,
     },
-    ScanForRecoverableOutputs(Vec<TransactionOutput>),
-    ScanOutputs(Vec<TransactionOutput>),
+    ScanForRecoverableOutputs {
+        outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
+    },
+    ScanOutputs {
+        outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
+    },
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroTari,
@@ -127,8 +149,10 @@ impl fmt::Display for OutputManagerRequest {
         match self {
             GetBalance => write!(f, "GetBalance"),
             AddOutput((v, _)) => write!(f, "AddOutput ({})", v.value),
+            AddRewindableOutput((v, _, _)) => write!(f, "AddRewindableOutput ({})", v.value),
             AddOutputWithTxId((t, v, _)) => write!(f, "AddOutputWithTxId ({}: {})", t, v.value),
             AddRewindableOutputWithTxId((t, v, _, _)) => write!(f, "AddRewindableOutputWithTxId ({}: {})", t, v.value),
+            ConvertToRewindableTransactionOutput(v) => write!(f, "GetUnblindedOutputAsRewindableOutput ({})", v.value),
             AddUnvalidatedOutput((t, v, _)) => {
                 write!(f, "AddUnvalidatedOutput ({}: {})", t, v.value)
             },
@@ -147,7 +171,6 @@ impl fmt::Display for OutputManagerRequest {
             GetSpentOutputs => write!(f, "GetSpentOutputs"),
             GetUnspentOutputs => write!(f, "GetUnspentOutputs"),
             GetInvalidOutputs => write!(f, "GetInvalidOutputs"),
-            GetSeedWords => write!(f, "GetSeedWords"),
             ValidateUtxos => write!(f, "ValidateUtxos"),
             RevalidateTxos => write!(f, "RevalidateTxos"),
             CreateCoinSplit(v) => write!(f, "CreateCoinSplit ({})", v.0),
@@ -155,6 +178,12 @@ impl fmt::Display for OutputManagerRequest {
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
+            CalculateRecoveryByte { spending_key, value } => write!(
+                f,
+                "CalculateRecoveryByte ({},{})",
+                spending_key.as_bytes().to_vec().to_hex(),
+                value
+            ),
             FeeEstimate {
                 amount,
                 fee_per_gram,
@@ -165,8 +194,8 @@ impl fmt::Display for OutputManagerRequest {
                 "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
                 amount, fee_per_gram, num_kernels, num_outputs
             ),
-            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs(_) => write!(f, "ScanOutputs"),
+            ScanForRecoverableOutputs { .. } => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs { .. } => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features } => {
                 write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
@@ -198,6 +227,7 @@ impl fmt::Display for OutputManagerRequest {
 pub enum OutputManagerResponse {
     Balance(Balance),
     OutputAdded,
+    ConvertedToTransactionOutput(Box<TransactionOutput>),
     OutputMetadataSignatureUpdated,
     RecipientTransactionGenerated(ReceiverTransactionProtocol),
     CoinbaseTransaction(Transaction),
@@ -209,23 +239,32 @@ pub enum OutputManagerResponse {
     SpentOutputs(Vec<UnblindedOutput>),
     UnspentOutputs(Vec<UnblindedOutput>),
     InvalidOutputs(Vec<UnblindedOutput>),
-    SeedWords(Vec<String>),
     BaseNodePublicKeySet,
     TxoValidationStarted(u64),
     Transaction((TxId, Transaction, MicroTari)),
     EncryptionApplied,
     EncryptionRemoved,
     PublicRewindKeys(Box<PublicRewindKeys>),
+    RecoveryByte(u8),
     FeeEstimate(MicroTari),
     RewoundOutputs(Vec<UnblindedOutput>),
     ScanOutputs(Vec<UnblindedOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
-    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
+    CreateOutputWithFeatures {
+        output: Box<UnblindedOutputBuilder>,
+    },
+    CreatePayToSelfWithOutputs {
+        transaction: Box<Transaction>,
+        tx_id: TxId,
+    },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
-    OutputStatusesByTxId(Vec<OutputStatus>),
+    OutputStatusesByTxId {
+        statuses: Vec<OutputStatus>,
+        mined_height: Option<u64>,
+        block_hash: Option<BlockHash>,
+    },
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -297,6 +336,27 @@ impl OutputManagerHandle {
         }
     }
 
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
+    pub async fn add_rewindable_output(
+        &mut self,
+        output: UnblindedOutput,
+        spend_priority: Option<SpendingPriority>,
+        custom_rewind_data: Option<RewindData>,
+    ) -> Result<(), OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::AddRewindableOutput((
+                Box::new(output),
+                spend_priority,
+                custom_rewind_data,
+            )))
+            .await??
+        {
+            OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
     pub async fn add_output_with_tx_id(
         &mut self,
         tx_id: TxId,
@@ -335,6 +395,23 @@ impl OutputManagerHandle {
             .await??
         {
             OutputManagerResponse::OutputAdded => Ok(()),
+            _ => Err(OutputManagerError::UnexpectedApiResponse),
+        }
+    }
+
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
+    pub async fn convert_to_rewindable_transaction_output(
+        &mut self,
+        output: UnblindedOutput,
+    ) -> Result<TransactionOutput, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::ConvertToRewindableTransactionOutput(Box::new(
+                output,
+            )))
+            .await??
+        {
+            OutputManagerResponse::ConvertedToTransactionOutput(val) => Ok(*val),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -541,16 +618,25 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_seed_words(&mut self) -> Result<Vec<String>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetSeedWords).await?? {
-            OutputManagerResponse::SeedWords(s) => Ok(s),
+    pub async fn get_rewind_public_keys(&mut self) -> Result<PublicRewindKeys, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::GetPublicRewindKeys).await?? {
+            OutputManagerResponse::PublicRewindKeys(rk) => Ok(*rk),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
 
-    pub async fn get_rewind_public_keys(&mut self) -> Result<PublicRewindKeys, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::GetPublicRewindKeys).await?? {
-            OutputManagerResponse::PublicRewindKeys(rk) => Ok(*rk),
+    // ToDo: This API method call could probably be removed by expanding test utils if only needed for testing
+    pub async fn calculate_recovery_byte(
+        &mut self,
+        spending_key: PrivateKey,
+        value: u64,
+    ) -> Result<u8, OutputManagerError> {
+        match self
+            .handle
+            .call(OutputManagerRequest::CalculateRecoveryByte { spending_key, value })
+            .await??
+        {
+            OutputManagerResponse::RecoveryByte(rk) => Ok(rk),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }
@@ -642,10 +728,11 @@ impl OutputManagerHandle {
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
+            .call(OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id })
             .await??
         {
             OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
@@ -656,8 +743,13 @@ impl OutputManagerHandle {
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
+        tx_id: TxId,
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
+        match self
+            .handle
+            .call(OutputManagerRequest::ScanOutputs { outputs, tx_id })
+            .await??
+        {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -749,13 +841,20 @@ impl OutputManagerHandle {
         }
     }
 
-    pub async fn get_output_statuses_by_tx_id(&mut self, tx_id: TxId) -> Result<Vec<OutputStatus>, OutputManagerError> {
+    pub async fn get_output_statuses_by_tx_id(
+        &mut self,
+        tx_id: TxId,
+    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
             .await??
         {
-            OutputManagerResponse::OutputStatusesByTxId(s) => Ok(s),
+            OutputManagerResponse::OutputStatusesByTxId {
+                statuses,
+                mined_height,
+                block_hash,
+            } => Ok((statuses, mined_height, block_hash)),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

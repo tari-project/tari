@@ -243,8 +243,14 @@ fn set_common_network_defaults(cfg: &mut Config) {
         let key = format!("base_node.{}.dns_seeds_use_dnssec", network);
         cfg.set_default(&key, true).unwrap();
 
-        let key = format!("base_node.{}.auto_ping_interval", network);
+        let key = format!("base_node.{}.metadata_auto_ping_interval", network);
         cfg.set_default(&key, 30).unwrap();
+
+        let key = format!("wallet.{}.contacts_auto_ping_interval", network);
+        cfg.set_default(&key, 20).unwrap();
+
+        let key = format!("wallet.{}.contacts_online_ping_window", network);
+        cfg.set_default(&key, 2).unwrap();
 
         let key = format!("common.{}.peer_seeds", network);
         cfg.set_default(&key, Vec::<String>::new()).unwrap();
@@ -292,64 +298,50 @@ fn set_stratum_transcoder_defaults(cfg: &mut Config) {
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
-    cfg.set_default(
-        "merge_mining_proxy.mainnet.monerod_url",
-        "http://monero-stagenet.exan.tech:38081",
-    )
-    .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
+    //---------------------------------- common defaults --------------------------------------------//
+    cfg.set_default("merge_mining_proxy.proxy_host_address", "/ip4/127.0.0.1/tcp/7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.base_node_grpc_address", "/ip4/127.0.0.1/tcp/18142")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.wallet_grpc_address", "/ip4/127.0.0.1/tcp/18143")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.proxy_submit_to_origin", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.wait_for_initial_sync_at_startup", true)
+        .unwrap();
+
+    //---------------------------------- mainnet defaults --------------------------------------------//
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_url", "http://xmr.support:18081")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", false)
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_username", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_password", "")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
-        .unwrap();
-    cfg.set_default(
-        "merge_mining_proxy.weatherwax.monerod_url",
-        "http://monero-stagenet.exan.tech:38081",
-    )
-    .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_use_auth", "false")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_username", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_password", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
-        .unwrap();
+
+    //---------------------------------- igor defaults --------------------------------------------//
     cfg.set_default(
         "merge_mining_proxy.igor.monerod_url",
         "http://monero-stagenet.exan.tech:38081",
     )
     .unwrap();
-    cfg.set_default("merge_mining_proxy.igor.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.igor.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.igor.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.igor.monerod_use_auth", false)
         .unwrap();
     cfg.set_default("merge_mining_proxy.igor.monerod_username", "").unwrap();
     cfg.set_default("merge_mining_proxy.igor.monerod_password", "").unwrap();
-    cfg.set_default("merge_mining_proxy.igor.wait_for_initial_sync_at_startup", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", "false")
+
+    //---------------------------------- dibbler defaults --------------------------------------------//
+    cfg.set_default(
+        "merge_mining_proxy.dibbler.monerod_url",
+        "http://monero-stagenet.exan.tech:38081",
+    )
+    .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", false)
         .unwrap();
     cfg.set_default("merge_mining_proxy.dibbler.monerod_username", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.dibbler.monerod_password", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 

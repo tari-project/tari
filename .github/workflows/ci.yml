@@ -4,6 +4,8 @@ on:
       - development
       - main
       - ci-*
+      - staging
+      - trying
   pull_request:
     types:
       - opened
@@ -13,9 +15,10 @@ on:
 name: CI
 
 env:
-  CARGO_HTTP_MULTIPLEXING: false
-  PROTOC: protoc
   toolchain: nightly-2021-11-20
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_TERM_COLOR: always
+  PROTOC: protoc
 
 jobs:
   clippy:
@@ -24,51 +27,28 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-clippy-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-clippy-
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-
-      - name: ubuntu dependencies
-        run: |
-          sudo apt-get update && \
-          sudo apt-get -y install \
-          libssl-dev \
-          openssl \
-          libsqlite3-dev \
-          pkg-config \
-          git \
-          cmake \
-          zip \
-          libc++-dev \
-          libc++abi-dev \
-          libprotobuf-dev \
-          protobuf-compiler \
-          libwebkit2gtk-4.0-dev \
-          build-essential \
-          curl \
-          wget \
-          libgtk-3-dev \
-          libappindicator3-dev \
-          patchelf \
-          librsvg2-dev
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
           components: clippy, rustfmt
           override: true
+      - uses: Swatinem/rust-cache@v1
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update && \
+          sudo apt-get -y install \
+          build-essential \
+          libgtk-3-dev \
+          libwebkit2gtk-4.0-dev \
+          libsoup2.4-dev \
+          curl \
+          wget \
+          libappindicator3-dev \
+          patchelf \
+          librsvg2-dev \
+          libprotobuf-dev \
+          protobuf-compiler
       - name: cargo fmt
         uses: actions-rs/cargo@v1
         with:
@@ -85,17 +65,13 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
+      - name: toolchain
+        uses: actions-rs/toolchain@v1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-build-
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-
+          toolchain: ${{ env.toolchain }}
+          profile: minimal
+          override: true
+      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -111,91 +87,30 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
-      - name: toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: ${{ env.toolchain }}
-          components: clippy, rustfmt
-          override: true
       - name: cargo check
         uses: actions-rs/cargo@v1
         with:
           command: check
           args: --release --all-targets
+      - name: cargo check ffi separately
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --package tari_wallet_ffi
+
   build-stable:
     name: check stable
     runs-on: ubuntu-18.04
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-stable-build-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-stable-build-
-            ${{ runner.os }}-${{ runner.cpu-model }}-stable-
-      - name: ubuntu dependencies
-        run: |
-          sudo apt-get update && \
-          sudo apt-get -y install \
-          build-essential \
-          libgtk-3-dev \
-          libwebkit2gtk-4.0-dev \
-          libsoup2.4-dev \
-          curl \
-          wget \
-          libappindicator3-dev \
-          patchelf \
-          librsvg2-dev \
-          libprotobuf-dev \
-          protobuf-compiler
-      - name: Compile NPM
-        run: |
-          cd applications/launchpad/gui-vue
-          npm ci
-          npm run build
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           profile: minimal
           override: true
-      - name: rustup show
-        run: |
-          rustup show
-      - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --release --all-targets
-  test:
-    name: test
-    needs: build
-    runs-on: ubuntu-18.04
-    steps:
-      - name: checkout
-        uses: actions/checkout@v2
-      - name: caching
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-test-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-test-
-            ${{ runner.os }}-${{ runner.cpu-model }}-${{ env.toolchain }}-
+      - uses: Swatinem/rust-cache@v1
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \
@@ -211,17 +126,80 @@ jobs:
           librsvg2-dev \
           libprotobuf-dev \
           protobuf-compiler
-      - name: Compile NPM
+      - name: rustup show
+        run: |
+          rustup show
+      - name: cargo check
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --all-targets
+      - name: cargo check ffi separately
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --package tari_wallet_ffi
+  javascript:
+    name: npm packages
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: build launchpad gui-vue
         run: |
           cd applications/launchpad/gui-vue
           npm ci
           npm run build
+      - name: build collectibles web-app
+        run: |
+          cd applications/tari_collectibles/web-app
+          npm ci
+          npm run build
+      - name: lint/fmt tari explorer
+        run: |
+          cd applications/tari_explorer
+          npm ci
+          npm run lint
+          npm run check-fmt
+  test:
+    name: test
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
       - name: toolchain
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
+      - uses: Swatinem/rust-cache@v1
+      - name: ubuntu dependencies
+        run: |
+          sudo apt-get update && \
+          sudo apt-get -y install \
+          build-essential \
+          libgtk-3-dev \
+          libwebkit2gtk-4.0-dev \
+          libsoup2.4-dev \
+          curl \
+          wget \
+          libappindicator3-dev \
+          patchelf \
+          librsvg2-dev \
+          libprotobuf-dev \
+          protobuf-compiler
+      - name: test key manager wasm
+        run: |
+          npm install -g wasm-pack
+          cd base_layer/key_manager
+          rustup target add wasm32-unknown-unknown
+          make test
+      - name: cargo test compile
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --no-run --locked --all-features
       - name: cargo test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --release --all-targets
+          args: -v --all-features

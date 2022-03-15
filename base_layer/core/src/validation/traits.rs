@@ -27,7 +27,7 @@ use crate::{
     blocks::{Block, BlockHeader, ChainBlock},
     chain_storage::BlockchainBackend,
     proof_of_work::AchievedTargetDifficulty,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
     validation::{error::ValidationError, DifficultyCalculator},
 };
 

@@ -24,7 +24,9 @@ use std::time::Duration;
 
 use tari_comms::peer_manager::NodeId;
 use tari_core::transactions::tari_amount::MicroTari;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
+
+use crate::util::watch::Watch;
 
 #[derive(Debug, Clone)]
 pub enum UtxoScannerEvent {
@@ -60,14 +62,40 @@ pub enum UtxoScannerEvent {
 #[derive(Clone)]
 pub struct UtxoScannerHandle {
     event_sender: broadcast::Sender<UtxoScannerEvent>,
+    one_sided_message_watch: Watch<String>,
+    recovery_message_watch: Watch<String>,
 }
 
 impl UtxoScannerHandle {
-    pub fn new(event_sender: broadcast::Sender<UtxoScannerEvent>) -> Self {
-        UtxoScannerHandle { event_sender }
+    pub fn new(
+        event_sender: broadcast::Sender<UtxoScannerEvent>,
+        one_sided_message_watch: Watch<String>,
+        recovery_message_watch: Watch<String>,
+    ) -> Self {
+        UtxoScannerHandle {
+            event_sender,
+            one_sided_message_watch,
+            recovery_message_watch,
+        }
     }
 
     pub fn get_event_receiver(&mut self) -> broadcast::Receiver<UtxoScannerEvent> {
         self.event_sender.subscribe()
+    }
+
+    pub fn set_one_sided_payment_message(&mut self, note: String) {
+        self.one_sided_message_watch.send(note);
+    }
+
+    pub fn set_recovery_message(&mut self, note: String) {
+        self.recovery_message_watch.send(note);
+    }
+
+    pub(crate) fn get_one_sided_payment_message_watcher(&self) -> watch::Receiver<String> {
+        self.one_sided_message_watch.get_receiver()
+    }
+
+    pub(crate) fn get_recovery_message_watcher(&self) -> watch::Receiver<String> {
+        self.recovery_message_watch.get_receiver()
     }
 }

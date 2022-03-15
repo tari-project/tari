@@ -30,7 +30,7 @@ use tari_common_types::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction::TransactionOutput,
+    transaction_components::TransactionOutput,
     transaction_protocol::{
         sender::{SingleRoundSenderData as SD, TransactionSenderMessage},
         single_receiver::SingleReceiverTransactionProtocol,
@@ -206,8 +206,8 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SecretKeyTrait},
-        script::TariScript,
     };
+    use tari_script::TariScript;
 
     use crate::{
         covenants::Covenant,
@@ -215,7 +215,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::TestParams,
-            transaction::OutputFeatures,
+            transaction_components::OutputFeatures,
             transaction_protocol::{
                 build_challenge,
                 sender::{SingleRoundSenderData, TransactionSenderMessage},
@@ -235,8 +235,14 @@ mod test {
             lock_height: 0,
         };
         let script = TariScript::default();
-        let features = OutputFeatures::default();
         let amount = MicroTari(500);
+        let commitment = factories.commitment.commit_value(&p.spend_key, amount.as_u64());
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
+
+        let features = OutputFeatures {
+            recovery_byte,
+            ..Default::default()
+        };
         let msg = SingleRoundSenderData {
             tx_id: 15.into(),
             amount,
@@ -255,6 +261,7 @@ mod test {
         let receiver = ReceiverTransactionProtocol::new(sender_info, p.nonce.clone(), p.spend_key.clone(), &factories);
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
+        assert_eq!(data.output.features.recovery_byte, recovery_byte);
         assert_eq!(data.tx_id.as_u64(), 15);
         assert_eq!(data.public_spend_key, pubkey);
         assert!(factories
@@ -276,14 +283,28 @@ mod test {
         let rewind_blinding_key = PrivateKey::random(&mut OsRng);
         let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
         let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
+        let recovery_byte_key = PrivateKey::random(&mut OsRng);
         let message = b"alice__12345678910111";
+        let rewind_data = RewindData {
+            rewind_key: rewind_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key,
+            proof_message: message.to_owned(),
+        };
         let amount = MicroTari(500);
         let m = TransactionMetadata {
             fee: MicroTari(125),
             lock_height: 0,
         };
         let script = TariScript::default();
-        let features = OutputFeatures::default();
+
+        let commitment = factories.commitment.commit_value(&p.spend_key, amount.as_u64());
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(&rewind_data));
+
+        let features = OutputFeatures {
+            recovery_byte,
+            ..Default::default()
+        };
         let msg = SingleRoundSenderData {
             tx_id: 15.into(),
             amount,
@@ -298,11 +319,6 @@ mod test {
             covenant: Covenant::default(),
         };
         let sender_info = TransactionSenderMessage::Single(Box::new(msg));
-        let rewind_data = RewindData {
-            rewind_key: rewind_key.clone(),
-            rewind_blinding_key: rewind_blinding_key.clone(),
-            proof_message: message.to_owned(),
-        };
         let receiver = ReceiverTransactionProtocol::new_with_rewindable_output(
             sender_info,
             p.nonce.clone(),
@@ -312,6 +328,7 @@ mod test {
         );
         assert!(receiver.is_finalized());
         let data = receiver.get_signed_data().unwrap();
+        assert_eq!(data.output.features.recovery_byte, recovery_byte);
 
         let rr = data
             .output

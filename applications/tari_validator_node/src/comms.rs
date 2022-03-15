@@ -28,7 +28,12 @@ use tari_app_utilities::{
     identity_management::load_from_json,
     utilities::convert_socks_authentication,
 };
-use tari_common::{exit_codes::ExitCodes, CommsTransport, GlobalConfig, TorControlAuthentication};
+use tari_common::{
+    exit_codes::{ExitCode, ExitError},
+    CommsTransport,
+    GlobalConfig,
+    TorControlAuthentication,
+};
 use tari_comms::{
     protocol::rpc::RpcServer,
     socks,
@@ -61,7 +66,7 @@ pub async fn build_service_and_comms_stack(
     mempool: MempoolServiceHandle,
     db_factory: SqliteDbFactory,
     asset_processor: ConcreteAssetProcessor,
-) -> Result<(ServiceHandles, SubscriptionFactory), ExitCodes> {
+) -> Result<(ServiceHandles, SubscriptionFactory), ExitError> {
     // this code is duplicated from the base node
     let comms_config = create_comms_config(config, node_identity.clone());
 
@@ -71,7 +76,7 @@ pub async fn build_service_and_comms_stack(
         .add_initializer(P2pInitializer::new(comms_config, publisher))
         .build()
         .await
-        .map_err(|err| ExitCodes::ConfigError(err.to_string()))?;
+        .map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
 
     let comms = handles
         .take_handle::<UnspawnedCommsNode>()
@@ -81,15 +86,15 @@ pub async fn build_service_and_comms_stack(
 
     let comms = spawn_comms_using_transport(comms, create_transport_type(config))
         .await
-        .map_err(|e| ExitCodes::ConfigError(format!("Could not spawn using transport:{}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport:{}", e)))?;
 
     // Save final node identity after comms has initialized. This is required because the public_address can be
     // changed by comms during initialization when using tor.
     identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-        .map_err(|e| ExitCodes::ConfigError(format!("Failed to save node identity: {}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save node identity: {}", e)))?;
     if let Some(hs) = comms.hidden_service() {
         identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
-            .map_err(|e| ExitCodes::ConfigError(format!("Failed to save tor identity: {}", e)))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Failed to save tor identity: {}", e)))?;
     }
 
     handles.register(comms);
@@ -106,7 +111,7 @@ fn setup_p2p_rpc(
 ) -> UnspawnedCommsNode {
     let dht = handles.expect_handle::<Dht>();
     let builder = RpcServer::builder();
-    let builder = match config.rpc_max_simultaneous_sessions {
+    let builder = match config.comms_rpc_max_simultaneous_sessions {
         Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
         None => {
             warn!(
@@ -131,7 +136,7 @@ fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) 
         network: config.network,
         node_identity,
         transport_type: create_transport_type(config),
-        datastore_path: config.peer_db_path.clone(),
+        datastore_path: config.comms_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 50,
         max_concurrent_outbound_tasks: 100,
@@ -139,7 +144,7 @@ fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) 
         dht: DhtConfig {
             database_url: DbConnectionUrl::File(config.data_dir.join("dht.db")),
             auto_join: true,
-            allow_test_addresses: config.allow_test_addresses,
+            allow_test_addresses: config.comms_allow_test_addresses,
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_config: SafConfig {
                 msg_validity: config.saf_expiry_duration,
@@ -147,9 +152,9 @@ fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) 
             },
             ..Default::default()
         },
-        allow_test_addresses: config.allow_test_addresses,
-        listener_liveness_allowlist_cidrs: config.listener_liveness_allowlist_cidrs.clone(),
-        listener_liveness_max_sessions: config.listnener_liveness_max_sessions,
+        allow_test_addresses: config.comms_allow_test_addresses,
+        listener_liveness_allowlist_cidrs: config.comms_listener_liveness_allowlist_cidrs.clone(),
+        listener_liveness_max_sessions: config.comms_listener_liveness_max_sessions,
         user_agent: format!("tari/dannode/{}", env!("CARGO_PKG_VERSION")),
         // Also add sync peers to the peer seed list. Duplicates are acceptable.
         peer_seeds: config

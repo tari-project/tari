@@ -20,16 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::TryFrom,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-        RwLock,
-    },
-    thread,
-    time::Instant,
-};
+use std::{convert::TryFrom, thread, time::Instant};
 
 use config::MinerConfig;
 use errors::{err_empty, MinerError};
@@ -40,7 +31,7 @@ use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::W
 use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
-    exit_codes::{ExitCodes, ExitCodes::ConfigError},
+    exit_codes::{ExitCode, ExitError},
     ConfigBootstrap,
     DefaultConfigLoader,
 };
@@ -51,14 +42,7 @@ use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
 
-use crate::{
-    miner::MiningReport,
-    stratum::{
-        stratum_controller::controller::Controller,
-        stratum_miner::miner::StratumMiner,
-        stratum_statistics::stats::Statistics,
-    },
-};
+use crate::{miner::MiningReport, stratum::stratum_controller::controller::Controller};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
@@ -75,15 +59,16 @@ fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
     match rt.block_on(main_inner()) {
         Ok(_) => std::process::exit(0),
-        Err(exit_code) => {
-            eprintln!("Fatal error: {:?}", exit_code);
+        Err(err) => {
+            eprintln!("Fatal error: {:?}", err);
+            let exit_code = err.exit_code;
             error!(target: LOG_TARGET, "Exiting with code: {:?}", exit_code);
-            std::process::exit(exit_code.as_i32())
+            std::process::exit(exit_code as i32)
         },
     }
 }
 
-async fn main_inner() -> Result<(), ExitCodes> {
+async fn main_inner() -> Result<(), ExitError> {
     let (bootstrap, global, cfg) = init_configuration(ApplicationType::MiningNode)?;
     let mut config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     config.mine_on_tip_only = global.mine_on_tip_only;
@@ -108,63 +93,39 @@ async fn main_inner() -> Result<(), ExitCodes> {
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
         let url = config.mining_pool_address.clone();
         let mut miner_address = config.mining_wallet_address.clone();
-        let _ = RistrettoPublicKey::from_hex(&miner_address)
-            .map_err(|_| ConfigError("Miner is not configured with a valid wallet address.".to_string()))?;
+        let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
+            ExitError::new(
+                ExitCode::ConfigError,
+                "Miner is not configured with a valid wallet address.",
+            )
+        })?;
         if !config.mining_worker_name.is_empty() {
             miner_address += &format!("{}{}", ".", &config.mining_worker_name);
         }
-        let stats = Arc::new(RwLock::new(Statistics::default()));
-        let mut mc = Controller::new(stats.clone()).unwrap_or_else(|e| {
+        let mut mc = Controller::new(config.num_mining_threads).unwrap_or_else(|e| {
             debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {}", e);
             panic!("Error loading mining controller: {}", e);
         });
-        let cc =
-            stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone(), stats.clone())
-                .unwrap_or_else(|e| {
-                    debug!(
-                        target: LOG_TARGET_FILE,
-                        "Error loading stratum client controller: {:?}", e
-                    );
-                    panic!("Error loading stratum client controller: {:?}", e);
-                });
-        let miner_stopped = Arc::new(AtomicBool::new(false));
-        let client_stopped = Arc::new(AtomicBool::new(false));
-
-        mc.set_client_tx(cc.tx.clone());
-        let mut miner = StratumMiner::new(config, stats);
-        if let Err(e) = miner.start_solvers() {
-            println!("Error. Please check logs for further info.");
-            println!("Error details:");
-            println!("{:?}", e);
-            println!("Exiting");
-        }
-
-        let miner_stopped_internal = miner_stopped.clone();
-        let _ = thread::Builder::new()
-            .name("mining_controller".to_string())
-            .spawn(move || {
-                if let Err(e) = mc.run(miner) {
-                    error!(target: LOG_TARGET, "Error. Please check logs for further info: {:?}", e);
-                    return;
-                }
-                miner_stopped_internal.store(true, Ordering::Relaxed);
+        let cc = stratum::controller::Controller::new(&url, Some(miner_address), None, None, mc.tx.clone())
+            .unwrap_or_else(|e| {
+                debug!(
+                    target: LOG_TARGET_FILE,
+                    "Error loading stratum client controller: {:?}", e
+                );
+                panic!("Error loading stratum client controller: {:?}", e);
             });
+        mc.set_client_tx(cc.tx.clone());
 
-        let client_stopped_internal = client_stopped.clone();
         let _ = thread::Builder::new()
             .name("client_controller".to_string())
             .spawn(move || {
                 cc.run();
-                client_stopped_internal.store(true, Ordering::Relaxed);
             });
 
-        loop {
-            if miner_stopped.load(Ordering::Relaxed) && client_stopped.load(Ordering::Relaxed) {
-                thread::sleep(std::time::Duration::from_millis(100));
-                break;
-            }
-            thread::sleep(std::time::Duration::from_millis(100));
-        }
+        mc.run()
+            .await
+            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {:?}", err)))?;
+
         Ok(())
     } else {
         config.mine_on_tip_only = global.mine_on_tip_only;
@@ -172,7 +133,9 @@ async fn main_inner() -> Result<(), ExitCodes> {
             target: LOG_TARGET_FILE,
             "mine_on_tip_only is {}", config.mine_on_tip_only
         );
-        let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(ExitCodes::grpc)?;
+        let (mut node_conn, mut wallet_conn) = connect(&config)
+            .await
+            .map_err(|err| ExitError::new(ExitCode::GrpcError, format!("GRPC connection error: {}", err)))?;
 
         let mut blocks_found: u64 = 0;
         loop {
@@ -291,7 +254,7 @@ async fn mining_cycle(
     let header = block.clone().header.ok_or_else(|| err_empty("block.header"))?;
 
     debug!(target: LOG_TARGET, "Initializing miner");
-    let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads);
+    let mut reports = Miner::init_mining(header.clone(), target_difficulty, config.num_mining_threads, false);
     let mut reporting_timeout = Instant::now();
     let mut block_submitted = false;
     while let Some(report) = reports.next().await {
@@ -331,10 +294,10 @@ async fn mining_cycle(
                 block_submitted = true;
                 break;
             } else {
-                display_report(&report, config).await;
+                display_report(&report, config.num_mining_threads).await;
             }
         } else {
-            display_report(&report, config).await;
+            display_report(&report, config.num_mining_threads).await;
         }
         if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_interval() {
             validate_tip(node_conn, report.height, bootstrap.mine_until_height).await?;
@@ -346,15 +309,15 @@ async fn mining_cycle(
     Ok(block_submitted)
 }
 
-async fn display_report(report: &MiningReport, config: &MinerConfig) {
+async fn display_report(report: &MiningReport, num_mining_threads: usize) {
     let hashrate = report.hashes as f64 / report.elapsed.as_micros() as f64;
     info!(
         target: LOG_TARGET,
         "Miner {} reported {:.2}MH/s with total {:.2}MH/s over {} threads. Height: {}. Target: {})",
         report.miner,
         hashrate,
-        hashrate * config.num_mining_threads as f64,
-        config.num_mining_threads,
+        hashrate * num_mining_threads as f64,
+        num_mining_threads,
         report.height,
         report.target_difficulty,
     );

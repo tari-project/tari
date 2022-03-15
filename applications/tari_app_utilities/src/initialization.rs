@@ -4,7 +4,7 @@ use config::Config;
 use structopt::StructOpt;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, Network},
-    exit_codes::ExitCodes,
+    exit_codes::ExitError,
     ConfigBootstrap,
     DatabaseType,
     GlobalConfig,
@@ -16,7 +16,7 @@ pub const LOG_TARGET: &str = "tari::application";
 
 pub fn init_configuration(
     application_type: ApplicationType,
-) -> Result<(ConfigBootstrap, GlobalConfig, Config), ExitCodes> {
+) -> Result<(ConfigBootstrap, GlobalConfig, Config), ExitError> {
     // Parse and validate command-line arguments
     let mut bootstrap = ConfigBootstrap::from_args();
 
@@ -50,7 +50,7 @@ pub fn init_configuration(
                 if let DatabaseType::LMDB(_) = global_config.db_type {
                     global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
                 }
-                global_config.peer_db_path = global_config.data_dir.join("peer_db");
+                global_config.comms_peer_db_path = global_config.data_dir.join("peer_db");
                 global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
                 global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
             },
@@ -78,8 +78,8 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
             config.db_type = DatabaseType::LMDB(config.data_dir.join("db"));
         }
     }
-    if !config.peer_db_path.is_absolute() {
-        config.peer_db_path = concatenate_paths_normalized(prepend.clone(), config.peer_db_path.clone());
+    if !config.comms_peer_db_path.is_absolute() {
+        config.comms_peer_db_path = concatenate_paths_normalized(prepend.clone(), config.comms_peer_db_path.clone());
     }
     if !config.base_node_identity_file.is_absolute() {
         config.base_node_identity_file =

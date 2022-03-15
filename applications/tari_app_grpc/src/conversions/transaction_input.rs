@@ -25,12 +25,10 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_core::{
     covenants::Covenant,
-    transactions::transaction::{TransactionInput, TransactionInputVersion},
+    transactions::transaction_components::{TransactionInput, TransactionInputVersion},
 };
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::ByteArray,
-};
+use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use crate::tari_rpc as grpc;
 

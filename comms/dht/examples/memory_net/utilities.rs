@@ -144,7 +144,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
             .dht
             .discovery_service_requester()
             .discover_peer(
-                Box::new(wallet2.node_identity().public_key().clone()),
+                wallet2.node_identity().public_key().clone(),
                 wallet2.node_identity().node_id().clone().into(),
             )
             .await;
@@ -373,7 +373,6 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
     (num_successes, nodes.len() - 1)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],
@@ -667,7 +666,6 @@ pub struct TestNode {
     pub shutdown: Shutdown,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl TestNode {
     pub fn new(
         comms: CommsNode,
@@ -883,7 +881,6 @@ pub async fn make_node_from_node_identities(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,

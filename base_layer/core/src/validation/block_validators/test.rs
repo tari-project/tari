@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
-use tari_crypto::script;
+use tari_script::script;
 use tari_test_utils::unpack_enum;
 
 use crate::{
@@ -37,7 +37,7 @@ use crate::{
         aggregated_body::AggregateBody,
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction::{OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, TransactionError, UnblindedOutput},
         CoinbaseBuilder,
         CryptoFactories,
     },

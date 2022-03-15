@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use tari_common_types::types::Commitment;
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
+    transaction_components::{KernelFeatures, TransactionKernel, TransactionKernelVersion},
 };
 use tari_crypto::tari_utilities::{ByteArray, Hashable};
 
