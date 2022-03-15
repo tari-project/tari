@@ -54,7 +54,8 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::Hashable};
+use tari_script::StackItem;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -1055,7 +1056,7 @@ fn asset_unique_id() {
 
     // create a new NFT
     let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
+    let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(unique_id1.clone()),
@@ -1086,6 +1087,14 @@ fn asset_unique_id() {
         .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
         .unwrap()
         .unwrap();
+    features.set_recovery_byte(
+        output_info
+            .output
+            .as_transaction_output()
+            .unwrap()
+            .features
+            .recovery_byte,
+    );
     assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 
     // attempt to mint the same unique id for the same asset
@@ -1101,7 +1110,7 @@ fn asset_unique_id() {
 
     // new unique id, does not exist yet
     let unique_id2 = vec![2u8; 3];
-    let features = OutputFeatures {
+    let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(unique_id2.clone()),
@@ -1129,11 +1138,19 @@ fn asset_unique_id() {
         .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
         .unwrap()
         .unwrap();
+    features.set_recovery_byte(
+        output_info
+            .output
+            .as_transaction_output()
+            .unwrap()
+            .features
+            .recovery_byte,
+    );
     assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 
     // same id for a different asset is fine
     let (_, asset2) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
+    let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset2.clone()),
         unique_id: Some(unique_id1.clone()),
@@ -1161,6 +1178,14 @@ fn asset_unique_id() {
         .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
         .unwrap()
         .unwrap();
+    features.set_recovery_byte(
+        output_info
+            .output
+            .as_transaction_output()
+            .unwrap()
+            .features
+            .recovery_byte,
+    );
     assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 }
 

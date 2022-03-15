@@ -21,7 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, Rng, RngCore};
 use tari_common_types::{
     transaction::TxId,
     types::{PrivateKey, PublicKey},
@@ -50,12 +50,10 @@ use tari_core::{
 };
 use tari_crypto::{
     common::Blake256,
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-    script::TariScript,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tari_shutdown::Shutdown;
 use tari_utilities::Hashable;
@@ -102,8 +100,9 @@ use crate::support::{
 };
 
 fn default_metadata_byte_size() -> usize {
+    let output_features = OutputFeatures { ..Default::default() };
     TransactionWeight::latest().round_up_metadata_size(
-        OutputFeatures::default().consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
+        output_features.consensus_encode_exact_size() + script![Nop].consensus_encode_exact_size(),
     )
 }
 
@@ -302,12 +301,15 @@ pub async fn setup_oms_with_bn_state<T: OutputManagerBackend + 'static>(
     )
 }
 
-fn generate_sender_transaction_message(amount: MicroTari) -> (TxId, TransactionSenderMessage) {
+async fn generate_sender_transaction_message(
+    amount: MicroTari,
+    oms: Option<OutputManagerHandle>,
+) -> (TxId, TransactionSenderMessage) {
     let factories = CryptoFactories::default();
 
     let alice = TestParams::new(&mut OsRng);
 
-    let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment);
+    let (utxo, input) = make_input(&mut OsRng, 2 * amount, &factories.commitment, oms).await;
     let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
     let script_private_key = PrivateKey::random(&mut OsRng);
     builder
@@ -349,7 +351,7 @@ async fn fee_estimate() {
     let factories = CryptoFactories::default();
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
-    let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment);
+    let (_, uo) = make_input(&mut OsRng.clone(), MicroTari::from(3000), &factories.commitment, None).await;
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
     let fee_calc = Fee::new(*create_consensus_constants(0).transaction_weight());
     // minimum fpg
@@ -433,9 +435,14 @@ async fn test_utxo_selection_no_chain_metadata() {
             &mut OsRng.clone(),
             i * amount,
             &factories.commitment,
-            Some(OutputFeatures::with_maturity(i)),
-        );
-        oms.add_output(uo.clone(), None).await.unwrap();
+            Some(OutputFeatures {
+                maturity: i,
+                ..Default::default()
+            }),
+            oms.clone(),
+        )
+        .await;
+        oms.add_rewindable_output(uo.clone(), None, None).await.unwrap();
     }
 
     // but we have no chain state so the lowest maturity should be used
@@ -541,9 +548,14 @@ async fn test_utxo_selection_with_chain_metadata() {
             &mut OsRng.clone(),
             i * amount,
             &factories.commitment,
-            Some(OutputFeatures::with_maturity(i)),
-        );
-        oms.add_output(uo.clone(), None).await.unwrap();
+            Some(OutputFeatures {
+                maturity: i,
+                ..Default::default()
+            }),
+            oms.clone(),
+        )
+        .await;
+        oms.add_rewindable_output(uo.clone(), None, None).await.unwrap();
     }
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
@@ -652,16 +664,25 @@ async fn test_utxo_selection_with_tx_priority() {
         &mut OsRng.clone(),
         amount,
         &factories.commitment,
-        Some(OutputFeatures::create_coinbase(1)),
-    );
-    oms.add_output(uo, Some(SpendingPriority::HtlcSpendAsap)).await.unwrap();
+        Some(OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>())),
+        oms.clone(),
+    )
+    .await;
+    oms.add_rewindable_output(uo, Some(SpendingPriority::HtlcSpendAsap), None)
+        .await
+        .unwrap();
     let (_, uo) = make_input_with_features(
         &mut OsRng.clone(),
         amount,
         &factories.commitment,
-        Some(OutputFeatures::with_maturity(1)),
-    );
-    oms.add_output(uo, None).await.unwrap();
+        Some(OutputFeatures {
+            maturity: 1,
+            ..Default::default()
+        }),
+        oms.clone(),
+    )
+    .await;
+    oms.add_rewindable_output(uo, None, None).await.unwrap();
 
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 2);
@@ -705,7 +726,9 @@ async fn send_not_enough_funds() {
             &mut OsRng.clone(),
             MicroTari::from(200 + OsRng.next_u64() % 1000),
             &factories.commitment,
-        );
+            None,
+        )
+        .await;
         oms.output_manager_handle.add_output(uo, None).await.unwrap();
     }
 
@@ -868,7 +891,9 @@ async fn cancel_transaction() {
             &mut OsRng.clone(),
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
-        );
+            None,
+        )
+        .await;
         oms.output_manager_handle.add_output(uo, None).await.unwrap();
     }
     let stp = oms
@@ -913,7 +938,8 @@ async fn cancel_transaction_and_reinstate_inbound_tx() {
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
     let value = MicroTari::from(5000);
-    let (tx_id, sender_message) = generate_sender_transaction_message(value);
+    let (tx_id, sender_message) =
+        generate_sender_transaction_message(value, Some(oms.output_manager_handle.clone())).await;
     let _rtp = oms
         .output_manager_handle
         .get_recipient_transaction(sender_message)
@@ -955,11 +981,11 @@ async fn test_get_balance() {
 
     let mut total = MicroTari::from(0);
     let output_val = MicroTari::from(2000);
-    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment, None).await;
     total += uo.value;
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
 
-    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng.clone(), output_val, &factories.commitment, None).await;
     total += uo.value;
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
 
@@ -983,7 +1009,7 @@ async fn test_get_balance() {
     let change_val = stp.get_change_amount().unwrap();
 
     let recv_value = MicroTari::from(1500);
-    let (_tx_id, sender_message) = generate_sender_transaction_message(recv_value);
+    let (_tx_id, sender_message) = generate_sender_transaction_message(recv_value, None).await;
     let _rtp = oms
         .output_manager_handle
         .get_recipient_transaction(sender_message)
@@ -1009,7 +1035,7 @@ async fn sending_transaction_with_short_term_clear() {
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
     let available_balance = 10_000 * uT;
-    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment, None).await;
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
@@ -1087,9 +1113,9 @@ async fn coin_split_with_change() {
     let val1 = 6_000 * uT;
     let val2 = 7_000 * uT;
     let val3 = 8_000 * uT;
-    let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment);
-    let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment);
-    let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment);
+    let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment, None).await;
+    let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment, None).await;
+    let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment, None).await;
     assert!(oms.output_manager_handle.add_output(uo1, None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo2, None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo3, None).await.is_ok());
@@ -1137,9 +1163,9 @@ async fn coin_split_no_change() {
     let val1 = 4_000 * uT;
     let val2 = 5_000 * uT;
     let val3 = 6_000 * uT + expected_fee;
-    let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment);
-    let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment);
-    let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment);
+    let (_ti, uo1) = make_input(&mut OsRng, val1, &factories.commitment, None).await;
+    let (_ti, uo2) = make_input(&mut OsRng, val2, &factories.commitment, None).await;
+    let (_ti, uo3) = make_input(&mut OsRng, val3, &factories.commitment, None).await;
     assert!(oms.output_manager_handle.add_output(uo1, None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo2, None).await.is_ok());
     assert!(oms.output_manager_handle.add_output(uo3, None).await.is_ok());
@@ -1250,42 +1276,54 @@ async fn test_txo_validation() {
         .set_base_node_wallet_rpc_client(connect_rpc_client(&mut connection).await);
 
     let output1_value = 1_000_000;
-    let output1 = create_unblinded_output(
-        script!(Nop),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
+    let (_, output1) = make_input(
+        &mut OsRng,
         MicroTari::from(output1_value),
-    );
-    let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
+        &factories.commitment,
+        Some(oms.output_manager_handle.clone()),
+    )
+    .await;
+    let output1_tx_output = oms
+        .output_manager_handle
+        .convert_to_rewindable_transaction_output(output1.clone())
+        .await
+        .unwrap();
+
     oms.output_manager_handle
-        .add_output_with_tx_id(1.into(), output1.clone(), None)
+        .add_rewindable_output_with_tx_id(TxId::from(1), output1.clone(), None, None)
         .await
         .unwrap();
 
     let output2_value = 2_000_000;
-    let output2 = create_unblinded_output(
-        script!(Nop),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
+    let (_, output2) = make_input(
+        &mut OsRng,
         MicroTari::from(output2_value),
-    );
-    let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
+        &factories.commitment,
+        Some(oms.output_manager_handle.clone()),
+    )
+    .await;
+    let output2_tx_output = oms
+        .output_manager_handle
+        .convert_to_rewindable_transaction_output(output1.clone())
+        .await
+        .unwrap();
 
     oms.output_manager_handle
-        .add_output_with_tx_id(2.into(), output2.clone(), None)
+        .add_rewindable_output_with_tx_id(TxId::from(2), output2.clone(), None, None)
         .await
         .unwrap();
 
     let output3_value = 4_000_000;
-    let output3 = create_unblinded_output(
-        script!(Nop),
-        OutputFeatures::default(),
-        TestParamsHelpers::new(),
+    let (_, output3) = make_input(
+        &mut OsRng,
         MicroTari::from(output3_value),
-    );
+        &factories.commitment,
+        Some(oms.output_manager_handle.clone()),
+    )
+    .await;
 
     oms.output_manager_handle
-        .add_output_with_tx_id(3.into(), output3.clone(), None)
+        .add_rewindable_output_with_tx_id(TxId::from(3), output3.clone(), None, None)
         .await
         .unwrap();
 
@@ -1366,7 +1404,8 @@ async fn test_txo_validation() {
         .unwrap();
 
     let recv_value = MicroTari::from(8_000_000);
-    let (_recv_tx_id, sender_message) = generate_sender_transaction_message(recv_value);
+    let (_recv_tx_id, sender_message) =
+        generate_sender_transaction_message(recv_value, Some(oms.output_manager_handle.clone())).await;
 
     let _ = oms
         .output_manager_handle
@@ -1394,9 +1433,21 @@ async fn test_txo_validation() {
     let output6 = outputs.remove(o6_pos);
     let output4 = outputs[0].clone();
 
-    let output4_tx_output = output4.unblinded_output.as_transaction_output(&factories).unwrap();
-    let output5_tx_output = output5.unblinded_output.as_transaction_output(&factories).unwrap();
-    let output6_tx_output = output6.unblinded_output.as_transaction_output(&factories).unwrap();
+    let output4_tx_output = oms
+        .output_manager_handle
+        .convert_to_rewindable_transaction_output(output4.unblinded_output.clone())
+        .await
+        .unwrap();
+    let output5_tx_output = oms
+        .output_manager_handle
+        .convert_to_rewindable_transaction_output(output5.unblinded_output.clone())
+        .await
+        .unwrap();
+    let output6_tx_output = oms
+        .output_manager_handle
+        .convert_to_rewindable_transaction_output(output6.unblinded_output.clone())
+        .await
+        .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
 
@@ -1495,14 +1546,14 @@ async fn test_txo_validation() {
         .await
         .unwrap();
 
-    assert_eq!(utxo_query_calls[0].len(), 4);
+    assert_eq!(utxo_query_calls[0].len(), 5);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
+    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 4);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1542,14 +1593,14 @@ async fn test_txo_validation() {
         .unwrap();
 
     // The spent transaction is not checked during this second validation
-    assert_eq!(utxo_query_calls[0].len(), 4);
+    assert_eq!(utxo_query_calls[0].len(), 5);
 
     let query_deleted_calls = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_query_deleted(1, Duration::from_secs(60))
         .await
         .unwrap();
-    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 5);
+    assert_eq!(query_deleted_calls[0].mmr_positions.len(), 4);
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(
@@ -1560,7 +1611,7 @@ async fn test_txo_validation() {
             MicroTari::from(8_000_000) +    //output 5
             MicroTari::from(16_000_000) // output 6
     );
-    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(1000000));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 
@@ -1573,10 +1624,14 @@ async fn test_txo_validation() {
         .await
         .unwrap();
     assert_eq!(utxo_query_calls.len(), 1);
-    assert_eq!(utxo_query_calls[0].len(), 1);
+    assert_eq!(utxo_query_calls[0].len(), 2);
     assert_eq!(
-        utxo_query_calls[0][0],
-        output3.as_transaction_output(&factories).unwrap().hash()
+        utxo_query_calls[0][1],
+        oms.output_manager_handle
+            .convert_to_rewindable_transaction_output(output3.clone())
+            .await
+            .unwrap()
+            .hash()
     );
 
     // Now we will create responses that result in a reorg of block 5, keeping block4 the same.
@@ -1753,7 +1808,7 @@ async fn test_txo_validation() {
         MicroTari::from(output2_value) + MicroTari::from(output3_value) + MicroTari::from(output1_value) -
             MicroTari::from(901_260)
     );
-    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(1000000));
     assert_eq!(balance.pending_incoming_balance, MicroTari::from(0));
     assert_eq!(MicroTari::from(0), balance.time_locked_balance.unwrap());
 }
@@ -1933,13 +1988,13 @@ async fn test_get_status_by_tx_id() {
 
     let mut oms = setup_output_manager_service(backend, ks_backend, true).await;
 
-    let (_ti, uo1) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
+    let (_ti, uo1) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment, None).await;
     oms.output_manager_handle
         .add_unvalidated_output(TxId::from(1u64), uo1, None)
         .await
         .unwrap();
 
-    let (_ti, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment);
+    let (_ti, uo2) = make_input(&mut OsRng.clone(), MicroTari::from(10000), &factories.commitment, None).await;
     oms.output_manager_handle
         .add_unvalidated_output(TxId::from(2u64), uo2, None)
         .await

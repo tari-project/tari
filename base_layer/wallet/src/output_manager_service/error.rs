@@ -29,8 +29,9 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;

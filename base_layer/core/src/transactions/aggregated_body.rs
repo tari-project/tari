@@ -40,9 +40,9 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
-    script::ScriptContext,
     tari_utilities::hex::Hex,
 };
+use tari_script::ScriptContext;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,

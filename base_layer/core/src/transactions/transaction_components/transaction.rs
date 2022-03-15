@@ -123,7 +123,10 @@ impl Transaction {
                 min_maturity,
                 input
                     .features()
-                    .unwrap_or(&OutputFeatures::with_maturity(std::u64::MAX))
+                    .unwrap_or(&OutputFeatures {
+                        maturity: u64::MAX,
+                        ..Default::default()
+                    })
                     .maturity,
             )
         })
@@ -134,7 +137,13 @@ impl Transaction {
         self.body.inputs().iter().fold(0, |max_maturity, input| {
             max(
                 max_maturity,
-                input.features().unwrap_or(&OutputFeatures::with_maturity(0)).maturity,
+                input
+                    .features()
+                    .unwrap_or(&OutputFeatures {
+                        maturity: 0,
+                        ..Default::default()
+                    })
+                    .maturity,
             )
         })
     }

@@ -1,2 +1,4 @@
 cognitive-complexity-threshold = 15
 too-many-arguments-threshold = 12
+# Set from 200 to size of a RistrettoPublicKey
+enum-variant-size-threshold = 216

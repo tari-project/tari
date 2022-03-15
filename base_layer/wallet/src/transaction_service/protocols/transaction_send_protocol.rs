@@ -47,8 +47,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::script;
 use tari_p2p::tari_message::TariMessageType;
+use tari_script::script;
 use tokio::{
     sync::{mpsc::Receiver, oneshot},
     time::sleep,

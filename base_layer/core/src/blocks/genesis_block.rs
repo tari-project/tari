@@ -33,10 +33,8 @@ use tari_common_types::types::{
     Signature,
     BLOCK_HASH_LENGTH,
 };
-use tari_crypto::{
-    script::TariScript,
-    tari_utilities::{hash::Hashable, hex::*},
-};
+use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
+use tari_script::TariScript;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
@@ -243,6 +241,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
                 version:OutputFeaturesVersion::V0,
                 flags:OutputFlags::COINBASE_OUTPUT,
                 maturity:60,
+                recovery_byte: 0,
                 metadata: Vec::new(),
                 unique_id: None,
                 parent_public_key: None,

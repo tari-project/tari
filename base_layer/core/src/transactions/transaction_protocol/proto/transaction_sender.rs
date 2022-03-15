@@ -24,7 +24,8 @@ use std::convert::{TryFrom, TryInto};
 
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::types::PublicKey;
-use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_script::TariScript;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
 use crate::{

@@ -21,13 +21,16 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey};
-use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
+        transaction_protocol::RewindData,
+        CryptoFactories,
     },
 };
 
@@ -61,6 +64,16 @@ impl UnblindedOutputBuilder {
             metadata_signed_by_receiver: false,
             metadata_signed_by_sender: false,
         }
+    }
+
+    pub fn update_recovery_byte_if_required(
+        &mut self,
+        factories: &CryptoFactories,
+        rewind_data: Option<&RewindData>,
+    ) -> Result<(), TransactionError> {
+        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
+        self.features.update_recovery_byte(&commitment, rewind_data);
+        Ok(())
     }
 
     pub fn sign_as_receiver(

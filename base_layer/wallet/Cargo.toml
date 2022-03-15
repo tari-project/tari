@@ -3,22 +3,23 @@ name = "tari_wallet"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet library"
 license = "BSD-3-Clause"
-version = "0.28.1"
+version = "0.29.0"
 edition = "2018"
 
 [dependencies]
 tari_common = { path = "../../common" }
-tari_common_types = { version = "^0.28", path = "../../base_layer/common_types" }
-tari_comms = { version = "^0.28", path = "../../comms" }
-tari_comms_dht = { version = "^0.28", path = "../../comms/dht" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
-tari_key_manager = { version = "^0.28", path = "../key_manager" }
-tari_p2p = { version = "^0.28", path = "../p2p", features = ["auto-update"] }
-tari_service_framework = { version = "^0.28", path = "../service_framework" }
-tari_shutdown = { version = "^0.28", path = "../../infrastructure/shutdown" }
-tari_storage = { version = "^0.28", path = "../../infrastructure/storage" }
+tari_common_types = { version = "^0.29", path = "../../base_layer/common_types" }
+tari_comms = { version = "^0.29", path = "../../comms" }
+tari_comms_dht = { version = "^0.29", path = "../../comms/dht" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_key_manager = { version = "^0.29", path = "../key_manager" }
+tari_p2p = { version = "^0.29", path = "../p2p", features = ["auto-update"] }
+tari_script = { path = "../../infrastructure/tari_script" }
+tari_service_framework = { version = "^0.29", path = "../service_framework" }
+tari_shutdown = { version = "^0.29", path = "../../infrastructure/shutdown" }
+tari_storage = { version = "^0.29", path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 aes-gcm = "^0.8"
 async-trait = "0.1.50"
@@ -51,14 +52,14 @@ prost = "0.9"
 
 [dependencies.tari_core]
 path = "../../base_layer/core"
-version = "^0.28"
+version = "^0.29"
 default-features = false
 features = ["transactions", "mempool_proto", "base_node_proto", ]
 
 [dev-dependencies]
-tari_p2p = { version = "^0.28", path = "../p2p", features = ["test-mocks"] }
-tari_comms_dht = { version = "^0.28", path = "../../comms/dht", features = ["test-mocks"] }
-tari_test_utils = { version = "^0.28", path = "../../infrastructure/test_utils" }
+tari_p2p = { version = "^0.29", path = "../p2p", features = ["test-mocks"] }
+tari_comms_dht = { version = "^0.29", path = "../../comms/dht", features = ["test-mocks"] }
+tari_test_utils = { version = "^0.29", path = "../../infrastructure/test_utils" }
 env_logger = "0.7.1"
 prost = "0.9.0"
 
