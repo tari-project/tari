@@ -108,6 +108,9 @@ pub struct ConfigBootstrap {
     /// Run in non-interactive mode, with no UI.
     #[structopt(short, long, alias = "non-interactive")]
     pub non_interactive_mode: bool,
+    /// Watch a command in the non-interactive mode.
+    #[structopt(long)]
+    pub watch: Option<String>,
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
@@ -186,6 +189,7 @@ impl Default for ConfigBootstrap {
             init: false,
             create_id: false,
             non_interactive_mode: false,
+            watch: None,
             rebuild_db: false,
             input_file: None,
             command: None,

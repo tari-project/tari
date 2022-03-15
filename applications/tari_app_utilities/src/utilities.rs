@@ -186,6 +186,7 @@ pub fn either_to_node_id(either: Either<CommsPublicKey, NodeId>) -> NodeId {
     }
 }
 
+#[derive(Debug)]
 pub struct UniPublicKey(PublicKey);
 
 impl FromStr for UniPublicKey {
@@ -208,6 +209,7 @@ impl From<UniPublicKey> for PublicKey {
     }
 }
 
+#[derive(Debug)]
 pub enum UniNodeId {
     PublicKey(PublicKey),
     NodeId(NodeId),

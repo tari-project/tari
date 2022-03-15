@@ -83,6 +83,7 @@ impl DanNode {
         subscription_factory: SubscriptionFactory,
     ) -> Result<(), ExitError> {
         let mut base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
+        #[allow(clippy::mutable_key_type)]
         let mut tasks = HashMap::new();
         let mut next_scanned_height = 0u64;
         loop {

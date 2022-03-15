@@ -62,6 +62,7 @@ where DS: KeyValueStore<PeerId, Peer>
     /// Constructs a new PeerStorage, with indexes populated from the given datastore
     pub fn new_indexed(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
         // Restore peers and hashmap links from database
+        #[allow(clippy::mutable_key_type)]
         let mut public_key_index = HashMap::new();
         let mut node_id_index = HashMap::new();
         let mut total_entries = 0;
