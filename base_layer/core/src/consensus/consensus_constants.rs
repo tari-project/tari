@@ -446,7 +446,6 @@ impl ConsensusConstants {
                 blockchain_version: 3,
                 valid_blockchain_version_range: 0..=3,
                 future_time_limit: 540,
-                future_time_limit: 540,
                 difficulty_block_window: 90,
                 max_block_transaction_weight: 127_795,
                 median_timestamp_count: 11,
