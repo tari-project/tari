@@ -440,7 +440,7 @@ impl ConsensusConstants {
                 kernel_version_range: kernel_version_range.clone(),
             },
             ConsensusConstants {
-                effective_from_height: 21000,
+                effective_from_height: 23000,
                 coinbase_lock_height: 360,
                 // CHANGE: Use v3 blocks from effective height
                 blockchain_version: 3,
