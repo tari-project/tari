@@ -51,13 +51,20 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_common_types::types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH};
+use tari_common_types::{
+    array::copy_into_fixed_array,
+    types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use crate::proof_of_work::{PowAlgorithm, PowError, ProofOfWork};
+use crate::{
+    common::hash_writer::HashWriter,
+    consensus::ConsensusEncoding,
+    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
+};
 
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
@@ -190,21 +197,49 @@ impl BlockHeader {
     /// Provides a hash of the header, used for the merge mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn merged_mining_hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(self.version.to_le_bytes())
-            .chain(self.height.to_le_bytes())
-            .chain(self.prev_hash.as_bytes())
-            .chain(self.timestamp.as_u64().to_le_bytes())
-            .chain(self.input_mr.as_bytes())
-            .chain(self.output_mr.as_bytes())
-            .chain(self.output_mmr_size.to_le_bytes())
-            .chain(self.witness_mr.as_bytes())
-            .chain(self.kernel_mr.as_bytes())
-            .chain(self.kernel_mmr_size.to_le_bytes())
-            .chain(self.total_kernel_offset.as_bytes())
-            .chain(self.total_script_offset.as_bytes())
-            .finalize()
-            .to_vec()
+        if self.version <= 2 {
+            // TODO: Remove deprecated header hashing #testnetreset
+            HashDigest::new()
+                .chain(self.version.to_le_bytes())
+                .chain(self.height.to_le_bytes())
+                .chain(self.prev_hash.as_bytes())
+                .chain(self.timestamp.as_u64().to_le_bytes())
+                .chain(self.input_mr.as_bytes())
+                .chain(self.output_mr.as_bytes())
+                .chain(self.output_mmr_size.to_le_bytes())
+                .chain(self.witness_mr.as_bytes())
+                .chain(self.kernel_mr.as_bytes())
+                .chain(self.kernel_mmr_size.to_le_bytes())
+                .chain(self.total_kernel_offset.as_bytes())
+                .chain(self.total_script_offset.as_bytes())
+                .finalize()
+                .to_vec()
+        } else {
+            let mut hasher = HashWriter::new(HashDigest::new());
+            self.version.consensus_encode(&mut hasher).unwrap();
+            self.height.consensus_encode(&mut hasher).unwrap();
+            self.prev_hash.consensus_encode(&mut hasher).unwrap();
+            self.timestamp.as_u64().consensus_encode(&mut hasher).unwrap();
+            self.input_mr.consensus_encode(&mut hasher).unwrap();
+            // TODO: Cleanup if/when we migrate to fixed 32-byte array type for hashes
+            copy_into_fixed_array::<_, 32>(&self.output_mr)
+                .unwrap()
+                .consensus_encode(&mut hasher)
+                .unwrap();
+            self.output_mmr_size.consensus_encode(&mut hasher).unwrap();
+            copy_into_fixed_array::<_, 32>(&self.witness_mr)
+                .unwrap()
+                .consensus_encode(&mut hasher)
+                .unwrap();
+            copy_into_fixed_array::<_, 32>(&self.kernel_mr)
+                .unwrap()
+                .consensus_encode(&mut hasher)
+                .unwrap();
+            self.kernel_mmr_size.consensus_encode(&mut hasher).unwrap();
+            self.total_kernel_offset.consensus_encode(&mut hasher).unwrap();
+            self.total_script_offset.consensus_encode(&mut hasher).unwrap();
+            hasher.finalize().to_vec()
+        }
     }
 
     #[inline]
@@ -243,12 +278,26 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(self.merged_mining_hash())
-            .chain(self.pow.to_bytes())
-            .chain(self.nonce.to_le_bytes())
-            .finalize()
-            .to_vec()
+        if self.version <= 2 {
+            HashDigest::new()
+                .chain(self.merged_mining_hash())
+                .chain(self.pow.to_bytes())
+                .chain(self.nonce.to_le_bytes())
+                .finalize()
+                .to_vec()
+        } else {
+            let mut hasher = HashWriter::new(HashDigest::new());
+            // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
+            //       up if we decide to migrate to a fixed 32-byte type
+            copy_into_fixed_array::<_, 32>(&self.merged_mining_hash())
+                .unwrap()
+                .consensus_encode(&mut hasher)
+                .unwrap();
+
+            self.pow.consensus_encode(&mut hasher).unwrap();
+            self.nonce.consensus_encode(&mut hasher).unwrap();
+            hasher.finalize().to_vec()
+        }
     }
 }
 
