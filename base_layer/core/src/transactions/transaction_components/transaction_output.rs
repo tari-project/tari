@@ -55,7 +55,7 @@ use tari_script::TariScript;
 use super::TransactionOutputVersion;
 use crate::{
     common::hash_writer::HashWriter,
-    consensus::{ConsensusEncoding, ConsensusEncodingSized, ToConsensusBytes},
+    consensus::{ConsensusEncoding, ConsensusEncodingSized},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -89,7 +89,7 @@ pub struct TransactionOutput {
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
-    /// The script that will be executed when spending this output
+    /// The covenant that will be executed when spending this output
     #[serde(default)]
     pub covenant: Covenant,
 }
@@ -250,13 +250,14 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
     ) -> Challenge {
-        Challenge::new()
-            .chain(public_commitment_nonce.to_consensus_bytes())
-            .chain(script.to_consensus_bytes())
-            .chain(features.to_consensus_bytes())
-            .chain(sender_offset_public_key.to_consensus_bytes())
-            .chain(commitment.to_consensus_bytes())
-            .chain(covenant.to_consensus_bytes())
+        let mut writer = HashWriter::new(Challenge::new());
+        public_commitment_nonce.consensus_encode(&mut writer).unwrap();
+        script.consensus_encode(&mut writer).unwrap();
+        features.consensus_encode(&mut writer).unwrap();
+        sender_offset_public_key.consensus_encode(&mut writer).unwrap();
+        commitment.consensus_encode(&mut writer).unwrap();
+        covenant.consensus_encode(&mut writer).unwrap();
+        writer.into_digest()
     }
 
     // Create commitment signature for the metadata
