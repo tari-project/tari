@@ -31,14 +31,22 @@ use std::{
 
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
+use tari_common_types::types::{
+    BlindingFactor,
+    BulletRangeProof,
+    ComSignature,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{RangeProofError, RangeProofService},
-    script::{ExecutionStack, TariScript},
     tari_utilities::ByteArray,
 };
+use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{
@@ -196,6 +204,15 @@ impl UnblindedOutput {
             ));
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
+
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
+        if self.features.recovery_byte != recovery_byte {
+            return Err(TransactionError::ValidationError(format!(
+                "Recovery byte set incorrectly - expected {} got {}",
+                recovery_byte, self.features.recovery_byte
+            )));
+        }
+
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
@@ -219,7 +236,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-        range_proof: Option<&RangeProof>,
+        range_proof: Option<&BulletRangeProof>,
     ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
@@ -242,6 +259,14 @@ impl UnblindedOutput {
             RangeProof::from_bytes(&proof_bytes)
                 .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?
         };
+
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(rewind_data));
+        if self.features.recovery_byte != recovery_byte {
+            return Err(TransactionError::ValidationError(format!(
+                "Recovery byte set incorrectly (with rewind) - expected {} got {}",
+                recovery_byte, self.features.recovery_byte
+            )));
+        }
 
         let output = TransactionOutput::new(
             self.version,

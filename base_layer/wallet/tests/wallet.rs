@@ -44,7 +44,7 @@
 
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, Rng};
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
@@ -66,13 +66,10 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_utilities::Hashable;
@@ -279,7 +276,7 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -611,7 +608,7 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = alice_runtime.block_on(make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None));
 
     alice_runtime
         .block_on(alice_wallet.output_manager_service.add_output(uo1, None))
@@ -762,10 +759,10 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let features = OutputFeatures::create_coinbase(50);
+    let temp_features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
 
     let p = TestParams::new();
-    let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
+    let utxo = create_unblinded_output(script.clone(), temp_features, p.clone(), 20000 * uT);
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
 
@@ -776,7 +773,7 @@ async fn test_import_utxo() {
             script.clone(),
             input.clone(),
             base_node_identity.public_key(),
-            features.clone(),
+            utxo.features.clone(),
             "Testing".to_string(),
             utxo.metadata_signature.clone(),
             &p.script_private_key,

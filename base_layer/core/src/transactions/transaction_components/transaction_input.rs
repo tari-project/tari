@@ -33,9 +33,9 @@ use serde::{Deserialize, Serialize};
 use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashDigest, HashOutput, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, ScriptContext, StackItem, TariScript},
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
+use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{

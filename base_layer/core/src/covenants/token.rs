@@ -23,7 +23,7 @@
 use std::{collections::VecDeque, io, iter::FromIterator};
 
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::script::TariScript;
+use tari_script::TariScript;
 
 use crate::covenants::{
     arguments::{CovenantArg, Hash},

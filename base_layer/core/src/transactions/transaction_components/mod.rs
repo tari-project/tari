@@ -38,7 +38,7 @@ pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
-use tari_crypto::script::TariScript;
+use tari_script::TariScript;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;

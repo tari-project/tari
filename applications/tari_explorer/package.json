@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node ./bin/www",
     "dev": "nodemon --exec node --trace-warnings ./bin/www",
-    "fmt": "prettier --end-of-line auto -w **/*.js",
+    "fmt": "prettier --end-of-line auto -w **/*.{js,hbs}",
+    "check-fmt": "prettier --end-of-line auto -c .",
     "lint": "eslint .",
     "lint-fix": "eslint --fix ."
   },

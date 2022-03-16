@@ -72,7 +72,7 @@ impl Filter for FieldEqFilter {
 #[cfg(test)]
 mod test {
     use tari_common_types::types::{Commitment, PublicKey};
-    use tari_crypto::script;
+    use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::Hex;
 

@@ -123,20 +123,19 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
+    transactions::{tari_amount::MicroTari, CryptoFactories},
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
     tari_utilities::ByteArray,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
     DEFAULT_DNS_NAME_SERVER,
 };
+use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
@@ -1168,7 +1167,7 @@ pub unsafe extern "C" fn seed_words_push_word(
     word: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
-    use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
+    use tari_key_manager::mnemonic::Mnemonic;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -5206,11 +5205,12 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    let features = if features.is_null() {
-        OutputFeatures::with_maturity(0)
-    } else {
-        (*features).clone()
-    };
+    if features.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("features".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
+
     let covenant = if covenant.is_null() {
         Covenant::default()
     } else {
@@ -5244,14 +5244,15 @@ pub unsafe extern "C" fn wallet_import_utxo(
     };
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
-    // Todo the script_lock_height can be something other than 0, for example an HTLC transaction
+
+    // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
         MicroTari::from(amount),
         &(*spending_key).clone(),
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        features,
+        (*features).clone(),
         message_string,
         (*metadata_signature).clone(),
         &(*script_private_key).clone(),
@@ -5563,11 +5564,11 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_seed_words())
+        .block_on((*wallet).wallet.get_seed_words(&MnemonicLanguage::English))
     {
         Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
         Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },

@@ -27,7 +27,8 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
-use tari_crypto::{script, tari_utilities::epoch_time::EpochTime};
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_script::script;
 
 use crate::{
     consensus::{network::NetworkConsensus, ConsensusEncodingSized},
@@ -54,6 +55,8 @@ pub struct ConsensusConstants {
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
+    /// Current version of the blockchain
+    valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
@@ -147,6 +150,11 @@ impl ConsensusConstants {
         self.blockchain_version
     }
 
+    /// Returns the valid blockchain version range
+    pub fn valid_blockchain_version_range(&self) -> &RangeInclusive<u16> {
+        &self.valid_blockchain_version_range
+    }
+
     /// This returns the FTL (Future Time Limit) for blocks.
     /// Any block with a timestamp greater than this is rejected.
     pub fn ftl(&self) -> EpochTime {
@@ -180,8 +188,9 @@ impl ConsensusConstants {
 
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+        let output_features = OutputFeatures { ..Default::default() };
         let metadata_size = self.transaction_weight.round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
         );
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
@@ -283,6 +292,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 2,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -321,6 +331,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 19500,
@@ -359,6 +370,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 2,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -407,6 +419,7 @@ impl ConsensusConstants {
                 effective_from_height: 0,
                 coinbase_lock_height: 360,
                 blockchain_version: 2,
+                valid_blockchain_version_range: 0..=3,
                 future_time_limit: 540,
                 difficulty_block_window: 90,
                 // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -431,6 +444,8 @@ impl ConsensusConstants {
                 coinbase_lock_height: 360,
                 // CHANGE: Use v3 blocks from effective height
                 blockchain_version: 3,
+                valid_blockchain_version_range: 0..=3,
+                future_time_limit: 540,
                 future_time_limit: 540,
                 difficulty_block_window: 90,
                 max_block_transaction_weight: 127_795,
@@ -471,6 +486,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,

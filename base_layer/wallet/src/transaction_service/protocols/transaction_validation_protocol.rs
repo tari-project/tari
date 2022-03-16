@@ -284,6 +284,7 @@ where
     > {
         let mut mined = vec![];
         let mut unmined = vec![];
+        #[allow(clippy::mutable_key_type)]
         let mut batch_signatures = HashMap::new();
         for tx_info in batch.iter() {
             // Imported transactions do not have a signature; this is represented by the default signature in info

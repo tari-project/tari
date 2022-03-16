@@ -131,8 +131,8 @@ impl CipherSeed {
         let passphrase = passphrase.unwrap_or_else(|| DEFAULT_CIPHER_SEED_PASSPHRASE.to_string());
 
         // Construct HMAC and include the version and salt as Associated Data
-        let blake2_mac_hasher: VarBlake2b =
-            VarBlake2b::new(CIPHER_SEED_MAC_BYTES).expect("Should be able to create blake2 hasher");
+        let blake2_mac_hasher: VarBlake2b = VarBlake2b::new(CIPHER_SEED_MAC_BYTES)
+            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
         let mut hmac = [0u8; CIPHER_SEED_MAC_BYTES];
         blake2_mac_hasher
             .chain(plaintext.clone())
@@ -203,8 +203,8 @@ impl CipherSeed {
         birthday_bytes.copy_from_slice(&enciphered_seed);
         let decrypted_birthday = u16::from_le_bytes(birthday_bytes);
 
-        let blake2_mac_hasher: VarBlake2b =
-            VarBlake2b::new(CIPHER_SEED_MAC_BYTES).expect("Should be able to create blake2 hasher");
+        let blake2_mac_hasher: VarBlake2b = VarBlake2b::new(CIPHER_SEED_MAC_BYTES)
+            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
         let mut hmac = [0u8; CIPHER_SEED_MAC_BYTES];
         blake2_mac_hasher
             .chain(&birthday_bytes)
@@ -231,8 +231,8 @@ impl CipherSeed {
 
     fn apply_stream_cipher(data: &mut Vec<u8>, passphrase: &str, salt: &[u8]) -> Result<(), KeyManagerError> {
         let argon2 = Argon2::default();
-        let blake2_nonce_hasher: VarBlake2b =
-            VarBlake2b::new(size_of::<Nonce>()).expect("Should be able to create blake2 hasher");
+        let blake2_nonce_hasher: VarBlake2b = VarBlake2b::new(size_of::<Nonce>())
+            .expect("Should be able to create blake2 hasher; will only panic if output size is 0 or greater than 64");
 
         let mut encryption_nonce = [0u8; size_of::<Nonce>()];
         blake2_nonce_hasher

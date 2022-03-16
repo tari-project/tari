@@ -26,7 +26,7 @@ use log::*;
 use rand::rngs::OsRng;
 use tari_common_types::{
     transaction::TxId,
-    types::{PrivateKey, PublicKey, RangeProof},
+    types::{BulletRangeProof, PrivateKey, PublicKey},
 };
 use tari_core::transactions::{
     transaction_components::{TransactionOutput, UnblindedOutput},
@@ -34,11 +34,10 @@ use tari_core::transactions::{
     CryptoFactories,
 };
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
     tari_utilities::hex::Hex,
 };
+use tari_script::{inputs, script};
 
 use crate::{
     key_manager_service::KeyManagerInterface,
@@ -89,7 +88,7 @@ where
     ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
-        let mut rewound_outputs: Vec<(UnblindedOutput, RangeProof)> = outputs
+        let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = outputs
             .into_iter()
             .filter_map(|output| {
                 output

@@ -50,12 +50,14 @@ use tari_core::{
 use tari_crypto::{
     common::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager::KeyManager,
+    mnemonic::{Mnemonic, MnemonicLanguage},
+};
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -63,6 +65,7 @@ use tari_p2p::{
     initialization::P2pInitializer,
     services::liveness::{LivenessConfig, LivenessInitializer},
 };
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
@@ -72,7 +75,7 @@ use crate::{
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
-    error::WalletError,
+    error::{WalletError, WalletStorageError},
     key_manager_service::{
         storage::database::KeyManagerBackend,
         KeyManagerHandle,
@@ -570,6 +573,17 @@ where
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
+    }
+
+    pub async fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+        let master_seed = self.db.get_master_seed().await?.ok_or_else(|| {
+            WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
+                "Cipher Seed not found".to_string(),
+            ))
+        })?;
+
+        let seed_words = master_seed.to_mnemonic(language, None)?;
+        Ok(seed_words)
     }
 }
 

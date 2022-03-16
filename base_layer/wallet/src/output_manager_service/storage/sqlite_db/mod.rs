@@ -35,10 +35,8 @@ use tari_common_types::{
     types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{hex::Hex, ByteArray},
-};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_script::{ExecutionStack, TariScript};
 use tokio::time::Instant;
 
 use crate::{
@@ -1436,7 +1434,7 @@ mod test {
         transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
-    use tari_crypto::script;
+    use tari_script::script;
     use tari_test_utils::random;
     use tempfile::tempdir;
 

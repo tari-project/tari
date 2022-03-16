@@ -48,9 +48,9 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RangeProofServiceTrait,
     ristretto::pedersen::PedersenCommitmentFactory,
-    script::TariScript,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
+use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
