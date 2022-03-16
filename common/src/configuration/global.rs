@@ -68,7 +68,7 @@ pub struct GlobalConfig {
     pub autoupdate_dns_hosts: Vec<String>,
     pub autoupdate_hashes_sig_url: String,
     pub autoupdate_hashes_url: String,
-    pub auxilary_tcp_listener_address: Option<Multiaddr>,
+    pub auxiliary_tcp_listener_address: Option<Multiaddr>,
     pub base_node_bypass_range_proof_verification: bool,
     pub base_node_config: Option<BaseNodeConfig>,
     pub base_node_event_channel_size: usize,
@@ -319,8 +319,8 @@ fn convert_node_config(
     // Transport
     let comms_transport = network_transport_config(&cfg, application, net_str)?;
 
-    let key = config_string("base_node", net_str, "auxilary_tcp_listener_address");
-    let auxilary_tcp_listener_address = optional(cfg.get_str(&key))?
+    let key = config_string("base_node", net_str, "auxiliary_tcp_listener_address");
+    let auxiliary_tcp_listener_address = optional(cfg.get_str(&key))?
         .map(|addr| {
             addr.parse::<Multiaddr>()
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
@@ -822,7 +822,7 @@ fn convert_node_config(
         autoupdate_dns_hosts,
         autoupdate_hashes_sig_url,
         autoupdate_hashes_url,
-        auxilary_tcp_listener_address,
+        auxiliary_tcp_listener_address,
         base_node_bypass_range_proof_verification,
         base_node_config,
         base_node_event_channel_size,
