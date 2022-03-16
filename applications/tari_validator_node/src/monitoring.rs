@@ -22,7 +22,7 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc},
 };
 
 use tari_common_types::types::PublicKey;
@@ -46,7 +46,7 @@ impl Monitoring {
 
     pub fn add_if_unmonitored(&mut self, asset: AssetDefinition) {
         if !self.assets.contains_key(&asset.public_key) {
-            self.assets.insert(asset.public_key.clone(), Asset::new(asset.clone()));
+            self.assets.insert(asset.public_key.clone(), Asset::new(asset));
         }
     }
 
@@ -59,8 +59,8 @@ impl Monitoring {
     }
 
     pub fn update_height<Fstart: Clone>(&mut self, height: u64, start: Fstart)
-    where Fstart: Fn(AssetDefinition) -> Arc<Mutex<bool>> {
-        for (_, proc) in &mut self.assets {
+    where Fstart: Fn(AssetDefinition) -> Arc<AtomicBool> {
+        for proc in self.assets.values_mut() {
             proc.update_height(height, start.clone());
         }
         self.assets.retain(|_, proc| proc.should_monitor())

@@ -20,7 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use log::*;
 use tari_common_types::types::PublicKey;
@@ -117,7 +120,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         &mut self,
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
-        stop: Arc<Mutex<bool>>,
+        stop: Arc<AtomicBool>,
     ) -> Result<(), DigitalAssetError> {
         let chain_db = self
             .db_factory
@@ -131,7 +134,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.public_key, self.current_view_id
         );
         let starting_view = self.current_view_id;
-        while !*stop.as_ref().lock().unwrap() {
+        while !stop.as_ref().load(Ordering::Relaxed) {
             if let Some(max) = max_views_to_process {
                 if max <= self.current_view_id.0 - starting_view.0 {
                     break;

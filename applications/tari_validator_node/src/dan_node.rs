@@ -21,10 +21,11 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
+use itertools::Itertools;
 use log::*;
 use tari_common::{
     configuration::ValidatorNodeConfig,
@@ -130,12 +131,11 @@ impl DanNode {
                     monitoring.add_if_unmonitored(asset.clone());
                     monitoring.add_state(asset.public_key, mined_height, true);
                 }
-                let known_active_public_keys: Vec<PublicKey> =
-                    assets.into_iter().map(|(asset, _)| asset.public_key).collect();
+                let mut known_active_public_keys = assets.into_iter().map(|(asset, _)| asset.public_key);
                 let active_public_keys = monitoring
                     .get_active_public_keys()
                     .into_iter()
-                    .map(|public_key| public_key.clone())
+                    .cloned()
                     .collect::<Vec<PublicKey>>();
                 for public_key in active_public_keys {
                     if !known_active_public_keys.contains(&public_key) {
@@ -161,7 +161,7 @@ impl DanNode {
                     let subscription_factory = subscription_factory.clone();
                     let shutdown = shutdown.clone();
                     // Create a kill signal for each asset
-                    let kill = Arc::new(Mutex::new(false));
+                    let kill = Arc::new(AtomicBool::new(false));
                     let dan_config = dan_config.clone();
                     let db_factory = db_factory.clone();
                     task::spawn(DanNode::start_asset_worker(
@@ -191,7 +191,7 @@ impl DanNode {
         shutdown: ShutdownSignal,
         config: ValidatorNodeConfig,
         db_factory: SqliteDbFactory,
-        kill: Arc<Mutex<bool>>,
+        kill: Arc<AtomicBool>,
     ) -> Result<(), ExitError> {
         let timeout = Duration::from_secs(asset_definition.phase_timeout);
         let committee = asset_definition

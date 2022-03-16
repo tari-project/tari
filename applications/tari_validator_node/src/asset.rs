@@ -22,7 +22,10 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 
 use tari_dan_core::models::AssetDefinition;
@@ -34,7 +37,7 @@ pub struct Asset {
     // Changes in the committee for this asset.
     // Mined height of the change TXs, and the involvment in the committe (true = part of committee)
     next_states: HashMap<u64, bool>,
-    kill_signal: Option<Arc<Mutex<bool>>>,
+    kill_signal: Option<Arc<AtomicBool>>,
 }
 
 impl Asset {
@@ -48,7 +51,7 @@ impl Asset {
     }
 
     pub fn update_height<Fstart>(&mut self, height: u64, start: Fstart)
-    where Fstart: Fn(AssetDefinition) -> Arc<Mutex<bool>> {
+    where Fstart: Fn(AssetDefinition) -> Arc<AtomicBool> {
         if let Some((&height, &involment)) = self
             .next_states
             .iter()
@@ -61,7 +64,7 @@ impl Asset {
                 } else {
                     // Switch on the kill signal for the asset to end processing
                     let stop = self.kill_signal.clone().unwrap();
-                    *stop.as_ref().lock().unwrap() = true;
+                    stop.as_ref().store(true, Ordering::Relaxed);
                     self.kill_signal = None;
                 }
             }
