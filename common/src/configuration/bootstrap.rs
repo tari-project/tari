@@ -58,10 +58,7 @@ use std::{
 
 use structopt::StructOpt;
 
-use super::{
-    error::ConfigError,
-    utils::{config_installer, load_configuration},
-};
+use super::{error::ConfigError, utils::load_configuration};
 use crate::{
     dir_utils,
     initialize_logging,
@@ -290,21 +287,22 @@ impl ConfigBootstrap {
         }
 
         if !self.config.exists() {
-            let install = if !self.init {
-                prompt("Config file does not exist. We can create a default one for you now, or you can say 'no' here, \
-                and generate a customised one at https://config.tari.com.\n\
-                Would you like to try the default configuration (Y/n)?")
-            } else {
-                true
-            };
-
-            if install {
-                println!(
-                    "Installing new config file at {}",
-                    self.config.to_str().unwrap_or("[??]")
-                );
-                install_configuration(application_type, &self.config, config_installer);
-            }
+            todo!();
+            // let install = if !self.init {
+            //     prompt("Config file does not exist. We can create a default one for you now, or you can say 'no'
+            // here, \     and generate a customised one at https://config.tari.com.\n\
+            //     Would you like to try the default configuration (Y/n)?")
+            // } else {
+            //     true
+            // };
+            //
+            // if install {
+            //     println!(
+            //         "Installing new config file at {}",
+            //         self.config.to_str().unwrap_or("[??]")
+            //     );
+            //     install_configuration(application_type, &self.config, config_installer);
+            // }
         }
 
         if !self.log_config.exists() {
@@ -336,7 +334,7 @@ impl ConfigBootstrap {
 
     /// Load configuration from files located based on supplied CLI arguments
     pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
-        load_configuration(self)
+        load_configuration(self.config.as_path(), true)
     }
 }
 

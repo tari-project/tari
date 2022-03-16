@@ -87,12 +87,7 @@ impl CommandContext {
             "Rpc",
             format!(
                 "{}/{}",
-                num_active_rpc_sessions,
-                self.config
-                    .comms_rpc_max_simultaneous_sessions
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "∞".to_string()),
+                num_active_rpc_sessions, self.config.rpc_max_simultaneous_sessions
             ),
         );
         if full_log {

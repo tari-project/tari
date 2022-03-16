@@ -64,6 +64,7 @@ pub use watch_command::WatchCommand;
 use crate::{
     builder::BaseNodeContext,
     commands::{nom_parser::ParsedCommand, parser::FromHex},
+    config::BaseNodeConfig,
 };
 
 #[derive(Debug, Parser)]
@@ -125,7 +126,7 @@ pub trait HandleCommand<T> {
 }
 
 pub struct CommandContext {
-    pub config: Arc<GlobalConfig>,
+    pub config: Arc<BaseNodeConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
@@ -231,7 +232,7 @@ impl HandleCommand<Command> for CommandContext {
 }
 
 impl CommandContext {
-    pub fn global_config(&self) -> Arc<GlobalConfig> {
+    pub fn config(&self) -> Arc<BaseNodeConfig> {
         self.config.clone()
     }
 

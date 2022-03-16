@@ -90,7 +90,7 @@ pub use configuration::{
     global::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication},
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, SubConfigPath},
     name_server::DnsNameServer,
-    utils::{config_installer, default_config, load_configuration},
+    utils::{default_config, load_configuration},
 };
 pub mod dir_utils;
 pub use logging::initialize_logging;

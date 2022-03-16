@@ -30,6 +30,7 @@
 
 mod block_template_data;
 mod block_template_protocol;
+mod cli;
 mod common;
 mod config;
 mod error;
@@ -40,22 +41,31 @@ mod test;
 
 use std::convert::Infallible;
 
+use clap::Parser;
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use log::*;
 use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
-use tari_common::{configuration::bootstrap::ApplicationType, DefaultConfigLoader};
+use tari_common::{configuration::bootstrap::ApplicationType, load_configuration, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
 
-use crate::{block_template_data::BlockTemplateRepository, config::MergeMiningProxyConfig, error::MmProxyError};
+use crate::{
+    block_template_data::BlockTemplateRepository,
+    cli::Cli,
+    config::MergeMiningProxyConfig,
+    error::MmProxyError,
+};
 const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let (_, _global, cfg) = init_configuration(ApplicationType::MergeMiningProxy)?;
+    let cli = Cli::parse();
+
+    let config_path = cli.common.config();
+    let cfg = load_configuration(config_path.as_path(), true)?;
     let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()

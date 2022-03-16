@@ -19,6 +19,7 @@ tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "
 tari_libtor = { path = "../../infrastructure/libtor" }
 tari_mmr = { path = "../../base_layer/mmr", features = ["native_bitmap"] }
 tari_p2p = { path = "../../base_layer/p2p", features = ["auto-update"] }
+tari_storage = {path="../../infrastructure/storage"}
 tari_service_framework = { path = "../../base_layer/service_framework" }
 tari_shutdown = { path = "../../infrastructure/shutdown" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }

@@ -6519,6 +6519,7 @@ dependencies = [
 name = "tari_app_utilities"
 version = "0.29.0"
 dependencies = [
+ "clap 3.1.5",
  "config 0.9.3",
  "dirs-next 1.0.2",
  "futures 0.3.21",
@@ -7067,6 +7068,7 @@ dependencies = [
  "bincode",
  "bytes 1.1.0",
  "chrono",
+ "clap 3.1.5",
  "config 0.9.3",
  "env_logger 0.7.1",
  "futures 0.3.21",

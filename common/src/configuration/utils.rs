@@ -20,7 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path::Path, str::FromStr};
+use std::{
+    fmt,
+    fmt::Display,
+    fs,
+    fs::File,
+    io::Write,
+    marker::PhantomData,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use config::Config;
 use log::{debug, info};
@@ -42,16 +51,20 @@ use crate::{
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
-pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigError> {
+pub fn load_configuration(config_path: &Path, create_if_not_exists: bool) -> Result<Config, ConfigError> {
     debug!(
         target: LOG_TARGET,
         "Loading configuration file from  {}",
-        bootstrap.config.to_str().unwrap_or("[??]")
+        config_path.to_str().unwrap_or("[??]")
     );
-    let mut cfg = default_config(bootstrap);
+    if !config_path.exists() && create_if_not_exists {
+        write_default_config_to(config_path)
+            .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
+    }
+    let mut cfg = Config::new();
+
     // Load the configuration file
-    let filename = bootstrap
-        .config
+    let filename = config_path
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
     let config_file = config::File::with_name(filename);
@@ -65,7 +78,7 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
 
 /// Installs a new configuration file template, copied from the application type's preset and written to the given path.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn config_installer(_app_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+pub fn write_default_config_to(path: &Path) -> Result<(), std::io::Error> {
     // Use the same config file so that all the settings are easier to find, and easier to
     // support users over chat channels
     let common = include_str!("../../config/presets/common.toml");

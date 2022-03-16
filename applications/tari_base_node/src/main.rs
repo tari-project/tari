@@ -390,7 +390,7 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
 async fn status_loop(mut context: CommandContext, watch_command: Option<String>) {
     let start_time = Instant::now();
     let mut shutdown_signal = context.shutdown.to_signal();
-    let status_interval = context.config().status_line_interval;
+    let status_interval = context.config.status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
         tokio::select! {
@@ -489,7 +489,7 @@ async fn cli_loop(mut context: CommandContext) {
             let interval = command
                 .interval
                 .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
+                .unwrap_or(config.status_line_interval);
             if let Err(err) = context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
