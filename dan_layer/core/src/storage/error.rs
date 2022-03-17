@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io;
+use std::{io, sync::PoisonError};
 
 use lmdb_zero as lmdb;
 use tari_mmr::error::MerkleMountainRangeError;
@@ -52,4 +52,12 @@ pub enum StorageError {
     MerkleMountainRangeError(#[from] MerkleMountainRangeError),
     #[error("General storage error: {details}")]
     General { details: String },
+    #[error("Storage lock error")]
+    LockError,
+}
+
+impl<T> From<PoisonError<T>> for StorageError {
+    fn from(_err: PoisonError<T>) -> Self {
+        Self::LockError
+    }
 }

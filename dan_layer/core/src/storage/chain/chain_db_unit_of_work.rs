@@ -79,7 +79,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     // }
 
     fn commit(&mut self) -> Result<(), StorageError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
         let tx = inner
             .backend_adapter
             .create_transaction()
@@ -143,7 +143,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn add_node(&mut self, hash: TreeNodeHash, parent: TreeNodeHash, height: u32) -> Result<(), StorageError> {
-        self.inner.write().unwrap().nodes.push((
+        self.inner.write()?.nodes.push((
             None,
             UnitOfWorkTracker::new(
                 DbNode {
@@ -159,7 +159,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn add_instruction(&mut self, node_hash: TreeNodeHash, instruction: Instruction) -> Result<(), StorageError> {
-        self.inner.write().unwrap().instructions.push((
+        self.inner.write()?.instructions.push((
             None,
             UnitOfWorkTracker::new(DbInstruction { node_hash, instruction }, true),
         ));
@@ -167,7 +167,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn get_locked_qc(&mut self) -> Result<QuorumCertificate, StorageError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
 
         if let Some(locked_qc) = &inner.locked_qc {
             let locked_qc = locked_qc.get();
@@ -197,7 +197,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn set_locked_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
 
         if let Some(locked_qc) = &inner.locked_qc.as_ref() {
             let mut locked_qc = locked_qc.get_mut();
@@ -230,7 +230,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn get_prepare_qc(&mut self) -> Result<Option<QuorumCertificate>, StorageError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
 
         if let Some(prepare_qc) = &inner.prepare_qc {
             let prepare_qc = prepare_qc.get();
@@ -265,7 +265,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     fn set_prepare_qc(&mut self, qc: &QuorumCertificate) -> Result<(), StorageError> {
         // put it in the tracker
         let _ = self.get_prepare_qc()?;
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
         match inner.prepare_qc.as_mut() {
             None => {
                 inner.prepare_qc = Some(UnitOfWorkTracker::new(
@@ -291,7 +291,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn commit_node(&mut self, node_hash: &TreeNodeHash) -> Result<(), StorageError> {
-        let mut inner = self.inner.write().unwrap();
+        let mut inner = self.inner.write()?;
         let found_node = inner.find_proposed_node(node_hash)?;
         let mut node = found_node.1.get_mut();
         node.is_committed = true;
@@ -299,7 +299,7 @@ impl<TBackendAdapter: ChainDbBackendAdapter> ChainDbUnitOfWork for ChainDbUnitOf
     }
 
     fn get_tip_node(&self) -> Result<Option<Node>, StorageError> {
-        let inner = self.inner.read().unwrap();
+        let inner = self.inner.read()?;
         inner.get_tip_node()
     }
 }
