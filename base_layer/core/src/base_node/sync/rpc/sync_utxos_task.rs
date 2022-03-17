@@ -24,6 +24,7 @@ use std::{sync::Arc, time::Instant};
 
 use log::*;
 use tari_comms::{
+    peer_manager::NodeId,
     protocol::rpc::{Request, RpcStatus},
     utils,
 };
@@ -42,13 +43,14 @@ const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
+    peer_node_id: Arc<NodeId>,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
-    pub(crate) fn new(db: AsyncBlockchainDb<B>) -> Self {
-        Self { db }
+    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<NodeId>) -> Self {
+        Self { db, peer_node_id }
     }
 
     pub(crate) async fn run(
@@ -56,7 +58,6 @@ where B: BlockchainBackend + 'static
         request: Request<SyncUtxosRequest>,
         mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
     ) -> Result<(), RpcStatus> {
-        let peer = request.context().peer_node_id().clone();
         let msg = request.into_message();
         let start_header = self
             .db
@@ -105,7 +106,10 @@ where B: BlockchainBackend + 'static
         let include_pruned_utxos = msg.include_pruned_utxos;
         let include_deleted_bitmaps = msg.include_deleted_bitmaps;
         task::spawn(async move {
-            debug!(target: LOG_TARGET, "Starting UTXO stream for peer '{}'", peer);
+            debug!(
+                target: LOG_TARGET,
+                "Starting UTXO stream for peer '{}'", self.peer_node_id
+            );
             if let Err(err) = self
                 .start_streaming(
                     &mut tx,
@@ -118,10 +122,16 @@ where B: BlockchainBackend + 'static
                 )
                 .await
             {
-                debug!(target: LOG_TARGET, "UTXO stream errored for peer '{}': {}", peer, err);
+                debug!(
+                    target: LOG_TARGET,
+                    "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
+                );
                 let _ = tx.send(Err(err)).await;
             }
-            debug!(target: LOG_TARGET, "UTXO stream completed for peer '{}'", peer);
+            debug!(
+                target: LOG_TARGET,
+                "UTXO stream completed for peer '{}'", self.peer_node_id
+            );
             metrics::active_sync_peers().dec();
         });
 
@@ -178,7 +188,10 @@ where B: BlockchainBackend + 'static
             let end = current_header.output_mmr_size;
 
             if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Exiting sync_utxos early because client has gone",);
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' exited UTXO sync session early", self.peer_node_id
+                );
                 break;
             }
 
@@ -196,6 +209,14 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 deleted_diff.cardinality(),
             );
+            if tx.is_closed() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' exited UTXO sync session early", self.peer_node_id
+                );
+                break;
+            }
+
             let utxos = utxos
                 .into_iter()
                 .skip(skip_outputs as usize)
