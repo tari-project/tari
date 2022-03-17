@@ -92,8 +92,8 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         };
         if let Some(val) = settings.monero_use_auth {
             mm_proxy.monero_use_auth = val;
-            mm_proxy.monero_username = settings.monero_username.unwrap_or_else(|| "".to_string());
-            mm_proxy.monero_password = settings.monero_password.unwrap_or_else(|| "".to_string());
+            mm_proxy.monero_username = settings.monero_username.unwrap_or_default();
+            mm_proxy.monero_password = settings.monero_password.unwrap_or_default();
         }
         let monero_mining_address = settings
             .monero_mining_address
