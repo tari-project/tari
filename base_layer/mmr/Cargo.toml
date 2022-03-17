@@ -22,6 +22,7 @@ croaring =  { version = "=0.4.5", optional = true }
 criterion = { version="0.2", optional = true }
 
 [dev-dependencies]
+anyhow = "1.0.56"
 rand="0.8.0"
 blake2 = "0.9.0"
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }

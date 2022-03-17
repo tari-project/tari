@@ -210,6 +210,8 @@ pub fn checked_n_leaves(size: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod test {
+    use anyhow::Error;
+
     use super::*;
 
     #[test]
@@ -281,14 +283,15 @@ mod test {
     }
 
     #[test]
-    fn families() {
-        assert_eq!(family(1).unwrap(), (2, 0));
-        assert_eq!(family(0).unwrap(), (2, 1));
-        assert_eq!(family(3).unwrap(), (5, 4));
-        assert_eq!(family(9).unwrap(), (13, 12));
-        assert_eq!(family(15).unwrap(), (17, 16));
-        assert_eq!(family(6).unwrap(), (14, 13));
-        assert_eq!(family(13).unwrap(), (14, 6));
+    fn families() -> Result<(), Error> {
+        assert_eq!(family(1)?, (2, 0));
+        assert_eq!(family(0)?, (2, 1));
+        assert_eq!(family(3)?, (5, 4));
+        assert_eq!(family(9)?, (13, 12));
+        assert_eq!(family(15)?, (17, 16));
+        assert_eq!(family(6)?, (14, 13));
+        assert_eq!(family(13)?, (14, 6));
+        Ok(())
     }
 
     #[test]
