@@ -57,7 +57,7 @@ impl<T> WaitingRequests<T> {
 
     /// Remove the waiting request corresponding to the provided key.
     pub async fn remove(&self, key: RequestKey) -> Option<(OneshotSender<T>, Instant)> {
-        self.requests.write().await.remove(&key).unwrap_or(None)
+        self.requests.write().await.remove(&key)?
     }
 }
 
