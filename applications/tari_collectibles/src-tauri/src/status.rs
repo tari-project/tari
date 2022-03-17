@@ -58,9 +58,13 @@ impl Status {
     }
   }
 
-  pub fn internal(message: String) -> Self {
-    Self::Internal { code: 500, message }
+  pub fn internal(message: impl ToString) -> Self {
+    Self::Internal {
+      code: 500,
+      message: message.to_string(),
+    }
   }
+
   pub fn not_found(entity: String) -> Self {
     Self::NotFound {
       code: 404,

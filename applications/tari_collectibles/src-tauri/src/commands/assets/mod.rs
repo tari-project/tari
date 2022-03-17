@@ -95,7 +95,7 @@ impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
     let mut m = m
       .as_str()
       .split('|')
-      .map(|s| s.to_string())
+      .map(String::from)
       .collect::<Vec<String>>()
       .into_iter();
     let name = m.next();
@@ -103,18 +103,16 @@ impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
     let image = m.next();
 
     AssetMetadata {
-      name: name.unwrap_or_else(|| "".to_string()),
-      description: description.unwrap_or_else(|| "".to_string()),
-      image: image.unwrap_or_else(|| "".to_string()),
+      name: name.unwrap_or_default(),
+      description: description.unwrap_or_default(),
+      image: image.unwrap_or_default(),
     }
   }
 }
 
 impl AssetMetadataSerializer for V1AssetMetadataSerializer {
   fn serialize(&self, model: &AssetMetadata) -> Vec<u8> {
-    let str = format!("{}|{}|{}", model.name, model.description, model.image);
-
-    str.into_bytes()
+    format!("{}|{}|{}", model.name, model.description, model.image).into()
   }
 }
 
@@ -289,9 +287,7 @@ pub(crate) async fn inner_assets_create_initial_checkpoint(
   state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-  let merkle_root = mmr
-    .get_merkle_root()
-    .map_err(|e| Status::internal(e.to_string()))?;
+  let merkle_root = mmr.get_merkle_root().map_err(Status::internal)?;
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
@@ -347,7 +343,9 @@ pub(crate) async fn inner_assets_get_registration(
   let asset = client.get_asset_metadata(&asset_public_key).await?;
 
   debug!(target: LOG_TARGET, "asset {:?}", asset);
-  let features = asset.features.unwrap();
+  let features = asset
+    .features
+    .ok_or_else(|| Status::internal("empty features"))?;
   let serializer = V1AssetMetadataSerializer {};
   let metadata = serializer.deserialize(&features.metadata[1..]);
 
