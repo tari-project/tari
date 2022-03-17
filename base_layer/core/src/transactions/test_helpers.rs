@@ -542,7 +542,7 @@ pub fn create_unblinded_txos(
 
     (inputs, outputs)
 }
-/// Create an unconfirmed transaction for testing with a valid fee, unique access_sig, random inputs and outputs, the
+/// Create an unconfirmed transaction for testing with a valid fee, unique excess_sig, random inputs and outputs, the
 /// transaction is only partially constructed
 pub fn create_transaction_with(
     lock_height: u64,

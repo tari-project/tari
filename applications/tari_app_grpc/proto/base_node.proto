@@ -33,10 +33,6 @@ service BaseNode {
     rpc GetHeaderByHash(GetHeaderByHashRequest) returns (BlockHeaderResponse);
     // Returns blocks in the current best chain. Currently only supports querying by height
     rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
-    // Returns the calc timing for the chain heights
-    rpc GetCalcTiming(HeightRequest) returns (CalcTimingResponse) {
-        option deprecated = true;
-    };
     // Returns the block timing for the chain heights
     rpc GetBlockTiming(HeightRequest) returns (BlockTimingResponse);
     // Returns the network Constants
@@ -232,14 +228,6 @@ message HeightRequest {
     uint64 start_height = 2;
     // The ending height (optional)
     uint64 end_height = 3;
-}
-
-// The return type of the rpc GetCalcTiming
-message CalcTimingResponse {
-    option deprecated = true;
-    uint64 max = 1;
-    uint64 min = 2;
-    double avg = 3;
 }
 
 // The return type of the rpc GetBlockTiming
