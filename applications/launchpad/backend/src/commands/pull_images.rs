@@ -66,15 +66,12 @@ pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
         .iter()
         .map(|image| pull_image(*image, app.clone()).map_err(|e| e.chained_message()));
     let results: Vec<Result<_, String>> = join_all(futures).await;
-    let errors = results
-        .into_iter()
-        .filter(|r| r.is_err())
-        .map(|e| e.unwrap_err())
-        .collect::<Vec<String>>();
-    if !errors.is_empty() {
-        return Err(errors.join("\n"));
+    let errors = results.into_iter().filter_map(Result::err).collect::<Vec<String>>();
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
     }
-    Ok(())
 }
 
 async fn pull_image(image: ImageType, app: AppHandle<Wry>) -> Result<(), LauncherError> {
