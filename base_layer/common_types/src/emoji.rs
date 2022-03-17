@@ -25,10 +25,7 @@ use std::{
     fmt::{Display, Error, Formatter},
 };
 
-use tari_crypto::tari_utilities::{
-    hex::{Hex, HexError},
-    ByteArray,
-};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use thiserror::Error;
 
 use crate::{
@@ -97,15 +94,15 @@ impl EmojiId {
 
     /// Try and construct an emoji ID from the given hex string. The method will fail if the hex is not a valid
     /// representation of a public key.
-    pub fn from_hex(hex_key: &str) -> Result<Self, HexError> {
+    pub fn from_hex(hex_key: &str) -> Result<Self, EmojiIdError> {
         let key = PublicKey::from_hex(hex_key)?;
         Ok(EmojiId::from_pubkey(&key))
     }
 
     /// Return the public key that this emoji ID represents
-    pub fn to_pubkey(&self) -> PublicKey {
-        let bytes = self.to_bytes();
-        PublicKey::from_bytes(&bytes).unwrap()
+    pub fn to_pubkey(&self) -> Result<PublicKey, EmojiIdError> {
+        let bytes = self.to_bytes()?;
+        PublicKey::from_bytes(&bytes).map_err(EmojiIdError::from)
     }
 
     /// Checks whether a given string would be a valid emoji ID using the assertion that
@@ -118,17 +115,15 @@ impl EmojiId {
     pub fn str_to_pubkey(s: &str) -> Result<PublicKey, EmojiIdError> {
         let mut indices = Vec::with_capacity(33);
         for c in s.chars() {
-            if let Some(i) = REVERSE_EMOJI.get(&c) {
-                indices.push(*i);
-            } else {
-                return Err(EmojiIdError);
-            }
+            let i = REVERSE_EMOJI.get(&c).ok_or_else(|| EmojiIdError::UnsupportedChar(c))?;
+            indices.push(*i);
         }
-        if !is_valid(&indices, 256) {
-            return Err(EmojiIdError);
+        if is_valid(&indices, 256) {
+            let bytes = EmojiId::byte_vec(s)?;
+            PublicKey::from_bytes(&bytes).map_err(EmojiIdError::from)
+        } else {
+            Err(EmojiIdError::InvalidChecksum)
         }
-        let bytes = EmojiId::byte_vec(s)?;
-        PublicKey::from_bytes(&bytes).map_err(|_| EmojiIdError)
     }
 
     /// Return the 33 character emoji string for this emoji ID
@@ -137,8 +132,8 @@ impl EmojiId {
     }
 
     /// Convert the emoji ID string into its associated public key, represented as a byte array
-    pub fn to_bytes(&self) -> Vec<u8> {
-        EmojiId::byte_vec(&self.0).unwrap()
+    pub fn to_bytes(&self) -> Result<Vec<u8>, EmojiIdError> {
+        EmojiId::byte_vec(&self.0)
     }
 
     fn from_bytes(bytes: &[u8]) -> Self {
@@ -154,11 +149,8 @@ impl EmojiId {
     fn byte_vec(s: &str) -> Result<Vec<u8>, EmojiIdError> {
         let mut v = Vec::with_capacity(32);
         for c in s.chars().take(32) {
-            if let Some(index) = REVERSE_EMOJI.get(&c) {
-                v.push(*index as u8);
-            } else {
-                return Err(EmojiIdError);
-            }
+            let index = REVERSE_EMOJI.get(&c).ok_or_else(|| EmojiIdError::UnsupportedChar(c))?;
+            v.push(*index as u8);
         }
         Ok(v)
     }
@@ -172,37 +164,45 @@ impl Display for EmojiId {
 
 // TODO: We have to add more details
 #[derive(Debug, Error)]
-#[error("emoji id error")]
-pub struct EmojiIdError;
+pub enum EmojiIdError {
+    #[error("Byte array error: {0}")]
+    ByteArray(#[from] tari_utilities::ByteArrayError),
+    #[error("Hex error in EmojiId: {0}")]
+    HexError(#[from] tari_crypto::tari_utilities::hex::HexError),
+    #[error("Unsupported char for EmojiId: '{0}'")]
+    UnsupportedChar(char),
+    #[error("Invalid checksum of EmojiId")]
+    InvalidChecksum,
+}
 
 #[cfg(test)]
 mod test {
+    use anyhow::Error;
     use tari_crypto::tari_utilities::hex::Hex;
 
     use crate::{emoji::EmojiId, types::PublicKey};
 
     #[test]
-    fn convert_key() {
-        let pubkey = PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
-        let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
+    fn convert_key() -> Result<(), Error> {
+        let pubkey = PublicKey::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a")?;
+        let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a")?;
         assert_eq!(
             eid.as_str(),
             "🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒"
         );
         assert_eq!(EmojiId::from_pubkey(&pubkey), eid);
         assert_eq!(
-            &eid.to_bytes().to_hex(),
+            &eid.to_bytes()?.to_hex(),
             "70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a"
         );
-        assert_eq!(
-            EmojiId::str_to_pubkey("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒").unwrap(),
-            pubkey
-        );
+        let eid = EmojiId::str_to_pubkey("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹🎒")?;
+        assert_eq!(eid, pubkey);
+        Ok(())
     }
 
     #[test]
-    fn is_valid() {
-        let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a").unwrap();
+    fn is_valid() -> Result<(), Error> {
+        let eid = EmojiId::from_hex("70350e09c474809209824c6e6888707b7dd09959aa227343b5106382b856f73a")?;
         // Valid emojiID
         assert!(EmojiId::is_valid(eid.as_str()));
         assert!(!EmojiId::is_valid(""), "Emoji ID too short");
@@ -223,5 +223,6 @@ mod test {
             !EmojiId::is_valid("🐎🍴🌷🌟💻🐖🐩🐾🌟🐬🎧🐌🏦🐳🐎🐝🐢🔋👕🎸👿🍒🐓🎉💔🌹🏆🐬💡🎳🚦🍹📝"),
             "Wrong checksum"
         );
+        Ok(())
     }
 }

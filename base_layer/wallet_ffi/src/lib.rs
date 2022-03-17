@@ -108,7 +108,7 @@ use log4rs::{
 };
 use rand::rngs::OsRng;
 use tari_common_types::{
-    emoji::{emoji_set, EmojiId, EmojiIdError},
+    emoji::{emoji_set, EmojiId},
     transaction::{TransactionDirection, TransactionStatus, TxId},
     types::{Commitment, PublicKey},
 };
@@ -713,13 +713,9 @@ pub unsafe extern "C" fn emoji_id_to_public_key(emoji: *const c_char, error_out:
         return ptr::null_mut();
     }
 
-    match CStr::from_ptr(emoji)
-        .to_str()
-        .map_err(|_| EmojiIdError)
-        .and_then(EmojiId::str_to_pubkey)
-    {
-        Ok(pk) => Box::into_raw(Box::new(pk)),
-        Err(_) => {
+    match CStr::from_ptr(emoji).to_str().map(EmojiId::str_to_pubkey) {
+        Ok(Ok(pk)) => Box::into_raw(Box::new(pk)),
+        _ => {
             error = LibWalletError::from(InterfaceError::InvalidEmojiId).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()

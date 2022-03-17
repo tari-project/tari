@@ -6677,6 +6677,7 @@ dependencies = [
 name = "tari_common_types"
 version = "0.30.0"
 dependencies = [
+ "anyhow",
  "digest 0.9.0",
  "lazy_static 1.4.0",
  "rand 0.8.5",
