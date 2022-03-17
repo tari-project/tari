@@ -101,7 +101,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use commands::{command::CommandContext, parser::Parser, reader::CommandReader, status_line::StatusLineOutput};
+use commands::{
+    command::{CommandContext, WatchCommand},
+    parser::Parser,
+    reader::CommandReader,
+    status_line::StatusLineOutput,
+};
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
@@ -412,8 +417,47 @@ async fn cli_loop(mut context: CommandContext) {
     let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
     let config = context.config.clone();
-    let mut watch_task = None;
+    println!("\nPress Ctrl-C to enter the interactive shell.\n");
+    let mut watch_task = Some(WatchCommand::default());
     loop {
+        if let Some(command) = watch_task.take() {
+            let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
+            if let Err(err) = context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                // Keep the signal installed (to avoid missed signals)
+                let mut interrupt = signal::ctrl_c().fuse().boxed();
+                loop {
+                    let interval = get_status_interval(start_time, interval);
+                    tokio::select! {
+                        _ = &mut interrupt => {
+                            break;
+                        }
+                        _ = interval => {
+                            if let Err(err) = context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                        },
+                        // TODO: Is that good idea? Or add a separate command?
+                        Ok(_) = software_update_notif.changed() => {
+                            if let Some(ref update) = *software_update_notif.borrow() {
+                                println!(
+                                    "Version {} of the {} is available: {} (sha: {})",
+                                    update.version(),
+                                    update.app(),
+                                    update.download_url(),
+                                    update.to_hash_hex()
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
         tokio::select! {
             res = reader.next_command() => {
                 if let Some(event) = res {
@@ -457,44 +501,6 @@ async fn cli_loop(mut context: CommandContext) {
             },
             _ = shutdown_signal.wait() => {
                 break;
-            }
-        }
-        if let Some(command) = watch_task.take() {
-            let line = command.line();
-            let interval = command
-                .interval
-                .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
-            if let Err(err) = context.handle_command_str(line).await {
-                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
-            } else {
-                // Keep the signal installed (to avoid missed signals)
-                let mut interrupt = signal::ctrl_c().fuse().boxed();
-                loop {
-                    let interval = get_status_interval(start_time, interval);
-                    tokio::select! {
-                        _ = &mut interrupt => {
-                            break;
-                        }
-                        _ = interval => {
-                            if let Err(err) = context.handle_command_str(line).await {
-                                println!("Watched command `{}` failed: {}", line, err);
-                            }
-                        },
-                        // TODO: Is that good idea? Or add a separate command?
-                        Ok(_) = software_update_notif.changed() => {
-                            if let Some(ref update) = *software_update_notif.borrow() {
-                                println!(
-                                    "Version {} of the {} is available: {} (sha: {})",
-                                    update.version(),
-                                    update.app(),
-                                    update.download_url(),
-                                    update.to_hash_hex()
-                                );
-                            }
-                        }
-                    }
-                }
             }
         }
     }
