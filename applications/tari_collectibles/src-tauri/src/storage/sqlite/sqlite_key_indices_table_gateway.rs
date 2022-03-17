@@ -39,16 +39,16 @@ pub struct SqliteKeyIndicesTableGateway {
 impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway {
   fn list(&self, tx: &SqliteTransaction) -> Result<Vec<KeyIndexRow>, StorageError> {
     let results: Vec<models::KeyIndex> = schema::key_indices::table.load(tx.connection())?;
-    Ok(
-      results
-        .iter()
-        .map(|k| KeyIndexRow {
-          id: Uuid::from_slice(&k.id).unwrap(),
+    results
+      .iter()
+      .map(|k| {
+        Ok(KeyIndexRow {
+          id: Uuid::from_slice(&k.id)?,
           branch_seed: k.branch_seed.clone(),
           last_index: k.last_index as u64,
         })
-        .collect(),
-    )
+      })
+      .collect()
   }
 
   fn insert(&self, key_index: &KeyIndexRow, tx: &SqliteTransaction) -> Result<(), StorageError> {
@@ -98,10 +98,14 @@ impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway 
       .first(tx.connection())
       .optional()?;
 
-    Ok(result.map(|k| KeyIndexRow {
-      id: Uuid::from_slice(&k.id).unwrap(),
-      branch_seed: k.branch_seed.clone(),
-      last_index: k.last_index as u64,
-    }))
+    if let Some(k) = result {
+      Ok(Some(KeyIndexRow {
+        id: Uuid::from_slice(&k.id)?,
+        branch_seed: k.branch_seed.clone(),
+        last_index: k.last_index as u64,
+      }))
+    } else {
+      Ok(None)
+    }
   }
 }
