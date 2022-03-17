@@ -1,5 +1,19 @@
 # Changelog
 
+
+## [0.30.0](https://github.com/tari-project/tari/compare/v0.29.0...v0.30.0) (2022-03-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* change hash to use consensus encoding (#3820)
+
+### Bug Fixes
+
+* aligned tables left ([#3899](https://github.com/tari-project/tari/issues/3899)) ([1279773](https://github.com/tari-project/tari/commit/127977386d49a4305621009cea98f3d39977fb0a))
+* **consensus:** check blockchain version within valid range ([#3916](https://github.com/tari-project/tari/issues/3916)) ([faf23f3](https://github.com/tari-project/tari/commit/faf23f3ab8c17bea12c06f55f14702da06b9bcc8))
+* change hash to use consensus encoding ([#3820](https://github.com/tari-project/tari/issues/3820)) ([3a2da1d](https://github.com/tari-project/tari/commit/3a2da1d7dbbecb8e3aa4cb3a01496d557b968a59))
+
 ## [0.29.0](https://github.com/tari-project/tari/compare/v0.28.1...v0.29.0) (2022-03-14)
 
 

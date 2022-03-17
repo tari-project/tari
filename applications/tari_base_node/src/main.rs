@@ -102,15 +102,15 @@ use std::{
 };
 
 use commands::{
-    command::CommandContext,
+    command::{CommandContext, WatchCommand},
     parser::Parser,
-    reader::{CommandEvent, CommandReader},
+    reader::CommandReader,
     status_line::StatusLineOutput,
 };
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use rustyline::{config::OutputStreamType, CompletionType, Config, EditMode, Editor};
+use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -367,12 +367,13 @@ async fn status_loop(mut context: CommandContext, watch_command: Option<String>)
     let status_interval = context.global_config().base_node_status_line_interval;
     loop {
         let interval = get_status_interval(start_time, status_interval);
+        let mut interrupt = signal::ctrl_c().fuse().boxed();
         tokio::select! {
             biased;
-            _ = shutdown_signal.wait() => {
+            _ = &mut interrupt => {
                 break;
             }
-            _ = signal::ctrl_c() => {
+            _ = shutdown_signal.wait() => {
                 break;
             }
             _ = interval => {
@@ -416,48 +417,9 @@ async fn cli_loop(mut context: CommandContext) {
     let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
     let config = context.config.clone();
-    let mut watch_task = None;
+    println!("\nPress Ctrl-C to enter the interactive shell.\n");
+    let mut watch_task = Some(WatchCommand::default());
     loop {
-        tokio::select! {
-            res = reader.next_command() => {
-                if let Some(event) = res {
-                    match event {
-                        CommandEvent::Command(line) => {
-                            first_signal = false;
-                            if !line.is_empty() {
-                                match context.handle_command_str(&line).await {
-                                    Err(err) => {
-                                        println!("Command `{}` failed: {}", line, err);
-                                    }
-                                    Ok(command) => {
-                                        watch_task = command;
-                                    }
-                                }
-                            }
-                        }
-                        CommandEvent::Interrupt => {
-                            if !first_signal {
-                                println!("Are you leaving already? Press Ctrl-C again to terminate the node.");
-                                first_signal = true;
-                            } else {
-                                break;
-                            }
-                        }
-                        CommandEvent::Error(err) => {
-                            // TODO: Not sure we have to break here
-                            // This happens when the node is shutting down.
-                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                            break;
-                        }
-                    }
-                } else {
-                    break;
-                }
-            },
-            _ = shutdown_signal.wait() => {
-                break;
-            }
-        }
         if let Some(command) = watch_task.take() {
             let line = command.line();
             let interval = command
@@ -467,17 +429,19 @@ async fn cli_loop(mut context: CommandContext) {
             if let Err(err) = context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
+                // Keep the signal installed (to avoid missed signals)
+                let mut interrupt = signal::ctrl_c().fuse().boxed();
                 loop {
                     let interval = get_status_interval(start_time, interval);
                     tokio::select! {
+                        _ = &mut interrupt => {
+                            break;
+                        }
                         _ = interval => {
                             if let Err(err) = context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
                             }
                         },
-                        _ = signal::ctrl_c() => {
-                            break;
-                        }
                         // TODO: Is that good idea? Or add a separate command?
                         Ok(_) = software_update_notif.changed() => {
                             if let Some(ref update) = *software_update_notif.borrow() {
@@ -492,6 +456,51 @@ async fn cli_loop(mut context: CommandContext) {
                         }
                     }
                 }
+            }
+        }
+        tokio::select! {
+            res = reader.next_command() => {
+                if let Some(event) = res {
+                    match event {
+                        Ok(line) => {
+                            first_signal = false;
+                            if !line.is_empty() {
+                                match context.handle_command_str(&line).await {
+                                    Err(err) => {
+                                        println!("Command `{}` failed: {}", line, err);
+                                    }
+                                    Ok(command) => {
+                                        watch_task = command;
+                                    }
+                                }
+                            }
+                        }
+                        Err(ReadlineError::Interrupted) => {
+                            // If `Ctrl-C` is pressed
+                            if !first_signal {
+                                println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
+                                first_signal = true;
+                            } else {
+                                break;
+                            }
+                        }
+                        Err(ReadlineError::Eof) => {
+                            // If `Ctrl-D` is pressed
+                            break;
+                        }
+                        Err(err) => {
+                            // TODO: Not sure we have to break here
+                            // This happens when the node is shutting down.
+                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                            break;
+                        }
+                    }
+                } else {
+                    break;
+                }
+            },
+            _ = shutdown_signal.wait() => {
+                break;
             }
         }
     }

@@ -1,3 +1,25 @@
+//  Copyright 2022, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
@@ -5,6 +27,7 @@ use tari_app_utilities::utilities::{parse_emoji_id_or_public_key, UniNodeId};
 use tari_common_types::emoji::EmojiId;
 use tari_comms::peer_manager::NodeId;
 use tari_utilities::ByteArray;
+use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
 
@@ -32,30 +55,29 @@ impl HandleCommand<Args> for CommandContext {
     }
 }
 
+#[derive(Error, Debug)]
+enum ArgsError {
+    #[error("No peer matching: {original_str}")]
+    NoPeerMatching { original_str: String },
+}
+
 impl CommandContext {
     pub async fn get_peer(&self, partial: Vec<u8>, original_str: String) -> Result<(), Error> {
-        let peer = match self.peer_manager.find_all_starts_with(&partial).await {
-            Ok(peers) if peers.is_empty() => {
-                if let Some(pk) = parse_emoji_id_or_public_key(&original_str) {
-                    if let Ok(Some(peer)) = self.peer_manager.find_by_public_key(&pk).await {
-                        peer
-                    } else {
-                        println!("No peer matching '{}'", original_str);
-                        // TODO: Return error
-                        return Ok(());
-                    }
-                } else {
-                    println!("No peer matching '{}'", original_str);
-                    // TODO: Return error
-                    return Ok(());
-                }
-            },
-            Ok(mut peers) => peers.remove(0),
-            Err(err) => {
-                println!("{}", err);
-                // TODO: Return error
-                return Ok(());
-            },
+        let peers = self.peer_manager.find_all_starts_with(&partial).await?;
+        let peer = {
+            if let Some(peer) = peers.into_iter().next() {
+                peer
+            } else {
+                let pk = parse_emoji_id_or_public_key(&original_str).ok_or_else(|| ArgsError::NoPeerMatching {
+                    original_str: original_str.clone(),
+                })?;
+                let peer = self
+                    .peer_manager
+                    .find_by_public_key(&pk)
+                    .await?
+                    .ok_or(ArgsError::NoPeerMatching { original_str })?;
+                peer
+            }
         };
 
         let eid = EmojiId::from_pubkey(&peer.public_key);
