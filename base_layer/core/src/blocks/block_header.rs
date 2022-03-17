@@ -38,6 +38,7 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use std::{
+    cmp::Ordering,
     fmt,
     fmt::{Display, Error, Formatter},
 };
@@ -161,16 +162,34 @@ impl BlockHeader {
         }
     }
 
+    /// Returns the [std::cmp::Ordering] of the timestamp of this header compared to the "other" header
+    pub fn compare_timestamp(&self, other: &BlockHeader) -> Ordering {
+        self.timestamp.as_u64().cmp(&other.timestamp.as_u64())
+    }
+
     #[cfg(feature = "base_node")]
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)
     }
 
-    /// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
+    /// Given a slice of headers, calculate the maximum, minimum and average periods between them.
+    /// Allocates in case the headers are in the wrong order.
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
             (0, 0, 0.0)
         } else {
+            let mut headers = headers.to_vec();
+
+            // ensure the slice is in reverse order
+            let ordering = headers[0].compare_timestamp(&headers[headers.len() - 1]);
+            if ordering == Ordering::Less {
+                headers.reverse();
+            }
+
+            // unwraps: length already checked
+            let last_ts = headers.first().unwrap().timestamp;
+            let first_ts = headers.last().unwrap().timestamp;
+
             let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
                 let dt = match next[0].timestamp.checked_sub(next[1].timestamp) {
                     Some(delta) => delta.as_u64(),
@@ -179,7 +198,10 @@ impl BlockHeader {
                 (max.max(dt), min.min(dt))
             });
 
-            let dt = headers.first().unwrap().timestamp - headers.last().unwrap().timestamp;
+            let dt = match last_ts.checked_sub(first_ts) {
+                Some(t) => t,
+                None => 0.into(),
+            };
             let n = headers.len() - 1;
             let avg = dt.as_u64() as f64 / n as f64;
 
@@ -335,6 +357,8 @@ pub(crate) mod hash_serializer {
 
 #[cfg(test)]
 mod test {
+    use std::cmp::Ordering;
+
     use tari_crypto::tari_utilities::Hashable;
 
     use crate::blocks::BlockHeader;
@@ -412,10 +436,46 @@ mod test {
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
-        let (max, min, avg) = dbg!(BlockHeader::timing_stats(&headers));
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 60);
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn timing_wrong_order() {
+        let headers = vec![90, 150]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: t.into(),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!(max, 60);
+        assert_eq!(min, 60);
+        let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
+        assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn compare_timestamps() {
+        let headers = vec![90, 90, 150]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: t.into(),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+
+        let ordering = headers[0].compare_timestamp(&headers[1]);
+        assert_eq!(ordering, Ordering::Equal);
+
+        let ordering = headers[1].compare_timestamp(&headers[2]);
+        assert_eq!(ordering, Ordering::Less);
+
+        let ordering = headers[2].compare_timestamp(&headers[0]);
+        assert_eq!(ordering, Ordering::Greater);
     }
 }

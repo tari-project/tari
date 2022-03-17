@@ -80,6 +80,8 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 // The `num_headers` value if none is provided.
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
+const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
+
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
     mempool_service: LocalMempoolService,
@@ -1153,22 +1155,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    // deprecated
-    async fn get_calc_timing(
-        &self,
-        request: Request<tari_rpc::HeightRequest>,
-    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status> {
-        debug!(
-            target: LOG_TARGET,
-            "Incoming GRPC request for deprecated GetCalcTiming. Forwarding to GetBlockTiming.",
-        );
-
-        let tari_rpc::BlockTimingResponse { max, min, avg } = self.get_block_timing(request).await?.into_inner();
-        let response = tari_rpc::CalcTimingResponse { max, min, avg };
-
-        Ok(Response::new(response))
-    }
-
     async fn get_block_timing(
         &self,
         request: Request<tari_rpc::HeightRequest>,
@@ -1185,8 +1171,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (start, end) = get_heights(&request, handler.clone()).await?;
 
+        let num_requested = end.saturating_sub(start);
+        if num_requested > BLOCK_TIMING_MAX_BLOCKS {
+            warn!(
+                target: LOG_TARGET,
+                "GetBlockTiming request for too many blocks. Requested: {}. Max: {}.",
+                num_requested,
+                BLOCK_TIMING_MAX_BLOCKS
+            );
+            return Err(Status::invalid_argument("Max request size exceeded."));
+        }
+
         let headers = match handler.get_headers(start..=end).await {
-            Ok(headers) => headers.into_iter().map(|h| h.into_header()).collect::<Vec<_>>(),
+            Ok(headers) => headers.into_iter().map(|h| h.into_header()).rev().collect::<Vec<_>>(),
             Err(err) => {
                 warn!(target: LOG_TARGET, "Error getting headers for GRPC client: {}", err);
                 Vec::new()
