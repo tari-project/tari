@@ -325,11 +325,12 @@ impl ConfigBootstrap {
     /// Set up application-level logging using the Log4rs configuration file
     /// based on supplied CLI arguments
     pub fn initialize_logging(&self) -> Result<(), ConfigError> {
-        if initialize_logging(&self.log_config, &self.base_path) {
-            Ok(())
-        } else {
-            Err(ConfigError::new("Failed to initialize logging", None))
-        }
+        todo!("fix callers")
+        // if initialize_logging(&self.log_config, todo!("fix callers"))?
+        //     Ok(())
+        // } else {
+        //     Err(ConfigError::new("Failed to initialize logging", None))
+        // }
     }
 
     /// Load configuration from files located based on supplied CLI arguments

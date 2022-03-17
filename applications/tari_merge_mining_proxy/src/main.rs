@@ -48,7 +48,12 @@ use log::*;
 use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::initialization::init_configuration;
-use tari_common::{configuration::bootstrap::ApplicationType, load_configuration, DefaultConfigLoader};
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    initialize_logging,
+    load_configuration,
+    DefaultConfigLoader,
+};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
 
@@ -64,8 +69,12 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
 
-    let config_path = cli.common.config();
+    let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path.as_path(), true)?;
+    initialize_logging(
+        &cli.common.log_config_path("proxy"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
     let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()

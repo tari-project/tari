@@ -36,10 +36,13 @@ pub struct CommonCliArgs {
     /// A path to the configuration file to use (config.toml)
     #[clap(short, long, default_value_t= Defaults::config())]
     config: String,
+    /// The path to the log configuration file
+    #[clap(short, long, alias = "log_config")]
+    pub log_config: Option<PathBuf>,
 }
 
 impl CommonCliArgs {
-    pub fn config(&self) -> PathBuf {
+    pub fn config_path(&self) -> PathBuf {
         let config_path = PathBuf::from(&self.config);
         if config_path.is_absolute() {
             config_path
@@ -49,10 +52,32 @@ impl CommonCliArgs {
             base_path
         }
     }
+
+    pub fn log_config_path(&self, application_name: &str) -> PathBuf {
+        if let Some(ref log_config) = self.log_config {
+            let path = PathBuf::from(log_config);
+            if path.is_absolute() {
+                log_config.clone()
+            } else {
+                let mut base_path = PathBuf::from(&self.base_path);
+                base_path.push(log_config);
+                base_path
+            }
+        } else {
+            let mut path = PathBuf::from(&self.base_path);
+            path.push("config");
+            path.push(application_name);
+            path.push("log4rs.yml");
+            path
+        }
+    }
 }
 
 mod Defaults {
+    use std::env;
+
     use tari_common::dir_utils;
+
     const DEFAULT_CONFIG: &str = "config/config.toml";
 
     pub(super) fn base_path() -> String {
@@ -61,8 +86,5 @@ mod Defaults {
 
     pub(super) fn config() -> String {
         DEFAULT_CONFIG.to_string()
-        // dir_utils::default_path(DEFAULT_CONFIG, None)
-        //     .to_string_lossy()
-        //     .to_string()
     }
 }
