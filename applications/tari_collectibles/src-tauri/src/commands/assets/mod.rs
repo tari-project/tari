@@ -36,11 +36,12 @@ use crate::{
 };
 
 use log::debug;
-use tari_app_grpc::tari_rpc::{self};
+use tari_app_grpc::tari_rpc;
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, ByteArray};
+use thiserror::Error;
 use uuid::Uuid;
 
 const LOG_TARGET: &str = "collectibles::assets";
@@ -80,8 +81,14 @@ struct AssetMetadata {
   image: String,
 }
 
+#[derive(Debug, Error)]
+pub enum AssetMetadataError {
+  #[error("Invalid utf-8 string in assets's metadata")]
+  Utf8Error(#[from] std::string::FromUtf8Error),
+}
+
 trait AssetMetadataDeserializer {
-  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata;
+  fn deserialize(&self, metadata: &[u8]) -> Result<AssetMetadata, AssetMetadataError>;
 }
 trait AssetMetadataSerializer {
   fn serialize(&self, model: &AssetMetadata) -> Vec<u8>;
@@ -90,8 +97,8 @@ trait AssetMetadataSerializer {
 struct V1AssetMetadataSerializer {}
 
 impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
-  fn deserialize(&self, metadata: &[u8]) -> AssetMetadata {
-    let m = String::from_utf8(Vec::from(metadata)).unwrap();
+  fn deserialize(&self, metadata: &[u8]) -> Result<AssetMetadata, AssetMetadataError> {
+    let m = String::from_utf8(Vec::from(metadata))?;
     let mut m = m
       .as_str()
       .split('|')
@@ -102,11 +109,11 @@ impl AssetMetadataDeserializer for V1AssetMetadataSerializer {
     let description = m.next();
     let image = m.next();
 
-    AssetMetadata {
+    Ok(AssetMetadata {
       name: name.unwrap_or_default(),
       description: description.unwrap_or_default(),
       image: image.unwrap_or_default(),
-    }
+    })
   }
 }
 
@@ -259,12 +266,14 @@ pub(crate) async fn inner_assets_list_registered_assets(
   let serializer = V1AssetMetadataSerializer {};
   assets
     .into_iter()
-    .filter_map(|asset| {
+    .map(|asset| {
       if let Some(ref features) = asset.features {
-        let metadata = serializer.deserialize(&features.metadata[1..]);
+        let metadata = serializer
+          .deserialize(&features.metadata[1..])
+          .map_err(Status::internal)?;
 
         // TODO: Find a better way of reading the metadata
-        Some(Ok(RegisteredAssetInfo {
+        Ok(Some(RegisteredAssetInfo {
           owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
           asset_public_key: RistrettoPublicKey::from_bytes(&asset.asset_public_key).ok(),
           unique_id: asset.unique_id,
@@ -276,9 +285,10 @@ pub(crate) async fn inner_assets_list_registered_assets(
           image: Some(metadata.image),
         }))
       } else {
-        None
+        Ok(None)
       }
     })
+    .filter_map(Result::transpose)
     .collect()
 }
 
@@ -347,7 +357,9 @@ pub(crate) async fn inner_assets_get_registration(
     .features
     .ok_or_else(|| Status::internal("empty features"))?;
   let serializer = V1AssetMetadataSerializer {};
-  let metadata = serializer.deserialize(&features.metadata[1..]);
+  let metadata = serializer
+    .deserialize(&features.metadata[1..])
+    .map_err(Status::internal)?;
 
   Ok(RegisteredAssetInfo {
     owner_commitment: Commitment::from_bytes(&asset.owner_commitment).ok(),
