@@ -420,14 +420,16 @@ impl MainLoop {
                     println!("Wrong command to watch `{}`. Failed with: {}", line, err);
                 } else {
                     let mut events = EventStream::new();
-                    terminal::enable_raw_mode().ok();
                     loop {
+                        terminal::enable_raw_mode().ok();
                         let interval = get_status_interval(start_time, interval);
                         tokio::select! {
                             _ = interval => {
+                                terminal::disable_raw_mode().ok();
                                 if let Err(err) = self.context.handle_command_str(line).await {
                                     println!("Watched command `{}` failed: {}", line, err);
                                 }
+                                continue;
                             },
                             _ = &mut interrupt => {
                                 break;
@@ -440,7 +442,11 @@ impl MainLoop {
                                                 break;
                                             }
                                             _ => {
-                                                println!("Press Ctrl-C to enter the interactive shell.");
+                                                if non_interactive {
+                                                    println!("Press Ctrl-C to interrupt the node.");
+                                                } else {
+                                                    println!("Press Ctrl-C to enter the interactive shell.");
+                                                }
                                             }
                                         }
                                     }
