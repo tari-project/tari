@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 
 use crossterm::{
     cursor,
@@ -67,7 +70,49 @@ impl CliLoop {
         }
     }
 
-    async fn run_watch_task(&mut self) {
+    /// Runs the Base Node CLI loop
+    /// ## Parameters
+    /// `parser` - The parser to process input commands
+    /// `shutdown` - The trigger for shutting down
+    ///
+    /// ## Returns
+    /// Doesn't return anything
+    pub async fn cli_loop(mut self) {
+        cli::print_banner(self.commands.clone(), 3);
+
+        // TODO: Check for a new version here
+        while !self.done {
+            self.watch_loop().await;
+            if self.non_interactive {
+                break;
+            }
+            self.execute_command().await;
+        }
+    }
+
+    fn is_interruption(&mut self, event: Option<Result<Event, io::Error>>) -> bool {
+        match event {
+            Some(Ok(Event::Key(key))) => match key {
+                KeyEvent {
+                    code: KeyCode::Char('c'),
+                    modifiers: KeyModifiers::CONTROL,
+                } => {
+                    return true;
+                },
+                _ => {
+                    if self.non_interactive {
+                        println!("Press Ctrl-C to interrupt the node.");
+                    } else {
+                        println!("Press Ctrl-C to enter the interactive shell.");
+                    }
+                },
+            },
+            _ => {},
+        }
+        false
+    }
+
+    async fn watch_loop(&mut self) {
         if let Some(command) = self.watch_task.take() {
             let start_time = Instant::now();
             let mut interrupt = signal::ctrl_c().fuse().boxed();
@@ -97,23 +142,8 @@ impl CliLoop {
                             break;
                         }
                         event = events.next() => {
-                            match event {
-                                Some(Ok(Event::Key(key))) => {
-                                    match key {
-                                        KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL } => {
-                                            break;
-                                        }
-                                        _ => {
-                                            if self.non_interactive {
-                                                println!("Press Ctrl-C to interrupt the node.");
-                                            } else {
-                                                println!("Press Ctrl-C to enter the interactive shell.");
-                                            }
-                                        }
-                                    }
-                                }
-                                _ => {
-                                }
+                            if self.is_interruption(event) {
+                                break;
                             }
                         }
                         // TODO: Is that good idea? Or add a separate command?
@@ -129,9 +159,24 @@ impl CliLoop {
                             }
                         }
                     }
-                    crossterm::execute!(std::io::stdout(), cursor::MoveToNextLine(1)).ok();
+                    crossterm::execute!(io::stdout(), cursor::MoveToNextLine(1)).ok();
                 }
                 terminal::disable_raw_mode().ok();
+            }
+        }
+    }
+
+    async fn handle_line(&mut self, line: String) {
+        // Reset the interruption flag if the command entered.
+        self.first_signal = false;
+        if !line.is_empty() {
+            match self.context.handle_command_str(&line).await {
+                Err(err) => {
+                    println!("Command `{}` failed: {}", line, err);
+                },
+                Ok(command) => {
+                    self.watch_task = command;
+                },
             }
         }
     }
@@ -142,17 +187,7 @@ impl CliLoop {
                 if let Some(event) = res {
                     match event {
                         Ok(line) => {
-                            self.first_signal = false;
-                            if !line.is_empty() {
-                                match self.context.handle_command_str(&line).await {
-                                    Err(err) => {
-                                        println!("Command `{}` failed: {}", line, err);
-                                    }
-                                    Ok(command) => {
-                                        self.watch_task = command;
-                                    }
-                                }
-                            }
+                            self.handle_line(line).await;
                         }
                         Err(ReadlineError::Interrupted) => {
                             // If `Ctrl-C` is pressed
@@ -181,28 +216,6 @@ impl CliLoop {
             _ = self.shutdown_signal.wait() => {
                 self.done = true;
             }
-        }
-    }
-}
-
-impl CliLoop {
-    /// Runs the Base Node CLI loop
-    /// ## Parameters
-    /// `parser` - The parser to process input commands
-    /// `shutdown` - The trigger for shutting down
-    ///
-    /// ## Returns
-    /// Doesn't return anything
-    pub async fn cli_loop(mut self) {
-        cli::print_banner(self.commands.clone(), 3);
-
-        // TODO: Check for a new version here
-        while !self.done {
-            self.run_watch_task().await;
-            if self.non_interactive {
-                break;
-            }
-            self.execute_command().await;
         }
     }
 }
