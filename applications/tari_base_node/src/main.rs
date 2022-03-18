@@ -289,7 +289,7 @@ async fn run_node(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
-    let main_loop = MainLoop { context };
+    let main_loop = MainLoop::new(context);
     if bootstrap.non_interactive_mode {
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
@@ -367,6 +367,30 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
 
 struct MainLoop {
     context: CommandContext,
+    reader: CommandReader,
+    commands: Vec<String>,
+}
+
+impl MainLoop {
+    fn new(context: CommandContext) -> Self {
+        let parser = Parser::new();
+        let commands = parser.get_commands();
+        let cli_config = Config::builder()
+            .history_ignore_space(true)
+            .completion_type(CompletionType::List)
+            .edit_mode(EditMode::Emacs)
+            .output_stream(OutputStreamType::Stdout)
+            .auto_add_history(true)
+            .build();
+        let mut rustyline = Editor::with_config(cli_config);
+        rustyline.set_helper(Some(parser));
+        let reader = CommandReader::new(rustyline);
+        Self {
+            context,
+            reader,
+            commands,
+        }
+    }
 }
 
 impl MainLoop {
@@ -378,21 +402,9 @@ impl MainLoop {
     /// ## Returns
     /// Doesn't return anything
     async fn cli_loop(mut self, mut watch_command: Option<String>, non_interactive: bool) {
-        let parser = Parser::new();
-        commands::cli::print_banner(parser.get_commands(), 3);
+        commands::cli::print_banner(self.commands.clone(), 3);
 
         // TODO: Check for a new version here
-        let cli_config = Config::builder()
-            .history_ignore_space(true)
-            .completion_type(CompletionType::List)
-            .edit_mode(EditMode::Emacs)
-            .output_stream(OutputStreamType::Stdout)
-            .auto_add_history(true)
-            .build();
-        let mut rustyline = Editor::with_config(cli_config);
-        rustyline.set_helper(Some(parser));
-        let mut reader = CommandReader::new(rustyline);
-
         let mut shutdown_signal = self.context.shutdown.to_signal();
         let start_time = Instant::now();
         let mut software_update_notif = self.context.software_updater.new_update_notifier().clone();
@@ -476,7 +488,7 @@ impl MainLoop {
                 break;
             }
             tokio::select! {
-                res = reader.next_command() => {
+                res = self.reader.next_command() => {
                     if let Some(event) = res {
                         match event {
                             Ok(line) => {
