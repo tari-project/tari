@@ -174,6 +174,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
         parent_public_key: PublicKey,
         range: Range<usize>) -> Vec<UtxoMinedInfo>, "fetch_all_unspent_by_parent_public_key");
 
+    make_async_fn!(utxo_count() -> usize, "utxo_count");
+
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
 
