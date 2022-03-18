@@ -291,14 +291,14 @@ async fn run_node(
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
     if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(context, bootstrap.watch));
+        task::spawn(context.status_loop(bootstrap.watch));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(cli_loop(context));
+        task::spawn(context.cli_loop());
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -366,164 +366,166 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-async fn status_loop(mut context: CommandContext, watch_command: Option<String>) {
-    let start_time = Instant::now();
-    let mut shutdown_signal = context.shutdown.to_signal();
-    let status_interval = context.global_config().base_node_status_line_interval;
-    loop {
-        let interval = get_status_interval(start_time, status_interval);
-        let mut interrupt = signal::ctrl_c().fuse().boxed();
-        tokio::select! {
-            biased;
-            _ = &mut interrupt => {
-                break;
-            }
-            _ = shutdown_signal.wait() => {
-                break;
-            }
-            _ = interval => {
-                if let Some(line) = watch_command.as_ref() {
-                    if let Err(err) = context.handle_command_str(line).await {
-                        println!("Watched command `{}` failed: {}", line, err);
-                    }
-                } else {
-                    context.status(StatusLineOutput::Log).await.ok();
+impl CommandContext {
+    async fn status_loop(mut self, watch_command: Option<String>) {
+        let start_time = Instant::now();
+        let mut shutdown_signal = self.shutdown.to_signal();
+        let status_interval = self.global_config().base_node_status_line_interval;
+        loop {
+            let interval = get_status_interval(start_time, status_interval);
+            let mut interrupt = signal::ctrl_c().fuse().boxed();
+            tokio::select! {
+                biased;
+                _ = &mut interrupt => {
+                    break;
                 }
-            },
+                _ = shutdown_signal.wait() => {
+                    break;
+                }
+                _ = interval => {
+                    if let Some(line) = watch_command.as_ref() {
+                        if let Err(err) = self.handle_command_str(line).await {
+                            println!("Watched command `{}` failed: {}", line, err);
+                        }
+                    } else {
+                        self.status(StatusLineOutput::Log).await.ok();
+                    }
+                },
+            }
         }
     }
-}
 
-/// Runs the Base Node CLI loop
-/// ## Parameters
-/// `parser` - The parser to process input commands
-/// `shutdown` - The trigger for shutting down
-///
-/// ## Returns
-/// Doesn't return anything
-async fn cli_loop(mut context: CommandContext) {
-    let parser = Parser::new();
-    commands::cli::print_banner(parser.get_commands(), 3);
+    /// Runs the Base Node CLI loop
+    /// ## Parameters
+    /// `parser` - The parser to process input commands
+    /// `shutdown` - The trigger for shutting down
+    ///
+    /// ## Returns
+    /// Doesn't return anything
+    async fn cli_loop(mut self) {
+        let parser = Parser::new();
+        commands::cli::print_banner(parser.get_commands(), 3);
 
-    // TODO: Check for a new version here
-    let cli_config = Config::builder()
-        .history_ignore_space(true)
-        .completion_type(CompletionType::List)
-        .edit_mode(EditMode::Emacs)
-        .output_stream(OutputStreamType::Stdout)
-        .auto_add_history(true)
-        .build();
-    let mut rustyline = Editor::with_config(cli_config);
-    rustyline.set_helper(Some(parser));
-    let mut reader = CommandReader::new(rustyline);
+        // TODO: Check for a new version here
+        let cli_config = Config::builder()
+            .history_ignore_space(true)
+            .completion_type(CompletionType::List)
+            .edit_mode(EditMode::Emacs)
+            .output_stream(OutputStreamType::Stdout)
+            .auto_add_history(true)
+            .build();
+        let mut rustyline = Editor::with_config(cli_config);
+        rustyline.set_helper(Some(parser));
+        let mut reader = CommandReader::new(rustyline);
 
-    let mut shutdown_signal = context.shutdown.to_signal();
-    let start_time = Instant::now();
-    let mut software_update_notif = context.software_updater.new_update_notifier().clone();
-    let mut first_signal = false;
-    let config = context.config.clone();
-    let mut interrupt = signal::ctrl_c().fuse().boxed();
-    let mut watch_task = Some(WatchCommand::default());
-    loop {
-        if let Some(command) = watch_task.take() {
-            let line = command.line();
-            let interval = command
-                .interval
-                .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
-            if let Err(err) = context.handle_command_str(line).await {
-                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
-            } else {
-                let mut events = EventStream::new();
-                terminal::enable_raw_mode().ok();
-                loop {
-                    let interval = get_status_interval(start_time, interval);
-                    tokio::select! {
-                        _ = interval => {
-                            if let Err(err) = context.handle_command_str(line).await {
-                                println!("Watched command `{}` failed: {}", line, err);
+        let mut shutdown_signal = self.shutdown.to_signal();
+        let start_time = Instant::now();
+        let mut software_update_notif = self.software_updater.new_update_notifier().clone();
+        let mut first_signal = false;
+        let config = self.config.clone();
+        let mut interrupt = signal::ctrl_c().fuse().boxed();
+        let mut watch_task = Some(WatchCommand::default());
+        loop {
+            if let Some(command) = watch_task.take() {
+                let line = command.line();
+                let interval = command
+                    .interval
+                    .map(Duration::from_secs)
+                    .unwrap_or(config.base_node_status_line_interval);
+                if let Err(err) = self.handle_command_str(line).await {
+                    println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+                } else {
+                    let mut events = EventStream::new();
+                    terminal::enable_raw_mode().ok();
+                    loop {
+                        let interval = get_status_interval(start_time, interval);
+                        tokio::select! {
+                            _ = interval => {
+                                if let Err(err) = self.handle_command_str(line).await {
+                                    println!("Watched command `{}` failed: {}", line, err);
+                                }
+                            },
+                            _ = &mut interrupt => {
+                                break;
                             }
-                        },
-                        _ = &mut interrupt => {
-                            break;
-                        }
-                        event = events.next() => {
-                            match event {
-                                Some(Ok(Event::Key(key))) => {
-                                    match key {
-                                        KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL } => {
-                                            break;
-                                        }
-                                        _ => {
-                                            println!("Press Ctrl-C to enter the interactive shell.");
+                            event = events.next() => {
+                                match event {
+                                    Some(Ok(Event::Key(key))) => {
+                                        match key {
+                                            KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL } => {
+                                                break;
+                                            }
+                                            _ => {
+                                                println!("Press Ctrl-C to enter the interactive shell.");
+                                            }
                                         }
                                     }
+                                    _ => {
+                                    }
                                 }
-                                _ => {
+                            }
+                            // TODO: Is that good idea? Or add a separate command?
+                            Ok(_) = software_update_notif.changed() => {
+                                if let Some(ref update) = *software_update_notif.borrow() {
+                                    println!(
+                                        "Version {} of the {} is available: {} (sha: {})",
+                                        update.version(),
+                                        update.app(),
+                                        update.download_url(),
+                                        update.to_hash_hex()
+                                    );
                                 }
                             }
                         }
-                        // TODO: Is that good idea? Or add a separate command?
-                        Ok(_) = software_update_notif.changed() => {
-                            if let Some(ref update) = *software_update_notif.borrow() {
-                                println!(
-                                    "Version {} of the {} is available: {} (sha: {})",
-                                    update.version(),
-                                    update.app(),
-                                    update.download_url(),
-                                    update.to_hash_hex()
-                                );
-                            }
-                        }
+                        crossterm::execute!(std::io::stdout(), cursor::MoveToNextLine(1)).ok();
                     }
-                    crossterm::execute!(std::io::stdout(), cursor::MoveToNextLine(1)).ok();
+                    terminal::disable_raw_mode().ok();
                 }
-                terminal::disable_raw_mode().ok();
             }
-        }
-        tokio::select! {
-            res = reader.next_command() => {
-                if let Some(event) = res {
-                    match event {
-                        Ok(line) => {
-                            first_signal = false;
-                            if !line.is_empty() {
-                                match context.handle_command_str(&line).await {
-                                    Err(err) => {
-                                        println!("Command `{}` failed: {}", line, err);
-                                    }
-                                    Ok(command) => {
-                                        watch_task = command;
+            tokio::select! {
+                res = reader.next_command() => {
+                    if let Some(event) = res {
+                        match event {
+                            Ok(line) => {
+                                first_signal = false;
+                                if !line.is_empty() {
+                                    match self.handle_command_str(&line).await {
+                                        Err(err) => {
+                                            println!("Command `{}` failed: {}", line, err);
+                                        }
+                                        Ok(command) => {
+                                            watch_task = command;
+                                        }
                                     }
                                 }
                             }
-                        }
-                        Err(ReadlineError::Interrupted) => {
-                            // If `Ctrl-C` is pressed
-                            if !first_signal {
-                                println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
-                                first_signal = true;
-                            } else {
+                            Err(ReadlineError::Interrupted) => {
+                                // If `Ctrl-C` is pressed
+                                if !first_signal {
+                                    println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
+                                    first_signal = true;
+                                } else {
+                                    break;
+                                }
+                            }
+                            Err(ReadlineError::Eof) => {
+                                // If `Ctrl-D` is pressed
+                                break;
+                            }
+                            Err(err) => {
+                                // TODO: Not sure we have to break here
+                                // This happens when the node is shutting down.
+                                debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
                                 break;
                             }
                         }
-                        Err(ReadlineError::Eof) => {
-                            // If `Ctrl-D` is pressed
-                            break;
-                        }
-                        Err(err) => {
-                            // TODO: Not sure we have to break here
-                            // This happens when the node is shutting down.
-                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                            break;
-                        }
+                    } else {
+                        break;
                     }
-                } else {
+                },
+                _ = shutdown_signal.wait() => {
                     break;
                 }
-            },
-            _ = shutdown_signal.wait() => {
-                break;
             }
         }
     }
