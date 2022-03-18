@@ -1,7 +1,4 @@
-use std::{
-    io,
-    time::{Duration, Instant},
-};
+use std::{io, time::Duration};
 
 use crossterm::{
     cursor,
@@ -114,7 +111,6 @@ impl CliLoop {
 
     async fn watch_loop(&mut self) {
         if let Some(command) = self.watch_task.take() {
-            let start_time = Instant::now();
             let mut interrupt = signal::ctrl_c().fuse().boxed();
             let mut software_update_notif = self.context.software_updater.new_update_notifier().clone();
             let config = self.context.config.clone();
@@ -129,7 +125,7 @@ impl CliLoop {
                 let mut events = EventStream::new();
                 loop {
                     terminal::enable_raw_mode().ok();
-                    let interval = get_status_interval(start_time, interval);
+                    let interval = time::sleep(interval);
                     tokio::select! {
                         _ = interval => {
                             terminal::disable_raw_mode().ok();
@@ -218,12 +214,4 @@ impl CliLoop {
             }
         }
     }
-}
-
-fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sleep {
-    let duration = match start_time.elapsed().as_secs() {
-        0..=120 => Duration::from_secs(5),
-        _ => long_interval,
-    };
-    time::sleep(duration)
 }
