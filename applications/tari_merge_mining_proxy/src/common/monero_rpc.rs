@@ -63,3 +63,15 @@ impl Into<i32> for CoreRpcErrorCode {
         self.as_i32()
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn test_into() {
+        let error = CoreRpcErrorCode::WrongParam;
+        let error_code: i32 = error.into();
+        assert_eq!(error_code, -1);
+    }
+}

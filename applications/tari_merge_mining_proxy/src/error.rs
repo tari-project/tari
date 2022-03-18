@@ -94,3 +94,20 @@ impl From<tonic::Status> for MmProxyError {
         }
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    use tonic::Code;
+
+    use super::*;
+
+    #[test]
+    pub fn test_from() {
+        let status = tonic::Status::new(Code::Unknown, "message");
+        let error = MmProxyError::from(status);
+        assert!(matches!(error, MmProxyError::GrpcRequestError {
+            status: _,
+            details: _
+        }));
+    }
+}
