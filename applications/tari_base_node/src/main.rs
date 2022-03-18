@@ -107,7 +107,12 @@ use commands::{
     reader::CommandReader,
     status_line::StatusLineOutput,
 };
-use futures::FutureExt;
+use crossterm::{
+    cursor,
+    event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers},
+    terminal,
+};
+use futures::{FutureExt, StreamExt};
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
@@ -417,7 +422,7 @@ async fn cli_loop(mut context: CommandContext) {
     let mut software_update_notif = context.software_updater.new_update_notifier().clone();
     let mut first_signal = false;
     let config = context.config.clone();
-    println!("\nPress Ctrl-C to enter the interactive shell.\n");
+    let mut interrupt = signal::ctrl_c().fuse().boxed();
     let mut watch_task = Some(WatchCommand::default());
     loop {
         if let Some(command) = watch_task.take() {
@@ -429,19 +434,35 @@ async fn cli_loop(mut context: CommandContext) {
             if let Err(err) = context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
-                // Keep the signal installed (to avoid missed signals)
-                let mut interrupt = signal::ctrl_c().fuse().boxed();
+                let mut events = EventStream::new();
+                terminal::enable_raw_mode().ok();
                 loop {
                     let interval = get_status_interval(start_time, interval);
                     tokio::select! {
-                        _ = &mut interrupt => {
-                            break;
-                        }
                         _ = interval => {
                             if let Err(err) = context.handle_command_str(line).await {
                                 println!("Watched command `{}` failed: {}", line, err);
                             }
                         },
+                        _ = &mut interrupt => {
+                            break;
+                        }
+                        event = events.next() => {
+                            match event {
+                                Some(Ok(Event::Key(key))) => {
+                                    match key {
+                                        KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL } => {
+                                            break;
+                                        }
+                                        _ => {
+                                            println!("Press Ctrl-C to enter the interactive shell.");
+                                        }
+                                    }
+                                }
+                                _ => {
+                                }
+                            }
+                        }
                         // TODO: Is that good idea? Or add a separate command?
                         Ok(_) = software_update_notif.changed() => {
                             if let Some(ref update) = *software_update_notif.borrow() {
@@ -455,7 +476,9 @@ async fn cli_loop(mut context: CommandContext) {
                             }
                         }
                     }
+                    crossterm::execute!(std::io::stdout(), cursor::MoveToNextLine(1)).ok();
                 }
+                terminal::disable_raw_mode().ok();
             }
         }
         tokio::select! {
