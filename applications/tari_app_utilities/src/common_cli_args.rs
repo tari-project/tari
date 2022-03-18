@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::path::PathBuf;
+use std::{error::Error, path::PathBuf};
 
 use clap::Args;
 
@@ -39,6 +39,25 @@ pub struct CommonCliArgs {
     /// The path to the log configuration file
     #[clap(short, long, alias = "log_config")]
     pub log_config: Option<PathBuf>,
+
+    /// Overrides for properties in the config file, e.g. -p base_node.netwok=dibbler
+    #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
+    pub config_property_overrides: Vec<(String, String)>,
+}
+
+// Taken from clap examples
+/// Parse a single key-value pair
+fn parse_key_val<T, U>(s: &str) -> Result<(T, U), Box<dyn Error + Send + Sync + 'static>>
+where
+    T: std::str::FromStr,
+    T::Err: Error + Send + Sync + 'static,
+    U: std::str::FromStr,
+    U::Err: Error + Send + Sync + 'static,
+{
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
 
 impl CommonCliArgs {

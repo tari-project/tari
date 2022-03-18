@@ -51,9 +51,9 @@ pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), Confi
 pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
     use ApplicationType::*;
     let source = match application_type {
-        BaseNode => include_str!("../logging/log4rs_sample_base_node.yml"),
+        BaseNode => todo!(),
         ConsoleWallet => include_str!("../logging/log4rs_sample_wallet.yml"),
-        MiningNode => include_str!("../logging/log4rs_sample_mining_node.yml"),
+        MiningNode => todo!(),
         MergeMiningProxy => todo!(),
         StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),
         ValidatorNode => include_str!("../logging/log4rs_sample_validator_node.yml"),

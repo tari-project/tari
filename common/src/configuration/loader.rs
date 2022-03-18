@@ -85,9 +85,9 @@ pub trait ConfigPath {
             Some(key) => {
                 let overload: Value = config.get(key.as_str()).unwrap_or_default();
                 let base: Value = config.get(Self::main_key_prefix()).unwrap_or_default();
-                let mut base_config = Config::new();
+                let mut base_config = Config::default();
                 base_config.set(Self::main_key_prefix(), base)?;
-                let mut config = Config::new();
+                let mut config = Config::default();
                 // Some magic is required to make them correctly merge
                 config.merge(base_config)?;
                 config.set(Self::main_key_prefix(), overload)?;
@@ -156,7 +156,7 @@ impl<C: SubConfigPath> ConfigPath for C {
     fn overload_key_prefix(config: &Config) -> Result<Option<String>, ConfigurationError> {
         let subconfig_key = Self::subconfig_key();
         let network_val: Option<String> = config
-            .get_str(subconfig_key.as_str())
+            .get_string(subconfig_key.as_str())
             .ok()
             .map(|network| format!("{}.{}", network, Self::main_key_prefix()));
         Ok(network_val)

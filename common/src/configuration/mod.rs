@@ -49,4 +49,3 @@ pub mod writer;
 
 pub use collectibles_config::CollectiblesConfig;
 pub use common_config::CommonConfig;
-pub use config;

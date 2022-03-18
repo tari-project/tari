@@ -60,7 +60,7 @@ pub const LOG_TARGET: &str = "tari::application";
 ///
 /// ##Returns
 /// TransportType based on the configuration
-pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
+pub fn create_transport_type() -> TransportType {
     todo!()
     // debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
     //

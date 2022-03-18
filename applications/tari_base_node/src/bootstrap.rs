@@ -67,14 +67,13 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::config::BaseNodeConfig;
+use crate::base_node_config::BaseNodeConfig;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 
 pub struct BaseNodeBootstrapper<'a, B> {
-    pub config: &'a GlobalConfig,
     pub auto_update_config: AutoUpdateConfig,
     pub base_node_config: &'a BaseNodeConfig,
     pub common_config: &'a CommonConfig,
@@ -90,7 +89,6 @@ impl<B> BaseNodeBootstrapper<'_, B>
 where B: BlockchainBackend + 'static
 {
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
-        let config = self.config;
         let base_node_config = self.base_node_config;
         let common_config = self.common_config;
 
@@ -102,7 +100,7 @@ where B: BlockchainBackend + 'static
         let mempool_config = self.base_node_config.mempool.service.clone();
 
         let comms_config = base_node_config.p2p.clone();
-        let transport_type = create_transport_type(self.config);
+        let transport_type = create_transport_type();
 
         let sync_peers = base_node_config
             .force_sync_peers

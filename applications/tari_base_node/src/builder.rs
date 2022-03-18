@@ -57,8 +57,8 @@ use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
 
 use crate::{
+    base_node_config::{BaseNodeConfig, DatabaseType},
     bootstrap::BaseNodeBootstrapper,
-    config::{BaseNodeConfig, DatabaseType},
 };
 
 const LOG_TARGET: &str = "c::bn::initialization";
@@ -174,7 +174,6 @@ pub async fn configure_and_initialize_node(
     base_node_config: Arc<BaseNodeConfig>,
     common_config: &CommonConfig,
     auto_update_config: AutoUpdateConfig,
-    global_config: &GlobalConfig,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, anyhow::Error> {
@@ -187,7 +186,6 @@ pub async fn configure_and_initialize_node(
                 base_node_config,
                 common_config,
                 auto_update_config,
-                global_config,
                 node_identity,
                 interrupt_signal,
             )
@@ -213,7 +211,6 @@ async fn build_node_context(
     base_node_config: Arc<BaseNodeConfig>,
     common_config: &CommonConfig,
     auto_update_config: AutoUpdateConfig,
-    global_config: &GlobalConfig,
     base_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, anyhow::Error> {
@@ -261,7 +258,6 @@ async fn build_node_context(
     debug!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
-        config: global_config,
         base_node_config: &base_node_config,
         common_config,
         auto_update_config,

@@ -33,7 +33,6 @@ pub fn install(
     application: ApplicationType,
     identity: &NodeIdentity,
     config: &MetricsConfig,
-    bootstrap: &ConfigBootstrap,
     shutdown: ShutdownSignal,
 ) {
     let metrics_registry = create_metrics_registry(application, identity);
@@ -41,19 +40,11 @@ pub fn install(
 
     let mut metrics = MetricsServerBuilder::new();
 
-    if let Some(addr) = bootstrap
-        .metrics_server_bind_addr
-        .as_ref()
-        .or_else(|| config.server_bind_address.as_ref())
-    {
+    if let Some(addr) = config.server_bind_address.as_ref() {
         metrics = metrics.with_scrape_server(addr);
     }
 
-    if let Some(endpoint) = bootstrap
-        .metrics_push_endpoint
-        .as_ref()
-        .or_else(|| config.push_endpoint.as_ref())
-    {
+    if let Some(endpoint) = config.push_endpoint.as_ref() {
         // http://localhost:9091/metrics/job/base-node
         metrics = metrics.with_push_gateway(endpoint);
     }

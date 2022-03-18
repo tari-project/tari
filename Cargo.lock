@@ -104,6 +104,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahash"
+version = "0.4.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "739f4a8db6605981345c5654f3a85b056ce52f37a39d34da03f25bf2151ea16e"
+
+[[package]]
 name = "aho-corasick"
 version = "0.7.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1153,7 +1159,7 @@ checksum = "f9107d78ed62b3fa5a86e7d18e647abed48cfd8f8fab6c72f4cdb982d196f7e6"
 dependencies = [
  "lazy_static 1.4.0",
  "nom 4.2.3",
- "rust-ini",
+ "rust-ini 0.13.0",
  "serde 1.0.136",
  "serde-hjson 0.8.2",
  "serde_json",
@@ -1169,9 +1175,28 @@ checksum = "1b1b9d958c2b1368a663f05538fc1b5975adce1e19f435acceae987aceeeb369"
 dependencies = [
  "lazy_static 1.4.0",
  "nom 5.1.2",
- "rust-ini",
+ "rust-ini 0.13.0",
  "serde 1.0.136",
  "serde-hjson 0.9.1",
+ "serde_json",
+ "toml 0.5.8",
+ "yaml-rust",
+]
+
+[[package]]
+name = "config"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54ad70579325f1a38ea4c13412b82241c5900700a69785d73e2736bd65a33f86"
+dependencies = [
+ "async-trait",
+ "json5 0.4.1",
+ "lazy_static 1.4.0",
+ "nom 7.1.0",
+ "pathdiff",
+ "ron",
+ "rust-ini 0.17.0",
+ "serde 1.0.136",
  "serde_json",
  "toml 0.5.8",
  "yaml-rust",
@@ -1935,6 +1960,15 @@ name = "dispatch"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
+
+[[package]]
+name = "dlv-list"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68df3f2b690c1b86e65ef7830956aededf3cb0a16f898f79b9a6f421a7b6211b"
+dependencies = [
+ "rand 0.8.5",
+]
 
 [[package]]
 name = "dtoa"
@@ -2845,6 +2879,15 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d7afe4a420e3fe79967a00898cc1f4db7c8a49a9333a29f8a4bd76a253d5cd04"
+dependencies = [
+ "ahash",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ab5ef0d4909ef3724cc8cce6ccc8572c5c817592e9285f5464f8e86f8bd3726e"
@@ -3132,7 +3175,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282a6247722caba404c065016bbfa522806e51714c34f5dfc3e4a3a46fcb4223"
 dependencies = [
  "autocfg 1.1.0",
- "hashbrown",
+ "hashbrown 0.11.2",
 ]
 
 [[package]]
@@ -3288,6 +3331,17 @@ name = "json5"
 version = "0.2.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8eb2522ff59fbfefb955e9bd44d04d5e5c2d0e8865bfc2c3d1ab3916183ef5ee"
+dependencies = [
+ "pest",
+ "pest_derive",
+ "serde 1.0.136",
+]
+
+[[package]]
+name = "json5"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96b0db21af676c1ce64250b5f40f3ce2cf27e4e47cb91ed91eb6fe9350b430c1"
 dependencies = [
  "pest",
  "pest_derive",
@@ -4412,6 +4466,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-multimap"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c672c7ad9ec066e428c00eb917124a06f08db19e2584de982cc34b1f4c12485"
+dependencies = [
+ "dlv-list",
+ "hashbrown 0.9.1",
+]
+
+[[package]]
 name = "ordered-stream"
 version = "0.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5501,6 +5565,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ron"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b861ecaade43ac97886a512b360d01d66be9f41f3c61088b42cedf92e03d678"
+dependencies = [
+ "base64 0.13.0",
+ "bitflags 1.3.2",
+ "serde 1.0.136",
+]
+
+[[package]]
 name = "rpassword"
 version = "5.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5549,6 +5624,16 @@ name = "rust-ini"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3e52c148ef37f8c375d49d5a73aa70713125b7f19095948a923f80afdeb22ec2"
+
+[[package]]
+name = "rust-ini"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63471c4aa97a1cf8332a5f97709a79a4234698de6a1f5087faf66f2dae810e22"
+dependencies = [
+ "cfg-if 1.0.0",
+ "ordered-multimap",
+]
 
 [[package]]
 name = "rustc-hash"
@@ -6523,7 +6608,7 @@ dependencies = [
  "config 0.9.3",
  "dirs-next 1.0.2",
  "futures 0.3.21",
- "json5",
+ "json5 0.2.8",
  "log",
  "rand 0.8.5",
  "serde 1.0.136",
@@ -6547,7 +6632,7 @@ dependencies = [
  "bincode",
  "chrono",
  "clap 3.1.5",
- "config 0.9.3",
+ "config 0.12.0",
  "crossterm 0.22.1",
  "derive_more",
  "either",
@@ -6645,7 +6730,7 @@ name = "tari_common"
 version = "0.29.0"
 dependencies = [
  "anyhow",
- "config 0.9.3",
+ "config 0.12.0",
  "dirs-next 1.0.2",
  "fs2 0.4.3",
  "get_if_addrs",
@@ -7117,6 +7202,7 @@ version = "0.29.0"
 dependencies = [
  "bufstream",
  "chrono",
+ "clap 3.1.5",
  "crossbeam",
  "futures 0.3.21",
  "hex",

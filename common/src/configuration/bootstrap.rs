@@ -333,10 +333,10 @@ impl ConfigBootstrap {
         // }
     }
 
-    /// Load configuration from files located based on supplied CLI arguments
-    pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
-        load_configuration(self.config.as_path(), true)
-    }
+    // /// Load configuration from files located based on supplied CLI arguments
+    // pub fn load_configuration(&self) -> Result<config::Config, ConfigError> {
+    //     load_configuration(self.config.as_path(), true)
+    // }
 }
 
 pub fn prompt(question: &str) -> bool {

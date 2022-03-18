@@ -22,47 +22,48 @@ pub fn init_configuration(
     // Check and initialize configuration files
     bootstrap.init_dirs(application_type)?;
 
+    todo!()
     // Load and apply configuration file
-    let cfg = bootstrap.load_configuration()?;
-
-    // Initialise the logger
-    bootstrap.initialize_logging()?;
-
-    log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
-
-    // Populate the configuration struct
-    let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone(), bootstrap.network.clone())?;
-
-    if let Some(str) = bootstrap.network.clone() {
-        log::info!(target: LOG_TARGET, "Network selection requested");
-
-        let network = Network::from_str(&str);
-        match network {
-            Ok(network) => {
-                log::info!(
-                    target: LOG_TARGET,
-                    "Network selection successful, current network is: {}",
-                    network
-                );
-                global_config.network = network;
-                global_config.data_dir = PathBuf::from(str);
-                // if let DatabaseType::LMDB(_) = global_config.db_type {
-                //     global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
-                // }
-                // global_config.peer_db_path = global_config.data_dir.join("peer_db");
-                // global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
-                // global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
-            },
-            Err(e) => {
-                log::error!(target: LOG_TARGET, "Network selection was invalid, exiting.");
-                return Err(e.into());
-            },
-        }
-    }
-
-    check_file_paths(&mut global_config, &bootstrap);
-
-    Ok((bootstrap, global_config, cfg))
+    // let cfg = bootstrap.load_configuration()?;
+    //
+    // // Initialise the logger
+    // bootstrap.initialize_logging()?;
+    //
+    // log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);
+    //
+    // // Populate the configuration struct
+    // let mut global_config = GlobalConfig::convert_from(application_type, cfg.clone(), bootstrap.network.clone())?;
+    //
+    // if let Some(str) = bootstrap.network.clone() {
+    //     log::info!(target: LOG_TARGET, "Network selection requested");
+    //
+    //     let network = Network::from_str(&str);
+    //     match network {
+    //         Ok(network) => {
+    //             log::info!(
+    //                 target: LOG_TARGET,
+    //                 "Network selection successful, current network is: {}",
+    //                 network
+    //             );
+    //             global_config.network = network;
+    //             global_config.data_dir = PathBuf::from(str);
+    //             // if let DatabaseType::LMDB(_) = global_config.db_type {
+    //             //     global_config.db_type = DatabaseType::LMDB(global_config.data_dir.join("db"));
+    //             // }
+    //             // global_config.peer_db_path = global_config.data_dir.join("peer_db");
+    //             // global_config.wallet_peer_db_path = global_config.data_dir.join("wallet_peer_db");
+    //             // global_config.console_wallet_peer_db_path = global_config.data_dir.join("console_wallet_peer_db");
+    //         },
+    //         Err(e) => {
+    //             log::error!(target: LOG_TARGET, "Network selection was invalid, exiting.");
+    //             return Err(e.into());
+    //         },
+    //     }
+    // }
+    //
+    // check_file_paths(&mut global_config, &bootstrap);
+    //
+    // Ok((bootstrap, global_config, cfg))
 }
 
 fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {

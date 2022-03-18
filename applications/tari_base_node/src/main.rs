@@ -85,12 +85,13 @@ mod table;
 
 mod bootstrap;
 mod builder;
+mod cli;
 mod commands;
 mod grpc;
 mod recovery;
 mod utils;
 
-mod config;
+mod base_node_config;
 #[cfg(feature = "metrics")]
 mod metrics;
 
@@ -102,16 +103,18 @@ use std::{
     time::{Duration, Instant},
 };
 
+use clap::Parser as ClapParser;
 use commands::{
     command::CommandContext,
     parser::Parser,
     reader::{CommandEvent, CommandReader},
     status_line::StatusLineOutput,
 };
+use config::Config;
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use rustyline::{config::OutputStreamType, CompletionType, Config, EditMode, Editor};
+use rustyline::{config::OutputStreamType, CompletionType, Config as RustyLineConfig, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -123,6 +126,8 @@ use tari_common::CommsTransport;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, CommonConfig},
     exit_codes::{ExitCode, ExitError},
+    initialize_logging,
+    load_configuration,
     ConfigBootstrap,
     DefaultConfigLoader,
     GlobalConfig,
@@ -142,9 +147,9 @@ use tokio::{signal, task, time};
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-use crate::config::BaseNodeConfig;
+use crate::{base_node_config::BaseNodeConfig, cli::Cli};
 
-const LOG_TARGET: &str = "base_node::app";
+const LOG_TARGET: &str = "tari::base_node::app";
 
 /// Application entry point
 fn main() {
@@ -161,28 +166,43 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
-    #[allow(unused_mut)] // config isn't mutated on windows
-    let (bootstrap, global_config, cfg) = init_configuration(ApplicationType::BaseNode)?;
+    let cli = Cli::parse();
+
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(config_path.as_path(), true, &cli.common.config_property_overrides)?;
+    initialize_logging(
+        &cli.common.log_config_path("base_node"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
+    // let base_node_config = <BaseNodeConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    // debug!(target: LOG_TARGET, "Configuration: {:?}", config);
+
+    // #[allow(unused_mut)] // config isn't mutated on windows
+    // let (bootstrap, global_config, cfg) = init_configuration(ApplicationType::BaseNode)?;
 
     let base_node_config = <BaseNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-    let auto_update_config =
-        <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load auto-update config");
+    dbg!(&base_node_config);
     debug!(
         target: LOG_TARGET,
         "Using base node configuration: {:?}", base_node_config
     );
+    todo!();
+    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    let auto_update_config =
+        <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load auto-update config");
+
+    todo!();
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &base_node_config.identity_file(&common_config),
         &base_node_config.public_address,
-        bootstrap.create_id,
+        cli.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
 
     // Exit if create_id or init arguments were run
-    if bootstrap.create_id {
+    if cli.create_id {
         info!(
             target: LOG_TARGET,
             "Base node's node ID created at '{}'. Done.",
@@ -191,7 +211,7 @@ fn main_inner() -> Result<(), ExitError> {
         return Ok(());
     }
 
-    if bootstrap.init {
+    if cli.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
@@ -221,8 +241,8 @@ fn main_inner() -> Result<(), ExitError> {
         Arc::new(base_node_config),
         &common_config,
         auto_update_config,
-        &global_config,
-        bootstrap,
+        &cfg,
+        cli,
         shutdown,
     ))?;
 
@@ -238,31 +258,25 @@ async fn run_node(
     base_node_config: Arc<BaseNodeConfig>,
     common_config: &CommonConfig,
     auto_update_config: AutoUpdateConfig,
-    cfg: &GlobalConfig,
-    bootstrap: ConfigBootstrap,
+    cfg: &Config,
+    cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
-    if bootstrap.tracing_enabled {
+    if cli.tracing_enabled {
         enable_tracing();
     }
 
     #[cfg(feature = "metrics")]
     {
         use crate::metrics::MetricsConfig;
-        let config = <MetricsConfig as DefaultConfigLoader>::load_from(&cfg.inner)?;
-        metrics::install(
-            ApplicationType::BaseNode,
-            &node_identity,
-            &config,
-            &bootstrap,
-            shutdown.to_signal(),
-        );
+        let config = <MetricsConfig as DefaultConfigLoader>::load_from(cfg)?;
+        metrics::install(ApplicationType::BaseNode, &node_identity, &config, shutdown.to_signal());
     }
 
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
 
-    if bootstrap.rebuild_db {
+    if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
         recovery::initiate_recover_db(&base_node_config, common_config)?;
         recovery::run_recovery(&base_node_config, common_config)
@@ -276,7 +290,6 @@ async fn run_node(
         base_node_config.clone(),
         common_config,
         auto_update_config,
-        cfg,
         node_identity,
         shutdown.to_signal(),
     )
@@ -311,8 +324,8 @@ async fn run_node(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
-    if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(context, bootstrap.watch));
+    if cli.non_interactive_mode {
+        task::spawn(status_loop(context, cli.watch));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
@@ -426,7 +439,7 @@ async fn cli_loop(mut context: CommandContext) {
     commands::cli::print_banner(parser.get_commands(), 3);
 
     // TODO: Check for a new version here
-    let cli_config = Config::builder()
+    let cli_config = RustyLineConfig::builder()
         .history_ignore_space(true)
         .completion_type(CompletionType::List)
         .edit_mode(EditMode::Emacs)

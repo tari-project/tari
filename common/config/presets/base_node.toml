@@ -27,8 +27,7 @@ grpc_address = "/ip4/127.0.0.1/tcp/18142"
 # is "0", which indicates an archival node without any pruning.
 #pruning_horizon = 0
 
-# Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
-track_reorgs = true
+
 
 # The type of database backend to use. Currently supported options are "memory" and "lmdb". LMDB is recommnded for
 # almost all use cases.
@@ -38,6 +37,10 @@ track_reorgs = true
 db_init_size_mb = 1000
 db_grow_size_mb = 500
 db_resize_threshold_mb = 100
+
+[base_node.storage]
+# Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
+track_reorgs = true
 
 # Configuration options for testnet dibbler
 [dibbler.base_node]

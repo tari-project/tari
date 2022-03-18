@@ -22,6 +22,7 @@
 
 use std::{convert::TryFrom, thread, time::Instant};
 
+use clap::Parser;
 use config::MinerConfig;
 use errors::{err_empty, MinerError};
 use futures::stream::StreamExt;
@@ -32,6 +33,8 @@ use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
+    initialize_logging,
+    load_configuration,
     ConfigBootstrap,
     DefaultConfigLoader,
 };
@@ -42,11 +45,12 @@ use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
 
-use crate::{miner::MiningReport, stratum::stratum_controller::controller::Controller};
+use crate::{cli::Cli, miner::MiningReport, stratum::stratum_controller::controller::Controller};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
 
+mod cli;
 mod config;
 mod difficulty;
 mod errors;
@@ -69,9 +73,16 @@ fn main() {
 }
 
 async fn main_inner() -> Result<(), ExitError> {
-    let (bootstrap, _global, cfg) = init_configuration(ApplicationType::MiningNode)?;
+    let cli = Cli::parse();
+
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(config_path.as_path(), true, &cli.common.config_property_overrides)?;
+    initialize_logging(
+        &cli.common.log_config_path("mining_node"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
+    // let (bootstrap, _global, cfg) = init_configuration(ApplicationType::MiningNode)?;
     let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-    debug!(target: LOG_TARGET_FILE, "{:?}", bootstrap);
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
 
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {
@@ -119,7 +130,7 @@ async fn main_inner() -> Result<(), ExitError> {
         let mut blocks_found: u64 = 0;
         loop {
             debug!(target: LOG_TARGET, "Starting new mining cycle");
-            match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &bootstrap).await {
+            match mining_cycle(&mut node_conn, &mut wallet_conn, &config, &cli).await {
                 err @ Err(MinerError::GrpcConnection(_)) | err @ Err(MinerError::GrpcStatus(_)) => {
                     // Any GRPC error we will try to reconnect with a standard delay
                     error!(target: LOG_TARGET, "Connection error: {:?}", err);
@@ -161,7 +172,7 @@ async fn main_inner() -> Result<(), ExitError> {
                     if submitted {
                         blocks_found += 1;
                     }
-                    if let Some(max_blocks) = bootstrap.miner_max_blocks {
+                    if let Some(max_blocks) = cli.miner_max_blocks {
                         if blocks_found >= max_blocks {
                             return Ok(());
                         }
@@ -187,7 +198,7 @@ async fn mining_cycle(
     node_conn: &mut BaseNodeClient<Channel>,
     wallet_conn: &mut WalletClient<Channel>,
     config: &MinerConfig,
-    bootstrap: &ConfigBootstrap,
+    cli: &Cli,
 ) -> Result<bool, MinerError> {
     debug!(target: LOG_TARGET, "Getting new block template");
     let template = node_conn
@@ -209,7 +220,7 @@ async fn mining_cycle(
             .as_ref()
             .ok_or_else(|| err_empty("header"))?
             .height;
-        validate_tip(node_conn, height, bootstrap.mine_until_height).await?;
+        validate_tip(node_conn, height, cli.mine_until_height).await?;
     }
 
     debug!(target: LOG_TARGET, "Getting coinbase");
@@ -239,7 +250,7 @@ async fn mining_cycle(
     while let Some(report) = reports.next().await {
         if let Some(header) = report.header.clone() {
             let mut submit = true;
-            if let Some(min_diff) = bootstrap.miner_min_diff {
+            if let Some(min_diff) = cli.miner_min_diff {
                 if report.difficulty < min_diff {
                     submit = false;
                     debug!(
@@ -248,7 +259,7 @@ async fn mining_cycle(
                     );
                 }
             }
-            if let Some(max_diff) = bootstrap.miner_max_diff {
+            if let Some(max_diff) = cli.miner_max_diff {
                 if report.difficulty > max_diff {
                     submit = false;
                     debug!(
@@ -279,7 +290,7 @@ async fn mining_cycle(
             display_report(&report, config.num_mining_threads).await;
         }
         if config.mine_on_tip_only && reporting_timeout.elapsed() > config.validate_tip_interval() {
-            validate_tip(node_conn, report.height, bootstrap.mine_until_height).await?;
+            validate_tip(node_conn, report.height, cli.mine_until_height).await?;
             reporting_timeout = Instant::now();
         }
     }

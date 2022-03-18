@@ -26,6 +26,7 @@ use serde::{Deserialize, Serialize};
 use tari_common::SubConfigPath;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct MergeMiningProxyConfig {
     // pub network: String,
     pub monerod_url: Vec<String>,

@@ -83,15 +83,22 @@ impl Default for BaseNodeConfig {
             tor_identity_file: PathBuf::from("config/tor_id.json"),
             public_address: None,
             db_type: DatabaseType::Lmdb,
+            lmdb: Default::default(),
             lmdb_path: PathBuf::from("db"),
             max_randomx_vms: 5,
             bypass_range_proof_verification: false,
             orphan_db_clean_out_threshold: 0,
+            cleanup_orphans_at_startup: false,
             force_sync_peers: vec![],
             service_request_timeout: Duration::from_secs(60),
+            storage: Default::default(),
+            mempool: Default::default(),
+            p2p: Default::default(),
             rpc_max_simultaneous_sessions: 100,
+            status_line_interval: Default::default(),
+            buffer_size: 0,
+            buffer_rate_limit: 0,
             metadata_auto_ping_interval: Duration::from_secs(30), // TODO: Get actual default
-            ..Default::default()
         }
     }
 }

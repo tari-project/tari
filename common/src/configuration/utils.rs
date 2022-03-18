@@ -31,7 +31,7 @@ use std::{
     str::FromStr,
 };
 
-use config::Config;
+use config::{Config, ConfigBuilder};
 use log::{debug, info};
 use multiaddr::{Multiaddr, Protocol};
 use serde::{
@@ -51,7 +51,11 @@ use crate::{
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
-pub fn load_configuration(config_path: &Path, create_if_not_exists: bool) -> Result<Config, ConfigError> {
+pub fn load_configuration(
+    config_path: &Path,
+    create_if_not_exists: bool,
+    overrides: &[(String, String)],
+) -> Result<Config, ConfigError> {
     debug!(
         target: LOG_TARGET,
         "Loading configuration file from  {}",
@@ -61,18 +65,26 @@ pub fn load_configuration(config_path: &Path, create_if_not_exists: bool) -> Res
         write_default_config_to(config_path)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
     }
-    let mut cfg = Config::new();
-
-    // Load the configuration file
     let filename = config_path
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
-    let config_file = config::File::with_name(filename);
+    let mut cfg = Config::builder()
+        .add_source(config::File::with_name(filename))
+        .add_source(config::Environment::with_prefix("TARI"));
 
-    cfg.merge(config_file)
-        .map_err(|e| ConfigError::new("Failed to parse the configuration file", Some(e.to_string())))?;
+    for (key, value) in overrides {
+        dbg!(value);
+        cfg = cfg
+            .set_override(key.as_str(), value.as_str())
+            .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;
+    }
+
+    let cfg = cfg
+        .build()
+        .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
     info!(target: LOG_TARGET, "Configuration file loaded.");
 
+    dbg!(&cfg);
     Ok(cfg)
 }
 
@@ -108,7 +120,7 @@ pub fn write_default_config_to(path: &Path) -> Result<(), std::io::Error> {
 /// The `Config` object that is returned holds _all_ the default values possible in the `~/.tari/config.toml` file.
 /// These will typically be overridden by userland settings in envars, the config file, or the command line.
 pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
-    let mut cfg = Config::new();
+    let mut cfg = Config::default();
 
     // Common settings
     cfg.set_default("common.message_cache_size", 10).unwrap();

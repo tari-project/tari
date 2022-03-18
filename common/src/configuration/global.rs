@@ -60,50 +60,7 @@ pub struct GlobalConfig {
     pub data_dir: PathBuf,
 }
 
-impl GlobalConfig {
-    pub fn convert_from(
-        application: ApplicationType,
-        mut cfg: Config,
-        network: Option<String>,
-    ) -> Result<Self, ConfigurationError> {
-        // Add in settings from the environment (with a prefix of TARI_NODE)
-        // Eg.. `TARI_NODE_DEBUG=1 ./target/app` would set the `debug` key
-        let env = Environment::with_prefix("tari").separator("__");
-        cfg.merge(env)
-            .map_err(|e| ConfigurationError::new("environment variable", None, &e.to_string()))?;
-
-        // network override from command line
-        let network = match network {
-            Some(s) => Network::from_str(&s)?,
-            None => {
-                // otherwise specified from config
-                one_of::<Network>(&cfg, &[
-                    "common.network",
-                    &format!("{}.network", application.as_config_str()),
-                ])?
-            },
-        };
-
-        convert_node_config(application, cfg, network)
-    }
-}
-
-fn convert_node_config(
-    application: ApplicationType,
-    cfg: Config,
-    network: Network,
-) -> Result<GlobalConfig, ConfigurationError> {
-    let net_str = network.as_str();
-
-    let key = config_string("common", net_str, "data_dir");
-    let data_dir: PathBuf = cfg.get_str(&key).unwrap_or_else(|_| net_str.to_string()).into();
-
-    Ok(GlobalConfig {
-        inner: cfg.clone(),
-        network,
-        data_dir,
-    })
-}
+impl GlobalConfig {}
 
 #[cfg(unix)]
 fn libtor_enabled(cfg: &Config, net_str: &str) -> (bool, bool) {
@@ -135,7 +92,7 @@ where
     T::Err: Display,
 {
     for k in keys {
-        if let Some(v) = optional(cfg.get_str(k))? {
+        if let Some(v) = optional(cfg.get_string(k))? {
             return v
                 .parse()
                 .map_err(|err| ConfigError::Message(format!("Failed to parse {}: {}", k, err)));
@@ -163,7 +120,7 @@ fn network_transport_config(
     }
 
     let get_conf_str = |key| {
-        cfg.get_str(key)
+        cfg.get_string(key)
             .map_err(|err| ConfigurationError::new(key, None, &err.to_string()))
     };
 
@@ -216,7 +173,7 @@ fn network_transport_config(
                 .unwrap_or_default()
                 .into_iter()
                 .map(|v| {
-                    v.into_str()
+                    v.into_string()
                         .map_err(|err| ConfigurationError::new(&key, None, &err.to_string()))
                         .and_then(|s| {
                             Multiaddr::from_str(&s)

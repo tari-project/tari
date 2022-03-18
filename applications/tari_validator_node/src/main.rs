@@ -80,19 +80,20 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
-    let (bootstrap, global, cfg) = init_configuration(ApplicationType::ValidatorNode)?;
-
-    let validator_node_config = <ValidatorNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    let runtime = build_runtime()?;
-    runtime.block_on(run_node(
-        &validator_node_config,
-        &common_config,
-        global,
-        bootstrap.create_id,
-    ))?;
-
-    Ok(())
+    todo!()
+    // let (bootstrap, global, cfg) = init_configuration(ApplicationType::ValidatorNode)?;
+    //
+    // let validator_node_config = <ValidatorNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    // let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    // let runtime = build_runtime()?;
+    // runtime.block_on(run_node(
+    //     &validator_node_config,
+    //     &common_config,
+    //     global,
+    //     bootstrap.create_id,
+    // ))?;
+    //
+    // Ok(())
 }
 
 async fn run_node(

@@ -62,9 +62,9 @@ use tokio::{sync::watch, time};
 pub use watch_command::WatchCommand;
 
 use crate::{
+    base_node_config::BaseNodeConfig,
     builder::BaseNodeContext,
     commands::{nom_parser::ParsedCommand, parser::FromHex},
-    config::BaseNodeConfig,
 };
 
 #[derive(Debug, Parser)]
