@@ -290,15 +290,16 @@ async fn run_node(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
+    let main_loop = MainLoop { context };
     if bootstrap.non_interactive_mode {
-        task::spawn(context.status_loop(bootstrap.watch));
+        task::spawn(main_loop.status_loop(bootstrap.watch));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(context.cli_loop());
+        task::spawn(main_loop.cli_loop());
     }
     if !config.force_sync_peers.is_empty() {
         warn!(
@@ -366,11 +367,15 @@ fn get_status_interval(start_time: Instant, long_interval: Duration) -> time::Sl
     time::sleep(duration)
 }
 
-impl CommandContext {
+struct MainLoop {
+    context: CommandContext,
+}
+
+impl MainLoop {
     async fn status_loop(mut self, watch_command: Option<String>) {
         let start_time = Instant::now();
-        let mut shutdown_signal = self.shutdown.to_signal();
-        let status_interval = self.global_config().base_node_status_line_interval;
+        let mut shutdown_signal = self.context.shutdown.to_signal();
+        let status_interval = self.context.global_config().base_node_status_line_interval;
         loop {
             let interval = get_status_interval(start_time, status_interval);
             let mut interrupt = signal::ctrl_c().fuse().boxed();
@@ -384,11 +389,11 @@ impl CommandContext {
                 }
                 _ = interval => {
                     if let Some(line) = watch_command.as_ref() {
-                        if let Err(err) = self.handle_command_str(line).await {
+                        if let Err(err) = self.context.handle_command_str(line).await {
                             println!("Watched command `{}` failed: {}", line, err);
                         }
                     } else {
-                        self.status(StatusLineOutput::Log).await.ok();
+                        self.context.status(StatusLineOutput::Log).await.ok();
                     }
                 },
             }
@@ -418,11 +423,11 @@ impl CommandContext {
         rustyline.set_helper(Some(parser));
         let mut reader = CommandReader::new(rustyline);
 
-        let mut shutdown_signal = self.shutdown.to_signal();
+        let mut shutdown_signal = self.context.shutdown.to_signal();
         let start_time = Instant::now();
-        let mut software_update_notif = self.software_updater.new_update_notifier().clone();
+        let mut software_update_notif = self.context.software_updater.new_update_notifier().clone();
         let mut first_signal = false;
-        let config = self.config.clone();
+        let config = self.context.config.clone();
         let mut interrupt = signal::ctrl_c().fuse().boxed();
         let mut watch_task = Some(WatchCommand::default());
         loop {
@@ -432,7 +437,7 @@ impl CommandContext {
                     .interval
                     .map(Duration::from_secs)
                     .unwrap_or(config.base_node_status_line_interval);
-                if let Err(err) = self.handle_command_str(line).await {
+                if let Err(err) = self.context.handle_command_str(line).await {
                     println!("Wrong command to watch `{}`. Failed with: {}", line, err);
                 } else {
                     let mut events = EventStream::new();
@@ -441,7 +446,7 @@ impl CommandContext {
                         let interval = get_status_interval(start_time, interval);
                         tokio::select! {
                             _ = interval => {
-                                if let Err(err) = self.handle_command_str(line).await {
+                                if let Err(err) = self.context.handle_command_str(line).await {
                                     println!("Watched command `{}` failed: {}", line, err);
                                 }
                             },
@@ -489,7 +494,7 @@ impl CommandContext {
                             Ok(line) => {
                                 first_signal = false;
                                 if !line.is_empty() {
-                                    match self.handle_command_str(&line).await {
+                                    match self.context.handle_command_str(&line).await {
                                         Err(err) => {
                                             println!("Command `{}` failed: {}", line, err);
                                         }
