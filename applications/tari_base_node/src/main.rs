@@ -289,7 +289,7 @@ async fn run_node(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
-    let main_loop = MainLoop::new(context);
+    let main_loop = MainLoop::new(context, bootstrap.watch, bootstrap.non_interactive_mode);
     if bootstrap.non_interactive_mode {
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
@@ -298,7 +298,7 @@ async fn run_node(
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
     }
-    task::spawn(main_loop.cli_loop(bootstrap.watch, bootstrap.non_interactive_mode));
+    task::spawn(main_loop.cli_loop());
     if !config.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
@@ -369,10 +369,12 @@ struct MainLoop {
     context: CommandContext,
     reader: CommandReader,
     commands: Vec<String>,
+    watch_task: Option<WatchCommand>,
+    non_interactive: bool,
 }
 
 impl MainLoop {
-    fn new(context: CommandContext) -> Self {
+    fn new(context: CommandContext, watch_command: Option<String>, non_interactive: bool) -> Self {
         let parser = Parser::new();
         let commands = parser.get_commands();
         let cli_config = Config::builder()
@@ -385,10 +387,90 @@ impl MainLoop {
         let mut rustyline = Editor::with_config(cli_config);
         rustyline.set_helper(Some(parser));
         let reader = CommandReader::new(rustyline);
+        let watch_task = {
+            if let Some(line) = watch_command {
+                WatchCommand::new(line)
+            } else if non_interactive {
+                WatchCommand::new("status --output log")
+            } else {
+                WatchCommand::new("status")
+            }
+        };
         Self {
             context,
             reader,
             commands,
+            watch_task: Some(watch_task),
+            non_interactive,
+        }
+    }
+
+    async fn run_watch_task(&mut self) {
+        if let Some(command) = self.watch_task.take() {
+            let start_time = Instant::now();
+            let mut interrupt = signal::ctrl_c().fuse().boxed();
+            let mut software_update_notif = self.context.software_updater.new_update_notifier().clone();
+            let config = self.context.config.clone();
+            let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
+            if let Err(err) = self.context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                let mut events = EventStream::new();
+                loop {
+                    terminal::enable_raw_mode().ok();
+                    let interval = get_status_interval(start_time, interval);
+                    tokio::select! {
+                        _ = interval => {
+                            terminal::disable_raw_mode().ok();
+                            if let Err(err) = self.context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                            continue;
+                        },
+                        _ = &mut interrupt => {
+                            break;
+                        }
+                        event = events.next() => {
+                            match event {
+                                Some(Ok(Event::Key(key))) => {
+                                    match key {
+                                        KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL } => {
+                                            break;
+                                        }
+                                        _ => {
+                                            if self.non_interactive {
+                                                println!("Press Ctrl-C to interrupt the node.");
+                                            } else {
+                                                println!("Press Ctrl-C to enter the interactive shell.");
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                }
+                            }
+                        }
+                        // TODO: Is that good idea? Or add a separate command?
+                        Ok(_) = software_update_notif.changed() => {
+                            if let Some(ref update) = *software_update_notif.borrow() {
+                                println!(
+                                    "Version {} of the {} is available: {} (sha: {})",
+                                    update.version(),
+                                    update.app(),
+                                    update.download_url(),
+                                    update.to_hash_hex()
+                                );
+                            }
+                        }
+                    }
+                    crossterm::execute!(std::io::stdout(), cursor::MoveToNextLine(1)).ok();
+                }
+                terminal::disable_raw_mode().ok();
+            }
         }
     }
 }
@@ -401,90 +483,15 @@ impl MainLoop {
     ///
     /// ## Returns
     /// Doesn't return anything
-    async fn cli_loop(mut self, mut watch_command: Option<String>, non_interactive: bool) {
+    async fn cli_loop(mut self) {
         commands::cli::print_banner(self.commands.clone(), 3);
 
         // TODO: Check for a new version here
         let mut shutdown_signal = self.context.shutdown.to_signal();
-        let start_time = Instant::now();
-        let mut software_update_notif = self.context.software_updater.new_update_notifier().clone();
         let mut first_signal = false;
-        let config = self.context.config.clone();
-        let mut interrupt = signal::ctrl_c().fuse().boxed();
-        let watch_task = {
-            if let Some(line) = watch_command.take() {
-                WatchCommand::new(line)
-            } else if non_interactive {
-                WatchCommand::new("status --output log")
-            } else {
-                WatchCommand::new("status")
-            }
-        };
-        let mut watch_task = Some(watch_task);
         loop {
-            if let Some(command) = watch_task.take() {
-                let line = command.line();
-                let interval = command
-                    .interval
-                    .map(Duration::from_secs)
-                    .unwrap_or(config.base_node_status_line_interval);
-                if let Err(err) = self.context.handle_command_str(line).await {
-                    println!("Wrong command to watch `{}`. Failed with: {}", line, err);
-                } else {
-                    let mut events = EventStream::new();
-                    loop {
-                        terminal::enable_raw_mode().ok();
-                        let interval = get_status_interval(start_time, interval);
-                        tokio::select! {
-                            _ = interval => {
-                                terminal::disable_raw_mode().ok();
-                                if let Err(err) = self.context.handle_command_str(line).await {
-                                    println!("Watched command `{}` failed: {}", line, err);
-                                }
-                                continue;
-                            },
-                            _ = &mut interrupt => {
-                                break;
-                            }
-                            event = events.next() => {
-                                match event {
-                                    Some(Ok(Event::Key(key))) => {
-                                        match key {
-                                            KeyEvent { code: KeyCode::Char('c'), modifiers: KeyModifiers::CONTROL } => {
-                                                break;
-                                            }
-                                            _ => {
-                                                if non_interactive {
-                                                    println!("Press Ctrl-C to interrupt the node.");
-                                                } else {
-                                                    println!("Press Ctrl-C to enter the interactive shell.");
-                                                }
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                    }
-                                }
-                            }
-                            // TODO: Is that good idea? Or add a separate command?
-                            Ok(_) = software_update_notif.changed() => {
-                                if let Some(ref update) = *software_update_notif.borrow() {
-                                    println!(
-                                        "Version {} of the {} is available: {} (sha: {})",
-                                        update.version(),
-                                        update.app(),
-                                        update.download_url(),
-                                        update.to_hash_hex()
-                                    );
-                                }
-                            }
-                        }
-                        crossterm::execute!(std::io::stdout(), cursor::MoveToNextLine(1)).ok();
-                    }
-                    terminal::disable_raw_mode().ok();
-                }
-            }
-            if non_interactive {
+            self.run_watch_task().await;
+            if self.non_interactive {
                 break;
             }
             tokio::select! {
@@ -499,7 +506,7 @@ impl MainLoop {
                                             println!("Command `{}` failed: {}", line, err);
                                         }
                                         Ok(command) => {
-                                            watch_task = command;
+                                            self.watch_task = command;
                                         }
                                     }
                                 }
