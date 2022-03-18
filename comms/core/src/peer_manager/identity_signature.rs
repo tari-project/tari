@@ -27,7 +27,7 @@ use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
+use tari_crypto::{keys::PublicKey, tari_utilities::ByteArray};
 
 use crate::{
     message::MessageExt,
@@ -62,9 +62,17 @@ impl IdentitySignature {
         addresses: I,
         updated_at: DateTime<Utc>,
     ) -> Self {
-        let challenge = Self::construct_challenge(Self::LATEST_VERSION, features, addresses, updated_at);
-        let nonce = CommsSecretKey::random(&mut OsRng);
-        let signature = Signature::sign(secret_key.clone(), nonce, &challenge.finalize())
+        let public_key = CommsPublicKey::from_secret_key(secret_key);
+        let (secret_nonce, public_nonce) = CommsPublicKey::random_keypair(&mut OsRng);
+        let challenge = Self::construct_challenge(
+            &public_key,
+            &public_nonce,
+            Self::LATEST_VERSION,
+            features,
+            addresses,
+            updated_at,
+        );
+        let signature = Signature::sign(secret_key.clone(), secret_nonce, &challenge.finalize())
             .expect("unreachable panic: challenge hash digest is the correct length");
         Self {
             version: Self::LATEST_VERSION,
@@ -108,17 +116,29 @@ impl IdentitySignature {
             return false;
         }
 
-        let challenge = Self::construct_challenge(self.version, features, addresses, self.updated_at);
+        let challenge = Self::construct_challenge(
+            public_key,
+            self.signature.get_public_nonce(),
+            self.version,
+            features,
+            addresses,
+            self.updated_at,
+        );
         self.signature.verify_challenge(public_key, &challenge.finalize())
     }
 
     fn construct_challenge<'a, I: IntoIterator<Item = &'a Multiaddr>>(
+        public_key: &CommsPublicKey,
+        public_nonce: &CommsPublicKey,
         version: u8,
         features: PeerFeatures,
         addresses: I,
         updated_at: DateTime<Utc>,
     ) -> Challenge {
+        // e = H(P||R||m)
         let challenge = Challenge::new()
+            .chain(public_key.as_bytes())
+            .chain(public_nonce.as_bytes())
             .chain(version.to_le_bytes())
             .chain(u64::try_from(updated_at.timestamp()).unwrap().to_le_bytes())
             .chain(features.bits().to_le_bytes());
@@ -175,7 +195,7 @@ impl From<&IdentitySignature> for proto::identity::IdentitySignature {
 mod test {
     use std::str::FromStr;
 
-    use tari_crypto::keys::PublicKey;
+    use tari_crypto::keys::{PublicKey, SecretKey};
 
     use super::*;
     use crate::peer_manager::{NodeId, PeerFlags};
