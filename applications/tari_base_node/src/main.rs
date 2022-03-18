@@ -105,7 +105,6 @@ use commands::{
     command::{CommandContext, WatchCommand},
     parser::Parser,
     reader::CommandReader,
-    status_line::StatusLineOutput,
 };
 use crossterm::{
     cursor,
@@ -292,15 +291,14 @@ async fn run_node(
     let context = CommandContext::new(&ctx, shutdown);
     let main_loop = MainLoop { context };
     if bootstrap.non_interactive_mode {
-        task::spawn(main_loop.status_loop(bootstrap.watch));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-        task::spawn(main_loop.cli_loop());
     }
+    task::spawn(main_loop.cli_loop(bootstrap.watch, bootstrap.non_interactive_mode));
     if !config.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
@@ -372,34 +370,6 @@ struct MainLoop {
 }
 
 impl MainLoop {
-    async fn status_loop(mut self, watch_command: Option<String>) {
-        let start_time = Instant::now();
-        let mut shutdown_signal = self.context.shutdown.to_signal();
-        let status_interval = self.context.global_config().base_node_status_line_interval;
-        loop {
-            let interval = get_status_interval(start_time, status_interval);
-            let mut interrupt = signal::ctrl_c().fuse().boxed();
-            tokio::select! {
-                biased;
-                _ = &mut interrupt => {
-                    break;
-                }
-                _ = shutdown_signal.wait() => {
-                    break;
-                }
-                _ = interval => {
-                    if let Some(line) = watch_command.as_ref() {
-                        if let Err(err) = self.context.handle_command_str(line).await {
-                            println!("Watched command `{}` failed: {}", line, err);
-                        }
-                    } else {
-                        self.context.status(StatusLineOutput::Log).await.ok();
-                    }
-                },
-            }
-        }
-    }
-
     /// Runs the Base Node CLI loop
     /// ## Parameters
     /// `parser` - The parser to process input commands
@@ -407,7 +377,7 @@ impl MainLoop {
     ///
     /// ## Returns
     /// Doesn't return anything
-    async fn cli_loop(mut self) {
+    async fn cli_loop(mut self, mut watch_command: Option<String>, non_interactive: bool) {
         let parser = Parser::new();
         commands::cli::print_banner(parser.get_commands(), 3);
 
@@ -429,7 +399,16 @@ impl MainLoop {
         let mut first_signal = false;
         let config = self.context.config.clone();
         let mut interrupt = signal::ctrl_c().fuse().boxed();
-        let mut watch_task = Some(WatchCommand::default());
+        let watch_task = {
+            if let Some(line) = watch_command.take() {
+                WatchCommand::new(line)
+            } else if non_interactive {
+                WatchCommand::new("status --output log")
+            } else {
+                WatchCommand::new("status")
+            }
+        };
+        let mut watch_task = Some(watch_task);
         loop {
             if let Some(command) = watch_task.take() {
                 let line = command.line();
@@ -486,6 +465,9 @@ impl MainLoop {
                     }
                     terminal::disable_raw_mode().ok();
                 }
+            }
+            if non_interactive {
+                break;
             }
             tokio::select! {
                 res = reader.next_command() => {
