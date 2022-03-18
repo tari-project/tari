@@ -371,6 +371,9 @@ struct MainLoop {
     commands: Vec<String>,
     watch_task: Option<WatchCommand>,
     non_interactive: bool,
+    first_signal: bool,
+    done: bool,
+    shutdown_signal: ShutdownSignal,
 }
 
 impl MainLoop {
@@ -396,12 +399,16 @@ impl MainLoop {
                 WatchCommand::new("status")
             }
         };
+        let shutdown_signal = context.shutdown.to_signal();
         Self {
             context,
             reader,
             commands,
             watch_task: Some(watch_task),
             non_interactive,
+            first_signal: false,
+            done: false,
+            shutdown_signal,
         }
     }
 
@@ -473,6 +480,54 @@ impl MainLoop {
             }
         }
     }
+
+    async fn execute_command(&mut self) {
+        tokio::select! {
+            res = self.reader.next_command() => {
+                if let Some(event) = res {
+                    match event {
+                        Ok(line) => {
+                            self.first_signal = false;
+                            if !line.is_empty() {
+                                match self.context.handle_command_str(&line).await {
+                                    Err(err) => {
+                                        println!("Command `{}` failed: {}", line, err);
+                                    }
+                                    Ok(command) => {
+                                        self.watch_task = command;
+                                    }
+                                }
+                            }
+                        }
+                        Err(ReadlineError::Interrupted) => {
+                            // If `Ctrl-C` is pressed
+                            if !self.first_signal {
+                                println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
+                                self.first_signal = true;
+                            } else {
+                                self.done = true;
+                            }
+                        }
+                        Err(ReadlineError::Eof) => {
+                            // If `Ctrl-D` is pressed
+                            self.done = true;
+                        }
+                        Err(err) => {
+                            // TODO: Not sure we have to break here
+                            // This happens when the node is shutting down.
+                            debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
+                            self.done = true;
+                        }
+                    }
+                } else {
+                    self.done = true;
+                }
+            },
+            _ = self.shutdown_signal.wait() => {
+                self.done = true;
+            }
+        }
+    }
 }
 
 impl MainLoop {
@@ -487,58 +542,12 @@ impl MainLoop {
         commands::cli::print_banner(self.commands.clone(), 3);
 
         // TODO: Check for a new version here
-        let mut shutdown_signal = self.context.shutdown.to_signal();
-        let mut first_signal = false;
-        loop {
+        while !self.done {
             self.run_watch_task().await;
             if self.non_interactive {
                 break;
             }
-            tokio::select! {
-                res = self.reader.next_command() => {
-                    if let Some(event) = res {
-                        match event {
-                            Ok(line) => {
-                                first_signal = false;
-                                if !line.is_empty() {
-                                    match self.context.handle_command_str(&line).await {
-                                        Err(err) => {
-                                            println!("Command `{}` failed: {}", line, err);
-                                        }
-                                        Ok(command) => {
-                                            self.watch_task = command;
-                                        }
-                                    }
-                                }
-                            }
-                            Err(ReadlineError::Interrupted) => {
-                                // If `Ctrl-C` is pressed
-                                if !first_signal {
-                                    println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
-                                    first_signal = true;
-                                } else {
-                                    break;
-                                }
-                            }
-                            Err(ReadlineError::Eof) => {
-                                // If `Ctrl-D` is pressed
-                                break;
-                            }
-                            Err(err) => {
-                                // TODO: Not sure we have to break here
-                                // This happens when the node is shutting down.
-                                debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                                break;
-                            }
-                        }
-                    } else {
-                        break;
-                    }
-                },
-                _ = shutdown_signal.wait() => {
-                    break;
-                }
-            }
+            self.execute_command().await;
         }
     }
 }
