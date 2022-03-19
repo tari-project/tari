@@ -87,9 +87,9 @@ impl CliLoop {
         }
     }
 
-    fn is_interruption(&mut self, event: Option<Result<Event, io::Error>>) -> bool {
-        match event {
-            Some(Ok(Event::Key(key))) => match key {
+    fn is_interrupted(&mut self, event: Option<Result<Event, io::Error>>) -> bool {
+        if let Some(Ok(Event::Key(key))) = event {
+            match key {
                 KeyEvent {
                     code: KeyCode::Char('c'),
                     modifiers: KeyModifiers::CONTROL,
@@ -103,8 +103,7 @@ impl CliLoop {
                         println!("Press Ctrl-C to enter the interactive shell.");
                     }
                 },
-            },
-            _ => {},
+            }
         }
         false
     }
@@ -138,7 +137,7 @@ impl CliLoop {
                             break;
                         }
                         event = events.next() => {
-                            if self.is_interruption(event) {
+                            if self.is_interrupted(event) {
                                 break;
                             }
                         }
