@@ -1168,6 +1168,36 @@ async fn consensus_validation_versions() {
 }
 
 #[tokio::test]
+async fn consensus_validation_unique_excess_sig() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+
+    // Create a block with 5 outputs
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
+    )];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    let schema = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1_500_000 * uT]);
+    let (tx1, _) = spend_utxos(schema.clone());
+    generate_block(&store, &mut blocks, vec![tx1.clone()], &consensus_manager).unwrap();
+
+    // trying to submit a transaction with an existing excess signature already in the chain is an error
+    let tx = Arc::new(tx1);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+}
+
+#[tokio::test]
 #[allow(clippy::erasing_op)]
 #[allow(clippy::identity_op)]
 async fn consensus_validation_unique_id() {

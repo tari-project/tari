@@ -223,6 +223,28 @@ impl<B: BlockchainBackend> TxConsensusValidator<B> {
 
         Ok(())
     }
+
+    fn validate_excess_sig_not_in_db(&self, tx: &Transaction) -> Result<(), ValidationError> {
+        let excess_sig = tx
+            .first_kernel_excess_sig()
+            .ok_or_else(|| ValidationError::ConsensusError("Transaction has no kernel excess signature".into()))?;
+
+        match self.db.fetch_kernel_by_excess_sig(excess_sig.to_owned())? {
+            Some((kernel, header_hash)) => {
+                let msg = format!(
+                    "Transaction kernel excess signature already exists in chain database block hash: {}. Existing \
+                     kernel excess: {}, excess sig nonce: {}, excess signature: {}",
+                    header_hash.to_hex(),
+                    kernel.excess.to_hex(),
+                    kernel.excess_sig.get_public_nonce().to_hex(),
+                    kernel.excess_sig.get_signature().to_hex(),
+                );
+                warn!(target: LOG_TARGET, "{}", msg);
+                Err(ValidationError::ConsensusError(msg))
+            },
+            None => Ok(()),
+        }
+    }
 }
 
 impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator<B> {
@@ -234,6 +256,8 @@ impl<B: BlockchainBackend> MempoolTransactionValidation for TxConsensusValidator
         {
             return Err(ValidationError::MaxTransactionWeightExceeded);
         }
+
+        self.validate_excess_sig_not_in_db(tx)?;
 
         self.validate_versions(tx, consensus_constants)?;
 
