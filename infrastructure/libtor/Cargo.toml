@@ -6,6 +6,7 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_common = { path = "../../common" }
+derivative = "2.2.0"
 log = "0.4.8"
 log4rs = { version = "1.0.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
 multiaddr = { version = "0.13.0" }

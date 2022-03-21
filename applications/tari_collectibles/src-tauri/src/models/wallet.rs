@@ -20,14 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_key_manager::cipher_seed::CipherSeed;
 use uuid::Uuid;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Derivative, Clone)]
+#[derivative(Debug)]
 pub struct Wallet {
   pub id: Uuid,
   pub name: Option<String>,
+  #[serde(skip_serializing)]
+  #[derivative(Debug = "ignore")]
   pub cipher_seed: CipherSeed,
 }
 

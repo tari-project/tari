@@ -51,6 +51,7 @@ use crate::{
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{Difficulty, PowAlgorithm},
+    validation::helpers,
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -617,9 +618,29 @@ where B: BlockchainBackend + 'static
 
         // NB: Add the header last because `with_transactions` etc updates the current header, but we have the final one
         // already
-        builder = builder.with_header(header);
+        builder = builder.with_header(header.clone());
+        let block = builder.build();
 
-        Ok(Arc::new(builder.build()))
+        // Perform a sanity check on the reconstructed block, if the MMR roots don't match then it's possible one or
+        // more transactions in our mempool had the same excess/signature for a *different* transaction.
+        // This is extremely unlikely, but still possible. In case of a mismatch, request the full block from the peer.
+        let (block, mmr_roots) = self.blockchain_db.calculate_mmr_roots(block).await?;
+        if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
+            let block_hash = block.hash();
+            warn!(
+                target: LOG_TARGET,
+                "Reconstructed block #{} ({}) failed MMR check validation!. Requesting full block. Error: {}",
+                header.height,
+                block_hash.to_hex(),
+                e,
+            );
+
+            metrics::compact_block_mmr_mismatch(header.height).inc();
+            let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+            return Ok(block);
+        }
+
+        Ok(Arc::new(block))
     }
 
     async fn request_full_block_from_peer(

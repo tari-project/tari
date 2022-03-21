@@ -23,6 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use aes_gcm::Aes256Gcm;
+use derivative::Derivative;
 use diesel::{prelude::*, sql_query, SqliteConnection};
 use log::*;
 use tari_common_types::{
@@ -60,11 +61,13 @@ use crate::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database::wallet";
 
-#[derive(Clone, Debug, Queryable, Identifiable, PartialEq, QueryableByName)]
+#[derive(Clone, Derivative, Queryable, Identifiable, PartialEq, QueryableByName)]
+#[derivative(Debug)]
 #[table_name = "outputs"]
 pub struct OutputSql {
     pub id: i32, // Auto inc primary key
     pub commitment: Option<Vec<u8>>,
+    #[derivative(Debug = "ignore")]
     pub spending_key: Vec<u8>,
     pub value: i64,
     pub flags: i32,
@@ -74,6 +77,7 @@ pub struct OutputSql {
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
+    #[derivative(Debug = "ignore")]
     pub script_private_key: Vec<u8>,
     pub script_lock_height: i64,
     pub sender_offset_public_key: Vec<u8>,
