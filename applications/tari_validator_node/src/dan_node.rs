@@ -25,7 +25,6 @@ use std::{
     time::Duration,
 };
 
-use itertools::Itertools;
 use log::*;
 use tari_common::{
     configuration::ValidatorNodeConfig,
@@ -115,7 +114,7 @@ impl DanNode {
                 } else {
                     next_scanned_height = u64::MAX; // Never run again.
                 }
-                let assets = base_node_client
+                let mut assets = base_node_client
                     .get_assets_for_dan_node(node_identity.public_key().clone())
                     .await
                     .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
@@ -138,7 +137,7 @@ impl DanNode {
                     .cloned()
                     .collect::<Vec<PublicKey>>();
                 for public_key in active_public_keys {
-                    if !known_active_public_keys.contains(&public_key) {
+                    if !known_active_public_keys.any(|pk| pk == public_key) {
                         // Active asset is not part of the newly known active assets, maybe there were no checkpoint for
                         // the asset. Are we still part of the committee?
                         if let (false, height) = base_node_client

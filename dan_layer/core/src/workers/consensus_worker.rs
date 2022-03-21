@@ -134,7 +134,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.public_key, self.current_view_id
         );
         let starting_view = self.current_view_id;
-        while !stop.as_ref().load(Ordering::Relaxed) {
+        while !stop.load(Ordering::Relaxed) {
             if let Some(max) = max_views_to_process {
                 if max <= self.current_view_id.0 - starting_view.0 {
                     break;

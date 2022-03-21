@@ -35,7 +35,7 @@ pub struct Asset {
     definition: AssetDefinition,
     current_state: bool,
     // Changes in the committee for this asset.
-    // Mined height of the change TXs, and the involvment in the committe (true = part of committee)
+    // Mined height of the change TXs, and the involvement in the committe (true = part of committee)
     next_states: HashMap<u64, bool>,
     kill_signal: Option<Arc<AtomicBool>>,
 }
@@ -52,14 +52,14 @@ impl Asset {
 
     pub fn update_height<Fstart>(&mut self, height: u64, start: Fstart)
     where Fstart: Fn(AssetDefinition) -> Arc<AtomicBool> {
-        if let Some((&height, &involment)) = self
+        if let Some((&height, &involvement)) = self
             .next_states
             .iter()
             .find(|(&mined_height, _)| mined_height <= height)
         {
             // State change
-            if self.current_state != involment {
-                if involment {
+            if self.current_state != involvement {
+                if involvement {
                     self.kill_signal = Some(start(self.definition.clone()));
                 } else {
                     // Switch on the kill signal for the asset to end processing
@@ -68,7 +68,7 @@ impl Asset {
                     self.kill_signal = None;
                 }
             }
-            self.current_state = involment;
+            self.current_state = involvement;
             // We have the current state set and we will keep only future updates
             self.next_states
                 .retain(|&effective_height, _| effective_height > height);
@@ -81,11 +81,11 @@ impl Asset {
         self.current_state || !self.next_states.is_empty()
     }
 
-    pub fn add_state(&mut self, height: u64, involment: bool) {
-        self.next_states.insert(height, involment);
+    pub fn add_state(&mut self, height: u64, involvement: bool) {
+        self.next_states.insert(height, involvement);
     }
 
-    pub fn get_current_state(&self) -> bool {
+    pub fn is_committee_member(&self) -> bool {
         self.current_state
     }
 }

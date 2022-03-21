@@ -50,12 +50,12 @@ impl Monitoring {
         }
     }
 
-    pub fn add_state(&mut self, asset_public_key: PublicKey, height: u64, involment: bool) {
+    pub fn add_state(&mut self, asset_public_key: PublicKey, height: u64, involvement: bool) {
         // Add committee_management_confirmation_time to the mined height = effective height
         self.assets
             .get_mut(&asset_public_key)
             .unwrap()
-            .add_state(height + self.committee_management_confirmation_time, involment);
+            .add_state(height + self.committee_management_confirmation_time, involvement);
     }
 
     pub fn update_height<Fstart: Clone>(&mut self, height: u64, start: Fstart)
@@ -70,7 +70,7 @@ impl Monitoring {
     pub fn get_active_public_keys(&self) -> Vec<&PublicKey> {
         self.assets
             .keys()
-            .filter(|&a| self.assets.get(a).unwrap().get_current_state())
+            .filter(|&a| self.assets.get(a).unwrap().is_committee_member())
             .collect()
     }
 }

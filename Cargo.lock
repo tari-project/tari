@@ -7433,7 +7433,6 @@ dependencies = [
  "clap 2.34.0",
  "digest 0.9.0",
  "futures 0.3.21",
- "itertools 0.10.3",
  "lmdb-zero",
  "log",
  "patricia_tree",
