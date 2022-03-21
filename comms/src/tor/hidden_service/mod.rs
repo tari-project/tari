@@ -29,6 +29,7 @@ pub use controller::{HiddenServiceController, HiddenServiceControllerError};
 mod proxy_opts;
 use std::fmt;
 
+use derivative::Derivative;
 pub use proxy_opts::TorProxyOpts;
 use serde_derive::{Deserialize, Serialize};
 use tari_shutdown::OptionalShutdownSignal;
@@ -87,8 +88,11 @@ fn multiaddr_from_service_id_and_port(service_id: &str, onion_port: u16) -> Resu
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct TorIdentity {
+    #[serde(skip_serializing)]
+    #[derivative(Debug = "ignore")]
     pub private_key: PrivateKey,
     pub service_id: String,
     pub onion_port: u16,

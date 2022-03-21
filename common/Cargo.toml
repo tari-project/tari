@@ -18,6 +18,7 @@ tari_storage = { version = "^0.30", path = "../infrastructure/storage"}
 
 anyhow = "1.0.53"
 config = { version = "0.9.3", default_features = false, features = ["toml"] }
+derivative = "2.2.0"
 dirs-next = "1.0.2"
 fs2 = "0.4.3"
 get_if_addrs = "0.5.3"

@@ -26,6 +26,7 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
+use derivative::Derivative;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
 pub use new_output_sql::NewOutputSql;
@@ -1259,12 +1260,14 @@ impl From<UpdateOutput> for UpdateOutputSql {
     }
 }
 
-#[derive(Clone, Debug, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[derive(Clone, Derivative, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[derivative(Debug)]
 #[table_name = "known_one_sided_payment_scripts"]
 #[primary_key(script_hash)]
 // #[identifiable_options(primary_key(hash))]
 pub struct KnownOneSidedPaymentScriptSql {
     pub script_hash: Vec<u8>,
+    #[derivative(Debug = "ignore")]
     pub private_key: Vec<u8>,
     pub script: Vec<u8>,
     pub input: Vec<u8>,
