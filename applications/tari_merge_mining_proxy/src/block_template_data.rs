@@ -206,8 +206,8 @@ pub mod test {
         };
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
-            .tari_block(block.clone().try_into().unwrap())
-            .tari_miner_data(miner_data.clone().try_into().unwrap())
+            .tari_block(block.try_into().unwrap())
+            .tari_miner_data(miner_data)
             .monero_difficulty(123456)
             .tari_difficulty(12345);
         btdb.build().unwrap()
@@ -239,14 +239,10 @@ pub mod test {
     pub fn err_block_template_data_builder() {
         // Empty
         let btdb = BlockTemplateDataBuilder::new();
-        assert!(
-            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == "monero_seed not provided".to_string())
-        );
+        assert!(matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"monero_seed not provided"));
         // With monero seed
         let btdb = BlockTemplateDataBuilder::new().monero_seed(FixedByteArray::new());
-        assert!(
-            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == "block not provided".to_string())
-        );
+        assert!(matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"block not provided"));
         // With monero seed, block
         let header = BlockHeader::new(100);
         let body = AggregateBody::empty();
@@ -254,9 +250,7 @@ pub mod test {
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.clone().try_into().unwrap());
-        assert!(
-            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == "miner_data not provided".to_string())
-        );
+        assert!(matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"miner_data not provided"));
         // With monero seed, block, miner data
         let miner_data = grpc::MinerData {
             reward: 10000,
@@ -267,18 +261,18 @@ pub mod test {
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
             .tari_block(block.clone().try_into().unwrap())
-            .tari_miner_data(miner_data.clone().try_into().unwrap());
+            .tari_miner_data(miner_data.clone());
         assert!(
-            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == "monero_difficulty not provided".to_string())
+            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"monero_difficulty not provided")
         );
         // With monero seed, block, miner data, monero difficulty
         let btdb = BlockTemplateDataBuilder::new()
             .monero_seed(FixedByteArray::new())
-            .tari_block(block.clone().try_into().unwrap())
-            .tari_miner_data(miner_data.clone().try_into().unwrap())
+            .tari_block(block.try_into().unwrap())
+            .tari_miner_data(miner_data)
             .monero_difficulty(123456);
         assert!(
-            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == "tari_difficulty not provided".to_string())
+            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"tari_difficulty not provided")
         );
     }
 

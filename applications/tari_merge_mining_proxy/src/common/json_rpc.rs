@@ -132,7 +132,7 @@ pub mod test {
         let err_data = Some(json::json!({"test key":"test value"}));
         let response = error_response(req_id, err_code, err_message, err_data.clone());
         assert_eq!(response["id"], req_id.unwrap());
-        assert_eq!(response["error"]["data"], err_data.clone().unwrap());
+        assert_eq!(response["error"]["data"], err_data.unwrap());
         assert_eq!(response["error"]["code"], err_code);
         assert_eq!(response["error"]["message"], err_message);
         let response = error_response(None, err_code, err_message, None);
