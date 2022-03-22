@@ -123,7 +123,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::{
     covenants::Covenant,
-    transactions::{tari_amount::MicroTari, CryptoFactories},
+    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
 };
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
@@ -5205,11 +5205,11 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    if features.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("features".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return 0;
-    }
+    let features = if features.is_null() {
+        OutputFeatures::default()
+    } else {
+        (*features).clone()
+    };
 
     let covenant = if covenant.is_null() {
         Covenant::default()
@@ -5252,7 +5252,7 @@ pub unsafe extern "C" fn wallet_import_utxo(
         script!(Nop),
         inputs!(public_script_key),
         &(*source_public_key).clone(),
-        (*features).clone(),
+        features,
         message_string,
         (*metadata_signature).clone(),
         &(*script_private_key).clone(),
