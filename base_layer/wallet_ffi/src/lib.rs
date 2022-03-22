@@ -20,14 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![warn(dead_code)]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
-
 //! # LibWallet API Definition
 //! This module contains the Rust backend implementations of the functionality that a wallet for the Tari Base Layer
 //! will require. The module contains a number of sub-modules that are implemented as async services. These services are
