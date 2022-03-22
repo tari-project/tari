@@ -21,7 +21,6 @@ env:
   PROTOC: protoc
 
 jobs:
-
   checks:
     name: npm checks
     runs-on: ubuntu-latest
