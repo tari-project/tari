@@ -12,7 +12,7 @@ default = []
 envlog = ["env_logger"]
 
 [dependencies]
-tari_comms = { path = "../../comms" }
+tari_comms = { path = "../../comms/core" }
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_common = { path = "../../common" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }

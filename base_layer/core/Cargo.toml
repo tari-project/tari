@@ -20,7 +20,7 @@ avx2 = ["tari_crypto/avx2"]
 [dependencies]
 tari_common = { version = "^0.27", path = "../../common" }
 tari_common_types = { version = "^0.27", path = "../../base_layer/common_types" }
-tari_comms = { version = "^0.27", path = "../../comms" }
+tari_comms = { version = "^0.27", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.27", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.27", path = "../../comms/rpc_macros" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }

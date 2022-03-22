@@ -7,7 +7,7 @@ version = "0.27.3"
 edition = "2018"
 
 [dependencies]
-tari_comms = { version = "^0.27", path = "../../comms", features = ["c_integration"]}
+tari_comms = { version = "^0.27", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.27", path = "../../comms/dht", default-features = false }
 tari_common_types = {path="../common_types"}
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }

@@ -5,7 +5,7 @@ authors = ["The Tari Development Community"]
 edition = "2018"
 
 [dependencies]
-tari_comms = { path = "../../comms" }
+tari_comms = { path = "../../comms/core" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }

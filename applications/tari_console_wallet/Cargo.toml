@@ -9,7 +9,7 @@ tari_wallet = { path = "../../base_layer/wallet", features = ["bundled_sqlite"] 
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
 tari_common = { path = "../../common" }
 tari_app_utilities = { path = "../tari_app_utilities" }
-tari_comms = { path = "../../comms" }
+tari_comms = { path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_libtor = { path = "../../infrastructure/libtor" }
