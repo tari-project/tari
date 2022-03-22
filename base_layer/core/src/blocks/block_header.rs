@@ -169,18 +169,14 @@ impl BlockHeader {
         }
     }
 
-    /// Returns the [std::cmp::Ordering] of the timestamp of this header compared to the "other" header
-    pub fn compare_timestamp(&self, other: &BlockHeader) -> Ordering {
-        self.timestamp.as_u64().cmp(&other.timestamp.as_u64())
-    }
-
     #[cfg(feature = "base_node")]
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)
     }
 
     /// Given a slice of headers, calculate the maximum, minimum and average periods between them.
-    /// Allocates in case the headers are in the wrong order.
+    /// Expects the slice of headers to be ordered from youngest to oldest, but will reverse them if not.
+    /// This function always allocates a vec of the slice length. This is in case it needs to reverse the list.
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
             (0, 0, 0.0)
@@ -188,7 +184,7 @@ impl BlockHeader {
             let mut headers = headers.to_vec();
 
             // ensure the slice is in reverse order
-            let ordering = headers[0].compare_timestamp(&headers[headers.len() - 1]);
+            let ordering = headers[0].timestamp.cmp(&headers[headers.len() - 1].timestamp);
             if ordering == Ordering::Less {
                 headers.reverse();
             }
@@ -518,13 +514,13 @@ mod test {
             })
             .collect::<Vec<BlockHeader>>();
 
-        let ordering = headers[0].compare_timestamp(&headers[1]);
+        let ordering = headers[0].timestamp.cmp(&headers[1].timestamp);
         assert_eq!(ordering, Ordering::Equal);
 
-        let ordering = headers[1].compare_timestamp(&headers[2]);
+        let ordering = headers[1].timestamp.cmp(&headers[2].timestamp);
         assert_eq!(ordering, Ordering::Less);
 
-        let ordering = headers[2].compare_timestamp(&headers[0]);
+        let ordering = headers[2].timestamp.cmp(&headers[0].timestamp);
         assert_eq!(ordering, Ordering::Greater);
     }
 }
