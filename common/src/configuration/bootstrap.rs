@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! # Building tari-based applications CLI
 //!
 //! To help with building tari-enabled CLI from scratch as easy as possible this crate exposes

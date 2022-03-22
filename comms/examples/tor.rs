@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{collections::HashMap, convert::identity, env, net::SocketAddr, path::Path, process, sync::Arc};
 
 use anyhow::anyhow;

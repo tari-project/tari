@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import cloudflare from "cloudflare";
 import debug from "debug";
 import dotenv from "dotenv";

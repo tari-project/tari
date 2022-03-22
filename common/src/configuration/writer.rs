@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! Configuration writer based on ConfigPath selectors.
 //!
 //! ## Example

@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
