@@ -6611,6 +6611,7 @@ name = "tari_collectibles"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "derivative",
  "diesel",
  "diesel_migrations",
  "futures 0.3.21",
@@ -6644,6 +6645,7 @@ version = "0.30.0"
 dependencies = [
  "anyhow",
  "config 0.9.3",
+ "derivative",
  "dirs-next 1.0.2",
  "fs2 0.4.3",
  "get_if_addrs",
@@ -6700,6 +6702,7 @@ dependencies = [
  "cidr",
  "clear_on_drop",
  "data-encoding",
+ "derivative",
  "digest 0.9.0",
  "env_logger 0.7.1",
  "futures 0.3.21",
@@ -6853,6 +6856,7 @@ dependencies = [
  "config 0.9.3",
  "croaring",
  "decimal-rs",
+ "derivative",
  "derive_more",
  "digest 0.9.0",
  "env_logger 0.7.1",
@@ -7002,6 +7006,7 @@ dependencies = [
  "clear_on_drop",
  "console_error_panic_hook",
  "crc32fast",
+ "derivative",
  "digest 0.9.0",
  "getrandom 0.2.5",
  "js-sys",
@@ -7025,6 +7030,7 @@ version = "0.30.0"
 dependencies = [
  "bollard",
  "config 0.11.0",
+ "derivative",
  "env_logger 0.9.0",
  "futures 0.3.21",
  "log",
@@ -7046,6 +7052,7 @@ dependencies = [
 name = "tari_libtor"
 version = "0.24.0"
 dependencies = [
+ "derivative",
  "libtor",
  "log",
  "log4rs",
@@ -7066,6 +7073,7 @@ dependencies = [
  "bytes 1.1.0",
  "chrono",
  "config 0.9.3",
+ "derivative",
  "env_logger 0.7.1",
  "futures 0.3.21",
  "hex",
@@ -7113,6 +7121,7 @@ dependencies = [
  "bufstream",
  "chrono",
  "crossbeam",
+ "derivative",
  "futures 0.3.21",
  "hex",
  "log",
@@ -7397,6 +7406,7 @@ dependencies = [
  "chrono",
  "clear_on_drop",
  "crossbeam-channel 0.3.9",
+ "derivative",
  "diesel",
  "diesel_migrations",
  "digest 0.9.0",

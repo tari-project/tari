@@ -93,6 +93,19 @@ pub fn compact_block_full_misses(height: u64) -> IntCounter {
     METER.with_label_values(&[&height.to_string()])
 }
 
+pub fn compact_block_mmr_mismatch(height: u64) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "base_node::blockchain::compact_block_mmr_mismatch",
+            "Number of full blocks that had to be requested because of MMR mismatch",
+            &["height"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[&height.to_string()])
+}
+
 pub fn orphaned_blocks() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
