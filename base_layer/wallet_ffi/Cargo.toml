@@ -27,6 +27,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 rand = "0.8"
 thiserror = "1.0.26"
 tokio = "1.11"
+env_logger = "0.7.0"
 
 # <workaround>
 # Temporary workaround until crates utilizing openssl have been updated from security-framework 2.4.0

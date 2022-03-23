@@ -7450,6 +7450,7 @@ name = "tari_wallet_ffi"
 version = "0.30.0"
 dependencies = [
  "chrono",
+ "env_logger 0.7.1",
  "futures 0.3.21",
  "lazy_static 1.4.0",
  "libc",
