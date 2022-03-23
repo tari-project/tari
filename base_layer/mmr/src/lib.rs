@@ -123,7 +123,7 @@
 //!
 //! To illustrate, consider this MMR:
 //!
-//! //! ```plaintext
+//! ```plaintext
 //!            14
 //!          /     \
 //!         /       \

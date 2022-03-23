@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Add coinbase TX to the block template.
+
 use std::convert::{TryFrom, TryInto};
 
 use tari_app_grpc::tari_rpc as grpc;
@@ -30,6 +32,7 @@ use tari_core::{
 
 use crate::error::MmProxyError;
 
+/// Add [coinbase](grpc::Transaction) to [block template](grpc::NewBlockTemplate)
 pub fn add_coinbase(
     coinbase: grpc::Transaction,
     block_template: grpc::NewBlockTemplate,

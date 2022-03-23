@@ -24,7 +24,7 @@
 //!
 //! ## Consts
 //!
-//! Response codes taken from https://github.com/monero-project/monero/blob/8286f07b265d16a87b3fe3bb53e8d7bf37b5265a/src/rpc/core_rpc_server_error_codes.h
+//! Response codes taken from <https://github.com/monero-project/monero/blob/8286f07b265d16a87b3fe3bb53e8d7bf37b5265a/src/rpc/core_rpc_server_error_codes.h>
 
 // Even though we don't construct all variants, we want a complete list of them.
 #[allow(dead_code)]
