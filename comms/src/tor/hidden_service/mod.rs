@@ -91,7 +91,6 @@ fn multiaddr_from_service_id_and_port(service_id: &str, onion_port: u16) -> Resu
 #[derive(Clone, Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
 pub struct TorIdentity {
-    #[serde(skip_serializing)]
     #[derivative(Debug = "ignore")]
     pub private_key: PrivateKey,
     pub service_id: String,
