@@ -131,10 +131,8 @@ where
             rewind_time.as_millis(),
         );
 
+        let mut rewound_outputs_to_return = Vec::new();
         for (output, proof) in rewound_outputs.iter_mut() {
-            self.update_outputs_script_private_key_and_update_key_manager_index(output)
-                .await?;
-
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
@@ -150,11 +148,13 @@ where
                             target: LOG_TARGET,
                             "Recoverer attempted to import a duplicate output (Commitment: {})", output_hex
                         );
+                        continue;
                     },
                     _ => return Err(OutputManagerError::from(e)),
                 }
             }
-
+            self.update_outputs_script_private_key_and_update_key_manager_index(output)
+                .await?;
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
@@ -162,10 +162,9 @@ where
                 output.value,
                 output.features,
             );
+            rewound_outputs_to_return.push(output.clone());
         }
-
-        let rewound_outputs = rewound_outputs.iter().map(|(ro, _)| ro.clone()).collect();
-        Ok(rewound_outputs)
+        Ok(rewound_outputs_to_return)
     }
 
     /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
