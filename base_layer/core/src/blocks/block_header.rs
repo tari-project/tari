@@ -169,11 +169,6 @@ impl BlockHeader {
         }
     }
 
-    /// Returns the [std::cmp::Ordering] of the timestamp of this header compared to the "other" header
-    pub fn compare_timestamp(&self, other: &BlockHeader) -> Ordering {
-        self.timestamp.as_u64().cmp(&other.timestamp.as_u64())
-    }
-
     #[cfg(feature = "base_node")]
     pub fn into_builder(self) -> BlockBuilder {
         BlockBuilder::new(self.version).with_header(self)
