@@ -55,7 +55,7 @@ use tari_script::TariScript;
 use super::TransactionOutputVersion;
 use crate::{
     common::hash_writer::HashWriter,
-    consensus::{ConsensusEncoding, ConsensusEncodingSized},
+    consensus::ConsensusEncodingSized,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -250,14 +250,14 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
     ) -> Challenge {
-        let mut writer = HashWriter::new(Challenge::new());
-        public_commitment_nonce.consensus_encode(&mut writer).unwrap();
-        script.consensus_encode(&mut writer).unwrap();
-        features.consensus_encode(&mut writer).unwrap();
-        sender_offset_public_key.consensus_encode(&mut writer).unwrap();
-        commitment.consensus_encode(&mut writer).unwrap();
-        covenant.consensus_encode(&mut writer).unwrap();
-        writer.into_digest()
+        HashWriter::new(Challenge::new())
+            .chain(public_commitment_nonce)
+            .chain(script)
+            .chain(features)
+            .chain(sender_offset_public_key)
+            .chain(commitment)
+            .chain(covenant)
+            .into_digest()
     }
 
     // Create commitment signature for the metadata
@@ -348,12 +348,11 @@ impl TransactionOutput {
     }
 
     pub fn witness_hash(&self) -> Vec<u8> {
-        let mut hasher = HashWriter::new(HashDigest::new());
-        // unwrap: HashWriter is infallible
-        self.proof.consensus_encode(&mut hasher).unwrap();
-        self.metadata_signature.consensus_encode(&mut hasher).unwrap();
-
-        hasher.finalize().to_vec()
+        HashWriter::new(HashDigest::new())
+            .chain(&self.proof)
+            .chain(&self.metadata_signature)
+            .finalize()
+            .to_vec()
     }
 
     pub fn get_metadata_size(&self) -> usize {
