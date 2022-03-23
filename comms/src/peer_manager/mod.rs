@@ -111,3 +111,6 @@ mod or_not_found;
 pub use or_not_found::OrNotFound;
 
 mod wrapper;
+
+#[cfg(feature = "metrics")]
+mod metrics;

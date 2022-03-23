@@ -2105,7 +2105,7 @@ impl BlockchainBackend for LMDBDatabase {
 
     fn utxo_count(&self) -> Result<usize, ChainStorageError> {
         let txn = self.read_transaction()?;
-        lmdb_len(&txn, &self.utxos_db)
+        lmdb_len(&txn, &self.utxo_commitment_index)
     }
 
     fn kernel_count(&self) -> Result<usize, ChainStorageError> {

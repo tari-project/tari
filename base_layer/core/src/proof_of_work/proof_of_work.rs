@@ -77,16 +77,6 @@ impl ProofOfWork {
     }
 }
 
-impl Display for PowAlgorithm {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        let algo = match self {
-            PowAlgorithm::Monero => "Monero",
-            PowAlgorithm::Sha3 => "Sha3",
-        };
-        fmt.write_str(&algo.to_string())
-    }
-}
-
 impl Display for ProofOfWork {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(fmt, "Mining algorithm: {}", self.pow_algo)?;

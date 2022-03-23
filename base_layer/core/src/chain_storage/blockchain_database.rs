@@ -450,6 +450,12 @@ where B: BlockchainBackend
         db.fetch_utxos_in_block(&hash, deleted.as_deref())
     }
 
+    /// Returns the number of UTXOs in the current unspent set
+    pub fn utxo_count(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.utxo_count()
+    }
+
     /// Returns the block header at the given block height.
     pub fn fetch_header(&self, height: u64) -> Result<Option<BlockHeader>, ChainStorageError> {
         let db = self.db_read_access()?;
