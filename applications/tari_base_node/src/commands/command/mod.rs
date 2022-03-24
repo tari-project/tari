@@ -252,10 +252,6 @@ impl HandleCommand<Command> for CommandContext {
 }
 
 impl CommandContext {
-    pub fn global_config(&self) -> Arc<GlobalConfig> {
-        self.config.clone()
-    }
-
     async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         let pm = &self.peer_manager;
         let query = PeerQuery::new().select_where(|p| p.is_banned());
