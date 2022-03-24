@@ -129,6 +129,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         }
         if header.prev_hash != state.previous_accum.hash {
             return Err(BlockHeaderSyncError::ChainLinkBroken {
+                height: header.height,
                 actual: header.prev_hash.to_hex(),
                 expected: state.previous_accum.hash.to_hex(),
             });
