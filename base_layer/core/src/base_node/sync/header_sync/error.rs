@@ -67,8 +67,12 @@ pub enum BlockHeaderSyncError {
     NetworkSilence,
     #[error("Invalid protocol response: {0}")]
     InvalidProtocolResponse(String),
-    #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
-    ChainLinkBroken { actual: String, expected: String },
+    #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]
+    ChainLinkBroken {
+        height: u64,
+        actual: String,
+        expected: String,
+    },
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
     #[error(
