@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Helper functions for converting [responses](Response).
+
 use std::convert::TryInto;
 
 use bytes::BytesMut;
@@ -49,6 +51,11 @@ pub async fn convert_json_to_hyper_json_response(
     Ok(resp)
 }
 
+/// Build body response from json.
+///
+/// # Errors
+///
+/// Return error when body is invalid.
 pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<Body>, MmProxyError> {
     let body_str = json::to_string(body)?;
     Response::builder()
@@ -59,6 +66,7 @@ pub fn json_response(status: StatusCode, body: &json::Value) -> Result<Response<
         .map_err(Into::into)
 }
 
+/// Convert parts and content into body response.
 pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Response<Body> {
     let resp = json::to_string(content).expect("json::to_string cannot fail when stringifying a json::Value");
     // Ensure that the content length header is correct
@@ -69,12 +77,13 @@ pub fn into_response(mut parts: response::Parts, content: &json::Value) -> Respo
     Response::from_parts(parts, resp.into())
 }
 
+/// Convert json response to body response.
 pub fn into_body_from_response(resp: Response<json::Value>) -> Response<Body> {
     let (parts, body) = resp.into_parts();
     into_response(parts, &body)
 }
 
-/// Reads the `Body` until there is no more to read
+/// Reads the body until there is no more to read.
 pub async fn read_body_until_end(body: &mut Body) -> Result<BytesMut, MmProxyError> {
     let mut bytes = BytesMut::new();
     while let Some(data) = body.next().await {

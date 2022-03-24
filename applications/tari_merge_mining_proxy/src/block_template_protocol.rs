@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Methods for seting up a new block.
+
 use std::cmp;
 
 use log::*;
@@ -34,6 +36,7 @@ use crate::{
 
 const LOG_TARGET: &str = "tari_mm_proxy::proxy::block_template_protocol";
 
+/// Structure holding grpc connections.
 pub struct BlockTemplateProtocol<'a> {
     base_node_client: &'a mut grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
     wallet_client: &'a mut grpc::wallet_client::WalletClient<tonic::transport::Channel>,
@@ -52,6 +55,7 @@ impl<'a> BlockTemplateProtocol<'a> {
 }
 
 impl BlockTemplateProtocol<'_> {
+    /// Create [FinalBlockTemplateData] with [MoneroMiningData].
     pub async fn get_next_block_template(
         mut self,
         monero_mining_data: MoneroMiningData,
@@ -99,6 +103,7 @@ impl BlockTemplateProtocol<'_> {
         }
     }
 
+    /// Get new block from base node.
     async fn get_new_block(
         &mut self,
         template: grpc::NewBlockTemplate,
@@ -116,6 +121,7 @@ impl BlockTemplateProtocol<'_> {
         }
     }
 
+    /// Get new [block template](NewBlockTemplateData).
     async fn get_new_block_template(&mut self) -> Result<NewBlockTemplateData, MmProxyError> {
         let grpc::NewBlockTemplateResponse {
             miner_data,
@@ -145,6 +151,7 @@ impl BlockTemplateProtocol<'_> {
         })
     }
 
+    /// Check if the height is more than the actual tip. So if still makes sense to compute block for that height.
     async fn check_expected_tip(&mut self, height: u64) -> Result<bool, MmProxyError> {
         let tip = self
             .base_node_client
@@ -166,6 +173,7 @@ impl BlockTemplateProtocol<'_> {
         Ok(true)
     }
 
+    /// Get coinbase transaction for the [template](NewBlockTemplateData).
     async fn get_coinbase(&mut self, template: &NewBlockTemplateData) -> Result<grpc::Transaction, MmProxyError> {
         let miner_data = &template.miner_data;
         let tari_height = template.height();
@@ -191,6 +199,8 @@ impl BlockTemplateProtocol<'_> {
         Ok(coinbase)
     }
 
+    /// Build the [FinalBlockTemplateData] from [template](NewBlockTemplateData) and with
+    /// [tari](grpc::GetNewBlockResult) and [monero data](MoneroMiningData).
     fn add_monero_data(
         &self,
         tari_block: grpc::GetNewBlockResult,
