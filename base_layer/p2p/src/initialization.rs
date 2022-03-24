@@ -36,7 +36,7 @@ use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::Network, DnsNameServer, SubConfigPath};
+use tari_common::{configuration::Network, CommsTransport, DnsNameServer, SubConfigPath};
 use tari_comms::{
     backoff::ConstantBackoff,
     multiaddr::Multiaddr,
@@ -119,6 +119,7 @@ use tari_common::configuration::utils::{deserialize_string_or_struct, serialize_
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct P2pConfig {
+    pub transport: CommsTransport,
     /// Path to the LMDB data files.
     pub datastore_path: PathBuf,
     /// Name to use for the peer database
@@ -170,6 +171,7 @@ pub struct P2pConfig {
 impl Default for P2pConfig {
     fn default() -> Self {
         Self {
+            transport: Default::default(),
             datastore_path: PathBuf::from("peer_db"),
             peer_database_name: "peers".to_string(),
             max_concurrent_inbound_tasks: 50,

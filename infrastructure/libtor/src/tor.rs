@@ -116,9 +116,9 @@ impl Tor {
         debug!(target: LOG_TARGET, "updating comms transport");
         if let CommsTransport::TorHiddenService {
             socks_address_override,
-            forward_address,
-            auth,
-            onion_port,
+            tor_forward_address: forward_address,
+            tor_control_auth: auth,
+            tor_onion_port: onion_port,
             tor_proxy_bypass_addresses,
             tor_proxy_bypass_for_outbound_tcp,
             ..
@@ -131,11 +131,11 @@ impl Tor {
                 auth
             };
             let transport = CommsTransport::TorHiddenService {
-                control_server_address,
+                tor_control_address: control_server_address,
                 socks_address_override,
-                forward_address,
-                auth,
-                onion_port,
+                tor_forward_address: forward_address,
+                tor_control_auth: auth,
+                tor_onion_port: onion_port,
                 tor_proxy_bypass_addresses,
                 tor_proxy_bypass_for_outbound_tcp,
             };

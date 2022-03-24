@@ -242,8 +242,10 @@ impl TorControlPortClient {
     }
 }
 
+use serde::{Deserialize, Serialize};
+
 /// Represents tor control port authentication mechanisms
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// No control port authentication required
     None,

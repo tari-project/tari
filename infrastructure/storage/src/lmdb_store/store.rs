@@ -43,6 +43,7 @@ const BYTES_PER_MB: usize = 1024 * 1024;
 pub type DatabaseRef = Arc<Database<'static>>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LMDBConfig {
     init_size_bytes: usize,
     grow_size_bytes: usize,

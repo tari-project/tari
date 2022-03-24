@@ -27,6 +27,7 @@ use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedP
 
 /// Configuration for the Mempool.
 #[derive(Clone, Copy, Deserialize, Serialize, Default, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolConfig {
     pub unconfirmed_pool: UnconfirmedPoolConfig,
     pub reorg_pool: ReorgPoolConfig,
@@ -41,6 +42,7 @@ impl SubConfigPath for MempoolConfig {
 
 /// Configuration for the MempoolService.
 #[derive(Clone, Copy, Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolServiceConfig {
     /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
     /// not initiate any more mempool syncs. Default: 2

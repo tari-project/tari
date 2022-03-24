@@ -32,6 +32,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConfig {
     /// The major protocol version to use. Default: DhtProtocolVersion::latest()
     pub protocol_version: DhtProtocolVersion,

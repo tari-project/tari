@@ -20,12 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
+use std::{fmt, str::FromStr};
 
+use serde::{Deserialize, Serialize};
 use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
 
 #[derive(Debug, Clone)]
 pub enum TransportType {
+    // TODO: Add none
     /// Use a memory transport. This transport recognises /memory addresses primarily used for local testing.
     Memory { listener_address: Multiaddr },
     /// Use a TcpTransport. This transport can connect to TCP/IP and DNS addresses.
@@ -44,7 +46,7 @@ pub enum TransportType {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorConfig {
     /// The Tor control server address
     pub control_server_addr: Multiaddr,

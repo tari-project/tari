@@ -84,7 +84,6 @@ pub fn load_configuration(
         .map_err(|ce| ConfigError::new("Could not build config", Some(ce.to_string())))?;
     info!(target: LOG_TARGET, "Configuration file loaded.");
 
-    dbg!(&cfg);
     Ok(cfg)
 }
 

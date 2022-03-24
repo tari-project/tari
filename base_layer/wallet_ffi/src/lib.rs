@@ -2987,7 +2987,10 @@ pub unsafe extern "C" fn transport_tor_create(
                 return ptr::null_mut();
             },
         };
-        socks::Authentication::Password(username_str, password_str)
+        socks::Authentication::Password {
+            username: username_str,
+            password: password_str,
+        }
     } else {
         socks::Authentication::None
     };
@@ -3220,6 +3223,7 @@ pub unsafe extern "C" fn comms_config_create(
                     );
 
                     let config = TariCommsConfig {
+                        transport: todo!("Fill in transport type"),
                         network: selected_network,
                         auxilary_tcp_listener_address: None,
                         datastore_path,

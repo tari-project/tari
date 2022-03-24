@@ -48,4 +48,17 @@ pub(crate) struct Cli {
     /// Watch a command in the non-interactive mode.
     #[clap(long)]
     pub watch: Option<String>,
+    /// Supply a network (overrides existing configuration)
+    #[clap(long, alias = "network")]
+    pub network: Option<String>,
+}
+
+impl Cli {
+    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
+        let mut overrides = self.common.config_property_overrides.clone();
+        if let Some(ref network) = self.network {
+            overrides.push(("base_node.network".to_string(), network.clone()));
+        }
+        overrides
+    }
 }

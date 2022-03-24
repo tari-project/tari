@@ -44,7 +44,10 @@ use tari_comms::{
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
 };
-use tari_p2p::transport::{TorConfig, TransportType};
+use tari_p2p::{
+    initialization::P2pConfig,
+    transport::{TorConfig, TransportType},
+};
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
@@ -60,79 +63,80 @@ pub const LOG_TARGET: &str = "tari::application";
 ///
 /// ##Returns
 /// TransportType based on the configuration
-pub fn create_transport_type() -> TransportType {
-    todo!()
-    // debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.comms_transport);
-    //
-    // match config.comms_transport.clone() {
-    //     CommsTransport::Tcp {
-    //         listener_address,
-    //         tor_socks_address,
-    //         tor_socks_auth,
-    //     } => TransportType::Tcp {
-    //         listener_address,
-    //         tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
-    //             proxy_address,
-    //             authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
-    //             proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-    //         }),
-    //     },
-    //     CommsTransport::TorHiddenService {
-    //         control_server_address,
-    //         socks_address_override,
-    //         forward_address,
-    //         auth,
-    //         onion_port,
-    //         tor_proxy_bypass_addresses,
-    //         tor_proxy_bypass_for_outbound_tcp,
-    //     } => {
-    //         let identity = Some(&config.base_node_tor_identity_file)
-    //             .filter(|p| p.exists())
-    //             .and_then(|p| {
-    //                 // If this fails, we can just use another address
-    //                 load_from_json::<_, TorIdentity>(p).ok()
-    //             });
-    //         debug!(
-    //             target: LOG_TARGET,
-    //             "Tor identity at path '{}' {:?}",
-    //             config.base_node_tor_identity_file.to_string_lossy(),
-    //             identity
-    //                 .as_ref()
-    //                 .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-    //                 .or_else(|| Some("not found".to_string()))
-    //                 .unwrap()
-    //         );
-    //
-    //         let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
-    //         TransportType::Tor(TorConfig {
-    //             control_server_addr: control_server_address,
-    //             control_server_auth: {
-    //                 match auth {
-    //                     TorControlAuthentication::None => tor::Authentication::None,
-    //                     TorControlAuthentication::Password(password) =>
-    // tor::Authentication::HashedPassword(password),                 }
-    //             },
-    //             identity: identity.map(Box::new),
-    //             port_mapping: (onion_port, forward_addr).into(),
-    //             socks_address_override,
-    //             socks_auth: socks::Authentication::None,
-    //             tor_proxy_bypass_addresses,
-    //             tor_proxy_bypass_for_outbound_tcp,
-    //         })
-    //     },
-    //     CommsTransport::Socks5 {
-    //         proxy_address,
-    //         listener_address,
-    //         auth,
-    //     } => TransportType::Socks {
-    //         socks_config: SocksConfig {
-    //             proxy_address,
-    //             authentication: convert_socks_authentication(auth),
-    //             proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-    //         },
-    //         listener_address,
-    //     },
-    // }
+pub fn create_transport_type(config: &P2pConfig) -> TransportType {
+    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.transport);
+
+    match config.transport.clone() {
+        CommsTransport::None => {
+            todo!("Transport not set")
+        },
+        CommsTransport::Tcp {
+            listener_address,
+            tor_socks_address,
+            tor_socks_auth,
+        } => TransportType::Tcp {
+            listener_address,
+            tor_socks_config: tor_socks_address.map(|proxy_address| SocksConfig {
+                proxy_address,
+                authentication: tor_socks_auth.map(convert_socks_authentication).unwrap_or_default(),
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
+            }),
+        },
+        CommsTransport::TorHiddenService {
+            tor_control_address: control_server_address,
+            socks_address_override,
+            tor_forward_address: forward_address,
+            tor_control_auth: auth,
+            tor_onion_port: onion_port,
+            tor_proxy_bypass_addresses,
+            tor_proxy_bypass_for_outbound_tcp,
+            tor_identity_file,
+        } => {
+            let identity = tor_identity_file.filter(|p| p.exists()).and_then(|p| {
+                // If this fails, we can just use another address
+                load_from_json::<_, TorIdentity>(p).ok()
+            });
+            // debug!(
+            //     target: LOG_TARGET,
+            //     "Tor identity at path '{}' {:?}",
+            //     config.base_node_tor_identity_file.to_string_lossy(),
+            //     identity
+            //         .as_ref()
+            //         .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
+            //         .or_else(|| Some("not found".to_string()))
+            //         .unwrap()
+            // );
+
+            let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
+            TransportType::Tor(TorConfig {
+                control_server_addr: control_server_address,
+                control_server_auth: {
+                    match auth {
+                        TorControlAuthentication::None => tor::Authentication::None,
+                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
+                    }
+                },
+                identity: identity.map(Box::new),
+                port_mapping: (onion_port, forward_addr).into(),
+                socks_address_override,
+                socks_auth: socks::Authentication::None,
+                tor_proxy_bypass_addresses,
+                tor_proxy_bypass_for_outbound_tcp,
+            })
+        },
+        CommsTransport::Socks5 {
+            proxy_address,
+            listener_address,
+            auth,
+        } => TransportType::Socks {
+            socks_config: SocksConfig {
+                proxy_address,
+                authentication: convert_socks_authentication(auth),
+                proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
+            },
+            listener_address,
+        },
+    }
 }
 
 /// Converts one socks authentication struct into another
@@ -144,8 +148,8 @@ pub fn create_transport_type() -> TransportType {
 pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
     match auth {
         SocksAuthentication::None => socks::Authentication::None,
-        SocksAuthentication::UsernamePassword(username, password) => {
-            socks::Authentication::Password(username, password)
+        SocksAuthentication::UsernamePassword { username, password } => {
+            socks::Authentication::Password { username, password }
         },
     }
 }

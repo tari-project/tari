@@ -169,7 +169,7 @@ fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli.common.config_property_overrides)?;
+    let cfg = load_configuration(config_path.as_path(), true, &cli.config_property_overrides())?;
     initialize_logging(
         &cli.common.log_config_path("base_node"),
         include_str!("../log4rs_sample.yml"),
@@ -186,12 +186,9 @@ fn main_inner() -> Result<(), ExitError> {
         target: LOG_TARGET,
         "Using base node configuration: {:?}", base_node_config
     );
-    todo!();
     let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     let auto_update_config =
         <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load auto-update config");
-
-    todo!();
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(

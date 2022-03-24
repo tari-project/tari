@@ -27,6 +27,7 @@ use std::{
 };
 
 use log::*;
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 
 use crate::{
@@ -109,10 +110,10 @@ impl Transport for SocksTransport {
 
     async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
         // Bypass the SOCKS proxy and connect to the address directly
-        if self.socks_config.proxy_bypass_predicate.check(&addr) {
-            debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
-            return self.tcp_transport.dial(addr).await;
-        }
+        // if self.socks_config.proxy_bypass_predicate.check(&addr) {
+        //     debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
+        //     return self.tcp_transport.dial(addr).await;
+        // }
 
         let socket = Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).await?;
         Ok(socket)
@@ -130,7 +131,7 @@ mod test {
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),
-            proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
+            // proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
         });
 
         assert_eq!(transport.socks_config.proxy_address, proxy_address);

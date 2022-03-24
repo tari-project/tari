@@ -37,6 +37,7 @@ pub const LOG_TARGET: &str = "c::mp::reorg_pool::reorg_pool_storage";
 
 /// Configuration for the ReorgPool
 #[derive(Clone, Copy, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct ReorgPoolConfig {
     /// The height horizon to clear transactions from the reorg pool.
     pub expiry_height: u64,

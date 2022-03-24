@@ -99,8 +99,8 @@ where B: BlockchainBackend + 'static
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = self.base_node_config.mempool.service.clone();
 
-        let comms_config = base_node_config.p2p.clone();
-        let transport_type = create_transport_type();
+        let p2p_config = base_node_config.p2p.clone();
+        let transport_type = create_transport_type(&p2p_config);
 
         let sync_peers = base_node_config
             .force_sync_peers
@@ -116,7 +116,7 @@ where B: BlockchainBackend + 'static
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
-            .add_initializer(P2pInitializer::new(comms_config, self.node_identity.clone(), publisher))
+            .add_initializer(P2pInitializer::new(p2p_config, self.node_identity.clone(), publisher))
             .add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::BaseNode,
                 consts::APP_VERSION_NUMBER
@@ -192,14 +192,15 @@ where B: BlockchainBackend + 'static
             },
         };
         if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&base_node_config.tor_identity_file(common_config), hs.tor_identity())
-                .map_err(|e| {
-                    anyhow!(
-                        "Failed to save tor identity - {:?}: {:?}",
-                        base_node_config.tor_identity_file,
-                        e
-                    )
-                })?;
+            todo!("fix identity path");
+            // identity_management::save_as_json(&base_node_config.tor_identity_file(common_config), hs.tor_identity())
+            //     .map_err(|e| {
+            //         anyhow!(
+            //             "Failed to save tor identity - {:?}: {:?}",
+            //             base_node_config.tor_identity_file,
+            //             e
+            //         )
+            //     })?;
         }
 
         handles.register(comms);
