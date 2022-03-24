@@ -49,6 +49,15 @@ pub struct Args {
     pub command: String,
 }
 
+impl Args {
+    pub fn new(command: impl ToString) -> Self {
+        Self {
+            command: command.to_string(),
+            ..Default::default()
+        }
+    }
+}
+
 impl Default for Args {
     fn default() -> Self {
         Self {

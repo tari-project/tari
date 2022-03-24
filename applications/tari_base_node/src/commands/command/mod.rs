@@ -118,7 +118,6 @@ pub enum Command {
     PeriodStats(period_stats::Args),
     HeaderStats(header_stats::Args),
     BlockTiming(block_timing::Args),
-    CalcTiming(block_timing::Args),
     ListReorgs(list_reorgs::Args),
     DiscoverPeer(discover_peer::Args),
     GetBlock(get_block::Args),
@@ -234,7 +233,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::CheckDb(args) => self.handle_command(args).await,
             Command::PeriodStats(args) => self.handle_command(args).await,
             Command::HeaderStats(args) => self.handle_command(args).await,
-            Command::BlockTiming(args) | Command::CalcTiming(args) => self.handle_command(args).await,
+            Command::BlockTiming(args) => self.handle_command(args).await,
             Command::ListReorgs(args) => self.handle_command(args).await,
             Command::DiscoverPeer(args) => self.handle_command(args).await,
             Command::GetBlock(args) => self.handle_command(args).await,
@@ -253,10 +252,6 @@ impl HandleCommand<Command> for CommandContext {
 }
 
 impl CommandContext {
-    pub fn global_config(&self) -> Arc<GlobalConfig> {
-        self.config.clone()
-    }
-
     async fn fetch_banned_peers(&self) -> Result<Vec<Peer>, PeerManagerError> {
         let pm = &self.peer_manager;
         let query = PeerQuery::new().select_where(|p| p.is_banned());

@@ -29,7 +29,7 @@ use std::{
 use log::*;
 use tari_comms::{
     peer_manager::NodeId,
-    protocol::rpc::{Request, Response, RpcStatus, Streaming},
+    protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
     utils,
 };
 use tari_crypto::tari_utilities::hex::Hex;
@@ -116,13 +116,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let start_header = db
             .fetch_header_by_block_hash(message.start_hash)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
 
-        let metadata = db
-            .get_chain_metadata()
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+        let metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
 
         let start_height = start_header.height + 1;
         if start_height < metadata.pruned_height() {
@@ -140,7 +137,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let end_header = db
             .fetch_header_by_block_hash(message.end_hash)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Requested end block sync hash was not found"))?;
 
         let end_height = end_header.height;
@@ -263,15 +260,12 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let start_header = db
             .fetch_header_by_block_hash(message.start_hash)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Header not found with given hash"))?;
 
         let mut count = message.count;
         if count == 0 {
-            let tip_header = db
-                .fetch_tip_header()
-                .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            let tip_header = db.fetch_tip_header().await.rpc_status_internal_error(LOG_TARGET)?;
             count = tip_header.height().saturating_sub(start_header.height);
         }
         if count == 0 {
@@ -350,7 +344,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .db()
             .fetch_header(height)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
@@ -388,7 +382,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let maybe_headers = db
             .find_headers_after_hash(message.block_hashes, message.header_count)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
         match maybe_headers {
             Some((idx, headers)) => {
                 debug!(
@@ -398,10 +392,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     headers.len(),
                     peer
                 );
-                let metadata = db
-                    .get_chain_metadata()
-                    .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                let metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
 
                 Ok(Response::new(FindChainSplitResponse {
                     fork_hash_index: idx as u64,
@@ -425,7 +416,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .db()
             .get_chain_metadata()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
         Ok(Response::new(chain_metadata.into()))
     }
 
@@ -442,13 +433,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         let start_header = db
             .fetch_header_containing_kernel_mmr(req.start)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .into_header();
 
         let end_header = db
             .fetch_header_by_block_hash(req.end_header_hash.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Unknown end header"))?;
 
         let mut current_height = start_header.height;

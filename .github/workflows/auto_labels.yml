@@ -1,0 +1,55 @@
+on:
+  workflow_run:
+    workflows:
+      - "Clippy check"
+    types:
+      - completed
+
+jobs:
+  on-success:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Download workflow artifact
+        uses: dawidd6/action-download-artifact@v2.11.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: CI
+          run_id: ${{ github.event.workflow_run.id }}
+
+      - name: Read PR number
+        id: pr_num
+        uses: juliangruber/read-file-action@v1.0.0
+        with:
+          path: ./pr_num.txt
+
+      - name: labeler
+        uses: actions-ecosystem/action-remove-labels@v1
+        with:
+          github_token: ${{ github.token }}
+          labels: clippy failed
+          number: ${{ steps.pr_num.output.content }}
+
+  on-failure:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    steps:
+      - name: Download workflow artifact
+        uses: dawidd6/action-download-artifact@v2.11.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: CI
+          run_id: ${{ github.event.workflow_run.id }}
+
+      - name: Read PR number
+        id: pr_num
+        uses: juliangruber/read-file-action@v1.0.0
+        with:
+          path: ./pr_num.txt
+
+      - name: labeler
+        uses: actions-ecosystem/action-add-labels@v1
+        with:
+          github_token: ${{ github.token }}
+          labels: clippy failed
+          number: ${{ steps.pr_num.output.content }}
