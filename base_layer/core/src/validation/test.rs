@@ -125,11 +125,9 @@ mod header_validators {
 }
 
 #[test]
-// TODO: Fix this test with the new DB structure
-#[ignore = "to be fixed with new db structure"]
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Weatherwax).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler).build();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let (faucet_utxo, faucet_key, _) = create_utxo(
