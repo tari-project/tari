@@ -21,6 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod cli;
+pub mod cli_loop;
 pub mod command;
 pub mod nom_parser;
 pub mod parser;

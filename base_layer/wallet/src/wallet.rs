@@ -266,6 +266,9 @@ where
         wallet_database
             .set_node_features(comms.node_identity().features())
             .await?;
+        if let Some(identity_sig) = comms.node_identity().identity_signature_read().as_ref().cloned() {
+            wallet_database.set_comms_identity_signature(identity_sig).await?;
+        }
 
         Ok(Self {
             network: config.network,

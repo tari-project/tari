@@ -36,7 +36,6 @@ use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteA
 use super::TransactionKernelVersion;
 use crate::{
     common::hash_writer::HashWriter,
-    consensus::ConsensusEncoding,
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -129,16 +128,15 @@ impl Hashable for TransactionKernel {
     /// Produce a canonical hash for a transaction kernel. The hash is given by
     /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
     fn hash(&self) -> Vec<u8> {
-        let mut writer = HashWriter::new(HashDigest::new());
-        // unwraps: HashWriter is infallible
-        self.version.consensus_encode(&mut writer).unwrap();
-        self.features.consensus_encode(&mut writer).unwrap();
-        self.fee.consensus_encode(&mut writer).unwrap();
-        self.lock_height.consensus_encode(&mut writer).unwrap();
-        self.excess.consensus_encode(&mut writer).unwrap();
-        self.excess_sig.consensus_encode(&mut writer).unwrap();
-
-        writer.finalize().to_vec()
+        HashWriter::new(HashDigest::new())
+            .chain(&self.version)
+            .chain(&self.features)
+            .chain(&self.fee)
+            .chain(&self.lock_height)
+            .chain(&self.excess)
+            .chain(&self.excess_sig)
+            .finalize()
+            .to_vec()
     }
 }
 
