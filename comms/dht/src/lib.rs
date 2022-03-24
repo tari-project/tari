@@ -137,7 +137,7 @@ mod connectivity;
 pub use connectivity::MetricsCollectorHandle;
 
 mod config;
-pub use config::DhtConfig;
+pub use config::{DhtConfig, DhtConnectivityConfig};
 
 mod crypt;
 

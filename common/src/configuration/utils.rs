@@ -85,6 +85,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.buffer_rate_limit_console_wallet", 1_000)
         .unwrap();
     cfg.set_default("common.dedup_cache_capacity", 2_500).unwrap();
+    cfg.set_default("common.dht_minimum_desired_tcpv4_node_ratio", 0.0f64)
+        .unwrap();
     cfg.set_default("common.fetch_blocks_timeout", 150).unwrap();
     cfg.set_default("common.fetch_utxos_timeout", 600).unwrap();
     cfg.set_default("common.service_request_timeout", 180).unwrap();

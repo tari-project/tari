@@ -45,6 +45,12 @@ buffer_rate_limit_console_wallet = 1000
 # The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
 dedup_cache_capacity = 25000
 
+# The minimum desired ratio of TCPv4 to Tor connections. This setting does not currently guarantee this ratio is maintained
+# but does emits a log warning if the actual ratio is below this setting e.g. a setting of 0.5 requires 50% of base-layer node connections to
+# be TCPv4. A ratio of 0.0 disables this warning.
+# Default: 0.0
+# dht_minimum_desired_tcpv4_node_ratio = 0.0
+
 # The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
 #fetch_blocks_timeout = 150
 
