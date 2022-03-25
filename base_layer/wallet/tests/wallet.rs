@@ -930,7 +930,7 @@ fn test_contacts_service_liveness() {
                                 ping_count += 1;
                             } else if data.message_type() == ContactMessageType::Pong {
                                 pong_count += 1;
-                            }
+                            } else {}
                         }
                         if ping_count > 1 && pong_count > 1 {
                             break;
@@ -962,7 +962,7 @@ fn test_contacts_service_liveness() {
                                 ping_count += 1;
                             } else if data.message_type() == ContactMessageType::Pong {
                                 pong_count += 1;
-                            }
+                            } else {}
                         }
                         if ping_count > 1 && pong_count > 1 {
                             break;

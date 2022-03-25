@@ -878,6 +878,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     },
                     &conn,
                 )?;
+            } else {
             }
         }
         if start.elapsed().as_millis() > 0 {

@@ -718,6 +718,7 @@ pub async fn command_runner(
                     }
                 } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
                     write_utxos_to_csv_file(utxos, file)?;
+                } else {
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
@@ -732,6 +733,7 @@ pub async fn command_runner(
                     }
                 } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
                     write_utxos_to_csv_file(utxos, file)?;
+                } else {
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);

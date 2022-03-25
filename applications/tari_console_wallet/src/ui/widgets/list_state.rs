@@ -57,6 +57,7 @@ impl WindowedListState {
                 let diff = self.start - selected;
                 self.start -= diff;
                 self.end -= diff;
+            } else {
             }
             self.offset = self.start;
             list_state.select(Some(selected - self.start));

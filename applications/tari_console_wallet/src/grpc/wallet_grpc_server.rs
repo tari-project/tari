@@ -468,6 +468,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .await,
                     )
                 });
+            } else {
             }
         }
 

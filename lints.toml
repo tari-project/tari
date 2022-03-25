@@ -25,7 +25,7 @@ deny = [
     # 'clippy::cloned_instead_of_copied',
     'clippy::create_dir',
     # 'clippy::dbg_macro',
-    # 'clippy::else_if_without_else',
+    'clippy::else_if_without_else',
     # 'clippy::enum_glob_use',
     # This is 99% not needed
     # 'clippy::inline_always',
