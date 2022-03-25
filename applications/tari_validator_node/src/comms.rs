@@ -166,7 +166,7 @@ fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) 
         dns_seeds: config.dns_seeds.clone(),
         dns_seeds_name_server: config.dns_seeds_name_server.clone(),
         dns_seeds_use_dnssec: config.dns_seeds_use_dnssec,
-        auxilary_tcp_listener_address: config.auxilary_tcp_listener_address.clone(),
+        auxiliary_tcp_listener_address: config.auxiliary_tcp_listener_address.clone(),
     }
 }
 

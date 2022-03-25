@@ -717,10 +717,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
             match Self::convert_to_result(resp) {
                 Ok(Ok(resp)) => {
-                    // The consumer may drop the receiver before all responses are received.
-                    // We just ignore that as we still want obey the protocol and receive messages until the FIN flag or
-                    // the connection is dropped
                     let is_finished = resp.is_finished();
+                    // The consumer may drop the receiver before all responses are received.
+                    // We handle this by sending a 'FIN' message to the server.
                     if response_tx.is_closed() {
                         warn!(
                             target: LOG_TARGET,
