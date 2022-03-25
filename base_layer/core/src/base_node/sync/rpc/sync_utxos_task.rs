@@ -25,7 +25,7 @@ use std::{sync::Arc, time::Instant};
 use log::*;
 use tari_comms::{
     peer_manager::NodeId,
-    protocol::rpc::{Request, RpcStatus},
+    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
     utils,
 };
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
@@ -76,7 +76,7 @@ where B: BlockchainBackend + 'static
             .db
             .fetch_header_by_block_hash(msg.end_header_hash.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
 
         if start_header.height() > end_header.height {
@@ -94,7 +94,7 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_header_by_block_hash(start_header.header().prev_hash.clone())
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| RpcStatus::not_found("Previous start header hash is was not found"))?;
 
             let skip = msg.start.checked_sub(prev_header.output_mmr_size)
@@ -199,7 +199,7 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_utxos_in_block(current_header.hash(), Some(bitmap.clone()))
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                .rpc_status_internal_error(LOG_TARGET)?;
             debug!(
                 target: LOG_TARGET,
                 "Streaming UTXO(s) {}-{} ({}) for block #{}. Deleted diff len = {}",
@@ -275,7 +275,7 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_header(current_header.height + 1)
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
                     RpcStatus::general(format!(
                         "Potential data consistency issue: header {} not found",

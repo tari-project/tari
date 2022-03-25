@@ -181,6 +181,19 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
                     })
                     .await?;
                 },
+                Err(BlockHeaderSyncError::ChainLinkBroken {
+                    height,
+                    actual,
+                    expected,
+                }) => {
+                    let reason = BanReason::ChainLinkBroken {
+                        height,
+                        actual: actual.to_string(),
+                        expected: expected.to_string(),
+                    };
+                    warn!(target: LOG_TARGET, "Chain link broken: {}", reason);
+                    self.ban_peer_long(node_id, reason).await?;
+                },
                 Err(ref err @ BlockHeaderSyncError::WeakerChain { claimed, actual, local }) => {
                     warn!(target: LOG_TARGET, "{}", err);
                     self.ban_peer_long(node_id, BanReason::PeerCouldNotProvideStrongerChain {
@@ -801,6 +814,12 @@ enum BanReason {
         "Peer claimed an accumulated difficulty of {claimed} but validated difficulty was {actual} <= local: {local}"
     )]
     PeerCouldNotProvideStrongerChain { claimed: u128, actual: u128, local: u128 },
+    #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]
+    ChainLinkBroken {
+        height: u64,
+        actual: String,
+        expected: String,
+    },
 }
 
 struct ChainSplitInfo {

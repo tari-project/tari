@@ -84,7 +84,7 @@ mod handshake;
 pub use handshake::{Handshake, RpcHandshakeError};
 
 mod status;
-pub use status::{RpcStatus, RpcStatusCode};
+pub use status::{RpcStatus, RpcStatusCode, RpcStatusResultExt};
 
 mod not_found;
 

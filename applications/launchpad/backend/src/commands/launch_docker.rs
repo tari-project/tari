@@ -23,6 +23,7 @@
 
 use std::{convert::TryFrom, path::PathBuf, time::Duration};
 
+use derivative::Derivative;
 use log::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Wry};
@@ -45,7 +46,8 @@ use crate::{
     error::LauncherError,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct WorkspaceLaunchOptions {
     root_folder: String,
     tari_network: String,
@@ -55,10 +57,14 @@ pub struct WorkspaceLaunchOptions {
     has_mm_proxy: bool,
     has_xmrig: bool,
     wait_for_tor: Option<u64>,
+    #[derivative(Debug = "ignore")]
+    #[serde(skip_serializing)]
     wallet_password: Option<String>,
     sha3_mining_threads: Option<usize>,
     monerod_url: Option<String>,
     monero_username: Option<String>,
+    #[derivative(Debug = "ignore")]
+    #[serde(skip_serializing)]
     monero_password: Option<String>,
     monero_use_auth: Option<bool>,
     monero_mining_address: Option<String>,

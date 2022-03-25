@@ -61,7 +61,7 @@ pub struct ConsensusConstants {
     /// We use T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
-    /// https://github.com/zawy12/difficulty-algorithms/issues/14
+    /// <https://github.com/zawy12/difficulty-algorithms/issues/14>
     difficulty_block_window: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,

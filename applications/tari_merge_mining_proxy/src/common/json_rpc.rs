@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Methods for converting responses to json.
+
 use json::json;
 use serde_json as json;
 
@@ -36,7 +38,7 @@ pub fn default_block_accept_response(req_id: Option<i64>) -> json::Value {
 }
 
 /// Create a JSON RPC success response
-/// More info: https://www.jsonrpc.org/specification#response_object
+/// More info: <https://www.jsonrpc.org/specification#response_object>
 pub fn success_response(req_id: Option<i64>, result: json::Value) -> json::Value {
     json!({
        "id": req_id.unwrap_or(-1),
@@ -46,7 +48,7 @@ pub fn success_response(req_id: Option<i64>, result: json::Value) -> json::Value
 }
 
 /// Create a standard JSON RPC error response
-/// More info: https://www.jsonrpc.org/specification#error_object
+/// More info: <https://www.jsonrpc.org/specification#error_object>
 pub fn standard_error_response(
     req_id: Option<i64>,
     err: jsonrpc::error::StandardError,
@@ -62,7 +64,7 @@ pub fn standard_error_response(
 }
 
 /// Create a JSON RPC error response
-/// More info: https://www.jsonrpc.org/specification#error_object
+/// More info: <https://www.jsonrpc.org/specification#error_object>
 pub fn error_response(
     req_id: Option<i64>,
     err_code: i32,

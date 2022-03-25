@@ -22,7 +22,7 @@
 
 //! Port of monero's tree hash algorithm
 //!
-//! See https://github.com/monero-project/monero/blob/master/src/crypto/tree-hash.c
+//! See <https://github.com/monero-project/monero/blob/master/src/crypto/tree-hash.c>
 
 use std::io;
 

@@ -20,62 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
+use once_cell::sync::Lazy;
+use tari_metrics::IntGauge;
 
-use anyhow::Error;
-use async_trait::async_trait;
-use clap::Parser;
+pub fn peer_list_size() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge("comms::peer_manager::peer_list_size", "The total number of known peers")
+            .unwrap()
+    });
 
-use super::{CommandContext, HandleCommand};
-
-pub type WatchCommand = Args;
-
-impl fmt::Display for WatchCommand {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.line().fmt(f)
-    }
-}
-
-const DEFAULT_WATCH: &str = "status";
-
-/// Repeat a command within an interval.
-#[derive(Debug, Parser)]
-pub struct Args {
-    /// Interval in seconds
-    #[clap(short, long)]
-    pub interval: Option<u64>,
-    /// The command to perform. `status` if empty.
-    #[clap(default_value = DEFAULT_WATCH)]
-    pub command: String,
-}
-
-impl Args {
-    pub fn new(command: impl ToString) -> Self {
-        Self {
-            command: command.to_string(),
-            ..Default::default()
-        }
-    }
-}
-
-impl Default for Args {
-    fn default() -> Self {
-        Self {
-            interval: None,
-            command: DEFAULT_WATCH.into(),
-        }
-    }
-}
-
-impl Args {
-    pub fn line(&self) -> &str {
-        &self.command
-    }
-}
-
-#[async_trait]
-impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        Ok(())
-    }
+    METER.clone()
 }

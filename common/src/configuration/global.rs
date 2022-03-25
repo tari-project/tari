@@ -35,6 +35,7 @@ use std::{
 };
 
 use config::{Config, ConfigError, Environment};
+use derivative::Derivative;
 use multiaddr::{Error, Multiaddr, Protocol};
 use tari_storage::lmdb_store::LMDBConfig;
 
@@ -103,6 +104,7 @@ pub struct GlobalConfig {
     pub db_config: LMDBConfig,
     pub db_type: DatabaseType,
     pub dht_dedup_cache_capacity: usize,
+    pub dht_minimum_desired_tcpv4_node_ratio: f32,
     pub dns_seeds: Vec<String>,
     pub dns_seeds_name_server: DnsNameServer,
     pub dns_seeds_use_dnssec: bool,
@@ -657,6 +659,11 @@ fn convert_node_config(
         .get_int(key)
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
 
+    let key = "common.dht_minimum_desired_tcpv4_node_ratio";
+    let dht_minimum_desired_tcpv4_node_ratio =
+        cfg.get_float(key)
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as f32;
+
     let key = "common.fetch_blocks_timeout";
     let fetch_blocks_timeout = Duration::from_secs(
         cfg.get_int(key)
@@ -857,6 +864,7 @@ fn convert_node_config(
         db_config,
         db_type,
         dht_dedup_cache_capacity,
+        dht_minimum_desired_tcpv4_node_ratio,
         dns_seeds,
         dns_seeds_name_server,
         dns_seeds_use_dnssec,
@@ -1148,10 +1156,11 @@ impl fmt::Debug for TorControlAuthentication {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub enum SocksAuthentication {
     None,
-    UsernamePassword(String, String),
+    UsernamePassword(String, #[derivative(Debug = "ignore")] String),
 }
 
 impl FromStr for SocksAuthentication {
