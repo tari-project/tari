@@ -24,11 +24,11 @@ use std::{
     convert::{TryFrom, TryInto},
     fmt::{Display, Error, Formatter},
     iter::Sum,
-    ops::{Add, Mul},
+    ops::{Add, Div, DivAssign, Mul, MulAssign, Sub},
+    str::FromStr,
 };
 
 use decimal_rs::{Decimal, DecimalConvertError};
-use derive_more::{Add, AddAssign, Div, From, FromStr, Into, Mul, Rem, Sub, SubAssign};
 use newtype_ops::newtype_ops;
 use serde::{Deserialize, Serialize};
 use tari_crypto::ristretto::RistrettoSecretKey;
@@ -74,6 +74,7 @@ newtype_ops! { [MicroTari] {add sub mul div} {:=} Self &Self }
 
 // Multiplication and division only makes sense when µT is multiplied/divided by a scalar
 newtype_ops! { [MicroTari] {mul div rem} {:=} Self u64 }
+newtype_ops! { [MicroTari] {mul div rem} {:=} &Self u64 }
 
 impl Mul<MicroTari> for u64 {
     type Output = MicroTari;
@@ -95,6 +96,14 @@ impl MicroTari {
         None
     }
 
+    pub fn checked_mul(self, v: MicroTari) -> Option<MicroTari> {
+        self.as_u64().checked_mul(v.as_u64()).map(Into::into)
+    }
+
+    pub fn checked_div(self, v: MicroTari) -> Option<MicroTari> {
+        self.as_u64().checked_div(v.as_u64()).map(Into::into)
+    }
+
     pub fn saturating_sub(self, v: MicroTari) -> MicroTari {
         if self >= v {
             return self - v;
@@ -107,8 +116,8 @@ impl MicroTari {
         self.0
     }
 
-    pub fn formatted(self) -> FormattedMicroTari {
-        self.into()
+    pub fn to_currency_string(&self, sep: char) -> String {
+        format!("{} µT", format_currency(&self.as_u64().to_string(), sep))
     }
 }
 
@@ -116,7 +125,7 @@ impl MicroTari {
 impl Display for MicroTari {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
         if *self < 1 * T {
-            write!(f, "{} µT", self.0)
+            write!(f, "{} µT", self.as_u64())
         } else {
             Tari::from(*self).fmt(f)
         }
@@ -141,7 +150,7 @@ impl std::str::FromStr for MicroTari {
             !processed.ends_with('t')
         };
 
-        // Avoid using f64 if we an
+        // Avoid using f64 if we can
         let processed = processed.replace("ut", "").replace("µt", "").replace("t", "");
         if is_micro_tari {
             processed
@@ -152,22 +161,9 @@ impl std::str::FromStr for MicroTari {
             processed
                 .parse::<Decimal>()
                 .map_err(|e| MicroTariError::ParseError(e.to_string()))
-                .map(|v| {
-                    if v.is_sign_negative() {
-                        Err(MicroTariError::ParseError("value cannot be negative".to_string()))
-                    } else {
-                        Tari::from(v).try_into().map_err(MicroTariError::from)
-                    }
-                })?
+                .and_then(Tari::try_from)
+                .map(MicroTari::from)
         }
-    }
-}
-
-impl TryFrom<Tari> for MicroTari {
-    type Error = DecimalConvertError;
-
-    fn try_from(v: Tari) -> Result<Self, Self::Error> {
-        (v.0 * 1_000_000u32).try_into().map(Self)
     }
 }
 
@@ -180,6 +176,12 @@ impl From<u64> for MicroTari {
 impl From<MicroTari> for f64 {
     fn from(v: MicroTari) -> Self {
         v.0 as f64
+    }
+}
+
+impl From<Tari> for MicroTari {
+    fn from(v: Tari) -> Self {
+        v.0
     }
 }
 
@@ -201,77 +203,142 @@ impl Sum<MicroTari> for MicroTari {
     }
 }
 
-#[derive(Copy, Default, Clone, Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct FormattedMicroTari(pub u64);
+impl Add<Tari> for MicroTari {
+    type Output = Self;
 
-impl From<MicroTari> for FormattedMicroTari {
-    fn from(v: MicroTari) -> Self {
-        FormattedMicroTari(v.0)
+    fn add(self, rhs: Tari) -> Self::Output {
+        self + rhs.0
     }
 }
 
-impl Display for FormattedMicroTari {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let value = format!("{}", self.0);
-        let formatted = format_currency(&value, ',');
-        f.write_str(&formatted)?;
-        f.write_str(" µT")?;
-        Ok(())
+impl Sub<Tari> for MicroTari {
+    type Output = Self;
+
+    fn sub(self, rhs: Tari) -> Self::Output {
+        self - rhs.0
     }
 }
 
+/// A convenience struct for representing full Tari.
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
-pub struct FormattedTari(pub Decimal);
+pub struct Tari(MicroTari);
 
-impl From<Tari> for FormattedTari {
-    fn from(v: Tari) -> Self {
-        FormattedTari(v.0)
-    }
-}
+newtype_ops! { [Tari] {add sub mul div} {:=} Self Self }
+newtype_ops! { [Tari] {add sub mul div} {:=} &Self &Self }
+newtype_ops! { [Tari] {add sub mul div} {:=} Self &Self }
 
-impl Display for FormattedTari {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        let value = format!("{:.2}", self.0);
-        let formatted = format_currency(&value, ',');
-        f.write_str(&formatted)?;
-        f.write_str(" T")?;
-        Ok(())
-    }
-}
-
-/// A convenience struct for representing full Tari. You should **never** use Tari in consensus calculations, because
-/// Tari wraps a floating point value. Use MicroTari for that instead.
-#[derive(
-    Copy, Clone, Debug, PartialEq, PartialOrd, Add, AddAssign, Sub, SubAssign, Mul, Div, Rem, From, Into, FromStr,
-)]
-pub struct Tari(Decimal);
+// You can only add or subtract µT from µT
+newtype_ops! { [Tari] {add sub mul div} {:=} Self MicroTari }
+newtype_ops! { [Tari] {add sub mul div} {:=} &Self &MicroTari }
+newtype_ops! { [Tari] {add sub mul div} {:=} Self &MicroTari }
 
 impl Tari {
-    pub fn formatted(self) -> FormattedTari {
-        self.into()
+    /// Attempts to convert an float into an _approximate_ Tari value. This function is "lossy" in that it only includes
+    /// digits up to 6 decimal places. It also does not provide guarantees that the intended value is correctly
+    /// represented as MicroTari e.g 1.555500 could be 15555499uT due to the decimal conversion. This function is only
+    /// used for tests.
+    #[cfg(test)]
+    pub(self) fn try_from_f32_lossy(v: f32) -> Result<Self, MicroTariError> {
+        let d = Decimal::try_from(v)?.trunc(6);
+        d.try_into()
     }
-}
 
-impl Display for Tari {
-    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
-        write!(f, "{:0.6} T", self.0)
+    pub fn checked_add(self, other: Self) -> Option<Self> {
+        self.0.checked_add(other.0).map(Into::into)
     }
-}
 
-pub type TariConversionError = DecimalConvertError;
+    pub fn checked_sub(self, other: Self) -> Option<Self> {
+        self.0.checked_sub(other.0).map(Into::into)
+    }
 
-// TODO: Remove `f64` completely! Using it is the bad idea in general. #LOGGED
-impl TryFrom<f64> for Tari {
-    type Error = TariConversionError;
+    pub fn checked_mul(self, other: Self) -> Option<Self> {
+        self.0.checked_mul(other.0).map(Into::into)
+    }
 
-    fn try_from(v: f64) -> Result<Self, Self::Error> {
-        Decimal::try_from(v).map(Self)
+    pub fn checked_div(self, other: Self) -> Option<Self> {
+        self.0.checked_div(other.0).map(Into::into)
+    }
+
+    pub fn to_currency_string(&self, sep: char) -> String {
+        let d = Decimal::from_parts(self.0.as_u64() as u128, 6, false).unwrap();
+        format!("{} T", format_currency(&d.to_string(), sep))
     }
 }
 
 impl From<MicroTari> for Tari {
     fn from(v: MicroTari) -> Self {
-        Self(Decimal::from(v.0) / 1_000_000)
+        Self(v)
+    }
+}
+
+impl From<u64> for Tari {
+    fn from(v: u64) -> Self {
+        Self((v * 1_000_000).into())
+    }
+}
+
+impl TryFrom<Decimal> for Tari {
+    type Error = MicroTariError;
+
+    /// Converts Decimal into Tari up to the first 6 decimal values. This will return an error if:
+    /// 1. the value is negative,
+    /// 1. the value has more than 6 decimal places (scale > 6)
+    /// 1. the value exceeds u64::MAX
+    fn try_from(v: Decimal) -> Result<Self, Self::Error> {
+        if v.is_sign_negative() {
+            Err(MicroTariError::ParseError("value cannot be negative".to_string()))
+        } else if v.scale() > 6 {
+            Err(MicroTariError::ParseError(format!("too many decimals ({})", v)))
+        } else {
+            let (micro_tari, _, _) = (v * 1_000_000u64).trunc(0).into_parts();
+            let micro_tari = micro_tari.try_into().map_err(|_| DecimalConvertError::Overflow)?;
+            Ok(Self(MicroTari(micro_tari)))
+        }
+    }
+}
+
+impl FromStr for Tari {
+    type Err = MicroTariError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let d = Decimal::from_str(s).map_err(|e| MicroTariError::ParseError(e.to_string()))?;
+        Self::try_from(d)
+    }
+}
+
+impl Display for Tari {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        // User can choose decimal precision, but default is 6
+        let precision = f.precision().unwrap_or(6);
+        write!(f, "{1:.*} T", precision, self.0.as_u64() as f64 / 1_000_000f64)
+    }
+}
+
+impl Mul<u64> for Tari {
+    type Output = Self;
+
+    fn mul(self, rhs: u64) -> Self::Output {
+        (self.0 * rhs).into()
+    }
+}
+
+impl MulAssign<u64> for Tari {
+    fn mul_assign(&mut self, rhs: u64) {
+        self.0 *= rhs;
+    }
+}
+
+impl Div<u64> for Tari {
+    type Output = Self;
+
+    fn div(self, rhs: u64) -> Self::Output {
+        (self.0 / rhs).into()
+    }
+}
+
+impl DivAssign<u64> for Tari {
+    fn div_assign(&mut self, rhs: u64) {
+        self.0 /= rhs;
     }
 }
 
@@ -279,10 +346,19 @@ impl From<MicroTari> for Tari {
 mod test {
     use std::{convert::TryFrom, str::FromStr};
 
-    use super::{MicroTari, Tari};
+    use super::*;
 
     #[test]
     fn micro_tari_arithmetic() {
+        let v = 100 * uT + Tari::from(99u64);
+        assert_eq!(v, MicroTari(99_000_100));
+        let v = Tari::from(99u64) - 100 * uT;
+        assert_eq!(v, MicroTari(98_999_900).into());
+        let v = Tari::from(99u64) * 100u64;
+        assert_eq!(v, MicroTari(9_900_000_000).into());
+        let v = Tari::from(990u64) / 100u64;
+        assert_eq!(v, MicroTari(9_900_000).into());
+
         let mut a = MicroTari::from(500);
         let b = MicroTari::from(50);
         assert_eq!(a + b, MicroTari::from(550));
@@ -300,29 +376,45 @@ mod test {
     fn micro_tari_display() {
         let s = format!("{}", MicroTari::from(1234));
         assert_eq!(s, "1234 µT");
-        let s = format!("{}", MicroTari::from(1_000_000));
+        let s = format!("{}", Tari::from(MicroTari::from(1_000_000)));
         assert_eq!(s, "1.000000 T");
+        let s = format!("{}", MicroTari::from(99_100_000));
+        assert_eq!(s, "99.100000 T");
+        let s = format!("{}", MicroTari::from(1_000_000_000));
+        assert_eq!(s, "1000.000000 T");
+
+        let s = format!("{:.0}", MicroTari::from(1_000_000_000));
+        assert_eq!(s, "1000 T");
     }
 
     #[test]
     fn formatted_micro_tari_display() {
-        let s = format!("{}", MicroTari::from(99_100_000).formatted());
+        let s = MicroTari::from(99_100_000).to_currency_string(',');
         assert_eq!(s, "99,100,000 µT");
-        let s = format!("{}", MicroTari::from(1_000_000_000).formatted());
+        let s = MicroTari::from(1_000_000_000).to_currency_string(',');
         assert_eq!(s, "1,000,000,000 µT");
+        let s = format!("{:.2}", Tari::try_from_f32_lossy(1.234).unwrap());
+        assert_eq!(s, "1.23 T");
+        let s = format!("{:.2}", Tari::try_from_f32_lossy(99_999.1).unwrap());
+        assert_eq!(s, "99999.10 T");
+    }
+
+    #[test]
+    fn formatted_tari_display() {
+        let s = Tari::from(99_100_000).to_currency_string(',');
+        assert_eq!(s, "99,100,000 T");
+        let s = Tari::from(1_000_000_000).to_currency_string(',');
+        assert_eq!(s, "1,000,000,000 T");
     }
 
     #[test]
     fn micro_tari_from_string() {
         let micro_tari = MicroTari::from(99_100_000);
-        let s = format!("{}", micro_tari.formatted());
+        let s = format!("{}", micro_tari);
         assert_eq!(micro_tari, MicroTari::from_str(s.as_str()).unwrap());
-        let tari = Tari::try_from(1.12).unwrap();
-        let s = format!("{}", tari.formatted());
-        assert_eq!(
-            MicroTari::try_from(tari).unwrap(),
-            MicroTari::from_str(s.as_str()).unwrap()
-        );
+        let tari = Tari::try_from_f32_lossy(1.12).unwrap();
+        let s = format!("{}", tari);
+        assert_eq!(MicroTari::from(tari), MicroTari::from_str(s.as_str()).unwrap());
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5000000").unwrap());
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5,000,000").unwrap());
         assert_eq!(MicroTari::from(5_000_000), MicroTari::from_str("5,000,000 uT").unwrap());
@@ -333,47 +425,43 @@ mod test {
         assert!(MicroTari::from_str("5garbage T").is_err());
     }
 
-    /// With `Decimal` the test with floats is not valid anymore:
-    /// ```
-    /// thread 'transactions::tari_amount::test::add_tari_and_microtari' panicked at 'assertion failed: `(left == right)`
-    /// left: `Tari(Decimal { int_val: 33000000000000001000000000000000000000, scale: 38, negative: false })`,
-    /// right: `Tari(Decimal { int_val: 33000000000000002, scale: 17, negative: false })`',
-    /// ```
     #[test]
     fn add_tari_and_microtari() {
         let a = MicroTari::from(100_000);
-        let b = Tari::from_str("0.23").unwrap();
-        let sum: Tari = b + a.into();
-        assert_eq!(sum, Tari::from_str("0.33").unwrap());
+        let b = Tari::try_from_f32_lossy(0.23).unwrap();
+        let sum: Tari = b + a;
+        assert_eq!(sum, Tari::try_from_f32_lossy(0.33).unwrap());
     }
 
     #[test]
     fn tari_arithmetic() {
-        let mut a = Tari::try_from(1.5).unwrap();
-        let b = Tari::try_from(2.25).unwrap();
-        assert_eq!(a + b, Tari::try_from(3.75).unwrap());
-        assert_eq!(a - b, Tari::try_from(-0.75).unwrap());
-        assert_eq!(a * 10.0, Tari::try_from(15.0).unwrap());
-        assert_eq!(b / 2.0, Tari::try_from(1.125).unwrap());
+        let mut a = Tari::try_from_f32_lossy(1.5).unwrap();
+        let b = Tari::try_from_f32_lossy(2.25).unwrap();
+        assert_eq!(a + b, Tari::try_from_f32_lossy(3.75).unwrap());
+        assert_eq!(a.checked_sub(b), None);
+        // Negative values are not currently used and not supported, adding support would be fairly straight forward
+        // Currently, this panics with an underflow
+        // assert_eq!(a - b, Tari::from_f32_lossy(-0.75).unwrap());
+        assert_eq!(a * 10, Tari::try_from_f32_lossy(15.0).unwrap());
+        assert_eq!(b / 2, Tari::try_from_f32_lossy(1.125).unwrap());
         a += b;
-        assert_eq!(a, Tari::try_from(3.75).unwrap());
-        a -= Tari::try_from(0.75).unwrap();
-        assert_eq!(a, Tari::try_from(3.0).unwrap());
+        assert_eq!(a, Tari::try_from_f32_lossy(3.75).unwrap());
+        a -= Tari::try_from_f32_lossy(0.75).unwrap();
+        assert_eq!(a, Tari::try_from_f32_lossy(3.0).unwrap());
     }
 
     #[test]
     fn tari_display() {
-        let s = format!("{}", Tari::try_from(1.234).unwrap());
+        let s = format!(
+            "{}",
+            // Decimal is created with a scale > 3 if we dont round (1.233999999999..)
+            Tari::try_from(Decimal::try_from(1.234).unwrap().round(3)).unwrap()
+        );
         assert_eq!(s, "1.234000 T");
-        let s = format!("{}", Tari::try_from(99.100).unwrap());
+        let s = format!(
+            "{}",
+            Tari::try_from(Decimal::try_from(99.100).unwrap().round(3)).unwrap()
+        );
         assert_eq!(s, "99.100000 T");
-    }
-
-    #[test]
-    fn formatted_tari_display() {
-        let s = format!("{}", Tari::try_from(1.234).unwrap().formatted());
-        assert_eq!(s, "1.23 T");
-        let s = format!("{}", Tari::try_from(99999.100).unwrap().formatted());
-        assert_eq!(s, "99,999.10 T");
     }
 }
