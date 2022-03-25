@@ -1461,7 +1461,7 @@ mod test {
         let test_params = TestParamsHelpers::new();
         let factory = CommitmentFactory::default();
 
-        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
+        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val);
         let input = unblinded_output.as_transaction_input(&factory).unwrap();
 
         (input, unblinded_output)

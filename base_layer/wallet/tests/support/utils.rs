@@ -62,7 +62,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
     oms: Option<OutputManagerHandle>,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let mut utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params.clone(), val);
+    let mut utxo = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params.clone(), val);
     // If an 'OutputManagerHandle' is present it will have its own internal 'RewindData', thus do not use those provided
     // by 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
     // further down the line
@@ -73,7 +73,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
         {
             utxo.features.set_recovery_byte(val);
             utxo = update_unblinded_output_with_updated_output_features(
-                test_params.clone(),
+                &test_params.clone(),
                 utxo.clone(),
                 utxo.features.clone(),
             );
@@ -94,7 +94,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     mut oms: OutputManagerHandle,
 ) -> (TransactionInput, UnblindedOutput) {
     let test_params = TestParamsHelpers::new();
-    let mut utxo = create_unblinded_output(script!(Nop), features.unwrap_or_default(), test_params.clone(), value);
+    let mut utxo = create_unblinded_output(script!(Nop), features.unwrap_or_default(), &test_params.clone(), value);
     // 'OutputManagerHandle' has its own internal 'RewindData', thus do not use those provided by
     // 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
     // further down the line
@@ -103,7 +103,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
         .await
     {
         utxo.features.set_recovery_byte(val);
-        utxo = update_unblinded_output_with_updated_output_features(test_params, utxo.clone(), utxo.features.clone());
+        utxo = update_unblinded_output_with_updated_output_features(&test_params, utxo.clone(), utxo.features.clone());
     };
     (
         utxo.as_transaction_input(factory)
