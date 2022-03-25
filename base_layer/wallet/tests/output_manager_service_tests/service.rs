@@ -2136,7 +2136,6 @@ async fn scan_for_recovery_test() {
                 .into_iter()
                 .chain(non_rewindable_outputs.clone().into_iter())
                 .collect::<Vec<TransactionOutput>>(),
-            TxId::from(1u64),
         )
         .await
         .unwrap();
@@ -2146,7 +2145,9 @@ async fn scan_for_recovery_test() {
 
     assert_eq!(recovered_outputs.len(), NUM_REWINDABLE - 1);
     for o in rewindable_unblinded_outputs.iter().skip(1) {
-        assert!(recovered_outputs.iter().any(|ro| ro.spending_key == o.spending_key));
+        assert!(recovered_outputs
+            .iter()
+            .any(|ro| ro.outpuot.spending_key == o.spending_key));
     }
 }
 
@@ -2172,7 +2173,7 @@ async fn recovered_output_key_not_in_keychain() {
 
     let result = oms
         .output_manager_handle
-        .scan_for_recoverable_outputs(vec![rewindable_output], TxId::from(1u64))
+        .scan_for_recoverable_outputs(vec![rewindable_output])
         .await;
 
     assert!(matches!(
