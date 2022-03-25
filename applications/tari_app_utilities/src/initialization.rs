@@ -117,7 +117,7 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
     }
 }
 
-fn concatenate_paths_normalized(prepend: PathBuf, extension_path: &PathBuf) -> PathBuf {
+fn concatenate_paths_normalized(prepend: PathBuf, extension_path: &Path) -> PathBuf {
     let mut result = prepend;
     for component in extension_path.components() {
         result.push(component);
