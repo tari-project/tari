@@ -2147,7 +2147,7 @@ async fn scan_for_recovery_test() {
     for o in rewindable_unblinded_outputs.iter().skip(1) {
         assert!(recovered_outputs
             .iter()
-            .any(|ro| ro.outpuot.spending_key == o.spending_key));
+            .any(|ro| ro.output.spending_key == o.spending_key));
     }
 }
 
