@@ -3222,7 +3222,7 @@ pub unsafe extern "C" fn comms_config_create(
                         network: selected_network,
                         node_identity: Arc::new(node_identity),
                         transport_type: (*transport_type).clone(),
-                        auxilary_tcp_listener_address: None,
+                        auxiliary_tcp_listener_address: None,
                         datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 25,
@@ -3234,6 +3234,8 @@ pub unsafe extern "C" fn comms_config_create(
                             auto_join: true,
                             saf_config: SafConfig {
                                 msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                // Ensure that SAF messages are requested automatically
+                                auto_request: true,
                                 ..Default::default()
                             },
                             ..Default::default()
