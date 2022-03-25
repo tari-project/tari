@@ -287,7 +287,7 @@ impl WalletConnectivityService {
     }
 
     fn set_online_status(&self, status: OnlineStatus) {
-        let _ = self.online_status_watch.send(status);
+        self.online_status_watch.send(status);
     }
 
     async fn try_setup_rpc_pool(&mut self, peer: NodeId) -> Result<bool, WalletConnectivityError> {

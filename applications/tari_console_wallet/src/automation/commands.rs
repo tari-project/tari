@@ -820,7 +820,7 @@ pub async fn command_runner(
                 let (tx_id, transaction) = manager
                     .create_registration_transaction(name, public_key, vec![], None, None, vec![])
                     .await?;
-                let _ = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
                 println!("Done!");
@@ -856,7 +856,7 @@ pub async fn command_runner(
                         unique_ids.into_iter().map(|id| (id, None)).collect(),
                     )
                     .await?;
-                let _ = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
@@ -884,7 +884,7 @@ pub async fn command_runner(
                 let (tx_id, transaction) = asset_manager
                     .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
                     .await?;
-                let _ = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
@@ -922,7 +922,7 @@ pub async fn command_runner(
                     .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
                     .await?;
 
-                let _ = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
                 println!("Done!");
