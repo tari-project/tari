@@ -110,7 +110,7 @@ pub struct ConnectionManagerConfig {
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
     /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
     /// Default: None (disabled)
-    pub auxilary_tcp_listener_address: Option<Multiaddr>,
+    pub auxiliary_tcp_listener_address: Option<Multiaddr>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -133,7 +133,7 @@ impl Default for ConnectionManagerConfig {
             liveness_max_sessions: 0,
             time_to_first_byte: Duration::from_secs(45),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
-            auxilary_tcp_listener_address: None,
+            auxiliary_tcp_listener_address: None,
         }
     }
 }
@@ -150,7 +150,7 @@ impl ListenerInfo {
         &self.bind_address
     }
 
-    pub fn auxilary_bind_address(&self) -> Option<&Multiaddr> {
+    pub fn auxiliary_bind_address(&self) -> Option<&Multiaddr> {
         self.aux_bind_address.as_ref()
     }
 }
@@ -202,7 +202,7 @@ where
             shutdown_signal.clone(),
         );
 
-        let aux_listener = config.auxilary_tcp_listener_address.take().map(|addr| {
+        let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
             PeerListener::new(
                 config.clone(),
                 addr,

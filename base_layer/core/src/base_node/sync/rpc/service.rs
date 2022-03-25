@@ -203,6 +203,14 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         .await
                         .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
+                    if tx.is_closed() {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Block sync session for peer '{}' terminated early", peer_node_id
+                        );
+                        break;
+                    }
+
                     match blocks {
                         Ok(blocks) if blocks.is_empty() => {
                             break;
@@ -226,6 +234,10 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                             // Ensure task stops if the peer prematurely stops their RPC session
                             if utils::mpsc::send_all(&tx, blocks).await.is_err() {
+                                debug!(
+                                    target: LOG_TARGET,
+                                    "Block sync session for peer '{}' terminated early", peer_node_id
+                                );
                                 break;
                             }
                         },
@@ -288,7 +300,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
         task::spawn(
             async move {
                 // Move token into this task
-                let session_token = session_token;
+                let peer_node_id = session_token;
                 let iter = NonOverlappingIntegerPairIter::new(
                     start_header.height + 1,
                     start_header.height.saturating_add(count).saturating_add(1),
@@ -304,6 +316,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         .await
                         .map_err(RpcStatus::log_internal_error(LOG_TARGET));
 
+                    if tx.is_closed() {
+                        debug!(
+                            target: LOG_TARGET,
+                            "Header sync session for peer '{}' terminated early", peer_node_id
+                        );
+                        break;
+                    }
                     match headers {
                         Ok(headers) if headers.is_empty() => {
                             break;
@@ -325,7 +344,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 metrics::active_sync_peers().dec();
                 debug!(
                     target: LOG_TARGET,
-                    "Header sync round complete for peer `{}`.", session_token,
+                    "Header sync round complete for peer `{}`.", peer_node_id,
                 );
             }
             .instrument(span),
@@ -453,6 +472,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let session_token = self.try_add_exclusive_session(peer_node_id).await?;
         task::spawn(async move {
+            // Move session token into task
+            let peer_node_id = session_token;
             while current_height <= end_height {
                 if tx.is_closed() {
                     break;
@@ -461,6 +482,15 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                     .fetch_kernels_in_block(current_header_hash.clone())
                     .await
                     .map_err(RpcStatus::log_internal_error(LOG_TARGET));
+
+                if tx.is_closed() {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Kernel sync session for peer '{}' terminated early", peer_node_id
+                    );
+                    break;
+                }
+
                 match res {
                     Ok(kernels) if kernels.is_empty() => {
                         let _ = tx
@@ -525,7 +555,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             metrics::active_sync_peers().dec();
             debug!(
                 target: LOG_TARGET,
-                "Kernel sync round complete for peer `{}`.", session_token,
+                "Kernel sync round complete for peer `{}`.", peer_node_id,
             );
         });
         Ok(Streaming::new(rx))
@@ -546,9 +576,9 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             req.include_deleted_bitmaps
         );
 
-        let _session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
+        let session_token = self.try_add_exclusive_session(peer_node_id.clone()).await?;
         let (tx, rx) = mpsc::channel(200);
-        let task = SyncUtxosTask::new(self.db());
+        let task = SyncUtxosTask::new(self.db(), session_token);
         task.run(request, tx).await?;
 
         Ok(Streaming::new(rx))

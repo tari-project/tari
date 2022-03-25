@@ -27,7 +27,7 @@ use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig, DhtConnectivityConfig};
 use tari_core::{
     base_node,
     base_node::{
@@ -255,7 +255,7 @@ where B: BlockchainBackend + 'static
             network: self.config.network,
             node_identity: self.node_identity.clone(),
             transport_type: create_transport_type(self.config),
-            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
+            auxiliary_tcp_listener_address: self.config.auxiliary_tcp_listener_address.clone(),
             datastore_path: self.config.comms_peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
             max_concurrent_inbound_tasks: 50,
@@ -268,9 +268,15 @@ where B: BlockchainBackend + 'static
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_config: SafConfig {
                     msg_validity: self.config.saf_expiry_duration,
+                    // Base node does not ever need to request SAF messages
+                    auto_request: false,
                     ..Default::default()
                 },
                 dedup_cache_capacity: self.config.dht_dedup_cache_capacity,
+                connectivity: DhtConnectivityConfig {
+                    minimum_desired_tcpv4_node_ratio: self.config.dht_minimum_desired_tcpv4_node_ratio,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             allow_test_addresses: self.config.comms_allow_test_addresses,
