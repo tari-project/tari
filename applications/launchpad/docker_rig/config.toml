@@ -229,7 +229,7 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
 # - multiple P2P addresses, one public over DNS and one private over TOR
 # - a "bridge" between TOR and TCP-only nodes
-# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
 # When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
@@ -263,7 +263,7 @@ tor_onion_port = 18141
 # - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
 # - multiple P2P addresses, one public over DNS and one private over TOR
 # - a "bridge" between TOR and TCP-only nodes
-# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
 # When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
 # direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.

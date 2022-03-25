@@ -146,8 +146,8 @@ impl CommsBuilder {
         self
     }
 
-    pub fn with_auxilary_tcp_listener_address(mut self, listener_address: Multiaddr) -> Self {
-        self.connection_manager_config.auxilary_tcp_listener_address = Some(listener_address);
+    pub fn with_auxiliary_tcp_listener_address(mut self, listener_address: Multiaddr) -> Self {
+        self.connection_manager_config.auxiliary_tcp_listener_address = Some(listener_address);
         self
     }
 
