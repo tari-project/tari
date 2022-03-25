@@ -42,6 +42,7 @@ use crate::{
     base_node::sync::{hooks::Hooks, rpc, BlockchainSyncConfig, SyncPeer},
     blocks::{BlockHeader, ChainBlock, ChainHeader},
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
+    common::rolling_avg::RollingAverageTime,
     consensus::ConsensusManager,
     proof_of_work::randomx_factory::RandomXFactory,
     proto::{
@@ -553,6 +554,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         split_info: ChainSplitInfo,
         max_latency: Duration,
     ) -> Result<(), BlockHeaderSyncError> {
+        info!(target: LOG_TARGET, "Starting header sync from peer {}", sync_peer);
         const COMMIT_EVERY_N_HEADERS: usize = 1000;
 
         let mut has_switched_to_new_chain = false;
@@ -626,8 +628,10 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         let mut last_sync_timer = Instant::now();
 
         let mut last_total_accumulated_difficulty = 0;
+        let mut avg_latency = RollingAverageTime::new(20);
         while let Some(header) = header_stream.next().await {
             let latency = last_sync_timer.elapsed();
+            avg_latency.add_sample(latency);
             let header = BlockHeader::try_from(header?).map_err(BlockHeaderSyncError::ReceivedInvalidHeader)?;
             debug!(
                 target: LOG_TARGET,
@@ -672,12 +676,15 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
             self.hooks
                 .call_on_progress_header_hooks(current_height, split_info.remote_tip_height, &sync_peer);
 
-            if latency > max_latency {
-                return Err(BlockHeaderSyncError::MaxLatencyExceeded {
-                    peer: sync_peer.node_id().clone(),
-                    latency,
-                    max_latency,
-                });
+            let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);
+            if let Some(avg_latency) = last_avg_latency {
+                if avg_latency > max_latency {
+                    return Err(BlockHeaderSyncError::MaxLatencyExceeded {
+                        peer: sync_peer.node_id().clone(),
+                        latency: avg_latency,
+                        max_latency,
+                    });
+                }
             }
 
             last_sync_timer = Instant::now();
