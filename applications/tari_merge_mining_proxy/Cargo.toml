@@ -17,7 +17,7 @@ tari_common = { path = "../../common" }
 tari_comms = { path = "../../comms" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_app_utilities = { path = "../tari_app_utilities" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 anyhow = "1.0.53"
