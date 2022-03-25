@@ -10,7 +10,7 @@ simd = ["tari_crypto/simd"]
 avx2 = ["simd"]
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_script = { path = "../../infrastructure/tari_script" }
