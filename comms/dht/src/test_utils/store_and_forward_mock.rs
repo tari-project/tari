@@ -121,6 +121,7 @@ impl StoreAndForwardMock {
     }
 
     async fn handle_request(&self, req: StoreAndForwardRequest) {
+        #[allow(clippy::enum_glob_use)]
         use StoreAndForwardRequest::*;
         trace!(target: LOG_TARGET, "StoreAndForwardMock received request {:?}", req);
         self.state.add_call(&req).await;
@@ -130,13 +131,14 @@ impl StoreAndForwardMock {
 
                 let msgs = self.state.stored_messages.read().await;
 
-                let _ = reply_tx.send(Ok(msgs
+                let _result = reply_tx.send(Ok(msgs
                     .clone()
                     .drain(..)
                     .filter(|m| m.stored_at >= since.naive_utc())
                     .collect()));
             },
             InsertMessage(msg, reply_tx) => {
+                #[allow(clippy::cast_possible_wrap)]
                 self.state.stored_messages.write().await.push(StoredMessage {
                     id: OsRng.next_u32() as i32,
                     version: msg.version,

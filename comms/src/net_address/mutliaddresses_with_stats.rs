@@ -182,7 +182,7 @@ impl MultiaddressesWithStats {
     ///
     /// Returns true if the address is contained in this instance, otherwise false
     pub fn reset_connection_attempts(&mut self) {
-        for a in self.addresses.iter_mut() {
+        for a in &mut self.addresses {
             a.reset_connection_attempts();
         }
         self.addresses.sort();

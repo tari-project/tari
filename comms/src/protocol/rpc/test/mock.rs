@@ -131,7 +131,7 @@ impl MockRpcServiceState {
         *self.response.write().unwrap() = response;
     }
 
-    pub fn set_response_ok<T: prost::Message>(&self, response: T) {
+    pub fn set_response_ok<T: prost::Message>(&self, response: &T) {
         self.set_response(Ok(Response::new(response.to_encoded_bytes().into())));
     }
 

@@ -135,7 +135,7 @@ fn chain_balance_validation() {
     let (faucet_utxo, faucet_key, _) = create_utxo(
         faucet_value,
         &factories,
-        OutputFeatures::default(),
+        &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -181,7 +181,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -233,7 +233,7 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
     );

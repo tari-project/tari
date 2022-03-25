@@ -380,9 +380,9 @@ fn inputs_not_malleable() {
         1,
         2,
         15.into(),
-        Default::default(),
-        script![Drop],
-        Default::default(),
+        &Default::default(),
+        &script![Drop],
+        &Default::default(),
     );
     let script_pk = PublicKey::from_secret_key(&outputs[0].0.script_private_key);
     let mut stack = inputs[0].input_data.clone();
@@ -572,9 +572,9 @@ mod validate_internal_consistency {
             0,
             1,
             5 * uT,
-            utxo_params.features.clone(),
-            utxo_params.script.clone(),
-            utxo_params.covenant.clone(),
+            &utxo_params.features.clone(),
+            &utxo_params.script.clone(),
+            &utxo_params.covenant.clone(),
         );
         inputs[0].features = input_params.features.clone();
         inputs[0].covenant = input_params.covenant.clone();

@@ -98,7 +98,7 @@ where
             message_tag: tag.as_value(),
             expires,
         });
-        let envelope = DhtEnvelope::new(dht_header, body);
+        let envelope = DhtEnvelope::new(dht_header, &body);
 
         let body = Bytes::from(envelope.to_encoded_bytes());
 

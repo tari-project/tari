@@ -381,7 +381,7 @@ async fn pool_management() {
     }
 
     // Wait for all peers to be connected (i.e. for the connection manager events to be received)
-    let _ = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
+    let _result = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
 
     let mut important_connection = connectivity
         .get_connection(connections[0].peer_node_id().clone())

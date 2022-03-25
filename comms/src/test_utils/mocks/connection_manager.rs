@@ -128,7 +128,7 @@ impl ConnectionManagerMock {
     }
 
     async fn handle_request(&self, req: ConnectionManagerRequest) {
-        use ConnectionManagerRequest::*;
+        use ConnectionManagerRequest::{CancelDial, DialPeer, NotifyListening};
         self.state.inc_call_count();
         self.state.add_call(format!("{:?}", req)).await;
         match req {
@@ -142,7 +142,7 @@ impl ConnectionManagerMock {
                     .get(&node_id)
                     .map(Clone::clone)
                     .ok_or(ConnectionManagerError::DialConnectFailedAllAddresses);
-                let _ = reply_tx.take().map(|tx| tx.send(result));
+                let _result = reply_tx.take().map(|tx| tx.send(result));
             },
             CancelDial(_) => {},
             NotifyListening(_reply_tx) => {},

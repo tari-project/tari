@@ -3,6 +3,7 @@
 use std::{
     cmp::max,
     collections::HashMap,
+    convert::TryInto,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -167,7 +168,7 @@ impl LMDBBuilder {
 
     /// Create a new LMDBStore instance and open the underlying database environment
     pub fn build(mut self) -> Result<LMDBStore, LMDBError> {
-        let max_dbs = max(self.db_names.len(), self.max_dbs) as u32;
+        let max_dbs = max(self.db_names.len(), self.max_dbs).try_into().unwrap();
         if !self.path.exists() {
             return Err(LMDBError::InvalidPath);
         }
@@ -197,7 +198,7 @@ impl LMDBBuilder {
         if self.db_names.is_empty() {
             self = self.add_database("default", db::CREATE);
         }
-        for (name, flags) in self.db_names.iter() {
+        for (name, flags) in &self.db_names {
             let db = Database::open(env.clone(), Some(name), &DatabaseOptions::new(*flags))?;
             let db = LMDBDatabase {
                 name: name.to_string(),
@@ -763,7 +764,7 @@ impl<'txn, 'db: 'txn> LMDBWriteTransaction<'txn, 'db> {
     fn convert_value<V>(value: &V) -> Result<Vec<u8>, LMDBError>
     where V: serde::Serialize {
         let size = bincode::serialized_size(value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
-        let mut buf = Vec::with_capacity(size as usize);
+        let mut buf = Vec::with_capacity(size.try_into().unwrap());
         bincode::serialize_into(&mut buf, value).map_err(|e| LMDBError::SerializationErr(e.to_string()))?;
         Ok(buf)
     }

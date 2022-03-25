@@ -71,7 +71,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                     );
                     return Err(ExitError::new(
                         ExitCode::ConfigError,
-                        format!(
+                        &format!(
                             "Node identity information not found. {}. You can update the configuration file to point \
                              to a valid node identity file, or re-run the node with the --create-id flag to create a \
                              new identity.",
@@ -98,7 +98,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                     error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
                     Err(ExitError::new(
                         ExitCode::ConfigError,
-                        format!("Could not create new node id. {:?}.", e),
+                        &format!("Could not create new node id. {:?}.", e),
                     ))
                 },
             }

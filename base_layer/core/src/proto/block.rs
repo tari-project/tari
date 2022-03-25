@@ -202,7 +202,7 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
             None => return Err("No proof of work provided".into()),
         };
         Ok(Self {
-            version: header.version as u16,
+            version: u16::try_from(header.version).unwrap(),
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset,
@@ -215,7 +215,7 @@ impl TryFrom<proto::NewBlockHeaderTemplate> for NewBlockHeaderTemplate {
 impl From<NewBlockHeaderTemplate> for proto::NewBlockHeaderTemplate {
     fn from(header: NewBlockHeaderTemplate) -> Self {
         Self {
-            version: header.version as u32,
+            version: u32::try_from(header.version).unwrap(),
             height: header.height,
             prev_hash: header.prev_hash,
             total_kernel_offset: header.total_kernel_offset.to_vec(),

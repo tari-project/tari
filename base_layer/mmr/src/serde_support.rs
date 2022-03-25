@@ -38,15 +38,15 @@ pub mod hash {
     pub fn serialize<S>(hashes: &[Hash], ser: S) -> Result<S::Ok, S::Error>
     where S: Serializer {
         let is_human_readable = ser.is_human_readable();
-        let mut seq = ser.serialize_seq(Some(hashes.len()))?;
+        let mut sequence = ser.serialize_seq(Some(hashes.len()))?;
         for hash in hashes {
             if is_human_readable {
-                seq.serialize_element(&hash.to_hex())?;
+                sequence.serialize_element(&hash.to_hex())?;
             } else {
-                seq.serialize_element(hash.as_slice())?;
+                sequence.serialize_element(hash.as_slice())?;
             }
         }
-        seq.end()
+        sequence.end()
     }
 
     pub fn deserialize<'de, D>(de: D) -> Result<Vec<Hash>, D::Error>

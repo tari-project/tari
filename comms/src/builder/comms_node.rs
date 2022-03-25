@@ -103,7 +103,7 @@ impl UnspawnedCommsNode {
     pub fn add_protocol<I: AsRef<[ProtocolId]>>(
         mut self,
         protocol: I,
-        notifier: ProtocolNotificationTx<Substream>,
+        notifier: &ProtocolNotificationTx<Substream>,
     ) -> Self {
         self.protocols.add(protocol, notifier);
         self
@@ -210,7 +210,7 @@ impl UnspawnedCommsNode {
         let listening_info = connection_manager_requester.wait_until_listening().await?;
         let mut hidden_service = None;
         if let Some(mut ctl) = hidden_service_ctl {
-            ctl.set_proxied_addr(listening_info.bind_address().clone());
+            ctl.set_proxied_addr(listening_info.bind_address());
             let hs = ctl.create_hidden_service().await?;
             let onion_addr = hs.get_onion_address();
             if node_identity.public_address() != onion_addr {

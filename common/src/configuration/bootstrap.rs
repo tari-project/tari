@@ -76,6 +76,7 @@ use crate::{
 };
 
 #[derive(StructOpt, Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ConfigBootstrap {
     /// A path to a directory to store your files
     #[structopt(
@@ -172,7 +173,7 @@ pub struct ConfigBootstrap {
     pub custom_base_node: Option<String>,
 }
 
-fn normalize_path(path: PathBuf) -> PathBuf {
+fn normalize_path(path: &Path) -> PathBuf {
     let mut result = PathBuf::new();
     for component in path.components() {
         result.push(component);
@@ -183,9 +184,9 @@ fn normalize_path(path: PathBuf) -> PathBuf {
 impl Default for ConfigBootstrap {
     fn default() -> Self {
         ConfigBootstrap {
-            base_path: normalize_path(dir_utils::default_path("", None)),
-            config: normalize_path(dir_utils::default_path(DEFAULT_CONFIG, None)),
-            log_config: normalize_path(dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None)),
+            base_path: normalize_path(&dir_utils::default_path("", None)),
+            config: normalize_path(&dir_utils::default_path(DEFAULT_CONFIG, None)),
+            log_config: normalize_path(&dir_utils::default_path(DEFAULT_BASE_NODE_LOG_CONFIG, None)),
             init: false,
             create_id: false,
             non_interactive_mode: false,
@@ -239,49 +240,49 @@ impl ConfigBootstrap {
         })?;
 
         if self.config.to_str() == Some("") {
-            self.config = normalize_path(dir_utils::default_path(DEFAULT_CONFIG, Some(&self.base_path)));
+            self.config = normalize_path(&dir_utils::default_path(DEFAULT_CONFIG, Some(&self.base_path)));
         }
 
         if self.log_config.to_str() == Some("") {
             match application_type {
                 ApplicationType::BaseNode => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_BASE_NODE_LOG_CONFIG,
                         Some(&self.base_path),
                     ));
                 },
                 ApplicationType::ConsoleWallet => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_WALLET_LOG_CONFIG,
                         Some(&self.base_path),
                     ));
                 },
                 ApplicationType::MergeMiningProxy => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
                 ApplicationType::StratumTranscoder => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
                 ApplicationType::MiningNode => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_MINING_NODE_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
                 ApplicationType::ValidatorNode => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_BASE_NODE_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
                 ApplicationType::Collectibles => {
-                    self.log_config = normalize_path(dir_utils::default_path(
+                    self.log_config = normalize_path(&dir_utils::default_path(
                         DEFAULT_COLLECTIBLES_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
@@ -290,12 +291,12 @@ impl ConfigBootstrap {
         }
 
         if !self.config.exists() {
-            let install = if !self.init {
+            let install = if self.init {
+                true
+            } else {
                 prompt("Config file does not exist. We can create a default one for you now, or you can say 'no' here, \
                 and generate a customised one at https://config.tari.com.\n\
                 Would you like to try the default configuration (Y/n)?")
-            } else {
-                true
             };
 
             if install {
@@ -308,10 +309,10 @@ impl ConfigBootstrap {
         }
 
         if !self.log_config.exists() {
-            let install = if !self.init {
-                prompt("Logging configuration file does not exist. Would you like to create a new one (Y/n)?")
-            } else {
+            let install = if self.init {
                 true
+            } else {
+                prompt("Logging configuration file does not exist. Would you like to create a new one (Y/n)?")
             };
             if install {
                 println!(
@@ -372,6 +373,7 @@ pub enum ApplicationType {
 
 impl ApplicationType {
     pub const fn as_str(&self) -> &'static str {
+        #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
             BaseNode => "Tari Base Node",
@@ -385,6 +387,7 @@ impl ApplicationType {
     }
 
     pub const fn as_config_str(&self) -> &'static str {
+        #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
             BaseNode => "base_node",
@@ -402,6 +405,7 @@ impl FromStr for ApplicationType {
     type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match s {
             "base-node" | "base_node" => Ok(BaseNode),

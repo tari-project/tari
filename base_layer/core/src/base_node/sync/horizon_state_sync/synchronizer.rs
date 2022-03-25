@@ -387,6 +387,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
+    #[allow(clippy::similar_names)]
     async fn synchronize_outputs(
         &mut self,
         mut sync_peer: SyncPeer,

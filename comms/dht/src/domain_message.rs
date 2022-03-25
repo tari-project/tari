@@ -41,7 +41,7 @@ pub struct OutboundDomainMessage<T> {
 }
 
 impl<T> OutboundDomainMessage<T> {
-    pub fn new<M: ToProtoEnum>(message_type: M, message: T) -> Self {
+    pub fn new<M: ToProtoEnum>(message_type: &M, message: T) -> Self {
         Self {
             inner: message,
             message_type: message_type.as_i32(),

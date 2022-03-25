@@ -59,8 +59,9 @@ impl DedupCacheDatabase {
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
     /// hash
-    pub fn add_body_hash(&self, body_hash: Vec<u8>, public_key: CommsPublicKey) -> Result<u32, StorageError> {
-        let hit_count = self.insert_body_hash_or_update_stats(body_hash.to_hex(), public_key.to_hex())?;
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn add_body_hash(&self, body_hash: Vec<u8>, public_key: &CommsPublicKey) -> Result<u32, StorageError> {
+        let hit_count = self.insert_body_hash_or_update_stats(&body_hash.to_hex(), &public_key.to_hex())?;
 
         if hit_count == 0 {
             warn!(
@@ -71,6 +72,7 @@ impl DedupCacheDatabase {
         Ok(hit_count)
     }
 
+    #[allow(clippy::needless_pass_by_value)]
     pub fn get_hit_count(&self, body_hash: Vec<u8>) -> Result<u32, StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         let hit_count = dedup_cache::table
@@ -79,6 +81,7 @@ impl DedupCacheDatabase {
             .get_result::<i32>(&conn)
             .optional()?;
 
+        #[allow(clippy::cast_sign_loss)]
         Ok(hit_count.unwrap_or(0) as u32)
     }
 
@@ -107,7 +110,7 @@ impl DedupCacheDatabase {
     }
 
     /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
-    fn insert_body_hash_or_update_stats(&self, body_hash: String, public_key: String) -> Result<u32, StorageError> {
+    fn insert_body_hash_or_update_stats(&self, body_hash: &str, public_key: &str) -> Result<u32, StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         let insert_result = diesel::insert_into(dedup_cache::table)
             .values((
@@ -138,7 +141,7 @@ impl DedupCacheDatabase {
                         .select(dedup_cache::number_of_hits)
                         .filter(dedup_cache::body_hash.eq(&body_hash))
                         .get_result::<i32>(&conn)?;
-
+                    #[allow(clippy::cast_sign_loss)]
                     Ok(hits as u32)
                 },
                 _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),

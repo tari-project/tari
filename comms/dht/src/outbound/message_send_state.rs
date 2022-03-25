@@ -111,6 +111,7 @@ impl MessageSendStates {
                     failed.push(tag);
                 },
             }
+            #[allow(clippy::cast_precision_loss)]
             if (count as f32) / (total as f32) >= threshold_perc {
                 break;
             }

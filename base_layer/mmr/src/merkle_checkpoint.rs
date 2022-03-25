@@ -20,14 +20,16 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use crate::{backend::ArrayLike, error::MerkleMountainRangeError, mutable_mmr::MutableMmr, Hash};
+use std::{convert::TryFrom, fmt, hash::Hasher};
+
 use croaring::Bitmap;
 use digest::Digest;
 use serde::{
     de::{self, Deserialize, Deserializer, MapAccess, SeqAccess, Visitor},
     ser::{Serialize, SerializeStruct, Serializer},
 };
-use std::{fmt, hash::Hasher};
+
+use crate::{backend::ArrayLike, error::MerkleMountainRangeError, mutable_mmr::MutableMmr, Hash};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MerkleCheckPoint {
@@ -101,7 +103,7 @@ impl MerkleCheckPoint {
 
     /// Return the the total accumulated added node count including this checkpoint
     pub fn accumulated_nodes_added_count(&self) -> u32 {
-        self.prev_accumulated_nodes_added_count + self.nodes_added.len() as u32
+        self.prev_accumulated_nodes_added_count + u32::try_from(self.nodes_added.len()).unwrap()
     }
 
     /// Merge the provided Merkle checkpoint into the current checkpoint.

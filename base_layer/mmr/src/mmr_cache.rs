@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::ops::Deref;
+
+use croaring::Bitmap;
+use digest::Digest;
+
 use crate::{
     backend::ArrayLike,
     error::MerkleMountainRangeError,
@@ -28,9 +33,6 @@ use crate::{
     Hash,
     MutableMmr,
 };
-use croaring::Bitmap;
-use digest::Digest;
-use std::ops::Deref;
 
 /// Configuration for the MmrCache.
 #[derive(Debug, Clone, Copy)]
@@ -82,8 +84,7 @@ where
         base_mmr: BaseBackend,
         checkpoints: CpBackend,
         config: MmrCacheConfig,
-    ) -> Result<MmrCache<D, BaseBackend, CpBackend>, MerkleMountainRangeError>
-    {
+    ) -> Result<MmrCache<D, BaseBackend, CpBackend>, MerkleMountainRangeError> {
         let base_mmr = MutableMmr::new(base_mmr, Bitmap::create())?;
         let curr_mmr = prune_mutable_mmr::<D, _>(&base_mmr)?;
         let mut mmr_cache = MmrCache {
@@ -194,6 +195,7 @@ where
             // The cache has fallen behind and needs to update to the new checkpoint state.
             self.update_base_mmr()?;
             self.create_curr_mmr()?;
+        } else {
         }
         Ok(())
     }

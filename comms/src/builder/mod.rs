@@ -106,7 +106,7 @@ impl CommsBuilder {
     }
 
     /// Set the user agent string for this comms node. This string is sent once when establishing a connection.
-    pub fn with_user_agent<T: ToString>(mut self, user_agent: T) -> Self {
+    pub fn with_user_agent<T: ToString>(mut self, user_agent: &T) -> Self {
         self.connection_manager_config.network_info.user_agent = user_agent.to_string();
         self
     }

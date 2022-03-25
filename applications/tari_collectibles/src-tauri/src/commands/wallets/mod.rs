@@ -76,7 +76,7 @@ pub async fn inner_wallets_create(
 
   let db = state.create_db().await?;
   let tx = db.create_transaction()?;
-  let _result = db.wallets().insert(&new_wallet, None, &tx)?;
+  let _ = db.wallets().insert(&new_wallet, None, &tx)?;
   tx.commit()?;
   state.set_current_wallet_id(new_wallet.id).await;
   Ok(new_wallet)
@@ -113,7 +113,7 @@ pub(crate) async fn inner_wallets_seed_words(
   let cipher_seed = db.wallets().get_cipher_seed(id, passphrase.clone(), None)?;
 
   let seed_words = cipher_seed
-    .to_mnemonic(&MnemonicLanguage::English, passphrase)
+    .to_mnemonic(MnemonicLanguage::English, passphrase)
     .map_err(|e| Status::internal(format!("Could not get seed words:{}", e)))?;
 
   Ok(seed_words)

@@ -65,7 +65,8 @@ impl XorDistance {
     /// Returns the bucket that this distance falls between.
     /// The node distance falls between the `i`th bucket if 2^i <= distance < 2^(i+1).
     pub fn get_bucket_index(&self) -> u8 {
-        ((Self::byte_size() as u8 * 8) - self.0.leading_zeros() as u8).saturating_sub(1)
+        ((u8::try_from(Self::byte_size()).unwrap() * 8) - u8::try_from(self.0.leading_zeros()).unwrap())
+            .saturating_sub(1)
     }
 
     pub fn to_bytes(&self) -> [u8; Self::byte_size()] {
@@ -200,7 +201,7 @@ mod test {
                 let (_, pk) = CommsPublicKey::random_keypair(&mut OsRng);
                 let b = NodeId::from_public_key(&pk);
                 let dist = NodeDistance::from_node_ids(&a, &b);
-                let i = dist.get_bucket_index() as u32;
+                let i = u32::try_from(dist.get_bucket_index()).unwrap();
                 let dist = dist.as_u128();
                 assert!(2u128.pow(i) <= dist, "Failed for {}, i = {}", dist, i);
                 assert!(dist < 2u128.pow(i + 1), "Failed for {}, i = {}", dist, i,);

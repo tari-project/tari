@@ -56,7 +56,7 @@ impl DhtProtocolVersion {
     }
 
     pub fn as_major(&self) -> u32 {
-        use DhtProtocolVersion::*;
+        use DhtProtocolVersion::{V1, V2};
         match self {
             V1 { .. } => 1,
             V2 { .. } => 2,
@@ -64,7 +64,7 @@ impl DhtProtocolVersion {
     }
 
     pub fn as_minor(&self) -> u32 {
-        use DhtProtocolVersion::*;
+        use DhtProtocolVersion::{V1, V2};
         match self {
             V1 { minor } => *minor,
             V2 { minor } => *minor,
@@ -90,7 +90,7 @@ impl TryFrom<(u32, u32)> for DhtProtocolVersion {
     type Error = DhtMessageError;
 
     fn try_from((major, minor): (u32, u32)) -> Result<Self, Self::Error> {
-        use DhtProtocolVersion::*;
+        use DhtProtocolVersion::{V1, V2};
         match major {
             0..=1 => Ok(V1 { minor }),
             2 => Ok(V2 { minor }),

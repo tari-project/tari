@@ -461,7 +461,7 @@ mod test {
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
-        let (max, min, avg) = dbg!(BlockHeader::timing_stats(&headers));
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 60);
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats

@@ -76,7 +76,7 @@ pub enum CommandError {
 impl From<CommandError> for ExitError {
     fn from(err: CommandError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        Self::new(ExitCode::CommandError, err)
+        Self::new(ExitCode::CommandError, &err)
     }
 }
 
@@ -110,6 +110,6 @@ impl From<ParseError> for ExitError {
     fn from(err: ParseError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
         let msg = format!("Failed to parse input file commands! {}", err);
-        Self::new(ExitCode::InputError, msg)
+        Self::new(ExitCode::InputError, &msg)
     }
 }

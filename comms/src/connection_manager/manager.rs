@@ -71,6 +71,7 @@ pub enum ConnectionManagerEvent {
 
 impl fmt::Display for ConnectionManagerEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        #[allow(clippy::enum_glob_use)]
         use ConnectionManagerEvent::*;
         match self {
             PeerConnected(conn) => write!(f, "PeerConnected({})", conn),
@@ -349,7 +350,7 @@ where
     }
 
     async fn handle_request(&mut self, request: ConnectionManagerRequest) {
-        use ConnectionManagerRequest::*;
+        use ConnectionManagerRequest::{CancelDial, DialPeer, NotifyListening};
         trace!(target: LOG_TARGET, "Connection manager got request: {:?}", request);
         match request {
             DialPeer { node_id, reply_tx } => {
@@ -368,7 +369,7 @@ where
             },
             NotifyListening(reply) => match self.listener_info.as_ref() {
                 Some(info) => {
-                    let _ = reply.send(info.clone());
+                    let _result = reply.send(info.clone());
                 },
                 None => {
                     self.listening_notifiers.push(reply);
@@ -383,12 +384,12 @@ where
             .as_ref()
             .expect("notify_all_ready called before listeners were successfully bound");
         for notifier in self.listening_notifiers.drain(..) {
-            let _ = notifier.send(info.clone());
+            let _result = notifier.send(info.clone());
         }
     }
 
     async fn handle_event(&mut self, event: ConnectionManagerEvent) {
-        use ConnectionManagerEvent::*;
+        use ConnectionManagerEvent::{NewInboundSubstream, PeerConnectFailed, PeerConnected, PeerInboundConnectFailed};
 
         match event {
             NewInboundSubstream(node_id, protocol, stream) => {
@@ -425,7 +426,7 @@ where
             PeerConnected(conn) => {
                 if conn.direction().is_inbound() {
                     // Notify the dialer that we have an inbound connection, so that is can resolve any pending dials.
-                    let _ = self
+                    let _result = self
                         .dialer_tx
                         .send(DialerRequest::NotifyNewInboundConnection(conn.clone()))
                         .await;
@@ -456,7 +457,7 @@ where
 
     fn publish_event(&self, event: ConnectionManagerEvent) {
         // Error on no subscribers can be ignored
-        let _ = self.connection_manager_events_tx.send(Arc::new(event));
+        let _result = self.connection_manager_events_tx.send(Arc::new(event));
     }
 
     #[tracing::instrument(level = "trace", skip(self, reply))]
@@ -473,7 +474,7 @@ where
             Ok(None) => {
                 warn!(target: LOG_TARGET, "Peer not found for dial");
                 if let Some(reply) = reply {
-                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(
+                    let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(
                         PeerManagerError::PeerNotFoundError,
                     )));
                 }
@@ -481,7 +482,7 @@ where
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to fetch peer to dial because '{}'", err);
                 if let Some(reply) = reply {
-                    let _ = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
+                    let _result = reply.send(Err(ConnectionManagerError::PeerManagerError(err)));
                 }
             },
         }

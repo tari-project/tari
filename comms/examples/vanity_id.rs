@@ -37,7 +37,7 @@ async fn main() {
         }
 
         let mut found = "not found";
-        for p in target_hex_prefixes.iter() {
+        for p in &target_hex_prefixes {
             if &&node_id_hex.as_str()[0..p.len()] == p {
                 println!("Found in {} iterations", i);
                 println!("Secret Key: {}", k.to_hex());

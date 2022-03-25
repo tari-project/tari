@@ -74,7 +74,7 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
             app.app_state.start_event_monitor(app.notifier.clone()).await;
             Result::<_, UiError>::Ok(())
         })
-        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, &e))?;
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events

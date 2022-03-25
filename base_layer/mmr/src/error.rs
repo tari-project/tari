@@ -41,7 +41,7 @@ pub enum MerkleMountainRangeError {
 }
 
 impl MerkleMountainRangeError {
-    pub fn backend_error<E: ToString>(err: E) -> Self {
+    pub fn backend_error<E: ToString>(err: &E) -> Self {
         Self::BackendError(err.to_string())
     }
 }
