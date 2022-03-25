@@ -2,7 +2,6 @@ use std::{fs, fs::File, io::Write, path::Path};
 
 use config::Config;
 use log::{debug, info};
-use multiaddr::{Multiaddr, Protocol};
 
 use crate::{
     configuration::bootstrap::ApplicationType,
@@ -460,26 +459,4 @@ fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
         cfg.set_default(&format!("{}.dibbler.socks5_auth", app), "none")?;
     }
     Ok(())
-}
-
-pub fn get_local_ip() -> Option<Multiaddr> {
-    use std::net::IpAddr;
-
-    get_if_addrs::get_if_addrs().ok().and_then(|if_addrs| {
-        if_addrs
-            .into_iter()
-            .find(|if_addr| !if_addr.is_loopback())
-            .map(|if_addr| {
-                let mut addr = Multiaddr::empty();
-                match if_addr.ip() {
-                    IpAddr::V4(ip) => {
-                        addr.push(Protocol::Ip4(ip));
-                    },
-                    IpAddr::V6(ip) => {
-                        addr.push(Protocol::Ip6(ip));
-                    },
-                }
-                addr
-            })
-    })
 }

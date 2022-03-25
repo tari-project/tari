@@ -31,25 +31,25 @@ impl fmt::Display for ExitError {
     }
 }
 
-const TOR_HINT: &str = r#"\
-Unable to connect to the Tor control port.
+impl From<anyhow::Error> for ExitError {
+    fn from(err: anyhow::Error) -> Self {
+        ExitError::new(ExitCode::UnknownError, err)
+    }
+}
 
-Please check that you have the Tor proxy running and \
-that access to the Tor control port is turned on.
+const TOR_HINT: &str = r#"Unable to connect to the Tor control port.
 
-If you are unsure of what to do, use the following \
-command to start the Tor proxy:
-tor --allow-missing-torrc --ignore-missing-torrc \
---clientonly 1 --socksport 9050 --controlport \
-127.0.0.1:9051 --log \"warn stdout\" --clientuseipv6 1
-"#;
+Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
+
+If you are unsure of what to do, use the following command to start the Tor proxy:
+tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1"#;
 
 impl ExitCode {
-    pub fn hint(&self) -> &str {
+    pub fn hint(&self) -> Option<&str> {
         use ExitCode::*;
         match self {
-            TorOffline => TOR_HINT,
-            _ => "",
+            TorOffline => Some(TOR_HINT),
+            _ => None,
         }
     }
 }
@@ -87,6 +87,8 @@ pub enum ExitCode {
     DatabaseError = 114,
     #[error("Database is in an inconsistent state!")]
     DbInconsistentState = 115,
+    #[error("Unable to create or load an identity file")]
+    IdentityError = 116,
 }
 
 impl From<super::ConfigError> for ExitError {

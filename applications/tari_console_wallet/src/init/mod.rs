@@ -34,6 +34,7 @@ use tari_common::{
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
+    tor::HiddenServiceControllerError,
     types::CommsPublicKey,
     NodeIdentity,
 };
@@ -43,7 +44,7 @@ use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
-    initialization::P2pConfig,
+    initialization::{CommsInitializationError, P2pConfig},
     peer_seeds::SeedPeer,
     transport::TransportType::Tor,
     DEFAULT_DNS_NAME_SERVER,
@@ -477,12 +478,12 @@ pub async fn init_wallet(
         master_seed,
     )
     .await
-    .map_err(|e| {
-        if let WalletError::CommsInitializationError(e) = e {
-            ExitError::new(ExitCode::WalletError, e.to_friendly_string())
-        } else {
-            ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e))
-        }
+    .map_err(|e| match e {
+        WalletError::CommsInitializationError(CommsInitializationError::HiddenServiceControllerError(
+            HiddenServiceControllerError::TorControlPortOffline,
+        )) => ExitError::new(ExitCode::TorOffline, e),
+        WalletError::CommsInitializationError(e) => ExitError::new(ExitCode::WalletError, e),
+        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
     })?;
     if let Some(hs) = wallet.comms.hidden_service() {
         wallet

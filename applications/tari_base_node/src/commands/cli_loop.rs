@@ -44,6 +44,8 @@ impl CliLoop {
             .build();
         let mut rustyline = Editor::with_config(cli_config);
         rustyline.set_helper(Some(parser));
+        // Saves the user from having to type this in again to return to "watch status"
+        rustyline.history_mut().add("watch status");
         let reader = CommandReader::new(rustyline);
         let watch_task = {
             if let Some(line) = watch_command {
