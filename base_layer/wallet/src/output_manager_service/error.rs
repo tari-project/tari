@@ -39,7 +39,7 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
-    key_manager_service::KeyManagerError as TariKeyManagerError,
+    key_manager_service::KeyManagerServiceError,
 };
 
 #[derive(Debug, Error)]
@@ -125,8 +125,8 @@ pub enum OutputManagerError {
     },
     #[error("Invalid message received:{0}")]
     InvalidMessageError(String),
-    #[error("Key manager error : {0}")]
-    TariKeyManagerError(#[from] TariKeyManagerError),
+    #[error("Key manager service error : {0}")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
 #[derive(Debug, Error)]
@@ -177,8 +177,8 @@ pub enum OutputManagerStorageError {
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(#[from] HexError),
-    #[error("Key Manager Error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    #[error("Key Manager Service Error: `{0}`")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
 impl From<OutputManagerError> for ExitError {

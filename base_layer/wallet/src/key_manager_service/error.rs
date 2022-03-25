@@ -28,7 +28,7 @@ use tari_utilities::{hex::HexError, ByteArrayError};
 use crate::error::WalletStorageError;
 
 #[derive(Debug, thiserror::Error)]
-pub enum KeyManagerError {
+pub enum KeyManagerServiceError {
     #[error("Branch does not exist")]
     UnknownKeyBranch,
     #[error("Master seed does not match stored version")]

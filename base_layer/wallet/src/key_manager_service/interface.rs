@@ -23,7 +23,7 @@
 use aes_gcm::Aes256Gcm;
 use tari_common_types::types::PrivateKey;
 
-use crate::key_manager_service::error::KeyManagerError;
+use crate::key_manager_service::error::KeyManagerServiceError;
 
 #[derive(Debug, PartialEq)]
 pub enum AddResult {
@@ -38,26 +38,29 @@ pub struct NextKeyResult {
 
 #[async_trait::async_trait]
 pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
-    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError>;
+    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
-    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError>;
+    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError>;
 
-    async fn remove_encryption(&self) -> Result<(), KeyManagerError>;
+    async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError>;
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError>;
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError>;
 
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerError>;
+    ) -> Result<PrivateKey, KeyManagerServiceError>;
 
-    async fn find_key_index<T: Into<String> + Send>(&self, branch: T, key: &PrivateKey)
-        -> Result<u64, KeyManagerError>;
+    async fn find_key_index<T: Into<String> + Send>(
+        &self,
+        branch: T,
+        key: &PrivateKey,
+    ) -> Result<u64, KeyManagerServiceError>;
 
     async fn update_current_key_index_if_higher<T: Into<String> + Send>(
         &self,
         branch: T,
         index: u64,
-    ) -> Result<(), KeyManagerError>;
+    ) -> Result<(), KeyManagerServiceError>;
 }

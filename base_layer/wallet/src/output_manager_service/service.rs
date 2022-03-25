@@ -191,7 +191,7 @@ where
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => Err(OutputManagerError::TariKeyManagerError(e)),
+            Err(e) => Err(OutputManagerError::KeyManagerServiceError(e)),
         }
     }
 
