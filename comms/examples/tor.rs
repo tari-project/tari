@@ -227,14 +227,14 @@ async fn start_ping_ponger(
                 println!("\n-----------------------------------");
                 let id = thread_rng().next_u64();
                 inflight_pings.insert(id, Utc::now().naive_utc());
-                let msg = make_msg(&dest_node_id, format!("PING {}", id));
+                let msg = make_msg(&dest_node_id, &format!("PING {}", id));
                 outbound_tx.send(msg).await?;
             },
             Some("PING") => {
                 let id = msg_parts.next().ok_or_else(|| anyhow!("Received PING without id"))?;
 
                 let msg_str = format!("PONG {}", id);
-                let msg = make_msg(&dest_node_id, msg_str);
+                let msg = make_msg(&dest_node_id, &msg_str);
 
                 outbound_tx.send(msg).await?;
             },
@@ -253,7 +253,7 @@ async fn start_ping_ponger(
                 println!("-----------------------------------");
                 let new_id = thread_rng().next_u64();
                 inflight_pings.insert(new_id, Utc::now().naive_utc());
-                let msg = make_msg(&dest_node_id, format!("PING {}", new_id));
+                let msg = make_msg(&dest_node_id, &format!("PING {}", new_id));
                 outbound_tx.send(msg).await?;
             },
             msg => {
@@ -265,7 +265,7 @@ async fn start_ping_ponger(
     Ok(counter)
 }
 
-fn make_msg(node_id: &NodeId, msg: String) -> OutboundMessage {
+fn make_msg(node_id: &NodeId, msg: &str) -> OutboundMessage {
     let msg = Bytes::copy_from_slice(msg.as_bytes());
     OutboundMessage::new(node_id.clone(), msg)
 }

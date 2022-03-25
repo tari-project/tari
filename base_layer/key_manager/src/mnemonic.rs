@@ -91,7 +91,7 @@ impl MnemonicLanguage {
             Ordering::Equal => {
                 let word = words.get(0).ok_or(MnemonicError::EncodeInvalidLength)?;
                 for language in MnemonicLanguage::iterator() {
-                    if find_mnemonic_index_from_word(word, language).is_ok() {
+                    if find_mnemonic_index_from_word(word, *language).is_ok() {
                         return Ok(*language);
                     }
                 }
@@ -102,7 +102,7 @@ impl MnemonicLanguage {
                     let mut languages = Vec::with_capacity(MnemonicLanguage::iterator().len());
                     // detect all languages in which a word falls into
                     for language in MnemonicLanguage::iterator() {
-                        if find_mnemonic_index_from_word(word, language).is_ok() {
+                        if find_mnemonic_index_from_word(word, *language).is_ok() {
                             languages.push(*language);
                         }
                     }
@@ -111,7 +111,7 @@ impl MnemonicLanguage {
                     for language in languages {
                         let mut consistent = true;
                         for compare in words {
-                            if compare != word && find_mnemonic_index_from_word(compare, &language).is_err() {
+                            if compare != word && find_mnemonic_index_from_word(compare, language).is_err() {
                                 consistent = false;
                             }
                         }
@@ -128,7 +128,7 @@ impl MnemonicLanguage {
 }
 
 /// Finds and returns the index of a specific word in a mnemonic word list defined by the specified language
-fn find_mnemonic_index_from_word(word: &str, language: &MnemonicLanguage) -> Result<usize, MnemonicError> {
+fn find_mnemonic_index_from_word(word: &str, language: MnemonicLanguage) -> Result<usize, MnemonicError> {
     let search_result: Result<usize, usize>;
     let lowercase_word = word.to_lowercase();
     match language {
@@ -159,7 +159,7 @@ fn find_mnemonic_index_from_word(word: &str, language: &MnemonicLanguage) -> Res
 }
 
 /// Finds and returns the word for a specific index in a mnemonic word list defined by the specified language
-fn find_mnemonic_word_from_index(index: usize, language: &MnemonicLanguage) -> Result<String, MnemonicError> {
+fn find_mnemonic_word_from_index(index: usize, language: MnemonicLanguage) -> Result<String, MnemonicError> {
     if index < MNEMONIC_ENGLISH_WORDS.len() {
         Ok(match language {
             // Select word according to specified language
@@ -178,11 +178,16 @@ fn find_mnemonic_word_from_index(index: usize, language: &MnemonicLanguage) -> R
 }
 
 /// Converts a vector of bytes to a sequence of mnemonic words using the specified language
-pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
-    let mut bits = bytes_to_bits(&bytes);
+pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String>, MnemonicError> {
+    let mut bits = bytes_to_bits(bytes);
 
     // Pad with zeros if length not divisible by 11
     let group_bit_count = 11;
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_truncation
+    )]
     let padded_size = ((bits.len() as f32 / group_bit_count as f32).ceil() * group_bit_count as f32) as usize;
     bits.resize(padded_size, false);
 
@@ -206,17 +211,17 @@ pub fn from_bytes(bytes: Vec<u8>, language: &MnemonicLanguage) -> Result<Vec<Str
 /// sequence is detected
 pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
     let language = MnemonicLanguage::detect_language(mnemonic_seq)?;
-    to_bytes_with_language(mnemonic_seq, &language)
+    to_bytes_with_language(mnemonic_seq, language)
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words using the specified language
-pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
+pub fn to_bytes_with_language(mnemonic_seq: &[String], language: MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
     let mut bits: Vec<bool> = Vec::new();
     for curr_word in mnemonic_seq {
         match find_mnemonic_index_from_word(curr_word, language) {
             Ok(index) => {
                 let curr_bits = checked_uint_to_bits(index, 11).ok_or(MnemonicError::IntToBitsConversion)?;
-                bits.extend(curr_bits.iter().cloned());
+                bits.extend(curr_bits.iter().copied());
             },
             Err(err) => return Err(err),
         }
@@ -235,12 +240,12 @@ pub trait Mnemonic<T> {
     fn from_mnemonic(mnemonic_seq: &[String], passphrase: Option<String>) -> Result<T, KeyManagerError>;
     fn from_mnemonic_with_language(
         mnemonic_seq: &[String],
-        language: &MnemonicLanguage,
+        language: MnemonicLanguage,
         passphrase: Option<String>,
     ) -> Result<T, KeyManagerError>;
     fn to_mnemonic(
         &self,
-        language: &MnemonicLanguage,
+        language: MnemonicLanguage,
         passphrase: Option<String>,
     ) -> Result<Vec<String>, KeyManagerError>;
 }
@@ -297,34 +302,20 @@ mod test {
     #[test]
     fn test_language_detection() {
         // Test valid Mnemonic words
-        match MnemonicLanguage::from(&"目".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::ChineseSimplified),
-            Err(_e) => panic!(),
-        }
-        match MnemonicLanguage::from(&"trick".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::English),
-            Err(_e) => panic!(),
-        }
-        match MnemonicLanguage::from(&"risque".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::French),
-            Err(_e) => panic!(),
-        }
-        match MnemonicLanguage::from(&"topazio".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::Italian),
-            Err(_e) => panic!(),
-        }
-        match MnemonicLanguage::from(&"ふりる".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::Japanese),
-            Err(_e) => panic!(),
-        }
-        match MnemonicLanguage::from(&"마지막".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::Korean),
-            Err(_e) => panic!(),
-        }
-        match MnemonicLanguage::from(&"sala".to_string()) {
-            Ok(language) => assert_eq!(language, MnemonicLanguage::Spanish),
-            Err(_e) => panic!(),
-        }
+        let language = MnemonicLanguage::from(&"目".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::ChineseSimplified);
+        let language = MnemonicLanguage::from(&"trick".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::English);
+        let language = MnemonicLanguage::from(&"risque".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::French);
+        let language = MnemonicLanguage::from(&"topazio".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::Italian);
+        let language = MnemonicLanguage::from(&"ふりる".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::Japanese);
+        let language = MnemonicLanguage::from(&"마지막".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::Korean);
+        let language = MnemonicLanguage::from(&"sala".to_string()).expect("");
+        assert_eq!(language, MnemonicLanguage::Spanish);
 
         // Test Invalid Mnemonic words
         assert!(MnemonicLanguage::from(&"馕".to_string()).is_err()); // Invalid Mnemonic Chinese Simplified word
@@ -382,104 +373,70 @@ mod test {
         // Encoding and Decoding using Chinese Simplified
         let desired_index = 45;
         let desired_word = MNEMONIC_CHINESE_SIMPLIFIED_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::ChineseSimplified) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::ChineseSimplified) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::ChineseSimplified).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::ChineseSimplified).expect("");
+        assert_eq!(desired_word, word);
 
         // Encoding and Decoding using English Simplified
         let desired_index = 1717;
         let desired_word = MNEMONIC_ENGLISH_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::English) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::English) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::English).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::English).expect("");
+        assert_eq!(desired_word, word);
 
         // Encoding and Decoding using French Simplified
         let desired_index = 824;
         let desired_word = MNEMONIC_FRENCH_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::French) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::French) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::French).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::French).expect("");
+        assert_eq!(desired_word, word);
 
         // Encoding and Decoding using Italian Simplified
         let desired_index = 1123;
         let desired_word = MNEMONIC_ITALIAN_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Italian) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Italian) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Italian).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Italian).expect("");
+        assert_eq!(desired_word, word);
 
         // Encoding and Decoding using Japanese Simplified
         let desired_index = 1856;
         let desired_word = MNEMONIC_JAPANESE_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Japanese) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Japanese) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Japanese).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Japanese).expect("");
+        assert_eq!(desired_word, word);
 
         // Encoding and Decoding using Korean Simplified
         let desired_index = 345;
         let desired_word = MNEMONIC_KOREAN_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Korean) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Korean) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Korean).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Korean).expect("");
+        assert_eq!(desired_word, word);
 
         // Encoding and Decoding using Spanish Simplified
         let desired_index = 345;
         let desired_word = MNEMONIC_SPANISH_WORDS[desired_index].to_string();
-        match find_mnemonic_index_from_word(&desired_word, &MnemonicLanguage::Spanish) {
-            Ok(index) => assert_eq!(desired_index, index),
-            Err(_e) => panic!(),
-        }
-        match find_mnemonic_word_from_index(desired_index, &MnemonicLanguage::Spanish) {
-            Ok(word) => assert_eq!(desired_word, word),
-            Err(_e) => panic!(),
-        }
+        let index = find_mnemonic_index_from_word(&desired_word, MnemonicLanguage::Spanish).expect("");
+        assert_eq!(desired_index, index);
+        let word = find_mnemonic_word_from_index(desired_index, MnemonicLanguage::Spanish).expect("");
+        assert_eq!(desired_word, word);
     }
 
     #[test]
     fn test_mnemonic_from_bytes_and_to_bytes() {
         let secretkey_bytes = RistrettoSecretKey::random(&mut OsRng).to_vec();
-        match mnemonic::from_bytes(secretkey_bytes.clone(), &MnemonicLanguage::English) {
-            Ok(mnemonic_seq) => match mnemonic::to_bytes(&mnemonic_seq) {
-                Ok(mnemonic_bytes) => {
-                    let mismatched_bytes = secretkey_bytes
-                        .iter()
-                        .zip(mnemonic_bytes.iter())
-                        .filter(|&(a, b)| a != b)
-                        .count();
-                    assert_eq!(mismatched_bytes, 0);
-                },
-                Err(_e) => panic!(),
-            },
-            Err(_e) => panic!(),
-        }
+        let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).expect("");
+        let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).expect("");
+        let mismatched_bytes = secretkey_bytes
+            .iter()
+            .zip(mnemonic_bytes.iter())
+            .filter(|&(a, b)| a != b)
+            .count();
+        assert_eq!(mismatched_bytes, 0);
     }
 }

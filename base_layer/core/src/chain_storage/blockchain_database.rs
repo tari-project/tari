@@ -248,6 +248,7 @@ where B: BlockchainBackend
                  resync your blockchain database."
                     .into(),
             ));
+        } else {
         }
         if cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
@@ -1168,8 +1169,11 @@ where B: BlockchainBackend
     }
 }
 
-fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
+fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
+    let msg = format!(
+        "Unexpected result for database query {}. Response: {}",
+        request, response
+    );
     error!(target: LOG_TARGET, "{}", msg);
     Err(ChainStorageError::UnexpectedResult(msg))
 }
@@ -1197,6 +1201,7 @@ impl std::fmt::Display for MmrRoots {
     }
 }
 
+#[allow(clippy::similar_names)]
 pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;

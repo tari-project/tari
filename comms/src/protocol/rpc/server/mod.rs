@@ -37,6 +37,7 @@ pub mod mock;
 mod router;
 use std::{
     borrow::Cow,
+    convert::TryFrom,
     future::Future,
     io,
     pin::Pin,
@@ -283,7 +284,7 @@ where
     }
 
     async fn handle_request(&self, req: RpcServerRequest) {
-        use RpcServerRequest::*;
+        use RpcServerRequest::GetNumActiveSessions;
         match req {
             GetNumActiveSessions(reply) => {
                 let max_sessions = self
@@ -457,6 +458,7 @@ where
             match result {
                 Ok(frame) => {
                     let start = Instant::now();
+                    #[allow(clippy::cast_precision_loss)]
                     request_bytes.observe(frame.len() as f64);
                     if let Err(err) = self.handle_request(frame.freeze()).await {
                         if let Err(err) = self.framed.close().await {
@@ -516,7 +518,7 @@ where
                 "({}) Client has an invalid deadline. {}", self.logging_context_string, decoded_msg
             );
             // Let the client know that they have disobeyed the spec
-            let status = RpcStatus::bad_request(format!(
+            let status = RpcStatus::bad_request(&format!(
                 "Invalid deadline ({:.0?}). The deadline MUST be greater than {:.0?}.",
                 self.node_id, deadline,
             ));
@@ -531,7 +533,7 @@ where
             return Ok(());
         }
 
-        let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+        let msg_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(decoded_msg.flags).unwrap());
 
         if msg_flags.contains(RpcMessageFlags::FIN) {
             debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
@@ -663,6 +665,7 @@ where
             );
             match time::timeout(deadline, next_item).await {
                 Ok(Some(msg)) => {
+                    #[allow(clippy::cast_precision_loss)]
                     response_bytes.observe(msg.len() as f64);
                     debug!(
                         target: LOG_TARGET,
@@ -708,7 +711,7 @@ where
                         return Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessageMalformed));
                     },
                 };
-                let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+                let msg_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(decoded_msg.flags).unwrap());
                 if msg_flags.is_fin() {
                     Poll::Ready(Some(RpcServerError::ClientInterruptedStream))
                 } else {

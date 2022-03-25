@@ -95,9 +95,9 @@ async fn run_node(config: GlobalConfig, create_id: bool) -> Result<(), ExitError
     let validator_node_config = config
         .validator_node
         .as_ref()
-        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "validator_node configuration not found"))?;
+        .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"validator_node configuration not found"))?;
 
-    fs::create_dir_all(&config.comms_peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
+    fs::create_dir_all(&config.comms_peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, &err))?;
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
         &config.comms_public_address,
@@ -163,7 +163,7 @@ fn build_runtime() -> Result<Runtime, ExitError> {
     builder
         .enable_all()
         .build()
-        .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, &e))
 }
 
 async fn run_dan_node(

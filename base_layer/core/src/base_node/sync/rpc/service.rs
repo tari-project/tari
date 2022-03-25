@@ -126,7 +126,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let start_height = start_header.height + 1;
         if start_height < metadata.pruned_height() {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Requested full block body at height {}, however this node has an effective pruned height of {}",
                 start_height,
                 metadata.pruned_height()
@@ -145,7 +145,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
         let end_height = end_header.height;
         if start_height > end_height {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Start block #{} is higher than end block #{}",
                 start_height, end_height
             )));
@@ -188,7 +188,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                                     reorg_block.height(),
                                     peer_node_id
                                 );
-                                let _ = tx.send(Err(RpcStatus::conflict(format!(
+                                let _ = tx.send(Err(RpcStatus::conflict(&format!(
                                     "Reorg at height {} detected",
                                     reorg_block.height()
                                 ))));
@@ -351,7 +351,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             .fetch_header(height)
             .await
             .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
-            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
     }
@@ -372,13 +372,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
             ));
         }
         if message.block_hashes.len() > MAX_ALLOWED_BLOCK_HASHES {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Cannot query more than {} block hashes",
                 MAX_ALLOWED_BLOCK_HASHES,
             )));
         }
         if message.header_count > MAX_ALLOWED_HEADER_COUNT {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Cannot ask for more than {} headers",
                 MAX_ALLOWED_HEADER_COUNT,
             )));
@@ -473,7 +473,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                 match res {
                     Ok(kernels) if kernels.is_empty() => {
                         let _ = tx
-                            .send(Err(RpcStatus::general(format!(
+                            .send(Err(RpcStatus::general(&format!(
                                 "No kernels in block {}",
                                 current_header_hash.to_hex()
                             ))))
@@ -513,7 +513,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         },
                         Ok(None) => {
                             let _ = tx
-                                .send(Err(RpcStatus::not_found(format!(
+                                .send(Err(RpcStatus::not_found(&format!(
                                     "Could not find header #{} while streaming UTXOs after position {}",
                                     current_height, current_mmr_position
                                 ))))

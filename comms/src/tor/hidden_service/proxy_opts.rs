@@ -55,7 +55,7 @@ impl Default for TorProxyOpts {
 }
 
 fn is_tcp_address(addr: &Multiaddr) -> bool {
-    use Protocol::*;
+    use Protocol::{Dns4, Dns6, Ip4, Ip6, Tcp};
     let mut iter = addr.iter();
     let protocol = iter.next();
     if !matches!(protocol, Some(Ip4(_)) | Some(Ip6(_)) | Some(Dns4(_)) | Some(Dns6(_))) {

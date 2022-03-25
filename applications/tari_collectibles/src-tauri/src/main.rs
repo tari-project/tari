@@ -46,18 +46,18 @@ fn parse_make_it_rain(src: &[&str]) -> Result<Command, ExitError> {
   if src.len() < 4 && 5 < src.len() {
     return Err(ExitError::new(
       ExitCode::CommandError,
-      "Invalid arguments for make-it-rain",
+      &"Invalid arguments for make-it-rain",
     ));
   }
   let asset_public_key = src[0].to_string();
   let amount_per_transaction = src[1]
     .to_string()
     .parse::<u64>()
-    .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+    .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
   let number_transactions = src[2]
     .to_string()
     .parse::<u32>()
-    .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+    .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
   let destination_address = src[3].to_string();
   let source_address = match src.len() {
     5 => Some(src[4].to_string()),
@@ -75,11 +75,11 @@ fn parse_make_it_rain(src: &[&str]) -> Result<Command, ExitError> {
 fn parse_command(src: String) -> Result<Command, ExitError> {
   let args: Vec<&str> = src.split(' ').collect();
   if args.is_empty() {
-    return Err(ExitError::new(ExitCode::CommandError, "Empty command"));
+    return Err(ExitError::new(ExitCode::CommandError, &"Empty command"));
   }
   match args[0] {
     "make-it-rain" => parse_make_it_rain(&args[1..]),
-    _ => Err(ExitError::new(ExitCode::CommandError, "Invalid command")),
+    _ => Err(ExitError::new(ExitCode::CommandError, &"Invalid command")),
   }
 }
 
@@ -101,15 +101,15 @@ fn make_it_rain(
       if rows.is_empty() {
         return Err(ExitError::new(
           ExitCode::CommandError,
-          "There is no wallet!",
+          &"There is no wallet!",
         ));
       }
       match source_address {
         Some(source_address) => {
           let source_uuid = Uuid::parse_str(&source_address)
-            .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+            .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
           if !rows.iter().any(|wallet| wallet.id == source_uuid) {
-            return Err(ExitError::new(ExitCode::CommandError, "Wallet not found!"));
+            return Err(ExitError::new(ExitCode::CommandError, &"Wallet not found!"));
           }
           source_uuid
         }
@@ -117,13 +117,13 @@ fn make_it_rain(
       }
     }
     Err(e) => {
-      return Err(ExitError::new(ExitCode::CommandError, e.to_string()));
+      return Err(ExitError::new(ExitCode::CommandError, &e.to_string()));
     }
   };
 
   runtime
     .block_on(commands::wallets::inner_wallets_unlock(id, state))
-    .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+    .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
   println!(
     "Sending {} of {} to {} {} times.",
     asset_public_key, amount, to_address, number_transactions
@@ -136,7 +136,7 @@ fn make_it_rain(
         to_address.clone(),
         state,
       ))
-      .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+      .map_err(|e| ExitError::new(ExitCode::CommandError, &e.to_string()))?;
   }
   Ok(())
 }

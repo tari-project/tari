@@ -155,7 +155,7 @@ async fn main() {
     // Wait for all the nodes to startup and connect to seed nodes
     take_a_break(NUM_NODES).await;
     // Taking this one snapshot of the network before the first non-seed node joins
-    let _ = network_graph_snapshot(
+    let _result = network_graph_snapshot(
         "base_node_track_join",
         &seed_nodes,
         &nodes,
@@ -183,7 +183,7 @@ async fn main() {
     }
 
     take_a_break(NUM_NODES).await;
-    let _ = network_graph_snapshot(
+    let _result = network_graph_snapshot(
         "base_node_track_join",
         &seed_nodes,
         &nodes,
@@ -205,7 +205,7 @@ async fn main() {
     nodes.push(new_node);
 
     take_a_break(NUM_NODES).await;
-    let _ = network_graph_snapshot(
+    let _result = network_graph_snapshot(
         "base_node_track_join",
         &seed_nodes,
         &nodes,
@@ -248,7 +248,7 @@ async fn main() {
     create_message_propagation_graphs("join_propagation", neighbour_graph, message_tree).await;
 
     // Take a snapshot after the join has occured
-    let _ = network_graph_snapshot(
+    let _result = network_graph_snapshot(
         "base_node_track_join",
         &seed_nodes,
         &nodes,
@@ -260,12 +260,13 @@ async fn main() {
     if let Err(e) = run_python_network_graph_render(
         "base_node_track_join",
         graph_output_dir,
-        PythonRenderType::NetworkGraphFull,
+        &PythonRenderType::NetworkGraphFull,
     ) {
         println!("Error rendering graphs: {}", e);
     }
 
-    if let Err(e) = run_python_network_graph_render("join_propagation", graph_output_dir, PythonRenderType::Propagation)
+    if let Err(e) =
+        run_python_network_graph_render("join_propagation", graph_output_dir, &PythonRenderType::Propagation)
     {
         println!("Error rendering graphs: {}", e);
     }

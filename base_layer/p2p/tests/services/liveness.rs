@@ -77,6 +77,7 @@ fn make_node_identity() -> Arc<NodeIdentity> {
 }
 
 #[tokio::test]
+#[allow(clippy::similar_names)]
 async fn end_to_end() {
     let node_1_identity = make_node_identity();
     let node_2_identity = make_node_identity();

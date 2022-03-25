@@ -63,6 +63,7 @@ impl From<oneshot::error::RecvError> for RpcServerError {
 
 impl RpcServerError {
     pub fn to_debug_string(&self) -> String {
+        #[allow(clippy::enum_glob_use)]
         use RpcServerError::*;
         match self {
             DecodeError(_) => "DecodeError".to_string(),

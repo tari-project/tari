@@ -76,6 +76,7 @@ use crate::{
 };
 
 #[derive(StructOpt, Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ConfigBootstrap {
     /// A path to a directory to store your files
     #[structopt(

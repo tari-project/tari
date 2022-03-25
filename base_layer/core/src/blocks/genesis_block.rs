@@ -317,6 +317,7 @@ mod test {
     };
 
     #[test]
+    #[allow(clippy::similar_names)]
     fn dibbler_genesis_sanity_check() {
         let block = get_dibbler_genesis_block();
         assert_eq!(block.block().body.outputs().len(), 4001);

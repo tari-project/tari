@@ -110,7 +110,7 @@ pub async fn send_finalized_transaction_message_direct(
         .send_direct(
             destination_public_key.clone(),
             OutboundDomainMessage::new(
-                TariMessageType::TransactionFinalized,
+                &TariMessageType::TransactionFinalized,
                 finalized_transaction_message.clone(),
             ),
         )
@@ -224,7 +224,7 @@ async fn send_transaction_finalized_message_store_and_forward(
             NodeId::from_public_key(&destination_pubkey),
             OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
-            OutboundDomainMessage::new(TariMessageType::TransactionFinalized, msg.clone()),
+            OutboundDomainMessage::new(&TariMessageType::TransactionFinalized, msg.clone()),
         )
         .await
     {

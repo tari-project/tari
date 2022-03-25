@@ -64,6 +64,7 @@ const DB_RESIZE_THRESHOLD_MIN_MB: i64 = 10;
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct GlobalConfig {
     pub autoupdate_check_interval: Option<Duration>,
     pub autoupdate_dns_hosts: Vec<String>,

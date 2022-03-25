@@ -23,6 +23,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -70,7 +71,7 @@ impl DhtMockState {
         self.call_count.fetch_add(1, Ordering::SeqCst);
     }
 
-    pub fn get_setting(&self, key: &DhtMetadataKey) -> Option<Vec<u8>> {
+    pub fn get_setting(&self, key: DhtMetadataKey) -> Option<Vec<u8>> {
         self.settings.read().unwrap().get(&key.to_string()).map(Clone::clone)
     }
 }
@@ -103,17 +104,18 @@ impl DhtActorMock {
     }
 
     async fn handle_request(&self, req: DhtRequest) {
+        #[allow(clippy::enum_glob_use)]
         use DhtRequest::*;
         self.state.inc_call_count();
         match req {
             SendJoin => {},
             MsgHashCacheInsert { reply_tx, .. } => {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
-                reply_tx.send(v as u32).unwrap();
+                reply_tx.send(u32::try_from(v).unwrap()).unwrap();
             },
             GetMsgHashHitCount(_, reply_tx) => {
                 let v = self.state.signature_cache_insert.load(Ordering::SeqCst);
-                reply_tx.send(v as u32).unwrap();
+                reply_tx.send(u32::try_from(v).unwrap()).unwrap();
             },
             SelectPeers(_, reply_tx) => {
                 let lock = self.state.select_peers.read().unwrap();
@@ -122,7 +124,7 @@ impl DhtActorMock {
                     .unwrap();
             },
             GetMetadata(key, reply_tx) => {
-                let _ = reply_tx.send(Ok(self
+                let _result = reply_tx.send(Ok(self
                     .state
                     .settings
                     .read()

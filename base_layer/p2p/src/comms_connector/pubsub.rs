@@ -177,6 +177,7 @@ mod test {
     use super::*;
 
     #[tokio::test]
+    #[allow(clippy::similar_names)]
     async fn topic_pub_sub() {
         let (publisher, subscriber_factory) = pubsub_channel(10);
 

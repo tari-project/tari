@@ -130,7 +130,7 @@ impl TorControlPortClient {
     /// The SETEVENTS command.
     pub async fn set_events(&mut self, events: &[&str]) -> Result<(), TorClientError> {
         let command = commands::set_events(events);
-        let _ = self.request_response(command).await?;
+        let _result = self.request_response(command).await?;
         Ok(())
     }
 
@@ -261,7 +261,7 @@ impl Default for Authentication {
 
 impl fmt::Display for Authentication {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use Authentication::*;
+        use Authentication::{Cookie, HashedPassword, None};
         match self {
             None => write!(f, "None"),
             HashedPassword(_) => write!(f, "HashedPassword"),
