@@ -59,4 +59,11 @@ impl RollingAverageTime {
             u64::try_from(total_time.as_nanos()).unwrap_or(u64::MAX) / self.samples.len() as u64,
         ))
     }
+
+    pub fn calculate_average_with_min_samples(&self, min_samples: usize) -> Option<Duration> {
+        if self.samples.len() < min_samples {
+            return None;
+        }
+        self.calculate_average()
+    }
 }
