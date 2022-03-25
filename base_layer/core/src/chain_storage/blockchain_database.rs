@@ -953,7 +953,7 @@ where B: BlockchainBackend
     /// Clean out the entire orphan pool
     pub fn cleanup_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        let _ = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?;
+        cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?;
         Ok(())
     }
 
@@ -965,7 +965,7 @@ where B: BlockchainBackend
     /// Clean out the entire orphan pool
     pub fn cleanup_all_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        let _ = cleanup_orphans(&mut *db, 0)?;
+        cleanup_orphans(&mut *db, 0)?;
         Ok(())
     }
 

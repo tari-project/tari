@@ -80,6 +80,7 @@ impl CommandContext {
                             .map(format_duration_basic)
                             .unwrap_or_else(|_| "?".into())
                     ));
+                } else {
                 }
 
                 if let Some(dt) = peer.banned_until() {

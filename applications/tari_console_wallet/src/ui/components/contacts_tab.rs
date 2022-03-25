@@ -207,6 +207,7 @@ impl ContactsTab {
                         }
                     },
                 }
+            } else {
             }
         }
 

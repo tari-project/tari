@@ -1134,7 +1134,7 @@ fn send_one_sided_transaction_to_self() {
     let message = "SEE IF YOU CAN CATCH THIS ONE..... SIDED TX!".to_string();
     let value = 1000.into();
     let mut alice_ts_clone = alice_ts;
-    let _tx_id = runtime.block_on(async move {
+    runtime.block_on(async move {
         match alice_ts_clone
             .send_one_sided_transaction(
                 alice_node_identity.public_key().clone(),
@@ -2248,7 +2248,7 @@ fn test_transaction_cancellation() {
     let input = create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
 
@@ -2336,7 +2336,7 @@ fn test_transaction_cancellation() {
     let input = create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
     let constants = create_consensus_constants(0);
@@ -4339,7 +4339,7 @@ fn test_resend_on_startup() {
     let input = create_unblinded_output(
         script!(Nop),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
     let constants = create_consensus_constants(0);
@@ -4823,7 +4823,7 @@ fn test_transaction_timeout_cancellation() {
     let input = create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(100_000),
     );
     let constants = create_consensus_constants(0);

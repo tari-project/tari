@@ -470,9 +470,9 @@ OutputFeatures::default()),
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let unblinded_utxo =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params1, outputs[1].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params1, outputs[1].value);
     let unblinded_utxo2 =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params2, outputs[2].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params2, outputs[2].value);
     let inputs = vec![
         unblinded_utxo.as_transaction_input(&factories.commitment).unwrap(),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
@@ -755,9 +755,9 @@ async fn test_block_sync_body_validator() {
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let unblinded_utxo =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params1, outputs[1].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params1, outputs[1].value);
     let unblinded_utxo2 =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params2, outputs[2].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params2, outputs[2].value);
     let inputs = vec![
         unblinded_utxo.as_transaction_input(&factories.commitment).unwrap(),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),

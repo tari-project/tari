@@ -76,7 +76,7 @@ pub async fn inner_wallets_create(
 
   let db = state.create_db().await?;
   let tx = db.create_transaction()?;
-  let _ = db.wallets().insert(&new_wallet, None, &tx)?;
+  db.wallets().insert(&new_wallet, None, &tx)?;
   tx.commit()?;
   state.set_current_wallet_id(new_wallet.id).await;
   Ok(new_wallet)

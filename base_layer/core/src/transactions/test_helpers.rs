@@ -743,7 +743,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
-    let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, &features);
+    let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, features);
 
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         &value,

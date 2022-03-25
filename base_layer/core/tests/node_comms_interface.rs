@@ -189,7 +189,7 @@ async fn inbound_fetch_utxos() {
     let (utxo_2, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
@@ -231,21 +231,21 @@ async fn inbound_fetch_txos() {
     let (utxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
     let (pruned_utxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
     let (stxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
@@ -355,7 +355,7 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let (utxo, key, offset) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &script,
         &Covenant::default(),
     );

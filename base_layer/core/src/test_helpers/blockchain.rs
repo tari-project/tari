@@ -554,7 +554,7 @@ impl TestBlockchain {
     pub fn append_block(&mut self, name: &'static str, block: Arc<ChainBlock>) {
         let result = self.db.add_block(block.to_arc_block()).unwrap();
         assert!(result.is_added());
-        let _ = self.chain.push((name, block));
+        self.chain.push((name, block));
     }
 
     pub fn get_block_by_name(&self, name: &'static str) -> Option<Arc<ChainBlock>> {

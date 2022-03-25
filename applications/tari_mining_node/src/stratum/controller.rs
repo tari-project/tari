@@ -243,6 +243,7 @@ impl Controller {
         } else if vec![21, 20, 22, 23, 25].contains(&error.code) {
             // problem with template
             let _ = self.send_message_get_job_template();
+        } else {
         }
     }
 

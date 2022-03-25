@@ -2193,7 +2193,7 @@ mod test {
         let input = create_unblinded_output(
             TariScript::default(),
             OutputFeatures::default(),
-            test_params,
+            &test_params,
             MicroTari::from(100_000),
         );
         let amount = MicroTari::from(10_000);
