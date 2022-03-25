@@ -77,6 +77,7 @@ use crate::{
             OutputManagerRequest,
             OutputManagerResponse,
             PublicRewindKeys,
+            RecoveredOutput,
         },
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
@@ -420,17 +421,17 @@ where
             OutputManagerRequest::CalculateRecoveryByte { spending_key, value } => Ok(
                 OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(spending_key, value)?),
             ),
-            OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs, tx_id)
+            .scan_and_recover_outputs(outputs)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs { outputs, tx_id } => self
-                .scan_outputs_for_one_sided_payments(outputs, tx_id)
+            OutputManagerRequest::ScanOutputs(outputs) => self
+                .scan_outputs_for_one_sided_payments(outputs)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
@@ -2006,12 +2007,11 @@ where
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
 
-        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
+        let mut rewound_outputs: Vec<RecoveredOutput> = Vec::new();
         for output in outputs {
             let position = known_one_sided_payment_scripts
                 .iter()
@@ -2062,9 +2062,14 @@ where
                     )?;
 
                     let output_hex = output.commitment.to_hex();
+                    let tx_id = TxId::new_random();
+
                     match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                         Ok(_) => {
-                            rewound_outputs.push(rewound_output);
+                            rewound_outputs.push(RecoveredOutput {
+                                output: rewound_output,
+                                tx_id,
+                            });
                         },
                         Err(OutputManagerStorageError::DuplicateOutput) => {
                             warn!(

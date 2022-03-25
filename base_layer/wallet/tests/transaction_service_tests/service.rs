@@ -925,18 +925,15 @@ fn recover_one_sided_transaction() {
         let outputs = completed_tx.transaction.body.outputs().clone();
 
         let unblinded = bob_oms
-            .scan_outputs_for_one_sided_payments(outputs.clone(), TxId::new_random())
+            .scan_outputs_for_one_sided_payments(outputs.clone())
             .await
             .unwrap();
         // Bob should be able to claim 1 output.
         assert_eq!(1, unblinded.len());
-        assert_eq!(value, unblinded[0].value);
+        assert_eq!(value, unblinded[0].output.value);
 
         // Should ignore already existing outputs
-        let unblinded = bob_oms
-            .scan_outputs_for_one_sided_payments(outputs, TxId::new_random())
-            .await
-            .unwrap();
+        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
         assert!(unblinded.is_empty());
     });
 }
