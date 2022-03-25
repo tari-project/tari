@@ -122,14 +122,8 @@ pub enum OutputManagerRequest {
         num_kernels: usize,
         num_outputs: usize,
     },
-    ScanForRecoverableOutputs {
-        outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    },
-    ScanOutputs {
-        outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    },
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroTari,
@@ -194,8 +188,8 @@ impl fmt::Display for OutputManagerRequest {
                 "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
                 amount, fee_per_gram, num_kernels, num_outputs
             ),
-            ScanForRecoverableOutputs { .. } => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs { .. } => write!(f, "ScanOutputs"),
+            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features } => {
                 write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
@@ -247,8 +241,8 @@ pub enum OutputManagerResponse {
     PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
     FeeEstimate(MicroTari),
-    RewoundOutputs(Vec<UnblindedOutput>),
-    ScanOutputs(Vec<UnblindedOutput>),
+    RewoundOutputs(Vec<RecoveredOutput>),
+    ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
     CreateOutputWithFeatures {
         output: Box<UnblindedOutputBuilder>,
@@ -298,6 +292,12 @@ impl fmt::Display for OutputManagerEvent {
 pub struct PublicRewindKeys {
     pub rewind_public_key: PublicKey,
     pub rewind_blinding_public_key: PublicKey,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecoveredOutput {
+    pub tx_id: TxId,
+    pub output: UnblindedOutput,
 }
 
 #[derive(Clone)]
@@ -728,11 +728,10 @@ impl OutputManagerHandle {
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id })
+            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
             .await??
         {
             OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
@@ -743,13 +742,8 @@ impl OutputManagerHandle {
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ScanOutputs { outputs, tx_id })
-            .await??
-        {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
