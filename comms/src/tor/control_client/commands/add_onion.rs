@@ -22,6 +22,8 @@
 
 use std::{borrow::Cow, fmt, num::NonZeroU16};
 
+use derivative::Derivative;
+
 use crate::tor::control_client::{
     commands::TorCommand,
     error::TorClientError,
@@ -188,9 +190,11 @@ impl fmt::Display for AddOnion<'_> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct AddOnionResponse {
     pub(crate) service_id: String,
+    #[derivative(Debug = "ignore")]
     pub(crate) private_key: Option<PrivateKey>,
     pub(crate) onion_port: u16,
 }

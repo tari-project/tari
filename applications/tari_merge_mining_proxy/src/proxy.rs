@@ -37,6 +37,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use derivative::Derivative;
 use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;
@@ -62,11 +63,13 @@ pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct MergeMiningProxyConfig {
     pub network: Network,
     pub monerod_url: Vec<String>,
     pub monerod_username: String,
+    #[derivative(Debug = "ignore")]
     pub monerod_password: String,
     pub monerod_use_auth: bool,
     pub grpc_base_node_address: SocketAddr,

@@ -24,11 +24,24 @@ use once_cell::sync::Lazy;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 use tari_utilities::hex::to_hex;
 
-pub fn target_difficulty(height: u64) -> IntGauge {
+pub fn target_difficulty_sha(height: u64) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
-            "base_node::blockchain::target_difficulty",
-            "The current miner target difficulty",
+            "base_node::blockchain::target_difficulty_sha",
+            "The current miner target difficulty for the sha3 PoW algo",
+            &["height"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[&height.to_string()])
+}
+
+pub fn target_difficulty_monero(height: u64) -> IntGauge {
+    static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
+        tari_metrics::register_int_gauge_vec(
+            "base_node::blockchain::target_difficulty_monero",
+            "The current miner target difficulty for the monero PoW algo",
             &["height"],
         )
         .unwrap()
@@ -80,6 +93,19 @@ pub fn compact_block_full_misses(height: u64) -> IntCounter {
     METER.with_label_values(&[&height.to_string()])
 }
 
+pub fn compact_block_mmr_mismatch(height: u64) -> IntCounter {
+    static METER: Lazy<IntCounterVec> = Lazy::new(|| {
+        tari_metrics::register_int_counter_vec(
+            "base_node::blockchain::compact_block_mmr_mismatch",
+            "Number of full blocks that had to be requested because of MMR mismatch",
+            &["height"],
+        )
+        .unwrap()
+    });
+
+    METER.with_label_values(&[&height.to_string()])
+}
+
 pub fn orphaned_blocks() -> IntCounter {
     static METER: Lazy<IntCounter> = Lazy::new(|| {
         tari_metrics::register_int_counter(
@@ -110,6 +136,18 @@ pub fn active_sync_peers() -> IntGauge {
         tari_metrics::register_int_gauge(
             "base_node::sync::active_peers",
             "Number of active peers syncing from this node",
+        )
+        .unwrap()
+    });
+
+    METER.clone()
+}
+
+pub fn utxo_set_size() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge(
+            "base_node::blockchain::utxo_set_size",
+            "The number of UTXOs in the current UTXO set",
         )
         .unwrap()
     });

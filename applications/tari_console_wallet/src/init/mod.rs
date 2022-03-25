@@ -365,10 +365,19 @@ pub async fn init_wallet(
     }
 
     let transport_type = create_transport_type(config);
-    let transport_type = match transport_type {
-        Tor(mut tor_config) => {
-            tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
-            Tor(tor_config)
+    let transport_type = match transport_type.clone() {
+        Tor(mut tor_config) => match wallet_db.get_tor_id().await {
+            Ok(identity) => {
+                tor_config.identity = identity.map(Box::new);
+                Tor(tor_config)
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error reading stored Tor Identity, using default: {}", e
+                );
+                transport_type
+            },
         },
         _ => transport_type,
     };

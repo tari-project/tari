@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use derivative::Derivative;
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey};
 use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_script::{ExecutionStack, TariScript};
@@ -34,14 +35,17 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct UnblindedOutputBuilder {
     pub value: MicroTari,
+    #[derivative(Debug = "ignore")]
     spending_key: BlindingFactor,
     pub features: OutputFeatures,
     pub script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
+    #[derivative(Debug = "ignore")]
     script_private_key: Option<PrivateKey>,
     sender_offset_public_key: Option<PublicKey>,
     metadata_signature: Option<ComSignature>,

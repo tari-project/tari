@@ -20,13 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use derivative::Derivative;
 use multiaddr::Multiaddr;
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct MergeMiningConfig {
     pub monerod_url: Vec<String>,
     pub monerod_use_auth: bool,
     pub monerod_username: String,
+    #[derivative(Debug = "ignore")]
     pub monerod_password: String,
     pub proxy_host_address: Multiaddr,
     pub base_node_grpc_address: Multiaddr,

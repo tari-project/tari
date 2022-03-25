@@ -27,7 +27,7 @@ use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig, DhtConnectivityConfig};
 use tari_core::{
     base_node,
     base_node::{
@@ -273,6 +273,10 @@ where B: BlockchainBackend + 'static
                     ..Default::default()
                 },
                 dedup_cache_capacity: self.config.dht_dedup_cache_capacity,
+                connectivity: DhtConnectivityConfig {
+                    minimum_desired_tcpv4_node_ratio: self.config.dht_minimum_desired_tcpv4_node_ratio,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             allow_test_addresses: self.config.comms_allow_test_addresses,

@@ -22,6 +22,7 @@
 
 use std::cmp::Ordering;
 
+use derivative::Derivative;
 use tari_common_types::types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey};
 use tari_core::transactions::{
     transaction_components::UnblindedOutput,
@@ -143,9 +144,11 @@ impl From<SpendingPriority> for u32 {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct KnownOneSidedPaymentScript {
     pub script_hash: Vec<u8>,
+    #[derivative(Debug = "ignore")]
     pub private_key: PrivateKey,
     pub script: TariScript,
     pub input: ExecutionStack,

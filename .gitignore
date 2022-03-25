@@ -50,3 +50,7 @@ buildtools/Output/
 # any specific "assets" folders should be gitignored
 # closer to where they live
 #assets/
+
+# Ignore coverage profiling artifacts
+*.profraw
+/report/
