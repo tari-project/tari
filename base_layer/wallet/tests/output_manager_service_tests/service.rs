@@ -796,7 +796,7 @@ async fn send_no_change() {
             create_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 MicroTari::from(value1),
             ),
             None,
@@ -809,7 +809,7 @@ async fn send_no_change() {
             create_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 MicroTari::from(value2),
             ),
             None,
@@ -860,7 +860,7 @@ async fn send_not_enough_for_change() {
             create_unblinded_output(
                 TariScript::default(),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 value1,
             ),
             None,
@@ -873,7 +873,7 @@ async fn send_not_enough_for_change() {
             create_unblinded_output(
                 TariScript::default(),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 value2,
             ),
             None,
@@ -1867,7 +1867,7 @@ async fn test_txo_revalidation() {
     let output1 = create_unblinded_output(
         script!(Nop),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
@@ -1880,7 +1880,7 @@ async fn test_txo_revalidation() {
     let output2 = create_unblinded_output(
         script!(Nop),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(output2_value),
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();

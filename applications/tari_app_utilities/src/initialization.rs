@@ -1,7 +1,10 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-use std::{path::PathBuf, str::FromStr};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
 use config::Config;
 use structopt::StructOpt;
@@ -114,7 +117,7 @@ fn check_file_paths(config: &mut GlobalConfig, bootstrap: &ConfigBootstrap) {
     }
 }
 
-fn concatenate_paths_normalized(prepend: PathBuf, extension_path: &PathBuf) -> PathBuf {
+fn concatenate_paths_normalized(prepend: PathBuf, extension_path: &Path) -> PathBuf {
     let mut result = prepend;
     for component in extension_path.components() {
         result.push(component);

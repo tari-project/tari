@@ -176,6 +176,8 @@ pub fn create_block_hashing_blob(
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
     use monero::{
         blockdata::transaction::{ExtraField, TxOutTarget},
         consensus::deserialize,

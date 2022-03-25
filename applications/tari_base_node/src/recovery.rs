@@ -63,7 +63,7 @@ pub fn initiate_recover_db(node_config: &GlobalConfig) -> Result<(), ExitError> 
     // create recovery db
     match &node_config.db_type {
         DatabaseType::LMDB(p) => {
-            let _backend = create_recovery_lmdb_database(&p).map_err(|err| {
+            create_recovery_lmdb_database(&p).map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
                 ExitError::new(ExitCode::UnknownError, &err)
             })?;

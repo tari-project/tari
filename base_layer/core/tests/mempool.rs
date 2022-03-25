@@ -839,7 +839,7 @@ async fn receive_and_propagate_transaction() {
         .send_direct(
             bob_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
-                TariMessageType::NewTransaction,
+                &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).unwrap(),
             ),
         )
@@ -850,7 +850,7 @@ async fn receive_and_propagate_transaction() {
         .send_direct(
             carol_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
-                TariMessageType::NewTransaction,
+                &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(orphan).unwrap(),
             ),
         )
@@ -954,12 +954,7 @@ async fn consensus_validation_large_tx() {
         } else {
             amount_for_last_output
         };
-        let output = create_unblinded_output(
-            script!(Nop),
-            OutputFeatures::default(),
-            test_params.clone(),
-            output_amount,
-        );
+        let output = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, output_amount);
 
         script_offset_pvt = script_offset_pvt - test_params.sender_offset_private_key;
         unblinded_outputs.push(output.clone());

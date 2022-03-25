@@ -253,6 +253,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
+    } else {
     }
 
     let app = App::<CrosstermBackend<Stdout>>::new(

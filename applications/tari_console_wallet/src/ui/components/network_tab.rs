@@ -287,6 +287,7 @@ impl NetworkTab {
                 self.confirmation_dialog = false;
                 self.base_node_edit_mode = BaseNodeInputMode::Selection;
                 return KeyHandled::Handled;
+            } else {
             }
         }
         KeyHandled::NotHandled

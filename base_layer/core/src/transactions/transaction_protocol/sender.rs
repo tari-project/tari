@@ -639,7 +639,7 @@ impl SenderTransactionProtocol {
     /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
     /// Transaction from it.
     pub fn load_pending_transaction_to_be_sent(data: &str) -> Result<Self, TPE> {
-        let raw_data: RawTransactionInfo = serde_json::from_str(&data).map_err(|_| TPE::SerializationError)?;
+        let raw_data: RawTransactionInfo = serde_json::from_str(data).map_err(|_| TPE::SerializationError)?;
         Ok(Self {
             state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
         })

@@ -762,7 +762,7 @@ async fn test_import_utxo() {
     let temp_features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
 
     let p = TestParams::new();
-    let utxo = create_unblinded_output(script.clone(), temp_features, p.clone(), 20000 * uT);
+    let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
 
@@ -930,7 +930,7 @@ fn test_contacts_service_liveness() {
                                 ping_count += 1;
                             } else if data.message_type() == ContactMessageType::Pong {
                                 pong_count += 1;
-                            }
+                            } else {}
                         }
                         if ping_count > 1 && pong_count > 1 {
                             break;
@@ -962,7 +962,7 @@ fn test_contacts_service_liveness() {
                                 ping_count += 1;
                             } else if data.message_type() == ContactMessageType::Pong {
                                 pong_count += 1;
-                            }
+                            } else {}
                         }
                         if ping_count > 1 && pong_count > 1 {
                             break;

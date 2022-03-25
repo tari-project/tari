@@ -9,56 +9,53 @@ deny = [
     # TODO: enable lint-reasons feature
 #    'clippy::allow_attributes_without_reason',
     # Docs
-    #'missing_docs',
+    # 'missing_docs',
 #    'clippy::missing_errors_doc',
 #    'clippy::missing_safety_doc',
 #    'clippy::missing_panics_doc',
 
     # Common mistakes
-    'clippy::await_holding_lock',
+    # 'clippy::await_holding_lock',
     'unused_variables',
-   'unused_imports',
+    'unused_imports',
     'dead_code',
     'unused_extern_crates',
     'unused_must_use',
     'unreachable_patterns',
-    'clippy::cloned_instead_of_copied',
+    # 'clippy::cloned_instead_of_copied',
     'clippy::create_dir',
-    'clippy::dbg_macro',
+    # 'clippy::dbg_macro',
     'clippy::else_if_without_else',
-    'clippy::enum_glob_use',
+    # 'clippy::enum_glob_use',
     # This is 99% not needed
-    'clippy::inline_always',
-    'clippy::let_underscore_drop',
+    # 'clippy::inline_always',
+    # 'clippy::let_underscore_drop',
     'clippy::let_unit_value',
-    'clippy::match_on_vec_items',
-    'clippy::match_wild_err_arm',
-    'clippy::similar_names',
-    'clippy::needless_borrow',
+    # 'clippy::match_on_vec_items',
+    # 'clippy::match_wild_err_arm',
+    # 'clippy::similar_names',
+    # 'clippy::needless_borrow',
 
 
     # style
-    'clippy::explicit_into_iter_loop',
-    'clippy::explicit_iter_loop',
-    'clippy::if_not_else',
-    'clippy::match_bool',
-    'clippy::needless_pass_by_value',
-    'clippy::range_plus_one',
-    'clippy::struct_excessive_bools',
+    # 'clippy::explicit_into_iter_loop',
+    # 'clippy::explicit_iter_loop',
+    # 'clippy::if_not_else',
+    # 'clippy::match_bool',
+    # 'clippy::needless_pass_by_value',
+    # 'clippy::range_plus_one',
+    # 'clippy::struct_excessive_bools',
     # perhaps this is a bit harsh
-    'clippy::too_many_lines',
-    'clippy::trivially_copy_pass_by_ref',
+    # 'clippy::too_many_lines',
+    # 'clippy::trivially_copy_pass_by_ref',
 
     # casting mistakes
-    'clippy::cast_lossless',
-    'clippy::cast_possible_truncation',
-    'clippy::cast_possible_wrap',
-    'clippy::cast_precision-loss',
+    # 'clippy::cast_lossless',
+    # 'clippy::cast_possible_truncation',
+    # 'clippy::cast_possible_wrap',
+    # 'clippy::cast_precision-loss',
     # This is tricky because sqlite uses signed ints and it's used to represent unsigned data
-    'clippy::cast_sign_loss'
-
-
-
+    # 'clippy::cast_sign_loss'
 ]
 
 allow= [
