@@ -218,7 +218,7 @@ async fn run_node(
         recovery::initiate_recover_db(&config)?;
         recovery::run_recovery(&config)
             .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, &e))?;
         return Ok(());
     };
 
@@ -235,7 +235,8 @@ async fn run_node(
         if let Some(ref address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+            let socket_addr =
+                multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
             task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
         }
     }

@@ -91,7 +91,7 @@ impl DanNode {
             .config
             .validator_node
             .as_ref()
-            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Missing dan section"))?;
+            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Missing dan section"))?;
 
         let mut base_node_client = GrpcBaseNodeClient::new(dan_config.base_node_grpc_address);
         let mut next_scanned_height = 0u64;
@@ -198,7 +198,7 @@ impl DanNode {
             .iter()
             .map(|s| {
                 CommsPublicKey::from_hex(s)
-                    .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("could not convert to hex:{}", e)))
+                    .map_err(|e| ExitError::new(ExitCode::ConfigError, &format!("could not convert to hex:{}", e)))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -254,7 +254,7 @@ impl DanNode {
 
         if let Err(err) = consensus_worker.run(shutdown.clone(), None, kill).await {
             error!(target: LOG_TARGET, "Consensus worker failed with error: {}", err);
-            return Err(ExitError::new(ExitCode::UnknownError, err));
+            return Err(ExitError::new(ExitCode::UnknownError, &err));
         }
 
         Ok(())

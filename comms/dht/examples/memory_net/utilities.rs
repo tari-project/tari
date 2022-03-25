@@ -131,6 +131,7 @@ pub async fn shutdown_all(nodes: Vec<TestNode>) {
     future::join_all(tasks).await;
 }
 
+#[allow(clippy::similar_names)]
 pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEventRx) -> (usize, usize, usize) {
     let mut successes = 0;
     let mut total_messages = 0;
@@ -191,6 +192,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
     (total_messages, successes, wallets.len() - 1)
 }
 
+#[allow(clippy::cast_precision_loss)]
 pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
     let mut stats = HashMap::<String, usize>::with_capacity(wallets.len());
     for wallet in wallets {
@@ -272,7 +274,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
             NodeDestination::Unknown,
             OutboundEncryption::ClearText,
             vec![],
-            OutboundDomainMessage::new(0i32, PUBLIC_MESSAGE.to_string()),
+            OutboundDomainMessage::new(&0i32, PUBLIC_MESSAGE.to_string()),
         )
         .await
         .unwrap();
@@ -329,7 +331,7 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
                                 NodeDestination::Unknown,
                                 OutboundEncryption::ClearText,
                                 vec![msg.source_peer.node_id.clone()],
-                                OutboundDomainMessage::new(0i32, public_msg),
+                                OutboundDomainMessage::new(&0i32, public_msg),
                             )
                             .await
                             .unwrap();
@@ -442,7 +444,7 @@ pub async fn do_store_and_forward_message_propagation(
                 node_identity.node_id().clone(),
                 OutboundEncryption::encrypt_for(node_identity.public_key().clone()),
                 vec![],
-                OutboundDomainMessage::new(123i32, secret_message.clone()),
+                OutboundDomainMessage::new(&123i32, secret_message.clone()),
             )
             .await
             .unwrap();
@@ -604,14 +606,15 @@ pub async fn drain_messaging_events(messaging_rx: &mut NodeEventRx, show_logs: b
 }
 
 fn connection_manager_logger(
-    node_id: NodeId,
+    node_id: &NodeId,
     quiet_mode: bool,
 ) -> impl FnMut(Arc<ConnectionManagerEvent>) -> Arc<ConnectionManagerEvent> {
-    let node_name = get_name(&node_id);
+    let node_name = get_name(node_id);
     move |event| {
         if quiet_mode {
             return event;
         }
+        #[allow(clippy::enum_glob_use)]
         use ConnectionManagerEvent::*;
         print!("EVENT: ");
         match &*event {
@@ -715,11 +718,11 @@ impl TestNode {
 
         let node_id = comms.node_identity().node_id().clone();
         executor.spawn(async move {
-            let mut logger = connection_manager_logger(node_id, quiet_mode);
+            let mut logger = connection_manager_logger(&node_id, quiet_mode);
             loop {
                 match conn_man_event_sub.recv().await {
                     Ok(event) => {
-                        let _ = events_tx.send(logger(event)).await;
+                        let _result = events_tx.send(logger(event)).await;
                     },
                     Err(broadcast::error::RecvError::Closed) => break,
                     Err(err) => log::error!("{}", err),
@@ -731,7 +734,7 @@ impl TestNode {
         executor.spawn(async move {
             loop {
                 let event = messaging_events.recv().await;
-                use MessagingEvent::*;
+                use MessagingEvent::MessageReceived;
                 match event.as_deref() {
                     Ok(MessageReceived(peer_node_id, _)) => {
                         messaging_events_tx
@@ -762,7 +765,7 @@ impl TestNode {
         if let Some(conn) = self.comms.connectivity().get_connection(node_id.clone()).await.unwrap() {
             return Some(conn);
         }
-        use ConnectionManagerEvent::*;
+        use ConnectionManagerEvent::PeerConnected;
         loop {
             let event = time::timeout(Duration::from_secs(30), self.conn_man_events_rx.recv())
                 .await

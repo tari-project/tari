@@ -20,10 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::num::TryFromIntError;
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum SqliteStorageError {
     #[error("Diesel R2d2 error")]
     DieselR2d2Error(String),
+    #[error("Poolsize is too big")]
+    PoolSize(#[from] TryFromIntError),
 }

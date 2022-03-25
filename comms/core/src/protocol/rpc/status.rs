@@ -44,21 +44,21 @@ impl RpcStatus {
         }
     }
 
-    pub fn unsupported_method<T: ToString>(details: T) -> Self {
+    pub fn unsupported_method<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::UnsupportedMethod,
             details: details.to_string(),
         }
     }
 
-    pub fn not_implemented<T: ToString>(details: T) -> Self {
+    pub fn not_implemented<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::NotImplemented,
             details: details.to_string(),
         }
     }
 
-    pub fn bad_request<T: ToString>(details: T) -> Self {
+    pub fn bad_request<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::BadRequest,
             details: details.to_string(),
@@ -67,7 +67,7 @@ impl RpcStatus {
 
     /// Returns a general error. As with all other errors care should be taken not to leak sensitive data to remote
     /// peers through error messages.
-    pub fn general<T: ToString>(details: T) -> Self {
+    pub fn general<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::General,
             details: details.to_string(),
@@ -75,31 +75,31 @@ impl RpcStatus {
     }
 
     pub fn general_default() -> Self {
-        Self::general("General error")
+        Self::general(&"General error")
     }
 
-    pub fn timed_out<T: ToString>(details: T) -> Self {
+    pub fn timed_out<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::Timeout,
             details: details.to_string(),
         }
     }
 
-    pub fn not_found<T: ToString>(details: T) -> Self {
+    pub fn not_found<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::NotFound,
             details: details.to_string(),
         }
     }
 
-    pub fn forbidden<T: ToString>(details: T) -> Self {
+    pub fn forbidden<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::Forbidden,
             details: details.to_string(),
         }
     }
 
-    pub fn conflict<T: ToString>(details: T) -> Self {
+    pub fn conflict<T: ToString + ?Sized>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::Conflict,
             details: details.to_string(),
@@ -115,7 +115,7 @@ impl RpcStatus {
         }
     }
 
-    pub(super) fn protocol_error<T: ToString>(details: T) -> Self {
+    pub(super) fn protocol_error<T: ToString>(details: &T) -> Self {
         Self {
             code: RpcStatusCode::ProtocolError,
             details: details.to_string(),
@@ -156,7 +156,7 @@ impl From<RpcError> for RpcStatus {
             RpcError::RequestFailed(status) => status,
             err => {
                 error!(target: LOG_TARGET, "Internal error: {}", err);
-                Self::general(err.to_string())
+                Self::general(&err.to_string())
             },
         }
     }
@@ -255,6 +255,7 @@ impl RpcStatusCode {
 
 impl From<u32> for RpcStatusCode {
     fn from(code: u32) -> Self {
+        #[allow(clippy::enum_glob_use)]
         use RpcStatusCode::*;
         match code {
             0 => Ok,
@@ -279,6 +280,7 @@ mod test {
 
     #[test]
     fn rpc_status_code_conversions() {
+        #[allow(clippy::enum_glob_use)]
         use RpcStatusCode::*;
         assert_eq!(RpcStatusCode::from(Ok as u32), Ok);
         assert_eq!(RpcStatusCode::from(BadRequest as u32), BadRequest);

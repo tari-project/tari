@@ -246,7 +246,7 @@ async fn handle_outbound_tx(
             OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
-                TariMessageType::NewTransaction,
+                &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
             ),
         )

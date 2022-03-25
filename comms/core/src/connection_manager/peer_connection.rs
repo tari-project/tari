@@ -399,7 +399,7 @@ impl PeerConnectionActor {
     }
 
     async fn handle_request(&mut self, request: PeerConnectionRequest) {
-        use PeerConnectionRequest::*;
+        use PeerConnectionRequest::{Disconnect, OpenSubstream};
         match request {
             OpenSubstream { protocol_id, reply_tx } => {
                 let tracing_id = tracing::Span::current().id();
@@ -421,7 +421,7 @@ impl PeerConnectionActor {
                     self.direction,
                     self.peer_node_id.short_str()
                 );
-                let _ = reply_tx.send(self.disconnect(silent).await);
+                let _result = reply_tx.send(self.disconnect(silent).await);
             },
         }
     }
@@ -472,7 +472,7 @@ impl PeerConnectionActor {
     }
 
     async fn notify_event(&mut self, event: ConnectionManagerEvent) {
-        let _ = self.event_notifier.send(event).await;
+        let _result = self.event_notifier.send(event).await;
     }
 
     /// Disconnect this peer connection.

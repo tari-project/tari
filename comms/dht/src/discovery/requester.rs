@@ -46,7 +46,7 @@ pub enum DhtDiscoveryRequest {
 
 impl Display for DhtDiscoveryRequest {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        use DhtDiscoveryRequest::*;
+        use DhtDiscoveryRequest::{DiscoverPeer, NotifyDiscoveryResponseReceived};
         match self {
             DiscoverPeer(public_key, dest, _) => write!(f, "DiscoverPeer({}, {})", public_key, dest),
             NotifyDiscoveryResponseReceived(discovery_resp) => {

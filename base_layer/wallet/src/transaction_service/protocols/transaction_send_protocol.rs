@@ -684,7 +684,7 @@ where
             .outbound_message_service
             .send_direct(
                 self.dest_pubkey.clone(),
-                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message.clone()),
+                OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message.clone()),
             )
             .await
         {
@@ -828,7 +828,7 @@ where
                 NodeId::from_public_key(&self.dest_pubkey),
                 OutboundEncryption::encrypt_for(self.dest_pubkey.clone()),
                 vec![],
-                OutboundDomainMessage::new(TariMessageType::SenderPartialTransaction, proto_message),
+                OutboundDomainMessage::new(&TariMessageType::SenderPartialTransaction, proto_message),
             )
             .await
         {

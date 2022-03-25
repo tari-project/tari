@@ -197,7 +197,7 @@ pub async fn initialize_local_test_comms(
         .with_listener_address(node_identity.public_address())
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
-        .with_user_agent("/test/1.0")
+        .with_user_agent(&"/test/1.0")
         .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1)

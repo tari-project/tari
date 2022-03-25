@@ -343,7 +343,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         }
         const MAX_ALLOWED_QUERY_SIZE: usize = 512;
         if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Exceeded maximum allowed query hashes. Max: {}",
                 MAX_ALLOWED_QUERY_SIZE
             )));
@@ -499,7 +499,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
     }
@@ -514,7 +514,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .fetch_header(height)
             .await
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
     }
@@ -547,7 +547,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height))
+                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height))
                 })?;
             let before_mid_header = self
                 .db()
@@ -555,7 +555,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::not_found(format!("Header not found during search at height {}", mid_height - 1))
+                    RpcStatus::not_found(&format!("Header not found during search at height {}", mid_height - 1))
                 })?;
 
             if requested_epoch_time < mid_header.timestamp.as_u64() &&

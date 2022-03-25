@@ -66,7 +66,7 @@ impl DhtRpcServiceImpl {
                     peer: Some(peer.into()),
                 })
                 .map(Ok);
-            let _ = utils::mpsc::send_all(&tx, iter).await;
+            let _result = utils::mpsc::send_all(&tx, iter).await;
         });
 
         Streaming::new(rx)
@@ -85,7 +85,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
         }
 
         if message.n as usize > MAX_NUM_PEERS {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Requested too many peers ({}). Cannot request more than `{}` peers",
                 message.n, MAX_NUM_PEERS
             )));
@@ -99,7 +99,7 @@ impl DhtRpcService for DhtRpcServiceImpl {
         };
 
         if message.excluded.len() > MAX_EXCLUDED_PEERS {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "Sending more than {} to the exclude list is not supported",
                 MAX_EXCLUDED_PEERS
             )));

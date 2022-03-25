@@ -84,13 +84,13 @@ where
         dbg!(&request);
         let request = request.into_message();
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
-            .map_err(|err| RpcStatus::bad_request(format!("Asset public key was not a valid public key:{}", err)))?;
+            .map_err(|err| RpcStatus::bad_request(&format!("Asset public key was not a valid public key:{}", err)))?;
 
         let state = self
             .db_factory
             .get_state_db(&asset_public_key)
-            .map_err(|e| RpcStatus::general(format!("Could not create state db: {}", e)))?
-            .ok_or_else(|| RpcStatus::not_found("This node does not process this asset".to_string()))?;
+            .map_err(|e| RpcStatus::general(&format!("Could not create state db: {}", e)))?
+            .ok_or_else(|| RpcStatus::not_found(&"This node does not process this asset".to_string()))?;
 
         let unit_of_work = state.reader();
 
@@ -105,7 +105,7 @@ where
         let response_bytes = self
             .asset_processor
             .invoke_read_method(&instruction, &unit_of_work)
-            .map_err(|e| RpcStatus::general(format!("Could not invoke read method: {}", e)))?;
+            .map_err(|e| RpcStatus::general(&format!("Could not invoke read method: {}", e)))?;
 
         Ok(Response::new(proto::InvokeReadMethodResponse {
             result: response_bytes.unwrap_or_default(),
@@ -177,7 +177,7 @@ where
         let start_block = db
             .find_sidechain_block_by_node_hash(&start_hash)
             .rpc_status_internal_error(LOG_TARGET)?
-            .ok_or_else(|| RpcStatus::not_found(format!("Block not found with start_hash '{}'", start_hash)))?;
+            .ok_or_else(|| RpcStatus::not_found(&format!("Block not found with start_hash '{}'", start_hash)))?;
 
         let end_block_exists = end_hash
             .as_ref()
@@ -186,7 +186,7 @@ where
             .rpc_status_internal_error(LOG_TARGET)?;
 
         if !end_block_exists.unwrap_or(true) {
-            return Err(RpcStatus::not_found(format!(
+            return Err(RpcStatus::not_found(&format!(
                 "Block not found with end_hash '{}'",
                 end_hash.unwrap_or_else(TreeNodeHash::zero)
             )));

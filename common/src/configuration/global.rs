@@ -23,7 +23,7 @@
 //! # Global configuration of tari base layer system
 
 use std::{
-    convert::TryInto,
+    convert::{TryFrom, TryInto},
     fmt,
     fmt::{Display, Formatter},
     net::SocketAddr,
@@ -64,6 +64,7 @@ const DB_RESIZE_THRESHOLD_MIN_MB: i64 = 10;
 //-------------------------------------        Main Configuration Struct      --------------------------------------//
 
 #[derive(Debug, Clone)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct GlobalConfig {
     pub autoupdate_check_interval: Option<Duration>,
     pub autoupdate_dns_hosts: Vec<String>,
@@ -180,13 +181,13 @@ impl GlobalConfig {
             },
         };
 
-        convert_node_config(application, cfg, network)
+        convert_node_config(application, &cfg, network)
     }
 }
 
 fn convert_node_config(
     application: ApplicationType,
-    cfg: Config,
+    cfg: &Config,
     network: Network,
 ) -> Result<GlobalConfig, ConfigurationError> {
     let net_str = network.as_str();
@@ -224,7 +225,7 @@ fn convert_node_config(
                 &format!("DB initial size must be at least {} MB.", DB_INIT_MIN_MB),
             ));
         },
-        Ok(mb) => mb as usize,
+        Ok(mb) => mb.try_into().unwrap(),
         Err(e) => match e {
             ConfigError::NotFound(_) => DB_INIT_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, None, &other.to_string())),
@@ -240,7 +241,7 @@ fn convert_node_config(
                 &format!("DB grow size must be at least {} MB.", DB_GROW_SIZE_MIN_MB),
             ));
         },
-        Ok(mb) => mb as usize,
+        Ok(mb) => mb.try_into().unwrap(),
         Err(e) => match e {
             ConfigError::NotFound(_) => DB_GROW_SIZE_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, None, &other.to_string())),
@@ -259,21 +260,21 @@ fn convert_node_config(
                 ),
             ));
         },
-        Ok(mb) if mb as usize >= grow_size_mb => {
+        Ok(mb) if usize::try_from(mb).unwrap() >= grow_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
                 Some(mb.to_string()),
                 "DB resize threshold must be less than grow size.",
             ));
         },
-        Ok(mb) if mb as usize >= init_size_mb => {
+        Ok(mb) if usize::try_from(mb).unwrap() >= init_size_mb => {
             return Err(ConfigurationError::new(
                 &key,
                 Some(mb.to_string()),
                 "DB resize threshold must be less than init size.",
             ));
         },
-        Ok(mb) => mb as usize,
+        Ok(mb) => mb.try_into().unwrap(),
         Err(e) => match e {
             ConfigError::NotFound(_) => DB_RESIZE_THRESHOLD_DEFAULT_MB, // default
             other => return Err(ConfigurationError::new(&key, None, &other.to_string())),
@@ -283,27 +284,29 @@ fn convert_node_config(
     let db_config = LMDBConfig::new_from_mb(init_size_mb, grow_size_mb, resize_threshold_mb);
 
     let key = config_string("base_node", net_str, "orphan_storage_capacity");
-    let orphan_storage_capacity = cfg.get_int(&key).unwrap_or(720) as usize;
+    let orphan_storage_capacity = cfg.get_int(&key).unwrap_or(720).try_into().unwrap();
 
     let key = config_string("base_node", net_str, "orphan_db_clean_out_threshold");
-    let orphan_db_clean_out_threshold = cfg.get_int(&key).unwrap_or(0) as usize;
+    let orphan_db_clean_out_threshold = cfg.get_int(&key).unwrap_or(0).try_into().unwrap();
 
     let key = config_string("base_node", net_str, "pruning_horizon");
-    let pruning_horizon = cfg.get_int(&key).unwrap_or(0) as u64;
+    let pruning_horizon = cfg.get_int(&key).unwrap_or(0).try_into().unwrap();
 
     let key = config_string("base_node", net_str, "pruned_mode_cleanup_interval");
-    let pruned_mode_cleanup_interval = cfg.get_int(&key).unwrap_or(50) as u64;
+    let pruned_mode_cleanup_interval = cfg.get_int(&key).unwrap_or(50).try_into().unwrap();
 
     // Thread counts
     let key = config_string("base_node", net_str, "core_threads");
-    let core_threads = optional(cfg.get_int(&key).map(|n| n as usize))
+    let core_threads = optional(cfg.get_int(&key).map(|n| n.try_into().unwrap()))
         .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?;
 
     // Max RandomX VMs
     let key = config_string("base_node", net_str, "max_randomx_vms");
-    let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n as usize))
+    let max_randomx_vms = optional(cfg.get_int(&key).map(|n| n.try_into().unwrap()))
         .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
-        .unwrap_or(2) as usize;
+        .unwrap_or(2)
+        .try_into()
+        .unwrap();
 
     // Base node identity path
     let key = config_string("base_node", net_str, "base_node_identity_file");
@@ -320,7 +323,7 @@ fn convert_node_config(
         .into();
 
     // Transport
-    let comms_transport = network_transport_config(&cfg, application, net_str)?;
+    let comms_transport = network_transport_config(cfg, application, net_str)?;
 
     let key = config_string("base_node", net_str, "auxiliary_tcp_listener_address");
     let auxiliary_tcp_listener_address = optional(cfg.get_str(&key))?
@@ -372,7 +375,7 @@ fn convert_node_config(
     if application == ApplicationType::ConsoleWallet || application == ApplicationType::MiningNode {
         let mut config = WalletConfig::default();
         let key = "wallet.fee_per_gram";
-        let fee_per_gram = cfg.get_int(key).unwrap_or(5) as u64;
+        let fee_per_gram = cfg.get_int(key).unwrap_or(5).try_into().unwrap();
         config.fee_per_gram = fee_per_gram;
 
         // GPRC enabled
@@ -447,7 +450,9 @@ fn convert_node_config(
     let key = config_string("base_node", net_str, "flood_ban_max_msg_count");
     let flood_ban_max_msg_count = optional(cfg.get_int(&key))
         .map_err(|e| ConfigurationError::new(&key, None, &e.to_string()))?
-        .unwrap_or(1000) as usize;
+        .unwrap_or(1000)
+        .try_into()
+        .unwrap();
 
     // block sync
     let key = config_string("base_node", net_str, "force_sync_peers");
@@ -462,7 +467,7 @@ fn convert_node_config(
     // Liveness auto ping interval
     let key = config_string("base_node", net_str, "metadata_auto_ping_interval");
     let metadata_auto_ping_interval = match cfg.get_int(&key) {
-        Ok(seconds) => seconds as u64,
+        Ok(seconds) => seconds.try_into().unwrap(),
         Err(ConfigError::NotFound(_)) => 30,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
@@ -470,7 +475,7 @@ fn convert_node_config(
     // Liveness auto ping interval
     let key = config_string("wallet", net_str, "contacts_auto_ping_interval");
     let contacts_auto_ping_interval = match cfg.get_int(&key) {
-        Ok(seconds) => seconds as u64,
+        Ok(seconds) => seconds.try_into().unwrap(),
         Err(ConfigError::NotFound(_)) => 20,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
@@ -478,14 +483,14 @@ fn convert_node_config(
     // Liveness last seen within multiple of ping interval to be considered 'online'
     let key = config_string("wallet", net_str, "contacts_online_ping_window");
     let contacts_online_ping_window = match cfg.get_int(&key) {
-        Ok(window) => window as usize,
+        Ok(window) => window.try_into().unwrap(),
         Err(ConfigError::NotFound(_)) => 2,
         Err(e) => return Err(ConfigurationError::new(&key, None, &e.to_string())),
     };
 
     // blocks_behind_before_considered_lagging when a node should switch over from listening to lagging
     let key = config_string("base_node", net_str, "blocks_behind_before_considered_lagging");
-    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(2) as u64;
+    let blocks_behind_before_considered_lagging = optional(cfg.get_int(&key))?.unwrap_or(2).try_into().unwrap();
 
     // set wallet_db_file
     let key = "wallet.wallet_db_file".to_string();
@@ -504,53 +509,63 @@ fn convert_node_config(
     let key = "wallet.base_node_query_timeout";
     let base_node_query_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "wallet.saf_expiry_duration";
-    let saf_expiry_duration = Duration::from_secs(optional(cfg.get_int(key))?.unwrap_or(10800) as u64);
+    let saf_expiry_duration = Duration::from_secs(optional(cfg.get_int(key))?.unwrap_or(10800).try_into().unwrap());
 
     let key = "wallet.transaction_broadcast_monitoring_timeout";
     let transaction_broadcast_monitoring_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "wallet.transaction_chain_monitoring_timeout";
     let transaction_chain_monitoring_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "wallet.transaction_direct_send_timeout";
     let transaction_direct_send_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "wallet.transaction_broadcast_send_timeout";
     let transaction_broadcast_send_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "wallet.transaction_num_confirmations_required";
-    let transaction_num_confirmations_required = optional(cfg.get_int(key))?.unwrap_or(3) as u64;
+    let transaction_num_confirmations_required = optional(cfg.get_int(key))?.unwrap_or(3).try_into().unwrap();
 
     let key = "wallet.transaction_event_channel_size";
-    let transaction_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(1000) as usize;
+    let transaction_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(1000).try_into().unwrap();
 
     let key = "wallet.base_node_event_channel_size";
-    let base_node_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
+    let base_node_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250).try_into().unwrap();
 
     let key = "wallet.connection_manager_pool_size";
-    let wallet_connection_manager_pool_size = optional(cfg.get_int(key))?.unwrap_or(16) as usize;
+    let wallet_connection_manager_pool_size = optional(cfg.get_int(key))?.unwrap_or(16).try_into().unwrap();
 
     let key = "wallet.wallet_recovery_retry_limit";
-    let wallet_recovery_retry_limit = optional(cfg.get_int(key))?.unwrap_or(3) as usize;
+    let wallet_recovery_retry_limit = optional(cfg.get_int(key))?.unwrap_or(3).try_into().unwrap();
 
     let key = "wallet.output_manager_event_channel_size";
-    let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250) as usize;
+    let output_manager_event_channel_size = optional(cfg.get_int(key))?.unwrap_or(250).try_into().unwrap();
 
     let key = "wallet.prevent_fee_gt_amount";
     let prevent_fee_gt_amount = cfg
@@ -565,7 +580,9 @@ fn convert_node_config(
     let wallet_command_send_wait_stage = optional(cfg.get_str(key))?.unwrap_or_else(|| "Broadcast".to_string());
 
     let key = "wallet.command_send_wait_timeout";
-    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?.map(|i| i as u64).unwrap_or(600);
+    let wallet_command_send_wait_timeout = optional(cfg.get_int(key))?
+        .map(|i| i.try_into().unwrap())
+        .unwrap_or(600);
 
     let key = "wallet.base_node_service_peers";
     // Wallet base node service peers can be an array or a comma separated list (e.g. in an ENVVAR)
@@ -593,13 +610,13 @@ fn convert_node_config(
     let key = "wallet.base_node_service_refresh_interval";
     let wallet_base_node_service_refresh_interval = cfg
         .get_int(key)
-        .map(|seconds| seconds as u64)
+        .map(|seconds| seconds.try_into().unwrap())
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "wallet.base_node_service_request_max_age";
     let wallet_base_node_service_request_max_age = cfg
         .get_int(key)
-        .map(|seconds| seconds as u64)
+        .map(|seconds| seconds.try_into().unwrap())
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     // The cooldown period between balance enquiry checks in seconds; requests faster than this will be ignored.
@@ -608,7 +625,7 @@ fn convert_node_config(
     let key = "wallet.balance_enquiry_cooldown_period";
     let wallet_balance_enquiry_cooldown_period = cfg
         .get_int(key)
-        .map(|seconds| seconds as u64)
+        .map(|seconds| seconds.try_into().unwrap())
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?;
 
     let key = "common.liveness_max_sessions";
@@ -630,7 +647,7 @@ fn convert_node_config(
         .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))
         .and_then(|v| match v {
             -1 => Ok(None),
-            n if n.is_positive() => Ok(Some(n as usize)),
+            n if n.is_positive() => Ok(Some(n.try_into().unwrap())),
             v => Err(ConfigurationError::new(
                 key,
                 Some(v.to_string()),
@@ -641,27 +658,37 @@ fn convert_node_config(
     let key = "common.buffer_size_base_node";
     let buffer_size_base_node = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+        .try_into()
+        .unwrap();
 
     let key = "common.buffer_size_console_wallet";
     let buffer_size_console_wallet = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+        .try_into()
+        .unwrap();
 
     let key = "common.buffer_rate_limit_base_node";
-    let buffer_rate_limit_base_node =
-        cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
+    let buffer_rate_limit_base_node = cfg
+        .get_int(key)
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+        .try_into()
+        .unwrap();
 
     let key = "common.buffer_rate_limit_console_wallet";
-    let buffer_rate_limit_console_wallet =
-        cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
+    let buffer_rate_limit_console_wallet = cfg
+        .get_int(key)
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+        .try_into()
+        .unwrap();
 
     let key = "common.dedup_cache_capacity";
     let dht_dedup_cache_capacity = cfg
         .get_int(key)
-        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as usize;
+        .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+        .try_into()
+        .unwrap();
 
     let key = "common.dht_minimum_desired_tcpv4_node_ratio";
     let dht_minimum_desired_tcpv4_node_ratio =
@@ -671,19 +698,25 @@ fn convert_node_config(
     let key = "common.fetch_blocks_timeout";
     let fetch_blocks_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "common.fetch_utxos_timeout";
     let fetch_utxos_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let key = "common.service_request_timeout";
     let service_request_timeout = Duration::from_secs(
         cfg.get_int(key)
-            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))? as u64,
+            .map_err(|e| ConfigurationError::new(key, None, &e.to_string()))?
+            .try_into()
+            .unwrap(),
     );
 
     let merge_mining_config = match application {
@@ -777,19 +810,19 @@ fn convert_node_config(
         })?;
 
     let key = "mining_node.num_mining_threads";
-    let num_mining_threads = optional(cfg.get_int(key))?.unwrap_or(1) as usize;
+    let num_mining_threads = optional(cfg.get_int(key))?.unwrap_or(1).try_into().unwrap();
 
     let key = "mining_node.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
 
     let key = "mining_node.validate_tip_timeout_sec";
-    let validate_tip_timeout_sec = optional(cfg.get_int(key))?.unwrap_or(0) as u64;
+    let validate_tip_timeout_sec = optional(cfg.get_int(key))?.unwrap_or(0).try_into().unwrap();
 
     // Auto update
     let key = config_string("common", net_str, "auto_update.check_interval");
     let autoupdate_check_interval = optional(cfg.get_int(&key))?.and_then(|secs| {
         if secs > 0 {
-            Some(Duration::from_secs(secs as u64))
+            Some(Duration::from_secs(secs.try_into().unwrap()))
         } else {
             None
         }
@@ -808,9 +841,9 @@ fn convert_node_config(
     let key = config_string("common", net_str, "auto_update.hashes_sig_url");
     let autoupdate_hashes_sig_url = optional(cfg.get_str(&key))?.unwrap_or_default();
 
-    let key = "base_node. status_line_interval_secs";
+    let key = "base_node.status_line_interval_secs";
     let base_node_status_line_interval = optional(cfg.get_int(key))?
-        .map(|s| Duration::from_secs(s as u64))
+        .map(|secs| Duration::from_secs(secs.try_into().unwrap()))
         .unwrap_or_else(|| Duration::from_secs(30));
 
     let key = "mining_node.mining_pool_address";
@@ -825,8 +858,8 @@ fn convert_node_config(
         .filter(|c| c.is_alphanumeric())
         .collect::<String>();
 
-    let metrics = MetricsConfig::from_config(&cfg)?;
-    let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(&cfg, net_str);
+    let metrics = MetricsConfig::from_config(cfg)?;
+    let (base_node_use_libtor, console_wallet_use_libtor) = libtor_enabled(cfg, net_str);
 
     Ok(GlobalConfig {
         autoupdate_check_interval,
@@ -849,7 +882,7 @@ fn convert_node_config(
         buffer_rate_limit_console_wallet,
         buffer_size_base_node,
         buffer_size_console_wallet,
-        collectibles_config: CollectiblesConfig::convert_if_present(&cfg)?,
+        collectibles_config: CollectiblesConfig::convert_if_present(cfg)?,
         comms_allow_test_addresses,
         comms_listener_liveness_allowlist_cidrs,
         comms_listener_liveness_max_sessions,
@@ -905,7 +938,7 @@ fn convert_node_config(
         transaction_routing_mechanism,
         transcoder_host_address,
         validate_tip_timeout_sec,
-        validator_node: ValidatorNodeConfig::convert_if_present(&cfg)?,
+        validator_node: ValidatorNodeConfig::convert_if_present(cfg)?,
         wallet_balance_enquiry_cooldown_period,
         wallet_base_node_service_peers,
         wallet_base_node_service_refresh_interval,
@@ -1153,7 +1186,7 @@ impl FromStr for TorControlAuthentication {
 
 impl fmt::Debug for TorControlAuthentication {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use TorControlAuthentication::*;
+        use TorControlAuthentication::{None, Password};
         match self {
             None => write!(f, "None"),
             Password(_) => write!(f, "Password(...)"),

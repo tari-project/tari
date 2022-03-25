@@ -193,6 +193,6 @@ mod test {
     #[test]
     fn capacity_overflow_does_not_panic() {
         let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
-        let _ = consensus::deserialize::<FixedByteArray>(data);
+        let _result = consensus::deserialize::<FixedByteArray>(data);
     }
 }

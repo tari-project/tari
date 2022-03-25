@@ -171,7 +171,7 @@ impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionInitializer` builder function
     pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionInitializer {
-        SenderTransactionInitializer::new(num_recipients, consensus_constants)
+        SenderTransactionInitializer::new(num_recipients, &consensus_constants)
     }
 
     /// Convenience method to check whether we're receiving recipient data
@@ -638,7 +638,7 @@ impl SenderTransactionProtocol {
 
     /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
     /// Transaction from it.
-    pub fn load_pending_transaction_to_be_sent(data: String) -> Result<Self, TPE> {
+    pub fn load_pending_transaction_to_be_sent(data: &str) -> Result<Self, TPE> {
         let raw_data: RawTransactionInfo = serde_json::from_str(&data).map_err(|_| TPE::SerializationError)?;
         Ok(Self {
             state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
@@ -720,6 +720,7 @@ impl SenderState {
 
 impl fmt::Display for SenderState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use SenderState::*;
         match self {
             Initializing(info) => write!(
@@ -878,12 +879,12 @@ mod test {
             .with_change_secret(p1.change_spend_key.clone())
             .with_input(utxo, input)
             .with_output(
-                create_unblinded_output(script.clone(), output_features.clone(), p1.clone(), MicroTari(500)),
+                create_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500)),
                 p1.sender_offset_private_key.clone(),
             )
             .unwrap()
             .with_output(
-                create_unblinded_output(script, output_features, p2.clone(), MicroTari(400)),
+                create_unblinded_output(script, output_features, &p2, MicroTari(400)),
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
@@ -928,7 +929,7 @@ mod test {
 
         // Test serializing the current state to be sent and resuming from that serialized data
         let ser = alice.save_pending_transaction_to_be_sent().unwrap();
-        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
+        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
         let mut bob_info =
@@ -1003,7 +1004,7 @@ mod test {
 
         // Test serializing the current state to be sent and resuming from that serialized data
         let ser = alice.save_pending_transaction_to_be_sent().unwrap();
-        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
+        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();

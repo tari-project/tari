@@ -406,7 +406,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     let send_message_response = outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
+            OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
         )
         .await?;
 
@@ -507,7 +507,7 @@ async fn handle_outbound_request(
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
-            OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request.clone()),
+            OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
         )
         .await?;
 
@@ -580,7 +580,7 @@ async fn handle_outbound_block(
             OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
-                TariMessageType::NewBlock,
+                &TariMessageType::NewBlock,
                 shared_protos::core::NewBlock::from(new_block),
             ),
         )

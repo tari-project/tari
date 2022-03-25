@@ -681,7 +681,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .next()
             .unwrap();
         let message = format!("Asset registration for {}", asset_public_key);
-        let _result = transaction_service
+        let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -731,7 +731,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         let message = format!("Initial asset checkpoint for {}", asset_public_key);
-        let _result = transaction_service
+        let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -759,7 +759,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         let message = format!("Asset state checkpoint for {}", asset_public_key);
-        let _result = transaction_service
+        let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -807,7 +807,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             &asset_public_key.to_hex()[..7],
             effective_sidechain_height
         );
-        let _result = transaction_service
+        let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
@@ -853,7 +853,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             owner_commitments.len(),
             asset_public_key
         );
-        let _result = transaction_service
+        let _ = transaction_service
             .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
