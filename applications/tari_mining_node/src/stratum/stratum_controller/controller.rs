@@ -182,11 +182,10 @@ impl Controller {
             }
             if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
-                let _ = self
-                    .client_tx
+                self.client_tx
                     .as_mut()
                     .ok_or(Error::ClientTxNotSet)?
-                    .send(types::client_message::ClientMessage::KeepAlive);
+                    .send(types::client_message::ClientMessage::KeepAlive)?;
             }
         }
     }

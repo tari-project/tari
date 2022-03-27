@@ -38,6 +38,15 @@ pub enum Error {
     TimeError(#[from] std::time::SystemTimeError),
     #[error("Client Tx is not set")]
     ClientTxNotSet,
+
+    // TODO: Group to the separate error
+    #[error("Io error: {0}")]
+    IoError(#[from] std::io::Error),
+    #[error("Can't create TLS connector: {0}")]
+    TlsError(#[from] native_tls::Error),
+    #[error("Can't establish TLS connection: {0}")]
+    TcpError(#[from] native_tls::HandshakeError<std::net::TcpStream>),
+
     #[error("General error: {0}")]
     General(String),
     #[error("Missing Data error: {0}")]

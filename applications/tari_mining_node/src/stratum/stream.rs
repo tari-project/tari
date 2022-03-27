@@ -45,31 +45,24 @@ impl Stream {
     }
 
     pub fn try_connect(&mut self, server_url: &str, tls: Option<bool>) -> Result<(), Error> {
-        match TcpStream::connect(server_url) {
-            Ok(conn) => {
-                if tls.is_some() && tls.unwrap() {
-                    let connector = TlsConnector::new()
-                        .map_err(|e| Error::Connection(format!("Can't create TLS connector: {:?}", e)))?;
-                    let url_port: Vec<&str> = server_url.split(':').collect();
-                    let split_url: Vec<&str> = url_port[0].split('.').collect();
-                    let base_host = format!("{}.{}", split_url[split_url.len() - 2], split_url[split_url.len() - 1]);
-                    let mut stream = connector
-                        .connect(&base_host, conn)
-                        .map_err(|e| Error::Connection(format!("Can't establish TLS connection: {:?}", e)))?;
-                    stream
-                        .get_mut()
-                        .set_nonblocking(true)
-                        .map_err(|e| Error::Connection(format!("Can't switch to nonblocking mode: {:?}", e)))?;
-                    self.tls_stream = Some(BufStream::new(stream));
-                } else {
-                    conn.set_nonblocking(true)
-                        .map_err(|e| Error::Connection(format!("Can't switch to nonblocking mode: {:?}", e)))?;
-                    self.stream = Some(BufStream::new(conn));
-                }
-                Ok(())
-            },
-            Err(e) => Err(Error::Connection(format!("{}", e))),
+        let conn = TcpStream::connect(server_url)?;
+        if let Some(true) = tls {
+            let connector = TlsConnector::new()?;
+            //.map_err(|e| Error::Connection(format!(" {:?}", e)))?;
+            let url_port: Vec<&str> = server_url.split(':').collect();
+            let split_url: Vec<&str> = url_port[0].split('.').collect();
+            let base_host = format!("{}.{}", split_url[split_url.len() - 2], split_url[split_url.len() - 1]);
+            let mut stream = connector.connect(&base_host, conn)?;
+            //.map_err(|e| Error::Connection(format!("Can't establish TLS connection: {:?}", e)))?;
+            stream.get_mut().set_nonblocking(true)?;
+            //.map_err(|e| Error::Connection(format!("Can't switch to nonblocking mode: {:?}", e)))?;
+            self.tls_stream = Some(BufStream::new(stream));
+        } else {
+            conn.set_nonblocking(true)?;
+            //.map_err(|e| Error::Connection(format!("Can't switch to nonblocking mode: {:?}", e)))?;
+            self.stream = Some(BufStream::new(conn));
         }
+        Ok(())
     }
 }
 
