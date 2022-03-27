@@ -20,20 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-#[derive(Debug)]
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("Connection error: {0}")]
     Connection(String),
+    #[error("Request error: {0}")]
     Request(String),
     // ResponseError(String),
-    Json(String),
+    #[error("Failed to parse JSON: {0}")]
+    Json(#[from] serde_json::error::Error),
+    #[error("Blob is not a valid hex value: {0}")]
+    Hex(#[from] hex::FromHexError),
+    #[error("General error: {0}")]
     General(String),
+    #[error("Missing Data error: {0}")]
     MissingData(String),
-}
-
-impl From<serde_json::error::Error> for Error {
-    fn from(error: serde_json::error::Error) -> Self {
-        Error::Json(format!("Failed to parse JSON: {:?}", error))
-    }
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {

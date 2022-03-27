@@ -204,8 +204,7 @@ impl Controller {
             self.current_job_id = job_id;
             self.current_blob = blob.clone();
             self.current_difficulty_target = diff;
-            let header_hex = hex::decode(blob)
-                .map_err(|_| stratum::error::Error::Json("Blob is not a valid hex value".to_string()))?;
+            let header_hex = hex::decode(blob)?;
             let tari_header: tari_core::blocks::BlockHeader =
                 serde_json::from_str(&String::from_utf8_lossy(&header_hex).to_string())?;
             self.current_header = Some(tari_app_grpc::tari_rpc::BlockHeader::from(tari_header));
