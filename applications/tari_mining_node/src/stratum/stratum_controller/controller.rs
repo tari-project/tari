@@ -177,12 +177,12 @@ impl Controller {
                     }
                 }
             }
-            if self.keep_alive_time.elapsed().unwrap().as_secs() >= 30 {
+            if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
                 let _ = self
                     .client_tx
                     .as_mut()
-                    .unwrap()
+                    .ok_or(stratum::error::Error::ClientTxNotSet)?
                     .send(types::client_message::ClientMessage::KeepAlive);
             }
         }

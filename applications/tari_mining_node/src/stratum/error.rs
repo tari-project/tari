@@ -34,6 +34,10 @@ pub enum Error {
     Json(#[from] serde_json::error::Error),
     #[error("Blob is not a valid hex value: {0}")]
     Hex(#[from] hex::FromHexError),
+    #[error("System time error: {0}")]
+    TimeError(#[from] std::time::SystemTimeError),
+    #[error("Client Tx is not set")]
+    ClientTxNotSet,
     #[error("General error: {0}")]
     General(String),
     #[error("Missing Data error: {0}")]
