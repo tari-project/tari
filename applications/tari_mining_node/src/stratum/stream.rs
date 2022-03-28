@@ -68,18 +68,22 @@ impl Stream {
 
 impl Write for Stream {
     fn write(&mut self, b: &[u8]) -> Result<usize, std::io::Error> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().write(b)
+        if let Some(tls_stream) = self.tls_stream.as_mut() {
+            tls_stream.write(b)
+        } else if let Some(stream) = self.stream.as_mut() {
+            stream.write(b)
         } else {
-            self.stream.as_mut().unwrap().write(b)
+            Err(std::io::Error::new(std::io::ErrorKind::Other, "no stream field"))
         }
     }
 
     fn flush(&mut self) -> Result<(), std::io::Error> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().flush()
+        if let Some(tls_stream) = self.tls_stream.as_mut() {
+            tls_stream.flush()
+        } else if let Some(stream) = self.stream.as_mut() {
+            stream.flush()
         } else {
-            self.stream.as_mut().unwrap().flush()
+            Err(std::io::Error::new(std::io::ErrorKind::Other, "no stream field"))
         }
     }
 }
