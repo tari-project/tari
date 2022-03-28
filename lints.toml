@@ -32,7 +32,7 @@ deny = [
     'clippy::let_underscore_drop',
     'clippy::let_unit_value',
     'clippy::match_on_vec_items',
-    # 'clippy::match_wild_err_arm',
+    'clippy::match_wild_err_arm',
     # 'clippy::similar_names',
     'clippy::needless_borrow',
 

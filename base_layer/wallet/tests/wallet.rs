@@ -332,6 +332,7 @@ async fn test_wallet() {
         .unwrap();
 
     // Second encryption should fail
+    #[allow(clippy::match_wild_err_arm)]
     match alice_wallet
         .apply_encryption("It's turtles all the way down".to_string())
         .await

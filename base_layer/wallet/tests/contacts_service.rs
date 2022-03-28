@@ -182,6 +182,7 @@ pub fn test_contacts_service() {
 
     assert_eq!(new_contact.alias, updated_contact.alias);
 
+    #[allow(clippy::match_wild_err_arm)]
     match liveness_event_stream.try_recv() {
         Ok(_) => panic!("Should not receive any event here"),
         Err(TryRecvError::Empty) => {},
