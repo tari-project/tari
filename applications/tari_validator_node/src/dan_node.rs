@@ -93,7 +93,10 @@ impl DanNode {
         let mut tasks = HashMap::new();
         let mut next_scanned_height = 0u64;
         loop {
-            let tip = base_node_client.get_tip_info().await.unwrap();
+            let tip = base_node_client
+                .get_tip_info()
+                .await
+                .map_err(|err| ExitError::new(ExitCode::GrpcError, err))?;
             if tip.height_of_longest_chain >= next_scanned_height {
                 info!(
                     target: LOG_TARGET,
@@ -109,7 +112,7 @@ impl DanNode {
                 let assets = base_node_client
                     .get_assets_for_dan_node(node_identity.public_key().clone())
                     .await
-                    .unwrap();
+                    .map_err(|err| ExitError::new(ExitCode::GrpcError, err))?;
                 info!(
                     target: LOG_TARGET,
                     "Base node returned {} asset(s) to process",
