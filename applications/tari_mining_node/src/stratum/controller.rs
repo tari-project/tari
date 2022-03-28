@@ -77,8 +77,7 @@ impl Controller {
     }
 
     pub fn try_connect(&mut self) -> Result<(), Error> {
-        // TODO: Check should we `take` it here?
-        self.stream.take();
+        self.stream = None;
         let stream = Stream::try_connect(&self.server_url, self.server_tls_enabled)?;
         self.stream = Some(stream);
         Ok(())
