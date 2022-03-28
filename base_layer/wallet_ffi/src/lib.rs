@@ -121,10 +121,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{tari_amount::MicroTari, transaction_components::OutputFeatures, CryptoFactories},
-};
+use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::ByteArray,
@@ -141,7 +138,7 @@ use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
     connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
-    error::{WalletError, WalletError::OutputManagerError, WalletStorageError},
+    error::{WalletError, WalletStorageError},
     storage::{
         database::WalletDatabase,
         sqlite_db::wallet::WalletSqliteDatabase,
@@ -5212,16 +5209,16 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
         return 0;
     }
 
-    let mut updated_features = if features.is_null() {
-        OutputFeatures::default()
-    } else {
-        (*features).clone()
-    };
+    if features.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("features".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
+    }
 
-    let covenant = if covenant.is_null() {
-        Covenant::default()
-    } else {
-        (*covenant).clone()
+    if covenant.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("covenant".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
     };
 
     let message_string;
@@ -5252,26 +5249,6 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
 
-    // On the blockchain, 'V0' of the output features encode and decode without the recovery byte, whereas 'V1' onwards
-    // adds it in, however, for the wallet, the recovery byte must be consistent with the value commitment to be
-    // accepted in the wallet irrespective if it is 'V0' or 'V1'
-    let recovery_byte =
-        match (*wallet)
-            .runtime
-            .block_on((*wallet).wallet.output_manager_service.calculate_recovery_byte(
-                (*spending_key).clone(),
-                amount,
-                false,
-            )) {
-            Ok(val) => val,
-            Err(e) => {
-                error = LibWalletError::from(OutputManagerError(e)).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return 0;
-            },
-        };
-    updated_features.set_recovery_byte(recovery_byte);
-
     // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
     match (*wallet)
         .runtime
@@ -5281,13 +5258,13 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
             script!(Nop),
             inputs!(public_script_key),
             &(*source_public_key).clone(),
-            updated_features,
+            (*features).clone(),
             message_string,
             (*metadata_signature).clone(),
             &(*script_private_key).clone(),
             &(*sender_offset_public_key).clone(),
             0,
-            covenant,
+            (*covenant).clone(),
         )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
@@ -7569,7 +7546,7 @@ mod test {
             );
 
             // Create an unblinded output with a non-default recovery byte
-            let default_features = OutputFeatures::default();
+            let default_features = TariOutputFeatures::default();
             let utxo_1;
             loop {
                 let test_params = TestParams::new();
