@@ -1907,7 +1907,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 }
 
 /// Reorganize the main chain with the provided fork chain, starting at the specified height.
-/// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height desc).
+/// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height highest to lowest).
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
     block_validator: &dyn PostOrphanBodyValidation<T>,

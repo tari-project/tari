@@ -24,6 +24,14 @@ use once_cell::sync::Lazy;
 use tari_metrics::{IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 use tari_utilities::hex::to_hex;
 
+pub fn tip_height() -> IntGauge {
+    static METER: Lazy<IntGauge> = Lazy::new(|| {
+        tari_metrics::register_int_gauge("base_node::blockchain::tip_height", "The current tip height").unwrap()
+    });
+
+    METER.clone()
+}
+
 pub fn target_difficulty_sha(height: u64) -> IntGauge {
     static METER: Lazy<IntGaugeVec> = Lazy::new(|| {
         tari_metrics::register_int_gauge_vec(
