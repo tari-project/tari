@@ -72,6 +72,7 @@ impl CovenantFilter {
 
     fn as_byte_code(&self) -> u8 {
         use byte_codes::*;
+        #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
 
         match self {
@@ -148,6 +149,7 @@ impl CovenantFilter {
 
 impl Filter for CovenantFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
+        #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
         match self {
             Identity(identity) => identity.filter(context, output_set),

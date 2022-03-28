@@ -80,6 +80,7 @@ pub struct GetNewBlockTemplateRequest {
 
 impl Display for NodeCommsRequest {
     fn fmt(&self, f: &mut Formatter) -> Result<(), Error> {
+        #[allow(clippy::enum_glob_use)]
         use NodeCommsRequest::*;
         match self {
             GetChainMetadata => write!(f, "GetChainMetadata"),

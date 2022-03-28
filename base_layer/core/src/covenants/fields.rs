@@ -60,6 +60,7 @@ pub enum OutputField {
 impl OutputField {
     pub fn from_byte(byte: u8) -> Result<Self, CovenantDecodeError> {
         use byte_codes::*;
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match byte {
             FIELD_COMMITMENT => Ok(Commitment),
@@ -82,6 +83,7 @@ impl OutputField {
     }
 
     pub fn get_field_value_ref<'a, T: 'static>(&self, output: &'a TransactionOutput) -> Option<&'a T> {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         let val = match self {
             Commitment => &output.commitment as &dyn Any,
@@ -99,6 +101,7 @@ impl OutputField {
     }
 
     pub fn get_field_value_bytes(&self, output: &TransactionOutput) -> Vec<u8> {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             Commitment => output.commitment.to_consensus_bytes(),
@@ -115,6 +118,7 @@ impl OutputField {
     }
 
     pub fn is_eq_input(&self, input: &TransactionInput, output: &TransactionOutput) -> bool {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             Commitment => input
@@ -158,7 +162,7 @@ impl OutputField {
     }
 
     pub fn is_eq<T: PartialEq + 'static>(&self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
-        use OutputField::*;
+        use OutputField::{Features, FeaturesParentPublicKey, FeaturesUniqueId};
         match self {
             // Handle edge cases
             FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
@@ -233,6 +237,7 @@ impl OutputField {
 
 impl Display for OutputField {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             Commitment => write!(f, "field::commitment"),

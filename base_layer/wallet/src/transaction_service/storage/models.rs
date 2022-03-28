@@ -374,6 +374,7 @@ impl TryFrom<u32> for TxCancellationReason {
 
 impl Display for TxCancellationReason {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        #[allow(clippy::enum_glob_use)]
         use TxCancellationReason::*;
         let response = match self {
             Unknown => "Unknown",

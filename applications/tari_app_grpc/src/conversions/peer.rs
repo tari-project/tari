@@ -94,7 +94,7 @@ impl From<MutliaddrWithStats> for grpc::Address {
 
 impl From<ConnectivityStatus> for grpc::ConnectivityStatus {
     fn from(status: ConnectivityStatus) -> Self {
-        use ConnectivityStatus::*;
+        use ConnectivityStatus::{Degraded, Initializing, Offline, Online};
         match status {
             Initializing => grpc::ConnectivityStatus::Initializing,
             Online(_) => grpc::ConnectivityStatus::Online,

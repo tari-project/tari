@@ -133,7 +133,7 @@ impl WalletConnectivityService {
     }
 
     async fn handle_request(&mut self, request: WalletConnectivityRequest) {
-        use WalletConnectivityRequest::*;
+        use WalletConnectivityRequest::{ObtainBaseNodeSyncRpcClient, ObtainBaseNodeWalletRpcClient};
         match request {
             ObtainBaseNodeWalletRpcClient(reply) => {
                 self.handle_pool_request(reply.into()).await;
@@ -145,7 +145,7 @@ impl WalletConnectivityService {
     }
 
     async fn handle_pool_request(&mut self, reply: ReplyOneshot) {
-        use ReplyOneshot::*;
+        use ReplyOneshot::{SyncRpc, WalletRpc};
         match reply {
             WalletRpc(tx) => self.handle_get_base_node_wallet_rpc_client(tx).await,
             SyncRpc(tx) => self.handle_get_base_node_sync_rpc_client(tx).await,
@@ -347,7 +347,7 @@ enum ReplyOneshot {
 
 impl ReplyOneshot {
     pub fn is_canceled(&self) -> bool {
-        use ReplyOneshot::*;
+        use ReplyOneshot::{SyncRpc, WalletRpc};
         match self {
             WalletRpc(tx) => tx.is_closed(),
             SyncRpc(tx) => tx.is_closed(),

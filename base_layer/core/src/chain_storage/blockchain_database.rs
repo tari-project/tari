@@ -2349,7 +2349,7 @@ impl<T> Clone for BlockchainDatabase<T> {
 fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Option<u64>) {
     let start = bounds.start_bound();
     let end = bounds.end_bound();
-    use Bound::*;
+    use Bound::{Excluded, Included, Unbounded};
     let start = match start {
         Included(n) => Some(*n),
         Excluded(n) => Some(n.saturating_add(1)),

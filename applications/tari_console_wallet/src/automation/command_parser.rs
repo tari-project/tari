@@ -44,6 +44,7 @@ pub struct ParsedCommand {
 
 impl Display for ParsedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use WalletCommand::*;
         let command = match self.command {
             GetBalance => "get-balance",
@@ -97,6 +98,7 @@ pub enum ParsedArgument {
 
 impl Display for ParsedArgument {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use ParsedArgument::*;
         match self {
             Amount(v) => write!(f, "{}", v),
@@ -121,6 +123,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
     let command =
         WalletCommand::from_str(command_str).map_err(|_| ParseError::WalletCommand(command_str.to_string()))?;
 
+    #[allow(clippy::enum_glob_use)]
     use WalletCommand::*;
     let args = match command {
         GetBalance => Vec::new(),

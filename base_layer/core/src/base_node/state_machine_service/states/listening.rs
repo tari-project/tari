@@ -329,7 +329,7 @@ fn determine_sync_mode(
     network: &ChainMetadata,
     sync_peers: Vec<&PeerChainMetadata>,
 ) -> SyncStatus {
-    use SyncStatus::*;
+    use SyncStatus::{Lagging, UpToDate};
     let network_tip_accum_difficulty = network.accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {

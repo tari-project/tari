@@ -260,6 +260,7 @@ impl LMDBDatabase {
     }
 
     fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
+        #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
         let write_txn = self.write_transaction()?;
         for op in txn.operations() {

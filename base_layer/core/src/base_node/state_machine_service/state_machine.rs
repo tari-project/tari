@@ -133,7 +133,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(&self, state: BaseNodeState, event: StateEvent) -> BaseNodeState {
         let db = self.db.inner();
-        use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
+        #[allow(clippy::enum_glob_use)]
+        use self::{BaseNodeState::*, StateEvent::*, SyncStatus::Lagging};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
             (
@@ -229,7 +230,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     /// Start the base node runtime.
     pub async fn run(mut self) {
-        use BaseNodeState::*;
+        use BaseNodeState::{Shutdown, Starting};
         let mut state = Starting(states::Starting);
         loop {
             if let Shutdown(reason) = &state {
@@ -262,6 +263,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     /// Processes and returns the next `StateEvent`
     async fn next_state_event(&mut self, state: &mut BaseNodeState) -> StateEvent {
+        #[allow(clippy::enum_glob_use)]
         use states::BaseNodeState::*;
         let shared_state = self;
         match state {

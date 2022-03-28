@@ -980,7 +980,7 @@ fn convert_wallet_transaction_into_transaction_info(
     tx: models::WalletTransaction,
     wallet_pk: &CommsPublicKey,
 ) -> TransactionInfo {
-    use models::WalletTransaction::*;
+    use models::WalletTransaction::{Completed, PendingInbound, PendingOutbound};
     match tx {
         PendingInbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),

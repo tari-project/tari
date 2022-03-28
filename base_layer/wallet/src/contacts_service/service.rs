@@ -396,7 +396,7 @@ where T: ContactsBackend + 'static
     }
 
     fn handle_connectivity_event(&mut self, event: ConnectivityEvent) {
-        use ConnectivityEvent::*;
+        use ConnectivityEvent::{PeerBanned, PeerDisconnected};
         match event {
             PeerDisconnected(node_id) | PeerBanned(node_id) => {
                 if let Some(pos) = self.liveness_data.iter().position(|p| *p.node_id() == node_id) {

@@ -362,7 +362,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         &mut self,
         event: ConsensusWorkerStateEvent,
     ) -> Result<(ConsensusWorkerState, ConsensusWorkerState), DigitalAssetError> {
-        use ConsensusWorkerState::*;
+        use ConsensusWorkerState::{Commit, Decide, Idle, NextView, PreCommit, Prepare, Starting, Synchronizing};
+        #[allow(clippy::enum_glob_use)]
         use ConsensusWorkerStateEvent::*;
         let from = self.state;
         self.state = match (&self.state, event) {
@@ -402,7 +403,10 @@ mod test {
 
     use super::*;
     use crate::{
-        models::{Committee, ConsensusWorkerState::*},
+        models::{
+            Committee,
+            ConsensusWorkerState::{Commit, Decide, NextView, PreCommit, Prepare},
+        },
         services::{
             infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
             mocks::{mock_events_publisher, MockCommitteeManager, MockEventsPublisher},

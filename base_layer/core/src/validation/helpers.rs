@@ -151,7 +151,7 @@ pub fn check_pow_data<B: BlockchainBackend>(
     rules: &ConsensusManager,
     db: &B,
 ) -> Result<(), ValidationError> {
-    use PowAlgorithm::*;
+    use PowAlgorithm::{Monero, Sha3};
     match block_header.pow.pow_algo {
         Monero => {
             let monero_data =

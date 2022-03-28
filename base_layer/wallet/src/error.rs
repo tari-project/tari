@@ -177,7 +177,7 @@ pub enum WalletStorageError {
 
 impl From<WalletStorageError> for ExitError {
     fn from(err: WalletStorageError) -> Self {
-        use WalletStorageError::*;
+        use WalletStorageError::{InvalidPassphrase, NoPasswordError};
         match err {
             NoPasswordError | InvalidPassphrase => ExitCode::IncorrectOrEmptyPassword.into(),
             e => ExitError::new(ExitCode::WalletError, &e),
