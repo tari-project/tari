@@ -77,13 +77,13 @@ where
             trace!(
                 target: LOG_TARGET,
                 "Inserting message hash {} for message {} (Trace: {})",
-                message.hash.to_hex(),
+                message.dedup_hash.to_hex(),
                 message.tag,
                 message.dht_header.message_tag
             );
 
             message.dedup_hit_count = dht_requester
-                .add_message_to_dedup_cache(message.hash.clone(), message.source_peer.public_key.clone())
+                .add_message_to_dedup_cache(message.dedup_hash.clone(), message.source_peer.public_key.clone())
                 .await?;
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
@@ -198,8 +198,8 @@ mod test {
         );
         let decrypted2 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
 
-        assert_eq!(decrypted1.hash, decrypted2.hash);
-        let subjects = &[decrypted1.hash, decrypted2.hash];
+        assert_eq!(decrypted1.dedup_hash, decrypted2.dedup_hash);
+        let subjects = &[decrypted1.dedup_hash, decrypted2.dedup_hash];
         assert!(subjects.iter().all(|h| h.to_hex() == EXPECTED_HASH));
     }
 }
