@@ -22,6 +22,25 @@ env:
 
 jobs:
 
+  checks:
+    name: npm checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: npm audit
+        run: |
+          cd applications/launchpad/gui-vue
+          npm audit
+          cd ../../tari_collectibles/web-app
+          npm audit
+          cd ../../tari_explorer
+          npm audit
+          cd ../tari_web_extension
+          npm audit
+          cd ../tari_web_extension_example
+          npm audit
+
   clippy:
     name: clippy
     runs-on: ubuntu-18.04
