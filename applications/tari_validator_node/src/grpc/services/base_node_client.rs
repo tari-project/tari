@@ -34,11 +34,12 @@ use tari_dan_core::{
 };
 
 const LOG_TARGET: &str = "tari::validator_node::app";
+type GrpcBaseNodeClientInner = grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>;
 
 #[derive(Clone)]
 pub struct GrpcBaseNodeClient {
     endpoint: SocketAddr,
-    inner: Option<grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>>,
+    inner: Option<GrpcBaseNodeClientInner>,
 }
 
 impl GrpcBaseNodeClient {
@@ -54,17 +55,18 @@ impl GrpcBaseNodeClient {
         );
         Ok(())
     }
+
+    async fn get_or_connect(&mut self) -> Result<&mut GrpcBaseNodeClientInner, DigitalAssetError> {
+        if self.inner.is_none() {
+            self.connect().await?;
+        }
+        self.inner.as_mut().ok_or(DigitalAssetError::NotConnected)
+    }
 }
 #[async_trait]
 impl BaseNodeClient for GrpcBaseNodeClient {
     async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.get_or_connect().await?;
         let request = grpc::Empty {};
         let result = inner.get_tip_info(request).await.unwrap().into_inner();
         Ok(BaseLayerMetadata {
@@ -78,13 +80,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         asset_public_key: PublicKey,
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.get_or_connect().await?;
         let request = grpc::GetTokensRequest {
             asset_public_key: asset_public_key.as_bytes().to_vec(),
             unique_ids: vec![checkpoint_unique_id],
@@ -108,13 +104,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         &mut self,
         dan_node_public_key: PublicKey,
     ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.get_or_connect().await?;
         // TODO: probably should use output mmr indexes here
         let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
         let mut result = inner.list_asset_registrations(request).await.unwrap().into_inner();
@@ -163,13 +153,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         &mut self,
         asset_public_key: PublicKey,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
-        let conn = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let conn = self.get_or_connect().await?;
 
         let req = grpc::GetAssetMetadataRequest {
             asset_public_key: asset_public_key.to_vec(),

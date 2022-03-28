@@ -84,6 +84,8 @@ pub enum DigitalAssetError {
     PreparePhaseNodeNotSafe,
     #[error("Unsupported template method {name}")]
     TemplateUnsupportedMethod { name: String },
+    #[error("Can't connect")]
+    NotConnected,
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {
