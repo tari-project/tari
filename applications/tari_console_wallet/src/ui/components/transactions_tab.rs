@@ -403,7 +403,7 @@ impl TransactionsTab {
                 Style::default().fg(Color::White),
             );
             let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
-            let confirmation_count = app_state.get_confirmations(&tx.tx_id);
+            let confirmation_count = app_state.get_confirmations(tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
                 format!("{} required confirmations met", required_confirmations)
             } else if tx.status == TransactionStatus::MinedUnconfirmed && tx.cancelled.is_none() {

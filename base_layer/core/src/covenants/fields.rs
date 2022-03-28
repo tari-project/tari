@@ -78,11 +78,11 @@ impl OutputField {
         }
     }
 
-    pub fn as_byte(&self) -> u8 {
-        *self as u8
+    pub fn as_byte(self) -> u8 {
+        self as u8
     }
 
-    pub fn get_field_value_ref<'a, T: 'static>(&self, output: &'a TransactionOutput) -> Option<&'a T> {
+    pub fn get_field_value_ref<'a, T: 'static>(self, output: &'a TransactionOutput) -> Option<&'a T> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         let val = match self {
@@ -100,7 +100,7 @@ impl OutputField {
         val.downcast_ref::<T>()
     }
 
-    pub fn get_field_value_bytes(&self, output: &TransactionOutput) -> Vec<u8> {
+    pub fn get_field_value_bytes(self, output: &TransactionOutput) -> Vec<u8> {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
@@ -117,7 +117,7 @@ impl OutputField {
         }
     }
 
-    pub fn is_eq_input(&self, input: &TransactionInput, output: &TransactionOutput) -> bool {
+    pub fn is_eq_input(self, input: &TransactionInput, output: &TransactionOutput) -> bool {
         #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
@@ -161,7 +161,7 @@ impl OutputField {
         }
     }
 
-    pub fn is_eq<T: PartialEq + 'static>(&self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
+    pub fn is_eq<T: PartialEq + 'static>(self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
         use OutputField::{Features, FeaturesParentPublicKey, FeaturesUniqueId};
         match self {
             // Handle edge cases
