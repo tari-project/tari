@@ -80,8 +80,8 @@ fn parse_command(src: String) -> Result<Command, ExitError> {
   if args.is_empty() {
     return Err(ExitError::new(ExitCode::CommandError, &"Empty command"));
   }
-  match args[0] {
-    "make-it-rain" => parse_make_it_rain(&args[1..]),
+  match args.get(0) {
+    Some(&"make-it-rain") => parse_make_it_rain(&args[1..]),
     _ => Err(ExitError::new(ExitCode::CommandError, &"Invalid command")),
   }
 }
