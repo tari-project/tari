@@ -1152,7 +1152,7 @@ async fn tx_validation_protocol_reorg() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
     let mut unconfirmed_count = 0;
     let mut confirmed_count = 0;
-    for (_k, tx) in completed_txs.iter() {
+    for tx in completed_txs.values() {
         if tx.status == TransactionStatus::MinedUnconfirmed {
             unconfirmed_count += 1;
         }

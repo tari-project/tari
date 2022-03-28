@@ -775,7 +775,7 @@ impl AppStateInner {
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());
-        for c in connections.iter() {
+        for c in &connections {
             if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
                 peers.push(p);
             }

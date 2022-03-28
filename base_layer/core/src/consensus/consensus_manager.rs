@@ -101,7 +101,7 @@ impl ConsensusManager {
     /// Get a reference to consensus constants that are effective from the given height
     pub fn consensus_constants(&self, height: u64) -> &ConsensusConstants {
         let mut constants = &self.inner.consensus_constants[0];
-        for c in self.inner.consensus_constants.iter() {
+        for c in &self.inner.consensus_constants {
             if c.effective_from_height() > height {
                 break;
             }

@@ -321,7 +321,7 @@ async fn test_utxo_scanner_recovery() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -408,7 +408,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -558,7 +558,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_unblinded_outputs = Vec::new();
-    for (_h, outputs) in unblinded_outputs.iter() {
+    for outputs in unblinded_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             db_unblinded_outputs.push(dbo);
@@ -625,7 +625,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -818,7 +818,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total

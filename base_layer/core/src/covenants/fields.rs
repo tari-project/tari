@@ -306,7 +306,7 @@ impl OutputFields {
 
     pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Challenge {
         let mut challenge = Challenge::new();
-        for field in self.fields.iter() {
+        for field in &self.fields {
             challenge = challenge.chain(field.get_field_value_bytes(output));
         }
         challenge

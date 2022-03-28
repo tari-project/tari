@@ -296,7 +296,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::PendingOutboundTransactions => {
                 let mut result = HashMap::new();
-                for o in OutboundTransactionSql::index_by_cancelled(&conn, false)?.iter_mut() {
+                for o in &mut OutboundTransactionSql::index_by_cancelled(&conn, false)? {
                     self.decrypt_if_necessary(o)?;
                     #[allow(clippy::cast_sign_loss)]
                     result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
@@ -306,7 +306,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::PendingInboundTransactions => {
                 let mut result = HashMap::new();
-                for i in InboundTransactionSql::index_by_cancelled(&conn, false)?.iter_mut() {
+                for i in &mut InboundTransactionSql::index_by_cancelled(&conn, false)? {
                     self.decrypt_if_necessary(i)?;
                     #[allow(clippy::cast_sign_loss)]
                     result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
@@ -316,7 +316,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CompletedTransactions => {
                 let mut result = HashMap::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&conn, false)?.iter_mut() {
+                for c in &mut CompletedTransactionSql::index_by_cancelled(&conn, false)? {
                     self.decrypt_if_necessary(c)?;
                     #[allow(clippy::cast_sign_loss)]
                     result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
@@ -326,7 +326,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledPendingOutboundTransactions => {
                 let mut result = HashMap::new();
-                for o in OutboundTransactionSql::index_by_cancelled(&conn, true)?.iter_mut() {
+                for o in &mut OutboundTransactionSql::index_by_cancelled(&conn, true)? {
                     self.decrypt_if_necessary(o)?;
                     #[allow(clippy::cast_sign_loss)]
                     result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
@@ -336,7 +336,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledPendingInboundTransactions => {
                 let mut result = HashMap::new();
-                for i in InboundTransactionSql::index_by_cancelled(&conn, true)?.iter_mut() {
+                for i in &mut InboundTransactionSql::index_by_cancelled(&conn, true)? {
                     self.decrypt_if_necessary(i)?;
                     #[allow(clippy::cast_sign_loss)]
                     result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
@@ -346,7 +346,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
             },
             DbKey::CancelledCompletedTransactions => {
                 let mut result = HashMap::new();
-                for c in CompletedTransactionSql::index_by_cancelled(&conn, true)?.iter_mut() {
+                for c in &mut CompletedTransactionSql::index_by_cancelled(&conn, true)? {
                     self.decrypt_if_necessary(c)?;
                     #[allow(clippy::cast_sign_loss)]
                     result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
@@ -809,7 +809,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut inbound_txs = InboundTransactionSql::index(&conn)?;
         // If the db is already encrypted then the very first output we try to encrypt will fail.
-        for tx in inbound_txs.iter_mut() {
+        for tx in &mut inbound_txs {
             // Test if this transaction is encrypted or not to avoid a double encryption.
             let _inbound_transaction = InboundTransaction::try_from(tx.clone()).map_err(|_| {
                 error!(
@@ -825,7 +825,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut outbound_txs = OutboundTransactionSql::index(&conn)?;
         // If the db is already encrypted then the very first output we try to encrypt will fail.
-        for tx in outbound_txs.iter_mut() {
+        for tx in &mut outbound_txs {
             // Test if this transaction is encrypted or not to avoid a double encryption.
             let _outbound_transaction = OutboundTransaction::try_from(tx.clone()).map_err(|_| {
                 error!(
@@ -841,7 +841,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut completed_txs = CompletedTransactionSql::index(&conn)?;
         // If the db is already encrypted then the very first output we try to encrypt will fail.
-        for tx in completed_txs.iter_mut() {
+        for tx in &mut completed_txs {
             // Test if this transaction is encrypted or not to avoid a double encryption.
             let _completed_transaction = CompletedTransaction::try_from(tx.clone()).map_err(|_| {
                 error!(
@@ -883,7 +883,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut inbound_txs = InboundTransactionSql::index(&conn)?;
 
-        for tx in inbound_txs.iter_mut() {
+        for tx in &mut inbound_txs {
             tx.decrypt(&cipher)
                 .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
             tx.update_encryption(&conn)?;
@@ -891,14 +891,14 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
 
         let mut outbound_txs = OutboundTransactionSql::index(&conn)?;
 
-        for tx in outbound_txs.iter_mut() {
+        for tx in &mut outbound_txs {
             tx.decrypt(&cipher)
                 .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
             tx.update_encryption(&conn)?;
         }
 
         let mut completed_txs = CompletedTransactionSql::index(&conn)?;
-        for tx in completed_txs.iter_mut() {
+        for tx in &mut completed_txs {
             tx.decrypt(&cipher)
                 .map_err(|_| TransactionStorageError::AeadError("Decryption Error".to_string()))?;
             tx.update_encryption(&conn)?;
@@ -925,7 +925,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
-        for c in coinbase_txs.iter() {
+        for c in &coinbase_txs {
             c.reject(TxCancellationReason::AbandonedCoinbase, &conn)?;
         }
         if start.elapsed().as_millis() > 0 {
@@ -951,7 +951,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let mut coinbase_txs = CompletedTransactionSql::index_coinbase_at_block_height(block_height as i64, &conn)?;
-        for c in coinbase_txs.iter_mut() {
+        for c in &mut coinbase_txs {
             self.decrypt_if_necessary(c)?;
             let completed_tx = CompletedTransaction::try_from(c.clone())?;
             if completed_tx.amount == amount {

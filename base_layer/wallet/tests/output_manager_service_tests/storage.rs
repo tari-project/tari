@@ -133,7 +133,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
     let mut pending_incoming_balance = MicroTari(0);
     let mut pending_outgoing_balance = MicroTari(0);
-    for v in pending_txs.iter() {
+    for v in &pending_txs {
         pending_outgoing_balance += v
             .outputs_to_be_spent
             .iter()

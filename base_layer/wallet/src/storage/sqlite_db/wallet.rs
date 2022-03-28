@@ -433,7 +433,7 @@ impl WalletBackend for WalletSqliteDatabase {
 
         // Encrypt all the client values
         let mut client_key_values = ClientKeyValueSql::index(&conn)?;
-        for ckv in client_key_values.iter_mut() {
+        for ckv in &mut client_key_values {
             ckv.encrypt(&cipher)
                 .map_err(|e| WalletStorageError::AeadError(format!("Encryption Error:{}", e)))?;
             ckv.set(&conn)?;
@@ -489,7 +489,7 @@ impl WalletBackend for WalletSqliteDatabase {
 
         // Decrypt all the client values
         let mut client_key_values = ClientKeyValueSql::index(&conn)?;
-        for ckv in client_key_values.iter_mut() {
+        for ckv in &mut client_key_values {
             ckv.decrypt(&cipher)
                 .map_err(|e| WalletStorageError::AeadError(format!("Decryption Error:{}", e)))?;
             ckv.set(&conn)?;
@@ -866,7 +866,7 @@ mod test {
         {
             let conn = connection.get_pooled_connection().unwrap();
             db.set_master_seed(&seed, &conn).unwrap();
-            for kv in key_values.iter() {
+            for kv in &key_values {
                 kv.set(&conn).unwrap();
             }
         }
@@ -888,7 +888,7 @@ mod test {
             },
         };
 
-        for kv in key_values.iter() {
+        for kv in &key_values {
             match db.fetch(&DbKey::ClientKey(kv.key.clone())).unwrap().unwrap() {
                 DbValue::ClientValue(v) => {
                     assert_eq!(kv.value, v);
@@ -922,7 +922,7 @@ mod test {
         };
         assert_eq!(seed, read_seed3);
 
-        for kv in key_values.iter() {
+        for kv in &key_values {
             match db.fetch(&DbKey::ClientKey(kv.key.clone())).unwrap().unwrap() {
                 DbValue::ClientValue(v) => {
                     assert_eq!(kv.value, v);

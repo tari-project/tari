@@ -7510,7 +7510,7 @@ mod test {
                 ("key3".to_string(), "value3".to_string()),
             ];
 
-            for kv in client_key_values.iter() {
+            for kv in &client_key_values {
                 let k = CString::new(kv.0.as_str()).unwrap();
                 let k_str: *const c_char = CString::into_raw(k) as *const c_char;
                 let v = CString::new(kv.1.as_str()).unwrap();
@@ -7528,7 +7528,7 @@ mod test {
             wallet_apply_encryption(alice_wallet, passphrase_const_str, error_ptr);
             assert_eq!(error, 0);
 
-            for kv in client_key_values.iter() {
+            for kv in &client_key_values {
                 let k = CString::new(kv.0.as_str()).unwrap();
                 let k_str: *const c_char = CString::into_raw(k) as *const c_char;
 

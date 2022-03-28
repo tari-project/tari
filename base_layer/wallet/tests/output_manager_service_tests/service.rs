@@ -633,7 +633,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that utxos with the lowest 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
-    for utxo in utxos.iter() {
+    for utxo in &utxos {
         assert_ne!(utxo.features.maturity, 1);
         assert_ne!(utxo.value, amount);
         assert_ne!(utxo.features.maturity, 2);
@@ -660,7 +660,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that utxos with the highest spendable 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 5);
-    for utxo in utxos.iter() {
+    for utxo in &utxos {
         assert_ne!(utxo.features.maturity, 4);
         assert_ne!(utxo.value, 4 * amount);
         assert_ne!(utxo.features.maturity, 5);

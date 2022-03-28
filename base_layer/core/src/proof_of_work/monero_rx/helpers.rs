@@ -90,7 +90,7 @@ fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> 
 }
 
 pub fn extract_tari_hash(monero: &monero::Block) -> Option<&monero::Hash> {
-    for item in monero.miner_tx.prefix.extra.0.iter() {
+    for item in &monero.miner_tx.prefix.extra.0 {
         if let SubField::MergeMining(_depth, merge_mining_hash) = item {
             return Some(merge_mining_hash);
         }

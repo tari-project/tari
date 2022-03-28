@@ -634,7 +634,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .map_err(Status::invalid_argument)?;
         let mut tx_ids = Vec::new();
 
-        for o in unblinded_outputs.iter() {
+        for o in &unblinded_outputs {
             tx_ids.push(
                 wallet
                     .import_unblinded_output_as_non_rewindable(

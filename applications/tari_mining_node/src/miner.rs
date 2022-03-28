@@ -139,7 +139,7 @@ impl Stream for Miner {
 
         // Non blocking select from all miner's receiver channels
         let mut sel = Select::new();
-        for rx in self.channels.iter() {
+        for rx in &self.channels {
             sel.recv(rx);
         }
         let report = match sel.try_select() {
