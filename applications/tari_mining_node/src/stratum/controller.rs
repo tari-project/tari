@@ -203,17 +203,17 @@ impl Controller {
             job.target.parse::<u64>()?,
             job.blob,
         );
-        self.miner_tx.send(miner_message).map_err(|e| e.into())
+        self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
     fn send_miner_stop(&mut self) -> Result<(), Error> {
         let miner_message = types::miner_message::MinerMessage::StopJob;
-        self.miner_tx.send(miner_message).map_err(|e| e.into())
+        self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
     fn send_miner_resume(&mut self) -> Result<(), Error> {
         let miner_message = types::miner_message::MinerMessage::ResumeJob;
-        self.miner_tx.send(miner_message).map_err(|e| e.into())
+        self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
     pub fn handle_request(&mut self, req: types::rpc_request::RpcRequest) -> Result<(), Error> {
