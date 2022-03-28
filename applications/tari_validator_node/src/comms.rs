@@ -214,8 +214,7 @@ fn create_transport_type(config: &GlobalConfig) -> TransportType {
                 identity
                     .as_ref()
                     .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                    .or_else(|| Some("not found".to_string()))
-                    .unwrap()
+                    .unwrap_or_else(|| "not found".to_string())
             );
 
             let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");
