@@ -194,11 +194,11 @@ impl<T, E: std::error::Error> RpcStatusResultExt<T> for Result<T, E> {
     }
 
     fn rpc_status_not_found<S: ToString>(self, message: S) -> Result<T, RpcStatus> {
-        self.map_err(|_| RpcStatus::not_found(message))
+        self.map_err(|_| RpcStatus::not_found(&message))
     }
 
     fn rpc_status_bad_request<S: ToString>(self, message: S) -> Result<T, RpcStatus> {
-        self.map_err(|_| RpcStatus::bad_request(message))
+        self.map_err(|_| RpcStatus::bad_request(&message))
     }
 }
 

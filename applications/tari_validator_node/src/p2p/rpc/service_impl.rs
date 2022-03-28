@@ -25,7 +25,7 @@ use std::convert::{TryFrom, TryInto};
 use log::*;
 use tari_common_types::types::PublicKey;
 use tari_comms::{
-    protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming},
+    protocol::rpc::{Request, Response, RpcStatus, Streaming},
     utils,
 };
 use tari_crypto::tari_utilities::ByteArray;
@@ -171,19 +171,19 @@ where
         let db = self
             .db_factory
             .get_chain_db(&asset_public_key)
-            .rpc_status_internal_error(LOG_TARGET)?
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
         let start_block = db
             .find_sidechain_block_by_node_hash(&start_hash)
-            .rpc_status_internal_error(LOG_TARGET)?
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found(&format!("Block not found with start_hash '{}'", start_hash)))?;
 
         let end_block_exists = end_hash
             .as_ref()
             .map(|end_hash| db.sidechain_block_exists(end_hash))
             .transpose()
-            .rpc_status_internal_error(LOG_TARGET)?;
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
         if !end_block_exists.unwrap_or(true) {
             return Err(RpcStatus::not_found(&format!(
@@ -247,11 +247,11 @@ where
         let db = self
             .db_factory
             .get_state_db(&asset_public_key)
-            .rpc_status_internal_error(LOG_TARGET)?
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
         let uow = db.reader();
-        let data = uow.get_all_state().rpc_status_internal_error(LOG_TARGET)?;
+        let data = uow.get_all_state().map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
         let (tx, rx) = mpsc::channel(10);
 
         task::spawn(async move {
@@ -291,13 +291,13 @@ where
         let db = self
             .db_factory
             .get_state_db(&asset_public_key)
-            .rpc_status_internal_error(LOG_TARGET)?
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
         let reader = db.reader();
         let op_logs = reader
             .get_op_logs_for_height(msg.height)
-            .rpc_status_internal_error(LOG_TARGET)?;
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
         let resp = proto::GetStateOpLogsResponse {
             op_logs: op_logs.into_iter().map(Into::into).collect(),
@@ -318,10 +318,10 @@ where
         let db = self
             .db_factory
             .get_chain_db(&asset_public_key)
-            .rpc_status_internal_error(LOG_TARGET)?
+            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
             .ok_or_else(|| RpcStatus::not_found("Asset not found"))?;
 
-        let tip_node = db.get_tip_node().rpc_status_internal_error(LOG_TARGET)?;
+        let tip_node = db.get_tip_node().map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
 
         let resp = proto::GetTipNodeResponse {
             tip_node: tip_node.map(Into::into),
