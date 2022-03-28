@@ -48,6 +48,8 @@ pub enum Error {
     TcpError(#[from] native_tls::HandshakeError<std::net::TcpStream>),
     #[error("No connected stream")]
     NotConnected,
+    #[error("Can't parse int: {0}")]
+    ParseError(#[from] std::num::ParseIntError),
 
     #[error("General error: {0}")]
     General(String),
