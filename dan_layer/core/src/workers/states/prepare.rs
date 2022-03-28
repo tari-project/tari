@@ -170,7 +170,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
 
         // TODO: This might need to be checked in the QC rather
         if self.received_new_view_messages.contains_key(sender) {
-            dbg!("Already received message from {:?}", &sender);
+            println!("Already received message from {:?}", sender);
             return Ok(None);
         }
 
@@ -236,7 +236,7 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
             unimplemented!("Empty message");
         }
         if from != view_leader {
-            dbg!("Message not from leader");
+            println!("Message not from leader");
             return Ok(None);
         }
         let node = message.node().unwrap();

@@ -386,8 +386,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                 unimplemented!("Base layer checkpoint not found!")
             },
             (s, e) => {
-                dbg!(&s);
-                dbg!(&e);
+                println!("{:?}", s);
+                println!("{:?}", e);
                 unimplemented!("State machine transition not implemented")
             },
         };
@@ -502,7 +502,7 @@ mod test {
     }
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
-        dbg!(events);
+        println!("{:?}", events);
         let mapped_events = events.iter().map(|e| match e {
             ConsensusWorkerDomainEvent::StateChanged { from: _, to: new } => Some(new),
         });

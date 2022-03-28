@@ -101,7 +101,7 @@ impl FromStr for TemplateId {
             "Tip721" => Ok(TemplateId::Tip721),
             "EditableMetadata" => Ok(TemplateId::EditableMetadata),
             _ => {
-                dbg!("Unrecognised template");
+                println!("Unrecognised template");
                 Err(ModelError::StringParseError {
                     details: format!("Unrecognised template ID '{}'", s),
                 })
