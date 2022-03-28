@@ -239,7 +239,7 @@ impl<TServiceSpecification: ServiceSpecification<Addr = PublicKey>> AssetProxy
             let mut mempool = self.mempool.clone();
             mempool.submit_instruction(instruction).await
         } else {
-            let _ = self
+            let _result = self
                 .forward_to_committee(asset_public_key, InvokeType::InvokeMethod, template_id, method, args)
                 .await?;
             Ok(())

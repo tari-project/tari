@@ -159,7 +159,7 @@ impl WalletConnectivityService {
         match self.pools {
             Some(ref pools) => match pools.base_node_wallet_rpc_client.get().await {
                 Ok(client) => {
-                    let _ = reply.send(client);
+                    let _result = reply.send(client);
                 },
                 Err(e) => {
                     warn!(
@@ -192,7 +192,7 @@ impl WalletConnectivityService {
         match self.pools {
             Some(ref pools) => match pools.base_node_sync_rpc_client.get().await {
                 Ok(client) => {
-                    let _ = reply.send(client);
+                    let _result = reply.send(client);
                 },
                 Err(e) => {
                     warn!(

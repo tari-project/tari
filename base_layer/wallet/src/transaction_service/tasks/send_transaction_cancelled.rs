@@ -39,14 +39,14 @@ pub async fn send_transaction_cancelled_message(
 
     // Send both direct and SAF we are not going to monitor the progress on these messages for potential resend as
     // they are just courtesy messages
-    let _ = outbound_message_service
+    let _send_message_response = outbound_message_service
         .send_direct(
             destination_public_key.clone(),
             OutboundDomainMessage::new(&TariMessageType::TransactionCancelled, proto_message.clone()),
         )
         .await?;
 
-    let _ = outbound_message_service
+    let _message_send_state = outbound_message_service
         .closest_broadcast(
             NodeId::from_public_key(&destination_public_key),
             OutboundEncryption::encrypt_for(destination_public_key),

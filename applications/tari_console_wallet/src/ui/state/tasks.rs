@@ -40,7 +40,7 @@ pub async fn send_transaction_task(
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
-    let _ = result_tx.send(UiTransactionSendStatus::Initiated);
+    let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     let mut send_status = TransactionSendStatus::default();
     match transaction_service_handle
@@ -48,7 +48,7 @@ pub async fn send_transaction_task(
         .await
     {
         Err(e) => {
-            let _ = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
+            let _result = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
         },
         Ok(our_tx_id) => {
             loop {
@@ -57,7 +57,7 @@ pub async fn send_transaction_task(
                     Ok(event) => match &*event {
                         TransactionEvent::TransactionDiscoveryInProgress(tx_id) => {
                             if our_tx_id == *tx_id {
-                                let _ = result_tx.send(UiTransactionSendStatus::DiscoveryInProgress);
+                                let _result = result_tx.send(UiTransactionSendStatus::DiscoveryInProgress);
                             }
                         },
                         TransactionEvent::TransactionSendResult(tx_id, status) => {
@@ -68,7 +68,7 @@ pub async fn send_transaction_task(
                         },
                         TransactionEvent::TransactionCompletedImmediately(tx_id) => {
                             if our_tx_id == *tx_id {
-                                let _ = result_tx.send(UiTransactionSendStatus::TransactionComplete);
+                                let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
                                 return;
                             }
                         },
@@ -91,7 +91,7 @@ pub async fn send_transaction_task(
             } else if send_status.queued_for_retry {
                 let _ = result_tx.send(UiTransactionSendStatus::Queued);
             } else {
-                let _ = result_tx.send(UiTransactionSendStatus::Error(
+                let _result = result_tx.send(UiTransactionSendStatus::Error(
                     "Transaction could not be sent".to_string(),
                 ));
             }
@@ -109,14 +109,14 @@ pub async fn send_one_sided_transaction_task(
     mut transaction_service_handle: TransactionServiceHandle,
     result_tx: watch::Sender<UiTransactionSendStatus>,
 ) {
-    let _ = result_tx.send(UiTransactionSendStatus::Initiated);
+    let _result = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
     match transaction_service_handle
         .send_one_sided_transaction_or_token(public_key, amount, unique_id, parent_public_key, fee_per_gram, message)
         .await
     {
         Err(e) => {
-            let _ = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
+            let _result = result_tx.send(UiTransactionSendStatus::Error(UiError::from(e).to_string()));
         },
         Ok(our_tx_id) => {
             loop {
@@ -124,7 +124,7 @@ pub async fn send_one_sided_transaction_task(
                     Ok(event) => {
                         if let TransactionEvent::TransactionCompletedImmediately(tx_id) = &*event {
                             if our_tx_id == *tx_id {
-                                let _ = result_tx.send(UiTransactionSendStatus::TransactionComplete);
+                                let _result = result_tx.send(UiTransactionSendStatus::TransactionComplete);
                                 return;
                             }
                         }
@@ -139,7 +139,7 @@ pub async fn send_one_sided_transaction_task(
                 }
             }
 
-            let _ = result_tx.send(UiTransactionSendStatus::Error(
+            let _result = result_tx.send(UiTransactionSendStatus::Error(
                 "One-sided transaction could not be sent".to_string(),
             ));
         },

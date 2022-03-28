@@ -142,8 +142,8 @@ async fn key_manager_find_index() {
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
-    let _ = key_manager.get_next_key("branch1").await.unwrap();
-    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let _next_key = key_manager.get_next_key("branch1").await.unwrap();
+    let _next_key = key_manager.get_next_key("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
     let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
 
@@ -160,8 +160,8 @@ async fn key_manager_update_current_key_index_if_higher() {
         KeyManagerDatabase::new(KeyManagerSqliteDatabase::new(connection, None).unwrap()),
     );
     key_manager.add_new_branch("branch1").await.unwrap();
-    let _ = key_manager.get_next_key("branch1").await.unwrap();
-    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
+    let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let key_1 = key_manager.get_next_key("branch1").await.unwrap();
     let index = key_manager.find_key_index("branch1", &key_1.key).await.unwrap();
 
@@ -189,8 +189,8 @@ async fn key_manager_test_index() {
     );
     key_manager.add_new_branch("branch1").await.unwrap();
     key_manager.add_new_branch("branch2").await.unwrap();
-    let _ = key_manager.get_next_key("branch1").await.unwrap();
-    let _ = key_manager.get_next_key("branch1").await.unwrap();
+    let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
+    let _next_key_result = key_manager.get_next_key("branch1").await.unwrap();
     let result = key_manager.get_next_key("branch1").await.unwrap();
     let key_2 = key_manager.get_key_at_index("branch2", result.index).await.unwrap();
 

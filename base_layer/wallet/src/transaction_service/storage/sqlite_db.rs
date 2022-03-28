@@ -805,7 +805,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         // If the db is already encrypted then the very first output we try to encrypt will fail.
         for tx in inbound_txs.iter_mut() {
             // Test if this transaction is encrypted or not to avoid a double encryption.
-            let _ = InboundTransaction::try_from(tx.clone()).map_err(|_| {
+            let _inbound_transaction = InboundTransaction::try_from(tx.clone()).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not convert Inbound Transaction from database version, it might already be encrypted"
@@ -821,7 +821,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         // If the db is already encrypted then the very first output we try to encrypt will fail.
         for tx in outbound_txs.iter_mut() {
             // Test if this transaction is encrypted or not to avoid a double encryption.
-            let _ = OutboundTransaction::try_from(tx.clone()).map_err(|_| {
+            let _outbound_transaction = OutboundTransaction::try_from(tx.clone()).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not convert Inbound Transaction from database version, it might already be encrypted"
@@ -837,7 +837,7 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
         // If the db is already encrypted then the very first output we try to encrypt will fail.
         for tx in completed_txs.iter_mut() {
             // Test if this transaction is encrypted or not to avoid a double encryption.
-            let _ = CompletedTransaction::try_from(tx.clone()).map_err(|_| {
+            let _completed_transaction = CompletedTransaction::try_from(tx.clone()).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not convert Inbound Transaction from database version, it might already be encrypted"

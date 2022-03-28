@@ -225,7 +225,7 @@ where
                     Ok(None) => return,
                     Err(err) => {
                         error!(target: LOG_TARGET, "Failure while streaming blocks: {}", err);
-                        let _ = tx.send(Err(RpcStatus::general("Internal database failure"))).await;
+                        let _result = tx.send(Err(RpcStatus::general("Internal database failure"))).await;
                         return;
                     },
                 }

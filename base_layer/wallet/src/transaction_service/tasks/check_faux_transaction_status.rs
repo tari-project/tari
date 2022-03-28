@@ -160,7 +160,7 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                             is_valid,
                         },
                     };
-                    let _ = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+                    let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
                         trace!(
                             target: LOG_TARGET,
                             "Error sending event, usually because there are no subscribers: {:?}",

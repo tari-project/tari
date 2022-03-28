@@ -634,7 +634,7 @@ fn check_db_encryption_status(
                         error!(target: LOG_TARGET, "Incorrect passphrase ({})", e);
                         WalletStorageError::InvalidPassphrase
                     })?;
-                    let _ = CipherSeed::from_enciphered_bytes(&decrypted_key, None).map_err(|_| {
+                    let _cipher_seed = CipherSeed::from_enciphered_bytes(&decrypted_key, None).map_err(|_| {
                         error!(
                             target: LOG_TARGET,
                             "Decrypted Master Secret Key cannot be parsed into a Cipher Seed"

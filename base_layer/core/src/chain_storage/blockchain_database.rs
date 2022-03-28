@@ -2885,7 +2885,7 @@ mod test {
         .unwrap();
         result.assert_orphaned();
 
-        let _ = handle_possible_reorg(
+        let _error = handle_possible_reorg(
             &mut *access,
             &Default::default(),
             &MockValidator::new(false),

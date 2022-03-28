@@ -1531,7 +1531,7 @@ impl LMDBDatabase {
 
 pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
     let new_path = path.as_ref().join("temp_recovery");
-    let _ = fs::create_dir_all(&new_path);
+    let _result = fs::create_dir_all(&new_path);
 
     let data_file = path.as_ref().join("data.mdb");
 

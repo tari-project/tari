@@ -250,7 +250,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
             log_mdc::extend(mdc);
             // Publish the event on the event bus
-            let _ = self.event_publisher.send(Arc::new(next_event.clone()));
+            let _size = self.event_publisher.send(Arc::new(next_event.clone()));
             trace!(
                 target: LOG_TARGET,
                 "Base Node event in State [{}]:  {}",

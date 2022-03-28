@@ -470,7 +470,7 @@ async fn handle_incoming_response(
             started.elapsed().as_millis(),
             is_synced
         );
-        let _ = reply_tx.send(Ok(response).map_err(|e| {
+        let _result = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
                 "Failed to finalize request (request key:{}): {:?}", &request_key, e
@@ -606,7 +606,7 @@ async fn handle_request_timeout(
             started.elapsed().as_millis()
         );
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);
-        let _ = reply_tx.send(reply_msg.map_err(|e| {
+        let _result = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Failed to process outbound request (request key: {}): {:?}", &request_key, e

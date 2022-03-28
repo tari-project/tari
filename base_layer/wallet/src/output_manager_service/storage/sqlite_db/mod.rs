@@ -968,7 +968,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         // If the db is already encrypted then the very first output we try to encrypt will fail.
         for o in outputs.iter_mut() {
             // Test if this output is encrypted or not to avoid a double encryption.
-            let _ = PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+            let _secret_key = PrivateKey::from_vec(&o.spending_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might already be encrypted"
@@ -983,7 +983,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
 
         for script in known_one_sided_payment_scripts.iter_mut() {
-            let _ = PrivateKey::from_vec(&script.private_key).map_err(|_| {
+            let _secret_key = PrivateKey::from_vec(&script.private_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might already be encrypted"
@@ -1345,7 +1345,7 @@ impl KnownOneSidedPaymentScriptSql {
 
     /// Update the changed fields of this record after encryption/decryption is performed
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        let _ = self.update(
+        let _known_one_sided_payment_script_sql = self.update(
             UpdateKnownOneSidedPaymentScript {
                 private_key: Some(self.private_key.clone()),
                 script: None,
@@ -1556,7 +1556,7 @@ mod test {
 
         assert!(OutputSql::find_status(&outputs[0].spending_key, OutputStatus::Spent, &conn).is_err());
 
-        let _ = OutputSql::find(&outputs[4].spending_key, &conn).unwrap().delete(&conn);
+        let _result = OutputSql::find(&outputs[4].spending_key, &conn).unwrap().delete(&conn);
 
         assert_eq!(OutputSql::index(&conn).unwrap().len(), 4);
 

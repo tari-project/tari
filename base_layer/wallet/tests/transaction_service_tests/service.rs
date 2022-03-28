@@ -534,7 +534,7 @@ fn manage_single_transaction() {
 
     let mut bob_event_stream = bob_ts.get_event_stream();
 
-    let _ = runtime.block_on(
+    let _peer_connection = runtime.block_on(
         bob_comms
             .connectivity()
             .dial_peer(alice_node_identity.node_id().clone()),
@@ -1237,7 +1237,7 @@ fn manage_multiple_transactions() {
     // Connect Bob and Alice
     runtime.block_on(async { sleep(Duration::from_secs(3)).await });
 
-    let _ = runtime.block_on(
+    let _peer_connection = runtime.block_on(
         bob_comms
             .connectivity()
             .dial_peer(alice_node_identity.node_id().clone()),
@@ -1245,7 +1245,7 @@ fn manage_multiple_transactions() {
     runtime.block_on(async { sleep(Duration::from_secs(3)).await });
 
     // Connect alice to carol
-    let _ = runtime.block_on(
+    let _peer_connection = runtime.block_on(
         alice_comms
             .connectivity()
             .dial_peer(carol_node_identity.node_id().clone()),
@@ -2035,7 +2035,7 @@ fn test_power_mode_updates() {
     assert!(result.is_ok());
 
     // Wait for first 4 messages
-    let _ = runtime
+    let _schnorr_signatures = runtime
         .block_on(
             alice_ts_interface
                 .base_node_rpc_mock_state
@@ -2047,7 +2047,7 @@ fn test_power_mode_updates() {
         .block_on(alice_ts_interface.transaction_service_handle.set_low_power_mode())
         .unwrap();
     // expect 4 messages more
-    let _ = runtime
+    let _schnorr_signatures = runtime
         .block_on(
             alice_ts_interface
                 .base_node_rpc_mock_state
@@ -2059,7 +2059,7 @@ fn test_power_mode_updates() {
         .block_on(alice_ts_interface.transaction_service_handle.set_normal_power_mode())
         .unwrap();
     // and 4 more
-    let _ = runtime
+    let _schnorr_signatures = runtime
         .block_on(
             alice_ts_interface
                 .base_node_rpc_mock_state
@@ -2192,7 +2192,7 @@ fn test_transaction_cancellation() {
         }
     }
 
-    let _ = alice_ts_interface.outbound_service_mock_state.take_calls();
+    let _result = alice_ts_interface.outbound_service_mock_state.take_calls();
 
     runtime
         .block_on(alice_ts_interface.transaction_service_handle.cancel_transaction(tx_id))
@@ -2563,7 +2563,7 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
     let (_, body) = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(body.to_vec().as_slice()).unwrap();
-    let _: RecipientSignedMessage = envelope_body
+    let _recipient_signed_message: RecipientSignedMessage = envelope_body
         .decode_part::<proto::RecipientSignedMessage>(1)
         .unwrap()
         .unwrap()
@@ -2648,11 +2648,11 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         )
         .unwrap();
 
-    let _ = alice_ts_interface
+    let _size = alice_ts_interface
         .outbound_service_mock_state
         .wait_call_count(2, Duration::from_secs(60));
-    let _ = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
-    let _ = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
+    let _result = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
+    let _result = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
 
     runtime.block_on(async { sleep(Duration::from_secs(5)).await });
     assert_eq!(
@@ -2744,12 +2744,12 @@ fn test_direct_vs_saf_send_of_tx_reply_and_finalize() {
         )
         .unwrap();
 
-    let _ = alice_ts_interface
+    let _size = alice_ts_interface
         .outbound_service_mock_state
         .wait_call_count(1, Duration::from_secs(60));
 
     assert_eq!(alice_ts_interface.outbound_service_mock_state.call_count(), 1);
-    let _ = alice_ts_interface.outbound_service_mock_state.pop_call();
+    let _result = alice_ts_interface.outbound_service_mock_state.pop_call();
     runtime.block_on(async { sleep(Duration::from_secs(5)).await });
     assert_eq!(
         alice_ts_interface.outbound_service_mock_state.call_count(),
@@ -3522,7 +3522,7 @@ fn test_coinbase_generation_and_monitoring() {
     assert_eq!(tx.status, TransactionStatus::MinedUnconfirmed);
 
     // Now we will have tx_id2b becoming confirmed
-    let _ = transaction_query_batch_responses.pop();
+    let _tx_query_batch_responses = transaction_query_batch_responses.pop();
     transaction_query_batch_responses.push(TxQueryBatchResponseProto {
         signature: Some(SignatureProto::from(
             tx2b.transaction.first_kernel_excess_sig().unwrap().clone(),
@@ -4247,12 +4247,12 @@ fn test_transaction_resending() {
         .outbound_service_mock_state
         .wait_call_count(2, Duration::from_secs(60))
         .expect("Bob call wait 2");
-    let _ = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
+    let _result = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     let call = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     bob_reply_message = try_decode_transaction_reply_message(call.1.to_vec()).unwrap();
     assert_eq!(bob_reply_message.tx_id, tx_id);
 
-    let _ = alice_ts_interface.outbound_service_mock_state.take_calls();
+    let _result = alice_ts_interface.outbound_service_mock_state.take_calls();
 
     // Send the reply to Alice
     runtime
@@ -4271,7 +4271,7 @@ fn test_transaction_resending() {
         .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 2");
 
-    let _ = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
+    let _result = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     let call = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     let alice_finalize_message = try_decode_finalized_transaction_message(call.1.to_vec()).unwrap();
     assert_eq!(alice_finalize_message.tx_id, tx_id.as_u64());
@@ -4712,7 +4712,7 @@ fn test_replying_to_cancelled_tx() {
     // Wait for cooldown to expire
     runtime.block_on(async { sleep(Duration::from_secs(5)).await });
 
-    let _ = alice_ts_interface.outbound_service_mock_state.take_calls();
+    let _result = alice_ts_interface.outbound_service_mock_state.take_calls();
 
     runtime
         .block_on(
@@ -5067,7 +5067,7 @@ fn transaction_service_tx_broadcast() {
         .wait_call_count(2, Duration::from_secs(60))
         .expect("bob call wait 1");
 
-    let _ = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
+    let _result = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     let call = bob_ts_interface.outbound_service_mock_state.pop_call().unwrap();
 
     let envelope_body = EnvelopeBody::decode(&mut call.1.to_vec().as_slice()).unwrap();
@@ -5093,7 +5093,7 @@ fn transaction_service_tx_broadcast() {
         .wait_call_count(2, Duration::from_secs(60))
         .expect("Alice call wait 2");
 
-    let _ = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
+    let _result = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     let call = alice_ts_interface.outbound_service_mock_state.pop_call().unwrap();
     let tx_sender_msg = try_decode_sender_message(call.1.to_vec()).unwrap();
 
@@ -5183,14 +5183,14 @@ fn transaction_service_tx_broadcast() {
 
     assert_eq!(alice_completed_tx1.status, TransactionStatus::Completed);
 
-    let _ = runtime
+    let _transactions = runtime
         .block_on(
             alice_ts_interface
                 .base_node_rpc_mock_state
                 .wait_pop_submit_transaction_calls(1, Duration::from_secs(30)),
         )
         .expect("Should receive a tx submission");
-    let _ = runtime
+    let _schnorr_signatures = runtime
         .block_on(
             alice_ts_interface
                 .base_node_rpc_mock_state
@@ -5294,7 +5294,7 @@ fn transaction_service_tx_broadcast() {
 
     assert_eq!(alice_completed_tx2.status, TransactionStatus::Completed);
 
-    let _ = runtime
+    let _transactions = runtime
         .block_on(
             alice_ts_interface
                 .base_node_rpc_mock_state

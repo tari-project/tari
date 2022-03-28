@@ -29,7 +29,7 @@ deny = [
     'clippy::enum_glob_use',
     # This is 99% not needed
     # 'clippy::inline_always',
-    # 'clippy::let_underscore_drop',
+    'clippy::let_underscore_drop',
     'clippy::let_unit_value',
     # 'clippy::match_on_vec_items',
     # 'clippy::match_wild_err_arm',

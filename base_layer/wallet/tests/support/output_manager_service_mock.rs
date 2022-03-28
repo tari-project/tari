@@ -114,7 +114,7 @@ impl OutputManagerServiceMock {
                     })
                     .collect();
 
-                let _ = reply_tx
+                let _result = reply_tx
                     .send(Ok(OutputManagerResponse::RewoundOutputs(outputs)))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
@@ -137,7 +137,7 @@ impl OutputManagerServiceMock {
                         }
                     })
                     .collect();
-                let _ = reply_tx
+                let _result = reply_tx
                     .send(Ok(OutputManagerResponse::ScanOutputs(outputs)))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");

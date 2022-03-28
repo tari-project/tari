@@ -126,7 +126,7 @@ async fn main_inner() -> Result<(), ExitError> {
             });
         mc.set_client_tx(cc.tx.clone());
 
-        let _ = thread::Builder::new()
+        let _join_handle = thread::Builder::new()
             .name("client_controller".to_string())
             .spawn(move || {
                 cc.run();

@@ -208,13 +208,13 @@ impl ChainMetadataService {
     }
 
     async fn send_network_silence(&mut self) -> Result<(), ChainMetadataSyncError> {
-        let _ = self.event_publisher.send(Arc::new(ChainMetadataEvent::NetworkSilence));
+        let _size = self.event_publisher.send(Arc::new(ChainMetadataEvent::NetworkSilence));
         Ok(())
     }
 
     async fn send_chain_metadata_to_event_publisher(&mut self) -> Result<(), ChainMetadataSyncError> {
         // send only fails if there are no subscribers.
-        let _ = self
+        let _size = self
             .event_publisher
             .send(Arc::new(ChainMetadataEvent::PeerChainMetadataReceived(
                 self.peer_chain_metadata.clone(),

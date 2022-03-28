@@ -429,7 +429,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     tx.send(SYNC_INTERRUPT as usize).await.unwrap();
 
-    let _ = test_interface
+    let _result = test_interface
         .rpc_service_state
         .wait_pop_sync_utxos_by_block_calls(1, Duration::from_secs(30))
         .await
@@ -574,7 +574,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     tx.send(SYNC_INTERRUPT as usize).await.unwrap();
 
-    let _ = test_interface
+    let _result = test_interface
         .rpc_service_state
         .wait_pop_sync_utxos_by_block_calls(1, Duration::from_secs(30))
         .await

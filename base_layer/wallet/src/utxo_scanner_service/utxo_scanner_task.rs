@@ -588,7 +588,7 @@ where TBackend: WalletBackend + 'static
     }
 
     fn publish_event(&self, event: UtxoScannerEvent) {
-        let _ = self.event_sender.send(event);
+        let _size = self.event_sender.send(event);
     }
 
     /// A faux incoming transaction will be created to provide a record of the event of importing a scanned UTXO. The

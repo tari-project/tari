@@ -103,7 +103,7 @@ impl MempoolService {
                 // Requests sent from the handle
                 Some(request) = request_receiver.next() => {
                     let (request, reply) = request.split();
-                    let _ = reply.send(self.handle_request(request).await);
+                    let _result = reply.send(self.handle_request(request).await);
                 },
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface

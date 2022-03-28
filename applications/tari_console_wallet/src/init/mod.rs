@@ -532,7 +532,7 @@ pub async fn init_wallet(
     }
     if let Some(file_name) = seed_words_file_name {
         let seed_words = wallet.get_seed_words(&MnemonicLanguage::English).await?.join(" ");
-        let _ = fs::write(file_name, seed_words).map_err(|e| {
+        let _result = fs::write(file_name, seed_words).map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
                 &format!("Problem writing seed words to file: {}", e),

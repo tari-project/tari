@@ -1230,7 +1230,7 @@ async fn handle_coinbase() {
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
 
-    let _ = oms
+    let _transaction = oms
         .output_manager_handle
         .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
         .await
@@ -1438,7 +1438,7 @@ async fn test_txo_validation() {
     let (_recv_tx_id, sender_message) =
         generate_sender_transaction_message(recv_value, Some(oms.output_manager_handle.clone())).await;
 
-    let _ = oms
+    let _receiver_transaction_protocal = oms
         .output_manager_handle
         .get_recipient_transaction(sender_message)
         .await
@@ -1732,7 +1732,7 @@ async fn test_txo_validation() {
         .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
         .unwrap();
 
-    let _ = oms
+    let _result = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_get_header_by_height_calls(2, Duration::from_secs(60))
         .await

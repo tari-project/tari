@@ -143,7 +143,7 @@ impl Listening {
                         };
                         // If this fails, its not the end of the world, we just want to keep record of the stats of
                         // the peer
-                        let _ = shared
+                        let _old_data = shared
                             .peer_manager
                             .set_peer_metadata(peer.node_id(), 1, peer_data.to_bytes())
                             .await;

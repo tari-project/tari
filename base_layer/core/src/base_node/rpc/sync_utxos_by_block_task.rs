@@ -75,7 +75,7 @@ where B: BlockchainBackend + 'static
 
         task::spawn(async move {
             if let Err(err) = self.start_streaming(&mut tx, start_header, end_header).await {
-                let _ = tx.send(Err(err)).await;
+                let _result = tx.send(Err(err)).await;
             }
         });
 

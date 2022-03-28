@@ -208,7 +208,7 @@ where
                 data.message,
             );
 
-            let _ = self
+            let _size = self
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::ReceivedTransaction(data.tx_id)))
@@ -466,7 +466,7 @@ where
                 self.source_pubkey.clone()
             );
 
-            let _ = self
+            let _size = self
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(self.id)))
@@ -503,7 +503,7 @@ where
             .await
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-        let _ = self
+        let _size = self
             .resources
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(

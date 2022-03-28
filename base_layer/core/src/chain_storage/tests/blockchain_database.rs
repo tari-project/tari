@@ -520,7 +520,7 @@ mod fetch_total_size_stats {
     #[test]
     fn it_measures_the_number_of_entries() {
         let db = setup();
-        let _ = add_many_chained_blocks(2, &db);
+        let _block_and_outputs = add_many_chained_blocks(2, &db);
         let stats = db.fetch_total_size_stats().unwrap();
         assert_eq!(
             stats.sizes().iter().find(|s| s.name == "utxos_db").unwrap().num_entries,
@@ -589,7 +589,7 @@ mod fetch_header_containing_utxo_mmr {
     fn it_returns_corresponding_header() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        let _ = add_many_chained_blocks(5, &db);
+        let _block_and_outputs = add_many_chained_blocks(5, &db);
         let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
 
         let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs - 1).unwrap();
@@ -635,7 +635,7 @@ mod fetch_header_containing_kernel_mmr {
 
         let (block, _) = create_next_block(&db, &blocks[0], txns);
         db.add_block(block).unwrap();
-        let _ = add_many_chained_blocks(3, &db);
+        let _block_and_outputs = add_many_chained_blocks(3, &db);
 
         let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels - 1).unwrap();
         assert_eq!(header.height(), 0);
@@ -665,7 +665,7 @@ mod clear_all_pending_headers {
     fn it_clears_no_headers() {
         let db = setup();
         assert_eq!(db.clear_all_pending_headers().unwrap(), 0);
-        let _ = add_many_chained_blocks(2, &db);
+        let _block_and_outputs = add_many_chained_blocks(2, &db);
         db.clear_all_pending_headers().unwrap();
         let last_header = db.fetch_last_header().unwrap();
         assert_eq!(last_header.height, 2);
@@ -674,7 +674,7 @@ mod clear_all_pending_headers {
     #[test]
     fn it_clears_headers_after_tip() {
         let db = setup();
-        let _ = add_many_chained_blocks(2, &db);
+        let _blocks_and_outputs = add_many_chained_blocks(2, &db);
         let prev_block = db.fetch_block(2).unwrap();
         let mut prev_accum = prev_block.accumulated_data.clone();
         let mut prev_header = prev_block.try_into_chain_block().unwrap().to_chain_header();

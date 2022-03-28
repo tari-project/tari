@@ -185,7 +185,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                                     reorg_block.height(),
                                     peer_node_id
                                 );
-                                let _ = tx.send(Err(RpcStatus::conflict(&format!(
+                                let _result = tx.send(Err(RpcStatus::conflict(&format!(
                                     "Reorg at height {} detected",
                                     reorg_block.height()
                                 ))));
@@ -242,7 +242,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             }
                         },
                         Err(err) => {
-                            let _ = tx.send(Err(err)).await;
+                            let _result = tx.send(Err(err)).await;
                             break;
                         },
                     }
@@ -335,7 +335,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             }
                         },
                         Err(err) => {
-                            let _ = tx.send(Err(err)).await;
+                            let _result = tx.send(Err(err)).await;
                             break;
                         },
                     }
@@ -493,7 +493,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
 
                 match res {
                     Ok(kernels) if kernels.is_empty() => {
-                        let _ = tx
+                        let _result = tx
                             .send(Err(RpcStatus::general(&format!(
                                 "No kernels in block {}",
                                 current_header_hash.to_hex()
@@ -516,7 +516,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         }
                     },
                     Err(err) => {
-                        let _ = tx.send(Err(err)).await;
+                        let _result = tx.send(Err(err)).await;
                         break;
                     },
                 }
@@ -533,7 +533,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                             current_header_hash = header.hash();
                         },
                         Ok(None) => {
-                            let _ = tx
+                            let _result = tx
                                 .send(Err(RpcStatus::not_found(&format!(
                                     "Could not find header #{} while streaming UTXOs after position {}",
                                     current_height, current_mmr_position
@@ -543,7 +543,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeSyncService for BaseNodeSyncRpcServ
                         },
                         Err(err) => {
                             error!(target: LOG_TARGET, "DB error while streaming kernels: {}", err);
-                            let _ = tx
+                            let _result = tx
                                 .send(Err(RpcStatus::general("DB error while streaming kernels")))
                                 .await;
                             break;

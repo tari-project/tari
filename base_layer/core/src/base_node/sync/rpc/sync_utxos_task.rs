@@ -126,7 +126,7 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
                 );
-                let _ = tx.send(Err(err)).await;
+                let _result = tx.send(Err(err)).await;
             }
             debug!(
                 target: LOG_TARGET,

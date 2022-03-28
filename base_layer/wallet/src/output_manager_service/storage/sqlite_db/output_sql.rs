@@ -468,7 +468,7 @@ impl OutputSql {
 
     /// Update the changed fields of this record after encryption/decryption is performed
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        let _ = self.update(
+        let _output_sql = self.update(
             UpdateOutput {
                 spending_key: Some(self.spending_key.clone()),
                 script_private_key: Some(self.script_private_key.clone()),
