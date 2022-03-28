@@ -46,6 +46,8 @@ pub enum Error {
     TlsError(#[from] native_tls::Error),
     #[error("Can't establish TLS connection: {0}")]
     TcpError(#[from] native_tls::HandshakeError<std::net::TcpStream>),
+    #[error("No connected stream")]
+    NotConnected,
 
     #[error("General error: {0}")]
     General(String),

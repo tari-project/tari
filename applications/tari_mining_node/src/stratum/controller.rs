@@ -84,12 +84,13 @@ impl Controller {
         Ok(())
     }
 
+    fn stream(&mut self) -> Result<&mut Stream, Error> {
+        self.stream.as_mut().ok_or(Error::NotConnected)
+    }
+
     fn read_message(&mut self) -> Result<Option<String>, Error> {
-        if self.stream.is_none() {
-            return Err(Error::Connection("broken pipe".to_string()));
-        }
         let mut line = String::new();
-        match self.stream.as_mut().unwrap().read_line(&mut line) {
+        match self.stream()?.read_line(&mut line) {
             Ok(_) => {
                 // stream is not returning a proper error on disconnect
                 if line.is_empty() {
@@ -107,13 +108,11 @@ impl Controller {
     }
 
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
-        if self.stream.is_none() {
-            return Err(Error::Connection(String::from("No server connection")));
-        }
+        let stream = self.stream()?;
         debug!(target: LOG_TARGET_FILE, "sending request: {}", message);
-        let _ = self.stream.as_mut().unwrap().write(message.as_bytes());
-        let _ = self.stream.as_mut().unwrap().write(b"\n");
-        let _ = self.stream.as_mut().unwrap().flush();
+        stream.write(message.as_bytes())?;
+        stream.write(b"\n")?;
+        stream.flush()?;
         Ok(())
     }
 
