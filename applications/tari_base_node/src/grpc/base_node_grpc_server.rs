@@ -638,11 +638,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
-        let algo: PowAlgorithm = ((request.algo)
-            .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
-            .pow_algo as u64)
-            .try_into()
-            .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
+        let algo: PowAlgorithm = (u64::try_from(
+            (request.algo)
+                .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
+                .pow_algo,
+        )
+        .unwrap())
+        .try_into()
+        .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
         let mut handler = self.node_service.clone();
 
         let new_template = handler

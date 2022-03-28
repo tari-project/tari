@@ -1384,6 +1384,7 @@ impl TryFrom<KnownOneSidedPaymentScriptSql> for KnownOneSidedPaymentScript {
                 reason: "ExecutionStack could not be converted from bytes".to_string(),
             }
         })?;
+        #[allow(clippy::cast_sign_loss)]
         let script_lock_height = o.script_lock_height as u64;
         Ok(KnownOneSidedPaymentScript {
             script_hash,

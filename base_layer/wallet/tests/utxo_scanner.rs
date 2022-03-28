@@ -239,6 +239,7 @@ async fn generate_block_headers_and_utxos(
     let mut block_headers = HashMap::new();
     let mut utxos_by_block = Vec::new();
     let mut unblinded_outputs = HashMap::new();
+    #[allow(clippy::cast_sign_loss)]
     for i in start_height..num_blocks + start_height {
         let mut block_header = BlockHeader::new(0);
         block_header.height = i;

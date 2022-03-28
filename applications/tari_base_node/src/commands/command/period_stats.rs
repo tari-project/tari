@@ -69,6 +69,7 @@ impl CommandContext {
         let mut period_difficulty = 0;
         let mut period_solvetime = 0;
         print!("Searching for height: ");
+        #[allow(clippy::cast_sign_loss)]
         while height > 0 {
             print!("{}", height);
             io::stdout().flush().await?;
@@ -90,6 +91,7 @@ impl CommandContext {
                 print!("\x1B[{}D\x1B[K", (height + 1).to_string().chars().count());
                 continue;
             };
+            #[allow(clippy::cast_sign_loss)]
             while block.header().timestamp.as_u64() < period_ticker_start {
                 results.push((
                     period_tx_count,

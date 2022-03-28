@@ -93,10 +93,12 @@ impl KeyManagerSqliteDatabase {
         let old_state = KeyManagerStateSqlOld::index(&conn)?;
         if !old_state.is_empty() {
             // there should only be 1 if there is an old state.
+            #[allow(clippy::cast_sign_loss)]
             let spending_km = KeyManagerState {
                 branch_seed: OutputManagerKeyManagerBranch::Spend.get_branch_key(),
                 primary_key_index: old_state[0].primary_key_index as u64,
             };
+            #[allow(clippy::cast_sign_loss)]
             let spending_script_km = KeyManagerState {
                 branch_seed: OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
                 primary_key_index: old_state[0].primary_key_index as u64,

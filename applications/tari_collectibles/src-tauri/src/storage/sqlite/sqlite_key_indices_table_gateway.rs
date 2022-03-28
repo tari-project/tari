@@ -39,6 +39,7 @@ pub struct SqliteKeyIndicesTableGateway {
 impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway {
   fn list(&self, tx: &SqliteTransaction) -> Result<Vec<KeyIndexRow>, StorageError> {
     let results: Vec<models::KeyIndex> = schema::key_indices::table.load(tx.connection())?;
+    #[allow(clippy::cast_sign_loss)]
     Ok(
       results
         .iter()
@@ -98,6 +99,7 @@ impl KeyIndicesTableGateway<SqliteTransaction> for SqliteKeyIndicesTableGateway 
       .first(tx.connection())
       .optional()?;
 
+    #[allow(clippy::cast_sign_loss)]
     Ok(result.map(|k| KeyIndexRow {
       id: Uuid::from_slice(&k.id).unwrap(),
       branch_seed: k.branch_seed.clone(),

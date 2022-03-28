@@ -258,7 +258,11 @@ mod test {
     fn huge_block_number() {
         // let mut n = (std::i32::MAX - 1) as u64;
         let height = 262_800_000; // 1000 years' problem
-        let schedule = EmissionSchedule::new(MicroTari::from(1e7 as u64), &[22, 23, 24, 26, 27], MicroTari::from(100));
+        let schedule = EmissionSchedule::new(
+            MicroTari::from(10000000u64),
+            &[22, 23, 24, 26, 27],
+            MicroTari::from(100),
+        );
         // Slow but does not overflow
         assert_eq!(schedule.block_reward(height), MicroTari::from(4_194_303));
     }

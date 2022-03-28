@@ -129,6 +129,7 @@ pub async fn wallet_recovery(
                 current_height,
                 tip_height,
             }) => {
+                #[allow(clippy::cast_sign_loss)]
                 let percentage_progress = ((current_height as f32) * 100f32 / (tip_height as f32)).round() as u32;
                 debug!(
                     target: LOG_TARGET,

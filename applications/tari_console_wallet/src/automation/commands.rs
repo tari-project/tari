@@ -405,7 +405,7 @@ pub async fn make_it_rain(
                 "`make-it-rain` scheduled to start at {}: msg \"{}\"",
                 start_time, message
             );
-            (start_time - now).num_milliseconds() as u64
+            u64::try_from((start_time - now).num_milliseconds()).unwrap()
         } else {
             0
         };
@@ -416,6 +416,7 @@ pub async fn make_it_rain(
         );
         sleep(Duration::from_millis(delay_ms)).await;
 
+        #[allow(clippy::cast_sign_loss)]
         let num_txs = (txps * duration as f64) as usize;
         let started_at = Utc::now();
 
@@ -455,6 +456,7 @@ pub async fn make_it_rain(
                 let target_ms = (i as f64 / (txps / 1000.0)) as i64;
                 if target_ms - actual_ms > 0 {
                     // Maximum delay between Txs set to 120 s
+                    #[allow(clippy::cast_sign_loss)]
                     sleep(Duration::from_millis((target_ms - actual_ms).min(120_000i64) as u64)).await;
                 }
                 let delayed_for = Instant::now();

@@ -582,6 +582,7 @@ impl UnconfirmedPool {
         shrink_hashmap(&mut self.txs_by_output);
         shrink_hashmap(&mut self.txs_by_unique_id);
 
+        #[cfg_attr(debug_assertions, allow(clippy::cast_sign_loss))]
         if old - new > 0 {
             debug!(
                 target: LOG_TARGET,

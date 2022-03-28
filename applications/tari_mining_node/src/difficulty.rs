@@ -54,6 +54,7 @@ impl BlockHeaderSha3 {
             .chain(header.height.to_le_bytes())
             .chain(header.prev_hash.as_bytes());
 
+        #[allow(clippy::cast_sign_loss)]
         Ok(Self {
             pow_bytes: pow.to_bytes(),
             hash_before_timestamp,

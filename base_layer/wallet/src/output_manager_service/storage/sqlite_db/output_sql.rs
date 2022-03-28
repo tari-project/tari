@@ -133,6 +133,7 @@ impl OutputSql {
                 .select(outputs::value)
                 .limit(1)
                 .load(conn)?;
+            #[allow(clippy::cast_sign_loss)]
             if max.is_empty() {
                 strategy = UTXOSelectionStrategy::Smallest
             } else if amount > max[0] as u64 {
@@ -312,6 +313,7 @@ impl OutputSql {
         let mut pending_incoming_balance = None;
         let mut pending_outgoing_balance = None;
         for balance in balance_query_result {
+            #[allow(clippy::cast_sign_loss)]
             match balance.category.as_str() {
                 "available_balance" => available_balance = Some(MicroTari::from(balance.amount as u64)),
                 "time_locked_balance" => time_locked_balance = Some(Some(MicroTari::from(balance.amount as u64))),
@@ -484,15 +486,18 @@ impl OutputSql {
 impl TryFrom<OutputSql> for DbUnblindedOutput {
     type Error = OutputManagerStorageError;
 
+    #[allow(clippy::cast_sign_loss)]
     fn try_from(o: OutputSql) -> Result<Self, Self::Error> {
         let mut features: OutputFeatures =
             serde_json::from_str(&o.features_json).map_err(|s| OutputManagerStorageError::ConversionError {
                 reason: format!("Could not convert json into OutputFeatures:{}", s),
             })?;
 
-        features.flags = OutputFlags::from_bits(o.flags as u8).ok_or(OutputManagerStorageError::ConversionError {
-            reason: "Flags could not be converted from bits".to_string(),
-        })?;
+        features.flags = OutputFlags::from_bits(u8::try_from(o.flags).unwrap()).ok_or(
+            OutputManagerStorageError::ConversionError {
+                reason: "Flags could not be converted from bits".to_string(),
+            },
+        )?;
         features.maturity = o.maturity as u64;
         features.metadata = o.metadata.unwrap_or_default();
         features.unique_id = o.features_unique_id.clone();
@@ -500,7 +505,8 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             .features_parent_public_key
             .map(|p| PublicKey::from_bytes(&p))
             .transpose()?;
-        features.recovery_byte = o.recovery_byte as u8;
+        features.recovery_byte = u8::try_from(o.recovery_byte).unwrap();
+        #[allow(clippy::cast_sign_loss)]
         let unblinded_output = UnblindedOutput::new_current_version(
             MicroTari::from(o.value as u64),
             PrivateKey::from_vec(&o.spending_key).map_err(|_| {
@@ -590,7 +596,9 @@ impl TryFrom<OutputSql> for DbUnblindedOutput {
             },
             Some(c) => Commitment::from_vec(&c)?,
         };
+        #[allow(clippy::cast_sign_loss)]
         let spending_priority = (o.spending_priority as u32).into();
+        #[allow(clippy::cast_sign_loss)]
         Ok(Self {
             commitment,
             unblinded_output,
