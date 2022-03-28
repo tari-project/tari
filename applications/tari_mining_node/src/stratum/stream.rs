@@ -32,20 +32,12 @@ use native_tls::{TlsConnector, TlsStream};
 use crate::stratum::error::Error;
 
 pub(crate) enum Stream {
-    NotConnected,
     Stream(BufStream<TcpStream>),
     TlsStream(BufStream<TlsStream<TcpStream>>),
 }
 
 impl Stream {
-    pub fn new() -> Self {
-        Self::NotConnected
-    }
-
-    // TODO: It should be:
-    // `try_connect(server_url: &str, tls: Option<bool>) -> Result<Self, Error>`
-    // In that case we can guarantee `consume` call will never panic.
-    pub fn try_connect(&mut self, server_url: &str, tls: Option<bool>) -> Result<(), Error> {
+    pub fn try_connect(server_url: &str, tls: Option<bool>) -> Result<Self, Error> {
         let conn = TcpStream::connect(server_url)?;
         if let Some(true) = tls {
             let connector = TlsConnector::new()?;
@@ -54,68 +46,64 @@ impl Stream {
             let base_host = format!("{}.{}", split_url[split_url.len() - 2], split_url[split_url.len() - 1]);
             let mut stream = connector.connect(&base_host, conn)?;
             stream.get_mut().set_nonblocking(true)?;
-            *self = Self::TlsStream(BufStream::new(stream));
+            Ok(Self::TlsStream(BufStream::new(stream)))
         } else {
             conn.set_nonblocking(true)?;
-            *self = Self::Stream(BufStream::new(conn));
-        }
-        Ok(())
-    }
-
-    fn reader(&mut self) -> Result<&mut dyn Read, io::Error> {
-        match self {
-            Self::TlsStream(tls_stream) => Ok(tls_stream),
-            Self::Stream(stream) => Ok(stream),
-            Self::NotConnected => Err(io::Error::new(io::ErrorKind::Other, "not connected")),
+            Ok(Self::Stream(BufStream::new(conn)))
         }
     }
 
-    fn writer(&mut self) -> Result<&mut dyn Write, io::Error> {
+    fn reader(&mut self) -> &mut dyn Read {
         match self {
-            Self::TlsStream(tls_stream) => Ok(tls_stream),
-            Self::Stream(stream) => Ok(stream),
-            Self::NotConnected => Err(io::Error::new(io::ErrorKind::Other, "not connected")),
+            Self::TlsStream(tls_stream) => tls_stream,
+            Self::Stream(stream) => stream,
         }
     }
 
-    fn buf_reader(&mut self) -> Result<&mut dyn BufRead, io::Error> {
+    fn writer(&mut self) -> &mut dyn Write {
         match self {
-            Self::TlsStream(tls_stream) => Ok(tls_stream),
-            Self::Stream(stream) => Ok(stream),
-            Self::NotConnected => Err(io::Error::new(io::ErrorKind::Other, "not connected")),
+            Self::TlsStream(tls_stream) => tls_stream,
+            Self::Stream(stream) => stream,
+        }
+    }
+
+    fn buf_reader(&mut self) -> &mut dyn BufRead {
+        match self {
+            Self::TlsStream(tls_stream) => tls_stream,
+            Self::Stream(stream) => stream,
         }
     }
 }
 
 impl Write for Stream {
     fn write(&mut self, b: &[u8]) -> Result<usize, io::Error> {
-        self.writer()?.write(b)
+        self.writer().write(b)
     }
 
     fn flush(&mut self) -> Result<(), io::Error> {
-        self.writer()?.flush()
+        self.writer().flush()
     }
 }
 impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.reader()?.read(buf)
+        self.reader().read(buf)
     }
 }
 
 impl BufRead for Stream {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        self.buf_reader()?.fill_buf()
+        self.buf_reader().fill_buf()
     }
 
     fn consume(&mut self, amt: usize) {
-        self.buf_reader().unwrap().consume(amt)
+        self.buf_reader().consume(amt)
     }
 
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
-        self.buf_reader()?.read_until(byte, buf)
+        self.buf_reader().read_until(byte, buf)
     }
 
     fn read_line(&mut self, string: &mut String) -> io::Result<usize> {
-        self.buf_reader()?.read_line(string)
+        self.buf_reader().read_line(string)
     }
 }

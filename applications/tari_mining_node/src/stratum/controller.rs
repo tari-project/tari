@@ -77,11 +77,10 @@ impl Controller {
     }
 
     pub fn try_connect(&mut self) -> Result<(), Error> {
-        self.stream = Some(Stream::new());
-        self.stream
-            .as_mut()
-            .unwrap()
-            .try_connect(&self.server_url, self.server_tls_enabled)?;
+        // TODO: Check should we `take` it here?
+        self.stream.take();
+        let stream = Stream::try_connect(&self.server_url, self.server_tls_enabled)?;
+        self.stream = Some(stream);
         Ok(())
     }
 
