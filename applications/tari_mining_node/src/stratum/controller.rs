@@ -110,8 +110,8 @@ impl Controller {
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
         let stream = self.stream()?;
         debug!(target: LOG_TARGET_FILE, "sending request: {}", message);
-        stream.write(message.as_bytes())?;
-        stream.write(b"\n")?;
+        stream.write_all(message.as_bytes())?;
+        stream.write_all(b"\n")?;
         stream.flush()?;
         Ok(())
     }
