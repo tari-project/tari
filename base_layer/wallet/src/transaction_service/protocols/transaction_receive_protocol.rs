@@ -186,17 +186,17 @@ where
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
-            if !send_result {
+            if send_result {
+                info!(
+                    target: LOG_TARGET,
+                    "Transaction with TX_ID = {} received from {}. Reply Sent", data.tx_id, self.source_pubkey,
+                );
+            } else {
                 error!(
                     target: LOG_TARGET,
                     "Transaction with TX_ID = {} received from {}. Reply could not be sent!",
                     data.tx_id,
                     self.source_pubkey,
-                );
-            } else {
-                info!(
-                    target: LOG_TARGET,
-                    "Transaction with TX_ID = {} received from {}. Reply Sent", data.tx_id, self.source_pubkey,
                 );
             }
 

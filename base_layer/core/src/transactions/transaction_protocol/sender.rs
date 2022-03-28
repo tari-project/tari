@@ -475,17 +475,17 @@ impl SenderTransactionProtocol {
         let aggregated_metadata_signature = ComSignature::new(r_pub_aggregated, u_aggregated, v.clone());
 
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
-        if !aggregated_metadata_signature.verify_challenge(
+        if aggregated_metadata_signature.verify_challenge(
             &(&output.commitment + &sender_offset_public_key),
             &e,
             commitment_factory,
         ) {
+            Ok(aggregated_metadata_signature)
+        } else {
             Err(TPE::InvalidSignatureError(format!(
                 "Transaction output metadata signature not valid for {}",
                 output
             )))
-        } else {
-            Ok(aggregated_metadata_signature)
         }
     }
 

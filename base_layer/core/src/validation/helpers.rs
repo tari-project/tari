@@ -745,14 +745,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
         .iter()
         .map(|input| match input.is_mature_at(height) {
             Ok(mature) => {
-                if !mature {
+                if mature {
+                    Ok(0)
+                } else {
                     warn!(
                         target: LOG_TARGET,
                         "Input found that has not yet matured to spending height: {}", input
                     );
                     Err(TransactionError::InputMaturity)
-                } else {
-                    Ok(0)
                 }
             },
             Err(e) => Err(e),

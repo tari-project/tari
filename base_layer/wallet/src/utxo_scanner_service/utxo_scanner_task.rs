@@ -333,10 +333,10 @@ where TBackend: WalletBackend + 'static
                     let header = BlockHeader::try_from(client.get_header_by_height(sb.height).await?)
                         .map_err(UtxoScannerError::ConversionError)?;
                     let header_hash = header.hash();
-                    if header_hash != sb.header_hash {
-                        missing_scanned_blocks.push(sb.clone());
-                    } else {
+                    if header_hash == sb.header_hash {
                         found_scanned_block = Some(sb.clone());
+                    } else {
+                        missing_scanned_blocks.push(sb.clone());
                     }
                 }
                 if found_scanned_block.is_some() {

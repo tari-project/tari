@@ -79,7 +79,9 @@ impl WindowedListState {
     }
 
     pub fn next(&mut self) {
-        if self.num_items != 0 {
+        if self.num_items == 0 {
+            self.selected = None;
+        } else {
             let i = match self.selected {
                 Some(i) => {
                     if i >= self.num_items - 1 {
@@ -91,13 +93,13 @@ impl WindowedListState {
                 None => 0,
             };
             self.selected = Some(i);
-        } else {
-            self.selected = None;
         }
     }
 
     pub fn previous(&mut self) {
-        if self.num_items != 0 {
+        if self.num_items == 0 {
+            self.selected = None;
+        } else {
             let i = match self.selected {
                 Some(i) => {
                     if i == 0 {
@@ -109,8 +111,6 @@ impl WindowedListState {
                 None => 0,
             };
             self.selected = Some(i);
-        } else {
-            self.selected = None;
         }
     }
 

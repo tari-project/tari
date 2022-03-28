@@ -933,7 +933,12 @@ pub async fn command_runner(
     }
 
     // listen to event stream
-    if !tx_ids.is_empty() {
+    if tx_ids.is_empty() {
+        trace!(
+            target: LOG_TARGET,
+            "Wallet command runner - no transactions to monitor."
+        );
+    } else {
         let duration = Duration::from_secs(config.wallet_command_send_wait_timeout);
         debug!(
             target: LOG_TARGET,
@@ -960,11 +965,6 @@ pub async fn command_runner(
                 );
             },
         }
-    } else {
-        trace!(
-            target: LOG_TARGET,
-            "Wallet command runner - no transactions to monitor."
-        );
     }
 
     Ok(())

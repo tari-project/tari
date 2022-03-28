@@ -320,7 +320,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let from_height = cmp::min(request.from_height, tip);
 
-        let (header_range, is_reversed) = if from_height != 0 {
+        let (header_range, is_reversed) = if from_height == 0 {
+            match sorting {
+                Sorting::Desc => {
+                    let from = match tip.overflowing_sub(num_headers) {
+                        (_, true) => 0,
+                        (res, false) => res + 1,
+                    };
+                    (from..=tip, true)
+                },
+                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
+            }
+        } else {
             match sorting {
                 Sorting::Desc => {
                     let from = match from_height.overflowing_sub(num_headers) {
@@ -333,17 +344,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let to = from_height.saturating_add(num_headers).saturating_sub(1);
                     (from_height..=to, false)
                 },
-            }
-        } else {
-            match sorting {
-                Sorting::Desc => {
-                    let from = match tip.overflowing_sub(num_headers) {
-                        (_, true) => 0,
-                        (res, false) => res + 1,
-                    };
-                    (from..=tip, true)
-                },
-                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
             }
         };
 

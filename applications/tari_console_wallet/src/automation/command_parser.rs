@@ -359,10 +359,10 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     // start time utc or 'now'
     let start_time = args.next().ok_or_else(|| ParseError::Empty("start time".to_string()))?;
-    let start_time = if start_time != "now" {
-        DateTime::parse_from_rfc3339(start_time)?.with_timezone(&Utc)
-    } else {
+    let start_time = if start_time == "now" {
         Utc::now()
+    } else {
+        DateTime::parse_from_rfc3339(start_time)?.with_timezone(&Utc)
     };
     parsed_args.push(ParsedArgument::Date(start_time));
 
