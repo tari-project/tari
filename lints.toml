@@ -40,7 +40,7 @@ deny = [
     # 'clippy::explicit_into_iter_loop',
     # 'clippy::explicit_iter_loop',
     # 'clippy::if_not_else',
-    # 'clippy::match_bool',
+    'clippy::match_bool',
     # perhaps this is a bit harsh
     # 'clippy::too_many_lines',
     'clippy::trivially_copy_pass_by_ref',
