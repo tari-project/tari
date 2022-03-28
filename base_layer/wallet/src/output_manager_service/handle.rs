@@ -115,6 +115,7 @@ pub enum OutputManagerRequest {
     CalculateRecoveryByte {
         spending_key: PrivateKey,
         value: u64,
+        with_rewind_data: bool,
     },
     FeeEstimate {
         amount: MicroTari,
@@ -172,7 +173,9 @@ impl fmt::Display for OutputManagerRequest {
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
-            CalculateRecoveryByte { spending_key, value } => write!(
+            CalculateRecoveryByte {
+                spending_key, value, ..
+            } => write!(
                 f,
                 "CalculateRecoveryByte ({},{})",
                 spending_key.as_bytes().to_vec().to_hex(),
@@ -630,10 +633,15 @@ impl OutputManagerHandle {
         &mut self,
         spending_key: PrivateKey,
         value: u64,
+        with_rewind_data: bool,
     ) -> Result<u8, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::CalculateRecoveryByte { spending_key, value })
+            .call(OutputManagerRequest::CalculateRecoveryByte {
+                spending_key,
+                value,
+                with_rewind_data,
+            })
             .await??
         {
             OutputManagerResponse::RecoveryByte(rk) => Ok(rk),
