@@ -97,7 +97,7 @@ impl NetworkTab {
             (false, Style::default().fg(Color::Reset)),
         ]
         .iter()
-        .cloned()
+        .copied()
         .collect();
 
         for (peer_type, peer) in base_node_list {

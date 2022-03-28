@@ -92,7 +92,7 @@ impl TransactionsTab {
 
         let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
             .iter()
-            .cloned()
+            .copied()
             .collect();
 
         let mut column0_items = Vec::new();
@@ -189,7 +189,7 @@ impl TransactionsTab {
 
         let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
             .iter()
-            .cloned()
+            .copied()
             .collect();
 
         let base_node_state = app_state.get_base_node_state();

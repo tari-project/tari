@@ -22,7 +22,7 @@ deny = [
     'unused_extern_crates',
     'unused_must_use',
     'unreachable_patterns',
-    # 'clippy::cloned_instead_of_copied',
+    'clippy::cloned_instead_of_copied',
     'clippy::create_dir',
     'clippy::dbg_macro',
     'clippy::else_if_without_else',
