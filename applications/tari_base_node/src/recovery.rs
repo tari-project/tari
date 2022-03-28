@@ -65,7 +65,7 @@ pub fn initiate_recover_db(config: &BaseNodeConfig, common_config: &CommonConfig
     // create recovery db
     match &config.db_type {
         DatabaseType::Lmdb => {
-            let _backend = create_recovery_lmdb_database(config.lmdb_path(common_config)).map_err(|err| {
+            let _backend = create_recovery_lmdb_database(config.lmdb_path.as_path()).map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
                 ExitError::new(ExitCode::UnknownError, err)
             })?;
@@ -78,11 +78,10 @@ pub async fn run_recovery(node_config: &BaseNodeConfig, common_config: &CommonCo
     println!("Starting recovery mode");
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {
-            let backend = create_lmdb_database(&node_config.lmdb_path(common_config), node_config.lmdb.clone())
-                .map_err(|e| {
-                    error!(target: LOG_TARGET, "Error opening db: {}", e);
-                    anyhow!("Could not open DB: {}", e)
-                })?;
+            let backend = create_lmdb_database(&node_config.lmdb_path, node_config.lmdb.clone()).map_err(|e| {
+                error!(target: LOG_TARGET, "Error opening db: {}", e);
+                anyhow!("Could not open DB: {}", e)
+            })?;
             let temp_path = temp_dir().join("temp_recovery");
 
             let temp = create_lmdb_database(&temp_path, node_config.lmdb.clone()).map_err(|e| {

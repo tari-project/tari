@@ -118,6 +118,7 @@ impl LivenessInitializer {
 #[async_trait]
 impl ServiceInitializer for LivenessInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing Liveness Service");
         let (sender, receiver) = reply_channel::unbounded();
 
         let (publisher, _) = broadcast::channel(200);
@@ -154,6 +155,7 @@ impl ServiceInitializer for LivenessInitializer {
             debug!(target: LOG_TARGET, "Liveness service has shut down");
         });
 
+        debug!(target: LOG_TARGET, "Liveness service initialized");
         Ok(())
     }
 }

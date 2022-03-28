@@ -73,7 +73,6 @@ where
         &self,
         request: Request<proto::GetTokenDataRequest>,
     ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus> {
-        dbg!(&request);
         Err(RpcStatus::general("Not implemented"))
     }
 
@@ -81,7 +80,6 @@ where
         &self,
         request: Request<proto::InvokeReadMethodRequest>,
     ) -> Result<Response<proto::InvokeReadMethodResponse>, RpcStatus> {
-        dbg!(&request);
         let request = request.into_message();
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
             .map_err(|err| RpcStatus::bad_request(format!("Asset public key was not a valid public key:{}", err)))?;
@@ -116,7 +114,6 @@ where
         &self,
         request: Request<proto::InvokeMethodRequest>,
     ) -> Result<Response<proto::InvokeMethodResponse>, RpcStatus> {
-        dbg!(&request);
         let request = request.into_message();
         let instruction = Instruction::new(
             request

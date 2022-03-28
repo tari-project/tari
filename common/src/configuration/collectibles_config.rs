@@ -64,7 +64,6 @@ impl CollectiblesConfig {
         let section: Self = match cfg.get("collectibles") {
             Ok(s) => s,
             Err(_e) => {
-                // dbg!(e);
                 return Ok(None);
             },
         };

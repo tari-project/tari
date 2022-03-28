@@ -194,7 +194,6 @@ impl LaunchpadConfig {
 
                         use regex::Regex;
 
-                        dbg!(part);
                         if part == OsStr::new(&path::MAIN_SEPARATOR.to_string()) {
                             None
                         } else {
@@ -214,7 +213,6 @@ impl LaunchpadConfig {
             let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
             #[cfg(target_os = "linux")]
             let host = self.data_directory.to_string_lossy().to_string();
-            dbg!(&host);
             let mount = Mount {
                 target: Some("/var/tari".to_string()),
                 source: Some(host),

@@ -116,7 +116,12 @@ where B: BlockchainBackend + 'static
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
-            .add_initializer(P2pInitializer::new(p2p_config, self.node_identity.clone(), publisher))
+            .add_initializer(P2pInitializer::new(
+                p2p_config,
+                base_node_config.network,
+                self.node_identity.clone(),
+                publisher,
+            ))
             .add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::BaseNode,
                 consts::APP_VERSION_NUMBER
@@ -147,19 +152,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(ChainMetadataServiceInitializer)
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
-                todo!("put config in a better place"),
-                // BaseNodeStateMachineConfig {
-                //     blockchain_sync_config: BlockchainSyncConfig {
-                //         forced_sync_peers: sync_peers,
-                //         validation_concurrency: num_cpus::get(),
-                //         ..Default::default()
-                //     },
-                //     pruning_horizon: base_node.pruning_horizon,
-                //     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
-                //     max_randomx_vms: config.max_randomx_vms,
-                //     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                //     ..Default::default()
-                // },
+                base_node_config.state_machine.clone(),
                 self.rules,
                 self.factories,
             ))
@@ -178,29 +171,25 @@ where B: BlockchainBackend + 'static
         match transport_type {
             TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
-                identity_management::save_as_json(
-                    &base_node_config.identity_file(common_config),
-                    &*comms.node_identity(),
-                )
-                .map_err(|e| {
-                    anyhow!(
-                        "Failed to save node identity - {:?}: {:?}",
-                        base_node_config.identity_file,
-                        e
-                    )
-                })?;
+                identity_management::save_as_json(base_node_config.identity_file.as_path(), &*comms.node_identity())
+                    .map_err(|e| {
+                        anyhow!(
+                            "Failed to save node identity - {:?}: {:?}",
+                            base_node_config.identity_file,
+                            e
+                        )
+                    })?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
-            todo!("fix identity path");
-            // identity_management::save_as_json(&base_node_config.tor_identity_file(common_config), hs.tor_identity())
-            //     .map_err(|e| {
-            //         anyhow!(
-            //             "Failed to save tor identity - {:?}: {:?}",
-            //             base_node_config.tor_identity_file,
-            //             e
-            //         )
-            //     })?;
+            identity_management::save_as_json(base_node_config.tor_identity_file.as_path(), hs.tor_identity())
+                .map_err(|e| {
+                    anyhow!(
+                        "Failed to save tor identity - {:?}: {:?}",
+                        base_node_config.tor_identity_file,
+                        e
+                    )
+                })?;
         }
 
         handles.register(comms);

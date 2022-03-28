@@ -22,6 +22,7 @@
 #![allow(dead_code)]
 
 use std::{
+    fs,
     fs::File,
     iter,
     path::{Path, PathBuf},
@@ -113,7 +114,10 @@ impl CommsInitializationError {
     }
 }
 
-use tari_common::configuration::utils::{deserialize_string_or_struct, serialize_string};
+use tari_common::configuration::{
+    utils::{deserialize_string_or_struct, serialize_string},
+    CommonConfig,
+};
 
 /// Configuration for a comms node
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -133,8 +137,6 @@ pub struct P2pConfig {
     pub outbound_buffer_size: usize,
     /// Configuration for DHT
     pub dht: DhtConfig,
-    /// The p2p network currently being connected to.
-    pub network: Network,
     /// The type of transport to use
     // pub transport_type: TransportType,
     /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
@@ -178,7 +180,6 @@ impl Default for P2pConfig {
             max_concurrent_outbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: Default::default(),
-            network: Default::default(),
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
             listener_liveness_allowlist_cidrs: vec![],
@@ -195,6 +196,16 @@ impl Default for P2pConfig {
 impl SubConfigPath for P2pConfig {
     fn main_key_prefix() -> &'static str {
         "p2p"
+    }
+}
+
+impl P2pConfig {
+    /// Sets relative paths to use a common base path
+    pub fn set_base_path(&mut self, base_path: &Path) {
+        if !self.datastore_path.is_absolute() {
+            self.datastore_path = base_path.join(self.datastore_path.as_path());
+        }
+        self.dht.set_base_path(base_path)
     }
 }
 
@@ -402,10 +413,6 @@ async fn configure_comms_and_dht(
 
     let mut dht = Dht::builder();
     dht.with_config(config.dht.clone()).with_outbound_sender(outbound_tx);
-    // TODO: remove this once enough weatherwax nodes have upgraded
-    if config.network == Network::Weatherwax {
-        dht.with_protocol_version(DhtProtocolVersion::v1());
-    }
     let dht = dht
         .build(node_identity.clone(), peer_manager, connectivity, shutdown_signal)
         .await?;
@@ -452,6 +459,9 @@ async fn configure_comms_and_dht(
 fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, CommsInitializationError> {
     let lock_file_path = db_path.join(".p2p_file.lock");
 
+    if let Some(parent) = lock_file_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let file = File::create(lock_file_path)?;
     // Attempt to acquire exclusive OS level Write Lock
     if let Err(e) = file.try_lock_exclusive() {
@@ -498,14 +508,21 @@ async fn add_all_peers(
 
 pub struct P2pInitializer {
     config: P2pConfig,
+    network: Network,
     node_identity: Arc<NodeIdentity>,
     connector: Option<PubsubDomainConnector>,
 }
 
 impl P2pInitializer {
-    pub fn new(config: P2pConfig, node_identity: Arc<NodeIdentity>, connector: PubsubDomainConnector) -> Self {
+    pub fn new(
+        config: P2pConfig,
+        network: Network,
+        node_identity: Arc<NodeIdentity>,
+        connector: PubsubDomainConnector,
+    ) -> Self {
         Self {
             config,
+            network,
             node_identity,
             connector: Some(connector),
         }
@@ -584,6 +601,7 @@ impl P2pInitializer {
 #[async_trait]
 impl ServiceInitializer for P2pInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing P2P");
         let mut config = self.config.clone();
         let connector = self.connector.take().expect("P2pInitializer called more than once");
 
@@ -593,7 +611,7 @@ impl ServiceInitializer for P2pInitializer {
             .with_node_info(NodeNetworkInfo {
                 major_version: MAJOR_NETWORK_VERSION,
                 minor_version: MINOR_NETWORK_VERSION,
-                network_byte: config.network.as_byte(),
+                network_byte: self.network.as_byte(),
                 user_agent: config.user_agent.clone(),
             });
 
@@ -630,7 +648,7 @@ impl ServiceInitializer for P2pInitializer {
         context.register_handle(peer_manager);
         context.register_handle(comms);
         context.register_handle(dht);
-
+        debug!(target: LOG_TARGET, "P2P Initialized");
         Ok(())
     }
 }

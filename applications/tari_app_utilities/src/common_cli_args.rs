@@ -22,6 +22,7 @@
 use std::{error::Error, path::PathBuf};
 
 use clap::Args;
+use log::Level;
 
 #[derive(Args, Debug)]
 pub struct CommonCliArgs {
@@ -39,6 +40,9 @@ pub struct CommonCliArgs {
     /// The path to the log configuration file
     #[clap(short, long, alias = "log_config")]
     pub log_config: Option<PathBuf>,
+
+    #[clap()]
+    pub log_level: Option<Level>,
 
     /// Overrides for properties in the config file, e.g. -p base_node.netwok=dibbler
     #[clap(short = 'p', parse(try_from_str = parse_key_val), multiple_occurrences(true))]
@@ -89,6 +93,12 @@ impl CommonCliArgs {
             path.push("log4rs.yml");
             path
         }
+    }
+
+    pub fn config_property_overrides(&self) -> Vec<(String, String)> {
+        let mut overrides = self.config_property_overrides.clone();
+        overrides.push(("common.base_path".to_string(), self.base_path.clone()));
+        overrides
     }
 }
 

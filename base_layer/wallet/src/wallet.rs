@@ -61,8 +61,8 @@ use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
-    transport::TransportType,
     services::liveness::{LivenessConfig, LivenessInitializer},
+    transport::TransportType,
 };
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
@@ -165,6 +165,7 @@ where
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.comms_config.clone(),
+                config.network.clone(),
                 node_identity.clone(),
                 publisher,
             ))

@@ -41,6 +41,7 @@ pub struct ValidatorNodeConfig {
     pub scan_for_assets: bool,
     pub new_asset_scanning_interval: u64,
     pub assets_allow_list: Option<Vec<String>>,
+    pub data_dir: PathBuf,
 }
 
 impl Default for ValidatorNodeConfig {
@@ -55,6 +56,7 @@ impl Default for ValidatorNodeConfig {
             scan_for_assets: true,
             new_asset_scanning_interval: 10,
             assets_allow_list: None,
+            data_dir: PathBuf::from("/data/validator_node"),
         }
     }
 }

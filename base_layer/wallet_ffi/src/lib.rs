@@ -3224,7 +3224,6 @@ pub unsafe extern "C" fn comms_config_create(
 
                     let config = TariCommsConfig {
                         transport: todo!("Fill in transport type"),
-                        network: selected_network,
                         auxilary_tcp_listener_address: None,
                         datastore_path,
                         peer_database_name: database_name_string,

@@ -42,10 +42,8 @@ pub struct SqliteDbFactory {
 }
 
 impl SqliteDbFactory {
-    pub fn new(config: &CommonConfig) -> Self {
-        Self {
-            data_dir: config.data_dir(),
-        }
+    pub fn new(data_dir: PathBuf) -> Self {
+        Self { data_dir }
         // let database_url = config
         //     .data_dir
         //     .join("asset_data")

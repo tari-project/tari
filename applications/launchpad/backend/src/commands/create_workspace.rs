@@ -51,7 +51,6 @@ pub fn create_new_workspace(app: AppHandle<Wry>, root_path: Option<String>) -> R
         .unwrap_or_else(|| env::temp_dir().join("tari"));
     debug!("Creating workspace at {:?}", path);
     create_workspace_folders(&path).map_err(|e| e.chained_message())?;
-    dbg!("hello");
     copy_config_file(path.as_path(), config.as_ref(), package_info, "log4rs.yml").map_err(|e| e.chained_message())?;
     copy_config_file(path.as_path(), config.as_ref(), package_info, "config.toml").map_err(|e| e.chained_message())?;
     info!("Workspace at {:?} complete!", path);

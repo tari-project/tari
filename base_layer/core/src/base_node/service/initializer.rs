@@ -148,6 +148,7 @@ impl<T> ServiceInitializer for BaseNodeServiceInitializer<T>
 where T: BlockchainBackend + 'static
 {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing Base Node Service");
         // Create streams for receiving Base Node requests and response messages from comms
         let inbound_request_stream = self.inbound_request_stream();
         let inbound_response_stream = self.inbound_response_stream();
@@ -212,6 +213,7 @@ where T: BlockchainBackend + 'static
             info!(target: LOG_TARGET, "Base Node Service shutdown");
         });
 
+        debug!(target: LOG_TARGET, "Base Node Service initialized");
         Ok(())
     }
 }

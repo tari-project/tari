@@ -110,7 +110,7 @@ async fn run_node(
         create_id,
         PeerFeatures::NONE,
     )?;
-    let db_factory = SqliteDbFactory::new(&common_config);
+    let db_factory = SqliteDbFactory::new(validator_node_config.data_dir.clone());
     let mempool_service = MempoolServiceHandle::default();
 
     info!(

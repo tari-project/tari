@@ -179,8 +179,7 @@ pub async fn configure_and_initialize_node(
 ) -> Result<BaseNodeContext, anyhow::Error> {
     let result = match &base_node_config.db_type {
         DatabaseType::Lmdb => {
-            let backend =
-                create_lmdb_database(base_node_config.lmdb_path(common_config), base_node_config.lmdb.clone())?;
+            let backend = create_lmdb_database(base_node_config.lmdb_path.as_path(), base_node_config.lmdb.clone())?;
             build_node_context(
                 backend,
                 base_node_config,

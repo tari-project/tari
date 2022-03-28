@@ -180,19 +180,19 @@ fn main_inner() -> Result<(), ExitError> {
     // #[allow(unused_mut)] // config isn't mutated on windows
     // let (bootstrap, global_config, cfg) = init_configuration(ApplicationType::BaseNode)?;
 
-    let base_node_config = <BaseNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    dbg!(&base_node_config);
+    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    let mut base_node_config = <BaseNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    base_node_config.set_base_path(common_config.base_path().as_path());
     debug!(
         target: LOG_TARGET,
         "Using base node configuration: {:?}", base_node_config
     );
-    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
     let auto_update_config =
         <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load auto-update config");
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
-        &base_node_config.identity_file(&common_config),
+        base_node_config.identity_file.as_path(),
         &base_node_config.public_address,
         cli.create_id,
         PeerFeatures::COMMUNICATION_NODE,
@@ -203,7 +203,7 @@ fn main_inner() -> Result<(), ExitError> {
         info!(
             target: LOG_TARGET,
             "Base node's node ID created at '{}'. Done.",
-            base_node_config.identity_file(&common_config).to_string_lossy(),
+            base_node_config.identity_file.as_path().to_string_lossy(),
         );
         return Ok(());
     }

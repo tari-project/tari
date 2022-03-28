@@ -55,7 +55,7 @@ pub(crate) struct Cli {
 
 impl Cli {
     pub fn config_property_overrides(&self) -> Vec<(String, String)> {
-        let mut overrides = self.common.config_property_overrides.clone();
+        let mut overrides = self.common.config_property_overrides();
         if let Some(ref network) = self.network {
             overrides.push(("base_node.network".to_string(), network.clone()));
         }

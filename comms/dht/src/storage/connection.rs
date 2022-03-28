@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, io, path::PathBuf, time::Duration};
+use std::{
+    convert::TryFrom,
+    io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use diesel::{
     r2d2::{ConnectionManager, PooledConnection},
@@ -56,6 +61,18 @@ impl DbConnectionUrl {
                 .to_str()
                 .expect("Invalid non-UTF8 character in database path")
                 .to_owned(),
+        }
+    }
+
+    /// Sets relative paths to use a common base path
+    pub fn set_base_path(&mut self, base_path: &Path) {
+        match self {
+            DbConnectionUrl::File(inner) => {
+                if !inner.is_absolute() {
+                    *inner = base_path.join(inner.as_path());
+                }
+            },
+            _ => {},
         }
     }
 }

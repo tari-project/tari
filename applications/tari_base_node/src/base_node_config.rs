@@ -32,7 +32,11 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::{chain_storage::BlockchainDatabaseConfig, mempool::MempoolConfig};
+use tari_core::{
+    base_node::BaseNodeStateMachineConfig,
+    chain_storage::BlockchainDatabaseConfig,
+    mempool::MempoolConfig,
+};
 use tari_p2p::initialization::P2pConfig;
 use tari_storage::lmdb_store::LMDBConfig;
 
@@ -53,6 +57,7 @@ pub struct BaseNodeConfig {
     pub public_address: Option<Multiaddr>,
     pub db_type: DatabaseType,
     pub lmdb: LMDBConfig,
+    pub data_dir: PathBuf,
     pub lmdb_path: PathBuf,
     pub max_randomx_vms: usize,
     pub bypass_range_proof_verification: bool,
@@ -71,6 +76,7 @@ pub struct BaseNodeConfig {
     pub buffer_size: usize,
     pub buffer_rate_limit: usize,
     pub metadata_auto_ping_interval: Duration,
+    pub state_machine: BaseNodeStateMachineConfig,
 }
 
 impl Default for BaseNodeConfig {
@@ -84,6 +90,7 @@ impl Default for BaseNodeConfig {
             public_address: None,
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
+            data_dir: PathBuf::from("data/base_node"),
             lmdb_path: PathBuf::from("db"),
             max_randomx_vms: 5,
             bypass_range_proof_verification: false,
@@ -99,6 +106,7 @@ impl Default for BaseNodeConfig {
             buffer_size: 0,
             buffer_rate_limit: 0,
             metadata_auto_ping_interval: Duration::from_secs(30), // TODO: Get actual default
+            state_machine: Default::default(),
         }
     }
 }
@@ -110,15 +118,19 @@ impl SubConfigPath for BaseNodeConfig {
 }
 
 impl BaseNodeConfig {
-    pub fn identity_file(&self, common: &CommonConfig) -> PathBuf {
-        common.base_path().join(self.identity_file.as_path())
-    }
-
-    pub fn tor_identity_file(&self, common: &CommonConfig) -> PathBuf {
-        common.base_path().join(self.tor_identity_file.as_path())
-    }
-
-    pub fn lmdb_path(&self, common: &CommonConfig) -> PathBuf {
-        common.data_dir().join(self.lmdb_path.as_path())
+    pub fn set_base_path(&mut self, base_path: &Path) {
+        if !self.identity_file.is_absolute() {
+            self.identity_file = base_path.join(self.identity_file.as_path());
+        }
+        if !self.tor_identity_file.is_absolute() {
+            self.tor_identity_file = base_path.join(self.tor_identity_file.as_path());
+        }
+        if !self.data_dir.is_absolute() {
+            self.data_dir = base_path.join(self.data_dir.as_path());
+        }
+        if !self.lmdb_path.is_absolute() {
+            self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());
+        }
+        self.p2p.set_base_path(self.data_dir.as_path());
     }
 }

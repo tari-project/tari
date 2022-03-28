@@ -31,7 +31,6 @@ use crate::SubConfigPath;
 pub struct CommonConfig {
     override_from: Option<String>,
     base_path: PathBuf,
-    data_dir: PathBuf,
 }
 
 impl Default for CommonConfig {
@@ -42,7 +41,6 @@ impl Default for CommonConfig {
         Self {
             override_from: None,
             base_path,
-            data_dir: PathBuf::from("data"),
         }
     }
 }
@@ -56,13 +54,5 @@ impl SubConfigPath for CommonConfig {
 impl CommonConfig {
     pub fn base_path(&self) -> PathBuf {
         self.base_path.clone()
-    }
-
-    pub fn data_dir(&self) -> PathBuf {
-        if self.data_dir.is_absolute() {
-            self.data_dir.clone()
-        } else {
-            self.base_path.join(&self.data_dir)
-        }
     }
 }

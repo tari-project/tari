@@ -73,7 +73,6 @@ pub fn load_configuration(
         .add_source(config::Environment::with_prefix("TARI"));
 
     for (key, value) in overrides {
-        dbg!(value);
         cfg = cfg
             .set_override(key.as_str(), value.as_str())
             .map_err(|ce| ConfigError::new("Could not override config property", Some(ce.to_string())))?;

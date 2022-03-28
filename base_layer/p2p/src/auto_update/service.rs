@@ -170,6 +170,7 @@ impl SoftwareUpdaterService {
 #[async_trait]
 impl ServiceInitializer for SoftwareUpdaterService {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing Software Update Service");
         let service = self.clone();
 
         let (notifier, new_update_notif) = watch::channel(None);
@@ -180,6 +181,7 @@ impl ServiceInitializer for SoftwareUpdaterService {
             request_tx,
         });
         context.spawn_until_shutdown(move |_| service.run(request_rx, notifier, new_update_notif));
+        debug!(target: LOG_TARGET, "Software Update Service Initialized");
         Ok(())
     }
 }

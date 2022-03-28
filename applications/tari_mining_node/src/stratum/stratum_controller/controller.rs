@@ -69,7 +69,6 @@ impl Controller {
     pub async fn run(&mut self) -> Result<(), stratum::error::Error> {
         let mut miner: Option<Miner> = None;
         loop {
-            // dbg!(&miner.is_some());
             // lets see if we need to change the state of the miner.
             while let Some(message) = self.rx.try_iter().next() {
                 debug!(target: LOG_TARGET_FILE, "Miner received message: {:?}", message);

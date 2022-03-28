@@ -134,11 +134,9 @@ impl TariCommsInboundConnectionService {
                     self.forward_message(message).await?;
                 },
                 // complete => {
-                //     dbg!("Tari inbound connector shutting down");
                 //     return Ok(());
                 // }
                 // _ = shutdown_signal => {
-                //     dbg!("Shutdown received");
                 //     return Ok(())
                 // }
             }
@@ -212,7 +210,6 @@ impl TariCommsInboundConnectionService {
             .try_into()
             .map_err(DigitalAssetError::InvalidPeerMessage)?;
         if hot_stuff_message.asset_public_key() == &self.asset_public_key {
-            dbg!(&hot_stuff_message);
             // self.sender.send((from, hot_stuff_message)).await.unwrap();
             self.process_message(from, hot_stuff_message).await?;
         } else {
@@ -230,7 +227,6 @@ impl TariCommsInboundConnectionService {
         debug!(target: LOG_TARGET, "Inbound message received:{} {:?}", from, message);
 
         // Loop until we have sent to a waiting call, or buffer the message
-        // dbg!(&self.waiters);
         loop {
             // Check for waiters
             let mut waiter_index = None;

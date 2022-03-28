@@ -83,22 +83,15 @@ pub trait ConfigPath {
         use config::Value;
         match Self::overload_key_prefix(config)? {
             Some(key) => {
-                dbg!("before overload");
                 let overload: Value = config.get(key.as_str()).unwrap_or_default();
-                dbg!(&overload);
-                // let base: Value = config.get(Self::main_key_prefix()).unwrap_or_default();
-                // let base_config =
-                //     ConfigBuilder::<DefaultState>::default()?;
                 let mut config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
                     .add_source(config.clone())
                     .set_override(Self::main_key_prefix(), overload)?
                     .build()?;
-                dbg!(&config);
                 Ok(config)
             },
             None => {
-                dbg!("Key not found");
                 //     ConfigBuilder::<DefaultState>::default()?;
                 let mut config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
@@ -133,7 +126,6 @@ pub trait SubConfigPath {
     /// Path for `override_from` key in config
     fn subconfig_key() -> String {
         let main = <Self as SubConfigPath>::main_key_prefix();
-        dbg!(main);
         format!("{}.override_from", main)
     }
 }
@@ -172,7 +164,6 @@ impl<C: SubConfigPath> ConfigPath for C {
             .get_string(subconfig_key.as_str())
             .ok()
             .map(|network| format!("{}.{}", network, Self::main_key_prefix()));
-        dbg!(&network_val);
         Ok(network_val)
     }
 }
@@ -280,7 +271,6 @@ where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Dese
         let buf = serde_json::to_string(&default)?;
         let value: config::Value = serde_json::from_str(buf.as_str())?;
         let mut merger = Self::merge_subconfig(config, value)?;
-        dbg!("after");
         // merger.set_default(Self::main_key_prefix(), value)?;
         let final_value: config::Value = merger.get(Self::main_key_prefix())?;
         // let final_value_string = final_value.to_string();

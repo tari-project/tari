@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 
@@ -131,6 +131,11 @@ impl DhtConfig {
             allow_test_addresses: true,
             ..Default::default()
         }
+    }
+
+    /// Sets relative paths to use a common base path
+    pub fn set_base_path(&mut self, base_path: &Path) {
+        self.database_url.set_base_path(base_path);
     }
 }
 
