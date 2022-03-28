@@ -418,9 +418,15 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::CalculateRecoveryByte { spending_key, value } => Ok(
-                OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(spending_key, value)?),
-            ),
+            OutputManagerRequest::CalculateRecoveryByte {
+                spending_key,
+                value,
+                with_rewind_data,
+            } => Ok(OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(
+                spending_key,
+                value,
+                with_rewind_data,
+            )?)),
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
@@ -593,9 +599,19 @@ where
         self.validate_outputs()
     }
 
-    pub fn calculate_recovery_byte(&mut self, spending_key: PrivateKey, value: u64) -> Result<u8, OutputManagerError> {
+    pub fn calculate_recovery_byte(
+        &mut self,
+        spending_key: PrivateKey,
+        value: u64,
+        with_rewind_data: bool,
+    ) -> Result<u8, OutputManagerError> {
         let commitment = self.resources.factories.commitment.commit_value(&spending_key, value);
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(&self.resources.rewind_data));
+        let rewind_data = if with_rewind_data {
+            Some(&self.resources.rewind_data)
+        } else {
+            None
+        };
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
         Ok(recovery_byte)
     }
 
@@ -1326,7 +1342,7 @@ where
         }
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64())?;
+        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
         let output_features = OutputFeatures {
             recovery_byte,
             unique_id: unique_id.clone(),
@@ -1672,7 +1688,7 @@ where
             let output_amount = amount_per_split;
 
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64())?;
+            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64(), true)?;
             let output_features = OutputFeatures {
                 recovery_byte,
                 ..Default::default()
