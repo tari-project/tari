@@ -124,7 +124,7 @@ impl ReorgPool {
         if txs.is_empty() {
             self.cleanup_expired(height);
         }
-        for tx in txs.into_iter() {
+        for tx in txs {
             self.insert(height, tx);
         }
     }

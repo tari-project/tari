@@ -327,7 +327,7 @@ where TBackend: WalletBackend + 'static
         let mut found_scanned_block = None;
         let mut num_outputs = 0u64;
         let mut amount = MicroTari::from(0);
-        for sb in scanned_blocks.into_iter() {
+        for sb in scanned_blocks {
             if sb.height <= current_tip_height {
                 if found_scanned_block.is_none() {
                     let header = BlockHeader::try_from(client.get_header_by_height(sb.height).await?)

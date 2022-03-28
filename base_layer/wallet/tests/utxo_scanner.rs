@@ -439,7 +439,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     // Confirm the recovery message and source pub key are the defaults.
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key,
@@ -505,7 +505,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     // Confirm the recovery message changed using the builder method
     let requests = test_interface2.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key: _,
@@ -861,7 +861,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key: _,
@@ -946,7 +946,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
 
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key: _,

@@ -448,7 +448,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let mut standard_transfers = Vec::new();
         let mut one_sided_transfers = Vec::new();
-        for (address, pk, amount, fee_per_gram, message, payment_type) in recipients.into_iter() {
+        for (address, pk, amount, fee_per_gram, message, payment_type) in recipients {
             let mut transaction_service = self.get_transaction_service();
             if payment_type == PaymentType::StandardMimblewimble as i32 {
                 standard_transfers.push(async move {

@@ -1097,7 +1097,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .num_rows_affected_or_not_found(1)?;
         } else {
             let output = OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::AbandonedCoinbase, &conn)?;
-            for o in output.into_iter() {
+            for o in output {
                 o.update(
                     UpdateOutput {
                         status: Some(OutputStatus::EncumberedToBeReceived),
