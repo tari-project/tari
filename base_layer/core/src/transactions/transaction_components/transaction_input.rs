@@ -356,6 +356,17 @@ impl TransactionInput {
         }
     }
 
+    /// Sets the input's Tari script. Only useful in tests.
+    #[cfg(test)]
+    pub fn set_script(&mut self, new_script: TariScript) -> Result<(), TransactionError> {
+        if let SpentOutput::OutputData { ref mut script, .. } = self.spent_output {
+            *script = new_script;
+            Ok(())
+        } else {
+            Err(TransactionError::MissingTransactionInputData)
+        }
+    }
+
     /// Return a clone of this Input into its compact form
     pub fn to_compact(&self) -> Self {
         Self::new(
