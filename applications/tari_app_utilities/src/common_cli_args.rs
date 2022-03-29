@@ -31,11 +31,11 @@ pub struct CommonCliArgs {
     short,
     long,
     aliases = &["base_path", "base_dir", "base-dir"],
-    default_value_t= Defaults::base_path()
+    default_value_t= defaults::base_path()
     )]
     base_path: String,
     /// A path to the configuration file to use (config.toml)
-    #[clap(short, long, default_value_t= Defaults::config())]
+    #[clap(short, long, default_value_t= defaults::config())]
     config: String,
     /// The path to the log configuration file
     #[clap(short, long, alias = "log_config")]
@@ -102,8 +102,7 @@ impl CommonCliArgs {
     }
 }
 
-mod Defaults {
-    use std::env;
+mod defaults {
 
     use tari_common::dir_utils;
 

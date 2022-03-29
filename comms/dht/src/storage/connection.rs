@@ -66,13 +66,10 @@ impl DbConnectionUrl {
 
     /// Sets relative paths to use a common base path
     pub fn set_base_path(&mut self, base_path: &Path) {
-        match self {
-            DbConnectionUrl::File(inner) => {
-                if !inner.is_absolute() {
-                    *inner = base_path.join(inner.as_path());
-                }
-            },
-            _ => {},
+        if let DbConnectionUrl::File(inner) = self {
+            if !inner.is_absolute() {
+                *inner = base_path.join(inner.as_path());
+            }
         }
     }
 }

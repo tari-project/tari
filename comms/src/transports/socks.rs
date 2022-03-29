@@ -26,8 +26,6 @@ use std::{
     sync::Arc,
 };
 
-use log::*;
-use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 
 use crate::{
@@ -36,8 +34,6 @@ use crate::{
     socks::Socks5Client,
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
 };
-
-const LOG_TARGET: &str = "comms::transports::socks";
 
 #[derive(Clone)]
 pub struct SocksConfig {

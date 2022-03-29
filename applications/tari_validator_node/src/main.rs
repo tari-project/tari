@@ -39,12 +39,11 @@ use std::{
 use futures::FutureExt;
 use log::*;
 use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
-use tari_app_utilities::{identity_management::setup_node_identity, initialization::init_configuration};
+use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
     configuration::{bootstrap::ApplicationType, CommonConfig},
     exit_codes::{ExitCode, ExitError},
     DefaultConfigLoader,
-    GlobalConfig,
 };
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
@@ -99,7 +98,6 @@ fn main_inner() -> Result<(), ExitError> {
 async fn run_node(
     validator_node_config: &ValidatorNodeConfig,
     common_config: &CommonConfig,
-    global: GlobalConfig,
     create_id: bool,
 ) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
@@ -122,7 +120,6 @@ async fn run_node(
     // fs::create_dir_all(&global.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(
         validator_node_config,
-        &global,
         shutdown.to_signal(),
         node_identity.clone(),
         mempool_service.clone(),

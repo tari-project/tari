@@ -46,7 +46,7 @@ use init::{
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
-use tari_app_utilities::{consts, initialization::init_configuration};
+use tari_app_utilities::consts;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
 use tari_common::{
@@ -54,7 +54,6 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
-    ConfigBootstrap,
     DefaultConfigLoader,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
@@ -65,7 +64,7 @@ use tari_wallet::WalletConfig;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
-use crate::{init::wallet_mode, recovery::get_seed_from_seed_words, wallet_modes::ConsoleWalletConfig};
+use crate::{init::wallet_mode, recovery::get_seed_from_seed_words};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
@@ -186,9 +185,6 @@ fn main_inner() -> Result<(), ExitError> {
 
     // start wallet
     runtime.block_on(start_wallet(&mut wallet, &base_node_selected, &wallet_mode))?;
-
-    // optional path to notify script
-    let notify_script = get_notify_script(&cli, &wallet_config)?;
 
     debug!(target: LOG_TARGET, "Starting app");
 

@@ -60,7 +60,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use config::{builder::DefaultState, Config, ConfigBuilder};
+use config::Config;
 
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
@@ -84,7 +84,7 @@ pub trait ConfigPath {
         match Self::overload_key_prefix(config)? {
             Some(key) => {
                 let overload: Value = config.get(key.as_str()).unwrap_or_default();
-                let mut config = Config::builder()
+                let config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
                     .add_source(config.clone())
                     .set_override(Self::main_key_prefix(), overload)?
@@ -93,7 +93,7 @@ pub trait ConfigPath {
             },
             None => {
                 //     ConfigBuilder::<DefaultState>::default()?;
-                let mut config = Config::builder()
+                let config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
                     .add_source(config.clone())
                     .build()?;
@@ -270,13 +270,13 @@ where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Dese
         let default = <Self as Default>::default();
         let buf = serde_json::to_string(&default)?;
         let value: config::Value = serde_json::from_str(buf.as_str())?;
-        let mut merger = Self::merge_subconfig(config, value)?;
+        let merger = Self::merge_subconfig(config, value)?;
         // merger.set_default(Self::main_key_prefix(), value)?;
         let final_value: config::Value = merger.get(Self::main_key_prefix())?;
         // let final_value_string = final_value.to_string();
-        Ok(final_value
+        final_value
             .try_deserialize()
-            .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce.to_string()))?)
+            .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce.to_string()))
     }
 }
 

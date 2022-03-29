@@ -7369,39 +7369,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_stratum_transcoder"
-version = "0.30.1"
-dependencies = [
- "bincode",
- "bytes 0.5.6",
- "chrono",
- "config 0.9.3",
- "env_logger 0.7.1",
- "futures 0.3.21",
- "hex",
- "hyper",
- "jsonrpc",
- "log",
- "rand 0.7.3",
- "reqwest",
- "serde 1.0.136",
- "serde_json",
- "structopt",
- "tari_app_grpc",
- "tari_common",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_utilities",
- "thiserror",
- "tokio 1.17.0",
- "tonic",
- "tonic-build",
- "tracing",
- "url 2.2.2",
-]
-
-[[package]]
 name = "tari_test_utils"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

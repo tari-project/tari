@@ -58,7 +58,7 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{Dht, DhtConfig, DhtInitializationError, DhtProtocolVersion};
+use tari_comms_dht::{Dht, DhtConfig, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
@@ -114,10 +114,7 @@ impl CommsInitializationError {
     }
 }
 
-use tari_common::configuration::{
-    utils::{deserialize_string_or_struct, serialize_string},
-    CommonConfig,
-};
+use tari_common::configuration::utils::{deserialize_string_or_struct, serialize_string};
 
 /// Configuration for a comms node
 #[derive(Clone, Debug, Serialize, Deserialize)]

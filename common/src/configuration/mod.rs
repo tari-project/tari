@@ -36,16 +36,34 @@
 
 pub mod bootstrap;
 pub mod error;
-pub mod global;
 pub mod loader;
 mod network;
+mod tor_control_authentication;
 pub use network::Network;
 mod collectibles_config;
 mod common_config;
+mod comms_transport;
 pub mod name_server;
 pub mod serializers;
+mod socks_authentication;
 pub mod utils;
-pub mod writer;
+
+use std::{iter::FromIterator, net::SocketAddr};
 
 pub use collectibles_config::CollectiblesConfig;
 pub use common_config::CommonConfig;
+pub use comms_transport::CommsTransport;
+use multiaddr::{Error, Multiaddr, Protocol};
+pub use socks_authentication::SocksAuthentication;
+pub use tor_control_authentication::TorControlAuthentication;
+
+/// Interpret a string as either a socket address (first) or a multiaddr format string.
+/// If the former, it gets converted into a MultiAddr before being returned.
+pub fn socket_or_multi(addr: &str) -> Result<Multiaddr, Error> {
+    addr.parse::<SocketAddr>()
+        .map(|socket| match socket {
+            SocketAddr::V4(ip4) => Multiaddr::from_iter([Protocol::Ip4(*ip4.ip()), Protocol::Tcp(ip4.port())]),
+            SocketAddr::V6(ip6) => Multiaddr::from_iter([Protocol::Ip6(*ip6.ip()), Protocol::Tcp(ip6.port())]),
+        })
+        .or_else(|_| addr.parse::<Multiaddr>())
+}

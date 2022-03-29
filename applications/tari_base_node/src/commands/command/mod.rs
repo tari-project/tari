@@ -63,7 +63,6 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
-use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{Peer, PeerManager, PeerManagerError, PeerQuery},

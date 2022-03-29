@@ -29,13 +29,10 @@ use futures::stream::StreamExt;
 use log::*;
 use miner::Miner;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
-use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
-    ConfigBootstrap,
     DefaultConfigLoader,
 };
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;

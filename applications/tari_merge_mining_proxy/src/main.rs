@@ -47,13 +47,7 @@ use hyper::{service::make_service_fn, Server};
 use log::*;
 use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_app_utilities::initialization::init_configuration;
-use tari_common::{
-    configuration::bootstrap::ApplicationType,
-    initialize_logging,
-    load_configuration,
-    DefaultConfigLoader,
-};
+use tari_common::{initialize_logging, load_configuration, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
 

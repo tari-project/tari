@@ -23,7 +23,7 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig, SubConfigPath};
+use tari_common::{configuration::bootstrap::ApplicationType, SubConfigPath};
 use tari_comms::NodeIdentity;
 use tari_metrics::{server::MetricsServerBuilder, Registry};
 use tari_shutdown::ShutdownSignal;

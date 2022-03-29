@@ -25,7 +25,6 @@ use std::{
     env::temp_dir,
     fs,
     io::{self, Write},
-    path::Path,
     sync::Arc,
 };
 
@@ -34,7 +33,6 @@ use log::*;
 use tari_common::{
     configuration::{CommonConfig, Network},
     exit_codes::{ExitCode, ExitError},
-    GlobalConfig,
 };
 use tari_core::{
     chain_storage::{
@@ -61,7 +59,7 @@ use crate::base_node_config::{BaseNodeConfig, DatabaseType};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
-pub fn initiate_recover_db(config: &BaseNodeConfig, common_config: &CommonConfig) -> Result<(), ExitError> {
+pub fn initiate_recover_db(config: &BaseNodeConfig) -> Result<(), ExitError> {
     // create recovery db
     match &config.db_type {
         DatabaseType::Lmdb => {
@@ -74,7 +72,7 @@ pub fn initiate_recover_db(config: &BaseNodeConfig, common_config: &CommonConfig
     Ok(())
 }
 
-pub async fn run_recovery(node_config: &BaseNodeConfig, common_config: &CommonConfig) -> Result<(), anyhow::Error> {
+pub async fn run_recovery(node_config: &BaseNodeConfig) -> Result<(), anyhow::Error> {
     println!("Starting recovery mode");
     let (temp_db, main_db, temp_path) = match &node_config.db_type {
         DatabaseType::Lmdb => {

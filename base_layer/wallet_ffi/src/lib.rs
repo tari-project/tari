@@ -86,7 +86,6 @@ use std::{
     path::PathBuf,
     slice,
     str::FromStr,
-    sync::Arc,
     time::Duration,
 };
 
@@ -118,7 +117,7 @@ use tari_comms::{
     socks,
     tor,
     transports::MemoryTransport,
-    types::{CommsPublicKey, CommsSecretKey},
+    types::CommsSecretKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
@@ -128,7 +127,7 @@ use tari_crypto::{
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
-    transport::{TorConfig, TransportType, TransportType::Tor},
+    transport::{TorConfig, TransportType},
     Network,
     DEFAULT_DNS_NAME_SERVER,
 };
@@ -136,7 +135,6 @@ use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
-    connectivity_service::WalletConnectivityInterface,
     contacts_service::storage::database::Contact,
     error::{WalletError, WalletStorageError},
     storage::{
@@ -145,7 +143,6 @@ use tari_wallet::{
         sqlite_utilities::{initialize_sqlite_database_backends, partial_wallet_backup},
     },
     transaction_service::{
-        config::TransactionServiceConfig,
         error::TransactionServiceError,
         storage::{
             database::TransactionDatabase,

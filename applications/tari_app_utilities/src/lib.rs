@@ -22,7 +22,6 @@
 
 pub mod common_cli_args;
 pub mod identity_management;
-pub mod initialization;
 pub mod utilities;
 
 pub mod consts {

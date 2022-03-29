@@ -21,10 +21,8 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
     fs::File,
     io::{LineWriter, Write},
-    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -32,10 +30,8 @@ use chrono::Utc;
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
-use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common::GlobalConfig;
-use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
+use tari_common_types::{transaction::TxId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -43,17 +39,12 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
-    tari_amount::{uT, MicroTari, Tari},
+    tari_amount::{uT, MicroTari},
     transaction_components::{TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitmentFactory,
-    tari_utilities::{ByteArray, Hashable},
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
 use tari_utilities::hex::Hex;
 use tari_wallet::{
-    assets::KEY_MANAGER_ASSET_BRANCH,
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,

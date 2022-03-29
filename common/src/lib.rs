@@ -85,12 +85,14 @@ pub mod exit_codes;
 mod logging;
 pub mod configuration;
 pub use configuration::{
-    bootstrap::{install_configuration, ConfigBootstrap},
+    bootstrap::install_configuration,
     error::ConfigError,
-    global::{CommsTransport, GlobalConfig, SocksAuthentication, TorControlAuthentication},
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, SubConfigPath},
     name_server::DnsNameServer,
-    utils::{default_config, load_configuration},
+    utils::load_configuration,
+    CommsTransport,
+    SocksAuthentication,
+    TorControlAuthentication,
 };
 pub mod dir_utils;
 pub use logging::initialize_logging;

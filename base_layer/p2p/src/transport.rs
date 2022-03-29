@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, str::FromStr};
+use std::fmt;
 
 use serde::{Deserialize, Serialize};
 use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};

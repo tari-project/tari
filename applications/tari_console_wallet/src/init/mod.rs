@@ -20,42 +20,27 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fs, path::PathBuf, str::FromStr, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
 use tari_app_utilities::utilities::create_transport_type;
-use tari_common::{
-    exit_codes::{ExitCode, ExitError},
-    ConfigBootstrap,
-    DefaultConfigLoader,
-    GlobalConfig,
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{Peer, PeerFeatures},
     types::CommsPublicKey,
     NodeIdentity,
 };
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
 use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
-use tari_p2p::{
-    auto_update::AutoUpdateConfig,
-    initialization::P2pConfig,
-    peer_seeds::SeedPeer,
-    transport::TransportType::Tor,
-    DEFAULT_DNS_NAME_SERVER,
-};
+use tari_p2p::{peer_seeds::SeedPeer, transport::TransportType::Tor};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
-    base_node_service::config::BaseNodeServiceConfig,
     error::{WalletError, WalletStorageError},
-    output_manager_service::config::OutputManagerServiceConfig,
     storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
-    transaction_service::config::{TransactionRoutingMechanism, TransactionServiceConfig},
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
@@ -69,8 +54,6 @@ use crate::{
 };
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
-/// The minimum buffer size for a tari application pubsub_connector channel
-const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 const TARI_WALLET_PASSWORD: &str = "TARI_WALLET_PASSWORD";
 
 #[derive(Clone, Copy)]
@@ -568,7 +551,7 @@ pub(crate) fn boot(cli: &Cli, wallet_config: &WalletConfig) -> Result<WalletBoot
         if wallet_exists {
             return Err(ExitError::new(
                 ExitCode::RecoveryError,
-                format!("Wallet already exists. Remove it if you really want to run recovery in this directory!",),
+                "Wallet already exists. Remove it if you really want to run recovery in this directory!".to_string(),
             ));
         }
         return Ok(WalletBoot::Recovery);

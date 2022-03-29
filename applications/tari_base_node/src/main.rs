@@ -109,12 +109,7 @@ use config::Config;
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use tari_app_utilities::{
-    consts,
-    identity_management::setup_node_identity,
-    initialization::init_configuration,
-    utilities::setup_runtime,
-};
+use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
 use tari_common::{
@@ -122,9 +117,7 @@ use tari_common::{
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
-    ConfigBootstrap,
     DefaultConfigLoader,
-    GlobalConfig,
 };
 use tari_comms::{
     peer_manager::PeerFeatures,
@@ -269,8 +262,8 @@ async fn run_node(
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&base_node_config, common_config)?;
-        recovery::run_recovery(&base_node_config, common_config)
+        recovery::initiate_recover_db(&base_node_config)?;
+        recovery::run_recovery(&base_node_config)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());

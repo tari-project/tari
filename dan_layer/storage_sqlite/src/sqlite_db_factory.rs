@@ -25,7 +25,6 @@ use std::{fs::create_dir_all, path::PathBuf};
 use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::embed_migrations;
 use log::*;
-use tari_common::{configuration::CommonConfig, GlobalConfig};
 use tari_common_types::types::PublicKey;
 use tari_dan_core::storage::{chain::ChainDb, state::StateDb, DbFactory, StorageError};
 use tari_utilities::hex::Hex;

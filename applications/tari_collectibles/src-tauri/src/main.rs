@@ -6,11 +6,7 @@
 use std::error::Error;
 use tauri::{Menu, MenuItem, Submenu};
 
-use tari_app_utilities::initialization::init_configuration;
-use tari_common::{
-  configuration::bootstrap::ApplicationType,
-  exit_codes::{ExitCode, ExitError},
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use uuid::Uuid;
 
 use crate::app_state::ConcurrentAppState;

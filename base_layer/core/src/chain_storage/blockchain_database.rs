@@ -93,7 +93,7 @@ use crate::{
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
@@ -212,7 +212,7 @@ where B: BlockchainBackend
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
-            config,
+            config: config.clone(),
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
@@ -2336,7 +2336,7 @@ impl<T> Clone for BlockchainDatabase<T> {
         BlockchainDatabase {
             db: self.db.clone(),
             validators: self.validators.clone(),
-            config: self.config,
+            config: self.config.clone(),
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),

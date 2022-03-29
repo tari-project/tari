@@ -27,7 +27,6 @@ use log::*;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
     CommsTransport,
-    GlobalConfig,
     SocksAuthentication,
     TorControlAuthentication,
 };

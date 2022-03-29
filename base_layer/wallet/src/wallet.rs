@@ -168,7 +168,7 @@ where
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
-                config.network.clone(),
+                config.network,
                 node_identity.clone(),
                 publisher,
             ))
@@ -398,7 +398,7 @@ where
     }
 
     pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
-        self.updater_service.as_ref().map(|s| s.clone())
+        self.updater_service.as_ref().cloned()
     }
 
     /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be

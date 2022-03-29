@@ -23,17 +23,14 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common::{
-    configuration::{CommonConfig, Network},
-    GlobalConfig,
-};
+use tari_common::configuration::{CommonConfig, Network};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
-    chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
+    chain_storage::{create_lmdb_database, BlockchainDatabase, LMDBDatabase, Validators},
     consensus::ConsensusManager,
-    mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
+    mempool::{service::LocalMempoolService, Mempool},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
     validation::{

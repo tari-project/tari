@@ -30,7 +30,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use tari_common::{configuration::Network, GlobalConfig};
+use tari_common::configuration::Network;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -980,9 +980,9 @@ impl AppStateInner {
         self.updated = true;
     }
 
-    pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
-        self.wallet.get_software_updater()
-    }
+    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+    //     self.wallet.get_software_updater()
+    // }
 }
 
 #[derive(Clone)]

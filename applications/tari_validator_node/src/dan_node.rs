@@ -23,10 +23,7 @@
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use log::*;
-use tari_common::{
-    exit_codes::{ExitCode, ExitError},
-    GlobalConfig,
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
 use tari_crypto::tari_utilities::hex::Hex;

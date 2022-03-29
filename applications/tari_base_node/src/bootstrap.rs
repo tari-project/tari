@@ -20,46 +20,34 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
+use std::{cmp, str::FromStr, sync::Arc};
 
 use anyhow::anyhow;
 use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
-use tari_common::{
-    configuration::{bootstrap::ApplicationType, CommonConfig},
-    DefaultConfigLoader,
-    GlobalConfig,
-};
+use tari_common::configuration::{bootstrap::ApplicationType, CommonConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::Dht;
 use tari_core::{
     base_node,
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::BaseNodeServiceInitializer,
         state_machine_service::initializer::BaseNodeStateMachineInitializer,
-        BaseNodeStateMachineConfig,
-        BlockchainSyncConfig,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, BlockchainDatabase},
     consensus::ConsensusManager,
     mempool,
-    mempool::{
-        service::MempoolHandle,
-        Mempool,
-        MempoolServiceConfig,
-        MempoolServiceInitializer,
-        MempoolSyncInitializer,
-    },
+    mempool::{service::MempoolHandle, Mempool, MempoolServiceInitializer, MempoolSyncInitializer},
     transactions::CryptoFactories,
 };
 use tari_p2p::{
     auto_update::{AutoUpdateConfig, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
     initialization,
-    initialization::{P2pConfig, P2pInitializer},
+    initialization::P2pInitializer,
     peer_seeds::SeedPeer,
     services::liveness::{LivenessConfig, LivenessInitializer},
     transport::TransportType,
@@ -90,7 +78,6 @@ where B: BlockchainBackend + 'static
 {
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
         let base_node_config = self.base_node_config;
-        let common_config = self.common_config;
 
         // fs::create_dir_all(&config.comms_peer_db_path)?;
 

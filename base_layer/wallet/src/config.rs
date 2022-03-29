@@ -29,7 +29,6 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
 use tari_comms::multiaddr::Multiaddr;
-use tari_core::{consensus::NetworkConsensus, transactions::CryptoFactories};
 use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
 
 use crate::{
