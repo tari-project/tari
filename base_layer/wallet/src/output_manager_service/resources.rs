@@ -57,9 +57,9 @@ pub enum OutputManagerKeyManagerBranch {
     RecoveryByte,
 }
 
-/// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
-/// recovery.
 impl OutputManagerKeyManagerBranch {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
     pub fn get_branch_key(&self) -> String {
         match self {
             OutputManagerKeyManagerBranch::Spend => "".to_string(),
@@ -70,12 +70,5 @@ impl OutputManagerKeyManagerBranch {
             OutputManagerKeyManagerBranch::RecoveryBlinding => "recovery_blinding".to_string(),
             OutputManagerKeyManagerBranch::RecoveryByte => "Recovery_byte".to_string(),
         }
-    }
-}
-
-#[allow(clippy::from_over_into)]
-impl Into<String> for OutputManagerKeyManagerBranch {
-    fn into(self) -> String {
-        self.get_branch_key()
     }
 }

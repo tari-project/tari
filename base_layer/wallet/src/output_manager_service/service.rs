@@ -134,13 +134,13 @@ where
         db.clear_short_term_encumberances().await?;
         Self::initialise_key_manager(&key_manager).await?;
         let rewind_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
             .await?;
         let rewind_blinding_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
         let recovery_byte_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
             rewind_key,
@@ -171,24 +171,26 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager.add_new_branch(OutputManagerKeyManagerBranch::Spend).await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase)
+            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly)
+            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
+            .await?;
+        key_manager
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
             .await?;
         match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
             .await
         {
             Ok(_) => Ok(()),
@@ -717,12 +719,15 @@ where
         let result = self
             .resources
             .master_key_manager
-            .get_next_key(OutputManagerKeyManagerBranch::Spend)
+            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         let script_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, result.index)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                result.index,
+            )
             .await?;
         Ok((result.key, script_key))
     }
