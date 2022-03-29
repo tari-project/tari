@@ -436,11 +436,11 @@ where TBackend: WalletBackend + 'static
             total_scanned += outputs.len();
 
             let start = Instant::now();
-            let (tx_id, found_outputs) = self.scan_for_outputs(outputs).await?;
+            let found_outputs = self.scan_for_outputs(outputs).await?;
             scan_for_outputs_profiling.push(start.elapsed());
 
             let (count, amount) = self
-                .import_utxos_to_transaction_service(found_outputs, tx_id, current_height)
+                .import_utxos_to_transaction_service(found_outputs, current_height)
                 .await?;
 
             self.resources
@@ -492,18 +492,17 @@ where TBackend: WalletBackend + 'static
     async fn scan_for_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-    ) -> Result<(TxId, Vec<(UnblindedOutput, String)>), UtxoScannerError> {
-        let mut found_outputs: Vec<(UnblindedOutput, String)> = Vec::new();
-        let tx_id = TxId::new_random();
+    ) -> Result<Vec<(UnblindedOutput, String, TxId)>, UtxoScannerError> {
+        let mut found_outputs: Vec<(UnblindedOutput, String, TxId)> = Vec::new();
         if self.mode == UtxoScannerMode::Recovery {
             found_outputs.append(
                 &mut self
                     .resources
                     .output_manager_service
-                    .scan_for_recoverable_outputs(outputs.clone(), tx_id)
+                    .scan_for_recoverable_outputs(outputs.clone())
                     .await?
                     .into_iter()
-                    .map(|uo| (uo, self.resources.recovery_message.clone()))
+                    .map(|ro| (ro.output, self.resources.recovery_message.clone(), ro.tx_id))
                     .collect(),
             );
         };
@@ -511,19 +510,18 @@ where TBackend: WalletBackend + 'static
             &mut self
                 .resources
                 .output_manager_service
-                .scan_outputs_for_one_sided_payments(outputs.clone(), tx_id)
+                .scan_outputs_for_one_sided_payments(outputs.clone())
                 .await?
                 .into_iter()
-                .map(|uo| (uo, self.resources.one_sided_payment_message.clone()))
+                .map(|ro| (ro.output, self.resources.one_sided_payment_message.clone(), ro.tx_id))
                 .collect(),
         );
-        Ok((tx_id, found_outputs))
+        Ok(found_outputs)
     }
 
     async fn import_utxos_to_transaction_service(
         &mut self,
-        utxos: Vec<(UnblindedOutput, String)>,
-        tx_id: TxId,
+        utxos: Vec<(UnblindedOutput, String, TxId)>,
         current_height: u64,
     ) -> Result<(u64, MicroTari), UtxoScannerError> {
         let mut num_recovered = 0u64;
@@ -532,7 +530,7 @@ where TBackend: WalletBackend + 'static
         // value is a placeholder.
         let source_public_key = CommsPublicKey::default();
 
-        for (uo, message) in utxos {
+        for (uo, message, tx_id) in utxos {
             match self
                 .import_unblinded_utxo_to_transaction_service(
                     uo.clone(),

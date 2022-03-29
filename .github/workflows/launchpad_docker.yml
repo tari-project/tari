@@ -1,0 +1,94 @@
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+    # branches:
+    #   - development
+  workflow_dispatch:
+    inputs:
+      docker_tag:
+        description: "Docker tag"
+        required: true
+        default: "development"
+
+name: Build launchpad docker images
+
+env:
+  toolchain: nightly-2021-11-20
+  CARGO_HTTP_MULTIPLEXING: false
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docker:
+    name: build image
+    strategy:
+      fail-fast: true
+      matrix:
+        image_name:
+          [
+            monerod,
+            tari_base_node,
+            tari_console_wallet,
+            tari_mm_proxy,
+            tari_sha3_miner,
+            tor,
+            xmrig,
+          ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: set env
+        run: |
+          TAG=""
+          REF=${{github.ref}}
+          if [ "${{ startsWith(github.ref, 'refs/tags/v') }}" == "true" ]
+          then
+            TAG="${REF/refs\/tags\//}"
+            echo "docker tag from git: $TAG"
+          fi
+          echo "event name: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]
+          then
+            TAG="${{ github.event.inputs.docker_tag }}"
+            echo "docker tag from workflow dispatch: $TAG"
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+          IMAGE=${{ matrix.image_name }}
+          echo "image: $IMAGE"
+          TEMP=${IMAGE/tari_/}
+          # echo "temp: $TEMP"
+          SERVICE="${TEMP/console_/}"
+
+          echo "service: $SERVICE"
+          echo "SERVICE=$SERVICE" >> $GITHUB_ENV
+
+      - name: build docker image
+        run: |
+          if [ -z $SERVICE ]
+          then
+            echo "service is undefined!"
+            exit 1
+          fi
+          cd applications/launchpad/docker_rig
+          docker-compose build $SERVICE
+
+      - name: Login to Quay.io
+        uses: docker/login-action@v1
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+
+      - name: tag and push image
+        run: |
+          echo "tag: $TAG"
+          if [ -n "$TAG" ]
+          then
+            docker tag quay.io/tarilabs/${{ matrix.image_name }}:latest quay.io/tarilabs/${{ matrix.image_name }}:$TAG
+
+            docker push quay.io/tarilabs/${{ matrix.image_name }}:latest
+            docker push quay.io/tarilabs/${{ matrix.image_name }}:$TAG
+          fi

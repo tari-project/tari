@@ -767,7 +767,7 @@ async fn test_import_utxo() {
     let expected_output_hash = output.hash();
 
     let tx_id = alice_wallet
-        .import_utxo(
+        .import_external_utxo_as_non_rewindable(
             utxo.value,
             &utxo.spending_key,
             script.clone(),

@@ -388,7 +388,7 @@ class InterfaceFFI {
         this.ptr,
         [this.ptr, this.ulonglong, this.intPtr],
       ],
-      wallet_import_utxo: [
+      wallet_import_external_utxo_as_non_rewindable: [
         this.ulonglong,
         [
           this.ptr,
@@ -1527,7 +1527,7 @@ class InterfaceFFI {
     message
   ) {
     let error = this.initError();
-    let result = this.fn.wallet_import_utxo(
+    let result = this.fn.wallet_import_external_utxo_as_non_rewindable(
       ptr,
       amount,
       spending_key_ptr,
