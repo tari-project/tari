@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use anyhow::Error;
 use log::*;
 use tari_common_types::types::PublicKey;
 use tari_shutdown::ShutdownSignal;
@@ -111,11 +112,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         })
     }
 
-    pub async fn run(
-        &mut self,
-        shutdown: ShutdownSignal,
-        max_views_to_process: Option<u64>,
-    ) -> Result<(), DigitalAssetError> {
+    pub async fn run(&mut self, shutdown: ShutdownSignal, max_views_to_process: Option<u64>) -> Result<(), Error> {
         let chain_db = self
             .db_factory
             .get_or_create_chain_db(&self.asset_definition.public_key)?;
@@ -160,31 +157,29 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         &mut self,
         chain_db: &ChainDb<TSpecification::ChainDbBackendAdapter>,
         shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+    ) -> Result<ConsensusWorkerStateEvent, Error> {
         use ConsensusWorkerState::*;
         match &mut self.state {
-            Starting => {
-                states::Starting::<TSpecification>::new()
-                    .next_event(
-                        &mut self.base_node_client,
-                        &self.asset_definition,
-                        &mut self.committee_manager,
-                        &self.db_factory,
-                        &self.node_address,
-                    )
-                    .await
-            },
-            Synchronizing => {
-                states::Synchronizing::<TSpecification>::new()
-                    .next_event(
-                        &mut self.base_node_client,
-                        &self.asset_definition,
-                        &self.db_factory,
-                        &self.validator_node_client_factory,
-                        &self.node_address,
-                    )
-                    .await
-            },
+            Starting => states::Starting::<TSpecification>::new()
+                .next_event(
+                    &mut self.base_node_client,
+                    &self.asset_definition,
+                    &mut self.committee_manager,
+                    &self.db_factory,
+                    &self.node_address,
+                )
+                .await
+                .map_err(Error::from),
+            Synchronizing => states::Synchronizing::<TSpecification>::new()
+                .next_event(
+                    &mut self.base_node_client,
+                    &self.asset_definition,
+                    &self.db_factory,
+                    &self.validator_node_client_factory,
+                    &self.node_address,
+                )
+                .await
+                .map_err(Error::from),
             Prepare => {
                 let mut unit_of_work = chain_db.new_unit_of_work();
                 let mut state_tx = self
@@ -288,15 +283,15 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                             self.committee_manager.current_committee()?.members.clone(),
                         )
                         .await?;
+                    Ok(res)
                 } else {
                     // technically impossible
                     error!(target: LOG_TARGET, "No state unit of work was present");
-                    return Err(DigitalAssetError::InvalidLogicPath {
+                    Err(DigitalAssetError::InvalidLogicPath {
                         reason: "Tried to commit state after DECIDE, but no state tx was present".to_string(),
-                    });
+                    }
+                    .into())
                 }
-
-                Ok(res)
             },
             NextView => {
                 info!(
@@ -318,11 +313,12 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                         shutdown,
                     )
                     .await
+                    .map_err(Error::from)
             },
             Idle => {
                 info!(target: LOG_TARGET, "No work to do, idling");
                 let state = states::IdleState::default();
-                state.next_event().await
+                state.next_event().await.map_err(Error::from)
             },
         }
     }

@@ -20,22 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use anyhow::Error;
 use async_trait::async_trait;
 use tari_comms::types::CommsPublicKey;
 
 use crate::{
     models::{AssetDefinition, StateRoot},
     services::{infrastructure_services::NodeAddressable, wallet_client::WalletClient},
-    DigitalAssetError,
 };
 
 #[async_trait]
 pub trait CheckpointManager<TAddr: NodeAddressable> {
-    async fn create_checkpoint(
-        &mut self,
-        state_root: StateRoot,
-        next_committee: Vec<TAddr>,
-    ) -> Result<(), DigitalAssetError>;
+    async fn create_checkpoint(&mut self, state_root: StateRoot, next_committee: Vec<TAddr>) -> Result<(), Error>;
 }
 
 #[derive(Default)]
@@ -63,7 +59,7 @@ impl<TWallet: WalletClient + Sync + Send> CheckpointManager<CommsPublicKey> for 
         &mut self,
         state_root: StateRoot,
         next_committee: Vec<CommsPublicKey>,
-    ) -> Result<(), DigitalAssetError> {
+    ) -> Result<(), Error> {
         self.num_calls += 1;
         if self.num_calls > self.checkpoint_interval {
             self.wallet
