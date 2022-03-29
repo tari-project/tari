@@ -49,9 +49,9 @@ deny = [
     'clippy::cast_lossless',
     # 'clippy::cast_possible_truncation',
     # 'clippy::cast_possible_wrap',
-    # 'clippy::cast_precision-loss',
+    # 'clippy::cast_precision_loss',
     # This is tricky because sqlite uses signed ints and it's used to represent unsigned data
-    'clippy::cast_sign_loss'
+    # 'clippy::cast_sign_loss'
 ]
 
 allow= [

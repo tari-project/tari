@@ -30,7 +30,6 @@ impl From<Peer> for grpc::Peer {
         let public_key = peer.public_key.to_vec();
         let node_id = peer.node_id.to_vec();
         let mut addresses: Vec<grpc::Address> = Vec::new();
-        #[allow(clippy::cast_sign_loss)]
         let last_connection = match peer.addresses.last_seen() {
             Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
             None => Some(datetime_to_timestamp(0.into())),
@@ -39,20 +38,17 @@ impl From<Peer> for grpc::Peer {
             addresses.push(address.clone().into())
         }
         let flags = u32::from(peer.flags.bits());
-        #[allow(clippy::cast_sign_loss)]
         let banned_until = match peer.banned_until {
             Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
             None => Some(datetime_to_timestamp(0.into())),
         };
         let banned_reason = peer.banned_reason.to_string();
-        #[allow(clippy::cast_sign_loss)]
         let offline_at = match peer.offline_at {
             Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
             None => Some(datetime_to_timestamp(0.into())),
         };
         let features = peer.features.bits();
 
-        #[allow(clippy::cast_sign_loss)]
         let last_connected_at = match peer.connection_stats.last_connected_at {
             Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
             None => Some(datetime_to_timestamp(0.into())),

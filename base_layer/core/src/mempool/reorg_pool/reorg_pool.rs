@@ -324,7 +324,6 @@ impl ReorgPool {
         shrink_hashmap(&mut self.txs_by_signature);
         shrink_hashmap(&mut self.txs_by_height);
 
-        #[cfg_attr(debug_assertions, allow(clippy::cast_sign_loss))]
         if old - new > 0 {
             debug!(
                 target: LOG_TARGET,

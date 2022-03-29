@@ -248,7 +248,6 @@ impl DhtActor {
         discovery: DhtDiscoveryRequester,
         shutdown_signal: ShutdownSignal,
     ) -> Self {
-        #[cfg_attr(debug, allow(clippy::cast_precision_loss))]
         debug!(
             target: LOG_TARGET,
             "Message dedup cache will be trimmed to capacity every {}s",

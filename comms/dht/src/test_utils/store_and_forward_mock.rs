@@ -138,7 +138,6 @@ impl StoreAndForwardMock {
                     .collect()));
             },
             InsertMessage(msg, reply_tx) => {
-                #[allow(clippy::cast_possible_wrap)]
                 self.state.stored_messages.write().await.push(StoredMessage {
                     id: OsRng.next_u32() as i32,
                     version: msg.version,

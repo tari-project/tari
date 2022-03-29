@@ -82,7 +82,6 @@ impl From<usize> for TxId {
 
 impl From<i32> for TxId {
     fn from(s: i32) -> Self {
-        #[allow(clippy::cast_sign_loss)]
         Self(s as u64)
     }
 }
@@ -94,7 +93,6 @@ impl From<TxId> for u64 {
 }
 
 impl From<TxId> for i64 {
-    #[allow(clippy::cast_possible_wrap)]
     fn from(s: TxId) -> Self {
         s.0 as i64
     }

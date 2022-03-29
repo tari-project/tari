@@ -120,7 +120,6 @@ impl From<ScannedBlock> for ScannedBlockSql {
 }
 
 impl From<ScannedBlockSql> for ScannedBlock {
-    #[allow(clippy::cast_sign_loss)]
     fn from(sb: ScannedBlockSql) -> Self {
         Self {
             header_hash: sb.header_hash,

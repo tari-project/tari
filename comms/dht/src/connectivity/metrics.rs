@@ -228,7 +228,6 @@ impl<T> TimeSeries<T> {
     }
 
     /// Return the rate at which samples occur within this timeseries
-    #[allow(clippy::cast_precision_loss)]
     pub fn rate(&self) -> f32 {
         self.timespan()
             .map(|timespan| {

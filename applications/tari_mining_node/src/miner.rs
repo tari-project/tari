@@ -230,7 +230,6 @@ pub fn mining_task(
                 return;
             }
             if !(share_mode) {
-                #[allow(clippy::cast_sign_loss)]
                 hasher.set_forward_timestamp(timestamp().seconds as u64);
             }
         }

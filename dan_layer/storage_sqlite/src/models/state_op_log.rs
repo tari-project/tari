@@ -67,7 +67,6 @@ impl TryFrom<StateOpLogEntry> for DbStateOpLogEntry {
     type Error = SqliteStorageError;
 
     fn try_from(entry: StateOpLogEntry) -> Result<Self, Self::Error> {
-        #[allow(clippy::cast_sign_loss)]
         Ok(Self {
             height: entry.height as u64,
             merkle_root: entry

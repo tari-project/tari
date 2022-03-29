@@ -183,11 +183,6 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String
 
     // Pad with zeros if length not divisible by 11
     let group_bit_count = 11;
-    #[allow(
-        clippy::cast_precision_loss,
-        clippy::cast_sign_loss,
-        clippy::cast_possible_truncation
-    )]
     let padded_size = ((bits.len() as f32 / group_bit_count as f32).ceil() * group_bit_count as f32) as usize;
     bits.resize(padded_size, false);
 

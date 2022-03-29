@@ -192,7 +192,6 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
     (total_messages, successes, wallets.len() - 1)
 }
 
-#[allow(clippy::cast_precision_loss)]
 pub async fn network_peer_list_stats(nodes: &[TestNode], wallets: &[TestNode]) {
     let mut stats = HashMap::<String, usize>::with_capacity(wallets.len());
     for wallet in wallets {

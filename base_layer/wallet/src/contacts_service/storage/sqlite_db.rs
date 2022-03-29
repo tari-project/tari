@@ -218,7 +218,6 @@ impl TryFrom<ContactSql> for Contact {
     fn try_from(o: ContactSql) -> Result<Self, Self::Error> {
         let public_key =
             PublicKey::from_vec(&o.public_key).map_err(|_| ContactsServiceStorageError::ConversionError)?;
-        #[allow(clippy::cast_sign_loss)]
         Ok(Self {
             public_key: public_key.clone(),
             // Public key must always be the master data source for node ID here

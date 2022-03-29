@@ -125,7 +125,6 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             })?;
 
         match node {
-            #[allow(clippy::cast_sign_loss)]
             Some(node) => Ok(Some(DbNode {
                 hash: node.hash.try_into()?,
                 parent: node.parent.try_into()?,
@@ -264,7 +263,6 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
                 operation: "get_prepare_qc".to_string(),
             })?;
         qc.map(|qc| {
-            #[allow(clippy::cast_sign_loss)]
             Ok(QuorumCertificate::new(
                 HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
                 ViewId::from(qc.view_number as u64),
@@ -327,7 +325,6 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             },
         };
 
-        #[allow(clippy::cast_sign_loss)]
         Ok(QuorumCertificate::new(
             HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
             ViewId::from(qc.view_number as u64),
@@ -336,7 +333,6 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         ))
     }
 
-    #[allow(clippy::cast_sign_loss)]
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error> {
         use crate::schema::locked_qc::dsl;
         let connection = self.get_connection()?;
@@ -390,7 +386,6 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
                 operation: "find_node_by_hash".to_string(),
             })?;
 
-        #[allow(clippy::cast_sign_loss)]
         match node {
             Some(node) => Ok(Some((node.id, DbNode {
                 hash: node.hash.try_into()?,

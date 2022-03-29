@@ -40,7 +40,6 @@ impl RollingAverageTime {
         self.samples.push(sample);
     }
 
-    #[allow(clippy::cast_precision_loss)]
     pub fn calc_samples_per_second(&self) -> Option<f64> {
         if self.samples.is_empty() {
             return None;

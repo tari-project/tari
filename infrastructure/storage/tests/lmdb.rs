@@ -365,7 +365,6 @@ fn test_lmdb_resize_before_full() {
             let env_info = store.env().info().unwrap();
             let psize = store.env().stat().unwrap().psize as usize;
             let page_size_total = psize * env_info.last_pgno;
-            #[allow(clippy::cast_precision_loss)]
             let percent_left = 1.0 - page_size_total as f64 / env_info.mapsize as f64;
 
             // check the allocated size is now greater than it was initially

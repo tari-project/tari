@@ -204,7 +204,6 @@ impl StoreAndForwardDatabase {
     pub(crate) fn truncate_messages(&self, max_size: usize) -> Result<usize, StorageError> {
         let mut num_removed = 0;
         let conn = self.connection.get_pooled_connection()?;
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let msg_count = stored_messages::table
             .select(dsl::count(stored_messages::id))
             .first::<i64>(&conn)? as usize;

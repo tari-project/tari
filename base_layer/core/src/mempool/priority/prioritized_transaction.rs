@@ -40,7 +40,6 @@ impl FeePriority {
     pub fn new(transaction: &Transaction, weight: u64) -> Self {
         // The weights have been normalised, so the fee priority is now equal to the fee per gram ± a few pct points
         // Include 3 decimal places before flooring
-        #[allow(clippy::cast_sign_loss)]
         let fee_per_byte = ((transaction.body.get_total_fee().as_u64() as f64 / weight as f64) * 1000.0) as u64;
         // Big-endian used here, the MSB is in the starting index. The ordering for Vec<u8> is big-endian and the
         // unconfirmed pool expects the lowest priority to be sorted lowest to highest in the BTreeMap

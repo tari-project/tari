@@ -443,7 +443,6 @@ pub unsafe extern "C" fn byte_vector_get_at(ptr: *mut ByteVector, position: c_ui
         return 0u8;
     }
     let len = byte_vector_get_length(ptr, error_out) as c_int - 1; // clamp to length
-    #[allow(clippy::cast_sign_loss)]
     if len < 0 || position > len as c_uint {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -1474,7 +1473,6 @@ pub unsafe extern "C" fn contacts_get_at(
         return ptr::null_mut();
     }
     let len = contacts_get_length(contacts, error_out) as c_int - 1;
-    #[allow(clippy::cast_sign_loss)]
     if len < 0 || position > len as c_uint {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -1761,7 +1759,6 @@ pub unsafe extern "C" fn completed_transactions_get_at(
         return ptr::null_mut();
     }
     let len = completed_transactions_get_length(transactions, error_out) as c_int - 1;
-    #[allow(clippy::cast_sign_loss)]
     if len < 0 || position > len as c_uint {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -1851,7 +1848,6 @@ pub unsafe extern "C" fn pending_outbound_transactions_get_at(
         return ptr::null_mut();
     }
     let len = pending_outbound_transactions_get_length(transactions, error_out) as c_int - 1;
-    #[allow(clippy::cast_sign_loss)]
     if len < 0 || position > len as c_uint {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);
@@ -1940,7 +1936,6 @@ pub unsafe extern "C" fn pending_inbound_transactions_get_at(
         return ptr::null_mut();
     }
     let len = pending_inbound_transactions_get_length(transactions, error_out) as c_int - 1;
-    #[allow(clippy::cast_sign_loss)]
     if len < 0 || position > len as c_uint {
         error = LibWalletError::from(InterfaceError::PositionInvalidError).code;
         ptr::swap(error_out, &mut error as *mut c_int);

@@ -595,7 +595,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         request: BaseRequest<Bytes>,
         reply: oneshot::Sender<mpsc::Receiver<Result<Response<Bytes>, RpcStatus>>>,
     ) -> Result<(), RpcError> {
-        #[allow(clippy::cast_precision_loss)]
         metrics::outbound_request_bytes(&self.node_id, &self.protocol_id).observe(request.get_ref().len() as f64);
 
         let request_id = self.next_request_id();
@@ -795,7 +794,6 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
                         protocol_name,
                         reader.bytes_read()
                     );
-                    #[allow(clippy::cast_precision_loss)]
                     metrics::inbound_response_bytes(&self.node_id, &self.protocol_id)
                         .observe(reader.bytes_read() as f64);
                     break resp;

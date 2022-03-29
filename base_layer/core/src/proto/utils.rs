@@ -24,7 +24,6 @@ use prost_types::Timestamp;
 use tari_crypto::tari_utilities::epoch_time::EpochTime;
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime`
-#[allow(clippy::cast_sign_loss)]
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
     (timestamp.seconds as u64).into()
 }

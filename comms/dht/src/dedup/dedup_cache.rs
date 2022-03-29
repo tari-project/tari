@@ -81,7 +81,6 @@ impl DedupCacheDatabase {
             .get_result::<i32>(&conn)
             .optional()?;
 
-        #[allow(clippy::cast_sign_loss)]
         Ok(hit_count.unwrap_or(0) as u32)
     }
 
@@ -141,7 +140,6 @@ impl DedupCacheDatabase {
                         .select(dedup_cache::number_of_hits)
                         .filter(dedup_cache::body_hash.eq(&body_hash))
                         .get_result::<i32>(&conn)?;
-                    #[allow(clippy::cast_sign_loss)]
                     Ok(hits as u32)
                 },
                 _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),

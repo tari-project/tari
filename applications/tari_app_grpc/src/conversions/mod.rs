@@ -79,7 +79,6 @@ pub fn naive_datetime_to_timestamp(datetime: chrono::NaiveDateTime) -> Timestamp
     }
 }
 
-#[allow(clippy::cast_sign_loss)]
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> EpochTime {
     (timestamp.seconds as u64).into()
 }

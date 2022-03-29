@@ -298,7 +298,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let mut result = HashMap::new();
                 for o in &mut OutboundTransactionSql::index_by_cancelled(&conn, false)? {
                     self.decrypt_if_necessary(o)?;
-                    #[allow(clippy::cast_sign_loss)]
                     result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
                 }
 
@@ -308,7 +307,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let mut result = HashMap::new();
                 for i in &mut InboundTransactionSql::index_by_cancelled(&conn, false)? {
                     self.decrypt_if_necessary(i)?;
-                    #[allow(clippy::cast_sign_loss)]
                     result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
                 }
 
@@ -318,7 +316,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let mut result = HashMap::new();
                 for c in &mut CompletedTransactionSql::index_by_cancelled(&conn, false)? {
                     self.decrypt_if_necessary(c)?;
-                    #[allow(clippy::cast_sign_loss)]
                     result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
                 }
 
@@ -328,7 +325,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let mut result = HashMap::new();
                 for o in &mut OutboundTransactionSql::index_by_cancelled(&conn, true)? {
                     self.decrypt_if_necessary(o)?;
-                    #[allow(clippy::cast_sign_loss)]
                     result.insert((o.tx_id as u64).into(), OutboundTransaction::try_from((*o).clone())?);
                 }
 
@@ -338,7 +334,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let mut result = HashMap::new();
                 for i in &mut InboundTransactionSql::index_by_cancelled(&conn, true)? {
                     self.decrypt_if_necessary(i)?;
-                    #[allow(clippy::cast_sign_loss)]
                     result.insert((i.tx_id as u64).into(), InboundTransaction::try_from((*i).clone())?);
                 }
 
@@ -348,7 +343,6 @@ impl TransactionBackend for TransactionServiceSqliteDatabase {
                 let mut result = HashMap::new();
                 for c in &mut CompletedTransactionSql::index_by_cancelled(&conn, true)? {
                     self.decrypt_if_necessary(c)?;
-                    #[allow(clippy::cast_sign_loss)]
                     result.insert((c.tx_id as u64).into(), CompletedTransaction::try_from((*c).clone())?);
                 }
 
@@ -1307,7 +1301,6 @@ pub struct InboundTransactionSenderInfo {
 impl TryFrom<InboundTransactionSenderInfoSql> for InboundTransactionSenderInfo {
     type Error = TransactionStorageError;
 
-    #[allow(clippy::cast_sign_loss)]
     fn try_from(i: InboundTransactionSenderInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: TxId::from(i.tx_id as u64),
@@ -1487,7 +1480,6 @@ impl TryFrom<InboundTransaction> for InboundTransactionSql {
 impl TryFrom<InboundTransactionSql> for InboundTransaction {
     type Error = TransactionStorageError;
 
-    #[allow(clippy::cast_sign_loss)]
     fn try_from(i: InboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
@@ -1659,7 +1651,6 @@ impl TryFrom<OutboundTransaction> for OutboundTransactionSql {
 impl TryFrom<OutboundTransactionSql> for OutboundTransaction {
     type Error = TransactionStorageError;
 
-    #[allow(clippy::cast_sign_loss)]
     fn try_from(o: OutboundTransactionSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (o.tx_id as u64).into(),
@@ -2005,7 +1996,6 @@ pub enum CompletedTransactionConversionError {
 impl TryFrom<CompletedTransactionSql> for CompletedTransaction {
     type Error = CompletedTransactionConversionError;
 
-    #[allow(clippy::cast_sign_loss)]
     fn try_from(c: CompletedTransactionSql) -> Result<Self, Self::Error> {
         let transaction_signature = match PublicKey::from_vec(&c.transaction_signature_nonce) {
             Ok(public_nonce) => match PrivateKey::from_vec(&c.transaction_signature_key) {
@@ -2078,7 +2068,6 @@ impl UnconfirmedTransactionInfo {
 impl TryFrom<UnconfirmedTransactionInfoSql> for UnconfirmedTransactionInfo {
     type Error = TransactionStorageError;
 
-    #[allow(clippy::cast_sign_loss)]
     fn try_from(i: UnconfirmedTransactionInfoSql) -> Result<Self, Self::Error> {
         Ok(Self {
             tx_id: (i.tx_id as u64).into(),
