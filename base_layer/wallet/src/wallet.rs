@@ -164,7 +164,7 @@ where
         );
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
-                config.comms_config.clone(),
+                config.p2p.clone(),
                 config.network.clone(),
                 node_identity.clone(),
                 publisher,
@@ -391,8 +391,8 @@ where
         }
     }
 
-    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
-        self.updater_service.clone().unwrap()
+    pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+        self.updater_service.as_ref().map(|s| s.clone())
     }
 
     /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made

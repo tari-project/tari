@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 const LOG_TARGET: &str = "wallet::transaction_service::config";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TransactionServiceConfig {
     pub broadcast_monitoring_timeout: Duration,
     pub chain_monitoring_timeout: Duration,
@@ -64,6 +65,7 @@ impl Default for TransactionServiceConfig {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TransactionRoutingMechanism {
     DirectOnly,
     StoreAndForwardOnly,

@@ -61,6 +61,7 @@ use tari_wallet::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
+    WalletConfig,
     WalletSqlite,
 };
 use tokio::{
@@ -91,8 +92,8 @@ pub struct AppState {
     cached_data: AppStateData,
     cache_update_cooldown: Option<Instant>,
     completed_tx_filter: TransactionFilter,
-    node_config: GlobalConfig,
     config: AppStateConfig,
+    wallet_config: WalletConfig,
     wallet_connectivity: WalletConnectivityHandle,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
@@ -104,29 +105,28 @@ impl AppState {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-        node_config: GlobalConfig,
+        wallet_config: WalletConfig,
     ) -> Self {
-        todo!()
-        // let wallet_connectivity = wallet.wallet_connectivity.clone();
-        // let output_manager_service = wallet.output_manager_service.clone();
-        // let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
-        // let cached_data = inner.data.clone();
-        //
-        // let inner = Arc::new(RwLock::new(inner));
-        // Self {
-        //     inner: inner.clone(),
-        //     cached_data,
-        //     cache_update_cooldown: None,
-        //     completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
-        //     node_config: node_config.clone(),
-        //     config: AppStateConfig::default(),
-        //     wallet_connectivity,
-        //     balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
-        //         inner,
-        //         Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
-        //         output_manager_service,
-        //     ),
-        // }
+        let wallet_connectivity = wallet.wallet_connectivity.clone();
+        let output_manager_service = wallet.output_manager_service.clone();
+        let inner = AppStateInner::new(node_identity, network, wallet, base_node_selected, base_node_config);
+        let cached_data = inner.data.clone();
+
+        let inner = Arc::new(RwLock::new(inner));
+        Self {
+            inner: inner.clone(),
+            cached_data,
+            cache_update_cooldown: None,
+            completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
+            config: AppStateConfig::default(),
+            wallet_connectivity,
+            balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
+                inner,
+                Duration::from_secs(5),
+                output_manager_service,
+            ),
+            wallet_config,
+        }
     }
 
     pub async fn start_event_monitor(&self, notifier: Notifier) {
@@ -504,8 +504,8 @@ impl AppState {
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
-        todo!()
-        // (&self..transaction_num_confirmations_required).to_owned()
+        // TODO: this is not guaranteed to be correct
+        self.wallet_config.num_required_confirmations
     }
 
     pub fn toggle_abandoned_coinbase_filter(&mut self) {
@@ -537,17 +537,11 @@ impl AppState {
     }
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
-        todo!()
-        // // this should not be empty as we this should have been created, but lets just be safe and use the default
-        // value // from the config
-        // match self.node_config.wallet_config.as_ref() {
-        //     Some(config) => config.fee_per_gram.into(),
-        //     _ => MicroTari::from(5),
-        // }
+        self.wallet_config.fee_per_gram.into()
     }
 
-    pub fn get_network(&self) -> Network {
-        self.node_config.network
+    pub async fn get_network(&self) -> Network {
+        self.inner.read().await.get_network()
     }
 }
 pub struct AppStateInner {
@@ -571,6 +565,10 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn get_network(&self) -> Network {
+        self.wallet.network.as_network()
     }
 
     pub fn add_event(&mut self, event: EventListItem) {
@@ -982,7 +980,7 @@ impl AppStateInner {
         self.updated = true;
     }
 
-    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
+    pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
         self.wallet.get_software_updater()
     }
 }

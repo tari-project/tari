@@ -38,6 +38,7 @@ use crate::{
 // #LOGGED
 
 #[derive(Clone, Debug, PartialEq, EnumString, Display, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MnemonicLanguage {
     ChineseSimplified,
     English,

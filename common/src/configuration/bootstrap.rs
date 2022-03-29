@@ -111,12 +111,7 @@ pub struct ConfigBootstrap {
     /// This will rebuild the db, adding block for block in
     #[structopt(long, alias = "rebuild_db")]
     pub rebuild_db: bool,
-    /// Path to input file of commands
-    #[structopt(short, long, aliases = &["input", "script"], parse(from_os_str))]
-    pub input_file: Option<PathBuf>,
-    /// Single input command
-    #[structopt(long)]
-    pub command: Option<String>,
+
     /// This will clean out the orphans db at startup
     #[structopt(long, alias = "clean_orphans_db")]
     pub clean_orphans_db: bool,
@@ -131,18 +126,7 @@ pub struct ConfigBootstrap {
     /// Force wallet recovery
     #[structopt(long, alias = "recover")]
     pub recovery: bool,
-    /// Supply the optional wallet seed words for recovery on the command line
-    #[structopt(long, alias = "seed_words")]
-    pub seed_words: Option<String>,
-    /// Supply the optional file name to save the wallet seed words into
-    #[structopt(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
-    pub seed_words_file_name: Option<PathBuf>,
-    /// Wallet notify script
-    #[structopt(long, alias = "notify")]
-    pub wallet_notify: Option<PathBuf>,
-    /// Automatically exit wallet command/script mode when done
-    #[structopt(long, alias = "auto-exit")]
-    pub command_mode_auto_exit: bool,
+
     /// Mining node options
     #[structopt(long, alias = "mine-until-height")]
     pub mine_until_height: Option<u64>,
@@ -188,16 +172,10 @@ impl Default for ConfigBootstrap {
             non_interactive_mode: false,
             watch: None,
             rebuild_db: false,
-            input_file: None,
-            command: None,
             clean_orphans_db: false,
             password: None,
             change_password: false,
             recovery: false,
-            seed_words: None,
-            seed_words_file_name: None,
-            wallet_notify: None,
-            command_mode_auto_exit: false,
             mine_until_height: None,
             miner_max_blocks: None,
             miner_min_diff: None,

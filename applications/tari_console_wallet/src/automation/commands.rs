@@ -58,6 +58,7 @@ use tari_wallet::{
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    WalletConfig,
     WalletSqlite,
 };
 use tokio::{
@@ -643,7 +644,7 @@ pub async fn monitor_transactions(
 }
 
 pub async fn command_runner(
-    config: &ConsoleWalletConfig,
+    config: &WalletConfig,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
     // config: GlobalConfig,

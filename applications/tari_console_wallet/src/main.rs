@@ -31,6 +31,8 @@
 #![recursion_limit = "1024"]
 use std::{env, process};
 
+use clap::Parser;
+use cli::Cli;
 use init::{
     boot,
     change_password,
@@ -39,7 +41,6 @@ use init::{
     init_wallet,
     start_wallet,
     tari_splash_screen,
-    wallet_mode,
     WalletBoot,
 };
 use log::*;
@@ -49,8 +50,10 @@ use tari_app_utilities::{consts, initialization::init_configuration};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, CommonConfig},
     exit_codes::{ExitCode, ExitError},
+    initialize_logging,
+    load_configuration,
     ConfigBootstrap,
     DefaultConfigLoader,
 };
@@ -62,18 +65,19 @@ use tari_wallet::WalletConfig;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
-use crate::{recovery::get_seed_from_seed_words, wallet_modes::ConsoleWalletConfig};
+use crate::{init::wallet_mode, recovery::get_seed_from_seed_words, wallet_modes::ConsoleWalletConfig};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
 mod automation;
+mod cli;
 mod grpc;
 mod init;
 mod notifier;
 mod recovery;
 mod ui;
 mod utils;
-pub mod wallet_modes;
+mod wallet_modes;
 
 /// Application entry point
 fn main() {
@@ -84,7 +88,7 @@ fn main() {
             let exit_code = err.exit_code;
             error!(
                 target: LOG_TARGET,
-                "Exiting with code ({}): {:?}", exit_code as i32, exit_code
+                "Exiting with code ({}): {:?}: {}", exit_code as i32, exit_code, err
             );
             process::exit(exit_code as i32)
         },
@@ -92,15 +96,24 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
+    let cli = Cli::parse();
+
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(config_path.as_path(), true, &cli.config_property_overrides())?;
+    initialize_logging(
+        &cli.common.log_config_path("wallet"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
+    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    let mut wallet_config = <WalletConfig as DefaultConfigLoader>::load_from(&cfg)?;
+    wallet_config.set_base_path(common_config.base_path().as_path());
+
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .expect("Failed to build a runtime!");
 
-    #[allow(unused_mut)] // config isn't mutated on windows
-    let (bootstrap, mut global_config, _) = init_configuration(ApplicationType::ConsoleWallet)?;
-
-    if bootstrap.tracing_enabled {
+    if cli.tracing_enabled {
         enable_tracing();
     }
 
@@ -111,35 +124,26 @@ fn main_inner() -> Result<(), ExitError> {
         consts::APP_VERSION
     );
 
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", global_config);
-    debug!(target: LOG_TARGET, "Using bootstrap: {:?}", bootstrap);
-
     // get command line password if provided
-    let arg_password = bootstrap.password.clone();
+    let arg_password = cli.password.clone();
 
     if arg_password.is_none() {
         tari_splash_screen("Console Wallet");
     }
 
     // check for recovery based on existence of wallet file
-    let mut boot_mode = boot(&bootstrap, &global_config)?;
+    let mut boot_mode = boot(&cli, &wallet_config)?;
 
-    let recovery_seed: Option<CipherSeed> = get_recovery_seed(boot_mode, &bootstrap)?;
-
-    if bootstrap.init {
-        info!(target: LOG_TARGET, "Default configuration created. Done.");
-    }
+    let recovery_seed: Option<CipherSeed> = get_recovery_seed(boot_mode, &cli)?;
 
     // get command line password if provided
-    let arg_password = bootstrap.password.clone();
-    let seed_words_file_name = bootstrap.seed_words_file_name.clone();
+    let arg_password = cli.password.clone();
+    let seed_words_file_name = cli.seed_words_file_name.clone();
 
     let mut shutdown = Shutdown::new();
     let shutdown_signal = shutdown.to_signal();
 
-    let wallet_config = <WalletConfig as DefaultConfigLoader>::load_from(&global_config.inner)?;
-
-    if bootstrap.change_password {
+    if cli.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
         return runtime.block_on(change_password(wallet_config, arg_password, shutdown_signal));
     }
@@ -161,7 +165,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
-        wallet_config,
+        &wallet_config,
         arg_password,
         seed_words_file_name,
         recovery_seed,
@@ -175,53 +179,49 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // get base node/s
-    let base_node_config = runtime.block_on(get_base_node_peer_config(&global_config, &mut wallet))?;
+    let base_node_config = runtime.block_on(get_base_node_peer_config(&wallet_config, &mut wallet))?;
     let base_node_selected = base_node_config.get_base_node_peer()?;
 
-    let wallet_mode = wallet_mode(&bootstrap, boot_mode);
+    let wallet_mode = wallet_mode(&cli, boot_mode);
 
     // start wallet
     runtime.block_on(start_wallet(&mut wallet, &base_node_selected, &wallet_mode))?;
 
     // optional path to notify script
-    let notify_script = get_notify_script(&bootstrap, &global_config)?;
+    let notify_script = get_notify_script(&cli, &wallet_config)?;
 
     debug!(target: LOG_TARGET, "Starting app");
 
     let handle = runtime.handle().clone();
-    todo!("Need to fix console wallet")
-    // let config = ConsoleWalletConfig {
-    //     base_node_config,
-    //     base_node_selected,
-    //     bootstrap,
-    //     global_config,
-    //     notify_script,
-    //     wallet_mode: wallet_mode.clone(),
-    // };
-    // let result = match wallet_mode {
-    //     WalletMode::Tui => tui_mode(config, wallet.clone()),
-    //     WalletMode::Grpc => grpc_mode(config, wallet.clone()),
-    //     WalletMode::Script(path) => script_mode(config, wallet.clone(), path),
-    //     WalletMode::Command(command) => command_mode(config, wallet.clone(), command),
-    //     WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
-    //     WalletMode::Invalid => Err(ExitError::new(
-    //         ExitCode::InputError,
-    //         "Invalid wallet mode - are you trying too many command options at once?",
-    //     )),
-    // };
-    //
-    // print!("\nShutting down wallet... ");
-    // shutdown.trigger();
-    // runtime.block_on(wallet.wait_until_shutdown());
-    // println!("Done.");
-    //
-    // result
+
+    let result = match wallet_mode {
+        WalletMode::Tui => tui_mode(handle, &wallet_config, &base_node_config, wallet.clone()),
+        WalletMode::Grpc => grpc_mode(handle, &wallet_config, wallet.clone()),
+        WalletMode::Script(path) => script_mode(handle, &cli, &wallet_config, &base_node_config, wallet.clone(), path),
+        WalletMode::Command(command) => {
+            command_mode(handle, &cli, &wallet_config, &base_node_config, wallet.clone(), command)
+        },
+        WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
+            recovery_mode(handle, &base_node_config, &wallet_config, wallet_mode, wallet.clone())
+        },
+        WalletMode::Invalid => Err(ExitError::new(
+            ExitCode::InputError,
+            "Invalid wallet mode - are you trying too many command options at once?",
+        )),
+    };
+
+    print!("\nShutting down wallet... ");
+    shutdown.trigger();
+    runtime.block_on(wallet.wait_until_shutdown());
+    println!("Done.");
+
+    result
 }
 
-fn get_recovery_seed(boot_mode: WalletBoot, bootstrap: &ConfigBootstrap) -> Result<Option<CipherSeed>, ExitError> {
+fn get_recovery_seed(boot_mode: WalletBoot, cli: &Cli) -> Result<Option<CipherSeed>, ExitError> {
     if matches!(boot_mode, WalletBoot::Recovery) {
-        let seed = if bootstrap.seed_words.is_some() {
-            let seed_words: Vec<String> = bootstrap
+        let seed = if cli.seed_words.is_some() {
+            let seed_words: Vec<String> = cli
                 .seed_words
                 .clone()
                 .unwrap()

@@ -22,7 +22,7 @@
 
 use tari_common::{configuration::Network, GlobalConfig};
 use tari_comms::peer_manager::Peer;
-use tari_wallet::WalletSqlite;
+use tari_wallet::{WalletConfig, WalletSqlite};
 use tokio::runtime::Handle;
 use tui::{
     backend::Backend,
@@ -74,9 +74,9 @@ impl<B: Backend> App<B> {
         title: String,
         wallet: WalletSqlite,
         network: Network,
+        wallet_config: WalletConfig,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-        node_config: GlobalConfig,
         notifier: Notifier,
     ) -> Self {
         let app_state = AppState::new(
@@ -85,7 +85,7 @@ impl<B: Backend> App<B> {
             wallet,
             base_node_selected.clone(),
             base_node_config,
-            node_config,
+            wallet_config,
         );
 
         let tabs = TabsContainer::<B>::new(title.clone())

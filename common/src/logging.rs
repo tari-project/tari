@@ -52,7 +52,7 @@ pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> R
     use ApplicationType::*;
     let source = match application_type {
         BaseNode => todo!(),
-        ConsoleWallet => include_str!("../logging/log4rs_sample_wallet.yml"),
+        ConsoleWallet => todo!(),
         MiningNode => todo!(),
         MergeMiningProxy => todo!(),
         StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),

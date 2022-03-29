@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::path::PathBuf;
+
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 
@@ -29,25 +31,41 @@ use tari_app_utilities::common_cli_args::CommonCliArgs;
 pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
-    /// Create and save new node identity if one doesn't exist
-    #[clap(long, alias = "create_id")]
-    pub create_id: bool,
-    /// Create a default configuration file if it doesn't exist
-    #[clap(long)]
-    pub init: bool,
     /// Enable tracing
     #[clap(long, aliases = &["tracing", "enable-tracing"])]
     pub tracing_enabled: bool,
-    /// This will rebuild the db, adding block for block in
-    // TODO: Should be a command rather
-    #[clap(long, alias = "rebuild_db")]
-    pub rebuild_db: bool,
+    /// Supply the password for the console wallet. It's very bad security practice to provide the password on the
+    /// command line, since it's visible using `ps ax` from anywhere on the system, so always use the env var where
+    /// possible.
+    #[clap(long)] // , env = "TARI_WALLET_PASSWORD")]
+    pub password: Option<String>,
+    /// Change the password for the console wallet
+    #[clap(long, alias = "update-password")]
+    pub change_password: bool,
+    /// Force wallet recovery
+    #[clap(long, alias = "recover")]
+    pub recovery: bool,
+    /// Supply the optional wallet seed words for recovery on the command line
+    #[clap(long, alias = "seed_words")]
+    pub seed_words: Option<String>,
+    /// Supply the optional file name to save the wallet seed words into
+    #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]
+    pub seed_words_file_name: Option<PathBuf>,
     /// Run in non-interactive mode, with no UI.
     #[clap(short, long, alias = "non-interactive")]
     pub non_interactive_mode: bool,
-    /// Watch a command in the non-interactive mode.
+    /// Path to input file of commands
+    #[clap(short, long, aliases = &["input", "script"], parse(from_os_str))]
+    pub input_file: Option<PathBuf>,
+    /// Single input command
     #[clap(long)]
-    pub watch: Option<String>,
+    pub command: Option<String>,
+    /// Wallet notify script
+    #[clap(long, alias = "notify")]
+    pub wallet_notify: Option<PathBuf>,
+    /// Automatically exit wallet command/script mode when done
+    #[clap(long, alias = "auto-exit")]
+    pub command_mode_auto_exit: bool,
     /// Supply a network (overrides existing configuration)
     #[clap(long, alias = "network")]
     pub network: Option<String>,
@@ -57,7 +75,7 @@ impl Cli {
     pub fn config_property_overrides(&self) -> Vec<(String, String)> {
         let mut overrides = self.common.config_property_overrides();
         if let Some(ref network) = self.network {
-            overrides.push(("base_node.override_from".to_string(), network.clone()));
+            overrides.push(("wallet.override_from".to_string(), network.clone()));
         }
         overrides
     }
