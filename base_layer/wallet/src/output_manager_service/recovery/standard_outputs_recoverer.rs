@@ -184,7 +184,7 @@ where
             let found_index = self
                 .master_key_manager
                 .find_key_index(
-                    OutputManagerKeyManagerBranch::Coinbase.to_string(),
+                    OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
                     &output.spending_key,
                 )
                 .await?;

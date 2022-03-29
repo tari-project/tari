@@ -1050,12 +1050,15 @@ where
         let spending_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.to_string(), block_height)
+            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.get_branch_key(), block_height)
             .await?;
         let script_private_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript.to_string(), block_height)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                block_height,
+            )
             .await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
