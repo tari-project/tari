@@ -164,7 +164,8 @@ impl Default for DhtConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConnectivityConfig {
     /// The interval to update the neighbouring and random pools, if necessary.
     /// Default: 2 minutes

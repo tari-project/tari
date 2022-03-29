@@ -102,9 +102,10 @@ use commands::{
     cli_loop::CliLoop,
     command::CommandContext,
     parser::Parser,
-    reader::{CommandEvent, CommandReader},
+    reader::CommandReader,
     status_line::StatusLineOutput,
 };
+use config::Config;
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
@@ -314,7 +315,7 @@ async fn run_node(
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
-    let main_loop = CliLoop::new(context, bootstrap.watch, bootstrap.non_interactive_mode);
+    let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
     if cli.non_interactive_mode {
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {

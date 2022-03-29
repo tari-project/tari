@@ -3220,7 +3220,7 @@ pub unsafe extern "C" fn comms_config_create(
 
                     let config = TariCommsConfig {
                         transport: todo!("Fill in transport type"),
-                        auxilary_tcp_listener_address: None,
+                        auxiliary_tcp_listener_address: None,
                         datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 25,

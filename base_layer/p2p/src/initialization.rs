@@ -188,7 +188,7 @@ impl Default for P2pConfig {
             dns_seeds: vec![],
             dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
             dns_seeds_use_dnssec: false,
-            auxilary_tcp_listener_address: None,
+            auxiliary_tcp_listener_address: None,
         }
     }
 }
