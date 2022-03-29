@@ -7,7 +7,7 @@ const path = require("path");
 const helpers = require("./helpers");
 const WalletProcess = require("integration_tests/helpers/walletProcess");
 
-const RECOVERY_COMPLETE_REGEXP = /Recovery complete! Scanned = (\d+) in/;
+const RECOVERY_COMPLETE_REGEXP = /Recovery complete! Scanned (\d+) blocks in/;
 const RECOVERY_WORTH_REGEXP = /worth ([0-9.]+) (µ?T)/;
 const FAILURE_REGEXP =
   /Attempt (\d+)\/(\d+): Failed to complete wallet recovery/;
@@ -65,7 +65,7 @@ async function run(options = {}) {
     {
       transport: "tor",
       network: "dibbler",
-      grpc_console_wallet_address: "127.0.0.1:18111",
+      grpc_console_wallet_address: "/ip4/127.0.0.1/tcp/18111",
       baseDir: options.baseDir || "./temp/base-nodes/",
     },
     "../../integration_tests/log4rs/wallet.yml",
