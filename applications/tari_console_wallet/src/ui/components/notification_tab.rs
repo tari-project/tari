@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 // This tab will show all the notifications. With timestamp automatically added.
 // The tab title will turn green with notifications count (when there are any).
 // The notifications lives as long as the app. Once the app is closed, the notifications
