@@ -46,7 +46,7 @@ Feature: Wallet Monitoring
     When I wait 30 seconds
     And I list all COINBASE transactions for wallet WALLET_A1
     And I list all COINBASE transactions for wallet WALLET_B1
-    Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
+    Then all COINBASE transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing cancellation
 
   # 18+ mins on circle ci
   @long-running
@@ -108,11 +108,11 @@ Feature: Wallet Monitoring
     And I list all NORMAL transactions for wallet WALLET_A1
     And I list all NORMAL transactions for wallet WALLET_B1
     # TODO: Uncomment this step when wallets can handle reorg
-#    Then all NORMAL transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing validity
+#    Then all NORMAL transactions for wallet WALLET_A1 and wallet WALLET_B1 have consistent but opposing cancellation
     And I list all NORMAL transactions for wallet WALLET_A2
     And I list all NORMAL transactions for wallet WALLET_B2
     # TODO: Uncomment this step when wallets can handle reorg
-#    Then all NORMAL transactions for wallet WALLET_A2 and wallet WALLET_B2 have consistent but opposing validity
+#    Then all NORMAL transactions for wallet WALLET_A2 and wallet WALLET_B2 have consistent but opposing cancellation
     When I wait 1 seconds
 
   Scenario Outline: Verify all coinbases in hybrid mining are accounted for

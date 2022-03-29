@@ -25,11 +25,9 @@ use rand::rngs::OsRng;
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    inputs,
     keys::{PublicKey as PK, SecretKey},
-    script,
-    script::TariScript,
 };
+use tari_script::{inputs, script, TariScript};
 use thiserror::Error;
 
 use crate::{
@@ -41,7 +39,7 @@ use crate::{
     transactions::{
         crypto_factories::CryptoFactories,
         tari_amount::{uT, MicroTari},
-        transaction::{
+        transaction_components::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -188,7 +186,13 @@ impl CoinbaseBuilder {
         let spending_key = self.spend_key.ok_or(CoinbaseBuildError::MissingSpendKey)?;
         let script_private_key = self.script_key.unwrap_or_else(|| spending_key.clone());
         let script = self.script.unwrap_or_else(|| script!(Nop));
-        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height());
+
+        let commitment = self
+            .factories
+            .commitment
+            .commit_value(&spending_key, total_reward.as_u64());
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
+        let output_features = OutputFeatures::create_coinbase(height + constants.coinbase_lock_height(), recovery_byte);
         let excess = self.factories.commitment.commit_value(&spending_key, 0);
         let kernel_features = KernelFeatures::create_coinbase();
         let metadata = TransactionMetadata::default();
@@ -222,10 +226,9 @@ impl CoinbaseBuilder {
             0,
             covenant,
         );
-        // TODO: Verify bullet proof?
         let output = if let Some(rewind_data) = self.rewind_data.as_ref() {
             unblinded_output
-                .as_rewindable_transaction_output(&self.factories, rewind_data)
+                .as_rewindable_transaction_output(&self.factories, rewind_data, None)
                 .map_err(|e| CoinbaseBuildError::BuildError(e.to_string()))?
         } else {
             unblinded_output
@@ -269,7 +272,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::uT,
             test_helpers::TestParams,
-            transaction::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
+            transaction_components::{KernelFeatures, OutputFeatures, OutputFlags, TransactionError},
             transaction_protocol::RewindData,
             CoinbaseBuilder,
         },
@@ -287,7 +290,7 @@ mod test {
         let (builder, rules, _) = get_builder();
         assert_eq!(
             builder
-                .build(rules.consensus_constants(0), rules.emission_schedule())
+                .build(rules.consensus_constants(0), rules.emission_schedule(),)
                 .unwrap_err(),
             CoinbaseBuildError::MissingBlockHeight
         );
@@ -299,7 +302,7 @@ mod test {
         let builder = builder.with_block_height(42);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(42), rules.emission_schedule())
+                .build(rules.consensus_constants(42), rules.emission_schedule(),)
                 .unwrap_err(),
             CoinbaseBuildError::MissingFees
         );
@@ -314,7 +317,7 @@ mod test {
         let builder = builder.with_block_height(42).with_fees(fees).with_nonce(p.nonce);
         assert_eq!(
             builder
-                .build(rules.consensus_constants(42), rules.emission_schedule())
+                .build(rules.consensus_constants(42), rules.emission_schedule(),)
                 .unwrap_err(),
             CoinbaseBuildError::MissingSpendKey
         );
@@ -359,6 +362,7 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: PrivateKey::random(&mut OsRng),
             proof_message: proof_message.to_owned(),
         };
 

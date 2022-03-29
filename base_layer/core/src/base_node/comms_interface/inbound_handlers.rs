@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::{TryFrom, TryInto},
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -34,19 +35,23 @@ use tari_utilities::ByteArray;
 use tokio::sync::Semaphore;
 
 use crate::{
-    base_node::comms_interface::{
-        error::CommsInterfaceError,
-        local_interface::BlockEventSender,
-        FetchMempoolTransactionsResponse,
-        NodeCommsRequest,
-        NodeCommsResponse,
-        OutboundNodeCommsInterface,
+    base_node::{
+        comms_interface::{
+            error::CommsInterfaceError,
+            local_interface::BlockEventSender,
+            FetchMempoolTransactionsResponse,
+            NodeCommsRequest,
+            NodeCommsResponse,
+            OutboundNodeCommsInterface,
+        },
+        metrics,
     },
     blocks::{Block, BlockBuilder, BlockHeader, ChainBlock, NewBlock, NewBlockTemplate},
     chain_storage::{async_db::AsyncBlockchainDb, BlockAddResult, BlockchainBackend, ChainStorageError, PrunedOutput},
     consensus::{ConsensusConstants, ConsensusManager},
     mempool::Mempool,
     proof_of_work::{Difficulty, PowAlgorithm},
+    validation::helpers,
 };
 
 const LOG_TARGET: &str = "c::bn::comms_interface::inbound_handler";
@@ -374,6 +379,8 @@ where B: BlockchainBackend + 'static
                         .await?,
                     self.consensus_manager.get_block_reward_at(height),
                 );
+
+                debug!(target: LOG_TARGET, "New template block: {}", block_template);
                 debug!(
                     target: LOG_TARGET,
                     "New block template requested at height {}, weight: {}",
@@ -384,6 +391,7 @@ where B: BlockchainBackend + 'static
                 Ok(NodeCommsResponse::NewBlockTemplate(block_template))
             },
             NodeCommsRequest::GetNewBlock(block_template) => {
+                debug!(target: LOG_TARGET, "Prepared block: {}", block_template);
                 let block = self.blockchain_db.prepare_new_block(block_template).await?;
                 let constants = self.consensus_manager.consensus_constants(block.header.height);
                 debug!(
@@ -472,7 +480,7 @@ where B: BlockchainBackend + 'static
                 })
             },
             NodeCommsRequest::FetchMempoolTransactionsByExcessSigs { excess_sigs } => {
-                let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
+                let (transactions, not_found) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
                 Ok(NodeCommsResponse::FetchMempoolTransactionsByExcessSigsResponse(
                     FetchMempoolTransactionsResponse {
                         transactions,
@@ -546,8 +554,10 @@ where B: BlockchainBackend + 'static
             kernel_excess_sigs: excess_sigs,
         } = new_block;
 
-        let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(&excess_sigs).await;
+        let (known_transactions, missing_excess_sigs) = self.mempool.retrieve_by_excess_sigs(excess_sigs).await?;
         let known_transactions = known_transactions.into_iter().map(|tx| (*tx).clone()).collect();
+
+        metrics::compact_block_tx_misses(header.height).set(missing_excess_sigs.len() as i64);
 
         let mut builder = BlockBuilder::new(header.version)
             .with_coinbase_utxo(coinbase_output, coinbase_kernel)
@@ -578,7 +588,7 @@ where B: BlockchainBackend + 'static
 
             // Add returned transactions to unconfirmed pool
             if !transactions.is_empty() {
-                self.mempool.insert_all(&transactions).await?;
+                self.mempool.insert_all(transactions.clone()).await?;
             }
 
             if !not_found.is_empty() {
@@ -593,6 +603,7 @@ where B: BlockchainBackend + 'static
                     not_found.len()
                 );
 
+                metrics::compact_block_full_misses(header.height).inc();
                 let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
                 return Ok(block);
             }
@@ -607,9 +618,29 @@ where B: BlockchainBackend + 'static
 
         // NB: Add the header last because `with_transactions` etc updates the current header, but we have the final one
         // already
-        builder = builder.with_header(header);
+        builder = builder.with_header(header.clone());
+        let block = builder.build();
 
-        Ok(Arc::new(builder.build()))
+        // Perform a sanity check on the reconstructed block, if the MMR roots don't match then it's possible one or
+        // more transactions in our mempool had the same excess/signature for a *different* transaction.
+        // This is extremely unlikely, but still possible. In case of a mismatch, request the full block from the peer.
+        let (block, mmr_roots) = self.blockchain_db.calculate_mmr_roots(block).await?;
+        if let Err(e) = helpers::check_mmr_roots(&header, &mmr_roots) {
+            let block_hash = block.hash();
+            warn!(
+                target: LOG_TARGET,
+                "Reconstructed block #{} ({}) failed MMR check validation!. Requesting full block. Error: {}",
+                header.height,
+                block_hash.to_hex(),
+                e,
+            );
+
+            metrics::compact_block_mmr_mismatch(header.height).inc();
+            let block = self.request_full_block_from_peer(source_peer, block_hash).await?;
+            return Ok(block);
+        }
+
+        Ok(Arc::new(block))
     }
 
     async fn request_full_block_from_peer(
@@ -665,6 +696,7 @@ where B: BlockchainBackend + 'static
     ) -> Result<BlockHash, CommsInterfaceError> {
         let block_hash = block.hash();
         let block_height = block.header.height;
+
         info!(
             target: LOG_TARGET,
             "Block #{} ({}) received from {}",
@@ -675,6 +707,7 @@ where B: BlockchainBackend + 'static
                 .map(|p| format!("remote peer: {}", p))
                 .unwrap_or_else(|| "local services".to_string())
         );
+        debug!(target: LOG_TARGET, "Incoming block: {}", block);
         let timer = Instant::now();
         let add_block_result = self.blockchain_db.add_block(block.clone()).await;
         // Create block event on block event stream
@@ -696,8 +729,7 @@ where B: BlockchainBackend + 'static
                     BlockAddResult::ChainReorg { .. } => true,
                 };
 
-                self.blockchain_db.cleanup_orphans().await?;
-
+                self.update_block_result_metrics(&block_add_result).await?;
                 self.publish_block_event(BlockEvent::ValidBlockAdded(block.clone(), block_add_result));
 
                 if should_propagate {
@@ -714,6 +746,7 @@ where B: BlockchainBackend + 'static
             },
 
             Err(e @ ChainStorageError::ValidationError { .. }) => {
+                metrics::rejected_blocks(block.header.height, &block.hash()).inc();
                 warn!(
                     target: LOG_TARGET,
                     "Peer {} sent an invalid header: {}",
@@ -737,6 +770,7 @@ where B: BlockchainBackend + 'static
             },
 
             Err(e) => {
+                metrics::rejected_blocks(block.header.height, &block.hash()).inc();
                 self.publish_block_event(BlockEvent::AddBlockFailed(block));
                 Err(e.into())
             },
@@ -747,6 +781,46 @@ where B: BlockchainBackend + 'static
         if let Err(event) = self.block_event_sender.send(Arc::new(event)) {
             debug!(target: LOG_TARGET, "No event subscribers. Event {} dropped.", event.0)
         }
+    }
+
+    async fn update_block_result_metrics(&self, block_add_result: &BlockAddResult) -> Result<(), CommsInterfaceError> {
+        fn update_target_difficulty(block: &ChainBlock) {
+            match block.header().pow_algo() {
+                PowAlgorithm::Sha3 => {
+                    metrics::target_difficulty_sha(block.height())
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
+                PowAlgorithm::Monero => {
+                    metrics::target_difficulty_monero(block.height())
+                        .set(i64::try_from(block.accumulated_data().target_difficulty.as_u64()).unwrap_or(i64::MAX));
+                },
+            }
+        }
+
+        match block_add_result {
+            BlockAddResult::Ok(ref block) => {
+                metrics::tip_height().set(block.height() as i64);
+                update_target_difficulty(block);
+                let utxo_set_size = self.blockchain_db.utxo_count().await?;
+                metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
+            },
+            BlockAddResult::ChainReorg { added, removed } => {
+                if let Some(fork_height) = added.last().map(|b| b.height()) {
+                    metrics::tip_height().set(fork_height as i64);
+                    metrics::reorg(fork_height, added.len(), removed.len()).inc();
+                }
+                for block in added {
+                    update_target_difficulty(block);
+                }
+                let utxo_set_size = self.blockchain_db.utxo_count().await?;
+                metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
+            },
+            BlockAddResult::OrphanBlock => {
+                metrics::orphaned_blocks().inc();
+            },
+            _ => {},
+        }
+        Ok(())
     }
 
     async fn get_target_difficulty_for_next_block(

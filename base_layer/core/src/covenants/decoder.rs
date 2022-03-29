@@ -23,7 +23,7 @@
 use std::io;
 
 use integer_encoding::VarIntReader;
-use tari_crypto::script::ScriptError;
+use tari_script::ScriptError;
 
 use crate::covenants::token::CovenantToken;
 
@@ -73,10 +73,10 @@ pub enum CovenantDecodeError {
     UnknownByteCode { code: u8 },
     #[error("Unexpected EoF, expected {expected}")]
     UnexpectedEof { expected: &'static str },
-    // #[error("Byte array error: {0}")]
-    // ByteArrayError(#[from] ByteArrayError),
     #[error("Tari script error: {0}")]
     ScriptError(#[from] ScriptError),
+    #[error("Covenant exceeded maximum bytes")]
+    ExceededMaxBytes,
     #[error(transparent)]
     Io(#[from] io::Error),
 }
@@ -126,7 +126,6 @@ mod test {
 
     use super::*;
     use crate::{
-        consensus::ToConsensusBytes,
         covenant,
         covenants::{arguments::CovenantArg, fields::OutputField, filters::CovenantFilter},
     };
@@ -142,11 +141,13 @@ mod test {
         let hash = from_hex("53563b674ba8e5166adb57afa8355bcf2ee759941eef8f8959b802367c2558bd").unwrap();
         let mut hash_buf = [0u8; 32];
         hash_buf.copy_from_slice(hash.as_slice());
-        let bytes = covenant!(fields_hashed_eq(
+        let mut bytes = Vec::new();
+        covenant!(fields_hashed_eq(
             @fields(@field::commitment, @field::features_metadata),
             @hash(hash_buf),
         ))
-        .to_consensus_bytes();
+        .write_to(&mut bytes)
+        .unwrap();
         let mut buf = bytes.as_slice();
         let mut decoder = CovenantTokenDecoder::new(&mut buf);
         let token = decoder.next().unwrap().unwrap();

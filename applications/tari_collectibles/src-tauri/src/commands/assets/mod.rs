@@ -35,12 +35,15 @@ use crate::{
   },
 };
 
+use log::debug;
 use tari_app_grpc::tari_rpc::{self};
 use tari_common_types::types::{Commitment, PublicKey};
 use tari_crypto::{hash::blake2::Blake256, ristretto::RistrettoPublicKey};
 use tari_mmr::{MemBackendVec, MerkleMountainRange};
 use tari_utilities::{hex::Hex, ByteArray};
 use uuid::Uuid;
+
+const LOG_TARGET: &str = "collectibles::assets";
 
 #[tauri::command]
 pub(crate) async fn assets_create(
@@ -51,102 +54,22 @@ pub(crate) async fn assets_create(
   template_parameters: Vec<TemplateParameter>,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<String, Status> {
-  let wallet_id = state
-    .current_wallet_id()
-    .await
-    .ok_or_else(Status::unauthorized)?;
-
-  let mut client = state.create_wallet_client().await;
-  client.connect().await?;
-  let tp = template_parameters
-    .into_iter()
-    .map(|t| tari_rpc::TemplateParameter {
-      template_data: t.template_data,
-      template_data_version: 1,
-      template_id: t.template_id,
-    })
-    .collect();
-
-  let db = state.create_db().await?;
-  let transaction = db.create_transaction()?;
-  let (key_manager_path, _, asset_public_key) = state
-    .key_manager()
-    .await
-    .generate_asset_public_key(wallet_id, None, &transaction)
-    .map_err(|e| Status::internal(format!("could not generate asset public key: {}", e)))?;
-
-  // NOTE: we are blocking the database during this time....
-  let res = client
-    .register_asset(
-      name.clone(),
-      asset_public_key.clone(),
-      description.clone(),
-      image.clone(),
-      template_ids.clone(),
-      tp,
-    )
-    .await?;
-
-  let asset_id = Uuid::new_v4();
-  let asset_row = AssetRow {
-    id: asset_id,
-    asset_public_key: asset_public_key.clone(),
-    name: Some(name),
-    description: Some(description),
-    image: Some(image),
-    committee: None,
-  };
-  dbg!(&asset_row);
-  db.assets().insert(&asset_row, &transaction)?;
-  let asset_wallet_row = AssetWalletRow {
-    id: Uuid::new_v4(),
-    asset_id,
-    wallet_id,
-  };
-  dbg!(&asset_wallet_row);
-  db.asset_wallets().insert(&asset_wallet_row, &transaction)?;
-  let address = AddressRow {
-    id: Uuid::new_v4(),
-    asset_wallet_id: asset_wallet_row.id,
-    name: Some("Issuer wallet".to_string()),
-    public_key: asset_public_key,
-    key_manager_path: key_manager_path.clone(),
-  };
-  dbg!(&address);
-  db.addresses().insert(&address, &transaction)?;
-  if template_ids.contains(&2) {
-    let row = Tip002AddressRow {
-      id: Uuid::new_v4(),
-      address_id: address.id,
-      balance: 0,
-      at_height: None,
-    };
-    db.tip002_addresses().insert(&row, &transaction)?;
-  }
-  transaction.commit()?;
-
-  Ok(res)
+  inner_assets_create(
+    name,
+    description,
+    image,
+    template_ids,
+    template_parameters,
+    state.inner(),
+  )
+  .await
 }
 
 #[tauri::command]
 pub(crate) async fn assets_list_owned(
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Vec<AssetInfo>, Status> {
-  let mut client = state.create_wallet_client().await;
-  client.connect().await?;
-  let assets = client.list_owned_assets().await?;
-  Ok(
-    assets
-      .assets
-      .into_iter()
-      .map(|a| AssetInfo {
-        public_key: a.public_key.to_hex(),
-        name: a.name,
-        description: a.description,
-        image: a.image,
-      })
-      .collect(),
-  )
+  inner_assets_list_owned(state.inner()).await
 }
 
 // TODO: remove and use better serializer
@@ -201,6 +124,138 @@ pub(crate) async fn assets_list_registered_assets(
   count: u64,
   state: tauri::State<'_, ConcurrentAppState>,
 ) -> Result<Vec<RegisteredAssetInfo>, Status> {
+  inner_assets_list_registered_assets(offset, count, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn assets_create_initial_checkpoint(
+  asset_pub_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  inner_assets_create_initial_checkpoint(asset_pub_key, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn assets_get_registration(
+  asset_pub_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<RegisteredAssetInfo, Status> {
+  inner_assets_get_registration(asset_pub_key, state.inner()).await
+}
+
+pub(crate) async fn inner_assets_create(
+  name: String,
+  description: String,
+  image: String,
+  template_ids: Vec<u32>,
+  template_parameters: Vec<TemplateParameter>,
+  state: &ConcurrentAppState,
+) -> Result<String, Status> {
+  let wallet_id = state
+    .current_wallet_id()
+    .await
+    .ok_or_else(Status::unauthorized)?;
+
+  let mut client = state.create_wallet_client().await;
+  client.connect().await?;
+  let tp = template_parameters
+    .into_iter()
+    .map(|t| tari_rpc::TemplateParameter {
+      template_data: t.template_data,
+      template_data_version: 1,
+      template_id: t.template_id,
+    })
+    .collect();
+
+  let db = state.create_db().await?;
+  let transaction = db.create_transaction()?;
+  let (key_manager_path, _, asset_public_key) = state
+    .key_manager()
+    .await
+    .generate_asset_public_key(wallet_id, None, &transaction)
+    .map_err(|e| Status::internal(format!("could not generate asset public key: {}", e)))?;
+
+  // NOTE: we are blocking the database during this time....
+  let res = client
+    .register_asset(
+      name.clone(),
+      asset_public_key.clone(),
+      description.clone(),
+      image.clone(),
+      template_ids.clone(),
+      tp,
+    )
+    .await?;
+
+  let asset_id = Uuid::new_v4();
+  let asset_row = AssetRow {
+    id: asset_id,
+    asset_public_key: asset_public_key.clone(),
+    name: Some(name),
+    description: Some(description),
+    image: Some(image),
+    committee: None,
+  };
+  debug!(target: LOG_TARGET, "asset_row {:?}", asset_row);
+  db.assets().insert(&asset_row, &transaction)?;
+  let asset_wallet_row = AssetWalletRow {
+    id: Uuid::new_v4(),
+    asset_id,
+    wallet_id,
+  };
+  debug!(
+    target: LOG_TARGET,
+    "asset_wallet_row {:?}", asset_wallet_row
+  );
+  db.asset_wallets().insert(&asset_wallet_row, &transaction)?;
+  let address = AddressRow {
+    id: Uuid::new_v4(),
+    asset_wallet_id: asset_wallet_row.id,
+    name: Some("Issuer wallet".to_string()),
+    public_key: asset_public_key,
+    key_manager_path: key_manager_path.clone(),
+  };
+  debug!(target: LOG_TARGET, "address {:?}", address);
+  db.addresses().insert(&address, &transaction)?;
+  if template_ids.contains(&2) {
+    let row = Tip002AddressRow {
+      id: Uuid::new_v4(),
+      address_id: address.id,
+      balance: 0,
+      at_height: None,
+    };
+    db.tip002_addresses().insert(&row, &transaction)?;
+  }
+  transaction.commit()?;
+
+  Ok(res)
+}
+
+pub(crate) async fn inner_assets_list_owned(
+  state: &ConcurrentAppState,
+) -> Result<Vec<AssetInfo>, Status> {
+  let mut client = state.create_wallet_client().await;
+  client.connect().await?;
+  let assets = client.list_owned_assets().await?;
+  Ok(
+    assets
+      .assets
+      .into_iter()
+      .map(|a| AssetInfo {
+        public_key: a.public_key.to_hex(),
+        name: a.name,
+        description: a.description,
+        image: a.image,
+      })
+      .collect(),
+  )
+}
+
+pub(crate) async fn inner_assets_list_registered_assets(
+  offset: u64,
+  count: u64,
+  state: &ConcurrentAppState,
+) -> Result<Vec<RegisteredAssetInfo>, Status> {
   let mut client = state.connect_base_node_client().await?;
   let assets = client.list_registered_assets(offset, count).await?;
   let serializer = V1AssetMetadataSerializer {};
@@ -229,37 +284,69 @@ pub(crate) async fn assets_list_registered_assets(
     .collect()
 }
 
-#[tauri::command]
-pub(crate) async fn assets_create_initial_checkpoint(
+pub(crate) async fn inner_assets_create_initial_checkpoint(
   asset_pub_key: String,
-  committee: Vec<String>,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let mmr = MerkleMountainRange::<Blake256, _>::new(MemBackendVec::new());
-
-  let root = mmr.get_merkle_root().unwrap();
+  let merkle_root = mmr
+    .get_merkle_root()
+    .map_err(|e| Status::internal(e.to_string()))?;
 
   let mut client = state.create_wallet_client().await;
   client.connect().await?;
 
+  // todo: check for enough utxos first
+
+  // create asset reg checkpoint
   client
-    .create_initial_asset_checkpoint(asset_pub_key, root, committee)
-    .await
-    .unwrap();
+    .create_initial_asset_checkpoint(&asset_pub_key, merkle_root)
+    .await?;
 
   Ok(())
 }
 
 #[tauri::command]
-pub(crate) async fn assets_get_registration(
-  asset_pub_key: String,
+pub(crate) async fn assets_create_committee_definition(
+  asset_public_key: String,
+  committee: Vec<String>,
+  is_initial: bool,
   state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<String>, Status> {
+  let mut client = state.create_wallet_client().await;
+  client.connect().await?;
+
+  // TODO: effective sidechain height...
+  client
+    .create_committee_definition(&asset_public_key, &committee, 0, is_initial)
+    .await?;
+
+  Ok(committee)
+}
+
+#[tauri::command]
+pub(crate) async fn assets_get_committee_definition(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<String>, Status> {
+  let mut client = state.connect_base_node_client().await?;
+
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let committee = client.get_sidechain_committee(&asset_public_key).await?;
+  let committee = committee.iter().map(Hex::to_hex).collect();
+
+  Ok(committee)
+}
+
+pub(crate) async fn inner_assets_get_registration(
+  asset_public_key: String,
+  state: &ConcurrentAppState,
 ) -> Result<RegisteredAssetInfo, Status> {
   let mut client = state.connect_base_node_client().await?;
-  let asset_pub_key = PublicKey::from_hex(&asset_pub_key)?;
-  let asset = client.get_asset_metadata(&asset_pub_key).await?;
+  let asset_public_key = PublicKey::from_hex(&asset_public_key)?;
+  let asset = client.get_asset_metadata(&asset_public_key).await?;
 
-  dbg!(&asset);
+  debug!(target: LOG_TARGET, "asset {:?}", asset);
   let features = asset.features.unwrap();
   let serializer = V1AssetMetadataSerializer {};
   let metadata = serializer.deserialize(&features.metadata[1..]);

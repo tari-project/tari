@@ -228,6 +228,21 @@ impl ConnectivityManagerActor {
                 let span = span!(Level::TRACE, "handle_request");
                 span.follows_from(tracing_id);
                 async move {
+                    match self.peer_manager.is_peer_banned(&node_id).await {
+                        Ok(true) => {
+                            if let Some(reply) = reply_tx {
+                                let _ = reply.send(Err(ConnectionManagerError::PeerBanned));
+                            }
+                            return;
+                        },
+                        Ok(false) => {},
+                        Err(err) => {
+                            if let Some(reply) = reply_tx {
+                                let _ = reply.send(Err(err.into()));
+                            }
+                            return;
+                        },
+                    }
                     match self.pool.get(&node_id) {
                         Some(state) if state.is_connected() => {
                             debug!(

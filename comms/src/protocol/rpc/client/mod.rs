@@ -408,7 +408,6 @@ struct RpcClientWorker<TSubstream> {
 impl<TSubstream> RpcClientWorker<TSubstream>
 where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 {
-    #[allow(clippy::too_many_arguments)]
     pub(self) fn new(
         config: RpcClientConfig,
         node_id: NodeId,
@@ -440,7 +439,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         self.framed.stream_id()
     }
 
-    #[tracing::instrument(name = "rpc_client_worker run", skip(self), fields(next_request_id = self.next_request_id))]
+    #[tracing::instrument(level="trace", name = "rpc_client_worker run", skip(self), fields(next_request_id = self.next_request_id))]
     async fn run(mut self) {
         debug!(
             target: LOG_TARGET,
@@ -590,7 +589,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
         Ok(())
     }
 
-    #[tracing::instrument(name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_body_size = request.message.len()))]
+    #[tracing::instrument(level="trace", name = "rpc_do_request_response", skip(self, reply, request), fields(request_method = ?request.method, request_body_size = request.message.len()))]
     async fn do_request_response(
         &mut self,
         request: BaseRequest<Bytes>,
@@ -718,10 +717,9 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
 
             match Self::convert_to_result(resp) {
                 Ok(Ok(resp)) => {
-                    // The consumer may drop the receiver before all responses are received.
-                    // We just ignore that as we still want obey the protocol and receive messages until the FIN flag or
-                    // the connection is dropped
                     let is_finished = resp.is_finished();
+                    // The consumer may drop the receiver before all responses are received.
+                    // We handle this by sending a 'FIN' message to the server.
                     if response_tx.is_closed() {
                         warn!(
                             target: LOG_TARGET,
@@ -781,12 +779,21 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     }
 
     async fn read_response(&mut self, request_id: u16) -> Result<proto::rpc::RpcResponse, RpcError> {
-        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
+        let stream_id = self.stream_id();
+        let protocol_name = self.protocol_name().to_string();
 
+        let mut reader = RpcResponseReader::new(&mut self.framed, self.config, request_id);
         let mut num_ignored = 0;
         let resp = loop {
             match reader.read_response().await {
                 Ok(resp) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "(stream: {}, {}) Received body len = {}",
+                        stream_id,
+                        protocol_name,
+                        reader.bytes_read()
+                    );
                     metrics::inbound_response_bytes(&self.node_id, &self.protocol_id)
                         .observe(reader.bytes_read() as f64);
                     break resp;
@@ -815,9 +822,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + StreamId
     }
 
     fn next_request_id(&mut self) -> u16 {
-        let next_id = self.next_request_id;
+        let mut next_id = self.next_request_id;
         // request_id is allowed to wrap around back to 0
         self.next_request_id = self.next_request_id.wrapping_add(1);
+        // We dont want request id of zero because that is the default for varint on protobuf, so it is possible for the
+        // entire message to be zero bytes (WriteZero IO error)
+        if next_id == 0 {
+            next_id += 1;
+            self.next_request_id += 1;
+        }
         next_id
     }
 
@@ -873,6 +886,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
         let mut chunk_count = 1;
         let mut last_chunk_flags = RpcMessageFlags::from_bits_truncate(resp.flags as u8);
         let mut last_chunk_size = resp.payload.len();
+        self.bytes_read += last_chunk_size;
         loop {
             trace!(
                 target: LOG_TARGET,

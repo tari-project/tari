@@ -23,33 +23,42 @@
 use digest::Digest;
 use log::*;
 use prost::Message;
+use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
 use tari_dan_common_types::proto::tips::tip004;
 
-use crate::{storage::state::StateDbUnitOfWork, DigitalAssetError};
+use crate::{
+    models::InstructionSet,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    DigitalAssetError,
+};
 
 const LOG_TARGET: &str = "tari::dan_layer::core::templates::tip004_template";
 
-pub fn invoke_method<TUnitOfWork: StateDbUnitOfWork>(
-    method: String,
+pub fn initial_instructions(_: &TemplateParameter) -> InstructionSet {
+    InstructionSet::empty()
+}
+
+pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWorkReader>(
+    method: &str,
+    args: &[u8],
+    state_db: &TUnitOfWork,
+) -> Result<Option<Vec<u8>>, DigitalAssetError> {
+    match method.to_lowercase().replace("_", "").as_str() {
+        "balanceof" => balance_of(args, state_db),
+        "tokenofownerbyindex" => token_of_owner_by_index(args, state_db),
+        name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
+    }
+}
+
+pub fn invoke_write_method<TUnitOfWork: StateDbUnitOfWork>(
+    method: &str,
     args: &[u8],
     state_db: &mut TUnitOfWork,
 ) -> Result<(), DigitalAssetError> {
     match method.to_lowercase().replace("_", "").as_str() {
         "mint" => mint(args, state_db),
-        _ => todo!(),
-    }
-}
-
-pub fn invoke_read_method<TUnitOfWork: StateDbUnitOfWork>(
-    method: String,
-    args: &[u8],
-    state_db: &mut TUnitOfWork,
-) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-    match method.to_lowercase().replace("_", "").as_str() {
-        "balanceof" => balance_of(args, state_db),
-        "tokenofownerbyindex" => token_of_owner_by_index(args, state_db),
-        _ => todo!(),
+        name => Err(DigitalAssetError::TemplateUnsupportedMethod { name: name.to_string() }),
     }
 }
 
@@ -91,9 +100,9 @@ fn hash_of(s: &str) -> Vec<u8> {
     Blake256::new().chain(s).finalize().to_vec()
 }
 
-fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
+fn balance_of<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
-    state_db: &mut TUnitOfWork,
+    state_db: &TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
     // TODO: move this to the invoke_read_method method
     let request = tip004::BalanceOfRequest::decode(&*args).map_err(|e| DigitalAssetError::ProtoBufDecodeError {
@@ -111,9 +120,9 @@ fn balance_of<TUnitOfWork: StateDbUnitOfWork>(
     Ok(Some(response_bytes))
 }
 
-fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWork>(
+fn token_of_owner_by_index<TUnitOfWork: StateDbUnitOfWorkReader>(
     args: &[u8],
-    state_db: &mut TUnitOfWork,
+    state_db: &TUnitOfWork,
 ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
     // TODO: move this to the invoke_read_method method
     let request =

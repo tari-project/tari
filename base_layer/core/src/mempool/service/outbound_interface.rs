@@ -26,7 +26,7 @@ use log::*;
 use tari_comms::peer_manager::NodeId;
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{mempool::service::MempoolServiceError, transactions::transaction::Transaction};
+use crate::{mempool::service::MempoolServiceError, transactions::transaction_components::Transaction};
 
 pub const LOG_TARGET: &str = "c::mp::service::outbound_interface";
 

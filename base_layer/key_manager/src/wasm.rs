@@ -23,6 +23,7 @@
 use std::fmt::Display;
 
 use console_error_panic_hook;
+use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_crypto::{common::Blake256, keys::PublicKey as PublicKeyTrait};
@@ -37,8 +38,10 @@ type KeyDigest = Blake256;
 
 type KeyManager = GenericKeyManager<PrivateKey, KeyDigest>;
 
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[derive(Clone, Derivative, Deserialize, Serialize, PartialEq)]
+#[derivative(Debug)]
 struct DerivedKeypair {
+    #[derivative(Debug = "ignore")]
     private_key: PrivateKey,
     public_key: PublicKey,
     key_index: u64,
@@ -190,7 +193,7 @@ mod test {
         let next_key = response.key_manager.next_key().unwrap();
         assert_eq!(
             next_key.k.to_hex(),
-            "5a14f1205cfeb10d53af46e82b70e8832a544206f524b404e7a346148532910a".to_string()
+            "5c06999ed20e18bbb76245826141f8ae8700a648d87ec4da5a2a7507ce4b5f0e".to_string()
         )
     }
 

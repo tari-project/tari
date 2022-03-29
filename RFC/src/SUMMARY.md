@@ -8,6 +8,7 @@
   - [RFC-0110: Base nodes](RFC-0110_BaseNodes.md)
   - [RFC-0111: Base node architecture](RFC-0111_BaseNodeArchitecture.md)
   - [RFC-0120: Consensus rules](RFC-0120_Consensus.md)
+    - [RFC-0121: Consensus encoding](RFC-0121_ConsensusEncoding.md)
   - [RFC-0131: Mining](RFC-0131_Mining.md)
   - [RFC-0132: Merge Mining Monero](RFC-0132_Merge_Mining_Monero.md)
   - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)
@@ -15,6 +16,7 @@
   - [RFC-0151: Transaction protocol](RFC-0151_TransactionProtocol.md)
   - [RFC-0152: Emoji ID](RFC-0152_EmojiId.md)
   - [RFC-0153: Staged Wallet Security](RFC-0153_StagedWalletSecurity.md)
+  - [RFC-0154: Deep links structure convention](RFC-0154_DeepLinksConvencion.md)
   - [RFC-0160: Block Binary Serialization](RFC-0160_BlockSerialization.md)
   - [RFC-0170: Network Communication Protocol](RFC-0170_NetworkCommunicationProtocol.md)
     - [RFC-0171: Message Serialisation](RFC-0171_MessageSerialisation.md)
@@ -48,4 +50,5 @@
 
   - [RFC-0130: Mining](RFC-0130_Mining.md)
 
+- [RFC template](RFC_template.md)
 - [Glossary](Glossary.md)

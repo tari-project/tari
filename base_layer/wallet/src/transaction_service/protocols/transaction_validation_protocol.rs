@@ -69,7 +69,7 @@ pub struct TransactionValidationProtocol<TTransactionBackend, TWalletConnectivit
 }
 use tari_common_types::types::Signature;
 
-use crate::transaction_service::protocols::TxRejection;
+use crate::transaction_service::storage::models::TxCancellationReason;
 
 #[allow(unused_variables)]
 impl<TTransactionBackend, TWalletConnectivity> TransactionValidationProtocol<TTransactionBackend, TWalletConnectivity>
@@ -95,16 +95,16 @@ where
         }
     }
 
-    pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<OperationId, TransactionServiceProtocolError<OperationId>> {
         let mut base_node_wallet_client = self
             .connectivity
             .obtain_base_node_wallet_rpc_client()
             .await
             .ok_or(TransactionServiceError::Shutdown)
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         self.check_for_reorgs(&mut *base_node_wallet_client).await?;
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Checking if transactions have been mined since last we checked (Operation ID: {})", self.operation_id
         );
@@ -113,7 +113,7 @@ where
             .db
             .fetch_unconfirmed_transactions_info()
             .await
-            .for_protocol(self.operation_id.as_u64())
+            .for_protocol(self.operation_id)
             .unwrap();
 
         let mut state_changed = false;
@@ -121,8 +121,8 @@ where
             let (mined, unmined, tip_info) = self
                 .query_base_node_for_transactions(batch, &mut *base_node_wallet_client)
                 .await
-                .for_protocol(self.operation_id.as_u64())?;
-            info!(
+                .for_protocol(self.operation_id)?;
+            debug!(
                 target: LOG_TARGET,
                 "Base node returned {} as mined and {} as unmined (Operation ID: {})",
                 mined.len(),
@@ -130,7 +130,7 @@ where
                 self.operation_id
             );
             for (mined_tx, mined_height, mined_in_block, num_confirmations) in &mined {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Updating transaction {} as mined and confirmed '{}' (Operation ID: {})",
                     mined_tx.tx_id,
@@ -152,7 +152,7 @@ where
                     // Treat coinbases separately
                     if unmined_tx.is_coinbase() {
                         if unmined_tx.coinbase_block_height.unwrap_or_default() <= tip_height {
-                            info!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Updated coinbase {} as abandoned (Operation ID: {})",
                                 unmined_tx.tx_id,
@@ -167,7 +167,7 @@ where
                             .await?;
                             state_changed = true;
                         } else {
-                            info!(
+                            debug!(
                                 target: LOG_TARGET,
                                 "Coinbase not found, but it is for a block that is not yet in the chain. Coinbase \
                                  height: {}, tip height:{} (Operation ID: {})",
@@ -177,7 +177,7 @@ where
                             );
                         }
                     } else {
-                        info!(
+                        debug!(
                             target: LOG_TARGET,
                             "Updated transaction {} as unmined (Operation ID: {})", unmined_tx.tx_id, self.operation_id
                         );
@@ -207,8 +207,8 @@ where
     async fn check_for_reorgs(
         &mut self,
         client: &mut BaseNodeWalletRpcClient,
-    ) -> Result<(), TransactionServiceProtocolError> {
-        info!(
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
+        debug!(
             target: LOG_TARGET,
             "Checking last mined transactions to see if the base node has re-orged (Operation ID: {})",
             self.operation_id
@@ -252,14 +252,14 @@ where
                         .kernels()
                         .first()
                         .map(|k| k.excess.to_hex())
-                        .unwrap(),
+                        .unwrap_or_else(|| "{No Kernel found}".to_string()),
                     self.operation_id
                 );
                 self.update_transaction_as_unmined(last_mined_transaction.tx_id, &last_mined_transaction.status)
                     .await?;
                 self.publish_event(TransactionEvent::TransactionValidationStateChanged(op_id));
             } else {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Last mined transaction is still in the block chain according to base node (Operation ID: {}).",
                     self.operation_id
@@ -284,7 +284,7 @@ where
     > {
         let mut mined = vec![];
         let mut unmined = vec![];
-
+        #[allow(clippy::mutable_key_type)]
         let mut batch_signatures = HashMap::new();
         for tx_info in batch.iter() {
             // Imported transactions do not have a signature; this is represented by the default signature in info
@@ -294,7 +294,7 @@ where
         }
 
         if batch_signatures.is_empty() {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "No transactions needed to query with the base node (Operation ID: {})", self.operation_id
             );
@@ -387,21 +387,31 @@ where
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_mined_height(
                 tx_id,
-                true,
                 mined_height,
                 mined_in_block.clone(),
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
+                status.is_faux(),
             )
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         if num_confirmations >= self.config.num_confirmations_required {
-            self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+            if status.is_faux() {
+                self.publish_event(TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true })
+            } else {
+                self.publish_event(TransactionEvent::TransactionMined { tx_id, is_valid: true })
+            }
+        } else if status.is_faux() {
+            self.publish_event(TransactionEvent::FauxTransactionUnconfirmed {
+                tx_id,
+                num_confirmations,
+                is_valid: true,
+            })
         } else {
             self.publish_event(TransactionEvent::TransactionMinedUnconfirmed {
                 tx_id,
@@ -432,18 +442,23 @@ where
         mined_in_block: &BlockHash,
         mined_height: u64,
         num_confirmations: u64,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_mined_height(
                 tx_id,
-                false,
                 mined_height,
                 mined_in_block.clone(),
                 num_confirmations,
                 num_confirmations >= self.config.num_confirmations_required,
+                false,
             )
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
+
+        self.db
+            .abandon_coinbase_transaction(tx_id)
+            .await
+            .for_protocol(self.operation_id)?;
 
         if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, true).await {
             warn!(
@@ -454,9 +469,10 @@ where
                 self.operation_id
             );
         };
-
-        self.publish_event(TransactionEvent::TransactionCancelled(tx_id, TxRejection::Orphan));
-
+        self.publish_event(TransactionEvent::TransactionCancelled(
+            tx_id,
+            TxCancellationReason::AbandonedCoinbase,
+        ));
         Ok(())
     }
 
@@ -464,11 +480,11 @@ where
         &mut self,
         tx_id: TxId,
         status: &TransactionStatus,
-    ) -> Result<(), TransactionServiceProtocolError> {
+    ) -> Result<(), TransactionServiceProtocolError<OperationId>> {
         self.db
             .set_transaction_as_unmined(tx_id)
             .await
-            .for_protocol(self.operation_id.as_u64())?;
+            .for_protocol(self.operation_id)?;
 
         if *status == TransactionStatus::Coinbase {
             if let Err(e) = self.output_manager_handle.set_coinbase_abandoned(tx_id, false).await {

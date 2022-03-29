@@ -123,7 +123,7 @@ class BaseNodeProcess {
           "127.0.0.1",
           this.grpcPort,
           this.port,
-          "127.0.0.1:8080",
+          "/ip4/127.0.0.1/tcp/8080",
           "127.0.0.1:8085",
           this.options,
           this.peerSeeds,
@@ -139,7 +139,7 @@ class BaseNodeProcess {
       });
       fs.writeFileSync(
         `${this.baseDir}/start_node.sh`,
-        "export $(grep -v '^#' .env | xargs)\ncargo run --release --bin tari_base_node -- -b ."
+        "export $(grep -v '^#' .env | xargs)\ncargo run --release --bin tari_base_node -- -n --watch status -b ."
       );
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
@@ -203,7 +203,13 @@ class BaseNodeProcess {
   }
 
   async start(opts = []) {
-    const args = ["--base-path", "."];
+    const args = [
+      "--non-interactive-mode",
+      "--watch",
+      "status",
+      "--base-path",
+      ".",
+    ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }

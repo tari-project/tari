@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::time::Duration;
+
 use tari_comms::{
     connectivity::ConnectivityError,
     peer_manager::NodeId,
@@ -65,8 +67,12 @@ pub enum BlockHeaderSyncError {
     NetworkSilence,
     #[error("Invalid protocol response: {0}")]
     InvalidProtocolResponse(String),
-    #[error("Headers did not form a chain. Expected {actual} to equal the previous hash {expected}")]
-    ChainLinkBroken { actual: String, expected: String },
+    #[error("Header at height {height} did not form a chain. Expected {actual} to equal the previous hash {expected}")]
+    ChainLinkBroken {
+        height: u64,
+        actual: String,
+        expected: String,
+    },
     #[error("Block error: {0}")]
     BlockError(#[from] BlockError),
     #[error(
@@ -78,4 +84,12 @@ pub enum BlockHeaderSyncError {
         actual: Option<u128>,
         local: u128,
     },
+    #[error("Peer {peer} exceeded maximum permitted sync latency. latency: {latency:.2?}s, max: {max_latency:.2?}s")]
+    MaxLatencyExceeded {
+        peer: NodeId,
+        latency: Duration,
+        max_latency: Duration,
+    },
+    #[error("All sync peers exceeded max allowed latency")]
+    AllSyncPeersExceedLatency,
 }

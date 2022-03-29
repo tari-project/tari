@@ -42,7 +42,7 @@ use crate::{
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             KernelFeatures,
             OutputFlags,
             Transaction,
@@ -63,8 +63,8 @@ pub enum BlockValidationError {
     InvalidInput,
     #[error("Contains kernels or inputs that are not yet spendable")]
     MaturityError,
-    #[error("Mismatched MMR roots")]
-    MismatchedMmrRoots,
+    #[error("Mismatched {kind} MMR roots")]
+    MismatchedMmrRoots { kind: &'static str },
     #[error("MMR size for {mmr_tree} does not match. Expected: {expected}, received: {actual}")]
     MismatchedMmrSize {
         mmr_tree: String,

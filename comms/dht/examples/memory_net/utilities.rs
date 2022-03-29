@@ -24,13 +24,14 @@
 use std::{
     collections::HashMap,
     fmt,
+    iter,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use futures::future;
 use lazy_static::lazy_static;
-use rand::{rngs::OsRng, Rng};
+use rand::{distributions, rngs::OsRng, Rng};
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
@@ -54,6 +55,7 @@ use tari_comms_dht::{
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
     store_forward::SafConfig,
+    DbConnectionUrl,
     Dht,
     DhtConfig,
 };
@@ -144,7 +146,7 @@ pub async fn discovery(wallets: &[TestNode], messaging_events_rx: &mut NodeEvent
             .dht
             .discovery_service_requester()
             .discover_peer(
-                Box::new(wallet2.node_identity().public_key().clone()),
+                wallet2.node_identity().public_key().clone(),
                 wallet2.node_identity().node_id().clone().into(),
             )
             .await;
@@ -373,7 +375,6 @@ pub async fn do_network_wide_propagation(nodes: &mut [TestNode], origin_node_ind
     (num_successes, nodes.len() - 1)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub async fn do_store_and_forward_message_propagation(
     wallet: TestNode,
     wallets: &[TestNode],
@@ -667,7 +668,6 @@ pub struct TestNode {
     pub shutdown: Shutdown,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl TestNode {
     pub fn new(
         comms: CommsNode,
@@ -883,7 +883,6 @@ pub async fn make_node_from_node_identities(
     )
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,
@@ -913,8 +912,15 @@ async fn setup_comms_dht(
         comms.peer_manager().add_peer(peer).await.unwrap();
     }
 
+    let db_name = iter::repeat(())
+        .map(|_| OsRng.sample(distributions::Alphanumeric) as char)
+        .take(8)
+        .collect::<String>();
+
     let dht = Dht::builder()
         .with_config(DhtConfig {
+            // Use MemoryShared because a Memory connection only seems to work on MacOs
+            database_url: DbConnectionUrl::MemoryShared(db_name),
             saf_config: SafConfig {
                 auto_request: saf_auto_request,
                 ..Default::default()

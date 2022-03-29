@@ -37,6 +37,7 @@ type OutboundMessageSinkService = SinkService<mpsc::Sender<OutboundMessage>>;
 #[derive(Default)]
 pub struct Builder<TInSvc, TOutSvc, TOutReq> {
     max_concurrent_inbound_tasks: usize,
+    max_concurrent_outbound_tasks: Option<usize>,
     outbound_buffer_size: usize,
     inbound: Option<TInSvc>,
     outbound_rx: Option<mpsc::Receiver<TOutReq>>,
@@ -47,6 +48,7 @@ impl Builder<(), (), ()> {
     pub fn new() -> Self {
         Self {
             max_concurrent_inbound_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
+            max_concurrent_outbound_tasks: None,
             outbound_buffer_size: DEFAULT_OUTBOUND_BUFFER_SIZE,
             inbound: None,
             outbound_rx: None,
@@ -58,6 +60,11 @@ impl Builder<(), (), ()> {
 impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
     pub fn max_concurrent_inbound_tasks(mut self, max_tasks: usize) -> Self {
         self.max_concurrent_inbound_tasks = max_tasks;
+        self
+    }
+
+    pub fn max_concurrent_outbound_tasks(mut self, max_tasks: usize) -> Self {
+        self.max_concurrent_outbound_tasks = Some(max_tasks);
         self
     }
 
@@ -77,6 +84,7 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
             outbound_pipeline_factory: Some(Box::new(factory)),
 
             max_concurrent_inbound_tasks: self.max_concurrent_inbound_tasks,
+            max_concurrent_outbound_tasks: self.max_concurrent_outbound_tasks,
             inbound: self.inbound,
             outbound_buffer_size: self.outbound_buffer_size,
         }
@@ -88,6 +96,7 @@ impl<TInSvc, TOutSvc, TOutReq> Builder<TInSvc, TOutSvc, TOutReq> {
             inbound: Some(inbound),
 
             max_concurrent_inbound_tasks: self.max_concurrent_inbound_tasks,
+            max_concurrent_outbound_tasks: self.max_concurrent_outbound_tasks,
             outbound_rx: self.outbound_rx,
             outbound_pipeline_factory: self.outbound_pipeline_factory,
             outbound_buffer_size: self.outbound_buffer_size,
@@ -126,6 +135,7 @@ where
 
         Ok(Config {
             max_concurrent_inbound_tasks: self.max_concurrent_inbound_tasks,
+            max_concurrent_outbound_tasks: self.max_concurrent_outbound_tasks,
             inbound,
             outbound,
         })
@@ -147,6 +157,7 @@ pub struct OutboundPipelineConfig<TInItem, TPipeline> {
 
 pub struct Config<TInSvc, TOutSvc, TOutReq> {
     pub max_concurrent_inbound_tasks: usize,
+    pub max_concurrent_outbound_tasks: Option<usize>,
     pub inbound: TInSvc,
     pub outbound: OutboundPipelineConfig<TOutReq, TOutSvc>,
 }

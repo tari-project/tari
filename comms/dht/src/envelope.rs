@@ -133,7 +133,7 @@ impl DhtMessageType {
 
 /// This struct mirrors the protobuf version of DhtHeader but is more ergonomic to work with.
 /// It is preferable to not to expose the generated prost structs publicly.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq)]
 pub struct DhtMessageHeader {
     pub version: DhtProtocolVersion,
     pub destination: NodeDestination,
@@ -154,6 +154,19 @@ impl DhtMessageHeader {
         } else {
             true
         }
+    }
+}
+
+impl PartialEq for DhtMessageHeader {
+    /// Checks equality between two `DhtMessageHeader`s disregarding the transient message_tag
+    fn eq(&self, other: &Self) -> bool {
+        self.version == other.version &&
+            self.destination == other.destination &&
+            self.origin_mac == other.origin_mac &&
+            self.ephemeral_public_key == other.ephemeral_public_key &&
+            self.message_type == other.message_type &&
+            self.flags == other.flags &&
+            self.expires == other.expires
     }
 }
 

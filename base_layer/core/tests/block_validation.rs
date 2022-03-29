@@ -40,7 +40,7 @@ use tari_core::{
         aggregated_body::AggregateBody,
         tari_amount::{uT, T},
         test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams, UtxoTestParams},
-        transaction::OutputFeatures,
+        transaction_components::OutputFeatures,
         CryptoFactories,
     },
     txn_schema,
@@ -56,7 +56,8 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::{inputs, script};
+use tari_script::{inputs, script};
+use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
 use crate::helpers::{
@@ -246,10 +247,9 @@ async fn inputs_are_not_malleable() {
     let err = validator.validate_body(block).await.unwrap_err();
 
     // All validations pass, except the Input MMR.
-    assert!(matches!(
-        err,
-        ValidationError::BlockError(BlockValidationError::MismatchedMmrRoots)
-    ));
+    unpack_enum!(ValidationError::BlockError(err) = err);
+    unpack_enum!(BlockValidationError::MismatchedMmrRoots { kind } = err);
+    assert_eq!(kind, "Input");
 }
 
 #[test]

@@ -45,6 +45,8 @@ pub use rpc::create_mempool_rpc_service;
 #[cfg(feature = "base_node")]
 pub use rpc::{MempoolRpcClient, MempoolRpcServer, MempoolRpcService, MempoolService};
 #[cfg(feature = "base_node")]
+mod metrics;
+#[cfg(feature = "base_node")]
 mod unconfirmed_pool;
 
 // Public re-exports
@@ -73,9 +75,8 @@ use serde::{Deserialize, Serialize};
 #[cfg(feature = "base_node")]
 pub use sync_protocol::MempoolSyncInitializer;
 use tari_common_types::types::Signature;
-use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::transactions::transaction::Transaction;
+use crate::transactions::transaction_components::Transaction;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StatsResponse {
@@ -99,31 +100,6 @@ impl Display for StatsResponse {
 pub struct StateResponse {
     pub unconfirmed_pool: Vec<Arc<Transaction>>,
     pub reorg_pool: Vec<Signature>,
-}
-
-impl Display for StateResponse {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        fmt.write_str("----------------- Mempool -----------------\n")?;
-        fmt.write_str("--- Unconfirmed Pool ---\n")?;
-        for tx in &self.unconfirmed_pool {
-            fmt.write_str(&format!(
-                "    {} Fee: {}, Outputs: {}, Kernels: {}, Inputs: {}, metadata: {} bytes\n",
-                tx.first_kernel_excess_sig()
-                    .map(|sig| sig.get_signature().to_hex())
-                    .unwrap_or_else(|| "N/A".to_string()),
-                tx.body.get_total_fee(),
-                tx.body.outputs().len(),
-                tx.body.kernels().len(),
-                tx.body.inputs().len(),
-                tx.body.sum_metadata_size()
-            ))?;
-        }
-        fmt.write_str("--- Reorg Pool ---\n")?;
-        for excess_sig in &self.reorg_pool {
-            fmt.write_str(&format!("    {}\n", excess_sig.get_signature().to_hex()))?;
-        }
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

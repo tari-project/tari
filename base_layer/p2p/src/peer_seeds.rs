@@ -81,7 +81,7 @@ pub struct SeedPeer {
 
 impl SeedPeer {
     #[inline]
-    pub fn get_node_id(&self) -> NodeId {
+    pub fn derive_node_id(&self) -> NodeId {
         NodeId::from_public_key(&self.public_key)
     }
 }
@@ -105,8 +105,8 @@ impl FromStr for SeedPeer {
 
 impl From<SeedPeer> for Peer {
     fn from(seed: SeedPeer) -> Self {
-        let node_id = seed.get_node_id();
-        Self::new(
+        let node_id = seed.derive_node_id();
+        Peer::new(
             seed.public_key,
             node_id,
             seed.addresses.into(),
@@ -218,9 +218,9 @@ mod test {
             let mut record = Record::new();
             record
                 .set_record_type(RecordType::TXT)
-                .set_rdata(RData::TXT(rdata::TXT::new(
+                .set_data(Some(RData::TXT(rdata::TXT::new(
                     contents.into_iter().map(ToString::to_string).collect(),
-                )));
+                ))));
 
             mock::message(resp_query, vec![record], vec![], vec![]).into()
         }

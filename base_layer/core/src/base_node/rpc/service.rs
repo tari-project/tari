@@ -25,7 +25,7 @@ use std::convert::TryFrom;
 
 use log::*;
 use tari_common_types::types::Signature;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, RpcStatusResultExt, Streaming};
 use tari_crypto::tari_utilities::hex::Hex;
 use tokio::sync::mpsc;
 
@@ -35,7 +35,7 @@ use crate::{
         state_machine_service::states::StateInfo,
         StateMachineHandle,
     },
-    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput, UtxoMinedInfo},
+    chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend, PrunedOutput},
     mempool::{service::MempoolHandle, TxStorageResponse},
     proto,
     proto::{
@@ -60,7 +60,7 @@ use crate::{
         },
         types::{Signature as SignatureProto, Transaction as TransactionProto},
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 const LOG_TARGET: &str = "c::base_node::rpc";
@@ -97,21 +97,18 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
 
     async fn fetch_kernel(&self, signature: Signature) -> Result<TxQueryResponse, RpcStatus> {
         let db = self.db();
-        let chain_metadata = db
-            .get_chain_metadata()
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+        let chain_metadata = db.get_chain_metadata().await.rpc_status_internal_error(LOG_TARGET)?;
         match db
             .fetch_kernel_by_excess_sig(signature.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
         {
             None => (),
             Some((_, block_hash)) => {
                 match db
                     .fetch_header_by_block_hash(block_hash.clone())
                     .await
-                    .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                    .rpc_status_internal_error(LOG_TARGET)?
                 {
                     None => (),
                     Some(header) => {
@@ -134,7 +131,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletRpcService<B> {
         let mempool_response = match mempool
             .get_tx_state_by_excess_sig(signature.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
         {
             TxStorageResponse::UnconfirmedPool => TxQueryResponse {
                 location: TxLocation::InMempool as i32,
@@ -182,7 +179,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let response = match mempool
             .submit_transaction(transaction.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
         {
             TxStorageResponse::UnconfirmedPool => TxSubmissionResponse {
                 accepted: true,
@@ -220,7 +217,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                         match db
                             .fetch_kernel_by_excess_sig(s.clone())
                             .await
-                            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                            .rpc_status_internal_error(LOG_TARGET)?
                         {
                             None => TxSubmissionResponse {
                                 accepted: false,
@@ -282,7 +279,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db
             .get_chain_metadata()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
 
         for sig in message.sigs {
             let signature = Signature::try_from(sig).map_err(|_| RpcStatus::bad_request("Signature was invalid"))?;
@@ -322,7 +319,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let utxos = db
             .fetch_utxos(message.output_hashes)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .into_iter()
             .flatten();
         for (pruned_output, spent) in utxos {
@@ -341,46 +338,59 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
 
     async fn utxo_query(&self, request: Request<UtxoQueryRequest>) -> Result<Response<UtxoQueryResponses>, RpcStatus> {
         let message = request.into_message();
-        let db = self.db();
-        let mut res = Vec::with_capacity(message.output_hashes.len());
-        for UtxoMinedInfo {
-            output,
-            mmr_position,
-            mined_height: height,
-            header_hash,
-        } in (db
-            .fetch_utxos_and_mined_info(message.output_hashes)
-            .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?)
-        .into_iter()
-        .flatten()
-        {
-            res.push((output, mmr_position, height, header_hash));
+        if message.output_hashes.is_empty() {
+            return Err(RpcStatus::bad_request("Empty output hashes"));
+        }
+        const MAX_ALLOWED_QUERY_SIZE: usize = 512;
+        if message.output_hashes.len() > MAX_ALLOWED_QUERY_SIZE {
+            return Err(RpcStatus::bad_request(format!(
+                "Exceeded maximum allowed query hashes. Max: {}",
+                MAX_ALLOWED_QUERY_SIZE
+            )));
         }
 
+        let db = self.db();
+
+        debug!(
+            target: LOG_TARGET,
+            "Querying {} UTXO(s) for mined state",
+            message.output_hashes.len(),
+        );
+
+        let mined_info_resp = db
+            .fetch_utxos_and_mined_info(message.output_hashes)
+            .await
+            .rpc_status_internal_error(LOG_TARGET)?;
+
+        let num_mined = mined_info_resp.iter().filter(|opt| opt.is_some()).count();
+        debug!(
+            target: LOG_TARGET,
+            "Found {} mined and {} unmined UTXO(s)",
+            num_mined,
+            mined_info_resp.len() - num_mined
+        );
         let metadata = self
             .db
             .get_chain_metadata()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(UtxoQueryResponses {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().clone(),
-            responses: res
+            responses: mined_info_resp
                 .into_iter()
-                .map(
-                    |(output, mmr_position, mined_height, mined_in_block)| UtxoQueryResponse {
-                        mmr_position: mmr_position.into(),
-                        mined_height,
-                        mined_in_block,
-                        output_hash: output.hash(),
-                        output: match output {
-                            PrunedOutput::Pruned { .. } => None,
-                            PrunedOutput::NotPruned { output } => Some(output.into()),
-                        },
+                .flatten()
+                .map(|utxo| UtxoQueryResponse {
+                    mmr_position: utxo.mmr_position.into(),
+                    mined_height: utxo.mined_height,
+                    mined_in_block: utxo.header_hash,
+                    output_hash: utxo.output.hash(),
+                    output: match utxo.output {
+                        PrunedOutput::Pruned { .. } => None,
+                        PrunedOutput::NotPruned { output } => Some(output.into()),
                     },
-                )
+                })
                 .collect(),
         }))
     }
@@ -399,7 +409,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .db
                 .fetch_header_by_block_hash(chain_must_include_header)
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .is_none()
             {
                 return Err(RpcStatus::not_found(
@@ -412,14 +422,13 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db
             .fetch_deleted_bitmap_at_tip()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
 
         let mut deleted_positions = vec![];
         let mut not_deleted_positions = vec![];
 
         for position in message.mmr_positions {
             if position > u32::MAX as u64 {
-                // TODO: in future, bitmap may support higher than u32
                 return Err(RpcStatus::bad_request("position must fit into a u32"));
             }
             let position = position as u32;
@@ -437,7 +446,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .db
                 .fetch_header_hash_by_deleted_mmr_positions(deleted_positions.clone())
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                .rpc_status_internal_error(LOG_TARGET)?;
 
             heights_deleted_at.reserve(headers.len());
             blocks_deleted_in.reserve(headers.len());
@@ -451,7 +460,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db
             .get_chain_metadata()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(QueryDeletedResponse {
             height_of_longest_chain: metadata.height_of_longest_chain(),
@@ -475,7 +484,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db
             .get_chain_metadata()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
 
         Ok(Response::new(TipInfoResponse {
             metadata: Some(metadata.into()),
@@ -489,7 +498,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db()
             .fetch_header(height)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
@@ -504,7 +513,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db()
             .fetch_header(height)
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found(format!("Header not found at height {}", height)))?;
 
         Ok(Response::new(header.into()))
@@ -517,7 +526,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
             .db()
             .fetch_tip_header()
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+            .rpc_status_internal_error(LOG_TARGET)?;
         let mut left_height = 0u64;
         let mut right_height = tip_header.height();
 
@@ -536,7 +545,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .db()
                 .fetch_header(mid_height)
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
                     RpcStatus::not_found(format!("Header not found during search at height {}", mid_height))
                 })?;
@@ -544,7 +553,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
                 .db()
                 .fetch_header(mid_height - 1)
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
                     RpcStatus::not_found(format!("Header not found during search at height {}", mid_height - 1))
                 })?;

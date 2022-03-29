@@ -38,6 +38,8 @@ use tari_crypto::{
 pub const BLOCK_HASH_LENGTH: usize = 32;
 pub type BlockHash = Vec<u8>;
 
+pub type FixedHash = [u8; BLOCK_HASH_LENGTH];
+
 /// Define the explicit Signature implementation for the Tari base layer. A different signature scheme can be
 /// employed by redefining this type.
 pub type Signature = RistrettoSchnorr;
@@ -77,3 +79,9 @@ pub type RangeProofService = DalekRangeProofService;
 
 /// Specify the range proof
 pub type RangeProof = BulletRangeProof;
+
+/// The unique ID for committee definition output features
+pub const COMMITTEE_DEFINITION_ID: [u8; 32] = [2; 32];
+
+/// The unique ID for asset checkpoint output features
+pub const ASSET_CHECKPOINT_ID: [u8; 32] = [3; 32];

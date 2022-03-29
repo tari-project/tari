@@ -23,8 +23,8 @@
 use std::{fmt, marker::PhantomData};
 
 use serde::{self, de, Deserialize, Deserializer, Serialize};
-use tari_common_types::types::PublicKey;
-use tari_core::transactions::transaction::TemplateParameter;
+use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
+use tari_core::transactions::transaction_components::TemplateParameter;
 use tari_crypto::tari_utilities::hex::Hex;
 
 #[derive(Deserialize, Clone, Debug)]
@@ -33,7 +33,7 @@ pub struct AssetDefinition {
     #[serde(deserialize_with = "AssetDefinition::deserialize_pub_key_from_hex")]
     pub public_key: PublicKey,
     // TODO: remove and read from base layer
-    pub initial_committee: Vec<String>,
+    pub committee: Vec<String>,
     pub phase_timeout: u64,
     // TODO: Better name? lock time/peg time? (in number of blocks)
     pub base_layer_confirmation_time: u64,
@@ -46,9 +46,9 @@ impl Default for AssetDefinition {
     fn default() -> Self {
         Self {
             base_layer_confirmation_time: 5,
-            checkpoint_unique_id: vec![3u8; 32],
+            checkpoint_unique_id: ASSET_CHECKPOINT_ID.into(),
             public_key: Default::default(),
-            initial_committee: vec![],
+            committee: vec![],
             phase_timeout: 30,
             initial_state: Default::default(),
             template_parameters: vec![],
@@ -75,6 +75,7 @@ impl AssetDefinition {
                 PublicKey::from_hex(v).map_err(E::custom)
             }
         }
+
         des.deserialize_str(KeyStringVisitor { marker: PhantomData })
     }
 
@@ -92,6 +93,17 @@ pub struct InitialState {
 pub struct SchemaState {
     pub name: String,
     pub items: Vec<KeyValue>,
+}
+
+impl SchemaState {
+    pub fn new(name: String, items: Vec<KeyValue>) -> Self {
+        Self { name, items }
+    }
+
+    pub fn push_key_value(&mut self, key_value: KeyValue) -> &mut Self {
+        self.items.push(key_value);
+        self
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]

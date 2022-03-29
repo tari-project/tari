@@ -24,7 +24,7 @@ use std::{mem, time::Duration};
 
 use log::*;
 use tari_comms::{
-    connectivity::ConnectivityRequester,
+    connectivity::{ConnectivityError, ConnectivityRequester},
     peer_manager::{NodeId, Peer},
     protocol::rpc::{RpcClientLease, RpcClientPool},
     PeerConnection,
@@ -116,12 +116,19 @@ impl WalletConnectivityService {
     }
 
     async fn check_connection(&mut self) {
-        if let Some(pool) = self.pools.as_ref() {
-            if !pool.base_node_wallet_rpc_client.is_connected().await {
-                debug!(target: LOG_TARGET, "Peer connection lost. Attempting to reconnect...");
+        match self.pools.as_ref() {
+            Some(pool) => {
+                if !pool.base_node_wallet_rpc_client.is_connected().await {
+                    debug!(target: LOG_TARGET, "Peer connection lost. Attempting to reconnect...");
+                    self.set_online_status(OnlineStatus::Offline);
+                    self.setup_base_node_connection().await;
+                }
+            },
+            None => {
+                debug!(target: LOG_TARGET, "No connection. Attempting to connect...");
                 self.set_online_status(OnlineStatus::Offline);
                 self.setup_base_node_connection().await;
-            }
+            },
         }
     }
 
@@ -216,10 +223,12 @@ impl WalletConnectivityService {
     }
 
     async fn disconnect_base_node(&mut self, node_id: NodeId) {
-        if let Ok(Some(connection)) = self.connectivity.get_connection(node_id.clone()).await {
-            if connection.clone().disconnect().await.is_ok() {
-                debug!(target: LOG_TARGET, "Disconnected base node peer {}", node_id);
+        if let Ok(Some(mut connection)) = self.connectivity.get_connection(node_id.clone()).await {
+            match connection.disconnect().await {
+                Ok(_) => debug!(target: LOG_TARGET, "Disconnected base node peer {}", node_id),
+                Err(e) => error!(target: LOG_TARGET, "Failed to disconnect base node: {}", e),
             }
+            self.pools = None;
         };
     }
 
@@ -248,20 +257,29 @@ impl WalletConnectivityService {
                     break;
                 },
                 Ok(false) => {
-                    // Retry with updated peer
-                    self.disconnect_base_node(node_id).await;
+                    debug!(
+                        target: LOG_TARGET,
+                        "The peer has changed while connecting. Attempting to connect to new base node."
+                    );
+                    continue;
+                },
+                Err(WalletConnectivityError::ConnectivityError(ConnectivityError::DialCancelled)) => {
+                    debug!(
+                        target: LOG_TARGET,
+                        "Dial was cancelled. Retrying after {}s ...",
+                        self.config.base_node_monitor_refresh_interval.as_secs()
+                    );
+                    self.set_online_status(OnlineStatus::Offline);
                     time::sleep(self.config.base_node_monitor_refresh_interval).await;
                     continue;
                 },
                 Err(e) => {
-                    if self.current_base_node() != Some(node_id.clone()) {
-                        self.set_online_status(OnlineStatus::Connecting);
-                    } else {
-                        self.set_online_status(OnlineStatus::Offline);
-                    }
                     warn!(target: LOG_TARGET, "{}", e);
-                    self.disconnect_base_node(node_id).await;
-                    time::sleep(self.config.base_node_monitor_refresh_interval).await;
+                    if self.current_base_node().as_ref() == Some(&node_id) {
+                        self.disconnect_base_node(node_id).await;
+                        self.set_online_status(OnlineStatus::Offline);
+                        time::sleep(self.config.base_node_monitor_refresh_interval).await;
+                    }
                     continue;
                 },
             }

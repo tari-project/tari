@@ -22,8 +22,10 @@
 
 use std::{io, iter::FromIterator};
 
+use integer_encoding::{VarInt, VarIntReader, VarIntWriter};
+
 use crate::{
-    common::byte_counter::ByteCounter,
+    common::{byte_counter::ByteCounter, limited_reader::LimitedBytesReader},
     consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     covenants::{
         context::CovenantContext,
@@ -34,8 +36,10 @@ use crate::{
         output_set::OutputSet,
         token::{CovenantToken, CovenantTokenCollection},
     },
-    transactions::transaction::{TransactionInput, TransactionOutput},
+    transactions::transaction_components::{TransactionInput, TransactionOutput},
 };
+
+const MAX_COVENANT_BYTES: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Covenant {
@@ -51,11 +55,26 @@ impl Covenant {
         if bytes.is_empty() {
             return Ok(Self::new());
         }
+        if bytes.len() > MAX_COVENANT_BYTES {
+            return Err(CovenantDecodeError::ExceededMaxBytes);
+        }
         CovenantTokenDecoder::new(&mut bytes).collect()
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(self.get_byte_length());
+        self.write_to(&mut buf).unwrap();
+        buf
     }
 
     pub(super) fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         CovenantTokenEncoder::new(self.tokens.as_slice()).write_to(writer)
+    }
+
+    pub(super) fn get_byte_length(&self) -> usize {
+        let mut counter = ByteCounter::new();
+        self.write_to(&mut counter).unwrap();
+        counter.get()
     }
 
     pub fn execute<'a>(
@@ -96,21 +115,33 @@ impl Covenant {
 
 impl ConsensusEncoding for Covenant {
     fn consensus_encode<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        self.write_to(writer)
+        let len = self.get_byte_length();
+        let mut written = writer.write_varint(len)?;
+        written += self.write_to(writer)?;
+        Ok(written)
     }
 }
 
 impl ConsensusEncodingSized for Covenant {
     fn consensus_encode_exact_size(&self) -> usize {
-        let mut byte_counter = ByteCounter::new();
-        self.write_to(&mut byte_counter).expect("unreachable panic");
-        byte_counter.get()
+        let len = self.get_byte_length();
+        len.required_space() + len
     }
 }
 
 impl ConsensusDecoding for Covenant {
     fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error> {
-        CovenantTokenDecoder::new(reader)
+        let len = reader.read_varint::<usize>()?;
+        // Check the length varint - this may be maliciously misreported
+        if len > MAX_COVENANT_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "covenants: Length varint exceeded maximum",
+            ));
+        }
+        // Ensure that no more than the maximum bytes can be read
+        let mut limited = LimitedBytesReader::new(MAX_COVENANT_BYTES, reader);
+        CovenantTokenDecoder::new(&mut limited)
             .collect::<Result<_, CovenantDecodeError>>()
             .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))
     }
@@ -150,7 +181,13 @@ mod test {
         outputs[7].features.maturity = 42;
         let mut input = create_input();
         input.set_maturity(42).unwrap();
-        let covenant = covenant!(fields_preserved(@fields(@field::features)));
+        let covenant = covenant!(fields_preserved(@fields(
+            @field::features_flags,
+            @field::features_maturity,
+            @field::features_unique_id,
+            @field::features_parent_public_key,
+            @field::features_metadata))
+        );
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
     }
@@ -159,9 +196,10 @@ mod test {
         use super::*;
 
         #[test]
-        fn it_encodes_to_empty_bytes() {
+        fn it_encodes_to_bytes() {
             let bytes = Covenant::new().to_consensus_bytes();
-            assert_eq!(bytes.len(), 0);
+            assert_eq!(bytes[0], 0);
+            assert_eq!(bytes.len(), 1);
         }
     }
 
@@ -170,8 +208,8 @@ mod test {
 
         #[test]
         fn it_is_identity_if_empty_bytes() {
-            let empty_buf = &[] as &[u8; 0];
-            let covenant = Covenant::consensus_decode(&mut &empty_buf[..]).unwrap();
+            let empty_cov = &[0u8];
+            let covenant = Covenant::consensus_decode(&mut &empty_cov[..]).unwrap();
 
             let outputs = create_outputs(10, Default::default());
             let input = create_input();

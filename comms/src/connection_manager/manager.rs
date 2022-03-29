@@ -110,7 +110,7 @@ pub struct ConnectionManagerConfig {
     pub liveness_cidr_allowlist: Vec<cidr::AnyIpCidr>,
     /// If set, an additional TCP-only p2p listener will be started. This is useful for local wallet connections.
     /// Default: None (disabled)
-    pub auxilary_tcp_listener_address: Option<Multiaddr>,
+    pub auxiliary_tcp_listener_address: Option<Multiaddr>,
 }
 
 impl Default for ConnectionManagerConfig {
@@ -133,7 +133,7 @@ impl Default for ConnectionManagerConfig {
             liveness_max_sessions: 0,
             time_to_first_byte: Duration::from_secs(45),
             liveness_cidr_allowlist: vec![cidr::AnyIpCidr::V4("127.0.0.1/32".parse().unwrap())],
-            auxilary_tcp_listener_address: None,
+            auxiliary_tcp_listener_address: None,
         }
     }
 }
@@ -150,7 +150,7 @@ impl ListenerInfo {
         &self.bind_address
     }
 
-    pub fn auxilary_bind_address(&self) -> Option<&Multiaddr> {
+    pub fn auxiliary_bind_address(&self) -> Option<&Multiaddr> {
         self.aux_bind_address.as_ref()
     }
 }
@@ -177,7 +177,6 @@ where
     TTransport::Output: AsyncRead + AsyncWrite + Send + Sync + Unpin + 'static,
     TBackoff: Backoff + Send + Sync + 'static,
 {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         mut config: ConnectionManagerConfig,
         transport: TTransport,
@@ -203,7 +202,7 @@ where
             shutdown_signal.clone(),
         );
 
-        let aux_listener = config.auxilary_tcp_listener_address.take().map(|addr| {
+        let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
             PeerListener::new(
                 config.clone(),
                 addr,
@@ -424,6 +423,13 @@ where
             },
 
             PeerConnected(conn) => {
+                if conn.direction().is_inbound() {
+                    // Notify the dialer that we have an inbound connection, so that is can resolve any pending dials.
+                    let _ = self
+                        .dialer_tx
+                        .send(DialerRequest::NotifyNewInboundConnection(conn.clone()))
+                        .await;
+                }
                 metrics::successful_connections(conn.peer_node_id(), conn.direction()).inc();
                 self.publish_event(PeerConnected(conn));
             },

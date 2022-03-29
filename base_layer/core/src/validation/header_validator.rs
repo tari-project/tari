@@ -4,10 +4,16 @@ use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
 use crate::{
     blocks::BlockHeader,
     chain_storage::{fetch_headers, BlockchainBackend},
-    consensus::ConsensusManager,
+    consensus::{ConsensusConstants, ConsensusManager},
     proof_of_work::AchievedTargetDifficulty,
     validation::{
-        helpers::{check_header_timestamp_greater_than_median, check_pow_data, check_timestamp_ftl},
+        helpers::{
+            check_blockchain_version,
+            check_header_timestamp_greater_than_median,
+            check_not_bad_block,
+            check_pow_data,
+            check_timestamp_ftl,
+        },
         DifficultyCalculator,
         HeaderValidation,
         ValidationError,
@@ -29,6 +35,7 @@ impl HeaderValidator {
     fn check_median_timestamp<B: BlockchainBackend>(
         &self,
         db: &B,
+        constants: &ConsensusConstants,
         block_header: &BlockHeader,
     ) -> Result<(), ValidationError> {
         if block_header.height == 0 {
@@ -36,11 +43,9 @@ impl HeaderValidator {
         }
 
         let height = block_header.height - 1;
-        let min_height = block_header.height.saturating_sub(
-            self.rules
-                .consensus_constants(block_header.height)
-                .get_median_timestamp_count() as u64,
-        );
+        let min_height = block_header
+            .height
+            .saturating_sub(constants.get_median_timestamp_count() as u64);
         let timestamps = fetch_headers(db, min_height, height)?
             .iter()
             .map(|h| h.timestamp)
@@ -64,6 +69,9 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         header: &BlockHeader,
         difficulty_calculator: &DifficultyCalculator,
     ) -> Result<AchievedTargetDifficulty, ValidationError> {
+        let constants = self.rules.consensus_constants(header.height);
+        check_blockchain_version(constants, header.version)?;
+
         check_timestamp_ftl(header, &self.rules)?;
         let header_id = format!("header #{} ({})", header.height, header.hash().to_hex());
         trace!(
@@ -71,7 +79,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
             "BlockHeader validation: FTL timestamp is ok for {} ",
             header_id
         );
-        self.check_median_timestamp(backend, header)?;
+        self.check_median_timestamp(backend, constants, header)?;
         trace!(
             target: LOG_TARGET,
             "BlockHeader validation: Median timestamp is ok for {} ",
@@ -79,6 +87,7 @@ impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator
         );
         check_pow_data(header, &self.rules, backend)?;
         let achieved_target = difficulty_calculator.check_achieved_and_target_difficulty(backend, header)?;
+        check_not_bad_block(backend, &header.hash())?;
 
         trace!(
             target: LOG_TARGET,

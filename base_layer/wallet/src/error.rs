@@ -23,7 +23,7 @@
 use diesel::result::Error as DieselError;
 use log::SetLoggerError;
 use serde_json::Error as SerdeJsonError;
-use tari_common::exit_codes::ExitCodes;
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_sqlite::error::SqliteStorageError;
 use tari_comms::{
     connectivity::ConnectivityError,
@@ -31,7 +31,7 @@ use tari_comms::{
     peer_manager::{node_id::NodeIdError, PeerManagerError},
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
-use tari_core::transactions::transaction::TransactionError;
+use tari_core::transactions::transaction_components::TransactionError;
 use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
@@ -41,6 +41,7 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     contacts_service::error::ContactsServiceError,
+    key_manager_service::KeyManagerServiceError,
     output_manager_service::error::OutputManagerError,
     storage::database::DbKey,
     transaction_service::error::TransactionServiceError,
@@ -95,21 +96,20 @@ pub enum WalletError {
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]
     KeyManagerError(#[from] KeyManagerError),
-
+    #[error("Key manager service error: `{0}`")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
     #[error("Transport channel error: `{0}`")]
     TransportChannelError(#[from] TransportChannelError),
-
     #[error("Unexpected API Response while calling method `{method}` on `{api}`")]
     UnexpectedApiResponse { method: String, api: String },
 }
 
 pub const LOG_TARGET: &str = "tari::application";
 
-impl From<WalletError> for ExitCodes {
+impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
-        // TODO: Log that outside
         log::error!(target: LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
+        Self::new(ExitCode::WalletError, err)
     }
 }
 
@@ -175,13 +175,12 @@ pub enum WalletStorageError {
     RecoverySeedError(String),
 }
 
-impl From<WalletStorageError> for ExitCodes {
+impl From<WalletStorageError> for ExitError {
     fn from(err: WalletStorageError) -> Self {
         use WalletStorageError::*;
         match err {
-            NoPasswordError => ExitCodes::NoPassword,
-            InvalidPassphrase => ExitCodes::IncorrectPassword,
-            e => ExitCodes::WalletError(e.to_string()),
+            NoPasswordError | InvalidPassphrase => ExitCode::IncorrectOrEmptyPassword.into(),
+            e => ExitError::new(ExitCode::WalletError, e),
         }
     }
 }

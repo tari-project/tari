@@ -71,23 +71,21 @@ pub struct DhtConfig {
     /// change happens again after this period, another join will be sent.
     /// Default: 10 minutes
     pub join_cooldown_interval: Duration,
-    /// The interval to update the neighbouring and random pools, if necessary.
-    /// Default: 2 minutes
-    pub connectivity_update_interval: Duration,
-    /// The interval to change the random pool peers.
-    /// Default: 2 hours
-    pub connectivity_random_pool_refresh: Duration,
-    pub connectivity_high_failure_rate_cooldown: Duration,
+    pub connectivity: DhtConnectivityConfig,
+
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
     /// Default: 6 hrs
     pub ban_duration: Duration,
+    /// Length of time to ban a peer for a "short" duration.
+    /// Default: 30 mins
+    pub ban_duration_short: Duration,
     /// This allows the use of test addresses in the network.
     /// Default: false
     pub allow_test_addresses: bool,
-    /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for `ban_duration`)
-    /// Default: 1000 messages
+    /// The maximum number of messages over `flood_ban_timespan` to allow before banning the peer (for
+    /// `ban_duration_short`) Default: 100_000 messages
     pub flood_ban_max_msg_count: usize,
     /// The timespan over which to calculate the max message rate.
     /// `flood_ban_max_count / flood_ban_timespan (as seconds) = avg. messages per second over the timespan`
@@ -144,17 +142,44 @@ impl Default for DhtConfig {
             dedup_allowed_message_occurrences: 1,
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),
-            connectivity_update_interval: Duration::from_secs(2 * 60),
-            connectivity_random_pool_refresh: Duration::from_secs(2 * 60 * 60),
-            connectivity_high_failure_rate_cooldown: Duration::from_secs(45),
+            connectivity: DhtConnectivityConfig::default(),
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network_discovery: Default::default(),
             ban_duration: Duration::from_secs(6 * 60 * 60),
+            ban_duration_short: Duration::from_secs(60 * 60),
             allow_test_addresses: false,
-            flood_ban_max_msg_count: 10000,
+            flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(2 * 60 * 60),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct DhtConnectivityConfig {
+    /// The interval to update the neighbouring and random pools, if necessary.
+    /// Default: 2 minutes
+    pub update_interval: Duration,
+    /// The interval to change the random pool peers.
+    /// Default: 2 hours
+    pub random_pool_refresh: Duration,
+    /// Length of cooldown when high connection failure rates are encountered. Default: 45s
+    pub high_failure_rate_cooldown: Duration,
+    /// The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
+    /// making sybil attacks costly. This setting does not guarantee this ratio is maintained.
+    /// Currently, it only emits a warning if the ratio is below this setting.
+    /// Default: 0.1 (10%)
+    pub minimum_desired_tcpv4_node_ratio: f32,
+}
+
+impl Default for DhtConnectivityConfig {
+    fn default() -> Self {
+        Self {
+            update_interval: Duration::from_secs(2 * 60),
+            random_pool_refresh: Duration::from_secs(2 * 60 * 60),
+            high_failure_rate_cooldown: Duration::from_secs(45),
+            minimum_desired_tcpv4_node_ratio: 0.1,
         }
     }
 }

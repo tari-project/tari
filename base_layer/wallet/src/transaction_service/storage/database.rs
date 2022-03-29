@@ -22,6 +22,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     fmt,
     fmt::{Display, Error, Formatter},
     sync::Arc,
@@ -31,16 +32,22 @@ use aes_gcm::Aes256Gcm;
 use chrono::Utc;
 use log::*;
 use tari_common_types::{
-    transaction::{TransactionDirection, TransactionStatus, TxId},
+    transaction::{ImportStatus, TransactionDirection, TransactionStatus, TxId},
     types::{BlindingFactor, BlockHash},
 };
 use tari_comms::types::CommsPublicKey;
-use tari_core::transactions::{tari_amount::MicroTari, transaction::Transaction};
+use tari_core::transactions::{tari_amount::MicroTari, transaction_components::Transaction};
 
 use crate::transaction_service::{
     error::TransactionStorageError,
     storage::{
-        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
         sqlite_db::{InboundTransactionSenderInfo, UnconfirmedTransactionInfo},
     },
 };
@@ -91,7 +98,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
     /// Indicated that a completed transaction has been broadcast to the mempools
     fn broadcast_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
     /// Cancel Completed transaction, this will update the transaction status
-    fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
+    fn reject_completed_transaction(
+        &self,
+        tx_id: TxId,
+        reason: TxCancellationReason,
+    ) -> Result<(), TransactionStorageError>;
     /// Set cancellation on Pending transaction, this will update the transaction status
     fn set_pending_transaction_cancellation_status(
         &self,
@@ -127,11 +138,11 @@ pub trait TransactionBackend: Send + Sync + Clone {
     fn update_mined_height(
         &self,
         tx_id: TxId,
-        is_valid: bool,
         mined_height: u64,
         mined_in_block: BlockHash,
         num_confirmations: u64,
         is_confirmed: bool,
+        is_faux: bool,
     ) -> Result<(), TransactionStorageError>;
     /// Clears the mined block and height of a transaction
     fn set_transaction_as_unmined(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
@@ -142,6 +153,12 @@ pub trait TransactionBackend: Send + Sync + Clone {
         &self,
     ) -> Result<Vec<InboundTransactionSenderInfo>, TransactionStorageError>;
     fn fetch_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_unconfirmed_faux_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn fetch_confirmed_faux_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError>;
+    fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError>;
 }
 
 #[derive(Clone, PartialEq)]
@@ -420,7 +437,7 @@ where T: TransactionBackend + 'static
         let t = tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::CompletedTransaction(tx_id)) {
             Ok(None) => Err(TransactionStorageError::ValueNotFound(key)),
             Ok(Some(DbValue::CompletedTransaction(pt))) => {
-                if pt.cancelled == cancelled {
+                if (pt.cancelled.is_some()) == cancelled {
                     Ok(pt)
                 } else {
                     Err(TransactionStorageError::ValueNotFound(key))
@@ -437,6 +454,27 @@ where T: TransactionBackend + 'static
     pub async fn get_imported_transactions(&self) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
         let t = tokio::task::spawn_blocking(move || db_clone.fetch_imported_transactions())
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
+    }
+
+    pub async fn get_unconfirmed_faux_transactions(
+        &self,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let t = tokio::task::spawn_blocking(move || db_clone.fetch_unconfirmed_faux_transactions())
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(t)
+    }
+
+    pub async fn get_confirmed_faux_transactions_from_height(
+        &self,
+        height: u64,
+    ) -> Result<Vec<CompletedTransaction>, TransactionStorageError> {
+        let db_clone = self.db.clone();
+        let t = tokio::task::spawn_blocking(move || db_clone.fetch_confirmed_faux_transactions_from_height(height))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(t)
@@ -579,7 +617,6 @@ where T: TransactionBackend + 'static
         self.get_completed_transactions_by_cancelled(true).await
     }
 
-    // TODO: all the single getters should use an Option rather than an error to indicate not found.
     pub async fn get_any_transaction(&self, tx_id: TxId) -> Result<Option<WalletTransaction>, TransactionStorageError> {
         let db_clone = self.db.clone();
         let key = DbKey::AnyTransaction(tx_id);
@@ -660,9 +697,13 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn reject_completed_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+    pub async fn reject_completed_transaction(
+        &self,
+        tx_id: TxId,
+        reason: TxCancellationReason,
+    ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.reject_completed_transaction(tx_id))
+        tokio::task::spawn_blocking(move || db_clone.reject_completed_transaction(tx_id, reason))
             .await
             .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
@@ -702,7 +743,8 @@ where T: TransactionBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    pub async fn add_utxo_import_transaction(
+    /// Faux transaction added to the database with imported status
+    pub async fn add_utxo_import_transaction_with_status(
         &self,
         tx_id: TxId,
         amount: MicroTari,
@@ -710,6 +752,8 @@ where T: TransactionBackend + 'static
         comms_public_key: CommsPublicKey,
         message: String,
         maturity: Option<u64>,
+        import_status: ImportStatus,
+        current_height: Option<u64>,
     ) -> Result<(), TransactionStorageError> {
         let transaction = CompletedTransaction::new(
             tx_id,
@@ -724,11 +768,12 @@ where T: TransactionBackend + 'static
                 BlindingFactor::default(),
                 BlindingFactor::default(),
             ),
-            TransactionStatus::Imported,
+            TransactionStatus::try_from(import_status)?,
             message,
             Utc::now().naive_utc(),
             TransactionDirection::Inbound,
             maturity,
+            current_height,
         );
 
         let db_clone = self.db.clone();
@@ -811,21 +856,21 @@ where T: TransactionBackend + 'static
     pub async fn set_transaction_mined_height(
         &self,
         tx_id: TxId,
-        is_valid: bool,
         mined_height: u64,
         mined_in_block: BlockHash,
         num_confirmations: u64,
         is_confirmed: bool,
+        is_faux: bool,
     ) -> Result<(), TransactionStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || {
             db_clone.update_mined_height(
                 tx_id,
-                is_valid,
                 mined_height,
                 mined_in_block,
                 num_confirmations,
                 is_confirmed,
+                is_faux,
             )
         })
         .await
@@ -845,6 +890,14 @@ where T: TransactionBackend + 'static
         .await
         .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(t)
+    }
+
+    pub async fn abandon_coinbase_transaction(&self, tx_id: TxId) -> Result<(), TransactionStorageError> {
+        let db_clone = self.db.clone();
+        tokio::task::spawn_blocking(move || db_clone.abandon_coinbase_transaction(tx_id))
+            .await
+            .map_err(|err| TransactionStorageError::BlockingTaskSpawnError(err.to_string()))??;
+        Ok(())
     }
 }
 

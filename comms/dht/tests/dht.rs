@@ -159,7 +159,6 @@ async fn make_node_with_node_identity<I: IntoIterator<Item = Peer>>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn setup_comms_dht(
     node_identity: Arc<NodeIdentity>,
     storage: CommsDatabase,
@@ -358,7 +357,7 @@ async fn dht_discover_propagation() {
         .dht
         .discovery_service_requester()
         .discover_peer(
-            Box::new(node_D.node_identity().public_key().clone()),
+            node_D.node_identity().public_key().clone(),
             node_D.node_identity().node_id().clone().into(),
         )
         .await

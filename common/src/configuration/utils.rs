@@ -37,23 +37,21 @@ pub fn load_configuration(bootstrap: &ConfigBootstrap) -> Result<Config, ConfigE
 
 /// Installs a new configuration file template, copied from the application type's preset and written to the given path.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn config_installer(app_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+pub fn config_installer(_app_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+    // Use the same config file so that all the settings are easier to find, and easier to
+    // support users over chat channels
     let common = include_str!("../../config/presets/common.toml");
-
-    use ApplicationType::*;
-    let app = match app_type {
-        BaseNode => include_str!("../../config/presets/base_node.toml"),
-        ConsoleWallet => include_str!("../../config/presets/console_wallet.toml"),
-        MiningNode => include_str!("../../config/presets/mining_node.toml"),
-        MergeMiningProxy => include_str!("../../config/presets/merge_mining_proxy.toml"),
-        StratumTranscoder => include_str!("../../config/presets/stratum_transcoder.toml"),
-        ValidatorNode => include_str!("../../config/presets/validator_node.toml"),
-    };
-    let add = match app_type {
-        MiningNode => include_str!("../../config/presets/validator_node.toml"),
-        _ => "",
-    };
-    let source = [common, app, add].join("\n");
+    let source = [
+        common,
+        include_str!("../../config/presets/base_node.toml"),
+        include_str!("../../config/presets/console_wallet.toml"),
+        include_str!("../../config/presets/mining_node.toml"),
+        include_str!("../../config/presets/merge_mining_proxy.toml"),
+        include_str!("../../config/presets/stratum_transcoder.toml"),
+        include_str!("../../config/presets/validator_node.toml"),
+        include_str!("../../config/presets/collectibles.toml"),
+    ]
+    .join("\n");
 
     if let Some(d) = path.parent() {
         fs::create_dir_all(d)?
@@ -84,6 +82,8 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("common.buffer_rate_limit_console_wallet", 1_000)
         .unwrap();
     cfg.set_default("common.dedup_cache_capacity", 2_500).unwrap();
+    cfg.set_default("common.dht_minimum_desired_tcpv4_node_ratio", 0.0f64)
+        .unwrap();
     cfg.set_default("common.fetch_blocks_timeout", 150).unwrap();
     cfg.set_default("common.fetch_utxos_timeout", 600).unwrap();
     cfg.set_default("common.service_request_timeout", 180).unwrap();
@@ -164,7 +164,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.mainnet.grpc_base_node_address", "127.0.0.1:18142")
         .unwrap();
     cfg.set_default("wallet.grpc_address", "127.0.0.1:18143").unwrap();
-    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.mainnet.flood_ban_max_msg_count", 100_000)
         .unwrap();
 
     //---------------------------------- Weatherwax Defaults --------------------------------------------//
@@ -177,7 +177,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.weatherwax.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.weatherwax.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.weatherwax.flood_ban_max_msg_count", 100_000)
         .unwrap();
     cfg.set_default("base_node.weatherwax.peer_seeds", Vec::<String>::new())
         .unwrap();
@@ -222,7 +222,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     cfg.set_default("base_node.igor.pruning_horizon", 0).unwrap();
     cfg.set_default("base_node.igor.pruned_mode_cleanup_interval", 50)
         .unwrap();
-    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 10000)
+    cfg.set_default("base_node.igor.flood_ban_max_msg_count", 100_000)
         .unwrap();
     cfg.set_default("base_node.igor.grpc_enabled", false).unwrap();
     cfg.set_default("base_node.igor.grpc_base_node_address", "127.0.0.1:18142")
@@ -238,15 +238,21 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
 }
 
 fn set_common_network_defaults(cfg: &mut Config) {
-    for network in ["mainnet", "weatherwax", "igor", "localnet"] {
+    for network in ["mainnet", "dibbler", "igor", "localnet"] {
         let key = format!("base_node.{}.dns_seeds_name_server", network);
         cfg.set_default(&key, "1.1.1.1:853/cloudflare-dns.com").unwrap();
 
         let key = format!("base_node.{}.dns_seeds_use_dnssec", network);
         cfg.set_default(&key, true).unwrap();
 
-        let key = format!("base_node.{}.auto_ping_interval", network);
+        let key = format!("base_node.{}.metadata_auto_ping_interval", network);
         cfg.set_default(&key, 30).unwrap();
+
+        let key = format!("wallet.{}.contacts_auto_ping_interval", network);
+        cfg.set_default(&key, 20).unwrap();
+
+        let key = format!("wallet.{}.contacts_online_ping_window", network);
+        cfg.set_default(&key, 2).unwrap();
 
         let key = format!("common.{}.peer_seeds", network);
         cfg.set_default(&key, Vec::<String>::new()).unwrap();
@@ -294,64 +300,50 @@ fn set_stratum_transcoder_defaults(cfg: &mut Config) {
 }
 
 fn set_merge_mining_defaults(cfg: &mut Config) {
-    cfg.set_default(
-        "merge_mining_proxy.mainnet.monerod_url",
-        "http://monero-stagenet.exan.tech:38081",
-    )
-    .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.proxy_host_address", "127.0.0.1:7878")
+    //---------------------------------- common defaults --------------------------------------------//
+    cfg.set_default("merge_mining_proxy.proxy_host_address", "/ip4/127.0.0.1/tcp/7878")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.base_node_grpc_address", "/ip4/127.0.0.1/tcp/18142")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.wallet_grpc_address", "/ip4/127.0.0.1/tcp/18143")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.proxy_submit_to_origin", true)
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.wait_for_initial_sync_at_startup", true)
+        .unwrap();
+
+    //---------------------------------- mainnet defaults --------------------------------------------//
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_url", "http://xmr.support:18081")
+        .unwrap();
+    cfg.set_default("merge_mining_proxy.mainnet.monerod_use_auth", false)
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_username", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.mainnet.monerod_password", "")
         .unwrap();
-    cfg.set_default("merge_mining_proxy.mainnet.wait_for_initial_sync_at_startup", true)
-        .unwrap();
-    cfg.set_default(
-        "merge_mining_proxy.weatherwax.monerod_url",
-        "http://monero-stagenet.exan.tech:38081",
-    )
-    .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_use_auth", "false")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_username", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.monerod_password", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.weatherwax.wait_for_initial_sync_at_startup", true)
-        .unwrap();
+
+    //---------------------------------- igor defaults --------------------------------------------//
     cfg.set_default(
         "merge_mining_proxy.igor.monerod_url",
         "http://monero-stagenet.exan.tech:38081",
     )
     .unwrap();
-    cfg.set_default("merge_mining_proxy.igor.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.igor.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.igor.monerod_use_auth", "false")
+    cfg.set_default("merge_mining_proxy.igor.monerod_use_auth", false)
         .unwrap();
     cfg.set_default("merge_mining_proxy.igor.monerod_username", "").unwrap();
     cfg.set_default("merge_mining_proxy.igor.monerod_password", "").unwrap();
-    cfg.set_default("merge_mining_proxy.igor.wait_for_initial_sync_at_startup", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.proxy_host_address", "127.0.0.1:7878")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.proxy_submit_to_origin", true)
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", "false")
+
+    //---------------------------------- dibbler defaults --------------------------------------------//
+    cfg.set_default(
+        "merge_mining_proxy.dibbler.monerod_url",
+        "http://monero-stagenet.exan.tech:38081",
+    )
+    .unwrap();
+    cfg.set_default("merge_mining_proxy.dibbler.monerod_use_auth", false)
         .unwrap();
     cfg.set_default("merge_mining_proxy.dibbler.monerod_username", "")
         .unwrap();
     cfg.set_default("merge_mining_proxy.dibbler.monerod_password", "")
-        .unwrap();
-    cfg.set_default("merge_mining_proxy.dibbler.wait_for_initial_sync_at_startup", true)
         .unwrap();
 }
 

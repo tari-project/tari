@@ -55,6 +55,9 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::state_machine_service::states::listening";
 
+/// The length of time to wait for a propagated block when one block behind before proceeding to sync
+const ONE_BLOCK_BEHIND_WAIT_PERIOD: Duration = Duration::from_secs(20);
+
 /// This struct contains the info of the peer, and is used to serialised and deserialised.
 #[derive(Serialize, Deserialize)]
 pub struct PeerMetadata {
@@ -147,7 +150,7 @@ impl Listening {
                         log_mdc::extend(mdc.clone());
                     }
 
-                    let configured_sync_peers = &shared.config.block_sync_config.sync_peers;
+                    let configured_sync_peers = &shared.config.blockchain_sync_config.forced_sync_peers;
                     if !configured_sync_peers.is_empty() {
                         // If a _forced_ set of sync peers have been specified, ignore other peers when determining if
                         // we're out of sync
@@ -195,7 +198,7 @@ impl Listening {
                     if self.is_synced &&
                         best_metadata.height_of_longest_chain() == local.height_of_longest_chain() + 1 &&
                         time_since_better_block
-                            .map(|ts: Instant| ts.elapsed() < Duration::from_secs(60))
+                            .map(|ts: Instant| ts.elapsed() < ONE_BLOCK_BEHIND_WAIT_PERIOD)
                             .unwrap_or(true)
                     {
                         if time_since_better_block.is_none() {
@@ -363,7 +366,7 @@ fn determine_sync_mode(
         Lagging {
             local: local.clone(),
             network: network.clone(),
-            sync_peers: sync_peers.into_iter().cloned().collect(),
+            sync_peers: sync_peers.into_iter().cloned().map(Into::into).collect(),
         }
     } else {
         info!(

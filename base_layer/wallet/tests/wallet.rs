@@ -44,9 +44,11 @@
 
 use std::{panic, path::Path, sync::Arc, time::Duration};
 
-use rand::rngs::OsRng;
+use rand::{rngs::OsRng, Rng};
+use support::{comms_and_services::get_next_memory_address, utils::make_input};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
+    transaction::TransactionStatus,
     types::{PrivateKey, PublicKey},
 };
 use tari_comms::{
@@ -55,24 +57,30 @@ use tari_comms::{
     types::CommsPublicKey,
 };
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
-use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
-    test_helpers::{create_unblinded_output, TestParams},
-    transaction::OutputFeatures,
-    CryptoFactories,
+use tari_core::{
+    covenants::Covenant,
+    transactions::{
+        tari_amount::{uT, MicroTari},
+        test_helpers::{create_unblinded_output, TestParams},
+        transaction_components::OutputFeatures,
+        CryptoFactories,
+    },
 };
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
+use tari_utilities::Hashable;
 use tari_wallet::{
-    contacts_service::storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    contacts_service::{
+        handle::ContactsLivenessEvent,
+        service::ContactMessageType,
+        storage::{database::Contact, sqlite_db::ContactsServiceSqliteDatabase},
+    },
     error::{WalletError, WalletStorageError},
+    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::{
         database::{DbKeyValuePair, WalletBackend, WalletDatabase, WriteOperation},
@@ -98,9 +106,7 @@ use tempfile::tempdir;
 use tokio::{runtime::Runtime, time::sleep};
 
 pub mod support;
-use support::{comms_and_services::get_next_memory_address, utils::make_input};
-use tari_common_types::transaction::TransactionStatus;
-use tari_core::covenants::Covenant;
+use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
 
 fn create_peer(public_key: CommsPublicKey, net_address: Multiaddr) -> Peer {
     Peer::new(
@@ -130,10 +136,11 @@ async fn create_wallet(
         transport_type: TransportType::Memory {
             listener_address: node_identity.public_address(),
         },
-        auxilary_tcp_listener_address: None,
+        auxiliary_tcp_listener_address: None,
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
-        max_concurrent_inbound_tasks: 100,
+        max_concurrent_inbound_tasks: 10,
+        max_concurrent_outbound_tasks: 10,
         outbound_buffer_size: 100,
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
@@ -160,7 +167,7 @@ async fn create_wallet(
         .join(database_name)
         .with_extension("sqlite3");
 
-    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend) =
+    let (wallet_backend, transaction_backend, output_manager_backend, contacts_backend, key_manager_backend) =
         initialize_sqlite_database_backends(sql_database_path, passphrase, 16).unwrap();
 
     let transaction_service_config = TransactionServiceConfig {
@@ -179,6 +186,8 @@ async fn create_wallet(
         None,
         None,
         None,
+        Some(Duration::from_secs(1)),
+        None,
     );
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
@@ -193,6 +202,7 @@ async fn create_wallet(
         transaction_backend,
         output_manager_backend,
         contacts_backend,
+        key_manager_backend,
         shutdown_signal,
         master_seed,
     )
@@ -266,7 +276,7 @@ async fn test_wallet() {
     let mut alice_event_stream = alice_wallet.transaction_service.get_event_stream();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
 
     alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
@@ -301,10 +311,7 @@ async fn test_wallet() {
     for i in 0..2 {
         let (_secret_key, public_key) = PublicKey::random_keypair(&mut OsRng);
 
-        contacts.push(Contact {
-            alias: random::string(8),
-            public_key,
-        });
+        contacts.push(Contact::new(random::string(8), public_key, None, None));
 
         alice_wallet
             .contacts_service
@@ -601,7 +608,7 @@ fn test_store_and_forward_send_tx() {
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment);
+    let (_utxo, uo1) = alice_runtime.block_on(make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None));
 
     alice_runtime
         .block_on(alice_wallet.output_manager_service.add_output(uo1, None))
@@ -684,8 +691,8 @@ fn test_store_and_forward_send_tx() {
 
 #[tokio::test]
 async fn test_import_utxo() {
-    let shutdown = Shutdown::new();
     let factories = CryptoFactories::default();
+    let shutdown = Shutdown::new();
     let alice_identity = NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
@@ -705,11 +712,12 @@ async fn test_import_utxo() {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_config: None,
         },
-        auxilary_tcp_listener_address: None,
+        auxiliary_tcp_listener_address: None,
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random::string(8),
-        max_concurrent_inbound_tasks: 100,
-        outbound_buffer_size: 100,
+        max_concurrent_inbound_tasks: 10,
+        max_concurrent_outbound_tasks: 10,
+        outbound_buffer_size: 10,
         dht: Default::default(),
         allow_test_addresses: true,
         listener_liveness_allowlist_cidrs: Vec::new(),
@@ -731,6 +739,8 @@ async fn test_import_utxo() {
         None,
         None,
         None,
+        None,
+        None,
     );
 
     let mut alice_wallet = Wallet::start(
@@ -738,7 +748,8 @@ async fn test_import_utxo() {
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection.clone(), None),
-        ContactsServiceSqliteDatabase::new(connection),
+        ContactsServiceSqliteDatabase::new(connection.clone()),
+        KeyManagerSqliteDatabase::new(connection.clone(), None).unwrap(),
         shutdown.to_signal(),
         CipherSeed::new(),
     )
@@ -748,19 +759,21 @@ async fn test_import_utxo() {
     let claim = PublicKey::from_secret_key(&key);
     let script = script!(Nop);
     let input = inputs!(claim);
-    let features = OutputFeatures::create_coinbase(50);
+    let temp_features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
 
     let p = TestParams::new();
-    let utxo = create_unblinded_output(script.clone(), features.clone(), p.clone(), 20000 * uT);
+    let utxo = create_unblinded_output(script.clone(), temp_features, p.clone(), 20000 * uT);
+    let output = utxo.as_transaction_output(&factories).unwrap();
+    let expected_output_hash = output.hash();
 
     let tx_id = alice_wallet
-        .import_utxo(
+        .import_external_utxo_as_non_rewindable(
             utxo.value,
             &utxo.spending_key,
-            script,
-            input,
+            script.clone(),
+            input.clone(),
             base_node_identity.public_key(),
-            features,
+            utxo.features.clone(),
             "Testing".to_string(),
             utxo.metadata_signature.clone(),
             &p.script_private_key,
@@ -785,6 +798,9 @@ async fn test_import_utxo() {
 
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
+    let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
+    let outputs = db.fetch_outputs_by_tx_id(tx_id).await.unwrap();
+    assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }
 
 #[test]
@@ -836,4 +852,134 @@ async fn test_recovery_birthday() {
 
     let db_birthday = wallet.db.get_wallet_birthday().await.unwrap();
     assert_eq!(birthday, db_birthday);
+}
+
+#[test]
+fn test_contacts_service_liveness() {
+    let mut shutdown_a = Shutdown::new();
+    let mut shutdown_b = Shutdown::new();
+    let factories = CryptoFactories::default();
+    let alice_db_tempdir = tempdir().unwrap();
+    let bob_db_tempdir = tempdir().unwrap();
+
+    let alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+
+    let mut alice_wallet = alice_runtime
+        .block_on(create_wallet(
+            alice_db_tempdir.path(),
+            "alice_db",
+            factories.clone(),
+            shutdown_a.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
+    let alice_identity = (*alice_wallet.comms.node_identity()).clone();
+
+    let mut bob_wallet = bob_runtime
+        .block_on(create_wallet(
+            bob_db_tempdir.path(),
+            "bob_db",
+            factories,
+            shutdown_b.to_signal(),
+            None,
+            None,
+        ))
+        .unwrap();
+    let bob_identity = (*bob_wallet.comms.node_identity()).clone();
+
+    alice_runtime
+        .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
+        .unwrap();
+    let contact_bob = Contact::new(random::string(8), bob_identity.public_key().clone(), None, None);
+    alice_runtime
+        .block_on(alice_wallet.contacts_service.upsert_contact(contact_bob))
+        .unwrap();
+
+    bob_runtime
+        .block_on(bob_wallet.comms.peer_manager().add_peer(alice_identity.to_peer()))
+        .unwrap();
+    let contact_alice = Contact::new(random::string(8), alice_identity.public_key().clone(), None, None);
+    bob_runtime
+        .block_on(bob_wallet.contacts_service.upsert_contact(contact_alice))
+        .unwrap();
+
+    alice_runtime
+        .block_on(
+            alice_wallet
+                .comms
+                .connectivity()
+                .dial_peer(bob_identity.node_id().clone()),
+        )
+        .unwrap();
+
+    let mut liveness_event_stream_alice = alice_wallet.contacts_service.get_contacts_liveness_event_stream();
+    alice_runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
+        let mut ping_count = 0;
+        let mut pong_count = 0;
+        loop {
+            tokio::select! {
+                event = liveness_event_stream_alice.recv() => {
+                    if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
+                        if data.public_key() == &bob_identity.public_key().clone(){
+                            assert_eq!(data.node_id(), &bob_identity.node_id().clone());
+                            if data.message_type() == ContactMessageType::Ping {
+                                ping_count += 1;
+                            } else if data.message_type() == ContactMessageType::Pong {
+                                pong_count += 1;
+                            }
+                        }
+                        if ping_count > 1 && pong_count > 1 {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert!(ping_count > 1);
+        assert!(pong_count > 1);
+    });
+
+    let mut liveness_event_stream_bob = bob_wallet.contacts_service.get_contacts_liveness_event_stream();
+    bob_runtime.block_on(async {
+        let delay = sleep(Duration::from_secs(15));
+        tokio::pin!(delay);
+        let mut ping_count = 0;
+        let mut pong_count = 0;
+        loop {
+            tokio::select! {
+                event = liveness_event_stream_bob.recv() => {
+                    if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
+                        if data.public_key() == &alice_identity.public_key().clone(){
+                            assert_eq!(data.node_id(), &alice_identity.node_id().clone());
+                            if data.message_type() == ContactMessageType::Ping {
+                                ping_count += 1;
+                            } else if data.message_type() == ContactMessageType::Pong {
+                                pong_count += 1;
+                            }
+                        }
+                        if ping_count > 1 && pong_count > 1 {
+                            break;
+                        }
+                    }
+                },
+                () = &mut delay => {
+                    break;
+                },
+            }
+        }
+        assert!(ping_count > 1);
+        assert!(pong_count > 1);
+    });
+
+    shutdown_a.trigger();
+    shutdown_b.trigger();
+    alice_runtime.block_on(alice_wallet.wait_until_shutdown());
+    bob_runtime.block_on(bob_wallet.wait_until_shutdown());
 }

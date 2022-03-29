@@ -50,8 +50,8 @@ use crate::{
         ProtocolId,
     },
     test_utils::{
+        build_peer_manager,
         mocks::{create_connectivity_mock, ConnectivityManagerMockState},
-        test_node::build_peer_manager,
     },
 };
 

@@ -24,6 +24,7 @@ mod bytes;
 mod crypto;
 mod generic;
 mod integers;
+mod micro_tari;
 mod script;
 mod vec;
 

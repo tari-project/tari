@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use log::*;
@@ -50,6 +50,7 @@ pub struct TransactionServiceMock {
     request_stream:
         Option<Receiver<TransactionServiceRequest, Result<TransactionServiceResponse, TransactionServiceError>>>,
     shutdown_signal: ShutdownSignal,
+    state: TransactionServiceMockState,
 }
 
 impl TransactionServiceMock {
@@ -65,7 +66,12 @@ impl TransactionServiceMock {
             _event_publisher: event_publisher,
             request_stream: Some(request_stream),
             shutdown_signal,
+            state: TransactionServiceMockState::new(),
         }
+    }
+
+    pub fn get_state(&self) -> TransactionServiceMockState {
+        self.state.clone()
     }
 
     pub async fn run(mut self) {
@@ -78,6 +84,7 @@ impl TransactionServiceMock {
             tokio::select! {
                 Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
+                    self.state.add_request(request.clone());
                     Self::handle_request(request, reply_tx);
                 },
                  _ = shutdown.wait() => {
@@ -95,9 +102,9 @@ impl TransactionServiceMock {
         info!(target: LOG_TARGET, "Handling Request: {}", request);
 
         match request {
-            TransactionServiceRequest::ImportUtxo(_, _, _, _) => {
+            TransactionServiceRequest::ImportUtxoWithStatus { .. } => {
                 let _ = reply_tx
-                    .send(Ok(TransactionServiceResponse::UtxoImported(TxId::from(42))))
+                    .send(Ok(TransactionServiceResponse::UtxoImported(TxId::from(42u64))))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e
@@ -105,5 +112,38 @@ impl TransactionServiceMock {
             },
             _ => panic!("Transaction Service Mock does not support this call"),
         }
+    }
+}
+
+#[derive(Clone)]
+pub struct TransactionServiceMockState {
+    pub service_requests: Arc<Mutex<Vec<TransactionServiceRequest>>>,
+}
+
+impl TransactionServiceMockState {
+    fn new() -> Self {
+        Self {
+            service_requests: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn add_request(&mut self, request: TransactionServiceRequest) {
+        let mut lock = acquire_lock!(self.service_requests);
+        (*lock).push(request);
+    }
+
+    pub fn get_number_of_requests(&self) -> usize {
+        let lock = acquire_lock!(self.service_requests);
+        (*lock).len()
+    }
+
+    pub fn pop_request(&self) -> Option<TransactionServiceRequest> {
+        let mut lock = acquire_lock!(self.service_requests);
+        (*lock).pop()
+    }
+
+    pub fn drain_requests(&mut self) -> Vec<TransactionServiceRequest> {
+        let mut lock = acquire_lock!(self.service_requests);
+        (*lock).drain(..).collect()
     }
 }

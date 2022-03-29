@@ -26,7 +26,7 @@ use rand::rngs::OsRng;
 use tari_common_types::types::PublicKey;
 use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_test_utils::unpack_enum;
-use tari_utilities::Hashable;
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderAccumulatedData, ChainHeader, NewBlockTemplate},
@@ -40,7 +40,7 @@ use crate::{
     transactions::{
         tari_amount::T,
         test_helpers::{schema_to_transaction, TransactionSchema},
-        transaction::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
+        transaction_components::{OutputFeatures, OutputFlags, Transaction, UnblindedOutput},
     },
     txn_schema,
 };
@@ -101,6 +101,7 @@ fn add_many_chained_blocks(
 }
 
 mod fetch_blocks {
+
     use super::*;
 
     #[test]
@@ -376,7 +377,6 @@ mod fetch_block_hashes_from_header_tip {
 }
 
 mod add_block {
-    use tari_utilities::hex::Hex;
 
     use super::*;
 
@@ -387,7 +387,10 @@ mod add_block {
 
         let prev_block = blocks.last().unwrap();
         // Used to help identify the output we're interrogating in this test
-        let features = OutputFeatures::with_maturity(1);
+        let features = OutputFeatures {
+            maturity: 1,
+            ..Default::default()
+        };
         let (txns, tx_outputs) = schema_to_transaction(&[txn_schema!(
             from: vec![outputs[0].clone()],
             to: vec![500 * T],
@@ -407,9 +410,11 @@ mod add_block {
             fee: 5.into(),
             lock_height: 0,
             features,
-            script: tari_crypto::script![Nop],
+            script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
         let commitment_hex = txns[0]
             .body
@@ -446,9 +451,11 @@ mod add_block {
             fee: 5.into(),
             lock_height: 0,
             features: Default::default(),
-            script: tari_crypto::script![Nop],
+            script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
+            input_version: None,
+            output_version: None,
         }]);
 
         let (block, _) = create_next_block(&db, &prev_block, txns);
@@ -574,7 +581,7 @@ mod fetch_header_containing_utxo_mmr {
             assert_eq!(header.height(), 0);
             mmr_position += 1;
         });
-        let err = db.fetch_header_containing_utxo_mmr(4002).unwrap_err();
+        let err = db.fetch_header_containing_utxo_mmr(mmr_position).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
@@ -585,12 +592,16 @@ mod fetch_header_containing_utxo_mmr {
         let _ = add_many_chained_blocks(5, &db);
         let num_genesis_outputs = genesis.block().body.outputs().len() as u64;
 
+        let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs - 1).unwrap();
+        assert_eq!(header.height(), 0);
+
         for i in 1..=5 {
-            let header = db.fetch_header_containing_utxo_mmr(num_genesis_outputs + i).unwrap();
-            assert_eq!(header.height(), i);
+            let index = num_genesis_outputs + i - 1;
+            let header = db.fetch_header_containing_utxo_mmr(index).unwrap();
+            assert_eq!(header.height(), i, "Incorrect header for MMR index = {}", index);
         }
         let err = db
-            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5 + 1)
+            .fetch_header_containing_utxo_mmr(num_genesis_outputs + 5)
             .unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
@@ -603,14 +614,14 @@ mod fetch_header_containing_kernel_mmr {
     fn it_returns_genesis() {
         let db = setup();
         let genesis = db.fetch_block(0).unwrap();
-        assert_eq!(genesis.block().body.kernels().len(), 1);
-        // let mut mmr_position = 0;
-        // genesis.block().body.kernels().iter().for_each(|_| {
-        //     let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
-        //     assert_eq!(header.height(), 0);
-        //     mmr_position += 1;
-        // });
-        let err = db.fetch_header_containing_kernel_mmr(2).unwrap_err();
+        assert_eq!(genesis.block().body.kernels().len(), 2);
+        let mut mmr_position = 0;
+        genesis.block().body.kernels().iter().for_each(|_| {
+            let header = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap();
+            assert_eq!(header.height(), 0);
+            mmr_position += 1;
+        });
+        let err = db.fetch_header_containing_kernel_mmr(mmr_position).unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
 
@@ -626,22 +637,22 @@ mod fetch_header_containing_kernel_mmr {
         db.add_block(block).unwrap();
         let _ = add_many_chained_blocks(3, &db);
 
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels - 1).unwrap();
         assert_eq!(header.height(), 0);
-        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + 1).unwrap();
+        let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels).unwrap();
         assert_eq!(header.height(), 1);
 
-        for i in 2..=3 {
+        for i in 1..=2 {
             let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
             assert_eq!(header.height(), 2);
         }
-        for i in 4..=6 {
+        for i in 3..=5 {
             let header = db.fetch_header_containing_kernel_mmr(num_genesis_kernels + i).unwrap();
-            assert_eq!(header.height(), i - 1);
+            assert_eq!(header.height(), i);
         }
 
         let err = db
-            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 6 + 1)
+            .fetch_header_containing_kernel_mmr(num_genesis_kernels + 6)
             .unwrap_err();
         matches!(err, ChainStorageError::ValueNotFound { .. });
     }
@@ -703,7 +714,7 @@ mod fetch_utxo_by_unique_id {
     use tari_crypto::{commitment::HomomorphicCommitmentFactory, ristretto::RistrettoPublicKey};
 
     use super::*;
-    use crate::transactions::transaction::OutputFlags;
+    use crate::transactions::transaction_components::OutputFlags;
 
     #[test]
     fn it_returns_none_if_empty() {
@@ -722,7 +733,7 @@ mod fetch_utxo_by_unique_id {
         // Height 1
         let (blocks, outputs) = add_many_chained_blocks(1, &db);
 
-        let features = OutputFeatures {
+        let mut features = OutputFeatures {
             flags: OutputFlags::MINT_NON_FUNGIBLE,
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
@@ -733,8 +744,9 @@ mod fetch_utxo_by_unique_id {
             to: vec![500 * T],
             fee: 5.into(),
             lock: 0,
-            features: features
+            features: features.clone()
         )]);
+        features.set_recovery_byte(tx_outputs[0].features.recovery_byte);
 
         let asset_utxo1 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 
@@ -757,7 +769,7 @@ mod fetch_utxo_by_unique_id {
             expected_commitment
         );
 
-        let features = OutputFeatures {
+        let mut features = OutputFeatures {
             flags: OutputFlags::empty(),
             parent_public_key: Some(asset_pk.clone()),
             unique_id: Some(unique_id.clone()),
@@ -770,6 +782,7 @@ mod fetch_utxo_by_unique_id {
             lock: 0,
             features: features
         )]);
+        features.set_recovery_byte(tx_outputs[0].features.recovery_byte);
 
         let asset_utxo2 = tx_outputs.iter().find(|o| o.features == features).unwrap();
 

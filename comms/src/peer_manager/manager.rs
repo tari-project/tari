@@ -26,6 +26,8 @@ use multiaddr::Multiaddr;
 use tari_storage::{lmdb_store::LMDBDatabase, IterationResult};
 use tokio::sync::RwLock;
 
+#[cfg(feature = "metrics")]
+use crate::peer_manager::metrics;
 use crate::{
     peer_manager::{
         migrations,
@@ -71,12 +73,26 @@ impl PeerManager {
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
     pub async fn add_peer(&self, peer: Peer) -> Result<PeerId, PeerManagerError> {
-        self.peer_storage.write().await.add_peer(peer)
+        let mut lock = self.peer_storage.write().await;
+        let peer_id = lock.add_peer(peer)?;
+        #[cfg(feature = "metrics")]
+        {
+            let count = lock.count();
+            metrics::peer_list_size().set(count as i64);
+        }
+        Ok(peer_id)
     }
 
     /// The peer with the specified public_key will be removed from the PeerManager
     pub async fn delete_peer(&self, node_id: &NodeId) -> Result<(), PeerManagerError> {
-        self.peer_storage.write().await.delete_peer(node_id)
+        let mut lock = self.peer_storage.write().await;
+        lock.delete_peer(node_id)?;
+        #[cfg(feature = "metrics")]
+        {
+            let count = lock.count();
+            metrics::peer_list_size().set(count as i64);
+        }
+        Ok(())
     }
 
     /// Performs the given [PeerQuery].
@@ -262,6 +278,10 @@ impl PeerManager {
             .write()
             .await
             .ban_peer_by_node_id(node_id, duration, reason)
+    }
+
+    pub async fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        self.peer_storage.read().await.is_peer_banned(node_id)
     }
 
     /// Changes the offline flag bit of the peer. Return the previous offline state.

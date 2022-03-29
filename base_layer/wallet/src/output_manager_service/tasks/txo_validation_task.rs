@@ -84,7 +84,7 @@ where
             .ok_or(OutputManagerError::Shutdown)
             .for_protocol(self.operation_id)?;
 
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Starting TXO validation protocol (Id: {})", self.operation_id,
         );
@@ -96,7 +96,7 @@ where
         self.update_spent_outputs(&mut base_node_client, last_mined_header)
             .await?;
         self.publish_event(OutputManagerEvent::TxoValidationSuccess(self.operation_id));
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Finished TXO validation protocol (Id: {})", self.operation_id,
         );
@@ -227,7 +227,7 @@ where
             .for_protocol(self.operation_id)?;
 
         for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
-            info!(
+            debug!(
                 target: LOG_TARGET,
                 "Asking base node for location of {} unconfirmed outputs by hash (Operation ID: {})",
                 batch.len(),
@@ -268,7 +268,7 @@ where
         client: &mut BaseNodeWalletRpcClient,
     ) -> Result<Option<BlockHash>, OutputManagerProtocolError> {
         let mut last_mined_header_hash = None;
-        info!(
+        debug!(
             target: LOG_TARGET,
             "Checking last mined TXO to see if the base node has re-orged (Operation ID: {})", self.operation_id
         );
@@ -306,7 +306,7 @@ where
                     .await
                     .for_protocol(self.operation_id)?;
             } else {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Last mined transaction is still in the block chain according to base node. (Operation ID: {})",
                     self.operation_id
@@ -344,7 +344,7 @@ where
                     .await
                     .for_protocol(self.operation_id)?;
             } else {
-                info!(
+                debug!(
                     target: LOG_TARGET,
                     "Last mined transaction is still in the block chain according to base node (Operation ID: {}).",
                     self.operation_id
@@ -356,8 +356,6 @@ where
         Ok(last_mined_header_hash)
     }
 
-    // TODO: remove this duplicated code from transaction validation protocol
-
     async fn get_base_node_block_at_height(
         &mut self,
         height: u64,
@@ -366,7 +364,7 @@ where
         let result = match client.get_header_by_height(height).await {
             Ok(r) => r,
             Err(rpc_error) => {
-                info!(
+                warn!(
                     target: LOG_TARGET,
                     "Error asking base node for header:{} (Operation ID: {})", rpc_error, self.operation_id
                 );

@@ -22,6 +22,7 @@
 
 use std::fmt;
 
+use derivative::Derivative;
 use digest::{Digest, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
@@ -31,9 +32,9 @@ use tari_common_types::{
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
     tari_utilities::ByteArray,
 };
+use tari_script::TariScript;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -42,7 +43,7 @@ use crate::{
         crypto_factories::CryptoFactories,
         fee::Fee,
         tari_amount::*,
-        transaction::{
+        transaction_components::{
             KernelBuilder,
             KernelFeatures,
             OutputFeatures,
@@ -69,8 +70,9 @@ use crate::{
 /// This struct contains all the information that a transaction initiator (the sender) will manage throughout the
 /// Transaction construction process.
 // TODO: Investigate necessity to use the 'Serialize' and 'Deserialize' traits here; this could potentially leak
-// TODO:   information when least expected.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+// TODO:   information when least expected. #LOGGED
+#[derive(Clone, Derivative, Serialize, Deserialize, PartialEq)]
+#[derivative(Debug)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
@@ -79,9 +81,11 @@ pub(super) struct RawTransactionInfo {
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_output_features: Vec<OutputFeatures>,
+    #[derivative(Debug = "ignore")]
     pub recipient_sender_offset_private_keys: Vec<PrivateKey>,
     pub recipient_covenants: Vec<Covenant>,
     // The sender's portion of the public commitment nonce
+    #[derivative(Debug = "ignore")]
     pub private_commitment_nonces: Vec<PrivateKey>,
     pub change: MicroTari,
     pub change_output_metadata_signature: Option<ComSignature>,
@@ -93,9 +97,11 @@ pub(super) struct RawTransactionInfo {
     pub offset: BlindingFactor,
     // The sender's blinding factor shifted by the sender-selected offset
     pub offset_blinding_factor: BlindingFactor,
+    #[derivative(Debug = "ignore")]
     pub gamma: PrivateKey,
     pub public_excess: PublicKey,
     // The sender's private nonce
+    #[derivative(Debug = "ignore")]
     pub private_nonce: PrivateKey,
     // The sender's public nonce
     pub public_nonce: PublicKey,
@@ -139,7 +145,6 @@ pub struct SingleRoundSenderData {
 pub enum TransactionSenderMessage {
     None,
     Single(Box<SingleRoundSenderData>),
-    // TODO: Three round types
     Multiple,
 }
 
@@ -623,7 +628,7 @@ impl SenderTransactionProtocol {
     /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
     /// Transaction from it.
     pub fn load_pending_transaction_to_be_sent(data: String) -> Result<Self, TPE> {
-        let raw_data: RawTransactionInfo = serde_json::from_str(data.as_str()).map_err(|_| TPE::SerializationError)?;
+        let raw_data: RawTransactionInfo = serde_json::from_str(&data).map_err(|_| TPE::SerializationError)?;
         Ok(Self {
             state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
         })
@@ -754,10 +759,9 @@ mod test {
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::{ExecutionStack, TariScript},
         tari_utilities::{hex::Hex, ByteArray},
     };
+    use tari_script::{script, ExecutionStack, TariScript};
 
     use crate::{
         covenants::Covenant,
@@ -766,7 +770,7 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
+            transaction_components::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
             transaction_protocol::{
                 sender::SenderTransactionProtocol,
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -895,14 +899,13 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let fee_per_gram = MicroTari(4);
         let fee = builder.fee().calculate(fee_per_gram, 1, 1, 1, 0);
-        let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features.clone(), PrivateKey::random(&mut OsRng), Covenant::default())
+            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), OutputFeatures::default(), PrivateKey::random(&mut OsRng), Covenant::default())
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
@@ -918,7 +921,7 @@ mod test {
 
         // Receiver gets message, deserializes it etc, and creates his response
         let mut bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
+            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
         alice
             .add_single_recipient_info(bob_info.clone(), &factories.range_proof)
             .unwrap();
@@ -956,7 +959,6 @@ mod test {
         let expected_fee = builder
             .fee()
             .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_metadata(2));
-        let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
@@ -968,7 +970,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features.clone(),
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -993,8 +995,7 @@ mod test {
         let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
         println!(
             "Bob's key: {}, Nonce: {}, Signature: {}, Commitment: {}",
             bob_info.public_spend_key.to_hex(),
@@ -1036,7 +1037,6 @@ mod test {
         let (utxo, input) = create_test_input((2u64.pow(32) + 2001).into(), 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let features = OutputFeatures::default();
 
         builder
             .with_lock_height(0)
@@ -1049,7 +1049,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features.clone(),
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1061,8 +1061,7 @@ mod test {
         // Send message down the wire....and wait for response
         assert!(alice.is_collecting_single_signature());
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap(); // Alice gets message back, deserializes it, etc
         match alice.add_single_recipient_info(bob_info, &factories.range_proof) {
             Ok(_) => panic!("Range proof should have failed to verify"),
             Err(e) => assert_eq!(
@@ -1161,11 +1160,11 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: PrivateKey::random(&mut OsRng),
             proof_message: proof_message.to_owned(),
         };
 
         let script = script!(Nop);
-        let features = OutputFeatures::default();
 
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         builder
@@ -1181,7 +1180,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features.clone(),
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1205,8 +1204,7 @@ mod test {
         assert!(alice.is_collecting_single_signature());
 
         // Receiver gets message, deserializes it etc, and creates his response
-        let bob_info =
-            SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, features, &factories, None).unwrap();
+        let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
 
         // Alice gets message back, deserializes it, etc
         alice

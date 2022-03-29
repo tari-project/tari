@@ -1,100 +1,112 @@
 <a href="/">Back</a>
-<h3>Inputs</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
-  <thead>
-    <tr>
-      <th>Features</th>
-      <th>Commitment</th>
-      <th>Hash</th>
-      <th>Script</th>
-      <th>Input Data</th>
-      <th>Script Signature</th>
-      <th>Sender Offset Public Key</th>
-    </tr>
-  </thead>
-  <tbody>
-    {{#each this.inputs}}
+{{#with this.tx}}
+  <h3>Meta</h3>
+  <table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+    <thead>
+      <tr><th>Offset</th></tr>
+    </thead>
+    <tbody>
       <tr>
-        <td><i>Flags</i><br />
-          {{features.flags}}<hr /><i>Maturity</i><br />
-          {{features.maturity}}</td>
-        <td>{{hex commitment}}</td>
-        <td>{{hex hash}}</td>
-        <td>{{hex script}}</td>
-        <td>{{hex input_data}}</td>
-        <td><i>Public Nonce Commitment</i><br />
-          {{hex script_signature.public_nonce_commitment}}<hr /><i>Signature U</i><br
-          />
-          {{hex script_signature.signature_u}}<hr /><i>Signature V</i><br />
-          {{hex script_signature.signature_v}}</td>
-        <td>{{hex sender_offset_public_key}}</td>
+        <td>{{hex this.offset}}</td></tr>
+    </tbody>
+  </table>
+  <h3>Inputs</h3>
+  <table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+    <thead>
+      <tr>
+        <th>Features</th>
+        <th>Commitment</th>
+        <th>Hash</th>
+        <th>Script</th>
+        <th>Input Data</th>
+        <th>Script Signature</th>
+        <th>Sender Offset Public Key</th>
       </tr>
-    {{/each}}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {{#each this.body.inputs}}
+        <tr>
+          <td><i>Flags</i><br />
+            {{features.flags}}<hr /><i>Maturity</i><br />
+            {{features.maturity}}</td>
+          <td>{{hex commitment}}</td>
+          <td>{{hex hash}}</td>
+          <td>{{hex script}}</td>
+          <td>{{hex input_data}}</td>
+          <td><i>Public Nonce Commitment</i><br />
+            {{hex script_signature.public_nonce_commitment}}<hr /><i>Signature U</i><br
+            />
+            {{hex script_signature.signature_u}}<hr /><i>Signature V</i><br />
+            {{hex script_signature.signature_v}}</td>
+          <td>{{hex sender_offset_public_key}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
 
-<br />
-<h3>Outputs</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
-  <thead>
-    <tr>
-      <th>Features</th>
-      <th>Commitment</th>
-      <th>Range Proof</th>
-      <th>Hash</th>
-      <th>Script</th>
-      <th>Sender Offset Public Key</th>
-      <th>Metadata Signature</th>
-    </tr>
-  </thead>
-  <tbody>
-    {{#each this.outputs}}
+  <br />
+  <h3>Outputs</h3>
+  <table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+    <thead>
       <tr>
-        <td><i>Flags</i><br />
-          {{features.flags}}<hr /><i>Maturity</i><br />
-          {{features.maturity}}</td>
-        <td>{{hex commitment}}</td>
-        <td style="width:500px;display:block;word-break:break-all;">{{hex
-            range_proof
-          }}</td>
-        <td>{{hex hash}}</td>
-        <td>{{hex script}}</td>
-        <td>{{hex sender_offset_public_key}}</td>
-        <td><i>Public Nonce Commitment</i><br />
-          {{hex metadata_signature.public_nonce_commitment}}<hr /><i>Signature U</i><br
-          />
-          {{hex metadata_signature.signature_u}}<hr /><i>Signature V</i><br />
-          {{hex metadata_signature.signature_v}}</td>
+        <th>Features</th>
+        <th>Commitment</th>
+        <th>Range Proof</th>
+        <th>Hash</th>
+        <th>Script</th>
+        <th>Sender Offset Public Key</th>
+        <th>Metadata Signature</th>
       </tr>
-    {{/each}}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {{#each this.body.outputs}}
+        <tr>
+          <td><i>Flags</i><br />
+            {{features.flags}}<hr /><i>Maturity</i><br />
+            {{features.maturity}}</td>
+          <td>{{hex commitment}}</td>
+          <td style="width:500px;display:block;word-break:break-all;">{{hex
+              range_proof
+            }}</td>
+          <td>{{hex hash}}</td>
+          <td>{{hex script}}</td>
+          <td>{{hex sender_offset_public_key}}</td>
+          <td><i>Public Nonce Commitment</i><br />
+            {{hex metadata_signature.public_nonce_commitment}}<hr /><i>Signature
+              U</i><br />
+            {{hex metadata_signature.signature_u}}<hr /><i>Signature V</i><br />
+            {{hex metadata_signature.signature_v}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
 
-<br />
-<h3>Kernels</h3>
-<table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
-  <thead>
-    <tr>
-      <th>Features</th>
-      <th>Fee</th>
-      <th>Lock Height</th>
-      <th>Excess</th>
-      <th>Excess Signature</th>
-      <th>Hash</th>
-    </tr>
-  </thead>
-  <tbody>
-    {{#each this.kernels}}
+  <br />
+  <h3>Kernels</h3>
+  <table border="1" width="100%" cellpadding="5" bordercolor="#EFEFEF">
+    <thead>
       <tr>
-        <td>{{features}}</td>
-        <td>{{fee}}</td>
-        <td>{{lock_height}}</td>
-        <td>{{hex excess}}</td>
-        <td><i>Nonce</i>
-          {{hex excess_sig.public_nonce}}<hr /><i>Sig</i>
-          {{hex excess_sig.signature}}</td>
-        <td>{{hex hash}}</td>
+        <th>Features</th>
+        <th>Fee</th>
+        <th>Lock Height</th>
+        <th>Excess</th>
+        <th>Excess Signature</th>
+        <th>Hash</th>
       </tr>
-    {{/each}}
-  </tbody>
-</table>
+    </thead>
+    <tbody>
+      {{#each this.body.kernels}}
+        <tr>
+          <td>{{features}}</td>
+          <td>{{fee}}</td>
+          <td>{{lock_height}}</td>
+          <td>{{hex excess}}</td>
+          <td><i>Nonce</i>
+            {{hex excess_sig.public_nonce}}<hr /><i>Sig</i>
+            {{hex excess_sig.signature}}</td>
+          <td>{{hex hash}}</td>
+        </tr>
+      {{/each}}
+    </tbody>
+  </table>
+{{/with}}

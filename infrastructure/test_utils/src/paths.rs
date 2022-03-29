@@ -54,6 +54,8 @@ pub fn cargo_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+pub use tempfile::tempdir;
+
 #[cfg(test)]
 mod test {
     use std::{

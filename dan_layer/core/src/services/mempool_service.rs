@@ -25,7 +25,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::Mutex;
 
-use crate::{digital_assets_error::DigitalAssetError, models::Instruction};
+use crate::{
+    digital_assets_error::DigitalAssetError,
+    fixed_hash::FixedHash,
+    models::{Instruction, TreeNodeHash},
+};
 
 #[async_trait]
 pub trait MempoolService: Sync + Send + 'static {
@@ -33,17 +37,17 @@ pub trait MempoolService: Sync + Send + 'static {
     async fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError>;
     async fn reserve_instruction_in_block(
         &mut self,
-        instruction_hash: &[u8],
-        block_hash: Vec<u8>,
+        instruction_hash: &FixedHash,
+        block_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError>;
-    async fn remove_all_in_block(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError>;
-    async fn release_reservations(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError>;
+    async fn remove_all_in_block(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError>;
+    async fn release_reservations(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError>;
     async fn size(&self) -> usize;
 }
 
 #[derive(Default)]
 pub struct ConcreteMempoolService {
-    instructions: Vec<(Instruction, Option<Vec<u8>>)>,
+    instructions: Vec<(Instruction, Option<TreeNodeHash>)>,
 }
 
 #[async_trait]
@@ -55,12 +59,12 @@ impl MempoolService for ConcreteMempoolService {
 
     async fn read_block(&self, limit: usize) -> Result<Vec<Instruction>, DigitalAssetError> {
         let mut result = vec![];
-        for (i, instruction) in self.instructions.iter().enumerate() {
+        for (i, (instruction, block_hash)) in self.instructions.iter().enumerate() {
             if i > limit {
                 break;
             }
-            if instruction.1.is_none() {
-                result.push(instruction.0.clone());
+            if block_hash.is_none() {
+                result.push(instruction.clone());
             }
         }
         Ok(result)
@@ -68,12 +72,12 @@ impl MempoolService for ConcreteMempoolService {
 
     async fn reserve_instruction_in_block(
         &mut self,
-        instruction_hash: &[u8],
-        block_hash: Vec<u8>,
+        instruction_hash: &FixedHash,
+        node_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError> {
-        for mut instruction in self.instructions.iter_mut() {
-            if instruction.0.hash() == instruction_hash {
-                instruction.1 = Some(block_hash);
+        for (instruction, node_hash_mut) in self.instructions.iter_mut() {
+            if instruction.hash() == instruction_hash {
+                *node_hash_mut = Some(node_hash);
                 break;
             }
         }
@@ -81,21 +85,19 @@ impl MempoolService for ConcreteMempoolService {
         Ok(())
     }
 
-    async fn remove_all_in_block(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
-        let mut new_instructions = Vec::with_capacity(self.instructions.len());
-        for instruction in self.instructions.drain(..) {
-            if instruction.1.as_deref() != Some(block_hash) {
-                new_instructions.push(instruction)
-            }
-        }
-        self.instructions = new_instructions;
+    async fn remove_all_in_block(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
+        self.instructions = self
+            .instructions
+            .drain(..)
+            .filter(|(_, node_hash)| node_hash.as_ref() != Some(block_hash))
+            .collect();
         Ok(())
     }
 
-    async fn release_reservations(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
-        for mut instruction in self.instructions.iter_mut() {
-            if instruction.1.as_deref() == Some(block_hash) {
-                instruction.1 = None;
+    async fn release_reservations(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
+        for (_, block_hash_mut) in self.instructions.iter_mut() {
+            if block_hash_mut.as_ref() == Some(block_hash) {
+                *block_hash_mut = None;
             }
         }
         Ok(())
@@ -144,21 +146,21 @@ impl MempoolService for MempoolServiceHandle {
 
     async fn reserve_instruction_in_block(
         &mut self,
-        instruction_hash: &[u8],
-        block_hash: Vec<u8>,
+        instruction_hash: &FixedHash,
+        node_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError> {
         self.mempool
             .lock()
             .await
-            .reserve_instruction_in_block(instruction_hash, block_hash)
+            .reserve_instruction_in_block(instruction_hash, node_hash)
             .await
     }
 
-    async fn remove_all_in_block(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn remove_all_in_block(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         self.mempool.lock().await.remove_all_in_block(block_hash).await
     }
 
-    async fn release_reservations(&mut self, block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn release_reservations(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         self.mempool.lock().await.release_reservations(block_hash).await
     }
 

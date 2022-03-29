@@ -19,6 +19,9 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+//! Provides methods for for building template data and storing them with timestamps.
+
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{self, DateTime, Duration, Utc};
@@ -29,13 +32,15 @@ use tracing::trace;
 
 use crate::error::MmProxyError;
 
-pub const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
+const LOG_TARGET: &str = "tari_mm_proxy::xmrig";
 
+/// Structure for holding hashmap of hashes -> [BlockTemplateRepositoryItem]
 #[derive(Debug, Clone)]
 pub struct BlockTemplateRepository {
     blocks: Arc<RwLock<HashMap<Vec<u8>, BlockTemplateRepositoryItem>>>,
 }
 
+/// Structure holding [BlockTemplateData] along with a timestamp.
 #[derive(Debug, Clone)]
 pub struct BlockTemplateRepositoryItem {
     pub data: BlockTemplateData,
@@ -43,6 +48,7 @@ pub struct BlockTemplateRepositoryItem {
 }
 
 impl BlockTemplateRepositoryItem {
+    /// Create new [Self] with current time in UTC.
     pub fn new(block_template: BlockTemplateData) -> Self {
         Self {
             data: block_template,
@@ -50,6 +56,7 @@ impl BlockTemplateRepositoryItem {
         }
     }
 
+    /// Get the timestamp of creation.
     pub fn datetime(&self) -> DateTime<Utc> {
         self.datetime
     }
@@ -62,6 +69,7 @@ impl BlockTemplateRepository {
         }
     }
 
+    /// Return [BlockTemplateData] with the associated hash. None if the hash is not stored.
     pub async fn get<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateData> {
         trace!(
             target: LOG_TARGET,
@@ -72,6 +80,7 @@ impl BlockTemplateRepository {
         b.get(hash.as_ref()).map(|item| item.data.clone())
     }
 
+    /// Store [BlockTemplateData] at the hash value.
     pub async fn save(&self, hash: Vec<u8>, block_template: BlockTemplateData) {
         trace!(
             target: LOG_TARGET,
@@ -83,6 +92,7 @@ impl BlockTemplateRepository {
         b.insert(hash, repository_item);
     }
 
+    /// Remove any data that is older than 20 minutes.
     pub async fn remove_outdated(&self) {
         trace!(target: LOG_TARGET, "Removing outdated blocktemplates");
         let mut b = self.blocks.write().await;
@@ -90,6 +100,7 @@ impl BlockTemplateRepository {
         *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
 
+    /// Remove a particular hash and return the associated [BlockTemplateRepositoryItem] if any.
     pub async fn remove<T: AsRef<[u8]>>(&self, hash: T) -> Option<BlockTemplateRepositoryItem> {
         trace!(
             target: LOG_TARGET,
@@ -101,6 +112,7 @@ impl BlockTemplateRepository {
     }
 }
 
+/// Setup values for the new block.
 #[derive(Clone, Debug)]
 pub struct BlockTemplateData {
     pub monero_seed: FixedByteArray,
@@ -112,6 +124,7 @@ pub struct BlockTemplateData {
 
 impl BlockTemplateData {}
 
+/// Builder for the [BlockTemplateData]. All fields have to be set to succeed.
 #[derive(Default)]
 pub struct BlockTemplateDataBuilder {
     monero_seed: Option<FixedByteArray>,
@@ -151,6 +164,11 @@ impl BlockTemplateDataBuilder {
         self
     }
 
+    /// Build a new [BlockTemplateData], all the values have to be set.
+    ///
+    /// # Errors
+    ///
+    /// Return error if any of values has not been set.
     pub fn build(self) -> Result<BlockTemplateData, MmProxyError> {
         let monero_seed = self
             .monero_seed

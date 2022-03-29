@@ -27,22 +27,20 @@ use std::{
     sync::Arc,
 };
 
-use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, ByteArrayError},
-};
+use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, BLOCK_HASH_LENGTH};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
-    consensus::{ConsensusDecoding, ToConsensusBytes},
     covenants::Covenant,
     proto,
     transactions::{
         aggregated_body::AggregateBody,
         tari_amount::MicroTari,
-        transaction::{
+        transaction_components::{
             AssetOutputFeatures,
+            CommitteeDefinitionFeatures,
             KernelFeatures,
             MintNonFungibleFeatures,
             OutputFeatures,
@@ -141,7 +139,7 @@ impl TryFrom<proto::types::TransactionInput> for TransactionInput {
                 ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
                 script_signature,
                 sender_offset_public_key,
-                Covenant::consensus_decode(&mut input.covenant.as_slice()).map_err(|err| err.to_string())?,
+                Covenant::from_bytes(&input.covenant).map_err(|err| err.to_string())?,
             ))
         } else {
             if input.output_hash.is_empty() {
@@ -199,7 +197,7 @@ impl TryFrom<TransactionInput> for proto::types::TransactionInput {
                 covenant: input
                     .covenant()
                     .map_err(|_| "Non-compact Transaction input should contain covenant".to_string())?
-                    .to_consensus_bytes(),
+                    .to_bytes(),
                 version: input.version as u32,
             })
         }
@@ -234,7 +232,7 @@ impl TryFrom<proto::types::TransactionOutput> for TransactionOutput {
             .try_into()
             .map_err(|_| "Metadata signature could not be converted".to_string())?;
 
-        let covenant = Covenant::consensus_decode(&mut output.covenant.as_slice()).map_err(|err| err.to_string())?;
+        let covenant = Covenant::from_bytes(&output.covenant).map_err(|err| err.to_string())?;
 
         Ok(Self::new(
             TransactionOutputVersion::try_from(
@@ -260,7 +258,7 @@ impl From<TransactionOutput> for proto::types::TransactionOutput {
             script: output.script.as_bytes(),
             sender_offset_public_key: output.sender_offset_public_key.as_bytes().to_vec(),
             metadata_signature: Some(output.metadata_signature.into()),
-            covenant: output.covenant.to_consensus_bytes(),
+            covenant: output.covenant.to_bytes(),
             version: output.version as u32,
         }
     }
@@ -290,6 +288,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
+            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             parent_public_key,
@@ -301,7 +300,8 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
                 Some(m) => Some(m.try_into()?),
                 None => None,
             },
-            features.sidechain_checkpoint.map(|a| a.try_into()).transpose()?,
+            features.sidechain_checkpoint.map(|s| s.try_into()).transpose()?,
+            features.committee_definition.map(|c| c.try_into()).transpose()?,
         ))
     }
 }
@@ -319,8 +319,10 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
                 .unwrap_or_default(),
             asset: features.asset.map(|a| a.into()),
             mint_non_fungible: features.mint_non_fungible.map(|m| m.into()),
-            sidechain_checkpoint: features.sidechain_checkpoint.map(|m| m.into()),
+            sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
+            committee_definition: features.committee_definition.map(|c| c.into()),
+            recovery_byte: features.recovery_byte as u32,
         }
     }
 }
@@ -401,7 +403,14 @@ impl TryFrom<proto::types::SideChainCheckpointFeatures> for SideChainCheckpointF
     type Error = String;
 
     fn try_from(value: proto::types::SideChainCheckpointFeatures) -> Result<Self, Self::Error> {
-        let merkle_root = value.merkle_root.as_bytes().to_vec();
+        if value.merkle_root.len() != BLOCK_HASH_LENGTH {
+            return Err(format!(
+                "Invalid side chain checkpoint merkle length {}",
+                value.merkle_root.len()
+            ));
+        }
+        let mut merkle_root = [0u8; BLOCK_HASH_LENGTH];
+        merkle_root.copy_from_slice(&value.merkle_root[0..BLOCK_HASH_LENGTH]);
         let committee = value
             .committee
             .into_iter()
@@ -416,6 +425,33 @@ impl From<SideChainCheckpointFeatures> for proto::types::SideChainCheckpointFeat
         Self {
             merkle_root: value.merkle_root.as_bytes().to_vec(),
             committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::types::CommitteeDefinitionFeatures> for CommitteeDefinitionFeatures {
+    type Error = String;
+
+    fn try_from(value: proto::types::CommitteeDefinitionFeatures) -> Result<Self, Self::Error> {
+        let committee = value
+            .committee
+            .into_iter()
+            .map(|c| PublicKey::from_bytes(&c).map_err(|err| format!("{:?}", err)))
+            .collect::<Result<_, _>>()?;
+        let effective_sidechain_height = value.effective_sidechain_height;
+
+        Ok(Self {
+            committee,
+            effective_sidechain_height,
+        })
+    }
+}
+
+impl From<CommitteeDefinitionFeatures> for proto::types::CommitteeDefinitionFeatures {
+    fn from(value: CommitteeDefinitionFeatures) -> Self {
+        Self {
+            committee: value.committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
+            effective_sidechain_height: value.effective_sidechain_height,
         }
     }
 }

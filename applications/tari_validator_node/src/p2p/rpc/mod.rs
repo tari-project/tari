@@ -22,15 +22,18 @@
 
 mod service_impl;
 
+#[cfg(test)]
+mod test;
+
 pub use service_impl::ValidatorNodeRpcServiceImpl;
-use tari_comms::protocol::rpc::{Request, Response, RpcStatus};
+use tari_comms::protocol::rpc::{Request, Response, RpcStatus, Streaming};
 use tari_comms_rpc_macros::tari_rpc;
 use tari_dan_core::{
     services::{AssetProcessor, MempoolService},
     storage::DbFactory,
 };
 
-use super::proto::validator_node as proto;
+use crate::p2p::proto::validator_node as proto;
 
 #[tari_rpc(protocol_name = b"t/vn/1", server_struct = ValidatorNodeRpcServer, client_struct = ValidatorNodeRpcClient)]
 pub trait ValidatorNodeRpcService: Send + Sync + 'static {
@@ -51,6 +54,30 @@ pub trait ValidatorNodeRpcService: Send + Sync + 'static {
         &self,
         request: Request<proto::InvokeMethodRequest>,
     ) -> Result<Response<proto::InvokeMethodResponse>, RpcStatus>;
+
+    #[rpc(method = 4)]
+    async fn get_sidechain_blocks(
+        &self,
+        request: Request<proto::GetSidechainBlocksRequest>,
+    ) -> Result<Streaming<proto::GetSidechainBlocksResponse>, RpcStatus>;
+
+    #[rpc(method = 5)]
+    async fn get_sidechain_state(
+        &self,
+        request: Request<proto::GetSidechainStateRequest>,
+    ) -> Result<Streaming<proto::GetSidechainStateResponse>, RpcStatus>;
+
+    #[rpc(method = 6)]
+    async fn get_op_logs(
+        &self,
+        request: Request<proto::GetStateOpLogsRequest>,
+    ) -> Result<Response<proto::GetStateOpLogsResponse>, RpcStatus>;
+
+    #[rpc(method = 7)]
+    async fn get_tip_node(
+        &self,
+        request: Request<proto::GetTipNodeRequest>,
+    ) -> Result<Response<proto::GetTipNodeResponse>, RpcStatus>;
 }
 
 pub fn create_validator_node_rpc_service<

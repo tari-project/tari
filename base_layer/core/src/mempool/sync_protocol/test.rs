@@ -48,7 +48,7 @@ use crate::{
         sync_protocol::{MempoolPeerProtocol, MempoolSyncProtocol, MAX_FRAME_SIZE, MEMPOOL_SYNC_PROTOCOL},
         Mempool,
     },
-    transactions::{tari_amount::uT, test_helpers::create_tx, transaction::Transaction},
+    transactions::{tari_amount::uT, test_helpers::create_tx, transaction_components::Transaction},
     validation::mocks::MockValidator,
 };
 
@@ -122,10 +122,10 @@ async fn empty_set() {
         .await
         .unwrap();
 
-    let transactions = mempool2.snapshot().await;
+    let transactions = mempool2.snapshot().await.unwrap();
     assert_eq!(transactions.len(), 0);
 
-    let transactions = mempool1.snapshot().await;
+    let transactions = mempool1.snapshot().await.unwrap();
     assert_eq!(transactions.len(), 0);
 }
 
@@ -319,7 +319,14 @@ async fn responder_messages() {
 }
 
 async fn get_snapshot(mempool: &Mempool) -> Vec<Transaction> {
-    mempool.snapshot().await.iter().map(|t| &**t).cloned().collect()
+    mempool
+        .snapshot()
+        .await
+        .unwrap()
+        .iter()
+        .map(|t| &**t)
+        .cloned()
+        .collect()
 }
 
 async fn read_message<S, T>(reader: &mut S) -> T

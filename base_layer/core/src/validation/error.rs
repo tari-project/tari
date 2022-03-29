@@ -29,7 +29,7 @@ use crate::{
     chain_storage::ChainStorageError,
     covenants::CovenantError,
     proof_of_work::{monero_rx::MergeMineError, PowError},
-    transactions::transaction::TransactionError,
+    transactions::transaction_components::TransactionError,
 };
 
 #[derive(Debug, Error)]
@@ -112,6 +112,8 @@ pub enum ValidationError {
     ConsensusError(String),
     #[error("Covenant failed to validate: {0}")]
     CovenantError(#[from] CovenantError),
+    #[error("Invalid or unsupported blockchain version {version}")]
+    InvalidBlockchainVersion { version: u16 },
 }
 
 // ChainStorageError has a ValidationError variant, so to prevent a cyclic dependency we use a string representation in

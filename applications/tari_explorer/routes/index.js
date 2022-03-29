@@ -1,40 +1,39 @@
-var { createClient } = require("../baseNodeClient")
+var { createClient } = require("../baseNodeClient");
 
-var express = require("express")
-var router = express.Router()
+var express = require("express");
+var router = express.Router();
 
 /* GET home page. */
 router.get("/", async function (req, res) {
   try {
-  let client = createClient()
-  let from = parseInt(req.query.from || 0)
-  let limit = parseInt(req.query.limit || "20")
+    let client = createClient();
+    let from = parseInt(req.query.from || 0);
+    let limit = parseInt(req.query.limit || "20");
 
-    let tipInfo = await client.getTipInfo({})
+    let tipInfo = await client.getTipInfo({});
 
-    console.log("Getting headers")
-  // Algo split
-  let last100Headers = await client.listHeaders({
+    // Algo split
+    let last100Headers = await client.listHeaders({
       from_height: 0,
       num_headers: 101,
-    })
-  let monero = [0, 0, 0, 0]
-  let sha = [0, 0, 0, 0]
+    });
+    let monero = [0, 0, 0, 0];
+    let sha = [0, 0, 0, 0];
 
-    console.log(last100Headers)
+    // console.log(last100Headers)
 
-  for (let i = 0; i < last100Headers.length - 1; i++) {
-    let arr = last100Headers[i].pow.pow_algo === "0" ? monero : sha
-    if (i < 10) {
-      arr[0] += 1
-    }
-    if (i < 20) {
-      arr[1] += 1
-    }
-    if (i < 50) {
-      arr[2] += 1
-    }
-    arr[3] += 1
+    for (let i = 0; i < last100Headers.length - 1; i++) {
+      let arr = last100Headers[i].pow.pow_algo === "0" ? monero : sha;
+      if (i < 10) {
+        arr[0] += 1;
+      }
+      if (i < 20) {
+        arr[1] += 1;
+      }
+      if (i < 50) {
+        arr[2] += 1;
+      }
+      arr[3] += 1;
     }
     const algoSplit = {
       monero10: monero[0],
@@ -45,95 +44,100 @@ router.get("/", async function (req, res) {
       sha20: sha[1],
       sha50: sha[2],
       sha100: sha[3],
-    }
+    };
 
-  console.log(algoSplit)
+    // console.log(algoSplit)
     // Get one more header than requested so we can work out the difference in MMR_size
     let headers = await client.listHeaders({
       from_height: from,
       num_headers: limit + 1,
-    })
+    });
+    const pows = { 0: "Monero", 1: "SHA-3" };
     for (var i = headers.length - 2; i >= 0; i--) {
       headers[i].kernels =
-        headers[i].kernel_mmr_size - headers[i + 1].kernel_mmr_size
+        headers[i].kernel_mmr_size - headers[i + 1].kernel_mmr_size;
       headers[i].outputs =
-        headers[i].output_mmr_size - headers[i + 1].output_mmr_size
+        headers[i].output_mmr_size - headers[i + 1].output_mmr_size;
+      headers[i].powText = pows[headers[i].pow.pow_algo];
     }
-    let lastHeader = headers[headers.length - 1]
+    let lastHeader = headers[headers.length - 1];
     if (lastHeader.height === "0") {
       // If the block is the genesis block, then the MMR sizes are the values to use
-      lastHeader.kernels = lastHeader.kernel_mmr_size
-      lastHeader.outputs = lastHeader.output_mmr_size
+      lastHeader.kernels = lastHeader.kernel_mmr_size;
+      lastHeader.outputs = lastHeader.output_mmr_size;
     } else {
       // Otherwise remove the last one, as we don't want to show it
-      headers.splice(headers.length - 1, 1)
+      headers.splice(headers.length - 1, 1);
     }
 
     // console.log(headers);
-    let firstHeight = parseInt(headers[0].height || "0")
+    let firstHeight = parseInt(headers[0].height || "0");
 
     // --  mempool
-    let mempool = await client.getMempoolTransactions({})
+    let mempool = await client.getMempoolTransactions({});
 
+    // console.log(mempool);
     for (let i = 0; i < mempool.length; i++) {
-      let sum = 0
+      let sum = 0;
       for (let j = 0; j < mempool[i].transaction.body.kernels.length; j++) {
-        sum += parseInt(mempool[i].transaction.body.kernels[j].fee)
+        sum += parseInt(mempool[i].transaction.body.kernels[j].fee);
+        mempool[i].transaction.body.signature =
+          mempool[i].transaction.body.kernels[j].excess_sig.signature;
       }
-      mempool[i].transaction.body.total_fees = sum
+      mempool[i].transaction.body.total_fees = sum;
     }
-    res.render("index", {
-    title: "Blocks",
-    tipInfo: tipInfo,
-    mempool: mempool,
-    headers: headers,
-    pows: { 0: "Monero", 2: "SHA" },
-    nextPage: firstHeight - limit,
-    prevPage: firstHeight + limit,
-    limit: limit,
-    from: from,
-    algoSplit: algoSplit,
-    blockTimes: getBlockTimes(last100Headers),
-    moneroTimes: getBlockTimes(last100Headers, "0"),
-    shaTimes: getBlockTimes(last100Headers, "1"),
-  })
-
-} catch (error) {
-  res.status(500)
-  res.render("error", { error: error })
-}
-})
+    const result = {
+      title: "Blocks",
+      tipInfo,
+      mempool,
+      headers,
+      pows,
+      nextPage: firstHeight - limit,
+      prevPage: firstHeight + limit,
+      limit,
+      from,
+      algoSplit,
+      blockTimes: getBlockTimes(last100Headers),
+      moneroTimes: getBlockTimes(last100Headers, "0"),
+      shaTimes: getBlockTimes(last100Headers, "1"),
+    };
+    res.render("index", result);
+  } catch (error) {
+    res.status(500);
+    res.render("error", { error: error });
+  }
+});
 
 function getBlockTimes(last100Headers, algo) {
-  let blocktimes = []
-  let i = 0
+  let blocktimes = [];
+  let i = 0;
   if (algo === "0" || algo === "1") {
     while (
       i < last100Headers.length &&
       last100Headers[i].pow.pow_algo !== algo
     ) {
-      i++
-      blocktimes.push(0)
+      i++;
+      blocktimes.push(0);
     }
   }
   if (i >= last100Headers.length) {
     // This happens if there are no blocks for a specific algorithm in last100headers
-    return blocktimes
+    return blocktimes;
   }
-  let lastBlockTime = parseInt(last100Headers[i].timestamp.seconds)
-  i++
+  let lastBlockTime = parseInt(last100Headers[i].timestamp.seconds);
+  i++;
   while (i < last100Headers.length && blocktimes.length < 60) {
     if (!algo || last100Headers[i].pow.pow_algo === algo) {
       blocktimes.push(
         (lastBlockTime - parseInt(last100Headers[i].timestamp.seconds)) / 60
-      )
-      lastBlockTime = parseInt(last100Headers[i].timestamp.seconds)
+      );
+      lastBlockTime = parseInt(last100Headers[i].timestamp.seconds);
     } else {
-      blocktimes.push(0)
+      blocktimes.push(0);
     }
-    i++
+    i++;
   }
-  return blocktimes
+  return blocktimes;
 }
 
-module.exports = router
+module.exports = router;

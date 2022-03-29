@@ -27,15 +27,15 @@ use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
 use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
-use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig};
+use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig, DhtConnectivityConfig};
 use tari_core::{
     base_node,
     base_node::{
         chain_metadata_service::ChainMetadataServiceInitializer,
         service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
-        state_machine_service::{initializer::BaseNodeStateMachineInitializer, states::HorizonSyncConfig},
+        state_machine_service::initializer::BaseNodeStateMachineInitializer,
         BaseNodeStateMachineConfig,
-        BlockSyncConfig,
+        BlockchainSyncConfig,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
@@ -83,7 +83,7 @@ where B: BlockchainBackend + 'static
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
         let config = self.config;
 
-        fs::create_dir_all(&config.peer_db_path)?;
+        fs::create_dir_all(&config.comms_peer_db_path)?;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, config.buffer_size_base_node);
         let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, config.buffer_rate_limit_base_node);
@@ -109,8 +109,6 @@ where B: BlockchainBackend + 'static
             .map_err(|e| anyhow!("Invalid force sync peer: {:?}", e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
-
-        let rules = self.rules.clone();
 
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
@@ -146,8 +144,7 @@ where B: BlockchainBackend + 'static
             .add_initializer(mempool_sync)
             .add_initializer(LivenessInitializer::new(
                 LivenessConfig {
-                    auto_ping_interval: Some(Duration::from_secs(config.auto_ping_interval)),
-                    refresh_neighbours_interval: Duration::from_secs(3 * 60),
+                    auto_ping_interval: Some(Duration::from_secs(config.metadata_auto_ping_interval)),
                     monitored_peers: sync_peers.clone(),
                     ..Default::default()
                 },
@@ -157,19 +154,15 @@ where B: BlockchainBackend + 'static
             .add_initializer(BaseNodeStateMachineInitializer::new(
                 self.db.clone().into(),
                 BaseNodeStateMachineConfig {
-                    block_sync_config: BlockSyncConfig {
-                        sync_peers,
-                        ..Default::default()
-                    },
-                    horizon_sync_config: HorizonSyncConfig {
-                        horizon_sync_height_offset: rules.consensus_constants(0).coinbase_lock_height() + 50,
+                    blockchain_sync_config: BlockchainSyncConfig {
+                        forced_sync_peers: sync_peers,
+                        validation_concurrency: num_cpus::get(),
                         ..Default::default()
                     },
                     pruning_horizon: config.pruning_horizon,
                     orphan_db_clean_out_threshold: config.orphan_db_clean_out_threshold,
                     max_randomx_vms: config.max_randomx_vms,
                     blocks_behind_before_considered_lagging: self.config.blocks_behind_before_considered_lagging,
-                    sync_validation_concurrency: num_cpus::get(),
                     ..Default::default()
                 },
                 self.rules,
@@ -190,13 +183,25 @@ where B: BlockchainBackend + 'static
         match transport_type {
             TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
-                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-                    .map_err(|e| anyhow!("Failed to save node identity: {:?}", e))?;
+                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity()).map_err(
+                    |e| {
+                        anyhow!(
+                            "Failed to save node identity - {:?}: {:?}",
+                            config.base_node_identity_file,
+                            e
+                        )
+                    },
+                )?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
-                .map_err(|e| anyhow!("Failed to save tor identity: {:?}", e))?;
+            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity()).map_err(|e| {
+                anyhow!(
+                    "Failed to save tor identity - {:?}: {:?}",
+                    config.base_node_tor_identity_file,
+                    e
+                )
+            })?;
         }
 
         handles.register(comms);
@@ -213,7 +218,7 @@ where B: BlockchainBackend + 'static
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let builder = RpcServer::builder();
-        let builder = match config.rpc_max_simultaneous_sessions {
+        let builder = match config.comms_rpc_max_simultaneous_sessions {
             Some(limit) => builder.with_maximum_simultaneous_sessions(limit),
             None => {
                 warn!(
@@ -250,26 +255,33 @@ where B: BlockchainBackend + 'static
             network: self.config.network,
             node_identity: self.node_identity.clone(),
             transport_type: create_transport_type(self.config),
-            auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
-            datastore_path: self.config.peer_db_path.clone(),
+            auxiliary_tcp_listener_address: self.config.auxiliary_tcp_listener_address.clone(),
+            datastore_path: self.config.comms_peer_db_path.clone(),
             peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 100,
+            max_concurrent_inbound_tasks: 50,
+            max_concurrent_outbound_tasks: 100,
             outbound_buffer_size: 100,
             dht: DhtConfig {
                 database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
                 auto_join: true,
-                allow_test_addresses: self.config.allow_test_addresses,
+                allow_test_addresses: self.config.comms_allow_test_addresses,
                 flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
                 saf_config: SafConfig {
                     msg_validity: self.config.saf_expiry_duration,
+                    // Base node does not ever need to request SAF messages
+                    auto_request: false,
                     ..Default::default()
                 },
-                dedup_cache_capacity: self.config.dedup_cache_capacity,
+                dedup_cache_capacity: self.config.dht_dedup_cache_capacity,
+                connectivity: DhtConnectivityConfig {
+                    minimum_desired_tcpv4_node_ratio: self.config.dht_minimum_desired_tcpv4_node_ratio,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
-            allow_test_addresses: self.config.allow_test_addresses,
-            listener_liveness_allowlist_cidrs: self.config.listener_liveness_allowlist_cidrs.clone(),
-            listener_liveness_max_sessions: self.config.listnener_liveness_max_sessions,
+            allow_test_addresses: self.config.comms_allow_test_addresses,
+            listener_liveness_allowlist_cidrs: self.config.comms_listener_liveness_allowlist_cidrs.clone(),
+            listener_liveness_max_sessions: self.config.comms_listener_liveness_max_sessions,
             user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
             // Also add sync peers to the peer seed list. Duplicates are acceptable.
             peer_seeds: self

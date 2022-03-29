@@ -1,36 +1,12 @@
 # Config for launchpad v0.0.2
-########################################################################################################################
-#                                          Common Configuration Options                                                #
-########################################################################################################################
-
 [common]
-network = "weatherwax"
+network = "dibbler"
 message_cache_size = 10
 message_cache_ttl = 1440
 denylist_ban_period = 1440
 buffer_rate_limit_console_wallet = 1000
 dedup_cache_capacity = 25000
 rpc_max_simultaneous_sessions = 1000
-
-[common.weatherwax]
-peer_seeds = [
-    # weatherwax
-    "98bc76afc1c35ad4651bdc9ef57bbe0655a2ea3cd86c0e19b5fd5890546eb040::/onion3/33izgtjkrlxhxybj6luqowkpiy2wvte43osejnbqyieqtdfhovzghxad:18141", #jozi
-    "9a26e910288213d649b26f9a7a7ee51fe2b2a67ff7d42334523463bf4be94312::/onion3/56kq54ylttnbl5ikotqex3oqvtzlxdpn7zlx4v56rvzf4kq7eezlclid:18141", #london
-    "6afd5b3c7772ad7d4bb26e0c19668fe04f2d68f99de9e132bee50a6c1846946d::/onion3/may4ajbmcn4dlnzf6fanvqlklxzqiw6qwu6ywqwkjc3bb354rc2i5wid:18141", #ncal
-    "8e7beec9becdc44fe6015a00d97a77fa3dbafe65127dcc988df6326bd9fd040d::/onion3/3pise36l4imoopsbjic5rtw67adx7rms6w5pgjmccpdwiqx66j7oqcqd:18141", #nvir
-    "80bb590d943a46e63ae79af5dc2c7d35a3dcd7922c182b28f619dc4cfc366f44::/onion3/oaxwahri7r3h5qjlcdbveyjmg4jsttausik66bicmhixft73nmvecdad:18141", #oregon
-    "981cc8cd1e4fe2f99ea1bd3e0ab1e7821ca0bfab336a4967cfec053fee86254c::/onion3/7hxpnxrxycdfevirddau7ybofwedaamjrg2ijm57k2kevh5q46ixamid:18141", #seoul
-    "f2ce179fb733725961a5f7e1e45dacdd443dd43ba6237438d6abe344fb717058::/onion3/nvgdmjf4wucgatz7vemzvi2u4sw5o4gyzwuikagpepoj4w7mkii47zid:18141", #stockholm
-    "909c0160f4d8e815aba5c2bbccfcceb448877e7b38759fb160f3e9494484d515::/onion3/qw5uxv533sqdn2qoncfyqo35dgecy4rt4x27rexi2her6q6pcpxbm4qd:18141", #sydney
-    # igor
-    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
-    "00b35047a341401bcd336b2a3d564280a72f6dc72ec4c739d30c502acce4e803::/onion3/ojhxd7z6ga7qrvjlr3px66u7eiwasmffnuklscbh5o7g6wrbysj45vid:18141",
-    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
-    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
-]
-dns_seeds =["seeds.weatherwax.tari.com"]
-dns_seeds_use_dnssec = false
 
 [common.igor]
 peer_seeds = [
@@ -42,13 +18,7 @@ peer_seeds = [
 ]
 
 dns_seeds =["seeds.igor.tari.com"]
-# dns_seeds_name_server = "1.1.1.1:853/cloudfare-dns.com"
 dns_seeds_use_dnssec = false
-
-# auto_update.check_interval = 300
-# "auto_update.dns_hosts" = ["updates.igor.taripulse.com"]
-# "auto_update.hashes_url" = "https://<address>/hashes.txt"
-# "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
 
 [common.dibbler]
 dns_seeds =["seeds.dibbler.tari.com"]
@@ -67,94 +37,90 @@ peer_seeds = [
     # eeeeb0a943ed143e613a135392
     "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
 ]
-########################################################################################################################
-#                                          Base Node Configuration Options                                             #
-########################################################################################################################
 
 [base_node]
-network = "weatherwax"
-
-# Configuration options for testnet Weatherwax
-[base_node.weatherwax]
-db_type = "lmdb"
-# db_init_size_mb = 1000
-# db_grow_size_mb = 500
-# db_resize_threshold_mb = 100
-# The maximum number of orphans that can be stored in the Orphan block pool.
-orphan_storage_capacity = 120
-#orphan_db_clean_out_threshold = 0
-# The pruning horizon. Default value is "0", which indicates an archival node without any pruning.
-pruning_horizon = 0
-# The amount of messages that will be permitted in the flood ban timespan of 100s
-flood_ban_max_msg_count = 10000
-# The relative path to store persistent data
-data_dir = "/blockchain/weatherwax"
-# This allowlist provides a method to force syncing from any known nodes you may choose
-# force_sync_peers = ["public_key1::address1", "public_key2::address2",... ]
-force_sync_peers = []
-# Configure the maximum number of threads available for base node operation.
-max_threads = 512
-# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
-core_threads = 4
-allow_test_addresses = false
+network = "dibbler"
 grpc_enabled = true
-# The socket to expose for the gRPC base node server.
-grpc_base_node_address = "0.0.0.0:18142"
-# The socket to expose for the gRPC wallet server.
-grpc_console_wallet_address = "0.0.0.0:18143"
-# A path to the file that stores your node identity and secret key
-base_node_identity_file = "/var/tari/config/weatherwax/tari_base_node_id.json"
-# A path to the file that stores your console wallet's node identity and secret key
-console_wallet_identity_file = "/var/tari/config/weatherwax/tari_console_wallet_id.json"
-# -------------- Transport configuration --------------
+grpc_address = "/ip4/0.0.0.0/tcp/18142"
+track_reorgs = true
+
+[base_node.dibbler]
+db_type = "lmdb"
+flood_ban_max_msg_count = 100_000
+allow_test_addresses = false
+use_libtor = false
+base_node_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
+base_node_tor_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_tor.json"
+
+# -- These values are overridden by envars in the Tauri code for EVERY network
 transport = "tor"
-tor_control_address = "/dns4/tor/tcp/9051"
-# Overridden by the docker environment variables
 tor_control_auth = "password=tari"
-tor_onion_port = 18141
 tor_forward_address = "/dns4/base_node/tcp/18189"
-tor_socks_address_override="/dns4/tor/tcp/9050"
-base_node_tor_identity_file = "/var/tari/config/weatherwax/base_node_tor.json"
-console_wallet_tor_identity_file = "/var/tari/config/weatherwax/console_wallet_tor.json"
-# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
-# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false;
+tcp_listener_address = "/dns4/base_node/tcp/18189"
+tor_socks_address_override = "/dns4/tor/tcp/9050"
+tor_control_address = "/ip4/tor/tcp/9051"
+grpc_enabled = true
+grpc_base_node_address = "0.0.0.0:18142"
+
 
 [base_node.igor]
 db_type = "lmdb"
-#pruning_horizon = 0
-flood_ban_max_msg_count = 10000
-data_dir = "/blockchain/igor"
+flood_ban_max_msg_count = 100_000
 allow_test_addresses = false
-grpc_enabled = true
-grpc_base_node_address = "127.0.0.1:18142"
-grpc_console_wallet_address = "127.0.0.1:18143"
-base_node_identity_file = "/var/tari/config/igor/base_node_id.json"
-console_wallet_identity_file = "/var/tari/config/igor/console_wallet_id.json"
+use_libtor = false
+base_node_identity_file = "/var/tari/base_node/config/igor/base_node_id.json"
+base_node_tor_identity_file = "/var/tari/base_node/config/igor/tari_base_node_tor.json"
 
-# -------------- Transport configuration --------------
-transport = "tor"
-tor_control_address = "/dns4/tor/tcp/9051"
-tor_control_auth = "password=tari"
-tor_onion_port = 18141
-tor_forward_address = "/dns4/base_node/tcp/18189"
-tor_socks_address_override="/dns4/tor/tcp/9050"
-base_node_tor_identity_file = "/var/tari/config/igor/base_node_tor.json"
-console_wallet_tor_identity_file = "/var/tari/config/igor/console_wallet_tor.json"
-# auxilary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
-# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
-# tor_proxy_bypass_for_outbound_tcp = false;
 
-########################################################################################################################
-#                                             Mempool Configuration Options                                            #
-########################################################################################################################
-
-[mempool.weatherwax]
+[mempool.dibbler]
 
 [mempool.igor]
 
+[wallet]
+wallet_db_file = "wallet/wallet.dat"
+console_wallet_db_file = "wallet/console-wallet.dat"
+grpc_enabled = true
+grpc_address = "/ip4/0.0.0.0/tcp/18143"
+password = "tari"
 
+[wallet.dibbler]
+use_libtor = false
+tor_onion_port = 18141
+
+# Overidden in Tauri environment variables for ALL networks
+transport = "tor"
+tor_control_auth = "password=tari"
+tor_control_address = "/ip4/tor/tcp/9051"
+tor_socks_address_override = ""
+tor_forward_address = ""
+tcp_listener_address= ""
+
+[wallet.igor]
+use_libtor = false
+tor_onion_port = 18141
+
+[mining_node]
+num_mining_threads=1
+base_node_grpc_address = "/ip4/base_node/tcp/18142"
+wallet_grpc_address = "/ip4/wallet/tcp/18143"
+mine_on_tip_only = true
+
+[merge_mining_proxy.dibbler]
+monerod_url = [ # stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
+]
+proxy_host_address = "/ip4/mm_proxy/tcp/7878"
+
+[merge_mining_proxy]
+
+[stratum_transcoder]
+transcoder_host_address = "127.0.0.1:7879"
+
+[validator_node]
+committee = ["2ea0df3059caf4411624d6bf5b9c02238d607d2798c586b3e6c2a054da3f205a"] # cannot be of zero size
+phase_timeout = 30
+template_id = "EditableMetadata"

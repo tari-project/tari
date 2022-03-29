@@ -1,9 +1,9 @@
 [package]
 name = "tari_launchpad"
-version = "0.25.1"
+version = "0.30.1"
 description = "The Tari Launcher"
 authors = ["The Tari Development Community"]
-license = ""
+license = "BSD-3-Clause"
 repository = ""
 edition = "2018"
 build = "src/build.rs"
@@ -14,8 +14,8 @@ build = "src/build.rs"
 tauri-build = { version = "1.0.0-beta.4" }
 
 [dependencies]
-tari_app_utilities = { version = "^0.25", path = "../../tari_app_utilities" }
-tari_comms = { version = "^0.25", path = "../../../comms" }
+tari_app_utilities = { version = "^0.30", path = "../../tari_app_utilities" }
+tari_comms = { version = "^0.30", path = "../../../comms" }
 bollard = "0.11.0"
 config = "0.11.0"
 env_logger = "0.9.0"
@@ -30,6 +30,7 @@ tor-hash-passwd = "1.0.1"
 thiserror = "1.0.30"
 tokio = { version = "1.9", features= ["sync"] }
 futures = "0.3"
+derivative = "2.2.0"
 
 [features]
 default = [ "custom-protocol" ]

@@ -45,3 +45,12 @@ node_modules
 # ignore output files from windows ISS
 buildtools/Output/
 /applications/tari_collectibles/src-tauri/data
+
+# some folders called assets are kind of important now
+# any specific "assets" folders should be gitignored
+# closer to where they live
+#assets/
+
+# Ignore coverage profiling artifacts
+*.profraw
+/report/

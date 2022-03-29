@@ -40,14 +40,14 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
-    script::ScriptContext,
     tari_utilities::hex::Hex,
 };
+use tari_script::ScriptContext;
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
     tari_amount::MicroTari,
-    transaction::{
+    transaction_components::{
         KernelFeatures,
         KernelSum,
         OutputFlags,
@@ -339,7 +339,7 @@ impl AggregateBody {
     /// This function does NOT check that inputs come from the UTXO set
     /// The reward is the total amount of Tari rewarded for this block (block reward + total fees), this should be 0
     /// for a transaction
-    #[allow(clippy::too_many_arguments)]
+
     pub fn validate_internal_consistency(
         &self,
         tx_offset: &BlindingFactor,
@@ -496,6 +496,7 @@ impl AggregateBody {
         self.sorted
     }
 
+    /// Lists the number of inputs, outputs, and kernels in the block
     pub fn to_counts_string(&self) -> String {
         format!(
             "{} input(s), {} output(s), {} kernel(s)",

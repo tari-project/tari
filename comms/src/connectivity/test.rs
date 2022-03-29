@@ -40,9 +40,9 @@ use crate::{
     runtime,
     runtime::task,
     test_utils::{
+        build_peer_manager,
         mocks::{create_connection_manager_mock, create_peer_connection_mock_pair, ConnectionManagerMockState},
         node_identity::{build_many_node_identities, build_node_identity},
-        test_node::build_peer_manager,
     },
     NodeIdentity,
     PeerManager,

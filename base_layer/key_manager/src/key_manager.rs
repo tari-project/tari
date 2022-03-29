@@ -22,6 +22,7 @@
 
 use std::marker::PhantomData;
 
+use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
 use tari_crypto::{
@@ -31,17 +32,23 @@ use tari_crypto::{
 
 use crate::cipher_seed::CipherSeed;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct DerivedKey<K>
 where K: SecretKey
 {
+    #[derivative(Debug = "ignore")]
+    #[serde(skip_serializing)]
     pub k: K,
     pub key_index: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Derivative, PartialEq, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct KeyManager<K: SecretKey, D: Digest> {
+    #[derivative(Debug = "ignore")]
     seed: CipherSeed,
+    #[derivative(Debug = "ignore")]
     pub branch_seed: String,
     primary_key_index: u64,
     digest_type: PhantomData<D>,
@@ -77,7 +84,12 @@ where
 
     /// Derive a new private key from master key: derived_key=SHA256(master_key||branch_seed||index)
     pub fn derive_key(&self, key_index: u64) -> Result<DerivedKey<K>, ByteArrayError> {
-        let concatenated = format!("{}{}", self.seed.entropy().to_vec().to_hex(), key_index);
+        let concatenated = format!(
+            "{}{}{}",
+            self.seed.entropy().to_vec().to_hex(),
+            self.branch_seed,
+            key_index
+        );
         match K::from_bytes(D::digest(&concatenated.into_bytes()).as_slice()) {
             Ok(k) => Ok(DerivedKey { k, key_index }),
             Err(e) => Err(e),
@@ -165,5 +177,15 @@ mod test {
         assert_eq!(next_key2.k, derived_key2.k);
         assert_eq!(next_key1.key_index, desired_key_index1);
         assert_eq!(next_key2.key_index, desired_key_index2);
+    }
+
+    #[test]
+    fn test_use_of_branch_seed() {
+        let x = CipherSeed::new();
+        let mut km1 = KeyManager::<RistrettoSecretKey, Sha256>::from(x.clone(), "some".to_string(), 0);
+        let mut km2 = KeyManager::<RistrettoSecretKey, Sha256>::from(x, "other".to_string(), 0);
+        let next_key1 = km1.next_key().unwrap();
+        let next_key2 = km2.next_key().unwrap();
+        assert_ne!(next_key1.k, next_key2.k);
     }
 }

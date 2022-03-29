@@ -35,25 +35,28 @@ use tari_core::{
     transactions::{
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams},
-        transaction::{OutputFeatures, Transaction},
+        transaction_components::{OutputFeatures, Transaction},
         transaction_protocol::sender::TransactionSenderMessage,
         CryptoFactories,
         ReceiverTransactionProtocol,
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-    script::{ExecutionStack, TariScript},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
     test_utils::create_consensus_constants,
     transaction_service::storage::{
-        database::{TransactionBackend, TransactionDatabase},
-        models::{CompletedTransaction, InboundTransaction, OutboundTransaction, WalletTransaction},
+        database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
+        models::{
+            CompletedTransaction,
+            InboundTransaction,
+            OutboundTransaction,
+            TxCancellationReason,
+            WalletTransaction,
+        },
         sqlite_db::TransactionServiceSqliteDatabase,
     },
 };
@@ -169,7 +172,6 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         TransactionSenderMessage::Single(Box::new(stp.clone().build_single_round_message().unwrap())),
         PrivateKey::random(&mut OsRng),
         PrivateKey::random(&mut OsRng),
-        OutputFeatures::default(),
         &factories,
     );
 
@@ -267,12 +269,12 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
             },
             message: messages[i].clone(),
             timestamp: Utc::now().naive_utc(),
-            cancelled: false,
+            cancelled: None,
             direction: TransactionDirection::Outbound,
             coinbase_block_height: None,
             send_count: 0,
             last_send_timestamp: None,
-            valid: true,
+
             transaction_signature: tx.first_kernel_excess_sig().unwrap_or(&Signature::default()).clone(),
             confirmations: None,
             mined_height: None,
@@ -324,7 +326,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     assert!(runtime.block_on(db.fetch_last_mined_transaction()).unwrap().is_none());
 
     runtime
-        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, true, 10, [0u8; 16].to_vec(), 5, true))
+        .block_on(db.set_transaction_mined_height(completed_txs[0].tx_id, 10, [0u8; 16].to_vec(), 5, true, false))
         .unwrap();
 
     assert_eq!(
@@ -366,7 +368,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
         .block_on(db.get_cancelled_completed_transaction(cancelled_tx_id))
         .is_err());
     runtime
-        .block_on(db.reject_completed_transaction(cancelled_tx_id))
+        .block_on(db.reject_completed_transaction(cancelled_tx_id, TxCancellationReason::Unknown))
         .unwrap();
     let completed_txs_map = runtime.block_on(db.get_completed_transactions()).unwrap();
     assert_eq!(completed_txs_map.len(), num_completed_txs - 1);
@@ -582,4 +584,118 @@ pub fn test_transaction_service_sqlite_db_encrypted() {
     let cipher = Aes256Gcm::new(key);
 
     test_db_backend(TransactionServiceSqliteDatabase::new(connection, Some(cipher)));
+}
+
+#[tokio::test]
+async fn import_tx_and_read_it_from_db() {
+    let db_name = format!("{}.sqlite3", random::string(8));
+    let db_tempdir = tempdir().unwrap();
+    let db_folder = db_tempdir.path().to_str().unwrap().to_string();
+    let db_path = format!("{}/{}", db_folder, db_name);
+    let connection = run_migration_and_create_sqlite_connection(&db_path, 16).unwrap();
+
+    let key = GenericArray::from_slice(b"an example very very secret key.");
+    let cipher = Aes256Gcm::new(key);
+    let sqlite_db = TransactionServiceSqliteDatabase::new(connection, Some(cipher));
+
+    let transaction = CompletedTransaction::new(
+        TxId::from(1u64),
+        PublicKey::default(),
+        PublicKey::default(),
+        MicroTari::from(100000),
+        MicroTari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        TransactionStatus::Imported,
+        "message".to_string(),
+        Utc::now().naive_utc(),
+        TransactionDirection::Inbound,
+        Some(0),
+        Some(5),
+    );
+
+    sqlite_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            TxId::from(1u64),
+            Box::new(transaction),
+        )))
+        .unwrap();
+
+    let transaction = CompletedTransaction::new(
+        TxId::from(2u64),
+        PublicKey::default(),
+        PublicKey::default(),
+        MicroTari::from(100000),
+        MicroTari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        TransactionStatus::FauxUnconfirmed,
+        "message".to_string(),
+        Utc::now().naive_utc(),
+        TransactionDirection::Inbound,
+        Some(0),
+        Some(6),
+    );
+
+    sqlite_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            TxId::from(2u64),
+            Box::new(transaction),
+        )))
+        .unwrap();
+
+    let transaction = CompletedTransaction::new(
+        TxId::from(3u64),
+        PublicKey::default(),
+        PublicKey::default(),
+        MicroTari::from(100000),
+        MicroTari::from(0),
+        Transaction::new(
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            PrivateKey::random(&mut OsRng),
+            PrivateKey::random(&mut OsRng),
+        ),
+        TransactionStatus::FauxConfirmed,
+        "message".to_string(),
+        Utc::now().naive_utc(),
+        TransactionDirection::Inbound,
+        Some(0),
+        Some(7),
+    );
+
+    sqlite_db
+        .write(WriteOperation::Insert(DbKeyValuePair::CompletedTransaction(
+            TxId::from(3u64),
+            Box::new(transaction),
+        )))
+        .unwrap();
+
+    let db_tx = sqlite_db.fetch_imported_transactions().unwrap();
+    assert_eq!(db_tx.len(), 1);
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1));
+    assert_eq!(db_tx.first().unwrap().mined_height, Some(5));
+
+    let db_tx = sqlite_db.fetch_unconfirmed_faux_transactions().unwrap();
+    assert_eq!(db_tx.len(), 1);
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(2));
+    assert_eq!(db_tx.first().unwrap().mined_height, Some(6));
+
+    let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(10).unwrap();
+    assert_eq!(db_tx.len(), 0);
+    let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(4).unwrap();
+    assert_eq!(db_tx.len(), 1);
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3));
+    assert_eq!(db_tx.first().unwrap().mined_height, Some(7));
 }

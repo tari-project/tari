@@ -182,6 +182,26 @@ impl From<prost::DecodeError> for RpcStatus {
     }
 }
 
+pub trait RpcStatusResultExt<T> {
+    fn rpc_status_internal_error(self, target: &str) -> Result<T, RpcStatus>;
+    fn rpc_status_not_found<S: ToString>(self, message: S) -> Result<T, RpcStatus>;
+    fn rpc_status_bad_request<S: ToString>(self, message: S) -> Result<T, RpcStatus>;
+}
+
+impl<T, E: std::error::Error> RpcStatusResultExt<T> for Result<T, E> {
+    fn rpc_status_internal_error(self, target: &str) -> Result<T, RpcStatus> {
+        self.map_err(RpcStatus::log_internal_error(target))
+    }
+
+    fn rpc_status_not_found<S: ToString>(self, message: S) -> Result<T, RpcStatus> {
+        self.map_err(|_| RpcStatus::not_found(message))
+    }
+
+    fn rpc_status_bad_request<S: ToString>(self, message: S) -> Result<T, RpcStatus> {
+        self.map_err(|_| RpcStatus::bad_request(message))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RpcStatusCode {
     /// Request succeeded

@@ -21,21 +21,26 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_common::exit_codes::ExitCodes;
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
 use tari_core::transactions::{
-    transaction::TransactionError,
+    transaction_components::TransactionError,
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
 
-use crate::{base_node_service::error::BaseNodeServiceError, error::WalletStorageError};
+use crate::{
+    base_node_service::error::BaseNodeServiceError,
+    error::WalletStorageError,
+    key_manager_service::KeyManagerServiceError,
+};
 
 #[derive(Debug, Error)]
 pub enum OutputManagerError {
@@ -120,6 +125,8 @@ pub enum OutputManagerError {
     },
     #[error("Invalid message received:{0}")]
     InvalidMessageError(String),
+    #[error("Key manager service error : {0}")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
 #[derive(Debug, Error)]
@@ -170,14 +177,14 @@ pub enum OutputManagerStorageError {
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(#[from] HexError),
-    #[error("Key Manager Error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    #[error("Key Manager Service Error: `{0}`")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
-impl From<OutputManagerError> for ExitCodes {
+impl From<OutputManagerError> for ExitError {
     fn from(err: OutputManagerError) -> Self {
         log::error!(target: crate::error::LOG_TARGET, "{}", err);
-        Self::WalletError(err.to_string())
+        Self::new(ExitCode::WalletError, err)
     }
 }
 

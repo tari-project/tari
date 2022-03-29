@@ -207,7 +207,7 @@ Given(
     // mechanism: DirectOnly, StoreAndForwardOnly, DirectAndStoreAndForward
     const promises = [];
     for (let i = 0; i < n; i++) {
-      let name = "Wallet_" + String(n).padStart(2, "0");
+      let name = "Wallet_" + String(i).padStart(2, "0");
       promises.push(
         this.createAndAddWallet(name, [this.seedAddresses()], {
           routingMechanism: mechanism,
@@ -249,6 +249,42 @@ Given(
 );
 
 Given(
+  /I recover all wallets connected to all seed nodes/,
+  { timeout: 120 * 1000 },
+  async function () {
+    for (let walletName in this.wallets) {
+      let wallet = this.getWallet(walletName);
+      const seedWords = wallet.getSeedWords();
+      let recoveredWalletName = "recovered_" + wallet.name;
+      console.log(
+        "Recover " +
+          wallet.name +
+          " into " +
+          recoveredWalletName +
+          ", seed words:\n  " +
+          seedWords
+      );
+      const walletB = new WalletProcess(
+        recoveredWalletName,
+        false,
+        {},
+        this.logFilePathWallet,
+        seedWords
+      );
+
+      walletB.setPeerSeeds([this.seedAddresses()]);
+      await walletB.startNew();
+      this.addWallet(recoveredWalletName, walletB);
+      let walletClient = await this.getWallet(
+        recoveredWalletName
+      ).connectClient();
+      let walletInfo = await walletClient.identify();
+      this.addWalletPubkey(recoveredWalletName, walletInfo.public_key);
+    }
+  }
+);
+
+Given(
   /I recover wallet (.*) into (\d+) wallets connected to all seed nodes/,
   { timeout: 30 * 1000 },
   async function (walletNameA, numwallets) {
@@ -281,28 +317,34 @@ Given(
 );
 
 Then(
-  /I wait for (\d+) wallets to have at least (\d+) uT/,
+  /I wait for recovered wallets to have at least (\d+) uT/,
   { timeout: 60 * 1000 },
-  async function (numwallets, amount) {
-    for (let i = 1; i <= numwallets; i++) {
-      const walletClient = await this.getWallet(i.toString()).connectClient();
-      console.log("\n");
-      console.log(
-        "Waiting for wallet " + i + " balance to be at least " + amount + " uT"
-      );
+  async function (amount) {
+    for (let walletName in this.wallets) {
+      if (walletName.split("_")[0] == "recovered") {
+        const walletClient = await this.getWallet(walletName).connectClient();
+        console.log("\n");
+        console.log(
+          "Waiting for wallet " +
+            walletName +
+            " balance to be at least " +
+            amount +
+            " uT"
+        );
 
-      await waitFor(
-        async () => walletClient.isBalanceAtLeast(amount),
-        true,
-        20 * 1000,
-        5 * 1000,
-        5
-      );
-      consoleLogBalance(await walletClient.getBalance());
-      if (!(await walletClient.isBalanceAtLeast(amount))) {
-        console.log("Balance not adequate!");
+        await waitFor(
+          async () => walletClient.isBalanceAtLeast(amount),
+          true,
+          20 * 1000,
+          5 * 1000,
+          5
+        );
+        consoleLogBalance(await walletClient.getBalance());
+        if (!(await walletClient.isBalanceAtLeast(amount))) {
+          console.log("Balance not adequate!");
+        }
+        expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
       }
-      expect(await walletClient.isBalanceAtLeast(amount)).to.equal(true);
     }
   }
 );
@@ -324,6 +366,13 @@ Then(
 When(/I stop wallet ([^\s]+)/, async function (walletName) {
   let wallet = this.getWallet(walletName);
   await wallet.stop();
+});
+
+When(/I stop all wallets/, async function () {
+  for (let walletName in this.wallets) {
+    let wallet = this.getWallet(walletName);
+    await wallet.stop();
+  }
 });
 
 When(/I start wallet (.*)/, async function (walletName) {
@@ -1944,7 +1993,7 @@ Then(
 );
 
 Then(
-  /wallet (.*) has at least (.*) transactions that are all (.*) and valid/,
+  /wallet (.*) has at least (.*) transactions that are all (.*) and not cancelled/,
   { timeout: 610 * 1000 },
   async function (walletName, numberOfTransactions, transactionStatus) {
     const walletClient = await this.getWallet(walletName).connectClient();
@@ -1954,7 +2003,7 @@ Then(
         numberOfTransactions +
         " transactions to be " +
         transactionStatus +
-        " and valid..."
+        " and not cancelled..."
     );
     var transactions;
     var numberCorrect;
@@ -1977,7 +2026,7 @@ Then(
         for (let i = 0; i < transactions.length; i++) {
           if (
             transactions[i]["status"] !== transactionStatus ||
-            !transactions[i]["valid"]
+            transactions[i]["is_cancelled"]
           ) {
             console.log(
               "Transaction " +
@@ -1985,8 +2034,10 @@ Then(
                 1 +
                 " has " +
                 transactions[i]["status"] +
-                " and is valid(" +
-                transactions[i]["valid"] +
+                " (need " +
+                transactionStatus +
+                ") and is not cancelled(" +
+                transactions[i]["is_cancelled"] +
                 ")"
             );
             statusCorrect = false;
@@ -2009,7 +2060,7 @@ Then(
 );
 
 Then(
-  /all (.*) transactions for wallet (.*) and wallet (.*) have consistent but opposing validity/,
+  /all (.*) transactions for wallet (.*) and wallet (.*) have consistent but opposing cancellation status/,
   async function (transaction_type, walletNameA, walletNameB) {
     let walletClientA = await this.getWallet(walletNameA).connectClient();
     let walletClientB = await this.getWallet(walletNameB).connectClient();
@@ -2028,31 +2079,31 @@ Then(
     if (transactionsA === undefined || transactionsB === undefined) {
       expect("\nNo `" + type + "` transactions found!").to.equal("");
     }
-    let validA = transactionsA[0]["valid"];
+    let cancelledA = transactionsA[0]["is_cancelled"];
     for (let i = 0; i < transactionsA.length; i++) {
-      if (validA !== transactionsA[i]["valid"]) {
+      if (cancelledA !== transactionsA[i]["is_cancelled"]) {
         expect(
           "\n" +
             walletNameA +
             "'s `" +
             type +
-            "` transactions do not have a consistent validity status"
+            "` transactions do not have a consistent cancellation status"
         ).to.equal("");
       }
     }
-    let validB = transactionsB[0]["valid"];
+    let cancelledB = transactionsB[0]["is_cancelled"];
     for (let i = 0; i < transactionsB.length; i++) {
-      if (validB !== transactionsB[i]["valid"]) {
+      if (cancelledB !== transactionsB[i]["is_cancelled"]) {
         expect(
           "\n" +
             walletNameB +
             "'s `" +
             type +
-            "` transactions do not have a consistent validity status"
+            "` transactions do not have a consistent cancellation status"
         ).to.equal("");
       }
     }
-    expect(validA).to.equal(!validB);
+    expect(cancelledA).to.equal(!cancelledB);
   }
 );
 
@@ -2073,7 +2124,7 @@ Then(
       expect("\nNo `" + type + "` transactions found!").to.equal("");
     }
     for (let i = 0; i < transactions.length; i++) {
-      expect(transactions[i]["valid"]).to.equal(true);
+      expect(transactions[i]["is_cancelled"]).to.equal(false);
     }
   }
 );

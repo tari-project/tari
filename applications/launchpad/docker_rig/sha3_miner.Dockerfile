@@ -12,6 +12,7 @@ ADD common common
 ADD common_sqlite common_sqlite
 ADD comms comms
 ADD infrastructure infrastructure
+ADD dan_layer dan_layer
 ADD meta meta
 ADD Cargo.lock .
 ADD rust-toolchain.toml .

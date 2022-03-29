@@ -45,10 +45,11 @@ pub struct WalletConfig {
     pub base_node_service_config: BaseNodeServiceConfig,
     pub updater_config: Option<AutoUpdateConfig>,
     pub autoupdate_check_interval: Option<Duration>,
+    pub contacts_auto_ping_interval: Duration,
+    pub contacts_online_ping_window: usize,
 }
 
 impl WalletConfig {
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         comms_config: P2pConfig,
         factories: CryptoFactories,
@@ -60,6 +61,8 @@ impl WalletConfig {
         rate_limit: Option<usize>,
         updater_config: Option<AutoUpdateConfig>,
         autoupdate_check_interval: Option<Duration>,
+        contacts_auto_ping_interval: Option<Duration>,
+        contacts_online_ping_window: Option<usize>,
     ) -> Self {
         Self {
             comms_config,
@@ -72,6 +75,8 @@ impl WalletConfig {
             base_node_service_config: base_node_service_config.unwrap_or_default(),
             updater_config,
             autoupdate_check_interval,
+            contacts_auto_ping_interval: contacts_auto_ping_interval.unwrap_or_else(|| Duration::from_secs(20)),
+            contacts_online_ping_window: contacts_online_ping_window.unwrap_or(2),
         }
     }
 }

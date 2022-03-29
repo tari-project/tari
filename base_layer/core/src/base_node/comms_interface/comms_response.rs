@@ -34,7 +34,7 @@ use crate::{
     blocks::{Block, BlockHeader, ChainHeader, HistoricalBlock, NewBlockTemplate},
     chain_storage::UtxoMinedInfo,
     proof_of_work::Difficulty,
-    transactions::transaction::{Transaction, TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{Transaction, TransactionKernel, TransactionOutput},
 };
 
 /// API Response enum

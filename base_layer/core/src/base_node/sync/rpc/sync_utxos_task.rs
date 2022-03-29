@@ -23,11 +23,16 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_comms::{protocol::rpc::RpcStatus, utils};
+use tari_comms::{
+    peer_manager::NodeId,
+    protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
+    utils,
+};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::mpsc, task};
 
 use crate::{
+    base_node::metrics,
     blocks::BlockHeader,
     chain_storage::{async_db::AsyncBlockchainDb, BlockchainBackend},
     proto,
@@ -38,23 +43,25 @@ const LOG_TARGET: &str = "c::base_node::sync_rpc::sync_utxo_task";
 
 pub(crate) struct SyncUtxosTask<B> {
     db: AsyncBlockchainDb<B>,
+    peer_node_id: Arc<NodeId>,
 }
 
 impl<B> SyncUtxosTask<B>
 where B: BlockchainBackend + 'static
 {
-    pub(crate) fn new(db: AsyncBlockchainDb<B>) -> Self {
-        Self { db }
+    pub(crate) fn new(db: AsyncBlockchainDb<B>, peer_node_id: Arc<NodeId>) -> Self {
+        Self { db, peer_node_id }
     }
 
     pub(crate) async fn run(
         self,
-        request: SyncUtxosRequest,
+        request: Request<SyncUtxosRequest>,
         mut tx: mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
     ) -> Result<(), RpcStatus> {
+        let msg = request.into_message();
         let start_header = self
             .db
-            .fetch_header_containing_utxo_mmr(request.start + 1)
+            .fetch_header_containing_utxo_mmr(msg.start)
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "{}", err);
@@ -67,9 +74,9 @@ where B: BlockchainBackend + 'static
 
         let end_header = self
             .db
-            .fetch_header_by_block_hash(request.end_header_hash.clone())
+            .fetch_header_by_block_hash(msg.end_header_hash.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
 
         if start_header.height() > end_header.height {
@@ -81,24 +88,28 @@ where B: BlockchainBackend + 'static
         }
 
         let (skip_outputs, prev_utxo_mmr_size) = if start_header.height() == 0 {
-            (request.start, 0)
+            (msg.start, 0)
         } else {
             let prev_header = self
                 .db
                 .fetch_header_by_block_hash(start_header.header().prev_hash.clone())
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| RpcStatus::not_found("Previous start header hash is was not found"))?;
 
-            let skip = request.start.checked_sub(prev_header.output_mmr_size)
+            let skip = msg.start.checked_sub(prev_header.output_mmr_size)
                 // This is a data inconsistency because fetch_header_containing_utxo_mmr returned the header we are basing this on
-                .ok_or_else(|| RpcStatus::general(format!("Data inconsistency: output mmr size of header at {} was more than the start index {}", prev_header.height, request.start)))?;
+                .ok_or_else(|| RpcStatus::general(format!("Data inconsistency: output mmr size of header at {} was more than the start index {}", prev_header.height, msg.start)))?;
             (skip, prev_header.output_mmr_size)
         };
 
-        let include_pruned_utxos = request.include_pruned_utxos;
-        let include_deleted_bitmaps = request.include_deleted_bitmaps;
+        let include_pruned_utxos = msg.include_pruned_utxos;
+        let include_deleted_bitmaps = msg.include_deleted_bitmaps;
         task::spawn(async move {
+            debug!(
+                target: LOG_TARGET,
+                "Starting UTXO stream for peer '{}'", self.peer_node_id
+            );
             if let Err(err) = self
                 .start_streaming(
                     &mut tx,
@@ -111,14 +122,22 @@ where B: BlockchainBackend + 'static
                 )
                 .await
             {
+                debug!(
+                    target: LOG_TARGET,
+                    "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
+                );
                 let _ = tx.send(Err(err)).await;
             }
+            debug!(
+                target: LOG_TARGET,
+                "UTXO stream completed for peer '{}'", self.peer_node_id
+            );
+            metrics::active_sync_peers().dec();
         });
 
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn start_streaming(
         &self,
         tx: &mut mpsc::Sender<Result<SyncUtxosResponse, RpcStatus>>,
@@ -169,7 +188,10 @@ where B: BlockchainBackend + 'static
             let end = current_header.output_mmr_size;
 
             if tx.is_closed() {
-                debug!(target: LOG_TARGET, "Exiting sync_utxos early because client has gone",);
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' exited UTXO sync session early", self.peer_node_id
+                );
                 break;
             }
 
@@ -177,7 +199,7 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_utxos_in_block(current_header.hash(), Some(bitmap.clone()))
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                .rpc_status_internal_error(LOG_TARGET)?;
             debug!(
                 target: LOG_TARGET,
                 "Streaming UTXO(s) {}-{} ({}) for block #{}. Deleted diff len = {}",
@@ -187,6 +209,14 @@ where B: BlockchainBackend + 'static
                 current_header.height,
                 deleted_diff.cardinality(),
             );
+            if tx.is_closed() {
+                debug!(
+                    target: LOG_TARGET,
+                    "Peer '{}' exited UTXO sync session early", self.peer_node_id
+                );
+                break;
+            }
+
             let utxos = utxos
                 .into_iter()
                 .skip(skip_outputs as usize)
@@ -245,7 +275,7 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_header(current_header.height + 1)
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
                     RpcStatus::general(format!(
                         "Potential data consistency issue: header {} not found",

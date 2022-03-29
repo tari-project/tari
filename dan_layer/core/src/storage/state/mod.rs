@@ -20,10 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 mod state_db_unit_of_work;
-pub use state_db_unit_of_work::{StateDbUnitOfWork, StateDbUnitOfWorkImpl};
+pub use state_db_unit_of_work::{StateDbUnitOfWork, StateDbUnitOfWorkImpl, StateDbUnitOfWorkReader, UnitOfWorkContext};
+
 mod db_key_value;
 pub use db_key_value::DbKeyValue;
+
 mod state_db;
 pub use state_db::StateDb;
+
 mod state_db_backend_adapter;
 pub use state_db_backend_adapter::StateDbBackendAdapter;
+
+mod state_op_log;
+pub use state_op_log::{DbStateOpLogEntry, DbStateOperation};

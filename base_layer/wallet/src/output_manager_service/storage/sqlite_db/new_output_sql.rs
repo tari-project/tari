@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use aes_gcm::Aes256Gcm;
+use derivative::Derivative;
 use diesel::{prelude::*, SqliteConnection};
 use tari_common_types::transaction::TxId;
 use tari_crypto::tari_utilities::ByteArray;
@@ -35,18 +36,22 @@ use crate::{
 
 /// This struct represents an Output in the Sql database. A distinct struct is required to define the Sql friendly
 /// equivalent datatypes for the members.
-#[derive(Clone, Debug, Insertable, PartialEq)]
+#[derive(Clone, Derivative, Insertable, PartialEq)]
+#[derivative(Debug)]
 #[table_name = "outputs"]
 pub struct NewOutputSql {
     pub commitment: Option<Vec<u8>>,
+    #[derivative(Debug = "ignore")]
     pub spending_key: Vec<u8>,
     pub value: i64,
     pub flags: i32,
     pub maturity: i64,
+    pub recovery_byte: i32,
     pub status: i32,
     pub hash: Option<Vec<u8>>,
     pub script: Vec<u8>,
     pub input_data: Vec<u8>,
+    #[derivative(Debug = "ignore")]
     pub script_private_key: Vec<u8>,
     pub metadata: Option<Vec<u8>>,
     pub features_parent_public_key: Option<Vec<u8>>,
@@ -58,6 +63,7 @@ pub struct NewOutputSql {
     pub received_in_tx_id: Option<i64>,
     pub coinbase_block_height: Option<i64>,
     pub features_json: String,
+    pub covenant: Vec<u8>,
 }
 
 impl NewOutputSql {
@@ -73,6 +79,7 @@ impl NewOutputSql {
             value: (u64::from(output.unblinded_output.value)) as i64,
             flags: output.unblinded_output.features.flags.bits() as i32,
             maturity: output.unblinded_output.features.maturity as i64,
+            recovery_byte: output.unblinded_output.features.recovery_byte as i32,
             status: status as i32,
             received_in_tx_id: received_in_tx_id.map(|i| i.as_u64() as i64),
             hash: Some(output.hash),
@@ -97,6 +104,7 @@ impl NewOutputSql {
                     reason: format!("Could not parse features from JSON:{}", s),
                 }
             })?,
+            covenant: output.unblinded_output.covenant.to_bytes(),
         })
     }
 
@@ -129,6 +137,7 @@ impl From<OutputSql> for NewOutputSql {
             value: o.value,
             flags: o.flags,
             maturity: o.maturity,
+            recovery_byte: o.recovery_byte,
             status: o.status,
             hash: o.hash,
             script: o.script,
@@ -144,6 +153,7 @@ impl From<OutputSql> for NewOutputSql {
             received_in_tx_id: o.received_in_tx_id,
             coinbase_block_height: o.coinbase_block_height,
             features_json: o.features_json,
+            covenant: o.covenant,
         }
     }
 }

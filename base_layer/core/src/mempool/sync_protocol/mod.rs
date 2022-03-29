@@ -98,9 +98,9 @@ use tokio::{
 };
 
 use crate::{
-    mempool::{proto, Mempool, MempoolServiceConfig},
+    mempool::{metrics, proto, Mempool, MempoolServiceConfig},
     proto as shared_proto,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 #[cfg(test)]
@@ -306,7 +306,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             self.peer_node_id.short_str()
         );
 
-        let transactions = self.mempool.snapshot().await;
+        let transactions = self.mempool.snapshot().await?;
         let items = transactions
             .iter()
             .take(self.config.initial_sync_max_transactions)
@@ -392,7 +392,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             inventory.items.len()
         );
 
-        let transactions = self.mempool.snapshot().await;
+        let transactions = self.mempool.snapshot().await?;
 
         let mut duplicate_inventory_items = Vec::new();
         let (transactions, _) = transactions.into_iter().partition::<Vec<_>, _>(|transaction| {
@@ -483,6 +483,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             }
         }
 
+        let stats = self.mempool.stats().await?;
+        metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
+        metrics::reorg_pool_size().set(stats.reorg_txs as i64);
+
         Ok(())
     }
 
@@ -505,14 +509,15 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
             excess_sig_hex,
             self.peer_node_id.short_str()
         );
-
-        let store_state = self.mempool.has_transaction(&txn).await?;
+        let txn = Arc::new(txn);
+        let store_state = self.mempool.has_transaction(txn.clone()).await?;
         if store_state.is_stored() {
             return Ok(());
         }
 
-        let stored_result = self.mempool.insert(Arc::new(txn)).await?;
+        let stored_result = self.mempool.insert(txn).await?;
         if stored_result.is_stored() {
+            metrics::inbound_transactions(Some(&self.peer_node_id)).inc();
             debug!(
                 target: LOG_TARGET,
                 "Inserted transaction `{}` from peer `{}`",
@@ -520,9 +525,10 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin
                 self.peer_node_id.short_str()
             );
         } else {
+            metrics::rejected_inbound_transactions(Some(&self.peer_node_id)).inc();
             debug!(
                 target: LOG_TARGET,
-                "Did not store new transaction `{}` in mempool", excess_sig_hex,
+                "Did not store new transaction `{}` in mempool: {}", excess_sig_hex, stored_result
             )
         }
 

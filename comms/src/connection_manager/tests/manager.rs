@@ -46,9 +46,10 @@ use crate::{
     runtime,
     runtime::task,
     test_utils::{
+        build_peer_manager,
         count_string_occurrences,
         node_identity::{build_node_identity, ordered_node_identities},
-        test_node::{build_connection_manager, build_peer_manager, TestNodeConfig},
+        test_node::{build_connection_manager, TestNodeConfig},
     },
     transports::{MemoryTransport, TcpTransport},
 };
@@ -219,7 +220,7 @@ async fn dial_success_aux_tcp_listener() {
                 node_identity: node_identity1.clone(),
                 ..Default::default()
             };
-            config.connection_manager_config.auxilary_tcp_listener_address =
+            config.connection_manager_config.auxiliary_tcp_listener_address =
                 Some("/ip4/127.0.0.1/tcp/0".parse().unwrap());
             config.connection_manager_config.network_info.user_agent = "node1".to_string();
             config
@@ -237,7 +238,7 @@ async fn dial_success_aux_tcp_listener() {
         .wait_until_listening()
         .await
         .unwrap()
-        .auxilary_bind_address()
+        .auxiliary_bind_address()
         .unwrap()
         .clone();
 

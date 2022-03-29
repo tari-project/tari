@@ -1,0 +1,121 @@
+// Copyright 2021. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+syntax = "proto3";
+
+package tari.dan.validator_node;
+
+import "common.proto";
+
+service ValidatorNode {
+  rpc GetTokenData(GetTokenDataRequest) returns (GetTokenDataResponse);
+  rpc InvokeReadMethod(InvokeReadMethodRequest) returns (InvokeReadMethodResponse);
+  rpc InvokeMethod(InvokeMethodRequest) returns (InvokeMethodResponse);
+}
+
+message GetTokenDataRequest {
+  bytes asset_pub_key = 1;
+  bytes unique_id = 2;
+}
+
+message GetTokenDataResponse {}
+
+enum Status {
+  Accepted = 0;
+  Errored = 1;
+}
+
+
+message InvokeReadMethodRequest{
+  bytes asset_public_key = 1;
+  uint32 template_id = 2;
+  string method = 3;
+  bytes args = 4;
+}
+
+message InvokeReadMethodResponse {
+  bytes result = 1;
+}
+
+
+message InvokeMethodRequest{
+  bytes asset_public_key = 1;
+  uint32 template_id = 2;
+  string method = 3;
+  bytes args = 4;
+}
+
+message InvokeMethodResponse {
+  bytes result = 1;
+  Status status = 2;
+}
+
+message GetSidechainBlocksRequest {
+  bytes asset_public_key = 1;
+  bytes start_hash = 2;
+  bytes end_hash = 3;
+}
+
+message GetSidechainBlocksResponse {
+  tari.dan.common.SideChainBlock block = 1;
+}
+
+message GetSidechainStateRequest {
+  bytes asset_public_key = 1;
+}
+
+message GetSidechainStateResponse {
+  oneof state {
+    string schema  = 1;
+    KeyValue key_value = 2;
+  }
+}
+
+message KeyValue {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message GetStateOpLogsRequest {
+  bytes asset_public_key = 1;
+  uint64 height = 2;
+}
+
+message GetStateOpLogsResponse {
+  repeated StateOpLog op_logs = 1;
+}
+
+message StateOpLog {
+  uint64 height = 1;
+  string operation = 2;
+  string schema = 3;
+  bytes key = 4;
+  bytes value = 5;
+  bytes merkle_root = 6;
+}
+
+message GetTipNodeRequest{
+  bytes asset_public_key = 1;
+}
+
+message GetTipNodeResponse {
+  tari.dan.common.Node tip_node = 1;
+}

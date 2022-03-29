@@ -24,11 +24,12 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use log::*;
+use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::output_manager_service::{
     error::OutputManagerError,
-    handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
+    handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
     storage::models::DbUnblindedOutput,
 };
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
@@ -103,7 +104,10 @@ impl OutputManagerServiceMock {
                     .into_iter()
                     .filter_map(|dbuo| {
                         if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
-                            Some(dbuo.unblinded_output)
+                            Some(RecoveredOutput {
+                                output: dbuo.unblinded_output,
+                                tx_id: TxId::new_random(),
+                            })
                         } else {
                             None
                         }
@@ -117,13 +121,24 @@ impl OutputManagerServiceMock {
                         e
                     });
             },
-            OutputManagerRequest::ScanOutputs(_to) => {
+            OutputManagerRequest::ScanOutputs(requested_outputs) => {
                 let lock = acquire_lock!(self.state.one_sided_payments);
-                let outputs = (*lock).clone();
+                let outputs = (*lock)
+                    .clone()
+                    .into_iter()
+                    .filter_map(|dbuo| {
+                        if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
+                            Some(RecoveredOutput {
+                                output: dbuo.unblinded_output,
+                                tx_id: TxId::new_random(),
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
                 let _ = reply_tx
-                    .send(Ok(OutputManagerResponse::ScanOutputs(
-                        outputs.into_iter().map(|dbuo| dbuo.unblinded_output).collect(),
-                    )))
+                    .send(Ok(OutputManagerResponse::ScanOutputs(outputs)))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e
@@ -153,7 +168,7 @@ impl OutputManagerMockState {
         *lock = outputs;
     }
 
-    pub fn _set_one_sided_payments(&self, outputs: Vec<DbUnblindedOutput>) {
+    pub fn set_one_sided_payments(&self, outputs: Vec<DbUnblindedOutput>) {
         let mut lock = acquire_lock!(self.one_sided_payments);
         *lock = outputs;
     }

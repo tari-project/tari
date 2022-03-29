@@ -35,10 +35,9 @@ use tari_common_types::{
 };
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFlags, TransactionOutput},
+    transaction_components::{OutputFlags, TransactionOutput},
 };
 use tari_crypto::tari_utilities::hex::Hex;
-use tari_key_manager::cipher_seed::CipherSeed;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -51,14 +50,6 @@ use crate::output_manager_service::{
 
 const LOG_TARGET: &str = "wallet::output_manager_service::database";
 
-/// Holds the state of the KeyManager being used by the Output Manager Service
-#[derive(Clone, Debug, PartialEq)]
-pub struct KeyManagerState {
-    pub seed: CipherSeed,
-    pub branch_seed: String,
-    pub primary_key_index: u64,
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum DbKey {
     SpentOutput(BlindingFactor),
@@ -68,7 +59,6 @@ pub enum DbKey {
     TimeLockedUnspentOutputs(u64),
     UnspentOutputs,
     SpentOutputs,
-    KeyManagerState,
     InvalidOutputs,
     KnownOneSidedPaymentScripts,
     OutputsByTxIdAndStatus(TxId, OutputStatus),
@@ -81,7 +71,6 @@ pub enum DbValue {
     UnspentOutputs(Vec<DbUnblindedOutput>),
     SpentOutputs(Vec<DbUnblindedOutput>),
     InvalidOutputs(Vec<DbUnblindedOutput>),
-    KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(Vec<KnownOneSidedPaymentScript>),
     AnyOutput(Box<DbUnblindedOutput>),
     AnyOutputs(Vec<DbUnblindedOutput>),
@@ -91,7 +80,6 @@ pub enum DbKeyValuePair {
     UnspentOutput(Commitment, Box<DbUnblindedOutput>),
     UnspentOutputWithTxId(Commitment, (TxId, Box<DbUnblindedOutput>)),
     OutputToBeReceived(Commitment, (TxId, Box<DbUnblindedOutput>, Option<u64>)),
-    KeyManagerState(KeyManagerState),
     KnownOneSidedPaymentScripts(KnownOneSidedPaymentScript),
 }
 
@@ -112,46 +100,6 @@ where T: OutputManagerBackend + 'static
 {
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
-    }
-
-    pub async fn get_key_manager_state(&self) -> Result<Option<KeyManagerState>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || match db_clone.fetch(&DbKey::KeyManagerState) {
-            Ok(None) => Ok(None),
-            Ok(Some(DbValue::KeyManagerState(c))) => Ok(Some(c)),
-            Ok(Some(other)) => unexpected_result(DbKey::KeyManagerState, other),
-            Err(e) => log_error(DbKey::KeyManagerState, e),
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))
-        .and_then(|inner_result| inner_result)
-    }
-
-    pub async fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || {
-            db_clone.write(WriteOperation::Insert(DbKeyValuePair::KeyManagerState(state)))
-        })
-        .await
-        .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-
-        Ok(())
-    }
-
-    pub async fn increment_key_index(&self) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.increment_key_index())
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
-    }
-
-    pub async fn set_key_index(&self, index: u64) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        tokio::task::spawn_blocking(move || db_clone.set_key_index(index))
-            .await
-            .map_err(|err| OutputManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
-        Ok(())
     }
 
     pub async fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
@@ -605,7 +553,6 @@ impl Display for DbKey {
             DbKey::UnspentOutputHash(_) => f.write_str(&"Unspent Output Hash Key".to_string()),
             DbKey::UnspentOutputs => f.write_str(&"Unspent Outputs Key".to_string()),
             DbKey::SpentOutputs => f.write_str(&"Spent Outputs Key".to_string()),
-            DbKey::KeyManagerState => f.write_str(&"Key Manager State".to_string()),
             DbKey::InvalidOutputs => f.write_str("Invalid Outputs Key"),
             DbKey::TimeLockedUnspentOutputs(_t) => f.write_str("Timelocked Outputs"),
             DbKey::KnownOneSidedPaymentScripts => f.write_str("Known claiming scripts"),
@@ -622,7 +569,6 @@ impl Display for DbValue {
             DbValue::UnspentOutput(_) => f.write_str("Unspent Output"),
             DbValue::UnspentOutputs(_) => f.write_str("Unspent Outputs"),
             DbValue::SpentOutputs(_) => f.write_str("Spent Outputs"),
-            DbValue::KeyManagerState(_) => f.write_str("Key Manager State"),
             DbValue::InvalidOutputs(_) => f.write_str("Invalid Outputs"),
             DbValue::KnownOneSidedPaymentScripts(_) => f.write_str("Known claiming scripts"),
             DbValue::AnyOutput(_) => f.write_str("Any Output"),

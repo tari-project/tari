@@ -43,9 +43,9 @@ impl ChainStorageService<TariDanPayload> for SqliteStorageService {
     ) -> Result<(), StorageError> {
         let mut db = db;
         for instruction in node.payload().instructions() {
-            db.add_instruction(node.hash().clone(), instruction.clone())?;
+            db.add_instruction(*node.hash(), instruction.clone())?;
         }
-        db.add_node(node.hash().clone(), node.parent().clone(), node.height())?;
+        db.add_node(*node.hash(), *node.parent(), node.height())?;
         Ok(())
     }
 }

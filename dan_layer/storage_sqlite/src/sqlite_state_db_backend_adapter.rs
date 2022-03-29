@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryInto;
+
 use bytecodec::{
     bincode_codec::{BincodeDecoder, BincodeEncoder},
     DecodeExt,
@@ -31,12 +33,13 @@ use patricia_tree::{
     node::{Node, NodeDecoder, NodeEncoder},
     PatriciaMap,
 };
-use tari_dan_core::storage::state::{DbKeyValue, StateDbBackendAdapter};
+use tari_dan_core::storage::state::{DbKeyValue, DbStateOpLogEntry, StateDbBackendAdapter};
 
 use crate::{
     error::SqliteStorageError,
     models::{
         state_key::StateKey,
+        state_op_log::{NewStateOpLogEntry, StateOpLogEntry},
         state_tree::{NewStateTree, StateTree},
     },
     schema::*,
@@ -256,5 +259,58 @@ impl StateDbBackendAdapter for SqliteStateDbBackendAdapter {
             .into_iter()
             .map(|(schema, key, value)| DbKeyValue { schema, key, value })
             .collect())
+    }
+
+    fn get_state_op_logs_by_height(
+        &self,
+        height: u64,
+        tx: &Self::BackendTransaction,
+    ) -> Result<Vec<DbStateOpLogEntry>, Self::Error> {
+        use crate::schema::state_op_log::dsl;
+        let op_logs = dsl::state_op_log
+            .filter(dsl::height.eq(height as i64))
+            .order_by(dsl::key.asc())
+            .load::<StateOpLogEntry>(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "get_all_values_for_schema".to_string(),
+            })?;
+
+        op_logs.into_iter().map(TryInto::try_into).collect()
+    }
+
+    fn add_state_oplog_entry(
+        &self,
+        entry: DbStateOpLogEntry,
+        tx: &Self::BackendTransaction,
+    ) -> Result<(), Self::Error> {
+        use crate::schema::state_op_log::dsl;
+        diesel::insert_into(dsl::state_op_log)
+            .values(NewStateOpLogEntry::from(entry))
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "add_state_oplog_entry".to_string(),
+            })?;
+
+        Ok(())
+    }
+
+    fn clear_all_state(&self, tx: &Self::BackendTransaction) -> Result<(), Self::Error> {
+        diesel::delete(state_keys::dsl::state_keys)
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "clear_all_state::state_keys".to_string(),
+            })?;
+
+        diesel::delete(state_op_log::dsl::state_op_log)
+            .execute(tx.connection())
+            .map_err(|source| SqliteStorageError::DieselError {
+                source,
+                operation: "clear_all_state::state_op_logs".to_string(),
+            })?;
+
+        Ok(())
     }
 }

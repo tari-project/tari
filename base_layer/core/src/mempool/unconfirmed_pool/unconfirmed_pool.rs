@@ -41,7 +41,7 @@ use crate::{
         unconfirmed_pool::UnconfirmedPoolError,
     },
     transactions::{
-        transaction::{Transaction, TransactionOutput},
+        transaction_components::{Transaction, TransactionOutput},
         weight::TransactionWeight,
     },
 };
@@ -223,12 +223,14 @@ impl UnconfirmedPool {
                 }
             }
         }
-        // we need to remove all transactions that need to be rechecked.
-        debug!(
-            target: LOG_TARGET,
-            "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
-            transactions_to_remove_and_recheck.len()
-        );
+        if !transactions_to_remove_and_recheck.is_empty() {
+            // we need to remove all transactions that need to be rechecked.
+            debug!(
+                target: LOG_TARGET,
+                "Removing {} transaction(s) from unconfirmed pool because they need re-evaluation",
+                transactions_to_remove_and_recheck.len()
+            );
+        }
         for (tx_key, _) in &transactions_to_remove_and_recheck {
             self.remove_transaction(*tx_key);
         }
@@ -626,7 +628,7 @@ mod test {
             fee::Fee,
             tari_amount::MicroTari,
             test_helpers::{TestParams, UtxoTestParams},
-            transaction::{KernelFeatures, OutputFeatures},
+            transaction_components::{KernelFeatures, OutputFeatures},
             weight::TransactionWeight,
             CryptoFactories,
             SenderTransactionProtocol,

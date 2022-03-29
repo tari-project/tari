@@ -83,35 +83,22 @@
 #[macro_use]
 mod table;
 
-#[macro_use]
-mod macros;
-
 mod bootstrap;
 mod builder;
-mod cli;
-mod command_handler;
+mod commands;
 mod grpc;
-mod parser;
 mod recovery;
-mod status_line;
 mod utils;
 
 #[cfg(feature = "metrics")]
 mod metrics;
 
-use std::{
-    env,
-    net::SocketAddr,
-    process,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{env, net::SocketAddr, process, sync::Arc};
 
-use futures::{pin_mut, FutureExt};
+use commands::{cli_loop::CliLoop, command::CommandContext};
+use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use parser::Parser;
-use rustyline::{config::OutputStreamType, error::ReadlineError, CompletionType, Config, EditMode, Editor};
 use tari_app_utilities::{
     consts,
     identity_management::setup_node_identity,
@@ -120,7 +107,12 @@ use tari_app_utilities::{
 };
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
-use tari_common::{configuration::bootstrap::ApplicationType, exit_codes::ExitCodes, ConfigBootstrap, GlobalConfig};
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCode, ExitError},
+    ConfigBootstrap,
+    GlobalConfig,
+};
 use tari_comms::{
     peer_manager::PeerFeatures,
     tor::HiddenServiceControllerError,
@@ -131,34 +123,27 @@ use tari_core::chain_storage::ChainStorageError;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tokio::{
-    runtime,
-    sync::Mutex,
-    task,
-    time::{self},
-};
+use tokio::task;
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
-
-use crate::command_handler::{CommandHandler, StatusOutput};
 
 const LOG_TARGET: &str = "base_node::app";
 
 /// Application entry point
 fn main() {
-    if let Err(exit_code) = main_inner() {
-        exit_code.eprint_details();
+    if let Err(err) = main_inner() {
+        eprintln!("{:?}", err);
+        let exit_code = err.exit_code;
+        eprintln!("{}", exit_code.hint());
         error!(
             target: LOG_TARGET,
-            "Exiting with code ({}): {:?}",
-            exit_code.as_i32(),
-            exit_code
+            "Exiting with code ({}): {:?}", exit_code as i32, err
         );
-        process::exit(exit_code.as_i32());
+        process::exit(exit_code as i32);
     }
 }
 
-fn main_inner() -> Result<(), ExitCodes> {
+fn main_inner() -> Result<(), ExitError> {
     #[allow(unused_mut)] // config isn't mutated on windows
     let (bootstrap, mut config, _) = init_configuration(ApplicationType::BaseNode)?;
     debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
@@ -166,7 +151,7 @@ fn main_inner() -> Result<(), ExitCodes> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
-        &config.public_address,
+        &config.comms_public_address,
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
@@ -220,7 +205,7 @@ async fn run_node(
     config: Arc<GlobalConfig>,
     bootstrap: ConfigBootstrap,
     shutdown: Shutdown,
-) -> Result<(), ExitCodes> {
+) -> Result<(), ExitError> {
     if bootstrap.tracing_enabled {
         enable_tracing();
     }
@@ -244,7 +229,7 @@ async fn run_node(
         recovery::initiate_recover_db(&config)?;
         recovery::run_recovery(&config)
             .await
-            .map_err(|e| ExitCodes::RecoveryError(e.to_string()))?;
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
         return Ok(());
     };
 
@@ -259,49 +244,45 @@ async fn run_node(
     .map_err(|err| {
         for boxed_error in err.chain() {
             if let Some(HiddenServiceControllerError::TorControlPortOffline) = boxed_error.downcast_ref() {
-                return ExitCodes::TorOffline;
+                return ExitCode::TorOffline.into();
             }
             if let Some(ChainStorageError::DatabaseResyncRequired(reason)) = boxed_error.downcast_ref() {
-                return ExitCodes::DbInconsistentState(format!(
-                    "You may need to resync your database because {}",
-                    reason
-                ));
+                return ExitError::new(
+                    ExitCode::DbInconsistentState,
+                    format!("You may need to resync your database because {}", reason),
+                );
             }
 
             // todo: find a better way to do this
             if boxed_error.to_string().contains("Invalid force sync peer") {
                 println!("Please check your force sync peers configuration");
-                return ExitCodes::ConfigError(boxed_error.to_string());
+                return ExitError::new(ExitCode::ConfigError, boxed_error);
             }
         }
-        ExitCodes::UnknownError(err.to_string())
+        ExitError::new(ExitCode::UnknownError, err)
     })?;
 
     if let Some(ref base_node_config) = config.base_node_config {
         if let Some(ref address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitCodes::ConfigError(e.to_string()))?;
+            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
             task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
         }
     }
 
     // Run, node, run!
-    let command_handler = Arc::new(Mutex::new(CommandHandler::new(runtime::Handle::current(), &ctx)));
+    let context = CommandContext::new(&ctx, shutdown);
+    let main_loop = CliLoop::new(context, bootstrap.watch, bootstrap.non_interactive_mode);
     if bootstrap.non_interactive_mode {
-        task::spawn(status_loop(command_handler, shutdown));
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
-        let parser = Parser::new(command_handler);
-        cli::print_banner(parser.get_commands(), 3);
-
         info!(
             target: LOG_TARGET,
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
-
-        task::spawn(cli_loop(parser, shutdown));
     }
+    task::spawn(main_loop.cli_loop());
     if !config.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
@@ -352,133 +333,10 @@ async fn run_grpc(
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an  error:{}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
             err
         })?;
 
     info!(target: LOG_TARGET, "Stopping GRPC");
     Ok(())
-}
-
-async fn read_command(mut rustyline: Editor<Parser>) -> Result<(String, Editor<Parser>), String> {
-    task::spawn_blocking(|| {
-        let readline = rustyline.readline(">> ");
-
-        match readline {
-            Ok(line) => {
-                rustyline.add_history_entry(line.as_str());
-                Ok((line, rustyline))
-            },
-            Err(ReadlineError::Interrupted) => {
-                // shutdown section. Will shutdown all interfaces when ctrl-c was pressed
-                println!("The node is shutting down because Ctrl+C was received...");
-                info!(
-                    target: LOG_TARGET,
-                    "Termination signal received from user. Shutting node down."
-                );
-                Err("Node is shutting down".to_string())
-            },
-            Err(err) => {
-                println!("Error: {:?}", err);
-                Err(err.to_string())
-            },
-        }
-    })
-    .await
-    .expect("Could not spawn rustyline task")
-}
-
-fn status_interval(start_time: Instant) -> time::Sleep {
-    let duration = match start_time.elapsed().as_secs() {
-        0..=120 => Duration::from_secs(5),
-        _ => Duration::from_secs(30),
-    };
-    time::sleep(duration)
-}
-
-async fn status_loop(command_handler: Arc<Mutex<CommandHandler>>, shutdown: Shutdown) {
-    let start_time = Instant::now();
-    let mut shutdown_signal = shutdown.to_signal();
-    loop {
-        let interval = status_interval(start_time);
-        tokio::select! {
-            biased;
-            _ = shutdown_signal.wait() => {
-                break;
-            }
-
-            _ = interval => {
-               command_handler.lock().await.status(StatusOutput::Log);
-            },
-        }
-    }
-}
-
-/// Runs the Base Node CLI loop
-/// ## Parameters
-/// `parser` - The parser to process input commands
-/// `shutdown` - The trigger for shutting down
-///
-/// ## Returns
-/// Doesn't return anything
-async fn cli_loop(parser: Parser, mut shutdown: Shutdown) {
-    let cli_config = Config::builder()
-        .history_ignore_space(true)
-        .completion_type(CompletionType::List)
-        .edit_mode(EditMode::Emacs)
-        .output_stream(OutputStreamType::Stdout)
-        .build();
-    let mut rustyline = Editor::with_config(cli_config);
-    let command_handler = parser.get_command_handler();
-    rustyline.set_helper(Some(parser));
-    let read_command_fut = read_command(rustyline).fuse();
-    pin_mut!(read_command_fut);
-
-    let mut shutdown_signal = shutdown.to_signal();
-    let start_time = Instant::now();
-    let mut software_update_notif = command_handler
-        .lock()
-        .await
-        .get_software_updater()
-        .new_update_notifier()
-        .clone();
-    loop {
-        let interval = status_interval(start_time);
-        tokio::select! {
-            res = &mut read_command_fut => {
-                match res {
-                    Ok((line, mut rustyline)) => {
-                        if let Some(p) = rustyline.helper_mut() {
-                            p.handle_command(line.as_str(), &mut shutdown).await;
-                        }
-                        if !shutdown.is_triggered() {
-                            read_command_fut.set(read_command(rustyline).fuse());
-                        }
-                    },
-                    Err(err) => {
-                        // This happens when the node is shutting down.
-                        debug!(target:  LOG_TARGET, "Could not read line from rustyline:{}", err);
-                        break;
-                    }
-                }
-            },
-            Ok(_) = software_update_notif.changed() => {
-                if let Some(ref update) = *software_update_notif.borrow() {
-                    println!(
-                        "Version {} of the {} is available: {} (sha: {})",
-                        update.version(),
-                        update.app(),
-                        update.download_url(),
-                        update.to_hash_hex()
-                    );
-                }
-            }
-            _ = interval => {
-                command_handler.lock().await.status(StatusOutput::Full);
-            },
-            _ = shutdown_signal.wait() => {
-                break;
-            }
-        }
-    }
 }

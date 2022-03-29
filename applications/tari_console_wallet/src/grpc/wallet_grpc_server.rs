@@ -30,12 +30,15 @@ use tari_app_grpc::{
         self,
         payment_recipient::PaymentType,
         wallet_server,
+        CheckConnectivityResponse,
         ClaimHtlcRefundRequest,
         ClaimHtlcRefundResponse,
         ClaimShaAtomicSwapRequest,
         ClaimShaAtomicSwapResponse,
         CoinSplitRequest,
         CoinSplitResponse,
+        CreateCommitteeDefinitionRequest,
+        CreateCommitteeDefinitionResponse,
         CreateFollowOnAssetCheckpointRequest,
         CreateFollowOnAssetCheckpointResponse,
         CreateInitialAssetCheckpointRequest,
@@ -46,11 +49,13 @@ use tari_app_grpc::{
         GetCoinbaseResponse,
         GetCompletedTransactionsRequest,
         GetCompletedTransactionsResponse,
+        GetConnectivityRequest,
         GetIdentityRequest,
         GetIdentityResponse,
         GetOwnedAssetsResponse,
         GetTransactionInfoRequest,
         GetTransactionInfoResponse,
+        GetUnspentAmountsResponse,
         GetVersionRequest,
         GetVersionResponse,
         ImportUtxosRequest,
@@ -63,6 +68,8 @@ use tari_app_grpc::{
         RevalidateResponse,
         SendShaAtomicSwapRequest,
         SendShaAtomicSwapResponse,
+        SetBaseNodeRequest,
+        SetBaseNodeResponse,
         TransactionDirection,
         TransactionInfo,
         TransactionStatus,
@@ -71,15 +78,19 @@ use tari_app_grpc::{
         TransferResult,
     },
 };
-use tari_common_types::types::{BlockHash, PublicKey, Signature};
-use tari_comms::{types::CommsPublicKey, CommsNode};
+use tari_common_types::{
+    array::copy_into_fixed_array,
+    types::{BlockHash, PublicKey, Signature},
+};
+use tari_comms::{multiaddr::Multiaddr, types::CommsPublicKey, CommsNode};
 use tari_core::transactions::{
     tari_amount::MicroTari,
-    transaction::{OutputFeatures, UnblindedOutput},
+    transaction_components::{OutputFeatures, UnblindedOutput},
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::Hashable};
 use tari_utilities::{hex::Hex, ByteArray};
 use tari_wallet::{
+    connectivity_service::{OnlineStatus, WalletConnectivityInterface},
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::{handle::TransactionServiceHandle, storage::models},
     WalletSqlite,
@@ -121,6 +132,22 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    async fn check_connectivity(
+        &self,
+        _: Request<GetConnectivityRequest>,
+    ) -> Result<Response<CheckConnectivityResponse>, Status> {
+        let mut connectivity = self.wallet.wallet_connectivity.clone();
+        let status = connectivity.get_connectivity_status();
+        let grpc_connectivity = match status {
+            tari_wallet::connectivity_service::OnlineStatus::Connecting => OnlineStatus::Connecting,
+            tari_wallet::connectivity_service::OnlineStatus::Online => OnlineStatus::Online,
+            tari_wallet::connectivity_service::OnlineStatus::Offline => OnlineStatus::Offline,
+        };
+        Ok(Response::new(CheckConnectivityResponse {
+            status: grpc_connectivity as i32,
+        }))
+    }
+
     async fn check_for_updates(
         &self,
         _: Request<tari_rpc::Empty>,
@@ -146,6 +173,29 @@ impl wallet_server::Wallet for WalletGrpcServer {
         }))
     }
 
+    async fn set_base_node(
+        &self,
+        request: Request<SetBaseNodeRequest>,
+    ) -> Result<Response<SetBaseNodeResponse>, Status> {
+        let message = request.into_inner();
+        let public_key = PublicKey::from_hex(&message.public_key_hex)
+            .map_err(|e| Status::invalid_argument(format!("Base node public key was not a valid pub key: {}", e)))?;
+        let net_address = message
+            .net_address
+            .parse::<Multiaddr>()
+            .map_err(|e| Status::invalid_argument(format!("Base node net address was not valid: {}", e)))?;
+
+        println!("Setting base node peer...");
+        println!("{}::{}", public_key, net_address);
+        let mut wallet = self.wallet.clone();
+        wallet
+            .set_base_node_peer(public_key.clone(), net_address.clone())
+            .await
+            .map_err(|e| Status::internal(format!("{:?}", e)))?;
+
+        Ok(Response::new(SetBaseNodeResponse {}))
+    }
+
     async fn get_balance(&self, _request: Request<GetBalanceRequest>) -> Result<Response<GetBalanceResponse>, Status> {
         let mut output_service = self.get_output_manager_service();
         let balance;
@@ -157,6 +207,25 @@ impl wallet_server::Wallet for WalletGrpcServer {
             available_balance: balance.available_balance.0,
             pending_incoming_balance: balance.pending_incoming_balance.0,
             pending_outgoing_balance: balance.pending_outgoing_balance.0,
+        }))
+    }
+
+    async fn get_unspent_amounts(
+        &self,
+        _: Request<tari_rpc::Empty>,
+    ) -> Result<Response<GetUnspentAmountsResponse>, Status> {
+        let mut output_service = self.get_output_manager_service();
+        let unspent_amounts;
+        match output_service.get_unspent_outputs().await {
+            Ok(uo) => unspent_amounts = uo,
+            Err(e) => return Err(Status::not_found(format!("GetUnspentAmounts error! {}", e))),
+        }
+        Ok(Response::new(GetUnspentAmountsResponse {
+            amount: unspent_amounts
+                .into_iter()
+                .map(|o| o.value.as_u64())
+                .filter(|&a| a > 0)
+                .collect(),
         }))
     }
 
@@ -491,7 +560,7 @@ impl wallet_server::Wallet for WalletGrpcServer {
                         dest_pk: txn.destination_public_key.to_vec(),
                         status: TransactionStatus::from(txn.status) as i32,
                         amount: txn.amount.into(),
-                        is_cancelled: txn.cancelled,
+                        is_cancelled: txn.cancelled.is_some(),
                         direction: TransactionDirection::from(txn.direction) as i32,
                         fee: txn.fee.into(),
                         timestamp: Some(naive_datetime_to_timestamp(txn.timestamp)),
@@ -502,7 +571,6 @@ impl wallet_server::Wallet for WalletGrpcServer {
                             .get_signature()
                             .to_vec(),
                         message: txn.message,
-                        valid: txn.valid,
                     }),
                 };
                 match sender.send(Ok(response)).await {
@@ -568,7 +636,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         for o in unblinded_outputs.iter() {
             tx_ids.push(
                 wallet
-                    .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
+                    .import_unblinded_output_as_non_rewindable(
+                        o.clone(),
+                        &CommsPublicKey::default(),
+                        "Imported via gRPC".to_string(),
+                    )
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
                     .into(),
@@ -608,8 +680,9 @@ impl wallet_server::Wallet for WalletGrpcServer {
             })
             .next()
             .unwrap();
+        let message = format!("Asset registration for {}", asset_public_key);
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "register asset transaction".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
         Ok(Response::new(RegisterAssetResponse {
@@ -648,24 +721,18 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
             .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
-        let committee_public_keys: Vec<RistrettoPublicKey> = message
-            .committee
-            .iter()
-            .map(|c| PublicKey::from_bytes(c.as_slice()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
+
+        let merkle_root = copy_into_fixed_array(&message.merkle_root)
+            .map_err(|_| Status::invalid_argument("Merkle root has an incorrect length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_initial_asset_checkpoint(
-                &asset_public_key,
-                message.merkle_root.as_slice(),
-                committee_public_keys.as_slice(),
-            )
+            .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let message = format!("Initial asset checkpoint for {}", asset_public_key);
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "Asset checkpoint".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -682,31 +749,70 @@ impl wallet_server::Wallet for WalletGrpcServer {
 
         let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
             .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
-        let committee_public_keys: Vec<RistrettoPublicKey> = message
-            .next_committee
-            .iter()
-            .map(|c| PublicKey::from_bytes(c.as_slice()))
-            .collect::<Result<_, _>>()
-            .map_err(|err| {
-                Status::invalid_argument(format!("Next committee did not contain valid pub keys:{}", err))
-            })?;
+
+        let merkle_root = copy_into_fixed_array(&message.merkle_root)
+            .map_err(|_| Status::invalid_argument("Incorrect merkle root length"))?;
 
         let (tx_id, transaction) = asset_manager
-            .create_follow_on_asset_checkpoint(
-                &asset_public_key,
-                message.unique_id.as_slice(),
-                message.merkle_root.as_slice(),
-                committee_public_keys.as_slice(),
-            )
+            .create_follow_on_asset_checkpoint(&asset_public_key, message.unique_id.as_slice(), merkle_root)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
+        let message = format!("Asset state checkpoint for {}", asset_public_key);
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "Follow on asset checkpoint".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
         Ok(Response::new(CreateFollowOnAssetCheckpointResponse {}))
+    }
+
+    async fn create_committee_definition(
+        &self,
+        request: Request<CreateCommitteeDefinitionRequest>,
+    ) -> Result<Response<CreateCommitteeDefinitionResponse>, Status> {
+        let mut asset_manager = self.wallet.asset_manager.clone();
+        let mut transaction_service = self.wallet.transaction_service.clone();
+        let message = request.into_inner();
+
+        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice())
+            .map_err(|e| Status::invalid_argument(format!("Asset public key was not a valid pub key:{}", e)))?;
+        let committee_public_keys: Vec<RistrettoPublicKey> = message
+            .committee
+            .iter()
+            .map(|c| PublicKey::from_bytes(c.as_slice()))
+            .collect::<Result<_, _>>()
+            .map_err(|err| Status::invalid_argument(format!("Committee did not contain valid pub keys:{}", err)))?;
+        let effective_sidechain_height = message.effective_sidechain_height;
+        let is_initial = message.is_initial;
+
+        let (tx_id, transaction) = asset_manager
+            .create_committee_definition(
+                &asset_public_key,
+                &committee_public_keys,
+                effective_sidechain_height,
+                is_initial,
+            )
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Committee definition transaction: {:?}", transaction
+        );
+
+        let message = format!(
+            "{} member committee for asset {}... at sidechain height {}",
+            committee_public_keys.len(),
+            &asset_public_key.to_hex()[..7],
+            effective_sidechain_height
+        );
+        let _result = transaction_service
+            .submit_transaction(tx_id, transaction, 0.into(), message)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        Ok(Response::new(CreateCommitteeDefinitionResponse {}))
     }
 
     async fn mint_tokens(&self, request: Request<MintTokensRequest>) -> Result<Response<MintTokensResponse>, Status> {
@@ -714,8 +820,8 @@ impl wallet_server::Wallet for WalletGrpcServer {
         let mut transaction_service = self.wallet.transaction_service.clone();
         let message = request.into_inner();
 
-        // TODO: Clean up unwrap
-        let asset_public_key = PublicKey::from_bytes(message.asset_public_key.as_slice()).unwrap();
+        let asset_public_key =
+            PublicKey::from_bytes(message.asset_public_key.as_slice()).map_err(|e| Status::internal(e.to_string()))?;
         let asset = asset_manager
             .get_owned_asset_by_pub_key(&asset_public_key)
             .await
@@ -735,14 +841,20 @@ impl wallet_server::Wallet for WalletGrpcServer {
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
-        let owner_commitments = transaction
+        let owner_commitments: Vec<Vec<u8>> = transaction
             .body
             .outputs()
             .iter()
             .filter_map(|o| o.features.unique_id.as_ref().map(|_| o.commitment.to_vec()))
             .collect();
+
+        let message = format!(
+            "Minting {} tokens for asset {}",
+            owner_commitments.len(),
+            asset_public_key
+        );
         let _result = transaction_service
-            .submit_transaction(tx_id, transaction, 0.into(), "test mint transaction".to_string())
+            .submit_transaction(tx_id, transaction, 0.into(), message)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -881,7 +993,6 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
-            valid: true,
         },
         PendingOutbound(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -895,7 +1006,6 @@ fn convert_wallet_transaction_into_transaction_info(
             excess_sig: Default::default(),
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
             message: tx.message,
-            valid: true,
         },
         Completed(tx) => TransactionInfo {
             tx_id: tx.tx_id.into(),
@@ -903,7 +1013,7 @@ fn convert_wallet_transaction_into_transaction_info(
             dest_pk: tx.destination_public_key.to_vec(),
             status: TransactionStatus::from(tx.status) as i32,
             amount: tx.amount.into(),
-            is_cancelled: tx.cancelled,
+            is_cancelled: tx.cancelled.is_some(),
             direction: TransactionDirection::from(tx.direction) as i32,
             fee: tx.fee.into(),
             timestamp: Some(naive_datetime_to_timestamp(tx.timestamp)),
@@ -913,7 +1023,6 @@ fn convert_wallet_transaction_into_transaction_info(
                 .map(|s| s.get_signature().to_vec())
                 .unwrap_or_default(),
             message: tx.message,
-            valid: tx.valid,
         },
     }
 }

@@ -26,7 +26,10 @@ use serde_json::Error as SerdeJsonError;
 use tari_common_types::transaction::{TransactionConversionError, TransactionDirectionError, TxId};
 use tari_comms::{connectivity::ConnectivityError, peer_manager::node_id::NodeIdError, protocol::rpc::RpcError};
 use tari_comms_dht::outbound::DhtOutboundError;
-use tari_core::transactions::{transaction::TransactionError, transaction_protocol::TransactionProtocolError};
+use tari_core::transactions::{
+    transaction_components::TransactionError,
+    transaction_protocol::TransactionProtocolError,
+};
 use tari_crypto::tari_utilities::ByteArrayError;
 use tari_p2p::services::liveness::error::LivenessError;
 use tari_service_framework::reply_channel::TransportChannelError;
@@ -219,38 +222,41 @@ pub enum TransactionStorageError {
     TransactionNotMined(TxId),
     #[error("Conversion error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
+    #[error("Not a coinbase transaction so cannot be abandoned")]
+    NotCoinbase,
 }
 
 /// This error type is used to return TransactionServiceErrors from inside a Transaction Service protocol but also
 /// include the ID of the protocol
 #[derive(Debug)]
-pub struct TransactionServiceProtocolError {
-    // TODO: Replace with T or something to account for OperationId or TxId
-    pub id: u64,
+pub struct TransactionServiceProtocolError<T: Into<u64>> {
+    pub id: T,
     pub error: TransactionServiceError,
 }
 
-impl TransactionServiceProtocolError {
-    pub fn new<T: Into<u64>>(id: T, error: TransactionServiceError) -> Self {
-        Self { id: id.into(), error }
+impl<T: Into<u64>> TransactionServiceProtocolError<T> {
+    pub fn new(id: T, error: TransactionServiceError) -> Self {
+        Self { id, error }
     }
 }
 
-impl From<TransactionServiceProtocolError> for TransactionServiceError {
-    fn from(tspe: TransactionServiceProtocolError) -> Self {
+impl<T: Into<u64>> From<TransactionServiceProtocolError<T>> for TransactionServiceError {
+    fn from(tspe: TransactionServiceProtocolError<T>) -> Self {
         tspe.error
     }
 }
 
-pub trait TransactionServiceProtocolErrorExt<TRes> {
-    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError>;
+pub trait TransactionServiceProtocolErrorExt<TRes, T: Into<u64>> {
+    fn for_protocol(self, id: T) -> Result<TRes, TransactionServiceProtocolError<T>>;
 }
 
-impl<TRes, TErr: Into<TransactionServiceError>> TransactionServiceProtocolErrorExt<TRes> for Result<TRes, TErr> {
-    fn for_protocol<T: Into<u64>>(self, id: T) -> Result<TRes, TransactionServiceProtocolError> {
+impl<TRes, TErr: Into<TransactionServiceError>, T: Into<u64>> TransactionServiceProtocolErrorExt<TRes, T>
+    for Result<TRes, TErr>
+{
+    fn for_protocol(self, id: T) -> Result<TRes, TransactionServiceProtocolError<T>> {
         match self {
             Ok(r) => Ok(r),
-            Err(e) => Err(TransactionServiceProtocolError::new(id.into(), e.into())),
+            Err(e) => Err(TransactionServiceProtocolError::new(id, e.into())),
         }
     }
 }

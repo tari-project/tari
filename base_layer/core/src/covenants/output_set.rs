@@ -27,7 +27,7 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{covenants::error::CovenantError, transactions::transaction::TransactionOutput};
+use crate::{covenants::error::CovenantError, transactions::transaction_components::TransactionOutput};
 
 #[derive(Debug, Clone)]
 pub struct OutputSet<'a>(BTreeSet<Indexed<&'a TransactionOutput>>);

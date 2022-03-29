@@ -29,6 +29,7 @@ use crate::errors::{err_empty, MinerError};
 
 pub type Difficulty = u64;
 
+#[derive(Clone)]
 pub struct BlockHeaderSha3 {
     header: BlockHeader,
     pow_bytes: Vec<u8>,
@@ -110,13 +111,14 @@ impl BlockHeaderSha3 {
         big_endian_difficulty(&hash)
     }
 
-    pub fn into_header(mut self) -> BlockHeader {
-        self.header.timestamp = Some(prost_types::Timestamp {
+    pub fn create_header(&self) -> BlockHeader {
+        let mut header = self.header.clone();
+        header.timestamp = Some(prost_types::Timestamp {
             seconds: self.timestamp as i64,
             nanos: 0,
         });
-        self.header.nonce = self.nonce;
-        self.header
+        header.nonce = self.nonce;
+        header
     }
 
     #[inline]

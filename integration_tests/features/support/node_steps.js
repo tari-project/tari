@@ -354,28 +354,15 @@ Then(
   "all nodes are at height {int}",
   { timeout: 800 * 1000 },
   async function (height) {
-    await waitFor(
-      async () => {
-        let result = true;
-        await this.forEachClientAsync(async (client, name) => {
-          await waitFor(
-            async () => await client.getTipHeight(),
-            height,
-            5 * height * 1000 /* 5 seconds per block */
-          );
-          const currTip = await client.getTipHeight();
-          console.log(
-            `Node ${name} is at tip: ${currTip} (should be ${height})`
-          );
-          result = result && currTip == height;
-        });
-        return result;
-      },
-      true,
-      600 * 1000,
-      5 * 1000,
-      5
-    );
+    await this.all_nodes_are_at_height(height);
+  }
+);
+
+Then(
+  "all nodes are at height {int}*{int}",
+  { timeout: 800 * 1000 },
+  async function (a, b) {
+    await this.all_nodes_are_at_height(a * b);
   }
 );
 

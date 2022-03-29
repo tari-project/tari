@@ -7,6 +7,7 @@ const {
 } = require("../helpers/util");
 
 class TransactionBuilder {
+  recovery_byte_key;
   constructor() {
     this.kv = tari_crypto.KeyRing.new();
     this.inputs = [];
@@ -34,26 +35,31 @@ class TransactionBuilder {
 
   featuresToConsensusBytes(features) {
     // base_layer\core\src\transactions\transaction\output_features.rs
+
+    // TODO: Keep this number in sync with 'get_current_version()' in 'output_features_version.rs'
+    const OUTPUT_FEATURES_VERSION = 0x00;
+
     const bufFromOpt = (opt, encoding = "hex") =>
       opt
         ? Buffer.concat([
-            Buffer.from([1]),
+            Buffer.from([0x01]),
             encoding ? Buffer.from(opt, encoding) : opt,
           ])
-        : Buffer.from([0]);
+        : Buffer.from([0x00]);
 
-    // Add length byte to unique id - note this only works until 128 bytes (TODO: varint encoding)
+    // Add length byte to unique id - note this only works until 127 bytes (TODO: varint encoding)
     let unique_id = features.unique_id
-      ? Buffer.concat([
-          Buffer.from([features.unique_id.length]),
-          features.unique_id,
-        ])
+      ? this.toLengthEncoded(features.unique_id)
       : null;
 
     return Buffer.concat([
-      Buffer.from([0]),
-      Buffer.from([parseInt(features.maturity)]),
+      // version
+      Buffer.from([OUTPUT_FEATURES_VERSION]),
+      Buffer.from([parseInt(features.maturity || 0)]),
       Buffer.from([features.flags]),
+      OUTPUT_FEATURES_VERSION === 0x00
+        ? Buffer.from([])
+        : Buffer.from([features.recovery_byte]),
       bufFromOpt(features.parent_public_key, "hex"),
       bufFromOpt(unique_id, false),
       // TODO: AssetOutputFeatures
@@ -63,8 +69,15 @@ class TransactionBuilder {
       // TODO: SideChainCheckpointFeatures
       bufFromOpt(null),
       // TODO: metadata (len is 0)
-      Buffer.from([0]),
+      Buffer.from([0x00]),
+      // TODO: committee_definition (len is 0)
+      OUTPUT_FEATURES_VERSION === 0x00 ? Buffer.from([]) : bufFromOpt(null),
     ]);
+  }
+
+  toLengthEncoded(buf) {
+    // TODO: varint encoding, this is only valid up to len=127
+    return Buffer.concat([Buffer.from([buf.length]), buf]);
   }
 
   buildMetaChallenge(
@@ -72,7 +85,8 @@ class TransactionBuilder {
     features,
     scriptOffsetPublicKey,
     publicNonce,
-    commitment
+    commitment,
+    covenant
   ) {
     const KEY = null; // optional key
     const OUTPUT_LENGTH = 32; // bytes
@@ -83,12 +97,11 @@ class TransactionBuilder {
 
     // base_layer/core/src/transactions/transaction/transaction_output.rs
     blake2bUpdate(context, buf_nonce);
-    blake2bUpdate(context, script);
+    blake2bUpdate(context, this.toLengthEncoded(script));
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, script_offset_public_key);
     blake2bUpdate(context, commitment);
-    // Empty covenant is 0 bytes
-    // blake2bUpdate(context, covenant_bytes);
+    blake2bUpdate(context, this.toLengthEncoded(covenant));
     const final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
   }
@@ -106,8 +119,8 @@ class TransactionBuilder {
     let buff_publicNonce = Buffer.from(publicNonce, "hex");
     let buff_public_key = Buffer.from(public_key, "hex");
     blake2bUpdate(context, buff_publicNonce);
-    blake2bUpdate(context, script);
-    blake2bUpdate(context, input_data);
+    blake2bUpdate(context, this.toLengthEncoded(script));
+    blake2bUpdate(context, this.toLengthEncoded(input_data));
     blake2bUpdate(context, buff_public_key);
     blake2bUpdate(context, commitment);
     let final = blake2bFinal(context);
@@ -119,12 +132,27 @@ class TransactionBuilder {
     let OUTPUT_LENGTH = 32; // bytes
     let context = blake2bInit(OUTPUT_LENGTH, KEY);
     const features_buffer = this.featuresToConsensusBytes(features);
+    // Version
+    blake2bUpdate(context, [0x00]);
     blake2bUpdate(context, features_buffer);
     blake2bUpdate(context, commitment);
     blake2bUpdate(context, script);
     blake2bUpdate(context, sender_offset_public_key);
     let final = blake2bFinal(context);
     return Buffer.from(final).toString("hex");
+  }
+
+  create_unique_recovery_byte(commitment, recovery_byte_key) {
+    let KEY = null; // optional key
+    const OUTPUT_LENGTH = 1; // bytes
+    const context = blake2bInit(OUTPUT_LENGTH, KEY);
+    blake2bUpdate(context, Buffer.from(commitment, "hex"));
+    if (recovery_byte_key != undefined) {
+      blake2bUpdate(context, Buffer.from(recovery_byte_key, "hex"));
+    }
+    blake2bUpdate(context, Buffer.from("hash my recovery byte", "hex"));
+    const final = blake2bFinal(context);
+    return final;
   }
 
   changeFee(fee) {
@@ -184,6 +212,7 @@ class TransactionBuilder {
           signature_v: Buffer.from(script_sig.v, "hex"),
         },
         sender_offset_public_key: input.output.sender_offset_public_key,
+        covenant: Buffer.from([]),
       },
       amount: input.amount,
       privateKey: input.privateKey,
@@ -192,19 +221,6 @@ class TransactionBuilder {
   }
 
   addOutput(amount, features = {}) {
-    const outputFeatures = Object.assign({
-      flags: 0,
-      maturity: 0,
-      metadata: [],
-      // In case any of these change, update the buildMetaChallenge function
-      unique_id: features.unique_id
-        ? Buffer.from(features.unique_id, "utf8")
-        : null,
-      parent_public_key: null,
-      asset: null,
-      mint_non_fungible: null,
-      sidechain_checkpoint: null,
-    });
     let key = Math.floor(Math.random() * 500000000000 + 1);
     let privateKey = Buffer.from(toLittleEndian(key, 256)).toString("hex");
     let scriptKey = Math.floor(Math.random() * 500000000000 + 1);
@@ -222,6 +238,7 @@ class TransactionBuilder {
     );
 
     let nopScriptBytes = Buffer.from([0x73]);
+    let covenantBytes = Buffer.from([]);
 
     let rangeproofFactory = tari_crypto.RangeProofFactory.new();
     let rangeproof = rangeproofFactory.create_proof(
@@ -241,12 +258,28 @@ class TransactionBuilder {
       tari_crypto.commit(privateKey, BigInt(amount)).commitment,
       "hex"
     );
+    const recoveryByte = this.create_unique_recovery_byte(commitment);
+    const outputFeatures = Object.assign({
+      flags: 0,
+      maturity: 0,
+      recovery_byte: recoveryByte,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: features.unique_id
+        ? Buffer.from(features.unique_id, "utf8")
+        : null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
+    });
     let meta_challenge = this.buildMetaChallenge(
       nopScriptBytes,
       outputFeatures,
       scriptOffsetPublicKey,
       public_nonce,
-      commitment
+      commitment,
+      covenantBytes
     );
     let total_key = combineTwoTariKeys(
       scriptOffsetPrivateKey.toString(),
@@ -275,6 +308,7 @@ class TransactionBuilder {
           signature_u: Buffer.from(meta_sig.u, "hex"),
           signature_v: Buffer.from(meta_sig.v, "hex"),
         },
+        covenant: covenantBytes,
       },
     };
     this.outputs.push(output);
@@ -375,17 +409,7 @@ class TransactionBuilder {
   generateCoinbase(value, privateKey, fee, lockHeight) {
     let coinbase = tari_crypto.commit(privateKey, BigInt(value + fee));
     let nopScriptBytes = Buffer.from([0x73]);
-    let outputFeatures = {
-      flags: 1,
-      maturity: lockHeight,
-      metadata: [],
-      // In case any of these change, update the buildMetaChallenge function
-      unique_id: null,
-      parent_public_key: null,
-      asset: null,
-      mint_non_fungible: null,
-      sidechain_checkpoint: null,
-    };
+    let covenantBytes = Buffer.from([]);
     let scriptOffsetPrivateKeyNum = Math.floor(
       Math.random() * 500000000000 + 1
     );
@@ -427,12 +451,26 @@ class TransactionBuilder {
       tari_crypto.commit(privateKey, BigInt(value + fee)).commitment,
       "hex"
     );
+    const recoveryByte = this.create_unique_recovery_byte(commitment);
+    let outputFeatures = {
+      flags: 1,
+      maturity: lockHeight,
+      recovery_byte: recoveryByte,
+      metadata: [],
+      // In case any of these change, update the buildMetaChallenge function
+      unique_id: null,
+      parent_public_key: null,
+      asset: null,
+      mint_non_fungible: null,
+      sidechain_checkpoint: null,
+    };
     let meta_challenge = this.buildMetaChallenge(
       nopScriptBytes,
       outputFeatures,
       scriptOffsetPublicKey,
       public_nonce_c,
-      commitment
+      commitment,
+      covenantBytes
     );
     let total_key = combineTwoTariKeys(
       scriptOffsetPrivateKey.toString(),
@@ -459,6 +497,7 @@ class TransactionBuilder {
             signature_u: Buffer.from(meta_sig.u, "hex"),
             signature_v: Buffer.from(meta_sig.v, "hex"),
           },
+          covenant: covenantBytes,
         },
       ],
       kernels: [

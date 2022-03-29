@@ -20,23 +20,17 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-use std::{
-    self,
-    sync::{mpsc, Arc, RwLock},
-    thread,
-    time::{Duration, SystemTime},
-};
+use std::{self, convert::TryFrom, sync::mpsc, thread, time::SystemTime};
 
+use futures::stream::StreamExt;
 use log::*;
+use tari_app_grpc::tari_rpc::BlockHeader;
+use tari_utilities::{hex::Hex, Hashable};
 
-use crate::{
-    stratum,
-    stratum::{stratum_miner::miner::StratumMiner, stratum_statistics::stats, stratum_types as types},
-};
+use crate::{display_report, miner::Miner, stratum, stratum::stratum_types as types};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
-const REPORTING_FREQUENCY: u64 = 20;
 
 pub struct Controller {
     rx: mpsc::Receiver<types::miner_message::MinerMessage>,
@@ -44,14 +38,15 @@ pub struct Controller {
     client_tx: Option<mpsc::Sender<types::client_message::ClientMessage>>,
     current_height: u64,
     current_job_id: u64,
+    current_difficulty_target: u64,
     current_blob: String,
+    current_header: Option<BlockHeader>,
     keep_alive_time: SystemTime,
-    stats: Arc<RwLock<stats::Statistics>>,
-    elapsed: SystemTime,
+    num_mining_threads: usize,
 }
 
 impl Controller {
-    pub fn new(stats: Arc<RwLock<stats::Statistics>>) -> Result<Controller, String> {
+    pub fn new(num_mining_threads: usize) -> Result<Controller, String> {
         let (tx, rx) = mpsc::channel::<types::miner_message::MinerMessage>();
         Ok(Controller {
             rx,
@@ -59,10 +54,11 @@ impl Controller {
             client_tx: None,
             current_height: 0,
             current_job_id: 0,
+            current_difficulty_target: 0,
             current_blob: "".to_string(),
+            current_header: None,
             keep_alive_time: SystemTime::now(),
-            stats,
-            elapsed: SystemTime::now(),
+            num_mining_threads,
         })
     }
 
@@ -70,115 +66,118 @@ impl Controller {
         self.client_tx = Some(client_tx);
     }
 
-    fn display_stats(&mut self, elapsed: Duration) {
-        let mut stats = self.stats.write().unwrap();
-        info!(
-            target: LOG_TARGET,
-            "{}",
-            "--------------- Mining Statistics ---------------".to_string()
-        );
-        info!(
-            target: LOG_TARGET,
-            "{}",
-            format!("Number of solver threads: {}", stats.mining_stats.solvers)
-        );
-        if stats.mining_stats.solution_stats.found > 0 {
-            info!(
-                target: LOG_TARGET,
-                "{}",
-                format!(
-                    "Estimated combined solver share rate: {:.1$} (S/s)",
-                    stats.mining_stats.sols(),
-                    5
-                )
-            );
-        }
-        info!(
-            target: LOG_TARGET,
-            "{}",
-            format!(
-                "Combined solver hash rate: {:.1$} (Mh/s)",
-                stats.mining_stats.hash_rate(elapsed),
-                5
-            )
-        );
-        info!(
-            target: LOG_TARGET,
-            "{}",
-            format!(
-                "Shares found: {}, accepted: {}, rejected: {}",
-                stats.mining_stats.solution_stats.found,
-                stats.mining_stats.solution_stats.found - stats.mining_stats.solution_stats.rejected,
-                stats.mining_stats.solution_stats.rejected
-            )
-        );
-        info!(
-            target: LOG_TARGET,
-            "{}",
-            "-------------------------------------------------".to_string()
-        );
-    }
-
-    pub fn run(&mut self, mut miner: StratumMiner) -> Result<(), stratum::error::Error> {
+    pub async fn run(&mut self) -> Result<(), stratum::error::Error> {
+        let mut miner: Option<Miner> = None;
         loop {
-            if let Ok(report) = self.elapsed.elapsed() {
-                if report.as_secs() >= REPORTING_FREQUENCY {
-                    self.display_stats(report);
-                    self.elapsed = SystemTime::now();
-                }
-            }
+            // dbg!(&miner.is_some());
+            // lets see if we need to change the state of the miner.
             while let Some(message) = self.rx.try_iter().next() {
                 debug!(target: LOG_TARGET_FILE, "Miner received message: {:?}", message);
-                let result: Result<(), stratum::error::Error> = match message {
+                match message {
                     types::miner_message::MinerMessage::ReceivedJob(height, job_id, diff, blob) => {
-                        self.current_height = height;
-                        self.current_job_id = job_id;
-                        self.current_blob = blob;
-                        miner.notify(
-                            self.current_job_id,
-                            self.current_height,
-                            self.current_blob.clone(),
-                            diff,
-                        )
+                        match self.should_we_update_job(height, job_id, diff, blob) {
+                            Ok(should_we_update) => {
+                                if should_we_update {
+                                    let header = self
+                                        .current_header
+                                        .clone()
+                                        .ok_or_else(|| stratum::error::Error::MissingData("Header".to_string()))?;
+                                    if let Some(acive_miner) = miner.as_mut() {
+                                        acive_miner.kill_threads();
+                                    }
+                                    miner = Some(Miner::init_mining(
+                                        header,
+                                        self.current_difficulty_target,
+                                        self.num_mining_threads,
+                                        true,
+                                    ));
+                                } else {
+                                    continue;
+                                }
+                            },
+                            Err(e) => {
+                                debug!(
+                                    target: LOG_TARGET_FILE,
+                                    "Miner could not decipher miner message: {:?}", e
+                                );
+                                // lets wait a second before we try again
+                                thread::sleep(std::time::Duration::from_millis(1000));
+                                continue;
+                            },
+                        }
                     },
                     types::miner_message::MinerMessage::StopJob => {
                         debug!(target: LOG_TARGET_FILE, "Stopping jobs");
-                        miner.pause_solvers();
-                        Ok(())
+                        miner = None;
+                        continue;
                     },
                     types::miner_message::MinerMessage::ResumeJob => {
                         debug!(target: LOG_TARGET_FILE, "Resuming jobs");
-                        miner.resume_solvers();
-                        Ok(())
+                        miner = None;
+                        continue;
                     },
                     types::miner_message::MinerMessage::Shutdown => {
                         debug!(
                             target: LOG_TARGET_FILE,
                             "Stopping jobs and Shutting down mining controller"
                         );
-                        miner.stop_solvers();
-                        miner.wait_for_solver_shutdown();
-                        Ok(())
+                        miner = None;
                     },
                 };
-                if let Err(e) = result {
-                    error!(target: LOG_TARGET, "Mining Controller Error {:?}", e);
+            }
+            let mut submit = true;
+            if let Some(reporter) = miner.as_mut() {
+                if let Some(report) = (*reporter).next().await {
+                    if let Some(header) = report.header.clone() {
+                        if report.difficulty < self.current_difficulty_target {
+                            submit = false;
+                            debug!(
+                                target: LOG_TARGET_FILE,
+                                "Mined difficulty {} below target difficulty {}. Not submitting.",
+                                report.difficulty,
+                                self.current_difficulty_target
+                            );
+                        }
+
+                        if submit {
+                            // Mined a block fitting the difficulty
+                            let block_header: tari_core::blocks::BlockHeader =
+                                tari_core::blocks::BlockHeader::try_from(header)
+                                    .map_err(stratum::error::Error::MissingData)?;
+                            let hash = block_header.hash().to_hex();
+                            info!(
+                                target: LOG_TARGET,
+                                "Miner found share with hash {}, nonce {} and difficulty {:?}",
+                                hash,
+                                block_header.nonce,
+                                report.difficulty
+                            );
+                            debug!(
+                                target: LOG_TARGET_FILE,
+                                "Miner found share with hash {}, difficulty {:?} and data {:?}",
+                                hash,
+                                report.difficulty,
+                                block_header
+                            );
+                            self.client_tx
+                                .as_mut()
+                                .ok_or_else(|| stratum::error::Error::Connection("No connection to pool".to_string()))?
+                                .send(types::client_message::ClientMessage::FoundSolution(
+                                    self.current_job_id,
+                                    hash,
+                                    block_header.nonce,
+                                ))?;
+                            self.keep_alive_time = SystemTime::now();
+                            continue;
+                        } else {
+                            display_report(&report, self.num_mining_threads).await;
+                        }
+                    } else {
+                        display_report(&report, self.num_mining_threads).await;
+                    }
                 }
             }
-
-            let solutions = miner.get_solutions();
-            if let Some(ss) = solutions {
-                let _ = self
-                    .client_tx
-                    .as_mut()
-                    .unwrap()
-                    .send(types::client_message::ClientMessage::FoundSolution(
-                        ss.job_id, ss.hash, ss.nonce,
-                    ));
-                self.keep_alive_time = SystemTime::now();
-                let mut stats = self.stats.write().unwrap();
-                stats.mining_stats.solution_stats.found += 1;
-            } else if self.keep_alive_time.elapsed().unwrap().as_secs() >= 30 {
+            if self.keep_alive_time.elapsed().unwrap().as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
                 let _ = self
                     .client_tx
@@ -186,7 +185,33 @@ impl Controller {
                     .unwrap()
                     .send(types::client_message::ClientMessage::KeepAlive);
             }
-            thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
+    pub fn should_we_update_job(
+        &mut self,
+        height: u64,
+        job_id: u64,
+        diff: u64,
+        blob: String,
+    ) -> Result<bool, stratum::error::Error> {
+        if height != self.current_height ||
+            job_id != self.current_job_id ||
+            diff != self.current_difficulty_target ||
+            blob != self.current_blob
+        {
+            self.current_height = height;
+            self.current_job_id = job_id;
+            self.current_blob = blob.clone();
+            self.current_difficulty_target = diff;
+            let header_hex = hex::decode(blob)
+                .map_err(|_| stratum::error::Error::Json("Blob is not a valid hex value".to_string()))?;
+            let tari_header: tari_core::blocks::BlockHeader =
+                serde_json::from_str(&String::from_utf8_lossy(&header_hex).to_string())?;
+            self.current_header = Some(tari_app_grpc::tari_rpc::BlockHeader::from(tari_header));
+            Ok(true)
+        } else {
+            Ok(false)
         }
     }
 }

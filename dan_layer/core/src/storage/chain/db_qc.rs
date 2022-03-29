@@ -22,7 +22,7 @@
 
 use crate::models::{HotStuffMessageType, Signature, TreeNodeHash, ViewId};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DbQc {
     pub message_type: HotStuffMessageType,
     pub view_number: ViewId,

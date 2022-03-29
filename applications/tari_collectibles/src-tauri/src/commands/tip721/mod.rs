@@ -25,11 +25,14 @@ use crate::{
   status::Status,
   storage::{AddressesTableGateway, AssetsTableGateway, CollectiblesStorage},
 };
+use log::debug;
 use prost::Message;
 use tari_common_types::types::PublicKey;
 use tari_dan_common_types::proto::tips::tip721;
 use tari_utilities::{hex::Hex, ByteArray};
 use uuid::Uuid;
+
+const LOG_TARGET: &str = "collectibles::tip721";
 
 #[tauri::command]
 pub(crate) async fn tip721_transfer_from(
@@ -38,6 +41,24 @@ pub(crate) async fn tip721_transfer_from(
   send_to_address: String,
   from_address_id: Uuid,
   state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  inner_tip721_transfer_from(
+    asset_public_key,
+    token_id,
+    send_to_address,
+    from_address_id,
+    state.inner(),
+  )
+  .await
+}
+
+#[tauri::command]
+pub(crate) async fn inner_tip721_transfer_from(
+  asset_public_key: String,
+  token_id: String,
+  send_to_address: String,
+  from_address_id: Uuid,
+  state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let wallet_id = state
     .current_wallet_id()
@@ -72,6 +93,6 @@ pub(crate) async fn tip721_transfer_from(
       transfer_request,
     )
     .await?;
-  dbg!(&res);
+  debug!(target: LOG_TARGET, "res {:?}", res);
   Ok(())
 }

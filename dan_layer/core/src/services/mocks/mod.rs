@@ -28,11 +28,11 @@ use std::{
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
-use tari_core::transactions::transaction::TemplateParameter;
 
 use super::CommitteeManager;
 use crate::{
     digital_assets_error::DigitalAssetError,
+    fixed_hash::FixedHash,
     models::{
         AssetDefinition,
         BaseLayerMetadata,
@@ -48,13 +48,14 @@ use crate::{
     services::{
         base_node_client::BaseNodeClient,
         infrastructure_services::NodeAddressable,
+        AssetProcessor,
         EventsPublisher,
         MempoolService,
         PayloadProcessor,
         PayloadProvider,
         SigningService,
     },
-    storage::state::StateDbUnitOfWork,
+    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
 };
 
 #[derive(Debug, Clone)]
@@ -72,17 +73,17 @@ impl MempoolService for MockMempoolService {
 
     async fn reserve_instruction_in_block(
         &mut self,
-        _instruction_hash: &[u8],
-        _block_hash: Vec<u8>,
+        _instruction_hash: &FixedHash,
+        _block_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn remove_all_in_block(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn remove_all_in_block(&mut self, _block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
-    async fn release_reservations(&mut self, _block_hash: &[u8]) -> Result<(), DigitalAssetError> {
+    async fn release_reservations(&mut self, _block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
         todo!()
     }
 
@@ -111,7 +112,7 @@ impl<TPayload: Payload> PayloadProvider<TPayload> for MockStaticPayloadProvider<
         Ok(self.static_payload.clone())
     }
 
-    fn create_genesis_payload(&self) -> TPayload {
+    fn create_genesis_payload(&self, _: &AssetDefinition) -> TPayload {
         self.static_payload.clone()
     }
 
@@ -197,6 +198,20 @@ impl BaseNodeClient for MockBaseNodeClient {
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
         todo!();
     }
+
+    async fn get_assets_for_dan_node(
+        &mut self,
+        _dan_node_public_key: PublicKey,
+    ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
+        todo!();
+    }
+
+    async fn get_asset_registration(
+        &mut self,
+        _asset_public_key: PublicKey,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        todo!()
+    }
 }
 
 pub fn mock_base_node_client() -> MockBaseNodeClient {
@@ -240,20 +255,32 @@ pub struct MockPayloadProcessor {}
 
 #[async_trait]
 impl<TPayload: Payload> PayloadProcessor<TPayload> for MockPayloadProcessor {
-    fn init_template<TUnitOfWork: StateDbUnitOfWork>(
-        &self,
-        _template_parameter: &TemplateParameter,
-        _asset_definition: &AssetDefinition,
-        _state_db: &mut TUnitOfWork,
-    ) -> Result<(), DigitalAssetError> {
-        todo!()
-    }
-
     async fn process_payload<TUnitOfWork: StateDbUnitOfWork>(
         &self,
         _payload: &TPayload,
         _unit_of_work: TUnitOfWork,
     ) -> Result<StateRoot, DigitalAssetError> {
+        todo!()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MockAssetProcessor;
+
+impl AssetProcessor for MockAssetProcessor {
+    fn execute_instruction<TUnitOfWork: StateDbUnitOfWork>(
+        &self,
+        _instruction: &Instruction,
+        _db: &mut TUnitOfWork,
+    ) -> Result<(), DigitalAssetError> {
+        todo!()
+    }
+
+    fn invoke_read_method<TUnifOfWork: StateDbUnitOfWorkReader>(
+        &self,
+        _instruction: &Instruction,
+        _state_db: &TUnifOfWork,
+    ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         todo!()
     }
 }

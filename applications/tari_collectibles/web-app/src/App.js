@@ -30,6 +30,7 @@ import {
 } from "react-router-dom";
 import { createTheme } from "@mui/material/styles";
 import {
+  Alert,
   Box,
   CssBaseline,
   Divider,
@@ -54,13 +55,14 @@ import * as React from "react";
 import PropTypes from "prop-types";
 import Manage from "./Manage";
 import AssetManager from "./AssetManager";
+import AssetCommitteeManager from "./AssetCommitteeManager";
 import AccountDashboard from "./AccountDashboard";
 import NewAccount from "./NewAccount";
 import Setup, { UnlockWallet } from "./Setup";
 import { useEffect, useState } from "react";
 import binding from "./binding";
 import { Spinner } from "./components";
-import { listen } from '@tauri-apps/api/event'
+import { listen } from "@tauri-apps/api/event";
 
 const mdTheme = createTheme({
   palette: {
@@ -87,6 +89,11 @@ function IconButtonLink(props) {
   );
 }
 
+IconButtonLink.propTypes = {
+  icon: PropTypes.element.isRequired,
+  to: PropTypes.string.isRequired,
+};
+
 function ListItemLink(props) {
   const { icon, primary, to } = props;
 
@@ -112,15 +119,29 @@ ListItemLink.propTypes = {
   to: PropTypes.string.isRequired,
 };
 
-const AccountsMenu = (props) => {
+const AccountsMenu = ({ walletId, authenticated }) => {
   const [accounts, setAccounts] = useState([]);
   const [error, setError] = useState("");
 
-  useEffect( () => {
-    async function inner() {
+  useEffect(async () => {
+    if (authenticated) {
       console.log("refreshing accounts");
       setError("");
-      binding
+      await binding
+        .command_asset_wallets_list()
+        .then((accounts) => {
+          console.log("accounts", accounts);
+          setAccounts(accounts);
+        })
+        .catch((e) => {
+          // todo error handling
+          console.error("accounts_list error:", e);
+          setError(e.message);
+        });
+      await listen("asset_wallets::updated", (event) => {
+        console.log("accounts have changed");
+        setError("");
+        binding
           .command_asset_wallets_list()
           .then((accounts) => {
             console.log("accounts", accounts);
@@ -131,33 +152,10 @@ const AccountsMenu = (props) => {
             console.error("accounts_list error:", e);
             setError(e.message);
           });
-
-
-      await listen("asset_wallets::updated", event => {
-            console.log("accounts have changed");
-            setError("");
-            binding
-                .command_asset_wallets_list()
-                .then((accounts) => {
-                  console.log("accounts", accounts);
-                  setAccounts(accounts);
-                })
-                .catch((e) => {
-                  // todo error handling
-                  console.error("accounts_list error:", e);
-                  setError(e.message);
-                });
-          }
-      );
+      });
     }
-    inner();
-  }, [props.walletId]);
+  }, [walletId, authenticated]);
 
-
-
-
-
-  // todo: hide accounts when not authenticated
   return (
     <div>
       <ListSubheader>
@@ -165,28 +163,37 @@ const AccountsMenu = (props) => {
           component="div"
           disableGutters={true}
           secondaryAction={
-            <IconButtonLink
-              icon={<AddIcon />}
-              to="/accounts/new"
-            ></IconButtonLink>
+            <IconButtonLink icon={<AddIcon />} to="/accounts/new" />
           }
         >
           My Assets
         </ListItem>
       </ListSubheader>
-      { error ? <ListItem>{error}</ListItem> : ""}
       <List>
         {accounts.map((item) => {
           return (
             <ListItemLink
+              key={item.name}
               primary={item.name || item.assetPublicKey}
               to={`/accounts/${item.asset_public_key}`}
-            ></ListItemLink>
+            />
           );
         })}
       </List>
+      {error ? (
+        <Alert severity="error" onClick={() => setError(null)}>
+          {error}
+        </Alert>
+      ) : (
+        ""
+      )}
     </div>
   );
+};
+
+AccountsMenu.propTypes = {
+  walletId: PropTypes.string,
+  authenticated: PropTypes.bool,
 };
 
 // only allow access to a Protected Route if the wallet is unlocked
@@ -203,7 +210,8 @@ ProtectedRoute.propTypes = {
 };
 
 function App() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [authenticated, setAuthenticated] = useState(false);
   const [walletId, setWalletId] = useState("");
   const setPassword = useState("")[1];
@@ -215,10 +223,13 @@ function App() {
     binding
       .command_create_db()
       .then((r) => setLoading(false))
-      .catch((e) => console.error(e));
-
+      .catch((e) => {
+        setLoading(false);
+        setError(e);
+      });
   }, []);
   if (loading) return <Spinner />;
+  if (error) return <Alert severity="error">{error.toString()}</Alert>;
 
   return (
     <div className="App">
@@ -239,8 +250,11 @@ function App() {
                   to="/dashboard"
                   icon={<DashboardIcon />}
                 />
-                <Divider></Divider>
-                <AccountsMenu walletId={walletId} />
+                <Divider />
+                <AccountsMenu
+                  walletId={walletId}
+                  authenticated={authenticated}
+                />
                 <ListSubheader>Issued Assets</ListSubheader>
                 <ListItemLink
                   primary="Manage"
@@ -273,7 +287,7 @@ function App() {
                   <NewAccount />
                 </ProtectedRoute>
                 <ProtectedRoute
-                  path="/accounts/:assetPubKey"
+                  path="/accounts/:assetPublicKey"
                   authenticated={authenticated}
                 >
                   <AccountDashboard />
@@ -285,10 +299,16 @@ function App() {
                   <Manage />
                 </ProtectedRoute>
                 <ProtectedRoute
-                  path="/assets/manage/:assetPubKey"
+                  path="/assets/manage/:assetPublicKey"
                   authenticated={authenticated}
                 >
                   <AssetManager />
+                </ProtectedRoute>
+                <ProtectedRoute
+                  path="/assets/committee/:assetPublicKey"
+                  authenticated={authenticated}
+                >
+                  <AssetCommitteeManager />
                 </ProtectedRoute>
 
                 <Route path="/wallets/:id">
@@ -301,13 +321,15 @@ function App() {
                   />
                 </Route>
                 <Route path="/unlock">
-                  <Setup setAuthenticated={(id, password) => {
-                    setWalletId(id);
-                    setPassword(password);
-                    setAuthenticated(true);
-                  }}/>
+                  <Setup
+                    setAuthenticated={(id, password) => {
+                      setWalletId(id);
+                      setPassword(password);
+                      setAuthenticated(true);
+                    }}
+                  />
                 </Route>
-                <ProtectedRoute path="/"  authenticated={authenticated} >
+                <ProtectedRoute path="/" authenticated={authenticated}>
                   <Dashboard />
                 </ProtectedRoute>
               </Switch>

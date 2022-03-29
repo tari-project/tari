@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{ops::Deref, sync::Arc};
 
 use log::*;
 use tari_common_types::transaction::TxId;
@@ -28,6 +28,7 @@ use tari_comms::{connectivity::ConnectivityEvent, peer_manager::Peer};
 use tari_wallet::{
     base_node_service::{handle::BaseNodeEvent, service::BaseNodeState},
     connectivity_service::WalletConnectivityInterface,
+    contacts_service::handle::ContactsLivenessEvent,
     output_manager_service::handle::OutputManagerEvent,
     transaction_service::handle::TransactionEvent,
 };
@@ -80,6 +81,8 @@ impl WalletEventMonitor {
             .new_update_notifier()
             .clone();
 
+        let mut contacts_liveness_events = self.app_state_inner.read().await.get_contacts_liveness_event_stream();
+
         info!(target: LOG_TARGET, "Wallet Event Monitor starting");
         loop {
             tokio::select! {
@@ -93,28 +96,46 @@ impl WalletEventMonitor {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_received(tx_id);
+                                        self.add_notification(format!("Finalized Transaction Received - TxId: {}", tx_id)).await;
                                     },
-                                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                    TransactionEvent::TransactionMinedUnconfirmed{tx_id, num_confirmations, is_valid: _}  |
+                                    TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _}=> {
                                         self.trigger_confirmations_refresh(tx_id, num_confirmations).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined_unconfirmed(tx_id, num_confirmations);
+                                        self.add_notification(format!("Transaction Mined Unconfirmed with {} confirmations - TxId: {}", num_confirmations, tx_id)).await;
                                     },
-                                    TransactionEvent::TransactionMined{tx_id, is_valid: _} => {
+                                    TransactionEvent::TransactionMined{tx_id, is_valid: _} |
+                                    TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _}=> {
                                         self.trigger_confirmations_cleanup(tx_id).await;
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_mined(tx_id);
+                                        self.add_notification(format!("Transaction Confirmed - TxId: {}", tx_id)).await;
                                     },
                                     TransactionEvent::TransactionCancelled(tx_id, _) => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                         notifier.transaction_cancelled(tx_id);
                                     },
-                                    TransactionEvent::ReceivedTransaction(tx_id) |
-                                    TransactionEvent::ReceivedTransactionReply(tx_id) |
-                                    TransactionEvent::TransactionBroadcast(tx_id) |
-                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) | TransactionEvent::TransactionImported(tx_id) => {
+                                    TransactionEvent::ReceivedTransaction(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
+                                        self.add_notification(format!("Transaction Received - TxId: {}", tx_id)).await;
+                                    },
+                                    TransactionEvent::ReceivedTransactionReply(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
+                                        self.add_notification(format!("Transaction Reply Received - TxId: {}", tx_id)).await;
+                                    },
+                                    TransactionEvent::TransactionBroadcast(tx_id) => {
+                                        self.trigger_tx_state_refresh(tx_id).await;
+                                        self.trigger_balance_refresh();
+                                        self.add_notification(format!("Transaction Broadcast to Mempool - TxId: {}", tx_id)).await;
+                                    },
+                                    TransactionEvent::TransactionMinedRequestTimedOut(tx_id) |
+                                    TransactionEvent::TransactionImported(tx_id)  => {
                                         self.trigger_tx_state_refresh(tx_id).await;
                                         self.trigger_balance_refresh();
                                     },
@@ -210,6 +231,26 @@ impl WalletEventMonitor {
                             Err(broadcast::error::RecvError::Closed) => {}
                         }
                     },
+                    event = contacts_liveness_events.recv() => {
+                        match event {
+                            Ok(liveness_event) => {
+                                match liveness_event.deref() {
+                                    ContactsLivenessEvent::StatusUpdated(data) => {
+                                        trace!(target: LOG_TARGET,
+                                            "Contacts Liveness Service event 'StatusUpdated': {}",
+                                            data.clone(),
+                                        );
+                                        self.trigger_contacts_refresh().await;
+                                    }
+                                    ContactsLivenessEvent::NetworkSilence => {}
+                                }
+                            }
+                            Err(broadcast::error::RecvError::Lagged(n)) => {
+                                warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                            }
+                            Err(broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
                     _ = shutdown_signal.wait() => {
                         info!(target: LOG_TARGET, "Wallet Event Monitor shutting down because the shutdown signal was received");
                         break;
@@ -289,5 +330,13 @@ impl WalletEventMonitor {
     async fn add_notification(&mut self, notification: String) {
         let mut inner = self.app_state_inner.write().await;
         inner.add_notification(notification);
+    }
+
+    async fn trigger_contacts_refresh(&mut self) {
+        let mut inner = self.app_state_inner.write().await;
+
+        if let Err(e) = inner.refresh_contacts_state().await {
+            warn!(target: LOG_TARGET, "Error refresh contacts state: {}", e);
+        }
     }
 }

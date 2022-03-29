@@ -23,9 +23,9 @@
 use log::*;
 use tari_common_types::{
     transaction::TxId,
-    types::{Commitment, PublicKey},
+    types::{Commitment, FixedHash, PublicKey, ASSET_CHECKPOINT_ID, COMMITTEE_DEFINITION_ID},
 };
-use tari_core::transactions::transaction::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
+use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags, TemplateParameter, Transaction};
 
 use crate::{
     assets::Asset,
@@ -40,6 +40,7 @@ use crate::{
 };
 
 const LOG_TARGET: &str = "wallet::assets::asset_manager";
+const ASSET_FPG: u64 = 10;
 
 pub(crate) struct AssetManager<T: OutputManagerBackend + 'static> {
     output_database: OutputManagerDatabase<T>,
@@ -112,7 +113,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         debug!(target: LOG_TARGET, "Created output: {:?}", output);
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 20.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -143,7 +144,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(outputs, 100.into(), None, None)
+            .create_send_to_self_with_output(outputs, ASSET_FPG.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -151,7 +152,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
     pub async fn create_initial_asset_checkpoint(
         &mut self,
         asset_pub_key: PublicKey,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
@@ -160,7 +161,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
                 0.into(),
                 OutputFeatures::for_checkpoint(
                     asset_pub_key,
-                    vec![3u8; 32],
+                    ASSET_CHECKPOINT_ID.into(),
                     merkle_root,
                     committee_pub_keys.clone(),
                     true,
@@ -190,7 +191,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 100.into(), None, None)
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
         Ok((tx_id, transaction))
     }
@@ -199,7 +200,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         &mut self,
         asset_pub_key: PublicKey,
         unique_id: Vec<u8>,
-        merkle_root: Vec<u8>,
+        merkle_root: FixedHash,
         committee_pub_keys: Vec<PublicKey>,
     ) -> Result<(TxId, Transaction), WalletError> {
         let output = self
@@ -238,8 +239,42 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         // )));
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(vec![output], 100.into(), Some(unique_id), Some(asset_pub_key))
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), Some(unique_id), Some(asset_pub_key))
             .await?;
+        Ok((tx_id, transaction))
+    }
+
+    pub async fn create_committee_definition(
+        &mut self,
+        asset_public_key: PublicKey,
+        committee_pub_keys: Vec<PublicKey>,
+        effective_sidechain_height: u64,
+        is_initial: bool,
+    ) -> Result<(TxId, Transaction), WalletError> {
+        let output = self
+            .output_manager
+            .create_output_with_features(
+                0.into(),
+                OutputFeatures::for_committee(
+                    asset_public_key.clone(),
+                    COMMITTEE_DEFINITION_ID.into(),
+                    committee_pub_keys.clone(),
+                    effective_sidechain_height,
+                    is_initial,
+                ),
+            )
+            .await?;
+
+        let (tx_id, transaction) = self
+            .output_manager
+            .create_send_to_self_with_output(
+                vec![output],
+                ASSET_FPG.into(),
+                Some(COMMITTEE_DEFINITION_ID.into()),
+                Some(asset_public_key),
+            )
+            .await?;
+
         Ok((tx_id, transaction))
     }
 }
@@ -333,3 +368,5 @@ pub struct AssetMetadata {
     description: String,
     image: String,
 }
+
+pub const KEY_MANAGER_ASSET_BRANCH: &str = "Asset";

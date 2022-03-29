@@ -50,8 +50,15 @@ use tari_core::{
     transactions::{
         fee::Fee,
         tari_amount::{uT, MicroTari, T},
-        test_helpers::{create_unblinded_output, schema_to_transaction, spend_utxos, TestParams},
-        transaction::{KernelBuilder, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
+        test_helpers::{
+            create_unblinded_output,
+            schema_to_transaction,
+            spend_utxos,
+            TestParams,
+            TransactionSchema,
+            UtxoTestParams,
+        },
+        transaction_components::{KernelBuilder, OutputFeatures, OutputFlags, Transaction, TransactionOutput},
         transaction_protocol::{build_challenge, TransactionMetadata},
         CryptoFactories,
     },
@@ -59,8 +66,9 @@ use tari_core::{
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
+use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
 
@@ -96,7 +104,10 @@ async fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        features: OutputFeatures::with_maturity(1)
+        features: OutputFeatures{
+            maturity: 1,
+            ..Default::default()
+        }
     );
     let tx3 = Arc::new(spend_utxos(tx3).0);
 
@@ -105,7 +116,10 @@ async fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 3,
-        features: OutputFeatures::with_maturity(2)
+        features: OutputFeatures{
+            maturity: 2,
+            ..Default::default()
+        }
     );
     let tx5 = Arc::new(spend_utxos(tx5).0);
     let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default());
@@ -115,37 +129,50 @@ async fn test_insert_and_process_published_block() {
     mempool.insert(tx2.clone()).await.unwrap();
     mempool.insert(tx3.clone()).await.unwrap();
     mempool.insert(tx5.clone()).await.unwrap();
-    mempool.process_published_block(blocks[1].block()).await.unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
 
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
-            .await,
+            .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::UnconfirmedPool
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
 
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
 
-    let snapshot_txs = mempool.snapshot().await;
+    let snapshot_txs = mempool.snapshot().await.unwrap();
     assert_eq!(snapshot_txs.len(), 1);
     assert!(snapshot_txs.contains(&tx2));
 
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
@@ -159,35 +186,48 @@ async fn test_insert_and_process_published_block() {
 
     // Spend tx2, so it goes in Reorg pool
     generate_block(&store, &mut blocks, vec![tx2.deref().clone()], &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[2].block()).await.unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).await.unwrap();
 
     assert_eq!(
         mempool
-            .has_tx_with_excess_sig(&orphan.body.kernels()[0].excess_sig)
-            .await,
+            .has_tx_with_excess_sig(orphan.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx2.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx2.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx3.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx3.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx5.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx5.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
     assert_eq!(
-        mempool.has_tx_with_excess_sig(&tx6.body.kernels()[0].excess_sig).await,
+        mempool
+            .has_tx_with_excess_sig(tx6.body.kernels()[0].excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::NotStored
     );
 
-    let snapshot_txs = mempool.snapshot().await;
+    let snapshot_txs = mempool.snapshot().await.unwrap();
     assert_eq!(snapshot_txs.len(), 0);
 
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.total_txs, 1);
     assert_eq!(stats.unconfirmed_txs, 0);
     assert_eq!(stats.reorg_txs, 1);
@@ -211,7 +251,7 @@ async fn test_time_locked() {
         to: vec![2 * T, 2 * T, 2 * T, 2 * T], fee: 5*uT, lock: 0, features: OutputFeatures::default()
     )];
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block()).await.unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
     // Block height should be 1
     let mut tx2 = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1*T], fee: 20*uT, lock: 0, features: OutputFeatures::default());
     tx2.lock_height = 3;
@@ -222,7 +262,10 @@ async fn test_time_locked() {
         to: vec![1*T],
         fee: 4*uT,
         lock: 4,
-        features: OutputFeatures::with_maturity(1)
+        features: OutputFeatures{
+            maturity: 1,
+            ..Default::default()
+        }
     );
     tx3.lock_height = 2;
     let tx3 = Arc::new(spend_utxos(tx3).0);
@@ -239,7 +282,7 @@ async fn test_time_locked() {
 
     // Spend tx3, so that the height of the chain will increase
     generate_block(&store, &mut blocks, vec![tx3.deref().clone()], &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[2].block()).await.unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).await.unwrap();
 
     // Block height increased, so tx2 should no go in.
     assert_eq!(mempool.insert(tx2).await.unwrap(), TxStorageResponse::UnconfirmedPool);
@@ -262,7 +305,7 @@ async fn test_retrieve() {
     )];
     // "Mine" Block 1
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block()).await.unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
     // 1-Block, 8 UTXOs, empty mempool
     let txs = vec![
         txn_schema!(from: vec![outputs[1][0].clone()], to: vec![], fee: 30*uT, lock: 0, features: OutputFeatures::default()),
@@ -273,10 +316,16 @@ async fn test_retrieve() {
         txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
-        features: OutputFeatures::with_maturity(4)),
+            features: OutputFeatures{
+                maturity: 4,
+                ..Default::default()
+        }),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
-        features: OutputFeatures::with_maturity(3)),
+            features: OutputFeatures{
+            maturity: 3,
+            ..Default::default()
+        }),
     ];
     let (tx, utxos) = schema_to_transaction(&txs);
     for t in &tx {
@@ -291,7 +340,7 @@ async fn test_retrieve() {
     assert!(retrieved_txs.contains(&tx[6]));
     assert!(retrieved_txs.contains(&tx[2]));
     assert!(retrieved_txs.contains(&tx[3]));
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 7);
     // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 0);
@@ -306,9 +355,9 @@ async fn test_retrieve() {
     // "Mine" block 2
     generate_block(&store, &mut blocks, block2_txns, &consensus_manager).unwrap();
     outputs.push(utxos);
-    mempool.process_published_block(blocks[2].block()).await.unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).await.unwrap();
     // 2-blocks, 2 unconfirmed txs in mempool
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
     // assert_eq!(stats.timelocked_txs, 0);
     assert_eq!(stats.reorg_txs, 5);
@@ -327,7 +376,7 @@ async fn test_retrieve() {
     // Top 2 txs are tx[3] (fee/g = 50) and tx2[1] (fee/g = 40). tx2[0] (fee/g = 80) is still not matured.
     let weight = tx[3].calculate_weight(weighting) + tx2[1].calculate_weight(weighting);
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
 
     assert_eq!(stats.unconfirmed_txs, 3);
     // assert_eq!(stats.timelocked_txs, 1);
@@ -354,7 +403,7 @@ async fn test_zero_conf() {
     )];
     // "Mine" Block 1
     generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block()).await.unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
 
     // This transaction graph will be created, containing 3 levels of zero-conf transactions, inheriting dependent
     // outputs from multiple parents
@@ -551,7 +600,10 @@ async fn test_zero_conf() {
     );
 
     // Try to retrieve all transactions in the mempool (a couple of our transactions should be missing from retrieved)
-    let retrieved_txs = mempool.retrieve(mempool.stats().await.total_weight).await.unwrap();
+    let retrieved_txs = mempool
+        .retrieve(mempool.stats().await.unwrap().total_weight)
+        .await
+        .unwrap();
     assert_eq!(retrieved_txs.len(), 10);
     assert!(retrieved_txs.contains(&Arc::new(tx01.clone())));
     assert!(!retrieved_txs.contains(&Arc::new(tx02.clone()))); // Missing
@@ -600,7 +652,10 @@ async fn test_zero_conf() {
     );
 
     // Try to retrieve all transactions in the mempool (all transactions should be retrieved)
-    let retrieved_txs = mempool.retrieve(mempool.stats().await.total_weight).await.unwrap();
+    let retrieved_txs = mempool
+        .retrieve(mempool.stats().await.unwrap().total_weight)
+        .await
+        .unwrap();
     assert_eq!(retrieved_txs.len(), 16);
     assert!(retrieved_txs.contains(&Arc::new(tx01.clone())));
     assert!(retrieved_txs.contains(&Arc::new(tx02.clone())));
@@ -621,7 +676,7 @@ async fn test_zero_conf() {
 
     // Verify that a higher priority transaction is not retrieved due to its zero-conf dependency instead of the lowest
     // priority transaction
-    let weight = mempool.stats().await.total_weight - 1;
+    let weight = mempool.stats().await.unwrap().total_weight - 1;
     let retrieved_txs = mempool.retrieve(weight).await.unwrap();
     assert_eq!(retrieved_txs.len(), 15);
     assert!(retrieved_txs.contains(&Arc::new(tx01)));
@@ -659,7 +714,7 @@ async fn test_reorg() {
         txn_schema!(from: vec![outputs[0][0].clone()], to: vec![1 * T, 1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default()),
     ];
     generate_new_block(&mut db, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[1].block()).await.unwrap();
+    mempool.process_published_block(blocks[1].to_arc_block()).await.unwrap();
 
     // "Mine" block 2
     let schemas = vec![
@@ -672,11 +727,11 @@ async fn test_reorg() {
     for tx in &txns2 {
         mempool.insert(tx.clone()).await.unwrap();
     }
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 3);
     let txns2 = txns2.iter().map(|t| t.deref().clone()).collect();
     generate_block(&db, &mut blocks, txns2, &consensus_manager).unwrap();
-    mempool.process_published_block(blocks[2].block()).await.unwrap();
+    mempool.process_published_block(blocks[2].to_arc_block()).await.unwrap();
 
     // "Mine" block 3
     let schemas = vec![
@@ -698,9 +753,9 @@ async fn test_reorg() {
         &consensus_manager,
     )
     .unwrap();
-    mempool.process_published_block(blocks[3].block()).await.unwrap();
+    mempool.process_published_block(blocks[3].to_arc_block()).await.unwrap();
 
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 0);
     // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 5);
@@ -714,7 +769,7 @@ async fn test_reorg() {
         .process_reorg(vec![blocks[3].to_arc_block()], vec![reorg_block3.into()])
         .await
         .unwrap();
-    let stats = mempool.stats().await;
+    let stats = mempool.stats().await.unwrap();
     assert_eq!(stats.unconfirmed_txs, 2);
     // assert_eq!(stats.timelocked_txs, 1);
     assert_eq!(stats.reorg_txs, 3);
@@ -803,20 +858,32 @@ async fn receive_and_propagate_transaction() {
         .unwrap();
 
     async_assert_eventually!(
-        bob_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).await,
+        bob_node
+            .mempool
+            .has_tx_with_excess_sig(tx_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::NotStored,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
     async_assert_eventually!(
-        carol_node.mempool.has_tx_with_excess_sig(&tx_excess_sig).await,
+        carol_node
+            .mempool
+            .has_tx_with_excess_sig(tx_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::NotStored,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
     );
     // Carol got sent the orphan tx directly, so it will be in her mempool
     async_assert_eventually!(
-        carol_node.mempool.has_tx_with_excess_sig(&orphan_excess_sig).await,
+        carol_node
+            .mempool
+            .has_tx_with_excess_sig(orphan_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::NotStored,
         max_attempts = 10,
         interval = Duration::from_millis(1000)
@@ -824,7 +891,11 @@ async fn receive_and_propagate_transaction() {
     // It's difficult to test a negative here, but let's at least make sure that the orphan TX was not propagated
     // by the time we check it
     async_assert_eventually!(
-        bob_node.mempool.has_tx_with_excess_sig(&orphan_excess_sig).await,
+        bob_node
+            .mempool
+            .has_tx_with_excess_sig(orphan_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::NotStored,
     );
 }
@@ -944,6 +1015,187 @@ async fn consensus_validation_large_tx() {
     // make sure the tx was not accepted into the mempool
     assert!(matches!(response, TxStorageResponse::NotStored));
 }
+#[tokio::test]
+#[allow(clippy::erasing_op)]
+#[allow(clippy::identity_op)]
+async fn consensus_validation_versions() {
+    use tari_core::transactions::transaction_components::{
+        OutputFeaturesVersion,
+        TransactionInputVersion,
+        TransactionKernelVersion,
+        TransactionOutputVersion,
+    };
+
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+    let cc = consensus_manager.consensus_constants(0);
+
+    // check the current localnet defaults
+    assert_eq!(
+        cc.input_version_range().clone(),
+        TransactionInputVersion::V0..=TransactionInputVersion::V0
+    );
+    assert_eq!(
+        cc.kernel_version_range().clone(),
+        TransactionKernelVersion::V0..=TransactionKernelVersion::V0
+    );
+    assert_eq!(
+        cc.output_version_range().clone().outputs,
+        TransactionOutputVersion::V0..=TransactionOutputVersion::V0
+    );
+    assert_eq!(
+        cc.output_version_range().clone().features,
+        OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0
+    );
+
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+
+    let test_params = TestParams::new();
+    let params = UtxoTestParams::with_value(1 * T);
+    let output_v0_features_v0 = test_params.create_unblinded_output(params);
+    assert_eq!(output_v0_features_v0.version, TransactionOutputVersion::V0);
+    assert_eq!(output_v0_features_v0.features.version, OutputFeaturesVersion::V0);
+
+    let test_params = TestParams::new();
+    let params = UtxoTestParams::with_value(1 * T);
+    let mut output_v1_features_v0 = test_params.create_unblinded_output(params);
+    output_v1_features_v0.version = TransactionOutputVersion::V1;
+    assert_eq!(output_v1_features_v0.version, TransactionOutputVersion::V1);
+    assert_eq!(output_v1_features_v0.features.version, OutputFeaturesVersion::V0);
+
+    let features = OutputFeatures::new(
+        OutputFeaturesVersion::V1,
+        OutputFlags::empty(),
+        0,
+        0,
+        Default::default(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let test_params = TestParams::new();
+    let mut params = UtxoTestParams::with_value(1 * T);
+    params.features = features.clone();
+    let output_v0_features_v1 = test_params.create_unblinded_output(params);
+    assert_eq!(output_v0_features_v1.version, TransactionOutputVersion::V0);
+    assert_eq!(output_v0_features_v1.features.version, OutputFeaturesVersion::V1);
+
+    let test_params = TestParams::new();
+    let mut params = UtxoTestParams::with_value(1 * T);
+    params.features = features.clone();
+    let mut output_v1_features_v1 = test_params.create_unblinded_output(params);
+    output_v1_features_v1.version = TransactionOutputVersion::V1;
+    assert_eq!(output_v1_features_v1.version, TransactionOutputVersion::V1);
+    assert_eq!(output_v1_features_v1.features.version, OutputFeaturesVersion::V1);
+
+    let schema = txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T]
+    );
+    let txs = vec![schema];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    // Cases:
+    // invalid input version
+    let tx = TransactionSchema {
+        from: vec![outputs[1][0].clone()],
+        to: vec![1 * T],
+        to_outputs: vec![],
+        fee: 25.into(),
+        lock_height: 0,
+        features: Default::default(),
+        script: script![Nop],
+        input_data: None,
+        covenant: Default::default(),
+        input_version: Some(TransactionInputVersion::V1),
+        output_version: None,
+    };
+
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // invalid output version
+    let tx = TransactionSchema {
+        from: vec![outputs[1][1].clone()],
+        to: vec![],
+        to_outputs: vec![output_v1_features_v0],
+        fee: 25.into(),
+        lock_height: 0,
+        features: Default::default(),
+        script: script![Nop],
+        input_data: None,
+        covenant: Default::default(),
+        input_version: None,
+        output_version: Some(TransactionOutputVersion::V1),
+    };
+
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+
+    // invalid output features version
+    let tx = TransactionSchema {
+        from: vec![outputs[1][2].clone()],
+        to: vec![],
+        to_outputs: vec![output_v0_features_v1],
+        fee: 25.into(),
+        lock_height: 0,
+        features: Default::default(),
+        script: script![Nop],
+        input_data: None,
+        covenant: Default::default(),
+        input_version: None,
+        output_version: None,
+    };
+
+    let (tx, _) = spend_utxos(tx);
+    let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+}
+
+#[tokio::test]
+async fn consensus_validation_unique_excess_sig() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+
+    // Create a block with 5 outputs
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
+    )];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    let schema = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1_500_000 * uT]);
+    let (tx1, _) = spend_utxos(schema.clone());
+    generate_block(&store, &mut blocks, vec![tx1.clone()], &consensus_manager).unwrap();
+
+    // trying to submit a transaction with an existing excess signature already in the chain is an error
+    let tx = Arc::new(tx1);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+}
 
 #[tokio::test]
 #[allow(clippy::erasing_op)]
@@ -1052,7 +1304,6 @@ async fn consensus_validation_unique_id() {
     let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
     let response = mempool.insert(tx).await.unwrap();
-    dbg!(&response);
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 }
 
@@ -1134,7 +1385,11 @@ async fn block_event_and_reorg_event_handling() {
     // Add Block1 - tx1 will be moved to the ReorgPool.
     assert!(bob.local_nci.submit_block(block1.clone(),).await.is_ok());
     async_assert_eventually!(
-        alice.mempool.has_tx_with_excess_sig(&tx1_excess_sig).await,
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx1_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::ReorgPool,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
@@ -1164,27 +1419,46 @@ async fn block_event_and_reorg_event_handling() {
     assert!(bob.local_nci.submit_block(block2a.clone(),).await.is_ok());
 
     async_assert_eventually!(
-        bob.mempool.has_tx_with_excess_sig(&tx2a_excess_sig).await,
+        bob.mempool
+            .has_tx_with_excess_sig(tx2a_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::ReorgPool,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
     async_assert_eventually!(
-        alice.mempool.has_tx_with_excess_sig(&tx2a_excess_sig).await,
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx2a_excess_sig.clone())
+            .await
+            .unwrap(),
         expect = TxStorageResponse::ReorgPool,
         max_attempts = 20,
         interval = Duration::from_millis(1000)
     );
     assert_eq!(
-        alice.mempool.has_tx_with_excess_sig(&tx3a_excess_sig).await,
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx3a_excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
-        alice.mempool.has_tx_with_excess_sig(&tx2b_excess_sig).await,
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx2b_excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::ReorgPool
     );
     assert_eq!(
-        alice.mempool.has_tx_with_excess_sig(&tx3b_excess_sig).await,
+        alice
+            .mempool
+            .has_tx_with_excess_sig(tx3b_excess_sig.clone())
+            .await
+            .unwrap(),
         TxStorageResponse::ReorgPool
     );
 }

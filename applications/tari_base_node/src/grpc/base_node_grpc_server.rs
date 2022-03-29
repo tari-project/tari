@@ -48,7 +48,7 @@ use tari_core::{
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -79,6 +79,8 @@ const LIST_HEADERS_MAX_NUM_HEADERS: u64 = 10_000;
 const LIST_HEADERS_PAGE_SIZE: usize = 10;
 // The `num_headers` value if none is provided.
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
+
+const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
 
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
@@ -602,8 +604,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 let response = tari_rpc::ListAssetRegistrationsResponse {
                     asset_public_key: output
                         .features
-                        .mint_non_fungible
-                        .map(|mint| mint.asset_public_key.to_vec())
+                        .asset
+                        .map(|asset| asset.public_key.to_vec())
                         .unwrap_or_default(),
                     unique_id: output.features.unique_id.unwrap_or_default(),
                     owner_commitment: output.commitment.to_vec(),
@@ -716,7 +718,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)))?;
         let block_height = block.header.height;
-        debug!(
+        debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
+        info!(
             target: LOG_TARGET,
             "Received SubmitBlock #{} request from client", block_height
         );
@@ -1152,22 +1155,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(rx))
     }
 
-    // deprecated
-    async fn get_calc_timing(
-        &self,
-        request: Request<tari_rpc::HeightRequest>,
-    ) -> Result<Response<tari_rpc::CalcTimingResponse>, Status> {
-        debug!(
-            target: LOG_TARGET,
-            "Incoming GRPC request for deprecated GetCalcTiming. Forwarding to GetBlockTiming.",
-        );
-
-        let tari_rpc::BlockTimingResponse { max, min, avg } = self.get_block_timing(request).await?.into_inner();
-        let response = tari_rpc::CalcTimingResponse { max, min, avg };
-
-        Ok(Response::new(response))
-    }
-
     async fn get_block_timing(
         &self,
         request: Request<tari_rpc::HeightRequest>,
@@ -1184,8 +1171,19 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut handler = self.node_service.clone();
         let (start, end) = get_heights(&request, handler.clone()).await?;
 
+        let num_requested = end.saturating_sub(start);
+        if num_requested > BLOCK_TIMING_MAX_BLOCKS {
+            warn!(
+                target: LOG_TARGET,
+                "GetBlockTiming request for too many blocks. Requested: {}. Max: {}.",
+                num_requested,
+                BLOCK_TIMING_MAX_BLOCKS
+            );
+            return Err(Status::invalid_argument("Max request size exceeded."));
+        }
+
         let headers = match handler.get_headers(start..=end).await {
-            Ok(headers) => headers.into_iter().map(|h| h.into_header()).collect::<Vec<_>>(),
+            Ok(headers) => headers.into_iter().map(|h| h.into_header()).rev().collect::<Vec<_>>(),
             Err(err) => {
                 warn!(target: LOG_TARGET, "Error getting headers for GRPC client: {}", err);
                 Vec::new()
@@ -1360,11 +1358,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             .state_info
             .get_block_sync_info()
             .map(|info| {
-                let node_ids = info.sync_peers.iter().map(|x| x.to_string().into_bytes()).collect();
+                let node_ids = info.sync_peer.node_id().to_string().into_bytes();
                 tari_rpc::SyncInfoResponse {
                     tip_height: info.tip_height,
                     local_height: info.local_height,
-                    peer_node_id: node_ids,
+                    peer_node_id: vec![node_ids],
                 }
             })
             .unwrap_or_default();
@@ -1435,7 +1433,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let resp = tari_rpc::NetworkStatusResponse {
             status: tari_rpc::ConnectivityStatus::from(status) as i32,
-            avg_latency_ms: latency.unwrap_or_default(),
+            avg_latency_ms: latency
+                .map(|l| u32::try_from(l.as_millis()).unwrap_or(u32::MAX))
+                .unwrap_or(0),
             num_node_connections: status.num_connected_nodes() as u32,
         };
 

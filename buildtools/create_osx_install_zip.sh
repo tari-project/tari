@@ -9,8 +9,8 @@ if [ $# -eq 0 ]; then
 fi
 rm -f "./$1.tar.gz" >/dev/null
 
-tarball_parent=/tmp
-tarball_source=tari_testnet
+tarball_parent=${tarball_parent:-/tmp}
+tarball_source=${tarball_source:-tari_testnet}
 tarball_folder=${tarball_parent}/${tarball_source}
 if [ -d "${tarball_folder}" ]; then
     rm -f -r "${tarball_folder:?}"
@@ -43,8 +43,8 @@ else
 fi
 
 # One click miner
-cp -f -P "${app_dir}/tari_base_node/osx/start_all" "${tarball_folder}/start_all"
-cp -f "${app_dir}/tari_base_node/osx/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
+# cp -f -P "${app_dir}/tari_base_node/osx/start_all" "${tarball_folder}/start_all"
+# cp -f "${app_dir}/tari_base_node/osx/runtime/start_all.sh" "${tarball_folder}/runtime/start_all.sh"
 
 # Base Node
 cp -f -P "${app_dir}/tari_base_node/osx/start_tari_base_node" "${tarball_folder}/start_tari_base_node"
@@ -69,6 +69,15 @@ cp -f -P "${app_dir}/tari_merge_mining_proxy/osx/start_xmrig" "${tarball_folder}
 cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_tari_merge_mining_proxy.sh" "${tarball_folder}/runtime/start_tari_merge_mining_proxy.sh"
 cp -f "${app_dir}/tari_merge_mining_proxy/osx/runtime/start_xmrig.sh" "${tarball_folder}/runtime/start_xmrig.sh"
 cp -f "${project_dir}/target/release/tari_merge_mining_proxy" "${tarball_folder}/runtime/tari_merge_mining_proxy"
+
+# Collectibles
+cp -f "${project_dir}/target/release/tari_collectibles" "${tarball_folder}/runtime/tari_collectibles"
+
+# Validator node
+cp -f "${project_dir}/target/release/tari_validator_node" "${tarball_folder}/runtime/tari_validator_node"
+
+# Launchpad
+cp -f "${project_dir}/target/release/tari_launchpad" "${tarball_folder}/runtime/tari_launchpad"
 
 # 3rd party install
 cp -f "${local_dir}/install_xmrig.sh" "${tarball_folder}/runtime/install_xmrig.sh"

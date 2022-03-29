@@ -62,6 +62,7 @@ where DS: KeyValueStore<PeerId, Peer>
     /// Constructs a new PeerStorage, with indexes populated from the given datastore
     pub fn new_indexed(database: DS) -> Result<PeerStorage<DS>, PeerManagerError> {
         // Restore peers and hashmap links from database
+        #[allow(clippy::mutable_key_type)]
         let mut public_key_index = HashMap::new();
         let mut node_id_index = HashMap::new();
         let mut total_entries = 0;
@@ -124,7 +125,7 @@ where DS: KeyValueStore<PeerId, Peer>
 
     /// Adds a peer to the routing table of the PeerManager if the peer does not already exist. When a peer already
     /// exist, the stored version will be replaced with the newly provided peer.
-    #[allow(clippy::too_many_arguments)]
+
     #[allow(clippy::option_option)]
     pub fn update_peer(
         &mut self,
@@ -496,6 +497,13 @@ where DS: KeyValueStore<PeerId, Peer>
         let node_id = peer.node_id.clone();
         self.peer_db.insert(id, peer).map_err(PeerManagerError::DatabaseError)?;
         Ok(node_id)
+    }
+
+    pub fn is_peer_banned(&self, node_id: &NodeId) -> Result<bool, PeerManagerError> {
+        let peer = self
+            .find_by_node_id(node_id)?
+            .ok_or(PeerManagerError::PeerNotFoundError)?;
+        Ok(peer.is_banned())
     }
 
     /// Changes the OFFLINE flag bit of the peer.

@@ -20,18 +20,28 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, ops::Add};
+use std::{
+    collections::HashMap,
+    ops::{Add, RangeInclusive},
+};
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
-use tari_crypto::{script, tari_utilities::epoch_time::EpochTime};
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_script::script;
 
 use crate::{
     consensus::{network::NetworkConsensus, ConsensusEncodingSized},
     proof_of_work::{Difficulty, PowAlgorithm},
     transactions::{
         tari_amount::{uT, MicroTari, T},
-        transaction::OutputFeatures,
+        transaction_components::{
+            OutputFeatures,
+            OutputFeaturesVersion,
+            TransactionInputVersion,
+            TransactionKernelVersion,
+            TransactionOutputVersion,
+        },
         weight::TransactionWeight,
     },
 };
@@ -45,11 +55,13 @@ pub struct ConsensusConstants {
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
+    /// Current version of the blockchain
+    valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
-    /// https://github.com/zawy12/difficulty-algorithms/issues/14
+    /// <https://github.com/zawy12/difficulty-algorithms/issues/14>
     difficulty_block_window: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
@@ -72,9 +84,38 @@ pub struct ConsensusConstants {
     transaction_weight: TransactionWeight,
     /// Maximum byte size of TariScript
     max_script_byte_size: usize,
+    /// Range of valid transaction input versions
+    pub(crate) input_version_range: RangeInclusive<TransactionInputVersion>,
+    /// Range of valid transaction output (and features) versions
+    pub(crate) output_version_range: OutputVersionRange,
+    /// Range of valid transaction kernel versions
+    pub(crate) kernel_version_range: RangeInclusive<TransactionKernelVersion>,
 }
 
-/// This is just a convenience  wrapper to put all the info into a hashmap per diff algo
+// todo: remove this once OutputFeaturesVersion is removed in favor of just TransactionOutputVersion
+#[derive(Debug, Clone)]
+pub struct OutputVersionRange {
+    pub outputs: RangeInclusive<TransactionOutputVersion>,
+    pub features: RangeInclusive<OutputFeaturesVersion>,
+}
+
+/// All V0 for Inputs, Outputs + Features, Kernels
+fn version_zero() -> (
+    RangeInclusive<TransactionInputVersion>,
+    OutputVersionRange,
+    RangeInclusive<TransactionKernelVersion>,
+) {
+    let input_version_range = TransactionInputVersion::V0..=TransactionInputVersion::V0;
+    let kernel_version_range = TransactionKernelVersion::V0..=TransactionKernelVersion::V0;
+    let output_version_range = OutputVersionRange {
+        outputs: TransactionOutputVersion::V0..=TransactionOutputVersion::V0,
+        features: OutputFeaturesVersion::V0..=OutputFeaturesVersion::V0,
+    };
+
+    (input_version_range, output_version_range, kernel_version_range)
+}
+
+/// This is just a convenience struct to put all the info into a hashmap for each algorithm
 #[derive(Clone, Debug)]
 pub struct PowAlgorithmConstants {
     /// NB this is very important to set this as 6 * the target time
@@ -109,7 +150,12 @@ impl ConsensusConstants {
         self.blockchain_version
     }
 
-    /// This returns the FTL(Future Time Limit) for blocks
+    /// Returns the valid blockchain version range
+    pub fn valid_blockchain_version_range(&self) -> &RangeInclusive<u16> {
+        &self.valid_blockchain_version_range
+    }
+
+    /// This returns the FTL (Future Time Limit) for blocks.
     /// Any block with a timestamp greater than this is rejected.
     pub fn ftl(&self) -> EpochTime {
         (Utc::now()
@@ -142,8 +188,9 @@ impl ConsensusConstants {
 
     pub fn coinbase_weight(&self) -> u64 {
         // TODO: We do not know what script, features etc a coinbase has - this should be max coinbase size?
+        let output_features = OutputFeatures { ..Default::default() };
         let metadata_size = self.transaction_weight.round_up_metadata_size(
-            script![Nop].consensus_encode_exact_size() + OutputFeatures::default().consensus_encode_exact_size(),
+            script![Nop].consensus_encode_exact_size() + output_features.consensus_encode_exact_size(),
         );
         self.transaction_weight.calculate(1, 0, 1, metadata_size)
     }
@@ -210,6 +257,21 @@ impl ConsensusConstants {
         &self.transaction_weight
     }
 
+    /// The range of acceptable transaction input versions
+    pub fn input_version_range(&self) -> &RangeInclusive<TransactionInputVersion> {
+        &self.input_version_range
+    }
+
+    /// The range of acceptable transaction output and features versions
+    pub fn output_version_range(&self) -> &OutputVersionRange {
+        &self.output_version_range
+    }
+
+    /// The range of acceptable transaction kernel versions
+    pub fn kernel_version_range(&self) -> &RangeInclusive<TransactionKernelVersion> {
+        &self.kernel_version_range
+    }
+
     pub fn localnet() -> Vec<Self> {
         let difficulty_block_window = 90;
         let mut algos = HashMap::new();
@@ -225,10 +287,12 @@ impl ConsensusConstants {
             max_difficulty: 1.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 2,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -241,6 +305,9 @@ impl ConsensusConstants {
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::latest(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 
@@ -259,10 +326,12 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 19500,
@@ -275,6 +344,9 @@ impl ConsensusConstants {
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v1(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 
@@ -293,10 +365,12 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 2,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -312,9 +386,18 @@ impl ConsensusConstants {
             faucet_value: (5000 * 4000) * T,
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 
+    /// *
+    /// Dibbler testnet has the following characteristics:
+    /// * 2 min blocks on average (5 min SHA-3, 3 min MM)
+    /// * 21 billion tXTR with a 3-year half-life
+    /// * 800 T tail emission (± 1% inflation after initial 21 billion has been mined)
+    /// * Coinbase lock height - 12 hours = 360 blocks
     pub fn dibbler() -> Vec<Self> {
         let mut algos = HashMap::new();
         // sha3/monero to 40/60 split
@@ -330,26 +413,55 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
-        vec![ConsensusConstants {
-            effective_from_height: 0,
-            coinbase_lock_height: 6,
-            blockchain_version: 2,
-            future_time_limit: 540,
-            difficulty_block_window: 90,
-            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
-            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
-            // weightings
-            max_block_transaction_weight: 127_795,
-            median_timestamp_count: 11,
-            emission_initial: 5_538_846_115 * uT,
-            emission_decay: &EMISSION_DECAY,
-            emission_tail: 100.into(),
-            max_randomx_seed_height: u64::MAX,
-            proof_of_work: algos,
-            faucet_value: (5000 * 4000) * T,
-            transaction_weight: TransactionWeight::v2(),
-            max_script_byte_size: 2048,
-        }]
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
+        vec![
+            ConsensusConstants {
+                effective_from_height: 0,
+                coinbase_lock_height: 360,
+                blockchain_version: 2,
+                valid_blockchain_version_range: 0..=3,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
+                // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
+                // weightings
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &DIBBLER_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: u64::MAX,
+                proof_of_work: algos.clone(),
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v2(),
+                max_script_byte_size: 2048,
+                input_version_range: input_version_range.clone(),
+                output_version_range: output_version_range.clone(),
+                kernel_version_range: kernel_version_range.clone(),
+            },
+            ConsensusConstants {
+                effective_from_height: 23000,
+                coinbase_lock_height: 360,
+                // CHANGE: Use v3 blocks from effective height
+                blockchain_version: 3,
+                valid_blockchain_version_range: 0..=3,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &DIBBLER_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: u64::MAX,
+                proof_of_work: algos,
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v2(),
+                max_script_byte_size: 2048,
+                input_version_range,
+                output_version_range,
+                kernel_version_range,
+            },
+        ]
     }
 
     pub fn mainnet() -> Vec<Self> {
@@ -368,10 +480,12 @@ impl ConsensusConstants {
             max_difficulty: u64::MAX.into(),
             target_time: 200,
         });
+        let (input_version_range, output_version_range, kernel_version_range) = version_zero();
         vec![ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -384,11 +498,15 @@ impl ConsensusConstants {
             faucet_value: MicroTari::from(0),
             transaction_weight: TransactionWeight::v2(),
             max_script_byte_size: 2048,
+            input_version_range,
+            output_version_range,
+            kernel_version_range,
         }]
     }
 }
 
 static EMISSION_DECAY: [u64; 5] = [22, 23, 24, 26, 27];
+const DIBBLER_DECAY_PARAMS: [u64; 6] = [21u64, 22, 23, 25, 26, 37]; // less significant values don't matter
 
 /// Class to create custom consensus constants
 pub struct ConsensusConstantsBuilder {
@@ -460,5 +578,39 @@ impl ConsensusConstantsBuilder {
 
     pub fn build(self) -> ConsensusConstants {
         self.consensus
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        consensus::{
+            emission::{Emission, EmissionSchedule},
+            ConsensusConstants,
+        },
+        transactions::tari_amount::uT,
+    };
+
+    #[test]
+    fn dibbler_schedule() {
+        let dibbler = ConsensusConstants::dibbler();
+        let schedule = EmissionSchedule::new(
+            dibbler[0].emission_initial,
+            dibbler[0].emission_decay,
+            dibbler[0].emission_tail,
+        );
+        let reward = schedule.block_reward(0);
+        assert_eq!(reward, 18_462_816_327 * uT);
+        assert_eq!(schedule.supply_at_block(0), reward);
+        let three_years = 365 * 24 * 30 * 3;
+        assert_eq!(schedule.supply_at_block(three_years), 10_500_682_498_903_652 * uT); // Around 10.5 billion
+        let mut rewards = schedule.iter().skip(3_574_174);
+        // Tail emission starts after block 3,574,175
+        let (block_num, reward, supply) = rewards.next().unwrap();
+        assert_eq!(block_num, 3_574_175);
+        assert_eq!(reward, 800_000_598 * uT);
+        assert_eq!(supply, 20_100_525_123_936_707 * uT); // Still 900 mil tokens to go when tail emission kicks in
+        let (_, reward, _) = rewards.next().unwrap();
+        assert_eq!(reward, dibbler[0].emission_tail);
     }
 }

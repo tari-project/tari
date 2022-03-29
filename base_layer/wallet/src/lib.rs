@@ -35,6 +35,7 @@ extern crate diesel;
 extern crate diesel_migrations;
 
 mod config;
+pub mod key_manager_service;
 pub mod schema;
 pub mod utxo_scanner_service;
 
@@ -43,6 +44,7 @@ pub use wallet::Wallet;
 
 use crate::{
     contacts_service::storage::sqlite_db::ContactsServiceSqliteDatabase,
+    key_manager_service::storage::sqlite_db::KeyManagerSqliteDatabase,
     output_manager_service::storage::sqlite_db::OutputManagerSqliteDatabase,
     storage::sqlite_db::wallet::WalletSqliteDatabase,
     transaction_service::storage::sqlite_db::TransactionServiceSqliteDatabase,
@@ -53,4 +55,5 @@ pub type WalletSqlite = Wallet<
     TransactionServiceSqliteDatabase,
     OutputManagerSqliteDatabase,
     ContactsServiceSqliteDatabase,
+    KeyManagerSqliteDatabase,
 >;

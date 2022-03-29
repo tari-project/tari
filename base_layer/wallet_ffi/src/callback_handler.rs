@@ -40,6 +40,12 @@
 //! `callback_transaction_mined` - This will be called when a Broadcast transaction is detected as mined via a base
 //! node request
 //!
+//! `callback_faux_transaction_confirmed` - This will be called when an imported output, recovered output or one-sided
+//!  transaction is detected as mined
+//!
+//! `callback_faux_transaction_unconfirmed` - This will be called when a recovered output or one-sided transaction is
+//! freshly imported or when an imported transaction transitions from Imported to FauxUnconfirmed
+//!
 //! `callback_discovery_process_complete` - This will be called when a `send_transacion(..)` call is made to a peer
 //! whose address is not known and a discovery process must be conducted. The outcome of the discovery process is
 //! relayed via this callback
@@ -48,12 +54,16 @@
 //! request_key is used to identify which request this callback references and a result of true means it was successful
 //! and false that the process timed out and new one will be started
 
+use std::{ops::Deref, sync::Arc};
+
 use log::*;
 use tari_common_types::transaction::TxId;
 use tari_comms::types::CommsPublicKey;
 use tari_comms_dht::event::{DhtEvent, DhtEventReceiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
+    connectivity_service::OnlineStatus,
+    contacts_service::handle::{ContactsLivenessData, ContactsLivenessEvent},
     output_manager_service::{
         handle::{OutputManagerEvent, OutputManagerEventReceiver, OutputManagerHandle},
         service::Balance,
@@ -66,6 +76,7 @@ use tari_wallet::{
         },
     },
 };
+use tokio::sync::{broadcast, watch};
 
 const LOG_TARGET: &str = "wallet::transaction_service::callback_handler";
 
@@ -78,13 +89,17 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
+    callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut CompletedTransaction),
+    callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_direct_send_result: unsafe extern "C" fn(u64, bool),
     callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+    callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
     callback_balance_updated: unsafe extern "C" fn(*mut Balance),
     callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_saf_messages_received: unsafe extern "C" fn(),
+    callback_connectivity_status: unsafe extern "C" fn(u64),
     db: TransactionDatabase<TBackend>,
     transaction_service_event_stream: TransactionEventReceiver,
     output_manager_service_event_stream: OutputManagerEventReceiver,
@@ -93,12 +108,14 @@ where TBackend: TransactionBackend + 'static
     shutdown_signal: Option<ShutdownSignal>,
     comms_public_key: CommsPublicKey,
     balance_cache: Balance,
+    connectivity_status_watch: watch::Receiver<OnlineStatus>,
+    contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
 }
 
-#[allow(clippy::too_many_arguments)]
 impl<TBackend> CallbackHandler<TBackend>
 where TBackend: TransactionBackend + 'static
 {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: TransactionDatabase<TBackend>,
         transaction_service_event_stream: TransactionEventReceiver,
@@ -107,19 +124,25 @@ where TBackend: TransactionBackend + 'static
         dht_event_stream: DhtEventReceiver,
         shutdown_signal: ShutdownSignal,
         comms_public_key: CommsPublicKey,
+        connectivity_status_watch: watch::Receiver<OnlineStatus>,
+        contacts_liveness_events: broadcast::Receiver<Arc<ContactsLivenessEvent>>,
         callback_received_transaction: unsafe extern "C" fn(*mut InboundTransaction),
         callback_received_transaction_reply: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_received_finalized_transaction: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_broadcast: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
+        callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut CompletedTransaction),
+        callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_direct_send_result: unsafe extern "C" fn(u64, bool),
         callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
+        callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
         callback_balance_updated: unsafe extern "C" fn(*mut Balance),
         callback_transaction_validation_complete: unsafe extern "C" fn(u64, bool),
         callback_saf_messages_received: unsafe extern "C" fn(),
+        callback_connectivity_status: unsafe extern "C" fn(u64),
     ) -> Self {
         info!(
             target: LOG_TARGET,
@@ -147,6 +170,14 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
+            "FauxTransactionConfirmedCallback -> Assigning Fn: {:?}", callback_faux_transaction_confirmed
+        );
+        info!(
+            target: LOG_TARGET,
+            "FauxTransactionUnconfirmedCallback -> Assigning Fn: {:?}", callback_faux_transaction_unconfirmed
+        );
+        info!(
+            target: LOG_TARGET,
             "DirectSendResultCallback -> Assigning Fn:  {:?}", callback_direct_send_result
         );
         info!(
@@ -163,6 +194,10 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
+            "ContactsLivenessDataUpdatedCallback -> Assigning Fn:  {:?}", callback_contacts_liveness_data_updated
+        );
+        info!(
+            target: LOG_TARGET,
             "BalanceUpdatedCallback -> Assigning Fn:  {:?}", callback_balance_updated
         );
         info!(
@@ -173,6 +208,10 @@ where TBackend: TransactionBackend + 'static
             target: LOG_TARGET,
             "SafMessagesReceivedCallback -> Assigning Fn:  {:?}", callback_saf_messages_received
         );
+        info!(
+            target: LOG_TARGET,
+            "ConnectivityStatusCallback -> Assigning Fn:  {:?}", callback_connectivity_status
+        );
 
         Self {
             callback_received_transaction,
@@ -181,13 +220,17 @@ where TBackend: TransactionBackend + 'static
             callback_transaction_broadcast,
             callback_transaction_mined,
             callback_transaction_mined_unconfirmed,
+            callback_faux_transaction_confirmed,
+            callback_faux_transaction_unconfirmed,
             callback_direct_send_result,
             callback_store_and_forward_send_result,
             callback_transaction_cancellation,
             callback_txo_validation_complete,
+            callback_contacts_liveness_data_updated,
             callback_balance_updated,
             callback_transaction_validation_complete,
             callback_saf_messages_received,
+            callback_connectivity_status,
             db,
             transaction_service_event_stream,
             output_manager_service_event_stream,
@@ -196,6 +239,8 @@ where TBackend: TransactionBackend + 'static
             shutdown_signal: Some(shutdown_signal),
             comms_public_key,
             balance_cache: Balance::zero(),
+            connectivity_status_watch,
+            contacts_liveness_events,
         }
     }
 
@@ -250,6 +295,14 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_transaction_mined_unconfirmed_event(tx_id, num_confirmations).await;
                                     self.trigger_balance_refresh().await;
                                 },
+                                TransactionEvent::FauxTransactionConfirmed{tx_id, is_valid: _} => {
+                                    self.receive_faux_transaction_confirmed_event(tx_id).await;
+                                    self.trigger_balance_refresh().await;
+                                },
+                                TransactionEvent::FauxTransactionUnconfirmed{tx_id, num_confirmations, is_valid: _} => {
+                                    self.receive_faux_transaction_unconfirmed_event(tx_id, num_confirmations).await;
+                                    self.trigger_balance_refresh().await;
+                                },
                                 TransactionEvent::TransactionValidationStateChanged(_request_key)  => {
                                     self.trigger_balance_refresh().await;
                                 },
@@ -260,7 +313,7 @@ where TBackend: TransactionBackend + 'static
                                     self.transaction_validation_complete_event(request_key.as_u64(), false);
                                 },
                                 TransactionEvent::TransactionMinedRequestTimedOut(_tx_id) |
-                                TransactionEvent::TransactionImported(_tx_id) |
+                                TransactionEvent::TransactionImported(_tx_id)|
                                 TransactionEvent::TransactionCompletedImmediately(_tx_id)
                                 => {
                                     self.trigger_balance_refresh().await;
@@ -300,6 +353,30 @@ where TBackend: TransactionBackend + 'static
                             }
                         },
                         Err(_e) => error!(target: LOG_TARGET, "Error reading from DHT event broadcast channel"),
+                    }
+                }
+                Ok(_) = self.connectivity_status_watch.changed() => {
+                    let status  = *self.connectivity_status_watch.borrow();
+                    trace!(target: LOG_TARGET, "Connectivity status change detected: {:?}", status);
+                    self.connectivity_status_changed(status);
+                },
+                event = self.contacts_liveness_events.recv() => {
+                    match event {
+                        Ok(liveness_event) => {
+                            match liveness_event.deref() {
+                                ContactsLivenessEvent::StatusUpdated(data) => {
+                                    trace!(target: LOG_TARGET,
+                                        "Contacts Liveness Service Callback Handler event 'StatusUpdated'"
+                                    );
+                                    self.trigger_contacts_refresh(data.deref().clone());
+                                }
+                                ContactsLivenessEvent::NetworkSilence => {}
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            warn!(target: LOG_TARGET, "Missed {} from Output Manager Service events", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {}
                     }
                 }
                  _ = shutdown_signal.wait() => {
@@ -384,6 +461,18 @@ where TBackend: TransactionBackend + 'static
             Err(e) => {
                 error!(target: LOG_TARGET, "Could not obtain balance ({:?})", e);
             },
+        }
+    }
+
+    fn trigger_contacts_refresh(&mut self, data: ContactsLivenessData) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Contacts Liveness Data Updated callback function for contact {}",
+            data.public_key(),
+        );
+        let boxing = Box::into_raw(Box::new(data));
+        unsafe {
+            (self.callback_contacts_liveness_data_updated)(boxing);
         }
     }
 
@@ -476,11 +565,43 @@ where TBackend: TransactionBackend + 'static
             Ok(tx) => {
                 debug!(
                     target: LOG_TARGET,
-                    "Calling Received Transaction Mined callback function for TxId: {}", tx_id
+                    "Calling Received Transaction Mined Unconfirmed callback function for TxId: {}", tx_id
                 );
                 let boxing = Box::into_raw(Box::new(tx));
                 unsafe {
                     (self.callback_transaction_mined_unconfirmed)(boxing, confirmations);
+                }
+            },
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    async fn receive_faux_transaction_confirmed_event(&mut self, tx_id: TxId) {
+        match self.db.get_completed_transaction(tx_id).await {
+            Ok(tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Calling Received Faux Transaction Confirmed callback function for TxId: {}", tx_id
+                );
+                let boxing = Box::into_raw(Box::new(tx));
+                unsafe {
+                    (self.callback_faux_transaction_confirmed)(boxing);
+                }
+            },
+            Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
+        }
+    }
+
+    async fn receive_faux_transaction_unconfirmed_event(&mut self, tx_id: TxId, confirmations: u64) {
+        match self.db.get_completed_transaction(tx_id).await {
+            Ok(tx) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "Calling Received Faux Transaction Unconfirmed callback function for TxId: {}", tx_id
+                );
+                let boxing = Box::into_raw(Box::new(tx));
+                unsafe {
+                    (self.callback_faux_transaction_unconfirmed)(boxing, confirmations);
                 }
             },
             Err(e) => error!(target: LOG_TARGET, "Error retrieving Completed Transaction: {:?}", e),
@@ -514,6 +635,16 @@ where TBackend: TransactionBackend + 'static
         debug!(target: LOG_TARGET, "Calling SAF Messages Received callback function");
         unsafe {
             (self.callback_saf_messages_received)();
+        }
+    }
+
+    fn connectivity_status_changed(&mut self, status: OnlineStatus) {
+        debug!(
+            target: LOG_TARGET,
+            "Calling Connectivity Status changed callback function"
+        );
+        unsafe {
+            (self.callback_connectivity_status)(status as u64);
         }
     }
 }

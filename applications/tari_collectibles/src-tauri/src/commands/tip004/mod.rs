@@ -29,17 +29,36 @@ use crate::{
     Tip721TokensTableGateway,
   },
 };
+use log::debug;
 use prost::Message;
 use tari_common_types::types::PublicKey;
 use tari_dan_common_types::proto::tips::tip004;
 use tari_utilities::{hex::Hex, ByteArray};
 use uuid::Uuid;
 
+const LOG_TARGET: &str = "collectibles::tip004";
+
 #[tauri::command]
 pub(crate) async fn tip004_mint_token(
   asset_public_key: String,
   token: String,
   state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<(), Status> {
+  inner_tip004_mint_token(asset_public_key, token, state.inner()).await
+}
+
+#[tauri::command]
+pub(crate) async fn tip004_list_tokens(
+  asset_public_key: String,
+  state: tauri::State<'_, ConcurrentAppState>,
+) -> Result<Vec<(Tip721TokenRow, AddressRow)>, Status> {
+  inner_tip004_list_tokens(asset_public_key, state.inner()).await
+}
+
+pub(crate) async fn inner_tip004_mint_token(
+  asset_public_key: String,
+  token: String,
+  state: &ConcurrentAppState,
 ) -> Result<(), Status> {
   let _wallet_id = state
     .current_wallet_id()
@@ -62,14 +81,13 @@ pub(crate) async fn tip004_mint_token(
   let result = client
     .invoke_method(asset_public_key, 4, "mint".to_string(), bytes)
     .await?;
-  dbg!(&result);
+  debug!(target: LOG_TARGET, "result {:?}", result);
   Ok(())
 }
 
-#[tauri::command]
-pub(crate) async fn tip004_list_tokens(
+pub(crate) async fn inner_tip004_list_tokens(
   asset_public_key: String,
-  state: tauri::State<'_, ConcurrentAppState>,
+  state: &ConcurrentAppState,
 ) -> Result<Vec<(Tip721TokenRow, AddressRow)>, Status> {
   let wallet_id = state
     .current_wallet_id()
@@ -96,7 +114,7 @@ pub(crate) async fn tip004_list_tokens(
         args.encode_to_vec(),
       )
       .await?;
-    dbg!(&result);
+    debug!(target: LOG_TARGET, "result {:?}", result);
     db.tip721_tokens().delete_all_for_address(address.id, &tx)?;
     if !result.is_empty() {
       let balance_of: tip004::BalanceOfResponse = Message::decode(&*result)?;

@@ -30,11 +30,12 @@ use crate::{
     base_node::comms_interface::BlockEvent,
     chain_storage::BlockAddResult,
     mempool::{
+        metrics,
         service::{MempoolRequest, MempoolResponse, MempoolServiceError, OutboundMempoolServiceInterface},
         Mempool,
         TxStorageResponse,
     },
-    transactions::transaction::Transaction,
+    transactions::transaction_components::Transaction,
 };
 
 pub const LOG_TARGET: &str = "c::mp::service::inbound_handlers";
@@ -58,10 +59,10 @@ impl MempoolInboundHandlers {
         debug!(target: LOG_TARGET, "Handling remote request: {}", request);
         use MempoolRequest::*;
         match request {
-            GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await)),
-            GetState => Ok(MempoolResponse::State(self.mempool.state().await)),
+            GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
+            GetState => Ok(MempoolResponse::State(self.mempool.state().await?)),
             GetTxStateByExcessSig(excess_sig) => Ok(MempoolResponse::TxStorage(
-                self.mempool.has_tx_with_excess_sig(&excess_sig).await,
+                self.mempool.has_tx_with_excess_sig(excess_sig).await?,
             )),
             SubmitTransaction(tx) => {
                 debug!(
@@ -69,7 +70,7 @@ impl MempoolInboundHandlers {
                     "Transaction ({}) submitted using request.",
                     tx.body.kernels()[0].excess_sig.get_signature().to_hex(),
                 );
-                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, vec![]).await?))
+                Ok(MempoolResponse::TxStorage(self.submit_transaction(tx, None).await?))
             },
         }
     }
@@ -89,19 +90,20 @@ impl MempoolInboundHandlers {
                 .map(|p| format!("remote peer: {}", p))
                 .unwrap_or_else(|| "local services".to_string())
         );
-        let exclude_peers = source_peer.into_iter().collect();
-        self.submit_transaction(tx, exclude_peers).await.map(|_| ())
+        self.submit_transaction(tx, source_peer).await?;
+        Ok(())
     }
 
     /// Submits a transaction to the mempool and propagate valid transactions.
     async fn submit_transaction(
         &mut self,
         tx: Transaction,
-        exclude_peers: Vec<NodeId>,
+        source_peer: Option<NodeId>,
     ) -> Result<TxStorageResponse, MempoolServiceError> {
         trace!(target: LOG_TARGET, "submit_transaction: {}.", tx);
 
-        let tx_storage = self.mempool.has_transaction(&tx).await?;
+        let tx = Arc::new(tx);
+        let tx_storage = self.mempool.has_transaction(tx.clone()).await?;
         let kernel_excess_sig = tx
             .first_kernel_excess_sig()
             .ok_or(MempoolServiceError::TransactionNoKernels)?
@@ -114,9 +116,15 @@ impl MempoolInboundHandlers {
             );
             return Ok(tx_storage);
         }
-        let tx = Arc::new(tx);
         match self.mempool.insert(tx.clone()).await {
             Ok(tx_storage) => {
+                if tx_storage.is_stored() {
+                    metrics::inbound_transactions(source_peer.as_ref()).inc();
+                } else {
+                    metrics::rejected_inbound_transactions(source_peer.as_ref()).inc();
+                }
+                self.update_pool_size_metrics().await;
+
                 debug!(
                     target: LOG_TARGET,
                     "Transaction inserted into mempool: {}, pool: {}.", kernel_excess_sig, tx_storage
@@ -127,11 +135,20 @@ impl MempoolInboundHandlers {
                         target: LOG_TARGET,
                         "Propagate transaction ({}) to network.", kernel_excess_sig,
                     );
-                    self.outbound_nmi.propagate_tx(tx, exclude_peers).await?;
+                    self.outbound_nmi
+                        .propagate_tx(tx, source_peer.into_iter().collect())
+                        .await?;
                 }
                 Ok(tx_storage)
             },
             Err(e) => Err(MempoolServiceError::MempoolError(e)),
+        }
+    }
+
+    async fn update_pool_size_metrics(&self) {
+        if let Ok(stats) = self.mempool.stats().await {
+            metrics::unconfirmed_pool_size().set(stats.unconfirmed_txs as i64);
+            metrics::reorg_pool_size().set(stats.reorg_txs as i64);
         }
     }
 
@@ -140,7 +157,7 @@ impl MempoolInboundHandlers {
         use BlockEvent::*;
         match block_event {
             ValidBlockAdded(block, BlockAddResult::Ok(_)) => {
-                self.mempool.process_published_block(block).await?;
+                self.mempool.process_published_block(block.clone()).await?;
             },
             ValidBlockAdded(_, BlockAddResult::ChainReorg { added, removed }) => {
                 self.mempool
@@ -157,10 +174,12 @@ impl MempoolInboundHandlers {
                     .await?;
             },
             BlockSyncComplete(tip_block) => {
-                self.mempool.process_published_block(tip_block.block()).await?;
+                self.mempool.process_published_block(tip_block.to_arc_block()).await?;
             },
             AddBlockFailed(_) => {},
         }
+
+        self.update_pool_size_metrics().await;
 
         Ok(())
     }

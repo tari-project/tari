@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package tari.dan.consensus;
+
+import "common.proto";
+
+enum HotStuffMessageType {
+    HOT_STUFF_MESSAGE_TYPE_UNKNOWN = 0;
+    HOT_STUFF_MESSAGE_TYPE_NEW_VIEW = 1;
+    HOT_STUFF_MESSAGE_TYPE_PREPARE = 2;
+    HOT_STUFF_MESSAGE_TYPE_PRE_COMMIT = 3;
+    HOT_STUFF_MESSAGE_TYPE_COMMIT = 4;
+    HOT_STUFF_MESSAGE_TYPE_GENESIS = 255;
+
+}
+
+message HotStuffMessage {
+    uint64 view_number = 1;
+    HotStuffMessageType message_type = 2;
+    QuorumCertificate justify = 3;
+    HotStuffTreeNode node= 4;
+    Signature partial_sig = 5;
+    bytes node_hash = 6;
+    bytes asset_public_key = 7;
+}
+
+message QuorumCertificate {
+    HotStuffMessageType message_type = 1;
+    bytes node_hash = 2;
+    uint64 view_number = 3;
+    Signature signature = 4;
+}
+
+message HotStuffTreeNode {
+    bytes parent = 1;
+    TariDanPayload payload = 2;
+    uint32 height = 3;
+    bytes state_root =4;
+}
+
+message Signature{
+
+}
+
+message TariDanPayload {
+    tari.dan.common.InstructionSet instruction_set = 1;
+    CheckpointData checkpoint = 2;
+}
+
+message CheckpointData {
+    // todo: fill this in
+}

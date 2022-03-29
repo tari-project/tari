@@ -139,6 +139,7 @@ function WashingMachine(options) {
       this.wallet2 = new WalletClient();
       debug(`Connecting to wallet2 at ${wallet2Grpc}...`);
       await this.wallet2.connect(wallet2Grpc);
+      debug(`Connected.`);
     } else {
       debug("Compiling wallet2...");
       const port = await getFreePort(20000, 25000);
@@ -282,11 +283,16 @@ async function sendFunds(senderWallet, receiverWallet, options) {
   );
   // For interactive transactions, a coin split is needed first
   if (!options.oneSided) {
-    let avgAmountPerTransaction = totalToSend / transactions.length;
+    let avgAmountPerTransaction = Math.floor(totalToSend / transactions.length);
     debug(`COINSPLIT: amount = ${avgAmountPerTransaction}uT`);
     if (transactions.length > 1) {
       let leftToSplit = transactions.length;
       while (leftToSplit > 499) {
+        // Wait for balance + 1t leeway for fees
+        await waitForBalance(
+          senderWallet,
+          avgAmountPerTransaction * 499 + 1000000
+        );
         let split_result = await senderWallet.coin_split({
           amount_per_split: avgAmountPerTransaction,
           split_count: 499,
@@ -296,6 +302,11 @@ async function sendFunds(senderWallet, receiverWallet, options) {
         leftToSplit -= 499;
       }
       if (leftToSplit > 0) {
+        // Wait for balance + 1t leeway for fees
+        await waitForBalance(
+          senderWallet,
+          avgAmountPerTransaction * leftToSplit + 1000000
+        );
         let split_result = await senderWallet.coin_split({
           amount_per_split: avgAmountPerTransaction,
           split_count: leftToSplit,
@@ -363,7 +374,7 @@ function* transactionGenerator(options) {
 function createGrpcWallet(baseNode, opts = {}, excludeTestEnvars = true) {
   let process = new WalletProcess("sender", excludeTestEnvars, {
     transport: "tor",
-    network: "weatherwax",
+    network: "dibbler",
     num_confirmations: 0,
     ...opts,
   });
@@ -388,7 +399,11 @@ async function waitForBalance(client, balance) {
     }
     await sleep(1000);
     if (i >= 60) {
-      debug(`Still waiting... [t=${r * i}s]`);
+      debug(
+        `Still waiting... [t=${r * i}s, balance=${
+          newBalance.available_balance
+        }, pending=${newBalance.pending_incoming_balance}]`
+      );
       i = 0;
       r++;
     } else {

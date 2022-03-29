@@ -31,7 +31,7 @@ use tari_common_types::{
 };
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::{
-    transaction::Transaction,
+    transaction_components::Transaction,
     transaction_protocol::{recipient::RecipientState, sender::TransactionSenderMessage},
 };
 use tari_crypto::tari_utilities::Hashable;
@@ -45,11 +45,10 @@ use crate::{
     transaction_service::{
         error::{TransactionServiceError, TransactionServiceProtocolError},
         handle::TransactionEvent,
-        protocols::TxRejection,
         service::TransactionServiceResources,
         storage::{
             database::TransactionBackend,
-            models::{CompletedTransaction, InboundTransaction},
+            models::{CompletedTransaction, InboundTransaction, TxCancellationReason},
         },
         tasks::send_transaction_reply::send_transaction_reply,
         utc::utc_duration_since,
@@ -105,7 +104,7 @@ where
         }
     }
 
-    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError> {
+    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Receive protocol for TxId: {} at Stage {:?}", self.id, self.stage
@@ -124,7 +123,7 @@ where
         Ok(self.id)
     }
 
-    async fn accept_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn accept_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         // Currently we will only reply to a Single sender transaction protocol
         if let TransactionSenderMessage::Single(data) = self.sender_message.clone() {
             // Check this is not a repeat message i.e. tx_id doesn't already exist in our pending or completed
@@ -226,7 +225,7 @@ where
         }
     }
 
-    async fn wait_for_finalization(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn wait_for_finalization(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         let mut receiver = self
             .transaction_finalize_receiver
             .take()
@@ -451,6 +450,7 @@ where
                 inbound_tx.timestamp,
                 TransactionDirection::Inbound,
                 None,
+                None,
             );
 
             self.resources
@@ -479,7 +479,7 @@ where
         Ok(())
     }
 
-    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError> {
+    async fn timeout_transaction(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Cancelling Transaction Receive Protocol (TxId: {}) due to timeout after no counterparty response", self.id
@@ -508,7 +508,7 @@ where
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 self.id,
-                TxRejection::Timeout,
+                TxCancellationReason::Timeout,
             )))
             .map_err(|e| {
                 trace!(

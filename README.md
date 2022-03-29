@@ -17,11 +17,11 @@ Only the first four applications will be discussed in this README (see [wallet-a
 
 ### Download
 
-[Download binaries](https://tari.com/downloads) from <www.tari.com>. This is the easiest way to run a Tari node, but you're
+[Download binaries](https://tari.com/downloads/) from [tari.com](https://www.tari.com/). This is the easiest way to run a Tari node, but you're
 essentially trusting the person that built and uploaded them that nothing untoward has happened.
 
-We've limited the risks by publishing hashes of the binaries alongside the binaries on our website. You can check
-that the binaries match the hash by opening a terminal (or command prompt) and by running
+Hashes of the binaries are available alongside the downloads.
+You can get the hash of your download by opening a terminal or command prompt and running the following:
 
 (\*nix)
 
@@ -30,6 +30,10 @@ that the binaries match the hash by opening a terminal (or command prompt) and b
 (Windows)
 
     certUtil -hashfile <PATH_TO_BINARY_INSTALL_FILE> SHA256
+
+If the result doesn't match the published hash, don't run the binary.
+Note that this only checks that your binary was downloaded correctly; it cannot detect if the binary was replaced by a bad actor.
+If you need to ensure that your binary matches the source, see [Building from source](#building-from-source) below.
 
 ### Install
 
@@ -422,7 +426,7 @@ The Tari Base Node, Tari Console Wallet, Tari Stratum Transcoder and Tari Mining
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
-For MiningCore see [here](https://github.com/tari-project/miningcore/master/tari#runtime-requirements-on-linux) and [here](https://github.com/tari-project/miningcore/tree/master#runtime-requirements-on-windows).
+For MiningCore see the [Linux](https://github.com/tari-project/miningcore/#building-on-debianubuntu) and [Windows](https://github.com/tari-project/miningcore/#building-on-windows) build instructions.
 
 #### Configuration prerequisites
 
@@ -667,7 +671,7 @@ they are, choose different ports. You will need to update the ports in the steps
 
 The `monerod_url` set must contain valid addresses (`host:port`) for `monerod` that is running Monero mainnet (e.g.
 `["http://18.132.124.81:18081"]`) or stagenet (e.g. `["http://monero-stagenet.exan.tech:38081"]`), which can be a
-[public node hosted by XMR.to](https://community.xmr.to/nodes.html), or to a local instance. To test if the
+public node or local instance. To test if the
 `monerod_url` address is working properly, try to paste `host:port/get_height` in an internet browser, for example:
 
 ```
@@ -959,7 +963,7 @@ your wallet identity under `Username:` to see your shares, or try `taritest` if 
 
 ## RFC documents
 
-The RFCs are long-form technical documents proposing changes and features to the Tari network and ecosystem. They are hosted at https://rfc.tari.com, but you can easily build and serve alocal version yourself.
+The RFCs are long-form technical documents proposing changes and features to the Tari network and ecosystem. They are hosted at https://rfc.tari.com, but you can easily build and serve a local version yourself.
 
 Firstly, install `mdbook`. Assuming you have Rust and cargo installed, run
 
@@ -987,12 +991,4 @@ See [RFC-0110/CodeStructure](./RFC/src/RFC-0010_CodeStructure.md) for details on
 
 ## Conversation channels
 
-[<img src="https://ionicons.com/ionicons/svg/md-paper-plane.svg" width="32">](https://t.me/tarilab) Non-technical discussions and gentle sparring.
-
-[<img src="https://ionicons.com/ionicons/svg/logo-reddit.svg" width="32">](https://reddit.com/r/tari/) Forum-style Q&A
-and other Tari-related discussions.
-
-[<img src="https://ionicons.com/ionicons/svg/logo-twitter.svg" width="32">](https://twitter.com/tari) Follow @tari to be
-the first to know about important updates and announcements about the project.
-
-Most of the technical conversation about Tari development happens on [#FreeNode IRC](https://freenode.net/) in the #tari-dev room.
+See https://www.tari.com/#dev-community.

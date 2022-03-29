@@ -24,7 +24,7 @@
 //!
 //! Allows rules to be specified that restrict _future_ spending of subsequent transactions.
 //!
-//! https://rfc.tari.com/RFC-0250_Covenants.html
+//! <https://rfc.tari.com/RFC-0250_Covenants.html>
 
 mod arguments;
 mod byte_codes;

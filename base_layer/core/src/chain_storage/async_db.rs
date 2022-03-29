@@ -66,7 +66,7 @@ use crate::{
     },
     common::rolling_vec::RollingVec,
     proof_of_work::{PowAlgorithm, TargetDifficultyWindow},
-    transactions::transaction::{TransactionKernel, TransactionOutput},
+    transactions::transaction_components::{TransactionKernel, TransactionOutput},
 };
 
 const LOG_TARGET: &str = "c::bn::async_db";
@@ -173,6 +173,8 @@ impl<B: BlockchainBackend + 'static> AsyncBlockchainDb<B> {
     make_async_fn!(fetch_all_unspent_by_parent_public_key(
         parent_public_key: PublicKey,
         range: Range<usize>) -> Vec<UtxoMinedInfo>, "fetch_all_unspent_by_parent_public_key");
+
+    make_async_fn!(utxo_count() -> usize, "utxo_count");
 
     //---------------------------------- Kernel --------------------------------------------//
     make_async_fn!(fetch_kernel_by_excess_sig(excess_sig: Signature) -> Option<(TransactionKernel, HashOutput)>, "fetch_kernel_by_excess_sig");
@@ -387,7 +389,7 @@ impl<'a, B: BlockchainBackend + 'static> AsyncDbTransaction<'a, B> {
         self
     }
 
-    pub fn prune_output_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
+    pub fn prune_outputs_at_positions(&mut self, positions: Vec<u32>) -> &mut Self {
         self.transaction.prune_outputs_at_positions(positions);
         self
     }

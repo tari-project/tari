@@ -387,7 +387,7 @@ mod test {
         let dest_public_key = Box::new(CommsPublicKey::default());
         let result = requester
             .discover_peer(
-                dest_public_key.clone(),
+                *dest_public_key.clone(),
                 NodeDestination::PublicKey(dest_public_key.clone()),
             )
             .await;
