@@ -6,7 +6,7 @@ edition = "2018"
 license = "BSD-3-Clause"
 
 [dependencies]
-tari_comms = { path = "../../comms" }
+tari_comms = { path = "../../comms/core" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
 tari_common = { path = "../../common" }
 tari_common_types = { path = "../../base_layer/common_types" }

@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 tari_common_types = {path="../common_types"}
-tari_comms = { version = "^0.30", path = "../../comms", features = ["c_integration"]}
+tari_comms = { version = "^0.30", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.30", path = "../../comms/dht", default-features = false }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
 tari_key_manager = { version = "^0.30", path = "../key_manager" }

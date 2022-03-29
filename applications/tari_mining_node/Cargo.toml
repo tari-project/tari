@@ -10,7 +10,7 @@ edition = "2018"
 [dependencies]
 tari_core = { path = "../../base_layer/core",  default-features = false }
 tari_common = {  path = "../../common" }
-tari_comms = {  path = "../../comms" }
+tari_comms = {  path = "../../comms/core" }
 tari_app_utilities = { path = "../tari_app_utilities"}
 tari_app_grpc = {  path = "../tari_app_grpc" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
