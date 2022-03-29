@@ -19,7 +19,7 @@ tari_app_grpc = { path = "../../tari_app_grpc" }
 tari_app_utilities = { path = "../../tari_app_utilities" }
 tari_common = { path = "../../../common" }
 tari_common_types = { path = "../../../base_layer/common_types" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_key_manager = { path = "../../../base_layer/key_manager" }
 tari_mmr = { path = "../../../base_layer/mmr"}
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
