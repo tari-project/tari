@@ -1,3 +1,6 @@
+# Copyright 2022 The Tari Project
+# SPDX-License-Identifier: BSD-3-Clause
+
 @wallet-ffi
 Feature: Wallet FFI
     # Appears to run in NodeJS v12 consistently on mac (5 crash-less runs in a row).

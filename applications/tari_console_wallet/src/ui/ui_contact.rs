@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use chrono::{DateTime, Local};
 use tari_common_types::emoji::EmojiId;
 use tari_wallet::contacts_service::storage::database::Contact;

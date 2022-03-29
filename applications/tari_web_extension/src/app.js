@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import "./app.scss";
 import React, { useEffect } from "react";
 import { Navigate, Route, Routes } from "react-router";
