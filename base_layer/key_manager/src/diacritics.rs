@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 /// Remove diacritic marks, points and accents on lowercase characters
 pub fn remove_diacritics(word: &str) -> String {
     // Replace diacritics accents

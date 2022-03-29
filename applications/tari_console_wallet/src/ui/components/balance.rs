@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use tari_core::transactions::tari_amount::MicroTari;
 use tui::{
     backend::Backend,

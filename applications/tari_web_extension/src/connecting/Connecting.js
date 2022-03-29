@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import "./connecting.scss";
 import React from "react";
 import { useParams } from "react-router";
