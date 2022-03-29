@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import "./onboarding.scss";
 import { Navigate, Route, Routes } from "react-router";
 import Welcome from "./Welcome/Welcome";

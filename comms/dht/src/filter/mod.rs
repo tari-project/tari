@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 // #![allow(elided_lifetimes_in_paths)]
 
 //! Conditionally dispatch requests to the inner service based on the result of

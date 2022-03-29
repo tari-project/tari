@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! Contains Mnemonic word lists from Bitcoin bip-0039 for ChineseSimplified, English, French, Italian, Japanese, Korean
 //! and Spanish https://github.com/bitcoin/bips/blob/master/bip-0039/bip-0039-wordlists.md
 //! Ordering of words were changed to sorted form to allow binary searches to be performed
