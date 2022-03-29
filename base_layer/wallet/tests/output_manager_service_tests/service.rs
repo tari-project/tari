@@ -227,15 +227,15 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
     let rewind_key = key_manager
-        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly, 0)
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
         .await
         .unwrap();
     let rewind_blinding_key = key_manager
-        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding, 0)
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
         .await
         .unwrap();
     let recovery_byte_key = key_manager
-        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte, 0)
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
         .await
         .unwrap();
     let rewind_data = RewindData {
@@ -2052,12 +2052,15 @@ async fn scan_for_recovery_test() {
     for i in 1..=NUM_REWINDABLE {
         let spending_key_result = oms
             .key_manager_handler
-            .get_next_key(OutputManagerKeyManagerBranch::Spend)
+            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await
             .unwrap();
         let script_key = oms
             .key_manager_handler
-            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, spending_key_result.index)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                spending_key_result.index,
+            )
             .await
             .unwrap();
         let commitment = factories
@@ -2104,7 +2107,7 @@ async fn scan_for_recovery_test() {
 
     let recovery_byte_key = oms
         .key_manager_handler
-        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte, 0)
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
         .await
         .unwrap();
     let other_rewind_data = RewindData {
