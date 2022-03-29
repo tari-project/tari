@@ -54,7 +54,8 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::Hashable};
+use tari_script::StackItem;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 

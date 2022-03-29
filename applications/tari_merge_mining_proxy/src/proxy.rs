@@ -34,6 +34,7 @@ use std::{
 };
 
 use bytes::Bytes;
+use derivative::Derivative;
 use hyper::{header::HeaderValue, service::Service, Body, Method, Request, Response, StatusCode, Uri};
 use json::json;
 use jsonrpc::error::StandardError;

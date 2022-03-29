@@ -66,13 +66,10 @@ use tari_core::{
         CryptoFactories,
     },
 };
-use tari_crypto::{
-    inputs,
-    keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
 use tari_utilities::Hashable;
@@ -765,7 +762,7 @@ async fn test_import_utxo() {
     let expected_output_hash = output.hash();
 
     let tx_id = alice_wallet
-        .import_utxo(
+        .import_external_utxo_as_non_rewindable(
             utxo.value,
             &utxo.spending_key,
             script.clone(),

@@ -8,6 +8,7 @@
   - [RFC-0110: Base nodes](RFC-0110_BaseNodes.md)
   - [RFC-0111: Base node architecture](RFC-0111_BaseNodeArchitecture.md)
   - [RFC-0120: Consensus rules](RFC-0120_Consensus.md)
+    - [RFC-0121: Consensus encoding](RFC-0121_ConsensusEncoding.md)
   - [RFC-0131: Mining](RFC-0131_Mining.md)
   - [RFC-0132: Merge Mining Monero](RFC-0132_Merge_Mining_Monero.md)
   - [RFC-0140: Sync and Seeding](RFC-0140_Syncing_and_seeding.md)

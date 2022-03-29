@@ -22,6 +22,7 @@
 
 use std::fmt;
 
+use derivative::Derivative;
 use digest::{Digest, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
@@ -31,9 +32,9 @@ use tari_common_types::{
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
     tari_utilities::ByteArray,
 };
+use tari_script::TariScript;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -70,7 +71,8 @@ use crate::{
 /// Transaction construction process.
 // TODO: Investigate necessity to use the 'Serialize' and 'Deserialize' traits here; this could potentially leak
 // TODO:   information when least expected. #LOGGED
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Derivative, Serialize, Deserialize, PartialEq)]
+#[derivative(Debug)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
@@ -79,9 +81,11 @@ pub(super) struct RawTransactionInfo {
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_output_features: Vec<OutputFeatures>,
+    #[derivative(Debug = "ignore")]
     pub recipient_sender_offset_private_keys: Vec<PrivateKey>,
     pub recipient_covenants: Vec<Covenant>,
     // The sender's portion of the public commitment nonce
+    #[derivative(Debug = "ignore")]
     pub private_commitment_nonces: Vec<PrivateKey>,
     pub change: MicroTari,
     pub change_output_metadata_signature: Option<ComSignature>,
@@ -93,9 +97,11 @@ pub(super) struct RawTransactionInfo {
     pub offset: BlindingFactor,
     // The sender's blinding factor shifted by the sender-selected offset
     pub offset_blinding_factor: BlindingFactor,
+    #[derivative(Debug = "ignore")]
     pub gamma: PrivateKey,
     pub public_excess: PublicKey,
     // The sender's private nonce
+    #[derivative(Debug = "ignore")]
     pub private_nonce: PrivateKey,
     // The sender's public nonce
     pub public_nonce: PublicKey,
@@ -753,10 +759,9 @@ mod test {
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::{ExecutionStack, TariScript},
         tari_utilities::{hex::Hex, ByteArray},
     };
+    use tari_script::{script, ExecutionStack, TariScript};
 
     use crate::{
         covenants::Covenant,

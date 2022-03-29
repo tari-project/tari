@@ -126,7 +126,7 @@ macro_rules! __covenant_inner {
 #[cfg(test)]
 mod test {
     use tari_common_types::types::PublicKey;
-    use tari_crypto::script;
+    use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::{from_hex, Hex};
 

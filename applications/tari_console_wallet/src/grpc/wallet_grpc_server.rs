@@ -641,7 +641,11 @@ impl wallet_server::Wallet for WalletGrpcServer {
         for o in unblinded_outputs.iter() {
             tx_ids.push(
                 wallet
-                    .import_unblinded_utxo(o.clone(), &CommsPublicKey::default(), "Imported via gRPC".to_string())
+                    .import_unblinded_output_as_non_rewindable(
+                        o.clone(),
+                        &CommsPublicKey::default(),
+                        "Imported via gRPC".to_string(),
+                    )
                     .await
                     .map_err(|e| Status::internal(format!("{:?}", e)))?
                     .into(),

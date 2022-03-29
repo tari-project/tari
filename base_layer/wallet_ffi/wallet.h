@@ -672,9 +672,9 @@ struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_
 // Get a Cancelled transaction from a TariWallet by its TransactionId. Pending Inbound or Outbound transaction will be converted to a CompletedTransaction
 struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id, int *error_out);
 
-// Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
-// event.
-unsigned long long wallet_import_utxo(
+// Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
+// UTXO and create a faux completed transaction to record the event.
+unsigned long long wallet_import_external_utxo_as_non_rewindable(
     struct TariWallet *wallet,
     unsigned long long amount,
     struct TariPrivateKey *spending_key,

@@ -24,6 +24,9 @@ use std::io::Write;
 
 use digest::{consts::U32, Digest, FixedOutput, Update};
 
+use crate::consensus::ConsensusEncoding;
+
+#[derive(Clone, Default)]
 pub struct HashWriter<H> {
     digest: H,
 }
@@ -35,10 +38,25 @@ impl<H: Digest> HashWriter<H> {
 }
 
 impl<H> HashWriter<H>
-where H: FixedOutput<OutputSize = U32>
+where H: FixedOutput<OutputSize = U32> + Update
 {
     pub fn finalize(self) -> [u8; 32] {
         self.digest.finalize_fixed().into()
+    }
+
+    pub fn update_consensus_encode<T: ConsensusEncoding>(&mut self, data: &T) {
+        // UNWRAP: ConsensusEncode MUST only error if the writer errors, HashWriter::write is infallible
+        data.consensus_encode(self)
+            .expect("Incorrect implementation of ConsensusEncoding encountered. Implementations MUST be infallible.");
+    }
+
+    pub fn chain<T: ConsensusEncoding>(mut self, data: &T) -> Self {
+        self.update_consensus_encode(data);
+        self
+    }
+
+    pub fn into_digest(self) -> H {
+        self.digest
     }
 }
 

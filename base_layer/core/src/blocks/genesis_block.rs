@@ -33,10 +33,8 @@ use tari_common_types::types::{
     Signature,
     BLOCK_HASH_LENGTH,
 };
-use tari_crypto::{
-    script::TariScript,
-    tari_utilities::{hash::Hashable, hex::*},
-};
+use tari_crypto::tari_utilities::{hash::Hashable, hex::*};
+use tari_script::TariScript;
 
 use crate::{
     blocks::{block::Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock},
@@ -57,8 +55,6 @@ use crate::{
         },
     },
 };
-
-const LATEST_BLOCK_VERSION: u16 = 2;
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
@@ -137,7 +133,7 @@ fn get_igor_genesis_block_raw() -> Block {
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: LATEST_BLOCK_VERSION,
+            version: 3,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),
@@ -278,7 +274,7 @@ fn get_dibbler_genesis_block_raw() -> Block {
     let timestamp = genesis.timestamp() as u64;
     Block {
         header: BlockHeader {
-            version: LATEST_BLOCK_VERSION,
+            version: 2,
             height: 0,
             prev_hash: vec![0; BLOCK_HASH_LENGTH],
             timestamp: timestamp.into(),

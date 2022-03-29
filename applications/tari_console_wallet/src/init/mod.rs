@@ -41,7 +41,7 @@ use tari_comms::{
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::CryptoFactories;
 use tari_crypto::keys::PublicKey;
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
     auto_update::AutoUpdateConfig,
     initialization::P2pConfig,
@@ -439,7 +439,7 @@ pub async fn init_wallet(
         }
     }
     if let Some(file_name) = seed_words_file_name {
-        let seed_words = wallet.output_manager_service.get_seed_words().await?.join(" ");
+        let seed_words = wallet.get_seed_words(&MnemonicLanguage::English).await?.join(" ");
         let _ = fs::write(file_name, seed_words).map_err(|e| {
             ExitError::new(
                 ExitCode::WalletError,
@@ -508,7 +508,7 @@ async fn validate_txos(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
 }
 
 async fn confirm_seed_words(wallet: &mut WalletSqlite) -> Result<(), ExitError> {
-    let seed_words = wallet.output_manager_service.get_seed_words().await?;
+    let seed_words = wallet.get_seed_words(&MnemonicLanguage::English).await?;
 
     println!();
     println!("=========================");

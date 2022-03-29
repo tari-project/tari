@@ -31,7 +31,9 @@ pub enum BlockAddResult {
     Ok(Arc<ChainBlock>),
     BlockExists,
     OrphanBlock,
-    /// Indicates the new block caused a chain reorg. This contains removed blocks followed by added blocks.
+    /// Indicates the new block caused a chain reorg.
+    /// This contains added blocks ordered from lowest to highest block height, and
+    /// the removed blocks ordered from highest to lowest block height.
     ChainReorg {
         added: Vec<Arc<ChainBlock>>,
         removed: Vec<Arc<ChainBlock>>,

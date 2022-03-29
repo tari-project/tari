@@ -25,6 +25,7 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
+use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
@@ -43,11 +44,14 @@ pub struct BaseNodeConfig {
     pub delay: Duration,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct WalletConfig {
     /// The time delay before starting the container and running the wallet executable
     pub delay: Duration,
     /// The password to de/en-crypt the wallet database
+    #[serde(skip_serializing)]
+    #[derivative(Debug = "ignore")]
     pub password: String,
 }
 
@@ -67,7 +71,8 @@ pub struct Sha3MinerConfig {
     pub num_mining_threads: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct MmProxyConfig {
     /// The time delay before starting the container and running the proxy executable
     pub delay: Duration,
@@ -76,6 +81,8 @@ pub struct MmProxyConfig {
     /// If required, the monero username for the monero daemon
     pub monero_username: String,
     /// If required, the password needed to access the monero deamon
+    #[serde(skip_serializing)]
+    #[derivative(Debug = "ignore")]
     pub monero_password: String,
     /// If true, provide the monero username and password to the daemon. Otherwise those strings are ignored.
     pub monero_use_auth: bool,

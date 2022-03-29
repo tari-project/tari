@@ -31,10 +31,8 @@ use tari_core::transactions::{
     },
     transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
 };
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_script::script;
 use tari_wallet::output_manager_service::handle::OutputManagerHandle;
 
 pub struct TestParams {
@@ -70,7 +68,7 @@ pub async fn make_input<R: Rng + CryptoRng>(
     // further down the line
     if let Some(mut oms) = oms {
         if let Ok(val) = oms
-            .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64())
+            .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64(), true)
             .await
         {
             utxo.features.set_recovery_byte(val);
@@ -101,7 +99,7 @@ pub async fn make_input_with_features<R: Rng + CryptoRng>(
     // 'TestParamsHelpers::new()'; this will influence validation of output features and the metadata signature
     // further down the line
     if let Ok(val) = oms
-        .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64())
+        .calculate_recovery_byte(utxo.spending_key.clone(), utxo.value.clone().as_u64(), true)
         .await
     {
         utxo.features.set_recovery_byte(val);

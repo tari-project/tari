@@ -50,12 +50,14 @@ use tari_core::{
 use tari_crypto::{
     common::Blake256,
     ristretto::{RistrettoPublicKey, RistrettoSchnorr, RistrettoSecretKey},
-    script,
-    script::{ExecutionStack, TariScript},
     signatures::{SchnorrSignature, SchnorrSignatureError},
     tari_utilities::hex::Hex,
 };
-use tari_key_manager::{cipher_seed::CipherSeed, key_manager::KeyManager};
+use tari_key_manager::{
+    cipher_seed::CipherSeed,
+    key_manager::KeyManager,
+    mnemonic::{Mnemonic, MnemonicLanguage},
+};
 use tari_p2p::{
     auto_update::{SoftwareUpdaterHandle, SoftwareUpdaterService},
     comms_connector::pubsub_connector,
@@ -64,6 +66,7 @@ use tari_p2p::{
     services::liveness::{LivenessConfig, LivenessInitializer},
     transport::TransportType,
 };
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
 use tari_shutdown::ShutdownSignal;
 
@@ -73,7 +76,7 @@ use crate::{
     config::{WalletConfig, KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY},
     connectivity_service::{WalletConnectivityHandle, WalletConnectivityInitializer, WalletConnectivityInterface},
     contacts_service::{handle::ContactsServiceHandle, storage::database::ContactsBackend, ContactsServiceInitializer},
-    error::WalletError,
+    error::{WalletError, WalletStorageError},
     key_manager_service::{
         storage::database::KeyManagerBackend,
         KeyManagerHandle,
@@ -266,6 +269,9 @@ where
         wallet_database
             .set_node_features(comms.node_identity().features())
             .await?;
+        if let Some(identity_sig) = comms.node_identity().identity_signature_read().as_ref().cloned() {
+            wallet_database.set_comms_identity_signature(identity_sig).await?;
+        }
 
         Ok(Self {
             network: config.network.into(),
@@ -395,11 +401,10 @@ where
         self.updater_service.as_ref().map(|s| s.clone())
     }
 
-    /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
-    /// EncumberedToBeReceived. A faux incoming transaction will be created to provide a record of the event. The TxId
-    /// of the generated transaction is returned.
-
-    pub async fn import_utxo(
+    /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be
+    /// added to the Output Manager and made EncumberedToBeReceived. A faux incoming transaction will be created to
+    /// provide a record of the event. The TxId of the generated transaction is returned.
+    pub async fn import_external_utxo_as_non_rewindable(
         &mut self,
         amount: MicroTari,
         spending_key: &PrivateKey,
@@ -446,22 +451,24 @@ where
             .map_err(WalletError::TransactionError)?
             .to_hex();
 
+        // As non-rewindable
         self.output_manager_service
             .add_unvalidated_output(tx_id, unblinded_output, None)
             .await?;
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'", commitment_hex
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
+            commitment_hex
         );
 
         Ok(tx_id)
     }
 
-    /// Import an external spendable UTXO into the wallet. The output will be added to the Output Manager and made
-    /// spendable. A faux incoming transaction will be created to provide a record of the event. The TxId of the
-    /// generated transaction is returned.
-    pub async fn import_unblinded_utxo(
+    /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be
+    /// added to the Output Manager and made spendable. A faux incoming transaction will be created to provide a record
+    /// of the event. The TxId of the generated transaction is returned.
+    pub async fn import_unblinded_output_as_non_rewindable(
         &mut self,
         unblinded_output: UnblindedOutput,
         source_public_key: &CommsPublicKey,
@@ -480,13 +487,14 @@ where
             )
             .await?;
 
+        // As non-rewindable
         self.output_manager_service
             .add_output_with_tx_id(tx_id, unblinded_output.clone(), None)
             .await?;
 
         info!(
             target: LOG_TARGET,
-            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported'",
+            "UTXO (Commitment: {}) imported into wallet as 'ImportStatus::Imported' and is non-rewindable",
             unblinded_output
                 .as_transaction_input(&self.factories.commitment)?
                 .commitment()
@@ -573,6 +581,17 @@ where
     /// process in progress
     pub async fn is_recovery_in_progress(&self) -> Result<bool, WalletError> {
         Ok(self.db.get_client_key_value(RECOVERY_KEY.to_string()).await?.is_some())
+    }
+
+    pub async fn get_seed_words(&self, language: &MnemonicLanguage) -> Result<Vec<String>, WalletError> {
+        let master_seed = self.db.get_master_seed().await?.ok_or_else(|| {
+            WalletError::WalletStorageError(WalletStorageError::RecoverySeedError(
+                "Cipher Seed not found".to_string(),
+            ))
+        })?;
+
+        let seed_words = master_seed.to_mnemonic(language, None)?;
+        Ok(seed_words)
     }
 }
 

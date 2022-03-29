@@ -1,8 +1,31 @@
+//  Copyright 2022, The Tari Project
+//
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
+//
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
+//
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
 use tari_common_types::types::HashOutput;
 use tari_utilities::message_format::MessageFormat;
+use thiserror::Error;
 
 use super::{CommandContext, HandleCommand, TypeOrHex};
 use crate::commands::parser::Format;
@@ -30,11 +53,24 @@ impl HandleCommand<Args> for CommandContext {
     }
 }
 
+#[derive(Error, Debug)]
+enum ArgsError {
+    #[error("Block not found at height {height}")]
+    NotFoundAt { height: u64 },
+    #[error("Block not found")]
+    NotFound,
+}
+
 impl CommandContext {
     pub async fn get_block(&self, height: u64, format: Format) -> Result<(), Error> {
-        let mut data = self.blockchain_db.fetch_blocks(height..=height).await?;
-        match (data.pop(), format) {
-            (Some(block), Format::Text) => {
+        let block = self
+            .blockchain_db
+            .fetch_blocks(height..=height)
+            .await?
+            .pop()
+            .ok_or(ArgsError::NotFoundAt { height })?;
+        match format {
+            Format::Text => {
                 let block_data = self
                     .blockchain_db
                     .fetch_block_accumulated_data(block.hash().clone())
@@ -44,18 +80,20 @@ impl CommandContext {
                 println!("-- Accumulated data --");
                 println!("{}", block_data);
             },
-            (Some(block), Format::Json) => println!("{}", block.to_json()?),
-            (None, _) => println!("Block not found at height {}", height),
+            Format::Json => println!("{}", block.to_json()?),
         }
         Ok(())
     }
 
     pub async fn get_block_by_hash(&self, hash: HashOutput, format: Format) -> Result<(), Error> {
-        let data = self.blockchain_db.fetch_block_by_hash(hash).await?;
-        match (data, format) {
-            (Some(block), Format::Text) => println!("{}", block),
-            (Some(block), Format::Json) => println!("{}", block.to_json()?),
-            (None, _) => println!("Block not found"),
+        let block = self
+            .blockchain_db
+            .fetch_block_by_hash(hash)
+            .await?
+            .ok_or(ArgsError::NotFound)?;
+        match format {
+            Format::Text => println!("{}", block),
+            Format::Json => println!("{}", block.to_json()?),
         }
         Ok(())
     }

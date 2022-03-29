@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
-use tari_crypto::script;
+use tari_script::script;
 use tari_test_utils::unpack_enum;
 
 use crate::{

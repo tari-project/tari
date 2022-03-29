@@ -68,7 +68,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         transport_type: TransportType::Memory {
             listener_address: node_identity.public_address(),
         },
-        auxilary_tcp_listener_address: None,
+        auxiliary_tcp_listener_address: None,
         datastore_path: tempdir().unwrap().into_path(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,

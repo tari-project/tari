@@ -22,13 +22,14 @@
 
 use std::cmp::Ordering;
 
+use derivative::Derivative;
 use tari_common_types::types::{BlockHash, BulletRangeProof, Commitment, HashOutput, PrivateKey};
 use tari_core::transactions::{
     transaction_components::UnblindedOutput,
     transaction_protocol::RewindData,
     CryptoFactories,
 };
-use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::hash::Hashable;
 
 use crate::output_manager_service::{error::OutputManagerStorageError, storage::OutputStatus};
@@ -143,9 +144,11 @@ impl From<SpendingPriority> for u32 {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct KnownOneSidedPaymentScript {
     pub script_hash: Vec<u8>,
+    #[derivative(Debug = "ignore")]
     pub private_key: PrivateKey,
     pub script: TariScript,
     pub input: ExecutionStack,

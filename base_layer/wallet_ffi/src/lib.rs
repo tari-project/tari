@@ -121,22 +121,18 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{tari_amount::MicroTari, CryptoFactories},
-};
+use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_crypto::{
-    inputs,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
-    script,
     tari_utilities::ByteArray,
 };
-use tari_key_manager::cipher_seed::CipherSeed;
+use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
     transport::{TorConfig, TransportType, TransportType::Tor},
     Network,
     DEFAULT_DNS_NAME_SERVER,
 };
+use tari_script::{inputs, script};
 use tari_shutdown::Shutdown;
 use tari_utilities::{hex, hex::Hex};
 use tari_wallet::{
@@ -1168,7 +1164,7 @@ pub unsafe extern "C" fn seed_words_push_word(
     word: *const c_char,
     error_out: *mut c_int,
 ) -> c_uchar {
-    use tari_key_manager::mnemonic::{Mnemonic, MnemonicLanguage};
+    use tari_key_manager::mnemonic::Mnemonic;
 
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
@@ -3236,6 +3232,8 @@ pub unsafe extern "C" fn comms_config_create(
                             auto_join: true,
                             saf_config: SafConfig {
                                 msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                // Ensure that SAF messages are requested automatically
+                                auto_request: true,
                                 ..Default::default()
                             },
                             ..Default::default()
@@ -5138,26 +5136,31 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
     Box::into_raw(Box::new(pk))
 }
 
-/// Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
-/// event.
+/// Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
+/// UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `amount` - The value of the UTXO in MicroTari
 /// `spending_key` - The private spending key
 /// `source_public_key` - The public key of the source of the transaction
+/// `features` - Options for an output's structure or use
+/// `metadata_signature` - UTXO signature with the script offset private key, k_O
+/// `sender_offset_public_key` - Tari script offset pubkey, K_O
+/// `script_private_key` - Tari script private key, k_S, is used to create the script signature
+/// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if transaction is
-/// null
+/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
+/// transaction is null
 ///
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_import_utxo(
+pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     wallet: *mut TariWallet,
     amount: c_ulonglong,
     spending_key: *mut TariPrivateKey,
@@ -5214,10 +5217,10 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    let covenant = if covenant.is_null() {
-        Covenant::default()
-    } else {
-        (*covenant).clone()
+    if covenant.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("covenant".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
     };
 
     let message_string;
@@ -5249,20 +5252,22 @@ pub unsafe extern "C" fn wallet_import_utxo(
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
 
     // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
-    match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
-        MicroTari::from(amount),
-        &(*spending_key).clone(),
-        script!(Nop),
-        inputs!(public_script_key),
-        &(*source_public_key).clone(),
-        (*features).clone(),
-        message_string,
-        (*metadata_signature).clone(),
-        &(*script_private_key).clone(),
-        &(*sender_offset_public_key).clone(),
-        0,
-        covenant,
-    )) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.import_external_utxo_as_non_rewindable(
+            MicroTari::from(amount),
+            &(*spending_key).clone(),
+            script!(Nop),
+            inputs!(public_script_key),
+            &(*source_public_key).clone(),
+            (*features).clone(),
+            message_string,
+            (*metadata_signature).clone(),
+            &(*script_private_key).clone(),
+            &(*sender_offset_public_key).clone(),
+            0,
+            (*covenant).clone(),
+        )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
                 .runtime
@@ -5567,11 +5572,11 @@ pub unsafe extern "C" fn wallet_get_seed_words(wallet: *mut TariWallet, error_ou
 
     match (*wallet)
         .runtime
-        .block_on((*wallet).wallet.output_manager_service.get_seed_words())
+        .block_on((*wallet).wallet.get_seed_words(&MnemonicLanguage::English))
     {
         Ok(seed_words) => Box::into_raw(Box::new(TariSeedWords(seed_words))),
         Err(e) => {
-            error = LibWalletError::from(WalletError::OutputManagerError(e)).code;
+            error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -6345,6 +6350,7 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus};
+    use tari_core::transactions::test_helpers::{create_unblinded_output, TestParams};
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
     use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
@@ -7460,6 +7466,209 @@ mod test {
                 // Clear memory
                 seed_words_destroy(mnemonic_wordlist_ffi);
             }
+        }
+    }
+
+    fn get_next_memory_address() -> Multiaddr {
+        let port = MemoryTransport::acquire_next_memsocket_port();
+        format!("/memory/{}", port).parse().unwrap()
+    }
+
+    #[test]
+    pub fn test_import_external_utxo() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            // create a new wallet
+            let db_name = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_str: *const c_char = CString::into_raw(db_name) as *const c_char;
+            let temp_dir = tempdir().unwrap();
+            let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
+            let transport_type = transport_memory_create();
+            let address = transport_memory_get_address(transport_type, error_ptr);
+            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
+            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let config = comms_config_create(
+                address_str,
+                transport_type,
+                db_name_str,
+                db_path_str,
+                20,
+                10800,
+                network_str,
+                error_ptr,
+            );
+
+            let wallet_ptr = wallet_create(
+                config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                direct_send_callback,
+                store_and_forward_send_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+
+            let node_identity =
+                NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+            let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
+            let base_node_peer_address_ptr =
+                CString::into_raw(CString::new(node_identity.public_address().to_string()).unwrap()) as *const c_char;
+            wallet_add_base_node_peer(
+                wallet_ptr,
+                base_node_peer_public_key_ptr,
+                base_node_peer_address_ptr,
+                error_ptr,
+            );
+
+            // Create an unblinded output with a non-default recovery byte
+            let default_features = TariOutputFeatures::default();
+            let utxo_1;
+            loop {
+                let test_params = TestParams::new();
+                let utxo_temp = create_unblinded_output(
+                    script!(Nop),
+                    default_features.clone(),
+                    test_params.clone(),
+                    MicroTari::from(100_000),
+                );
+                if utxo_temp.features.recovery_byte != default_features.recovery_byte {
+                    utxo_1 = utxo_temp;
+                    break;
+                }
+            }
+            assert_ne!(utxo_1.features.recovery_byte, default_features.recovery_byte);
+
+            // Test the consistent features case, i.e. with valid 'recovery_byte'
+            let amount = utxo_1.value.as_u64();
+            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
+            let source_public_key_ptr = Box::into_raw(Box::new(TariPublicKey::default()));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key));
+            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key));
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant));
+            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
+
+            let tx_id = wallet_import_external_utxo_as_non_rewindable(
+                wallet_ptr,
+                amount,
+                spending_key_ptr,
+                source_public_key_ptr,
+                features_ptr,
+                metadata_signature_ptr,
+                sender_offset_public_key_ptr,
+                script_private_key_ptr,
+                covenant_ptr,
+                message_ptr,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            assert!(tx_id > 0);
+
+            // Cleanup
+            string_destroy(message_ptr as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr);
+            let _script_private_key = Box::from_raw(script_private_key_ptr);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
+            let _features = Box::from_raw(features_ptr);
+            let _source_public_key = Box::from_raw(source_public_key_ptr);
+            let _spending_key = Box::from_raw(spending_key_ptr);
+
+            // Create an unblinded output with a non-default recovery byte
+            let mut utxo_2;
+            loop {
+                let test_params = TestParams::new();
+                let utxo_temp = create_unblinded_output(
+                    script!(Nop),
+                    default_features.clone(),
+                    test_params.clone(),
+                    MicroTari::from(200_000),
+                );
+                if utxo_temp.features.recovery_byte != default_features.recovery_byte {
+                    utxo_2 = utxo_temp;
+                    break;
+                }
+            }
+            assert_ne!(utxo_2.features.recovery_byte, default_features.recovery_byte);
+            // Reset the 'recovery_byte' to default; i.e. the 'metadata_signature' will now be inconsistent
+            utxo_2.features.set_recovery_byte(default_features.recovery_byte);
+
+            // Test the inconsistent features case, i.e. with invalid 'recovery_byte'
+            let amount = utxo_2.value.as_u64();
+            let spending_key_ptr = Box::into_raw(Box::new(utxo_2.spending_key));
+            let source_public_key_ptr = Box::into_raw(Box::new(TariPublicKey::default()));
+            let features_ptr = Box::into_raw(Box::new(utxo_2.features));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_2.metadata_signature));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_2.sender_offset_public_key));
+            let script_private_key_ptr = Box::into_raw(Box::new(utxo_2.script_private_key));
+            let covenant_ptr = Box::into_raw(Box::new(utxo_2.covenant));
+            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
+
+            let tx_id = wallet_import_external_utxo_as_non_rewindable(
+                wallet_ptr,
+                amount,
+                spending_key_ptr,
+                source_public_key_ptr,
+                features_ptr,
+                metadata_signature_ptr,
+                sender_offset_public_key_ptr,
+                script_private_key_ptr,
+                covenant_ptr,
+                message_ptr,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            assert!(tx_id > 0);
+
+            // Cleanup
+            string_destroy(message_ptr as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr);
+            let _script_private_key = Box::from_raw(script_private_key_ptr);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
+            let _features = Box::from_raw(features_ptr);
+            let _source_public_key = Box::from_raw(source_public_key_ptr);
+            let _spending_key = Box::from_raw(spending_key_ptr);
+
+            let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
+            string_destroy(base_node_peer_address_ptr as *mut c_char);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_str as *mut c_char);
+            string_destroy(db_path_str as *mut c_char);
+            string_destroy(address_str as *mut c_char);
+            transport_type_destroy(transport_type);
+
+            comms_config_destroy(config);
+            wallet_destroy(wallet_ptr);
         }
     }
 

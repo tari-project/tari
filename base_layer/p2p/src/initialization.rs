@@ -167,7 +167,7 @@ pub struct P2pConfig {
     /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
     /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
     /// Default: None
-    pub auxilary_tcp_listener_address: Option<Multiaddr>,
+    pub auxiliary_tcp_listener_address: Option<Multiaddr>,
 }
 
 impl Default for P2pConfig {
@@ -399,8 +399,8 @@ async fn configure_comms_and_dht(
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_peer_storage(peer_database, Some(file_lock));
 
-    let mut comms = match config.auxilary_tcp_listener_address {
-        Some(ref addr) => builder.with_auxilary_tcp_listener_address(addr.clone()).build()?,
+    let mut comms = match config.auxiliary_tcp_listener_address {
+        Some(ref addr) => builder.with_auxiliary_tcp_listener_address(addr.clone()).build()?,
         None => builder.build()?,
     };
 

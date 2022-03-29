@@ -25,13 +25,13 @@ use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    script::TariScript,
     tari_utilities::{
         epoch_time::EpochTime,
         hash::Hashable,
         hex::{to_hex, Hex},
     },
 };
+use tari_script::TariScript;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -762,6 +762,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
         return Err(e);
     }
     Ok(())
+}
+
+pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Result<(), ValidationError> {
+    if constants.valid_blockchain_version_range().contains(&version) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidBlockchainVersion { version })
+    }
 }
 
 #[cfg(test)]

@@ -38,7 +38,7 @@ pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
-use tari_crypto::script::TariScript;
+use tari_script::TariScript;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
 pub use transaction_builder::TransactionBuilder;
@@ -86,7 +86,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
-use crate::{common::hash_writer::HashWriter, consensus::ConsensusEncoding, covenants::Covenant};
+use crate::{common::hash_writer::HashWriter, covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.
@@ -102,12 +102,11 @@ pub(super) fn hash_output(
     script: &TariScript,
     covenant: &Covenant,
 ) -> [u8; 32] {
-    let mut hasher = HashWriter::new(HashDigest::new());
-    // unwrap: hashwriter is infallible
-    version.consensus_encode(&mut hasher).unwrap();
-    features.consensus_encode(&mut hasher).unwrap();
-    commitment.consensus_encode(&mut hasher).unwrap();
-    script.consensus_encode(&mut hasher).unwrap();
-    covenant.consensus_encode(&mut hasher).unwrap();
-    hasher.finalize()
+    HashWriter::new(HashDigest::new())
+        .chain(&version)
+        .chain(features)
+        .chain(commitment)
+        .chain(script)
+        .chain(covenant)
+        .finalize()
 }

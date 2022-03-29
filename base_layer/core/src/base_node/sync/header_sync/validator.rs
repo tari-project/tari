@@ -33,6 +33,7 @@ use crate::{
     consensus::ConsensusManager,
     proof_of_work::{randomx_factory::RandomXFactory, PowAlgorithm},
     validation::helpers::{
+        check_blockchain_version,
         check_header_timestamp_greater_than_median,
         check_not_bad_block,
         check_pow_data,
@@ -116,6 +117,9 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
     pub fn validate(&mut self, header: BlockHeader) -> Result<u128, BlockHeaderSyncError> {
         let state = self.state();
+        let constants = self.consensus_rules.consensus_constants(header.height);
+        check_blockchain_version(constants, header.version)?;
+
         let expected_height = state.current_height + 1;
         if header.height != expected_height {
             return Err(BlockHeaderSyncError::InvalidBlockHeight {
@@ -125,6 +129,7 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
         }
         if header.prev_hash != state.previous_accum.hash {
             return Err(BlockHeaderSyncError::ChainLinkBroken {
+                height: header.height,
                 actual: header.prev_hash.to_hex(),
                 expected: state.previous_accum.hash.to_hex(),
             });
@@ -133,7 +138,6 @@ impl<B: BlockchainBackend + 'static> BlockHeaderSyncValidator<B> {
 
         check_header_timestamp_greater_than_median(&header, &state.timestamps)?;
 
-        let constants = self.consensus_rules.consensus_constants(header.height);
         let target_difficulty = state.target_difficulties.get(header.pow_algo()).calculate(
             constants.min_pow_difficulty(header.pow_algo()),
             constants.max_pow_difficulty(header.pow_algo()),

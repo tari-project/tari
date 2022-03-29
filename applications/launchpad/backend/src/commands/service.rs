@@ -24,6 +24,7 @@
 use std::{convert::TryFrom, path::PathBuf, time::Duration};
 
 use bollard::Docker;
+use derivative::Derivative;
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -52,11 +53,13 @@ use crate::{
 };
 
 /// "Global" settings from the launcher front-end
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Derivative, Deserialize)]
+#[derivative(Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
     pub tari_network: String,
     pub root_folder: String,
+    #[derivative(Debug = "ignore")]
     pub wallet_password: String,
     pub monero_mining_address: Option<String>,
     pub num_mining_threads: i64,
@@ -64,6 +67,7 @@ pub struct ServiceSettings {
     pub docker_tag: Option<String>,
     pub monerod_url: Option<String>,
     pub monero_username: Option<String>,
+    #[derivative(Debug = "ignore")]
     pub monero_password: Option<String>,
     pub monero_use_auth: Option<bool>,
 }

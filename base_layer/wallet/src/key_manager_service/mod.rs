@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 mod error;
-pub use error::KeyManagerError;
+pub use error::KeyManagerServiceError;
 
 mod handle;
 pub use handle::KeyManagerHandle;

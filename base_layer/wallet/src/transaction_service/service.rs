@@ -56,12 +56,11 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
-    script,
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
+use tari_script::{inputs, script};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{

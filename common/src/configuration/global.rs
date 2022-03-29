@@ -35,6 +35,7 @@ use std::{
 };
 
 use config::{Config, ConfigError, Environment};
+use derivative::Derivative;
 use multiaddr::{Error, Multiaddr, Protocol};
 use serde::{Deserialize, Serialize};
 use tari_storage::lmdb_store::LMDBConfig;
@@ -306,7 +307,8 @@ impl fmt::Debug for TorControlAuthentication {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Derivative, Clone, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub enum SocksAuthentication {
     None,
     UsernamePassword { username: String, password: String },

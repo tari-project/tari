@@ -6,14 +6,14 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.29.0"
+version = "0.30.1"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
 tari_metrics = { path = "../infrastructure/metrics" }
-tari_storage = { version = "^0.29", path = "../infrastructure/storage" }
-tari_shutdown = { version = "^0.29", path = "../infrastructure/shutdown" }
+tari_storage = { version = "^0.30", path = "../infrastructure/storage" }
+tari_shutdown = { version = "^0.30", path = "../infrastructure/shutdown" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.36"
@@ -24,6 +24,7 @@ chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
 cidr = "0.1.0"
 clear_on_drop = "=0.2.4"
 data-encoding = "2.2.0"
+derivative = "2.2.0"
 digest = "0.9.0"
 futures = { version = "^0.3", features = ["async-await"] }
 lazy_static = "1.4.0"
@@ -49,7 +50,7 @@ tracing = "0.1.26"
 yamux = "=0.9.0"
 
 [dev-dependencies]
-tari_test_utils = { version = "^0.29", path = "../infrastructure/test_utils" }
+tari_test_utils = { version = "^0.30", path = "../infrastructure/test_utils" }
 tari_comms_rpc_macros = { version = "*", path = "./rpc_macros" }
 
 env_logger = "0.7.0"
@@ -57,7 +58,7 @@ serde_json = "1.0.39"
 tempfile = "3.1.0"
 
 [build-dependencies]
-tari_common = { version = "^0.29", path = "../common", features = ["build"] }
+tari_common = { version = "^0.30", path = "../common", features = ["build"] }
 
 [features]
 c_integration = []

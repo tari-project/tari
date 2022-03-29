@@ -26,6 +26,7 @@ use std::{
 };
 
 use aes_gcm::Aes256Gcm;
+use derivative::Derivative;
 use diesel::{prelude::*, result::Error as DieselError, SqliteConnection};
 use log::*;
 pub use new_output_sql::NewOutputSql;
@@ -35,10 +36,8 @@ use tari_common_types::{
     types::{Commitment, PrivateKey, PublicKey},
 };
 use tari_core::transactions::transaction_components::{OutputFlags, TransactionOutput};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{hex::Hex, ByteArray},
-};
+use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
+use tari_script::{ExecutionStack, TariScript};
 use tokio::time::Instant;
 
 use crate::{
@@ -1157,7 +1156,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
+                "sqlite profile - add_unvalidated_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -1261,12 +1260,14 @@ impl From<UpdateOutput> for UpdateOutputSql {
     }
 }
 
-#[derive(Clone, Debug, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[derive(Clone, Derivative, Queryable, Insertable, Identifiable, PartialEq, AsChangeset)]
+#[derivative(Debug)]
 #[table_name = "known_one_sided_payment_scripts"]
 #[primary_key(script_hash)]
 // #[identifiable_options(primary_key(hash))]
 pub struct KnownOneSidedPaymentScriptSql {
     pub script_hash: Vec<u8>,
+    #[derivative(Debug = "ignore")]
     pub private_key: Vec<u8>,
     pub script: Vec<u8>,
     pub input: Vec<u8>,
@@ -1436,7 +1437,7 @@ mod test {
         transaction_components::{OutputFeatures, TransactionInput, UnblindedOutput},
         CryptoFactories,
     };
-    use tari_crypto::script;
+    use tari_script::script;
     use tari_test_utils::random;
     use tempfile::tempdir;
 

@@ -27,7 +27,8 @@ use std::{
 
 use chrono::{DateTime, Duration, Utc};
 use tari_common::configuration::Network;
-use tari_crypto::{script, tari_utilities::epoch_time::EpochTime};
+use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_script::script;
 
 use crate::{
     consensus::{network::NetworkConsensus, ConsensusEncodingSized},
@@ -54,11 +55,13 @@ pub struct ConsensusConstants {
     coinbase_lock_height: u64,
     /// Current version of the blockchain
     blockchain_version: u16,
+    /// Current version of the blockchain
+    valid_blockchain_version_range: RangeInclusive<u16>,
     /// The Future Time Limit (FTL) of the blockchain in seconds. This is the max allowable timestamp that is excepted.
     /// We use T*N/20 where T = desired chain target time, and N = block_window
     future_time_limit: u64,
     /// When doing difficulty adjustments and FTL calculations this is the amount of blocks we look at
-    /// https://github.com/zawy12/difficulty-algorithms/issues/14
+    /// <https://github.com/zawy12/difficulty-algorithms/issues/14>
     difficulty_block_window: u64,
     /// Maximum transaction weight used for the construction of new blocks.
     max_block_transaction_weight: u64,
@@ -145,6 +148,11 @@ impl ConsensusConstants {
     /// Current version of the blockchain.
     pub fn blockchain_version(&self) -> u16 {
         self.blockchain_version
+    }
+
+    /// Returns the valid blockchain version range
+    pub fn valid_blockchain_version_range(&self) -> &RangeInclusive<u16> {
+        &self.valid_blockchain_version_range
     }
 
     /// This returns the FTL (Future Time Limit) for blocks.
@@ -284,6 +292,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 2,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,
@@ -322,6 +331,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             max_block_transaction_weight: 19500,
@@ -360,6 +370,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 6,
             blockchain_version: 2,
+            valid_blockchain_version_range: 0..=3,
             future_time_limit: 540,
             difficulty_block_window: 90,
             // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
@@ -403,31 +414,54 @@ impl ConsensusConstants {
             target_time: 200,
         });
         let (input_version_range, output_version_range, kernel_version_range) = version_zero();
-        let constants = ConsensusConstants {
-            effective_from_height: 0,
-            coinbase_lock_height: 360,
-            blockchain_version: 2,
-            future_time_limit: 540,
-            difficulty_block_window: 90,
-            // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
-            // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
-            // weightings
-            max_block_transaction_weight: 127_795,
-            median_timestamp_count: 11,
-            emission_initial: 18_462_816_327 * uT,
-            emission_decay: &DIBBLER_DECAY_PARAMS,
-            emission_tail: 800 * T,
-            max_randomx_seed_height: u64::MAX,
-            proof_of_work: algos,
-            faucet_value: (10 * 4000) * T,
-            transaction_weight: TransactionWeight::v2(),
-            max_script_byte_size: 2048,
-            input_version_range,
-            output_version_range,
-            kernel_version_range,
-        };
-
-        vec![constants]
+        vec![
+            ConsensusConstants {
+                effective_from_height: 0,
+                coinbase_lock_height: 360,
+                blockchain_version: 2,
+                valid_blockchain_version_range: 0..=3,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                // 65536 =  target_block_size / bytes_per_gram =  (1024*1024) / 16
+                // adj. + 95% = 127,795 - this effectively targets ~2Mb blocks closely matching the previous 19500
+                // weightings
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &DIBBLER_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: u64::MAX,
+                proof_of_work: algos.clone(),
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v2(),
+                max_script_byte_size: 2048,
+                input_version_range: input_version_range.clone(),
+                output_version_range: output_version_range.clone(),
+                kernel_version_range: kernel_version_range.clone(),
+            },
+            ConsensusConstants {
+                effective_from_height: 23000,
+                coinbase_lock_height: 360,
+                // CHANGE: Use v3 blocks from effective height
+                blockchain_version: 3,
+                valid_blockchain_version_range: 0..=3,
+                future_time_limit: 540,
+                difficulty_block_window: 90,
+                max_block_transaction_weight: 127_795,
+                median_timestamp_count: 11,
+                emission_initial: 18_462_816_327 * uT,
+                emission_decay: &DIBBLER_DECAY_PARAMS,
+                emission_tail: 800 * T,
+                max_randomx_seed_height: u64::MAX,
+                proof_of_work: algos,
+                faucet_value: (10 * 4000) * T,
+                transaction_weight: TransactionWeight::v2(),
+                max_script_byte_size: 2048,
+                input_version_range,
+                output_version_range,
+                kernel_version_range,
+            },
+        ]
     }
 
     pub fn mainnet() -> Vec<Self> {
@@ -451,6 +485,7 @@ impl ConsensusConstants {
             effective_from_height: 0,
             coinbase_lock_height: 1,
             blockchain_version: 1,
+            valid_blockchain_version_range: 0..=0,
             future_time_limit: 540,
             difficulty_block_window,
             max_block_transaction_weight: 19500,

@@ -112,7 +112,7 @@ impl MempoolStorage {
                 Ok(TxStorageResponse::NotStoredConsensus)
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Validation failed due to error:{}", e);
+                warn!(target: LOG_TARGET, "Validation failed due to error: {}", e);
                 Ok(TxStorageResponse::NotStored)
             },
         }

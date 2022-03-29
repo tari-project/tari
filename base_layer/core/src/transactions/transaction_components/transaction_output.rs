@@ -48,14 +48,14 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RangeProofServiceTrait,
     ristretto::pedersen::PedersenCommitmentFactory,
-    script::TariScript,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
+use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
     common::hash_writer::HashWriter,
-    consensus::{ConsensusEncoding, ConsensusEncodingSized, ToConsensusBytes},
+    consensus::ConsensusEncodingSized,
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -89,7 +89,7 @@ pub struct TransactionOutput {
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
-    /// The script that will be executed when spending this output
+    /// The covenant that will be executed when spending this output
     #[serde(default)]
     pub covenant: Covenant,
 }
@@ -250,13 +250,14 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
     ) -> Challenge {
-        Challenge::new()
-            .chain(public_commitment_nonce.to_consensus_bytes())
-            .chain(script.to_consensus_bytes())
-            .chain(features.to_consensus_bytes())
-            .chain(sender_offset_public_key.to_consensus_bytes())
-            .chain(commitment.to_consensus_bytes())
-            .chain(covenant.to_consensus_bytes())
+        HashWriter::new(Challenge::new())
+            .chain(public_commitment_nonce)
+            .chain(script)
+            .chain(features)
+            .chain(sender_offset_public_key)
+            .chain(commitment)
+            .chain(covenant)
+            .into_digest()
     }
 
     // Create commitment signature for the metadata
@@ -347,12 +348,11 @@ impl TransactionOutput {
     }
 
     pub fn witness_hash(&self) -> Vec<u8> {
-        let mut hasher = HashWriter::new(HashDigest::new());
-        // unwrap: HashWriter is infallible
-        self.proof.consensus_encode(&mut hasher).unwrap();
-        self.metadata_signature.consensus_encode(&mut hasher).unwrap();
-
-        hasher.finalize().to_vec()
+        HashWriter::new(HashDigest::new())
+            .chain(&self.proof)
+            .chain(&self.metadata_signature)
+            .finalize()
+            .to_vec()
     }
 
     pub fn get_metadata_size(&self) -> usize {

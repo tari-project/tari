@@ -25,11 +25,9 @@ use rand::rngs::OsRng;
 use tari_common_types::types::{BlindingFactor, PrivateKey, PublicKey, Signature};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    inputs,
     keys::{PublicKey as PK, SecretKey},
-    script,
-    script::TariScript,
 };
+use tari_script::{inputs, script, TariScript};
 use thiserror::Error;
 
 use crate::{
