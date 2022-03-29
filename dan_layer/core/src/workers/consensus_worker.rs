@@ -127,7 +127,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             .get_or_create_chain_db(&self.asset_definition.public_key)?;
         self.current_view_id = chain_db
             .get_tip_node()?
-            .map(|n| ViewId(n.height() as u64))
+            .map(|n| ViewId(u64::from(n.height())))
             .unwrap_or_else(|| ViewId(0));
         info!(
             target: LOG_TARGET,

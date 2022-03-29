@@ -192,7 +192,7 @@ impl OutputSql {
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
         let res = diesel::sql_query("SELECT * FROM outputs where flags & $1 = $1 ORDER BY id;")
-            .bind::<diesel::sql_types::Integer, _>(flags.bits() as i32)
+            .bind::<diesel::sql_types::Integer, _>(i32::from(flags.bits()))
             .load(conn)?;
         Ok(res)
     }

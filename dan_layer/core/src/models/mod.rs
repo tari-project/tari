@@ -119,7 +119,9 @@ impl TryFrom<u32> for TemplateId {
             3 => Ok(TemplateId::Tip003),
             4 => Ok(TemplateId::Tip004),
             721 => Ok(TemplateId::Tip721),
-            _ => Err(ModelError::InvalidTemplateIdNumber { value: value as i64 }),
+            _ => Err(ModelError::InvalidTemplateIdNumber {
+                value: i64::from(value),
+            }),
         }
     }
 }
@@ -129,7 +131,9 @@ impl TryFrom<i32> for TemplateId {
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         u32::try_from(value)
-            .map_err(|_| ModelError::InvalidTemplateIdNumber { value: value as i64 })?
+            .map_err(|_| ModelError::InvalidTemplateIdNumber {
+                value: i64::from(value),
+            })?
             .try_into()
     }
 }

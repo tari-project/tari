@@ -178,7 +178,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn update_locked_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         use crate::schema::locked_qc::dsl;
-        let message_type = item.message_type.as_u8() as i32;
+        let message_type = i32::from(item.message_type.as_u8());
         let existing: Result<LockedQc, _> = dsl::locked_qc.find(1).first(transaction.connection());
         match existing {
             Ok(_) => {
@@ -216,7 +216,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         use crate::schema::prepare_qc::dsl;
-        let message_type = item.message_type.as_u8() as i32;
+        let message_type = i32::from(item.message_type.as_u8());
         let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(1).first(transaction.connection());
         match existing {
             Ok(_) => {

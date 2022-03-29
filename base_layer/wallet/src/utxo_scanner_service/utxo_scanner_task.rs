@@ -641,7 +641,7 @@ where TBackend: WalletBackend + 'static
         let birthday = self.resources.db.get_wallet_birthday().await?;
         // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
         // issues
-        let epoch_time = (birthday.saturating_sub(2) as u64) * 60 * 60 * 24;
+        let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
             Err(e) => {

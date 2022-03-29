@@ -3459,7 +3459,7 @@ unsafe fn init_logging(
         let roller = FixedWindowRoller::builder()
             .build(pattern.as_str(), num_rolling_log_files)
             .expect("Should be able to create a Roller");
-        let size_trigger = SizeTrigger::new(size_per_log_file_bytes as u64);
+        let size_trigger = SizeTrigger::new(u64::from(size_per_log_file_bytes));
         let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
 
         Box::new(

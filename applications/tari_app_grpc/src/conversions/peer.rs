@@ -38,7 +38,7 @@ impl From<Peer> for grpc::Peer {
         for address in peer.addresses.addresses {
             addresses.push(address.clone().into())
         }
-        let flags = peer.flags.bits() as u32;
+        let flags = u32::from(peer.flags.bits());
         #[allow(clippy::cast_sign_loss)]
         let banned_until = match peer.banned_until {
             Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),

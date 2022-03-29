@@ -52,7 +52,7 @@ use crate::p2p::proto;
 impl From<HotStuffMessage<TariDanPayload>> for proto::consensus::HotStuffMessage {
     fn from(source: HotStuffMessage<TariDanPayload>) -> Self {
         Self {
-            message_type: source.message_type().as_u8() as i32,
+            message_type: i32::from(source.message_type().as_u8()),
             node: source.node().map(|n| n.clone().into()),
             justify: source.justify().map(|j| j.clone().into()),
             partial_sig: source.partial_sig().map(|s| s.clone().into()),
@@ -82,7 +82,7 @@ impl From<HotStuffTreeNode<TariDanPayload>> for proto::consensus::HotStuffTreeNo
 impl From<QuorumCertificate> for proto::consensus::QuorumCertificate {
     fn from(source: QuorumCertificate) -> Self {
         Self {
-            message_type: source.message_type().as_u8() as i32,
+            message_type: i32::from(source.message_type().as_u8()),
             node_hash: Vec::from(source.node_hash().as_bytes()),
             view_number: source.view_number().as_u64(),
             signature: source.signature().map(|s| s.clone().into()),

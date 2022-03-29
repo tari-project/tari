@@ -48,7 +48,7 @@ impl Filter for FieldEqFilter {
                     let val = field
                         .get_field_value_ref::<u64>(output)
                         .copied()
-                        .or_else(|| field.get_field_value_ref::<u32>(output).map(|v| *v as u64));
+                        .or_else(|| field.get_field_value_ref::<u32>(output).map(|v| u64::from(*v)));
 
                     match val {
                         Some(val) => Ok(val == *int),

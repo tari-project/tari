@@ -428,7 +428,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         let mut not_deleted_positions = vec![];
 
         for position in message.mmr_positions {
-            if position > u32::MAX as u64 {
+            if position > u64::from(u32::MAX) {
                 return Err(RpcStatus::bad_request("position must fit into a u32"));
             }
             let position = position as u32;
@@ -465,8 +465,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeWalletService for BaseNodeWalletRpc
         Ok(Response::new(QueryDeletedResponse {
             height_of_longest_chain: metadata.height_of_longest_chain(),
             best_block: metadata.best_block().clone(),
-            deleted_positions: deleted_positions.into_iter().map(|v| v as u64).collect(),
-            not_deleted_positions: not_deleted_positions.into_iter().map(|v| v as u64).collect(),
+            deleted_positions: deleted_positions.into_iter().map(u64::from).collect(),
+            not_deleted_positions: not_deleted_positions.into_iter().map(u64::from).collect(),
             blocks_deleted_in,
             heights_deleted_at,
         }))

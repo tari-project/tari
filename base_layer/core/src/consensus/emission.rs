@@ -132,7 +132,7 @@ impl EmissionSchedule {
         if exact {
             result.push(index - 1);
         }
-        let result = result.into_iter().map(|i| i as u64).collect();
+        let result = result.into_iter().map(u64::from).collect();
         Some(result)
     }
 

@@ -1384,7 +1384,7 @@ impl LMDBDatabase {
             let (_height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
                 write_txn,
                 &self.output_mmr_size_index,
-                &((pos + 1) as u64).to_be_bytes(),
+                &u64::from(pos + 1).to_be_bytes(),
             )
             .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
             let key = OutputKey::new(&hash, *pos, &[]);

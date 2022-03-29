@@ -46,7 +46,7 @@ deny = [
     'clippy::trivially_copy_pass_by_ref',
 
     # casting mistakes
-    # 'clippy::cast_lossless',
+    'clippy::cast_lossless',
     # 'clippy::cast_possible_truncation',
     # 'clippy::cast_possible_wrap',
     # 'clippy::cast_precision-loss',

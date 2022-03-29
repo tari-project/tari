@@ -318,7 +318,7 @@ impl BlockHeaderAccumulatedDataBuilder<'_> {
             hash,
             total_kernel_offset,
             achieved_difficulty: achieved_target.achieved(),
-            total_accumulated_difficulty: monero_diff.as_u64() as u128 * blake_diff.as_u64() as u128,
+            total_accumulated_difficulty: u128::from(monero_diff.as_u64()) * u128::from(blake_diff.as_u64()),
             accumulated_monero_difficulty: monero_diff,
             accumulated_sha_difficulty: blake_diff,
             target_difficulty: achieved_target.target(),

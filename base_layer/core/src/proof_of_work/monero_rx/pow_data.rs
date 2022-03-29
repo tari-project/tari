@@ -67,7 +67,7 @@ impl MoneroPowData {
     }
 
     pub fn to_blockhashing_blob(&self) -> Vec<u8> {
-        create_block_hashing_blob(&self.header, &self.merkle_root, self.transaction_count as u64)
+        create_block_hashing_blob(&self.header, &self.merkle_root, u64::from(self.transaction_count))
     }
 
     pub fn randomx_key(&self) -> &[u8] {
