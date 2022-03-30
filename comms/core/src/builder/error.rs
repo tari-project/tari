@@ -41,12 +41,6 @@ pub enum CommsBuilderError {
     ShutdownSignalNotSet,
     #[error("The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.")]
     PeerStorageNotProvided,
-    #[error("Unable to receive a ConnectionManagerEvent within timeout")]
-    ConnectionManagerEventStreamTimeout,
-    #[error("ConnectionManagerEvent stream unexpectedly closed")]
-    ConnectionManagerEventStreamClosed,
-    #[error("Receiving on ConnectionManagerEvent stream lagged unexpectedly")]
-    ConnectionManagerEventStreamLagged,
     #[error("Comms protocol extension failed to install: {0}")]
     CommsProtocolExtensionError(#[from] ProtocolExtensionError),
     #[error("Failed to initialize tor hidden service: {0}")]
