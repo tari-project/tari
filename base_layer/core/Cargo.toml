@@ -16,6 +16,7 @@ mempool_proto = []
 base_node = []
 base_node_proto = []
 avx2 = ["tari_crypto/avx2"]
+benches = ["base_node", "criterion"]
 
 [dependencies]
 tari_common = { version = "^0.30", path = "../../common" }
@@ -40,6 +41,7 @@ bitflags = "1.0.4"
 blake2 = "^0.9.0"
 bytes = "0.5"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
+criterion = { version = "0.3.5", optional = true  }
 croaring = { version = "=0.4.5", optional = true }
 decimal-rs = "0.1.20"
 derivative = "2.2.0"
@@ -80,3 +82,7 @@ tempfile = "3.1.0"
 
 [build-dependencies]
 tari_common = { version = "^0.30", path = "../../common", features = ["build"] }
+
+[[bench]]
+name = "mempool"
+harness = false
