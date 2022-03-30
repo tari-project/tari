@@ -23,7 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use qrcode::{QrCode, render::unicode};
+use qrcode::{render::unicode, QrCode};
 
 use super::{CommandContext, HandleCommand};
 
@@ -45,9 +45,9 @@ impl CommandContext {
 
         let name = self.base_node_identity.node_id();
 
-        let public_key= self.base_node_identity.public_key();
+        let public_key = self.base_node_identity.public_key();
         let public_address = self.base_node_identity.public_address();
-        let peer = format!{"{}::{}", public_key, public_address};
+        let peer = format! {"{}::{}", public_key, public_address};
 
         let qr_link = format!("tari://{}/base_nodes/add?name={}&peer={}", network, name, peer);
         let code = QrCode::new(qr_link).unwrap();

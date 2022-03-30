@@ -47,12 +47,12 @@ mod reset_offline_peers;
 mod rewind_blockchain;
 mod search_kernel;
 mod search_utxo;
+mod show_qr;
 mod status;
 mod unban_all_peers;
 mod version;
 mod watch_command;
 mod whoami;
-mod show_qr;
 
 use std::{
     str::FromStr,
