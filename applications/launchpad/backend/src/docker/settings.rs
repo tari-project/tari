@@ -496,8 +496,8 @@ impl LaunchpadConfig {
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
                 "APP_NAME: sha3_miner".to_string(),
                 "APP_EXEC: tari_mining_node".to_string(),
-                format!("TARI_MINING_NODE__NUM_MINING_THREADS: {}", config.num_mining_threads),
-                "TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1".to_string(),
+                format!("TARI_MINER__NUM_MINING_THREADS: {}", config.num_mining_threads),
+                "TARI_MINER__MINE_ON_TIP_ONLY: 1".to_string(),
                 // This setting should be made obsolete soon:
                 format!(
                     "TARI_BASE_NODE__{}__BASE_NODE_GRPC_ADDRESS=/dns4/base_node/tcp/18142",

@@ -31,7 +31,7 @@ ADD infrastructure infrastructure
 ADD dan_layer dan_layer
 ADD meta meta
 
-RUN cargo build --bin tari_mining_node --release --features $FEATURES --locked
+RUN cargo build --bin tari_miner --release --features $FEATURES --locked
 
 # Create a base minimal image for the executables
 FROM quay.io/bitnami/minideb:bullseye as base
@@ -53,7 +53,7 @@ RUN groupadd -g 1000 tari && useradd -s /bin/bash -u 1000 -g 1000 tari
 USER tari
 
 ENV dockerfile_version=$VERSION
-ENV APP_NAME=sha3_miner APP_EXEC=tari_mining_node
+ENV APP_NAME=sha3_miner APP_EXEC=tari_miner
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
 COPY applications/launchpad/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh

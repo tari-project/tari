@@ -49,7 +49,7 @@ impl ApplicationType {
             BaseNode => "Tari Base Node",
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
-            MiningNode => "Tari Mining Node",
+            MiningNode => "Tari Miner",
             ValidatorNode => "Digital Assets Network Validator Node",
             StratumTranscoder => "Tari Stratum Transcoder",
             Collectibles => "Tari Collectibles",

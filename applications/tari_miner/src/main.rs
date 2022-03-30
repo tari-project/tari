@@ -50,8 +50,8 @@ use utils::{coinbase_request, extract_outputs_and_kernels};
 
 use crate::{cli::Cli, config::MinerConfig, miner::MiningReport, stratum::stratum_controller::controller::Controller};
 
-pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
-pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
+pub const LOG_TARGET: &str = "tari_miner::miner::main";
+pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::main";
 
 mod cli;
 mod config;

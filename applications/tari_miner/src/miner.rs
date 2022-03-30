@@ -35,7 +35,7 @@ use thread::JoinHandle;
 
 use super::difficulty::BlockHeaderSha3;
 
-pub const LOG_TARGET: &str = "tari_mining_node::miner::standalone";
+pub const LOG_TARGET: &str = "tari_miner::miner::standalone";
 
 // Identify how often mining thread is reporting / checking context
 // ~400_000 hashes per second
