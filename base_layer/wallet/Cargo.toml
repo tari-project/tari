@@ -21,6 +21,14 @@ tari_storage = { version = "^0.30", path = "../../infrastructure/storage" }
 tari_common_sqlite = { path = "../../common_sqlite" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
+# Uncomment for tokio-console tracing
+#
+console-subscriber = "0.1.3"
+tokio = { version = "1.14", features = ["sync", "macros", "tracing"] }
+# Uncomment for normal use (non tokio-console tracing)
+#
+#tokio = { version = "1.11", features = ["sync", "macros"] }
+
 aes-gcm = "^0.8"
 async-trait = "0.1.50"
 argon2 = "0.2"
@@ -47,7 +55,6 @@ strum = "0.22"
 strum_macros = "0.22"
 tempfile = "3.1.0"
 thiserror = "1.0.26"
-tokio = { version = "1.11", features = ["sync", "macros"] }
 tower = "0.4"
 prost = "0.9"
 
