@@ -54,3 +54,6 @@ buildtools/Output/
 # Ignore coverage profiling artifacts
 *.profraw
 /report/
+
+# Ignore local history in Visual Studio Code
+.lh
