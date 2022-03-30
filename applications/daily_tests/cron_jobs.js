@@ -31,10 +31,10 @@ function notify(message) {
   }
 }
 
-async function runWalletRecoveryTest(instances) {
+async function runWalletRecoveryTest(instances, path, seedWords) {
   notify("🚀 Wallet recovery check has begun 🚀");
 
-  const baseDir = __dirname + "/temp/wallet-recovery";
+  const baseDir = __dirname + path;
   // Remove the last run data
   try {
     await fs.rmdir(baseDir, {
@@ -55,8 +55,7 @@ async function runWalletRecoveryTest(instances) {
       scannedRate,
       recoveredAmount,
     } = await walletRecoveryTest({
-      seedWords:
-        "parade jelly sample worth bind release forest snack job mobile divide ranch fee raccoon begin awful source thank check leaf vibrant stove material field",
+      seedWords: seedWords,
       log: LOG_FILE,
       numWallets: instances,
       baseDir,
@@ -136,7 +135,8 @@ async function main() {
   });
 
   // ------------------------- CRON ------------------------- //
-  new CronJob("0 2 * * *", () => runWalletRecoveryTest(1)).start();
+  new CronJob("0 2 * * *", () => runWalletRecoveryTest(1, "/temp/wallet-recovery", "parade jelly sample worth bind release forest snack job mobile divide ranch fee raccoon begin awful source thank check leaf vibrant stove material field")).start();
+  new CronJob("0 4 * * *", () => runWalletRecoveryTest(1, "/temp/wallet-recovery2", "divorce toy raw junk analyst giggle little artefact butter gain intact degree upgrade dwarf design right mean model great best swift program mammal curtain")).start();
   //new CronJob("30 7 * * *", () => runWalletRecoveryTest(5)).start();
   new CronJob("0 1 * * *", () =>
     runBaseNodeSyncTest(SyncType.Archival)
