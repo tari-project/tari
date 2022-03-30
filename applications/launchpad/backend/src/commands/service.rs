@@ -158,6 +158,7 @@ pub async fn start_service(
     service_name: String,
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, String> {
+    debug!("start_service called {}", service_name);
     start_service_impl(app, service_name, settings).await.map_err(|e| {
         let error = e.chained_message();
         error!("{}", error);
@@ -211,11 +212,11 @@ async fn start_service_impl(
     service_name: String,
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, LauncherError> {
+    debug!("Starting {} service", service_name);
     let state = app.state::<AppState>();
     let docker = state.docker_handle().await;
     let _ = create_default_workspace_impl(app.clone(), settings).await?;
     let mut wrapper = state.workspaces.write().await;
-    debug!("Starting {} service", service_name);
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
         .get_workspace_mut("default")

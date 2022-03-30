@@ -2,22 +2,25 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
-
 use log::*;
-use tari_launchpad::{
-    __cmd__create_default_workspace,
-    __cmd__create_new_workspace,
-    __cmd__events,
-    __cmd__image_list,
-    __cmd__launch_docker,
-    __cmd__pull_images,
-    __cmd__shutdown,
-    __cmd__start_service,
-    __cmd__stop_service,
-    commands::*,
-    docker::{DockerWrapper, Workspaces},
-};
+mod commands;
+mod docker;
+mod error;
+use docker::{DockerWrapper, Workspaces};
 use tauri::{api::cli::get_matches, async_runtime::block_on, utils::config::CliConfig, Manager, PackageInfo, RunEvent};
+
+use crate::commands::{
+    create_default_workspace,
+    create_new_workspace,
+    events,
+    image_list,
+    launch_docker,
+    pull_images,
+    shutdown,
+    start_service,
+    stop_service,
+    AppState,
+};
 
 fn main() {
     env_logger::init();
@@ -41,7 +44,7 @@ fn main() {
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
 
-    let app = tauri::Builder::default()
+    tauri::Builder::default()
         .manage(AppState::new(docker, workspaces, package_info))
         .invoke_handler(tauri::generate_handler![
             image_list,
@@ -54,18 +57,20 @@ fn main() {
             stop_service,
             shutdown
         ])
-        .build(context)
-        .expect("error while running Launchpad");
+        .run(context)
+        .expect("error starting");
+    // .build(context)
+    // .expect("error while running Launchpad");
 
-    app.run(|app, event| {
-        if let RunEvent::Exit = event {
-            info!("Received Exit event");
-            block_on(async move {
-                let state = app.state();
-                let _ = shutdown(state).await;
-            });
-        }
-    });
+    // app.run(|app, event| {
+    //     if let RunEvent::Exit = event {
+    //         info!("Received Exit event");
+    //         block_on(async move {
+    //             let state = app.state();
+    //             let _ = shutdown(state).await;
+    //         });
+    //     }
+    // });
 }
 
 fn handle_cli_options(cli_config: &CliConfig, pkg_info: &PackageInfo) {

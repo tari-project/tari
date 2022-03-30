@@ -386,6 +386,7 @@ impl TariWorkspace {
             ..Default::default()
         };
         info!("Creating {}", image_name);
+        debug!("Options: {:?}", options);
         debug!("{} has configuration object: {:#?}", image_name, config);
         let container = docker.create_container(options, config).await?;
         let name = image.container_name();
