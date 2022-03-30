@@ -6628,6 +6628,7 @@ dependencies = [
  "num_cpus",
  "opentelemetry",
  "opentelemetry-jaeger",
+ "qrcode",
  "regex",
  "rustyline",
  "rustyline-derive",

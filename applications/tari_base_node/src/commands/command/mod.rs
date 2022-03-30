@@ -52,6 +52,7 @@ mod unban_all_peers;
 mod version;
 mod watch_command;
 mod whoami;
+mod show_qr;
 
 use std::{
     str::FromStr,
@@ -132,6 +133,7 @@ pub enum Command {
     Quit(quit::Args),
     Exit(quit::Args),
     Watch(watch_command::Args),
+    ShowQr(show_qr::Args),
 }
 
 impl Command {
@@ -247,6 +249,7 @@ impl HandleCommand<Command> for CommandContext {
             Command::ListBannedPeers(args) => self.handle_command(args).await,
             Command::Quit(args) | Command::Exit(args) => self.handle_command(args).await,
             Command::Watch(args) => self.handle_command(args).await,
+            Command::ShowQr(args) => self.handle_command(args).await,
         }
     }
 }

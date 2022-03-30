@@ -37,6 +37,7 @@ log = { version = "0.4.8", features = ["std"] }
 log-mdc = "0.1.0"
 num_cpus = "1"
 nom = "7.1.0"
+qrcode = { version = "0.12" }
 regex = "1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
