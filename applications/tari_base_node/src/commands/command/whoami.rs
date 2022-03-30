@@ -23,7 +23,7 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use qrcode::{QrCode, render::unicode};
+use qrcode::{render::unicode, QrCode};
 use tari_utilities::hex::Hex;
 
 use super::{CommandContext, HandleCommand};
@@ -44,8 +44,18 @@ impl CommandContext {
     /// Function to process the whoami command
     pub fn whoami(&self) -> Result<(), Error> {
         println!("{}", self.base_node_identity);
-        let peer = format!("{}::{}", self.base_node_identity.public_key().to_hex(), self.base_node_identity.public_address());
-        let qr_link = format!("tari://base_nodes/add?name={}&peer={}", self.base_node_identity.node_id(), peer);
+        let peer = format!(
+            "{}::{}",
+            self.base_node_identity.public_key().to_hex(),
+            self.base_node_identity.public_address()
+        );
+        let network = self.config.network;
+        let qr_link = format!(
+            "tari://{}/base_nodes/add?name={}&peer={}",
+            network,
+            self.base_node_identity.node_id(),
+            peer
+        );
         let code = QrCode::new(qr_link).unwrap();
         let image = code
             .render::<unicode::Dense1x2>()
@@ -55,7 +65,7 @@ impl CommandContext {
             .lines()
             .skip(1)
             .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
-        println!("{}", image);   
+        println!("{}", image);
         Ok(())
     }
 }
