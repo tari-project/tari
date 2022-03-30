@@ -44,7 +44,7 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::mocks::MockValidator,
 };
-use tari_p2p::services::liveness::LivenessConfig;
+use tari_p2p::services::liveness::config::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tempfile::tempdir;
 use tokio::{

@@ -220,14 +220,15 @@ fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
 
 #[cfg(test)]
 mod test {
+    use config;
+    use tari_common::DefaultConfigLoader;
+
     use super::*;
 
     #[test]
     fn all_maintainers_well_formed() {
         assert_eq!(maintainers().count(), MAINTAINERS.len());
     }
-
-    use tari_common::{configuration::config, DefaultConfigLoader};
 
     fn get_config(config_name: Option<&str>) -> config::Config {
         let mut cfg: config::Config = config::Config::default();

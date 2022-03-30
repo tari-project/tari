@@ -98,13 +98,7 @@ mod metrics;
 use std::{env, net::SocketAddr, process, sync::Arc};
 
 use clap::Parser as ClapParser;
-use commands::{
-    cli_loop::CliLoop,
-    command::CommandContext,
-    parser::Parser,
-    reader::CommandReader,
-    status_line::StatusLineOutput,
-};
+use commands::{cli_loop::CliLoop, command::CommandContext};
 use config::Config;
 use futures::FutureExt;
 use log::*;

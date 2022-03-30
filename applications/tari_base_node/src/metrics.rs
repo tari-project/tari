@@ -61,22 +61,12 @@ fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity
     Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetricsConfig {
     override_from: Option<String>,
     pub server_bind_address: Option<SocketAddr>,
     pub push_endpoint: Option<String>,
-}
-
-impl Default for MetricsConfig {
-    fn default() -> Self {
-        Self {
-            override_from: None,
-            server_bind_address: None,
-            push_endpoint: None,
-        }
-    }
 }
 
 impl SubConfigPath for MetricsConfig {

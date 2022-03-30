@@ -35,8 +35,7 @@
 //! [LivenessRequest]: ./messages/enum.LivenessRequets.html
 //! [PingPong]: ./messages/enum.PingPong.html
 
-mod config;
-pub use config::LivenessConfig;
+pub mod config;
 
 pub mod error;
 
@@ -80,7 +79,7 @@ use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
     services::{
-        liveness::state::LivenessState,
+        liveness::{config::LivenessConfig, state::LivenessState},
         utils::{map_decode, ok_or_skip_result},
     },
     tari_message::TariMessageType,

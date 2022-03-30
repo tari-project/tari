@@ -61,7 +61,7 @@ use tari_core::{
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
-    services::liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
+    services::liveness::{config::LivenessConfig, LivenessHandle, LivenessInitializer},
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;

@@ -23,7 +23,7 @@
 
 use std::{fs, fs::File, io::Write, path::Path};
 
-use crate::{configuration::bootstrap::ApplicationType, ConfigError};
+use crate::ConfigError;
 
 /// Set up application-level logging using the Log4rs configuration file specified in
 pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), ConfigError> {
@@ -45,26 +45,6 @@ pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), Confi
 
     log4rs::init_file(config_file, Default::default())
         .map_err(|e| ConfigError::new("Could not initialize logging", Some(e.to_string())))
-}
-
-/// Installs a new default logfile configuration, copied from the specified application type sample to the given path.
-pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
-    use ApplicationType::*;
-    let source = match application_type {
-        BaseNode => todo!(),
-        ConsoleWallet => todo!(),
-        MiningNode => todo!(),
-        MergeMiningProxy => todo!(),
-        StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),
-        ValidatorNode => include_str!("../logging/log4rs_sample_validator_node.yml"),
-        Collectibles => include_str!("../logging/log4rs_collectibles.yml"),
-    };
-
-    if let Some(d) = path.parent() {
-        fs::create_dir_all(d)?
-    };
-    let mut file = File::create(path)?;
-    file.write_all(source.as_ref())
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,

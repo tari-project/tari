@@ -127,7 +127,7 @@ mod test {
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),
-            // proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
+            proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
         });
 
         assert_eq!(transport.socks_config.proxy_address, proxy_address);

@@ -389,85 +389,6 @@ mod test {
         }
     }
 
-    #[test]
-    fn default_network_config_loader() -> anyhow::Result<()> {
-        let mut config = Config::new();
-
-        config.set("crypto.monero", "isnottari")?;
-        config.set("crypto.mainnet.monero", "isnottaritoo")?;
-        config.set("crypto.mainnet.bitcoin", "isnottaritoo")?;
-        let crypto = <SuperTari as DefaultConfigLoader>::load_from(&config)?;
-        // no network value
-        // [X] crypto.mainnet, [X] crypto = "isnottari", [X] Default
-        assert_eq!(crypto.within.monero, "isnottari");
-        // [ ] crypto.mainnet, [ ] crypto, [X] Default = "isprivate"
-        assert_eq!(crypto.over.monero, "isprivate");
-        // [X] crypto.mainnet, [ ] crypto, [X] Default = "", [X] serde(default)
-        assert_eq!(crypto.bitcoin, "");
-
-        config.set("crypto.over.monero", "istari")?;
-        let crypto = <SuperTari as DefaultConfigLoader>::load_from(&config)?;
-        // [ ] crypto.mainnet, [X] crypto = "istari", [X] Default
-        assert_eq!(crypto.over.monero, "istari");
-
-        config.set("crypto.override_from", "mainnet")?;
-        // network = mainnet
-        let crypto = <SuperTari as DefaultConfigLoader>::load_from(&config)?;
-        // [X] crypto.mainnet = "isnottaritoo", [X] crypto, [X] Default
-        assert_eq!(crypto.within.monero, "isnottaritoo");
-        // [X] crypto.mainnet = "isnottaritoo", [ ] crypto, [X] serde(default), [X] Default
-        assert_eq!(crypto.bitcoin, "isnottaritoo");
-        // [ ] crypto.mainnet, [X] crypto = "istari", [X] Default
-        assert_eq!(crypto.over.monero, "istari");
-
-        Ok(())
-    }
-
-    #[test]
-    fn network_config_loader() -> anyhow::Result<()> {
-        let mut config = Config::new();
-
-        // no network value
-        config.set("crypto.monero", "isnottari")?;
-        config.set("crypto.mainnet.bitcoin", "isnottaritoo")?;
-        // [X] crypto.monero [X] crypto.bitcoin(serde) [ ] crypto.over.monero
-        assert!(<SuperTari as ConfigLoader>::load_from(&config).is_err());
-
-        // [X] crypto.monero [X] crypto.bitcoin(serde) [ ] crypto.over.monero [X] mainnet.*
-        config.set("crypto.mainnet.monero", "isnottaritoo")?;
-        config.set("crypto.mainnet.over.monero", "istari")?;
-        assert!(<SuperTari as ConfigLoader>::load_from(&config).is_err());
-
-        // network = mainnet
-        config.set("crypto.override_from", "mainnet")?;
-        let crypto = <SuperTari as ConfigLoader>::load_from(&config)?;
-        // [X] crypto.mainnet = "isnottaritoo", [X] crypto, [X] Default
-        assert_eq!(crypto.within.monero, "isnottaritoo");
-        // [X] crypto.mainnet = "isnottaritoo", [ ] crypto, [X] serde(default), [X] Default
-        assert_eq!(crypto.bitcoin, "isnottaritoo");
-        // [X] crypto.mainnet = "istari", [ ] crypto, [X] Default
-        assert_eq!(crypto.over.monero, "istari");
-
-        let mut config = Config::new();
-        // no network value
-        config.set("crypto.monero", "isnottari")?;
-        config.set("crypto.over.monero", "istari")?;
-        let crypto = <SuperTari as ConfigLoader>::load_from(&config)?;
-        // [ ] crypto.mainnet, [X] crypto = "isnottari"
-        assert_eq!(crypto.within.monero, "isnottari");
-        // [ ] crypto.mainnet, [ ] crypto, [X] serde(default) = "ispublic"
-        assert_eq!(crypto.bitcoin, "ispublic");
-        // [ ] crypto.mainnet, [X] crypto = "istari"
-        assert_eq!(crypto.over.monero, "istari");
-
-        config.set("crypto.bitcoin", "isnottaritoo")?;
-        let crypto = <SuperTari as ConfigLoader>::load_from(&config)?;
-        // [ ] crypto.mainnet, [X] crypto = "isnottaritoo", [X] serde(default)
-        assert_eq!(crypto.bitcoin, "isnottaritoo");
-
-        Ok(())
-    }
-
     // test ConfigPath reading only from main section
     #[derive(Serialize, Deserialize)]
     struct OneConfig {
@@ -498,11 +419,9 @@ mod test {
 
     #[test]
     fn config_loaders() -> anyhow::Result<()> {
-        let mut config = Config::new();
+        let mut config = Config::default();
 
         // no network value
-        // [ ] one.param1(default) [X] one.param1(default) [ ] one.param2 [X] one.param2(serde)
-        assert!(<OneConfig as ConfigLoader>::load_from(&config).is_err());
         // [ ] one.param1(default) [X] one.param1(default) [ ] one.param2 [X] one.param2(default)
         let one = <OneConfig as DefaultConfigLoader>::load_from(&config)?;
         assert_eq!(one.param1, OneConfig::default().param1);
@@ -512,14 +431,6 @@ mod test {
         let one = <OneConfig as DefaultConfigLoader>::load_from(&config)?;
         assert_eq!(one.param1, "can load from main section");
         assert_eq!(one.param2, "param2");
-
-        let one = <OneConfig as ConfigLoader>::load_from(&config)?;
-        assert_eq!(one.param1, "can load from main section");
-        assert_eq!(one.param2, param2_serde_default());
-
-        config.set("one.param2", "specific param overloads serde")?;
-        let one = <OneConfig as ConfigLoader>::load_from(&config)?;
-        assert_eq!(one.param2, "specific param overloads serde");
 
         Ok(())
     }

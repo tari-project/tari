@@ -27,10 +27,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common::{
-    configuration::{CommonConfig, Network},
-    SubConfigPath,
-};
+use tari_common::{configuration::Network, SubConfigPath};
 use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,

@@ -49,7 +49,7 @@ use tari_p2p::{
     initialization,
     initialization::P2pInitializer,
     peer_seeds::SeedPeer,
-    services::liveness::{LivenessConfig, LivenessInitializer},
+    services::liveness::{config::LivenessConfig, LivenessInitializer},
     transport::TransportType,
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};

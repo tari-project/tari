@@ -31,7 +31,7 @@ use std::{
 use anyhow::anyhow;
 use log::*;
 use tari_common::{
-    configuration::{CommonConfig, Network},
+    configuration::Network,
     exit_codes::{ExitCode, ExitError},
 };
 use tari_core::{
