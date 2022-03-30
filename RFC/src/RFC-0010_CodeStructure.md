@@ -87,7 +87,7 @@ As an example, the following base layer applications may be developed as part of
 
 - A base node executable (tari_base_node)
 - A Command Line Interface (CLI) wallet for the Tari cryptocurrency (tari_console_wallet)
-- A standalone miner (tari_mining_node)
+- A standalone miner (tari_miner)
 - A mining proxy to enable merge mining Monero (tari_merge_mining_proxy)
 - An Application Programming Interface (API) server for the base node (REST, gRPC, etc.)
 
@@ -105,7 +105,7 @@ The source code is organized into the following directories.
 
   - `tari_base_node` - the Base Node application
   - `tari_console_wallet` - the CLI Wallet application
-  - `tari_mining_node` - the SHA3 Mining Node (CPU)
+  - `tari_miner` - the SHA3 Miner (CPU)
   - `tari_merge_mining_proxy` - the Merge Mining Proxy
   - `tari_explorer` - a local web based block explorer
 

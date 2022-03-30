@@ -1,7 +1,7 @@
 [package]
-name = "tari_mining_node"
+name = "tari_miner"
 authors = ["The Tari Development Community"]
-description = "The tari mining node implementation"
+description = "The tari miner implementation"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
 version = "0.31.1"

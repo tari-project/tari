@@ -27,10 +27,10 @@ function mapEnvs(options) {
     res.TARI_WALLET__TRANSACTION_BROADCAST_MONITORING_TIMEOUT = 3;
   }
   if ("mineOnTipOnly" in options) {
-    res.TARI_MINING_NODE__MINE_ON_TIP_ONLY = options.mineOnTipOnly.toString();
+    res.TARI_MINER__MINE_ON_TIP_ONLY = options.mineOnTipOnly.toString();
   }
   if (options.numMiningThreads) {
-    res.TARI_MINING_NODE__NUM_MINING_THREADS = options.numMiningThreads;
+    res.TARI_MINER__NUM_MINING_THREADS = options.numMiningThreads;
   }
 
   if (options.network) {
@@ -112,9 +112,9 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
     TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
-    TARI_MINING_NODE__NUM_MINING_THREADS: "1",
-    TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
-    TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 1,
+    TARI_MINER__NUM_MINING_THREADS: "1",
+    TARI_MINER__MINE_ON_TIP_ONLY: true,
+    TARI_MINER__VALIDATE_TIP_TIMEOUT_SEC: 1,
     TARI_WALLET__GRPC_ENABLED: true,
     TARI_WALLET__SCAN_FOR_UTXO_INTERVAL: 5,
   };

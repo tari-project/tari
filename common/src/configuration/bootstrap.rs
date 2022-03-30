@@ -73,7 +73,7 @@ use crate::{
     DEFAULT_COLLECTIBLES_LOG_CONFIG,
     DEFAULT_CONFIG,
     DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG,
-    DEFAULT_MINING_NODE_LOG_CONFIG,
+    DEFAULT_MINER_LOG_CONFIG,
     DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG,
     DEFAULT_WALLET_LOG_CONFIG,
 };
@@ -274,7 +274,7 @@ impl ConfigBootstrap {
                 },
                 ApplicationType::MiningNode => {
                     self.log_config = normalize_path(&dir_utils::default_path(
-                        DEFAULT_MINING_NODE_LOG_CONFIG,
+                        DEFAULT_MINER_LOG_CONFIG,
                         Some(&self.base_path),
                     ))
                 },
@@ -382,7 +382,7 @@ impl ApplicationType {
             BaseNode => "Tari Base Node",
             ConsoleWallet => "Tari Console Wallet",
             MergeMiningProxy => "Tari Merge Mining Proxy",
-            MiningNode => "Tari Mining Node",
+            MiningNode => "Tari Miner",
             ValidatorNode => "Digital Assets Network Validator Node",
             StratumTranscoder => "Tari Stratum Transcoder",
             Collectibles => "Tari Collectibles",

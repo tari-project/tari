@@ -66,7 +66,7 @@ pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> R
     let source = match application_type {
         BaseNode => include_str!("../logging/log4rs_sample_base_node.yml"),
         ConsoleWallet => include_str!("../logging/log4rs_sample_wallet.yml"),
-        MiningNode => include_str!("../logging/log4rs_sample_mining_node.yml"),
+        MiningNode => include_str!("../logging/log4rs_sample_miner.yml"),
         MergeMiningProxy => include_str!("../logging/log4rs_sample_proxy.yml"),
         StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),
         ValidatorNode => include_str!("../logging/log4rs_sample_validator_node.yml"),

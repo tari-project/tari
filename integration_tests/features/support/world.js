@@ -13,7 +13,7 @@ const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
 const WalletFFIClient = require("../../helpers/walletFFIClient");
-const MiningNodeProcess = require("../../helpers/miningNodeProcess");
+const MinerProcess = require("../../helpers/minerProcess");
 const TransactionBuilder = require("../../helpers/transactionBuilder");
 const glob = require("glob");
 const fs = require("fs");
@@ -50,7 +50,7 @@ class CustomWorld {
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
     this.logFilePathMiningNode =
-      parameters.logFilePathMiningNode || "./log4rs/mining_node.yml";
+      parameters.logFilePathMiningNode || "./log4rs/miner.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
     this.lastResult = {};
@@ -324,7 +324,7 @@ class CustomWorld {
   async createMiningNode(name, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = await this.getOrCreateWallet(wallet);
-    const miningNode = new MiningNodeProcess(
+    const miningNode = new MinerProcess(
       name,
       baseNode.getGrpcAddress(),
       this.getClient(node),
@@ -653,7 +653,7 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await mmProxy.init();
   await mmProxy.compile();
 
-  const miningNode = new MiningNodeProcess(
+  const miningNode = new MinerProcess(
     "compile",
     "127.0.0.1:9999",
     null,

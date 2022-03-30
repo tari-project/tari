@@ -13,12 +13,12 @@ then
 fi
 "${exe_path}/start_tor.sh"
 
-if [ ! -f "${config_path}/log4rs_mining_node.yml" ]
+if [ ! -f "${config_path}/log4rs_miner.yml" ]
 then
-    echo Creating new "${config_path}/log4rs_mining_node.yml";
+    echo Creating new "${config_path}/log4rs_miner.yml";
     init_flag="--init"
 else
-    echo Using existing "${config_path}/log4rs_mining_node.yml";
+    echo Using existing "${config_path}/log4rs_miner.yml";
     init_flag=""
 fi
 echo
@@ -26,4 +26,4 @@ echo
 # Run
 echo Spawning Mining Node into new terminal..
 echo
-gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_mining_node" ${init_flag} --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_mining_node.yml" --base-path ${base_path}
+gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_miner" ${init_flag} --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_miner.yml" --base-path ${base_path}

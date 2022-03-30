@@ -1,10 +1,10 @@
 ########################################################################################################################
 #                                                                                                                      #
-#                                             Mining Node Configuration Options                                        #
+#                                              Miner Node Configuration Options                                        #
 #                                                                                                                      #
 ########################################################################################################################
 
-[mining_node]
+[miner]
 # Number of mining threads
 # Default: number of logical CPU cores
 #num_mining_threads=8

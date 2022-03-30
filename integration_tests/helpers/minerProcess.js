@@ -10,7 +10,7 @@ const { createEnv } = require("./config");
 
 let outputProcess;
 
-class MiningNodeProcess {
+class MinerProcess {
   constructor(
     name,
     baseNodeAddress,
@@ -19,7 +19,7 @@ class MiningNodeProcess {
     logFilePath,
     mineOnTipOnly = true
   ) {
-    this.name = `MiningNode-${name}`;
+    this.name = `Miner-${name}`;
     this.maxBlocks = 1;
     this.mineTillHeight = 1000000;
     this.minDiff = 0;
@@ -146,13 +146,13 @@ class MiningNodeProcess {
         "build",
         "--release",
         "--bin",
-        "tari_mining_node",
+        "tari_miner",
         "-Z",
         "unstable-options",
         "--out-dir",
         __dirname + "/../temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_mining_node";
+      outputProcess = __dirname + "/../temp/out/tari_miner";
     }
     return outputProcess;
   }
@@ -195,4 +195,4 @@ class MiningNodeProcess {
   }
 }
 
-module.exports = MiningNodeProcess;
+module.exports = MinerProcess;

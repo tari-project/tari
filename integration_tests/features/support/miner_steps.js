@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 const { Given, When } = require("@cucumber/cucumber");
-const MiningNodeProcess = require("../../helpers/miningNodeProcess");
+const MinerProcess = require("../../helpers/minerProcess");
 const { withTimeout } = require("../../helpers/util");
 
 Given(
@@ -37,7 +37,7 @@ Given(
 
     // Now lets add a standalone miner to both
     const wallet = this.getWallet(name);
-    const miningNode = new MiningNodeProcess(
+    const miningNode = new MinerProcess(
       name,
       node.getGrpcAddress(),
       this.getClient(name),
@@ -61,7 +61,7 @@ Given(
 
     // Now lets add a standalone miner to both
     const wallet = this.getWallet(name);
-    const miningNode = new MiningNodeProcess(
+    const miningNode = new MinerProcess(
       name,
       node.getGrpcAddress(),
       this.getClient(name),
@@ -85,7 +85,7 @@ Given(
     // Now lets add a standalone miner to both
 
     const wallet = this.getWallet(name);
-    const miningNode = new MiningNodeProcess(
+    const miningNode = new MinerProcess(
       name,
       node.getGrpcAddress(),
       this.getClient(name),
@@ -138,7 +138,7 @@ Given(
   function (miner, node, wallet) {
     const baseNode = this.getNode(node);
     const walletNode = this.getWallet(wallet);
-    const miningNode = new MiningNodeProcess(
+    const miningNode = new MinerProcess(
       miner,
       baseNode.getGrpcAddress(),
       this.getClient(node),

@@ -4,7 +4,7 @@ echo.
 echo Set up environment variables
 echo ----------------------------
 rem These are the mining node executable and SQLite dynamic link library names
-set my_exe=tari_mining_node.exe
+set my_exe=tari_miner.exe
 
 rem This is the location of the configuration and identity files
 set config_path=%~dp0..\config
@@ -22,7 +22,7 @@ echo base_path   = %base_path%
 echo.
 echo Run the mining node
 echo ----------------------
-call "%my_exe_path%\source_mining_node_env.bat"
+call "%my_exe_path%\source_miner_env.bat"
 
 goto END:
 

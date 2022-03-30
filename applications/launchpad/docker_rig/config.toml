@@ -277,7 +277,7 @@ tor_onion_port = 18141
 #                                                                                                                      #
 ########################################################################################################################
 
-[mining_node]
+[miner]
 # Number of mining threads
 # Default: number of logical CPU cores
 #num_mining_threads=8

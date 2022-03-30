@@ -809,13 +809,13 @@ fn convert_node_config(
                 .map_err(|e| ConfigurationError::new(&key, Some(addr), &e.to_string()))
         })?;
 
-    let key = "mining_node.num_mining_threads";
+    let key = "miner.num_mining_threads";
     let num_mining_threads = optional(cfg.get_int(key))?.unwrap_or(1).try_into().unwrap();
 
-    let key = "mining_node.mine_on_tip_only";
+    let key = "miner.mine_on_tip_only";
     let mine_on_tip_only = cfg.get_bool(key).unwrap_or(true);
 
-    let key = "mining_node.validate_tip_timeout_sec";
+    let key = "miner.validate_tip_timeout_sec";
     let validate_tip_timeout_sec = optional(cfg.get_int(key))?.unwrap_or(0).try_into().unwrap();
 
     // Auto update
@@ -846,11 +846,11 @@ fn convert_node_config(
         .map(|secs| Duration::from_secs(secs.try_into().unwrap()))
         .unwrap_or_else(|| Duration::from_secs(30));
 
-    let key = "mining_node.mining_pool_address";
+    let key = "miner.mining_pool_address";
     let mining_pool_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());
-    let key = "mining_node.mining_wallet_address";
+    let key = "miner.mining_wallet_address";
     let mining_wallet_address = cfg.get_str(key).unwrap_or_else(|_| "".to_string());
-    let key = "mining_node.mining_worker_name";
+    let key = "miner.mining_worker_name";
     let mining_worker_name = cfg
         .get_str(key)
         .unwrap_or_else(|_| "".to_string())

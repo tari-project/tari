@@ -47,7 +47,7 @@ pub fn config_installer(_app_type: ApplicationType, path: &Path) -> Result<(), s
         common,
         include_str!("../../config/presets/base_node.toml"),
         include_str!("../../config/presets/console_wallet.toml"),
-        include_str!("../../config/presets/mining_node.toml"),
+        include_str!("../../config/presets/miner.toml"),
         include_str!("../../config/presets/merge_mining_proxy.toml"),
         include_str!("../../config/presets/stratum_transcoder.toml"),
         include_str!("../../config/presets/validator_node.toml"),
@@ -233,7 +233,7 @@ pub fn default_config(bootstrap: &ConfigBootstrap) -> Config {
     set_common_network_defaults(&mut cfg);
     set_transport_defaults(&mut cfg).unwrap();
     set_merge_mining_defaults(&mut cfg);
-    set_mining_node_defaults(&mut cfg);
+    set_miner_defaults(&mut cfg);
     set_stratum_transcoder_defaults(&mut cfg);
 
     cfg
@@ -349,10 +349,10 @@ fn set_merge_mining_defaults(cfg: &mut Config) {
         .unwrap();
 }
 
-fn set_mining_node_defaults(cfg: &mut Config) {
-    cfg.set_default("mining_node.num_mining_threads", 1).unwrap();
-    cfg.set_default("mining_node.mine_on_tip_only", true).unwrap();
-    cfg.set_default("mining_node.validate_tip_timeout_sec", 0).unwrap();
+fn set_miner_defaults(cfg: &mut Config) {
+    cfg.set_default("miner.num_mining_threads", 1).unwrap();
+    cfg.set_default("miner.mine_on_tip_only", true).unwrap();
+    cfg.set_default("miner.validate_tip_timeout_sec", 0).unwrap();
 }
 
 fn set_transport_defaults(cfg: &mut Config) -> Result<(), config::ConfigError> {
