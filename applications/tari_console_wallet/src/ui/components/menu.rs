@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use tari_app_utilities::consts;
 use tari_comms::runtime::Handle;
 use tui::{

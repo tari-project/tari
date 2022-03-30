@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! An ergonomic, multithreaded API for an LMDB datastore
 
 use std::{

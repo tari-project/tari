@@ -36,7 +36,6 @@ use tari_utilities::ByteArray;
 use crate::{
     blocks::Block,
     mempool::{
-        consts::{MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY, MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT},
         priority::{FeePriority, PrioritizedTransaction},
         unconfirmed_pool::UnconfirmedPoolError,
     },
@@ -64,8 +63,8 @@ pub struct UnconfirmedPoolConfig {
 impl Default for UnconfirmedPoolConfig {
     fn default() -> Self {
         Self {
-            storage_capacity: MEMPOOL_UNCONFIRMED_POOL_STORAGE_CAPACITY,
-            weight_tx_skip_count: MEMPOOL_UNCONFIRMED_POOL_WEIGHT_TRANSACTION_SKIP_COUNT,
+            storage_capacity: 40_000,
+            weight_tx_skip_count: 20,
         }
     }
 }

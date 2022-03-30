@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! This module provides a large set of useful functions and utilities for creating and playing with aspects of the
 //! Tari base blockchain.
 //! There are macros, such as `txn_schema!` that help you to easily construct valid transactions in test blockchains,

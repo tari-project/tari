@@ -32,8 +32,6 @@ pub enum DhtDiscoveryError {
     ReplyCanceled,
     #[error("DhtOutboundError: {0}")]
     DhtOutboundError(#[from] DhtOutboundError),
-    #[error("Received public key in peer discovery response which does not match the requested public key")]
-    DiscoveredPeerMismatch,
     #[error("Received an invalid `NodeId`")]
     InvalidNodeId,
     #[error("MPSC channel is disconnected")]

@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.30.1"
+version = "0.30.2"
 edition = "2018"
 
 [lib]
@@ -19,7 +19,7 @@ quote = "1.0.7"
 syn = { version = "1.0.38", features = ["fold"] }
 
 [dev-dependencies]
-tari_comms = { version = "^0.30", path = "../", features = ["rpc"] }
+tari_comms = { version = "^0.30", path = "../core", features = ["rpc"] }
 tari_test_utils = { version = "^0.30", path = "../../infrastructure/test_utils" }
 
 futures = "0.3.5"

@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! # Configuration of tari applications
 //!
 //! Tari application consist of `common`, `base_node`, `wallet` and `application` configuration sections.

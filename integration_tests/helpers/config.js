@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 function mapEnvs(options) {
   const res = {};
   if (options.blocks_behind_before_considered_lagging) {
