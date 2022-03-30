@@ -19,7 +19,7 @@ quote = "1.0.7"
 syn = { version = "1.0.38", features = ["fold"] }
 
 [dev-dependencies]
-tari_comms = { version = "^0.30", path = "../", features = ["rpc"] }
+tari_comms = { version = "^0.30", path = "../core", features = ["rpc"] }
 tari_test_utils = { version = "^0.30", path = "../../infrastructure/test_utils" }
 
 futures = "0.3.5"

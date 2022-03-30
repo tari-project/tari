@@ -30,8 +30,6 @@ pub enum SocksError {
     Io(#[from] io::Error),
     #[error("Failure due to invalid target address: {0}.")]
     InvalidTargetAddress(&'static str),
-    #[error("Proxy server unreachable.")]
-    ProxyServerUnreachable,
     #[error("Proxy server returns an invalid version number.")]
     InvalidResponseVersion,
     #[error("No acceptable auth methods")]
@@ -54,8 +52,6 @@ pub enum SocksError {
     CommandNotSupported,
     #[error("Address type not supported")]
     AddressTypeNotSupported,
-    #[error("Unknown error")]
-    UnknownError,
     #[error("Invalid reserved byte")]
     InvalidReservedByte,
     #[error("Unknown address type")]

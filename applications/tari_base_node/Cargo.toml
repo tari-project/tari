@@ -11,7 +11,7 @@ edition = "2018"
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_app_utilities = { path = "../tari_app_utilities" }
 tari_common = { path = "../../common" }
-tari_comms = { path = "../../comms", features = ["rpc"] }
+tari_comms = { path = "../../comms/core", features = ["rpc"] }
 tari_common_types = { path = "../../base_layer/common_types" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
