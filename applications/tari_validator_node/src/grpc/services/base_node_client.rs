@@ -47,11 +47,7 @@ impl GrpcBaseNodeClient {
     }
 
     pub async fn connect(&mut self) -> Result<(), DigitalAssetError> {
-        self.inner = Some(
-            grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.endpoint))
-                .await
-                .unwrap(),
-        );
+        self.inner = Some(grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.endpoint)).await?);
         Ok(())
     }
 }
@@ -66,7 +62,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             },
         };
         let request = grpc::Empty {};
-        let result = inner.get_tip_info(request).await.unwrap().into_inner();
+        let result = inner.get_tip_info(request).await?.into_inner();
         Ok(BaseLayerMetadata {
             height_of_longest_chain: result.metadata.unwrap().height_of_longest_chain,
         })
@@ -89,9 +85,9 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             asset_public_key: asset_public_key.as_bytes().to_vec(),
             unique_ids: vec![checkpoint_unique_id],
         };
-        let mut result = inner.get_tokens(request).await.unwrap().into_inner();
+        let mut result = inner.get_tokens(request).await?.into_inner();
         let mut outputs = vec![];
-        while let Some(r) = result.message().await.unwrap() {
+        while let Some(r) = result.message().await? {
             outputs.push(r);
         }
         let output = outputs
@@ -117,10 +113,10 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         };
         // TODO: probably should use output mmr indexes here
         let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
-        let mut result = inner.list_asset_registrations(request).await.unwrap().into_inner();
+        let mut result = inner.list_asset_registrations(request).await?.into_inner();
         let mut assets: Vec<AssetDefinition> = vec![];
         let tip = self.get_tip_info().await?;
-        while let Some(r) = result.message().await.unwrap() {
+        while let Some(r) = result.message().await? {
             if let Ok(asset_public_key) = PublicKey::from_bytes(r.asset_public_key.as_bytes()) {
                 if let Some(checkpoint) = self
                     .get_current_checkpoint(

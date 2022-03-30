@@ -20,9 +20,18 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use prost::DecodeError;
+use tari_comms_dht::outbound::DhtOutboundError;
+use tari_crypto::ristretto::RistrettoPublicKey;
 use thiserror::Error;
+use tokio::sync::mpsc::error::SendError;
 
-use crate::{models::ModelError, services::ValidatorNodeClientError, storage::StorageError, workers::StateSyncError};
+use crate::{
+    models::{HotStuffMessage, ModelError, TariDanPayload},
+    services::ValidatorNodeClientError,
+    storage::StorageError,
+    workers::StateSyncError,
+};
 
 #[derive(Debug, Error)]
 pub enum DigitalAssetError {
@@ -84,6 +93,16 @@ pub enum DigitalAssetError {
     PreparePhaseNodeNotSafe,
     #[error("Unsupported template method {name}")]
     TemplateUnsupportedMethod { name: String },
+    #[error("Connection error: {0}")]
+    GrpcConnection(#[from] tonic::transport::Error),
+    #[error("GRPC error: {0}")]
+    GrpcStatus(#[from] tonic::Status),
+    #[error("DHT outbound error: `{0}`")]
+    DhtOutboundError(#[from] DhtOutboundError),
+    #[error("Failed to decode message: {0}")]
+    DecodeError(#[from] DecodeError),
+    #[error("Failed to send message: {0}")]
+    SendError(#[from] Box<SendError<(RistrettoPublicKey, HotStuffMessage<TariDanPayload>)>>),
 }
 
 impl From<lmdb_zero::Error> for DigitalAssetError {
