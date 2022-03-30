@@ -142,15 +142,14 @@ impl std::str::FromStr for MicroTari {
     type Err = MicroTariError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Is this Tari or MicroTari
         let processed = s.replace(",", "").replace(" ", "").to_ascii_lowercase();
+        // Is this Tari or MicroTari
         let is_micro_tari = if processed.ends_with("ut") || processed.ends_with("µt") {
             true
         } else {
             !processed.ends_with('t')
         };
 
-        // Avoid using f64 if we can
         let processed = processed.replace("ut", "").replace("µt", "").replace("t", "");
         if is_micro_tari {
             processed
