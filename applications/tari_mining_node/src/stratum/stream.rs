@@ -31,105 +31,79 @@ use native_tls::{TlsConnector, TlsStream};
 
 use crate::stratum::error::Error;
 
-pub(crate) struct Stream {
-    stream: Option<BufStream<TcpStream>>,
-    tls_stream: Option<BufStream<TlsStream<TcpStream>>>,
+pub(crate) enum Stream {
+    Stream(BufStream<TcpStream>),
+    TlsStream(BufStream<TlsStream<TcpStream>>),
 }
 
 impl Stream {
-    pub fn new() -> Stream {
-        Stream {
-            stream: None,
-            tls_stream: None,
+    pub fn try_connect(server_url: &str, tls: Option<bool>) -> Result<Self, Error> {
+        let conn = TcpStream::connect(server_url)?;
+        if let Some(true) = tls {
+            let connector = TlsConnector::new()?;
+            let url_port: Vec<&str> = server_url.split(':').collect();
+            let split_url: Vec<&str> = url_port[0].split('.').collect();
+            let base_host = format!("{}.{}", split_url[split_url.len() - 2], split_url[split_url.len() - 1]);
+            let mut stream = connector.connect(&base_host, conn)?;
+            stream.get_mut().set_nonblocking(true)?;
+            Ok(Self::TlsStream(BufStream::new(stream)))
+        } else {
+            conn.set_nonblocking(true)?;
+            Ok(Self::Stream(BufStream::new(conn)))
         }
     }
 
-    pub fn try_connect(&mut self, server_url: &str, tls: Option<bool>) -> Result<(), Error> {
-        match TcpStream::connect(server_url) {
-            Ok(conn) => {
-                if tls.is_some() && tls.unwrap() {
-                    let connector = TlsConnector::new()
-                        .map_err(|e| Error::Connection(format!("Can't create TLS connector: {:?}", e)))?;
-                    let url_port: Vec<&str> = server_url.split(':').collect();
-                    let split_url: Vec<&str> = url_port[0].split('.').collect();
-                    let base_host = format!("{}.{}", split_url[split_url.len() - 2], split_url[split_url.len() - 1]);
-                    let mut stream = connector
-                        .connect(&base_host, conn)
-                        .map_err(|e| Error::Connection(format!("Can't establish TLS connection: {:?}", e)))?;
-                    stream
-                        .get_mut()
-                        .set_nonblocking(true)
-                        .map_err(|e| Error::Connection(format!("Can't switch to nonblocking mode: {:?}", e)))?;
-                    self.tls_stream = Some(BufStream::new(stream));
-                } else {
-                    conn.set_nonblocking(true)
-                        .map_err(|e| Error::Connection(format!("Can't switch to nonblocking mode: {:?}", e)))?;
-                    self.stream = Some(BufStream::new(conn));
-                }
-                Ok(())
-            },
-            Err(e) => Err(Error::Connection(format!("{}", e))),
+    fn reader(&mut self) -> &mut dyn Read {
+        match self {
+            Self::TlsStream(tls_stream) => tls_stream,
+            Self::Stream(stream) => stream,
+        }
+    }
+
+    fn writer(&mut self) -> &mut dyn Write {
+        match self {
+            Self::TlsStream(tls_stream) => tls_stream,
+            Self::Stream(stream) => stream,
+        }
+    }
+
+    fn buf_reader(&mut self) -> &mut dyn BufRead {
+        match self {
+            Self::TlsStream(tls_stream) => tls_stream,
+            Self::Stream(stream) => stream,
         }
     }
 }
 
 impl Write for Stream {
-    fn write(&mut self, b: &[u8]) -> Result<usize, std::io::Error> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().write(b)
-        } else {
-            self.stream.as_mut().unwrap().write(b)
-        }
+    fn write(&mut self, b: &[u8]) -> Result<usize, io::Error> {
+        self.writer().write(b)
     }
 
-    fn flush(&mut self) -> Result<(), std::io::Error> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().flush()
-        } else {
-            self.stream.as_mut().unwrap().flush()
-        }
+    fn flush(&mut self) -> Result<(), io::Error> {
+        self.writer().flush()
     }
 }
 impl Read for Stream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().read(buf)
-        } else {
-            self.stream.as_mut().unwrap().read(buf)
-        }
+        self.reader().read(buf)
     }
 }
 
 impl BufRead for Stream {
     fn fill_buf(&mut self) -> io::Result<&[u8]> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().fill_buf()
-        } else {
-            self.stream.as_mut().unwrap().fill_buf()
-        }
+        self.buf_reader().fill_buf()
     }
 
     fn consume(&mut self, amt: usize) {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().consume(amt)
-        } else {
-            self.stream.as_mut().unwrap().consume(amt)
-        }
+        self.buf_reader().consume(amt)
     }
 
     fn read_until(&mut self, byte: u8, buf: &mut Vec<u8>) -> io::Result<usize> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().read_until(byte, buf)
-        } else {
-            self.stream.as_mut().unwrap().read_until(byte, buf)
-        }
+        self.buf_reader().read_until(byte, buf)
     }
 
     fn read_line(&mut self, string: &mut String) -> io::Result<usize> {
-        if self.tls_stream.is_some() {
-            self.tls_stream.as_mut().unwrap().read_line(string)
-        } else {
-            self.stream.as_mut().unwrap().read_line(string)
-        }
+        self.buf_reader().read_line(string)
     }
 }
