@@ -22,6 +22,7 @@
 
 mod bytes;
 mod crypto;
+mod epoch_time;
 mod generic;
 mod integers;
 mod micro_tari;
