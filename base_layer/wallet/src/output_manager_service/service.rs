@@ -134,13 +134,13 @@ where
         db.clear_short_term_encumberances().await?;
         Self::initialise_key_manager(&key_manager).await?;
         let rewind_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
             .await?;
         let rewind_blinding_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
         let recovery_byte_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
             rewind_key,
@@ -171,24 +171,26 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager.add_new_branch(OutputManagerKeyManagerBranch::Spend).await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase)
+            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly)
+            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
+            .await?;
+        key_manager
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
             .await?;
         match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
             .await
         {
             Ok(_) => Ok(()),
@@ -418,9 +420,15 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::CalculateRecoveryByte { spending_key, value } => Ok(
-                OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(spending_key, value)?),
-            ),
+            OutputManagerRequest::CalculateRecoveryByte {
+                spending_key,
+                value,
+                with_rewind_data,
+            } => Ok(OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(
+                spending_key,
+                value,
+                with_rewind_data,
+            )?)),
             OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
@@ -593,9 +601,19 @@ where
         self.validate_outputs()
     }
 
-    pub fn calculate_recovery_byte(&mut self, spending_key: PrivateKey, value: u64) -> Result<u8, OutputManagerError> {
+    pub fn calculate_recovery_byte(
+        &mut self,
+        spending_key: PrivateKey,
+        value: u64,
+        with_rewind_data: bool,
+    ) -> Result<u8, OutputManagerError> {
         let commitment = self.resources.factories.commitment.commit_value(&spending_key, value);
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(&self.resources.rewind_data));
+        let rewind_data = if with_rewind_data {
+            Some(&self.resources.rewind_data)
+        } else {
+            None
+        };
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
         Ok(recovery_byte)
     }
 
@@ -701,12 +719,15 @@ where
         let result = self
             .resources
             .master_key_manager
-            .get_next_key(OutputManagerKeyManagerBranch::Spend)
+            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         let script_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, result.index)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                result.index,
+            )
             .await?;
         Ok((result.key, script_key))
     }
@@ -1034,12 +1055,15 @@ where
         let spending_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.to_string(), block_height)
+            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.get_branch_key(), block_height)
             .await?;
         let script_private_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript.to_string(), block_height)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                block_height,
+            )
             .await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
@@ -1326,7 +1350,7 @@ where
         }
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64())?;
+        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
         let output_features = OutputFeatures {
             recovery_byte,
             unique_id: unique_id.clone(),
@@ -1672,7 +1696,7 @@ where
             let output_amount = amount_per_split;
 
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64())?;
+            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64(), true)?;
             let output_features = OutputFeatures {
                 recovery_byte,
                 ..Default::default()

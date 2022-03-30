@@ -4,7 +4,7 @@ authors = ["The Tari Development Community"]
 description = "The tari merge miner proxy for xmrig"
 repository = "https://github.com/tari-project/tari"
 license = "BSD-3-Clause"
-version = "0.30.0"
+version = "0.30.2"
 edition = "2018"
 
 [features]
@@ -14,10 +14,10 @@ envlog = ["env_logger"]
 [dependencies]
 tari_app_grpc = { path = "../tari_app_grpc" }
 tari_common = { path = "../../common" }
-tari_comms = { path = "../../comms" }
+tari_comms = { path = "../../comms/core" }
 tari_core = { path = "../../base_layer/core", default-features = false, features = ["transactions"] }
 tari_app_utilities = { path = "../tari_app_utilities" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 anyhow = "1.0.53"

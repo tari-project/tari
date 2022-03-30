@@ -184,29 +184,38 @@ where
             let found_index = self
                 .master_key_manager
                 .find_key_index(
-                    OutputManagerKeyManagerBranch::Coinbase.to_string(),
+                    OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
                     &output.spending_key,
                 )
                 .await?;
 
             self.master_key_manager
-                .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript, found_index)
+                .get_key_at_index(
+                    OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                    found_index,
+                )
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(OutputManagerKeyManagerBranch::Spend, &output.spending_key)
+                .find_key_index(
+                    OutputManagerKeyManagerBranch::Spend.get_branch_key(),
+                    &output.spending_key,
+                )
                 .await?;
 
             self.master_key_manager
-                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend, found_index)
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend.get_branch_key(), found_index)
                 .await?;
             self.master_key_manager
-                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::SpendScript, found_index)
+                .update_current_key_index_if_higher(
+                    OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                    found_index,
+                )
                 .await?;
 
             self.master_key_manager
-                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, found_index)
+                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript.get_branch_key(), found_index)
                 .await?
         };
 

@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const net = require("net");
 
 const { blake2bInit, blake2bUpdate, blake2bFinal } = require("blakejs");

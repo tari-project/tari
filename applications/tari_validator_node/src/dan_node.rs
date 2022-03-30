@@ -93,7 +93,10 @@ impl DanNode {
         let mut tasks = HashMap::new();
         let mut next_scanned_height = 0u64;
         loop {
-            let tip = base_node_client.get_tip_info().await.unwrap();
+            let tip = base_node_client
+                .get_tip_info()
+                .await
+                .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
             if tip.height_of_longest_chain >= next_scanned_height {
                 info!(
                     target: LOG_TARGET,
@@ -105,11 +108,10 @@ impl DanNode {
                 } else {
                     next_scanned_height = u64::MAX; // Never run again.
                 }
-
                 let assets = base_node_client
                     .get_assets_for_dan_node(node_identity.public_key().clone())
                     .await
-                    .unwrap();
+                    .map_err(|e| ExitError::new(ExitCode::DigitalAssetError, e))?;
                 info!(
                     target: LOG_TARGET,
                     "Base node returned {} asset(s) to process",

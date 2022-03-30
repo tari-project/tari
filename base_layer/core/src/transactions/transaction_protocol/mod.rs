@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! Transaction Protocol Manager facilitates the process of constructing a Mimblewimble transaction between two parties.
 //!
 //! The Transaction Protocol Manager implements a protocol to construct a Mimwblewimble transaction between two parties

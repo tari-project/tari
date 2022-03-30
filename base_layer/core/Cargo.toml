@@ -6,7 +6,7 @@ repository = "https://github.com/tari-project/tari"
 homepage = "https://tari.com"
 readme = "README.md"
 license = "BSD-3-Clause"
-version = "0.30.0"
+version = "0.30.2"
 edition = "2018"
 
 [features]
@@ -16,14 +16,15 @@ mempool_proto = []
 base_node = []
 base_node_proto = []
 avx2 = ["tari_crypto/avx2"]
+benches = ["base_node", "criterion"]
 
 [dependencies]
 tari_common = { version = "^0.30", path = "../../common" }
 tari_common_types = { version = "^0.30", path = "../../base_layer/common_types" }
-tari_comms = { version = "^0.30", path = "../../comms" }
+tari_comms = { version = "^0.30", path = "../../comms/core" }
 tari_comms_dht = { version = "^0.30", path = "../../comms/dht" }
 tari_comms_rpc_macros = { version = "^0.30", path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.4" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_metrics = { path = "../../infrastructure/metrics" }
 tari_mmr = { version = "^0.30", path = "../../base_layer/mmr", optional = true, features = ["native_bitmap"] }
 tari_p2p = { version = "^0.30", path = "../../base_layer/p2p" }
@@ -40,6 +41,7 @@ bitflags = "1.0.4"
 blake2 = "^0.9.0"
 bytes = "0.5"
 chrono = { version = "0.4.19", default-features = false, features = ["serde"] }
+criterion = { version = "0.3.5", optional = true  }
 croaring = { version = "=0.4.5", optional = true }
 decimal-rs = "0.1.20"
 derivative = "2.2.0"
@@ -80,3 +82,7 @@ tempfile = "3.1.0"
 
 [build-dependencies]
 tari_common = { version = "^0.30", path = "../../common", features = ["build"] }
+
+[[bench]]
+name = "mempool"
+harness = false
