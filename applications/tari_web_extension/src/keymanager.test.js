@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 // todo: make this work by finding a way to import wasm for jest
 
 // import KeyManagerFactory from "./keymanager";

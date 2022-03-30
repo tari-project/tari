@@ -1,5 +1,17 @@
 # Changelog
 
+### [0.30.2](https://github.com/tari-project/tari/compare/v0.30.1...v0.30.2) (2022-03-29)
+
+
+### Features
+
+* **core:** add tip height metric ([#3964](https://github.com/tari-project/tari/issues/3964)) ([c3f6b11](https://github.com/tari-project/tari/commit/c3f6b11163e52643796296abb8fcd5e053dae13d))
+
+
+### Bug Fixes
+
+* add output option to the status command ([#3969](https://github.com/tari-project/tari/issues/3969)) ([aabb653](https://github.com/tari-project/tari/commit/aabb6539c8b5920b519b40c85093cd5ad07ae229))
+* revert changes to key manager branch seed strings ([#3971](https://github.com/tari-project/tari/issues/3971)) ([db688aa](https://github.com/tari-project/tari/commit/db688aaeaa53b6a9565867c3791d74ee4c571abf))
 
 ### [0.30.1](https://github.com/tari-project/tari/compare/v0.30.0...v0.30.1) (2022-03-28)
 

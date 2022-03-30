@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 use log::*;

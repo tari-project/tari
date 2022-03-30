@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const WalletProcess = require("integration_tests/helpers/walletProcess");
 const WalletClient = require("integration_tests/helpers/walletClient");
 const { getFreePort } = require("integration_tests/helpers/util");

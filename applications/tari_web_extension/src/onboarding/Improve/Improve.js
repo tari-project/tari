@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import React from "react";
 import { useLocation } from "react-router";
 import { Link } from "react-router-dom";
