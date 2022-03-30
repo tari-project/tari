@@ -82,17 +82,14 @@ impl OutboundService for TariCommsOutboundService<TariDanPayload> {
                 message.message_type(),
                 message.asset_public_key()
             );
-            self.loopback_service.send((from, message)).await.unwrap();
+            self.loopback_service.send((from, message)).await.map_err(Box::new)?;
             return Ok(());
         }
 
         let inner = proto::consensus::HotStuffMessage::from(message);
         let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
 
-        self.outbound_message_requester
-            .send_direct(to, tari_message)
-            .await
-            .unwrap();
+        self.outbound_message_requester.send_direct(to, tari_message).await?;
         Ok(())
     }
 

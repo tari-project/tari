@@ -41,11 +41,7 @@ impl GrpcWalletClient {
     }
 
     pub async fn connect(&mut self) -> Result<(), DigitalAssetError> {
-        self.inner = Some(
-            grpc::wallet_client::WalletClient::connect(format!("http://{}", self.endpoint))
-                .await
-                .unwrap(),
-        );
+        self.inner = Some(grpc::wallet_client::WalletClient::connect(format!("http://{}", self.endpoint)).await?);
         Ok(())
     }
 }
