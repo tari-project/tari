@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 /// Checks a request
 pub trait Predicate<Request> {
     /// Check whether the given request should be forwarded.

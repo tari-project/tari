@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 var express = require("express");
 const { createClient } = require("../baseNodeClient");
 var router = express.Router();

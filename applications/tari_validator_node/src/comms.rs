@@ -166,7 +166,7 @@ fn create_comms_config(config: &GlobalConfig, node_identity: Arc<NodeIdentity>) 
         dns_seeds: config.dns_seeds.clone(),
         dns_seeds_name_server: config.dns_seeds_name_server.clone(),
         dns_seeds_use_dnssec: config.dns_seeds_use_dnssec,
-        auxilary_tcp_listener_address: config.auxilary_tcp_listener_address.clone(),
+        auxiliary_tcp_listener_address: config.auxiliary_tcp_listener_address.clone(),
     }
 }
 
@@ -209,13 +209,12 @@ fn create_transport_type(config: &GlobalConfig) -> TransportType {
                 });
             debug!(
                 target: LOG_TARGET,
-                "Tor identity at path '{}' {:?}",
+                "Tor identity at path '{}' {}",
                 config.base_node_tor_identity_file.to_string_lossy(),
                 identity
                     .as_ref()
                     .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                    .or_else(|| Some("not found".to_string()))
-                    .unwrap()
+                    .unwrap_or_else(|| "not found".to_string())
             );
 
             let forward_addr = multiaddr_to_socketaddr(&forward_address).expect("Invalid tor forward address");

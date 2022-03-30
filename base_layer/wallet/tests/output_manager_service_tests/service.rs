@@ -24,7 +24,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use rand::{rngs::OsRng, Rng, RngCore};
 use tari_common_types::{
     transaction::TxId,
-    types::{PrivateKey, PublicKey},
+    types::{ComSignature, PrivateKey, PublicKey},
 };
 use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
@@ -41,16 +41,18 @@ use tari_core::{
         fee::Fee,
         tari_amount::{uT, MicroTari},
         test_helpers::{create_unblinded_output, TestParams as TestParamsHelpers},
-        transaction_components::{OutputFeatures, OutputFlags},
-        transaction_protocol::sender::TransactionSenderMessage,
+        transaction_components::{OutputFeatures, OutputFlags, TransactionOutput, UnblindedOutput},
+        transaction_protocol::{sender::TransactionSenderMessage, RewindData},
         weight::TransactionWeight,
         CryptoFactories,
         SenderTransactionProtocol,
     },
 };
 use tari_crypto::{
+    commitment::HomomorphicCommitmentFactory,
     common::Blake256,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
+    range_proof::REWIND_USER_MESSAGE_LENGTH,
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_script::{inputs, script, TariScript};
@@ -69,12 +71,15 @@ use tari_wallet::{
             sqlite_db::KeyManagerSqliteDatabase,
         },
         KeyManagerHandle,
+        KeyManagerInterface,
         KeyManagerMock,
+        KeyManagerServiceError,
     },
     output_manager_service::{
         config::OutputManagerServiceConfig,
         error::{OutputManagerError, OutputManagerStorageError},
         handle::{OutputManagerEvent, OutputManagerHandle},
+        resources::OutputManagerKeyManagerBranch,
         service::OutputManagerService,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
@@ -115,7 +120,8 @@ struct TestOmsService<U> {
     pub node_id: Arc<NodeIdentity>,
     pub base_node_wallet_rpc_mock_state: BaseNodeWalletRpcMockState,
     pub node_event: broadcast::Sender<Arc<BaseNodeEvent>>,
-    pub _key_management_handle: KeyManagerHandle<U>,
+    pub key_manager_handler: KeyManagerHandle<U>,
+    pub rewind_data: RewindData,
 }
 
 #[allow(clippy::type_complexity)]
@@ -220,6 +226,25 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
     .unwrap();
     let output_manager_service_handle = OutputManagerHandle::new(oms_request_sender, oms_event_publisher);
 
+    let rewind_key = key_manager
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
+        .await
+        .unwrap();
+    let rewind_blinding_key = key_manager
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
+        .await
+        .unwrap();
+    let recovery_byte_key = key_manager
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
+        .await
+        .unwrap();
+    let rewind_data = RewindData {
+        rewind_key,
+        rewind_blinding_key,
+        proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
+        recovery_byte_key,
+    };
+
     task::spawn(async move { output_manager_service.start().await.unwrap() });
 
     TestOmsService {
@@ -231,7 +256,8 @@ async fn setup_output_manager_service<T: OutputManagerBackend + 'static, U: KeyM
         node_id: server_node_identity,
         base_node_wallet_rpc_mock_state: rpc_service_state,
         node_event: event_publisher_bns,
-        _key_management_handle: key_manager,
+        key_manager_handler: key_manager,
+        rewind_data,
     }
 }
 
@@ -2008,4 +2034,155 @@ async fn test_get_status_by_tx_id() {
 
     assert_eq!(status.len(), 1);
     assert_eq!(status[0], OutputStatus::EncumberedToBeReceived);
+}
+
+#[tokio::test]
+async fn scan_for_recovery_test() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+    let mut oms = setup_output_manager_service(backend.clone(), ks_backend, true).await;
+
+    const NUM_REWINDABLE: usize = 5;
+    const NUM_NON_REWINDABLE: usize = 3;
+
+    let mut rewindable_unblinded_outputs = Vec::new();
+
+    for i in 1..=NUM_REWINDABLE {
+        let spending_key_result = oms
+            .key_manager_handler
+            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
+            .await
+            .unwrap();
+        let script_key = oms
+            .key_manager_handler
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                spending_key_result.index,
+            )
+            .await
+            .unwrap();
+        let commitment = factories
+            .commitment
+            .commit_value(&spending_key_result.key, 1000 * i as u64);
+        let mut features = OutputFeatures::default();
+        features.update_recovery_byte(&commitment, Some(&oms.rewind_data));
+        let uo = UnblindedOutput::new_current_version(
+            MicroTari::from(1000 * i as u64),
+            spending_key_result.key,
+            features,
+            script!(Nop),
+            inputs!(PublicKey::from_secret_key(&script_key)),
+            script_key,
+            PublicKey::default(),
+            ComSignature::default(),
+            0,
+            Covenant::new(),
+        );
+        rewindable_unblinded_outputs.push(uo);
+    }
+
+    let mut non_rewindable_unblinded_outputs = Vec::new();
+
+    for i in 1..=NUM_NON_REWINDABLE {
+        let (_ti, uo) = make_input(
+            &mut OsRng,
+            MicroTari::from(1000 * i as u64),
+            &factories.commitment,
+            Some(oms.output_manager_handle.clone()),
+        )
+        .await;
+        non_rewindable_unblinded_outputs.push(uo)
+    }
+
+    let rewindable_outputs: Vec<TransactionOutput> = rewindable_unblinded_outputs
+        .clone()
+        .into_iter()
+        .map(|uo| {
+            uo.as_rewindable_transaction_output(&factories, &oms.rewind_data, None)
+                .unwrap()
+        })
+        .collect();
+
+    let recovery_byte_key = oms
+        .key_manager_handler
+        .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
+        .await
+        .unwrap();
+    let other_rewind_data = RewindData {
+        rewind_key: PrivateKey::random(&mut OsRng),
+        rewind_blinding_key: PrivateKey::random(&mut OsRng),
+        recovery_byte_key,
+        proof_message: [0u8; REWIND_USER_MESSAGE_LENGTH],
+    };
+
+    let non_rewindable_outputs: Vec<TransactionOutput> = non_rewindable_unblinded_outputs
+        .clone()
+        .into_iter()
+        .map(|uo| {
+            uo.as_rewindable_transaction_output(&factories, &other_rewind_data, None)
+                .unwrap()
+        })
+        .collect();
+
+    oms.output_manager_handle
+        .add_rewindable_output(rewindable_unblinded_outputs[0].clone(), None, None)
+        .await
+        .unwrap();
+
+    let recovered_outputs = oms
+        .output_manager_handle
+        .scan_for_recoverable_outputs(
+            rewindable_outputs
+                .clone()
+                .into_iter()
+                .chain(non_rewindable_outputs.clone().into_iter())
+                .collect::<Vec<TransactionOutput>>(),
+        )
+        .await
+        .unwrap();
+
+    // Check that the non-rewindable outputs are not preset, also check that one rewindable output that was already
+    // contained in the OMS database is also not included in the returns outputs.
+
+    assert_eq!(recovered_outputs.len(), NUM_REWINDABLE - 1);
+    for o in rewindable_unblinded_outputs.iter().skip(1) {
+        assert!(recovered_outputs
+            .iter()
+            .any(|ro| ro.output.spending_key == o.spending_key));
+    }
+}
+
+#[tokio::test]
+async fn recovered_output_key_not_in_keychain() {
+    let factories = CryptoFactories::default();
+    let (connection, _tempdir) = get_temp_sqlite_database_connection();
+    let backend = OutputManagerSqliteDatabase::new(connection.clone(), None);
+    let ks_backend = KeyManagerSqliteDatabase::new(connection, None).unwrap();
+    let mut oms = setup_output_manager_service(backend.clone(), ks_backend, true).await;
+
+    let (_ti, uo) = make_input(
+        &mut OsRng,
+        MicroTari::from(1000u64),
+        &factories.commitment,
+        Some(oms.output_manager_handle.clone()),
+    )
+    .await;
+
+    let rewindable_output = uo
+        .as_rewindable_transaction_output(&factories, &oms.rewind_data, None)
+        .unwrap();
+
+    let result = oms
+        .output_manager_handle
+        .scan_for_recoverable_outputs(vec![rewindable_output])
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(OutputManagerError::KeyManagerServiceError(
+            KeyManagerServiceError::KeyNotFoundInKeyChain
+        ))
+    ));
 }

@@ -365,10 +365,19 @@ pub async fn init_wallet(
     }
 
     let transport_type = create_transport_type(config);
-    let transport_type = match transport_type {
-        Tor(mut tor_config) => {
-            tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
-            Tor(tor_config)
+    let transport_type = match transport_type.clone() {
+        Tor(mut tor_config) => match wallet_db.get_tor_id().await {
+            Ok(identity) => {
+                tor_config.identity = identity.map(Box::new);
+                Tor(tor_config)
+            },
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Error reading stored Tor Identity, using default: {}", e
+                );
+                transport_type
+            },
         },
         _ => transport_type,
     };
@@ -378,7 +387,7 @@ pub async fn init_wallet(
         node_identity,
         user_agent: format!("tari/wallet/{}", env!("CARGO_PKG_VERSION")),
         transport_type,
-        auxilary_tcp_listener_address: None,
+        auxiliary_tcp_listener_address: None,
         datastore_path: config.console_wallet_peer_db_path.clone(),
         peer_database_name: "peers".to_string(),
         max_concurrent_inbound_tasks: 10,
@@ -391,6 +400,8 @@ pub async fn init_wallet(
             flood_ban_max_msg_count: config.flood_ban_max_msg_count,
             saf_config: SafConfig {
                 msg_validity: config.saf_expiry_duration,
+                // Ensure that SAF messages are requested automatically
+                auto_request: true,
                 ..Default::default()
             },
             dedup_cache_capacity: config.dht_dedup_cache_capacity,

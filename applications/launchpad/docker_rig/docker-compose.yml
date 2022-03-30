@@ -5,11 +5,11 @@ services:
     build:
       context: .
       dockerfile: tor.Dockerfile
-#    volumes:
-#      - ${DATA_FOLDER}/tor:/etc/tor/
-#    ports:
-#      - 9050:9050
-#      - 9051:9051
+  #    volumes:
+  #      - ${DATA_FOLDER}/tor:/etc/tor/
+  #    ports:
+  #      - 9050:9050
+  #      - 9051:9051
 
   base_node:
     image: quay.io/tarilabs/tari_base_node:latest
@@ -100,13 +100,12 @@ services:
       TARI_BASE_NODE__DIBBLER__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
       TARI_BASE_NODE__DIBBLER__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
       TARI_WALLET__GRPC_ADDRESS: "/dns4/wallet/tcp/18143"
-    command: [ ]
+    command: []
     depends_on:
       - base_node
       - wallet
     volumes:
       - ${DATA_FOLDER}:/var/tari/
-
 
   xmrig:
     image: quay.io/tarilabs/xmrig:latest
@@ -114,12 +113,22 @@ services:
       context: .
       dockerfile: xmrig.Dockerfile
     #command: ["--url", "mm_proxy:18081", "--user", "${TARI_MONERO_WALLET_ADDRESS:-859CW1aiA8gUmAaTipKsYrF5r83MesesSjWoJSSRL6nnfi5LqBssxJmg7BzhgXYcjcPARM7bBvFR9H5dJdi6w93eKA53v8G}", "--coin", "monero", "--daemon", "--log-file=/var/xmrig/xmrig.log"]
-    command: ["--url", "mm_proxy:18081", "--user", "${TARI_MONERO_WALLET_ADDRESS:-5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48}", "--coin", "monero", "--daemon", "--log-file=/var/xmrig/xmrig.log", "--verbose"]
+    command:
+      [
+        "--url",
+        "mm_proxy:18081",
+        "--user",
+        "${TARI_MONERO_WALLET_ADDRESS:-5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48}",
+        "--coin",
+        "monero",
+        "--daemon",
+        "--log-file=/var/xmrig/xmrig.log",
+        "--verbose",
+      ]
     depends_on:
       - mm_proxy
     volumes:
       - ${DATA_FOLDER}/xmrig:/var/xmrig/
-
 
   monerod:
     image: quay.io/tarilabs/monerod:latest
@@ -166,7 +175,7 @@ services:
     depends_on:
       - base_node
       - wallet
-    command: [ ]
+    command: []
     volumes:
       - ${DATA_FOLDER}:/var/tari/
 #  pool-worker:

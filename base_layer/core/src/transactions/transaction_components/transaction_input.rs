@@ -40,7 +40,6 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     common::hash_writer::HashWriter,
-    consensus::ConsensusEncoding,
     covenants::Covenant,
     transactions::{
         transaction_components,
@@ -158,13 +157,14 @@ impl TransactionInput {
         script_public_key: &PublicKey,
         commitment: &Commitment,
     ) -> Vec<u8> {
-        let mut writer = HashWriter::new(HashDigest::new());
-        nonce_commitment.consensus_encode(&mut writer).unwrap();
-        script.consensus_encode(&mut writer).unwrap();
-        input_data.consensus_encode(&mut writer).unwrap();
-        script_public_key.consensus_encode(&mut writer).unwrap();
-        commitment.consensus_encode(&mut writer).unwrap();
-        writer.finalize().to_vec()
+        HashWriter::new(HashDigest::new())
+            .chain(nonce_commitment)
+            .chain(script)
+            .chain(input_data)
+            .chain(script_public_key)
+            .chain(commitment)
+            .finalize()
+            .to_vec()
     }
 
     pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
@@ -324,7 +324,7 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
-                version,
+                ref version,
                 ref features,
                 ref commitment,
                 ref script,
@@ -332,15 +332,15 @@ impl TransactionInput {
                 ref covenant,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let mut writer = HashWriter::new(HashDigest::new());
-                version.consensus_encode(&mut writer)?;
-                features.consensus_encode(&mut writer)?;
-                commitment.consensus_encode(&mut writer)?;
-                script.consensus_encode(&mut writer)?;
-                sender_offset_public_key.consensus_encode(&mut writer)?;
-                self.script_signature.consensus_encode(&mut writer)?;
-                self.input_data.consensus_encode(&mut writer)?;
-                covenant.consensus_encode(&mut writer)?;
+                let writer = HashWriter::new(HashDigest::new())
+                    .chain(version)
+                    .chain(features)
+                    .chain(commitment)
+                    .chain(script)
+                    .chain(sender_offset_public_key)
+                    .chain(&self.script_signature)
+                    .chain(&self.input_data)
+                    .chain(covenant);
 
                 Ok(writer.finalize().to_vec())
             },
@@ -350,6 +350,17 @@ impl TransactionInput {
     pub fn set_maturity(&mut self, maturity: u64) -> Result<(), TransactionError> {
         if let SpentOutput::OutputData { ref mut features, .. } = self.spent_output {
             features.maturity = maturity;
+            Ok(())
+        } else {
+            Err(TransactionError::MissingTransactionInputData)
+        }
+    }
+
+    /// Sets the input's Tari script. Only useful in tests.
+    #[cfg(test)]
+    pub fn set_script(&mut self, new_script: TariScript) -> Result<(), TransactionError> {
+        if let SpentOutput::OutputData { ref mut script, .. } = self.spent_output {
+            *script = new_script;
             Ok(())
         } else {
             Err(TransactionError::MissingTransactionInputData)

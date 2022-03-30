@@ -21,6 +21,7 @@ env:
   PROTOC: protoc
 
 jobs:
+
   clippy:
     name: clippy
     runs-on: ubuntu-18.04
@@ -161,6 +162,19 @@ jobs:
           npm ci
           npm run lint
           npm run check-fmt
+  licenses:
+    name: file licenses
+    runs-on: ubuntu-20.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: install ripgrep
+        run: |
+          wget https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep_13.0.0_amd64.deb
+          sudo dpkg -i ripgrep_13.0.0_amd64.deb
+          rg --version || exit 1
+      - name: run the license check
+        run: ./scripts/file_license_check.sh
   test:
     name: test
     runs-on: ubuntu-18.04
@@ -203,3 +217,19 @@ jobs:
         with:
           command: test
           args: -v --all-features
+  # Allows other workflows to know the PR number
+  artifacts:
+    name: test
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Save the PR number in an artifact
+        shell: bash
+        env:
+          PR_NUM: ${{ github.event.number }}
+        run: echo $PR_NUM > pr_num.txt
+
+      - name: Upload the PR number
+        uses: actions/upload-artifact@v2
+        with:
+          name: pr_num
+          path: ./pr_num.txt

@@ -95,7 +95,7 @@ pub struct DecryptedDhtMessage {
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
     pub dedup_hit_count: u32,
-    pub hash: Vec<u8>,
+    pub dedup_hash: Vec<u8>,
 }
 
 impl DecryptedDhtMessage {
@@ -116,7 +116,7 @@ impl DecryptedDhtMessage {
         message: DhtInboundMessage,
     ) -> Self {
         Self {
-            hash: hash_inbound_message(&message),
+            dedup_hash: hash_inbound_message(&message),
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin,
@@ -131,7 +131,7 @@ impl DecryptedDhtMessage {
 
     pub fn failed(message: DhtInboundMessage) -> Self {
         Self {
-            hash: hash_inbound_message(&message),
+            dedup_hash: hash_inbound_message(&message),
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin: None,

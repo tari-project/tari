@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! An ergonomic, multithreaded API for an LMDB datastore
 
 use std::{
@@ -415,7 +418,7 @@ impl LMDBStore {
     /// This may only be called if no write transactions are active in the current process. Note that the library does
     /// not check for this condition, the caller must ensure it explicitly.
     ///
-    /// http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5
+    /// <http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5>
     pub unsafe fn resize_if_required(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
         let env_info = env.info()?;
         let stat = env.stat()?;
@@ -446,7 +449,7 @@ impl LMDBStore {
     /// This may only be called if no write transactions are active in the current process. Note that the library does
     /// not check for this condition, the caller must ensure it explicitly.
     ///
-    /// http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5
+    /// <http://www.lmdb.tech/doc/group__mdb.html#gaa2506ec8dab3d969b0e609cd82e619e5>
     pub unsafe fn resize(env: &Environment, config: &LMDBConfig) -> Result<(), LMDBError> {
         let env_info = env.info()?;
         let current_mapsize = env_info.mapsize;

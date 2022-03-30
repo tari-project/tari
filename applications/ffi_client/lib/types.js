@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const ref = require("ref-napi");
 const ArrayType = require("ref-array-napi");
 

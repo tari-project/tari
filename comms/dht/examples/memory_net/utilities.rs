@@ -24,13 +24,14 @@
 use std::{
     collections::HashMap,
     fmt,
+    iter,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
 use futures::future;
 use lazy_static::lazy_static;
-use rand::{rngs::OsRng, Rng};
+use rand::{distributions, rngs::OsRng, Rng};
 use tari_comms::{
     backoff::ConstantBackoff,
     connection_manager::{ConnectionDirection, ConnectionManagerEvent},
@@ -54,6 +55,7 @@ use tari_comms_dht::{
     inbound::DecryptedDhtMessage,
     outbound::OutboundEncryption,
     store_forward::SafConfig,
+    DbConnectionUrl,
     Dht,
     DhtConfig,
 };
@@ -910,8 +912,15 @@ async fn setup_comms_dht(
         comms.peer_manager().add_peer(peer).await.unwrap();
     }
 
+    let db_name = iter::repeat(())
+        .map(|_| OsRng.sample(distributions::Alphanumeric) as char)
+        .take(8)
+        .collect::<String>();
+
     let dht = Dht::builder()
         .with_config(DhtConfig {
+            // Use MemoryShared because a Memory connection only seems to work on MacOs
+            database_url: DbConnectionUrl::MemoryShared(db_name),
             saf_config: SafConfig {
                 auto_request: saf_auto_request,
                 ..Default::default()

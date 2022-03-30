@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const { getFreePort } = require("./util");
 const dateFormat = require("dateformat");
 const fs = require("fs");
@@ -91,8 +94,9 @@ class WalletProcess {
       } else if (this.options["grpc_console_wallet_address"]) {
         envs[`TARI_WALLET__GRPC_ADDRESS`] =
           this.options["grpc_console_wallet_address"];
-        this.grpcPort =
-          this.options["grpc_console_wallet_address"].split(":")[1];
+        let regexMatch =
+          this.options["grpc_console_wallet_address"].match(/tcp\/(\d+)/);
+        this.grpcPort = parseInt(regexMatch[1]);
       }
 
       if (saveFile) {
