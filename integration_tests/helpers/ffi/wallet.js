@@ -324,7 +324,7 @@ class Wallet {
     let status = new TransactionSendStatus(ptr);
     status.pointerAssign(ptr);
     console.log(
-      `${new Date().toISOString()} callbackTransactionSendResult(${id}: send_direct(${status.getSendDirect()}), send_saf(${status.getSendSaf()}), queued(${status.getQueued()}))`
+      `${new Date().toISOString()} callbackTransactionSendResult(${id}: (${status.getSendStatus()}))`
     );
     status.destroy();
   };

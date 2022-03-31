@@ -496,6 +496,11 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a transaction send is completed. The first parameter is the transaction id and the second contains the
 /// transaction send status, weather it was send direct and/or send via saf on the one hand or queued for further retry
 /// sending on the other hand.
+///     !direct_send & !saf_send &  queued   = 0
+///      direct_send &  saf_send & !queued   = 1
+///      direct_send & !saf_send & !queued   = 2
+///     !direct_send &  saf_send & !queued   = 3
+///     any other combination (is not valid) = 4
 /// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
 /// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
 /// why said transaction failed that is mapped to the `TxCancellationReason` enum:

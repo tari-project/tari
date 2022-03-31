@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const InterfaceFFI = require("./ffiInterface");
 
 class TransactionSendStatus {
@@ -16,16 +19,8 @@ class TransactionSendStatus {
     return this.ptr;
   }
 
-  getSendDirect() {
-    return InterfaceFFI.transactionSendStatusGetDirect(this.ptr);
-  }
-
-  getSendSaf() {
-    return InterfaceFFI.transactionSendStatusGetSaf(this.ptr);
-  }
-
-  getQueued() {
-    return InterfaceFFI.transactionSendStatusGetQueued(this.ptr);
+  getSendStatus() {
+    return InterfaceFFI.transactionSendStatusDecode(this.ptr);
   }
 
   destroy() {

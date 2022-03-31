@@ -2836,7 +2836,7 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 
 /// ----------------------------------- Transport Send Status -----------------------------------///
 
-/// Gets the direct send status of a TariTransactionSendStatus
+/// Encode the transaction send status of a TariTransactionSendStatus
 ///
 /// ## Arguments
 /// `status` - The pointer to a TariTransactionSendStatus
@@ -2844,83 +2844,48 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_uint` - Returns 1 if the transaction was sent directly, zero if it was not
+/// `c_uint` - Returns
+///     !direct_send & !saf_send &  queued   = 0
+///      direct_send &  saf_send & !queued   = 1
+///      direct_send & !saf_send & !queued   = 2
+///     !direct_send &  saf_send & !queued   = 3
+///     any other combination (is not valid) = 4
 ///
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn transaction_send_status_get_direct(
+pub unsafe extern "C" fn transaction_send_status_decode(
     status: *const TariTransactionSendStatus,
     error_out: *mut c_int,
 ) -> c_uint {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
-    let mut direct_send = 0;
+    let mut send_status = 4;
     if status.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
-    } else {
-        direct_send = (*status).direct_send_result as c_uint;
-    }
-    direct_send
-}
-
-/// Gets the store and forward send status of a TariTransactionSendStatus
-///
-/// ## Arguments
-/// `status` - The pointer to a TariTransactionSendStatus
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_uint` - Returns 1 if the transaction was sent directly, zero if it was not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn transaction_send_status_get_saf(
-    status: *const TariTransactionSendStatus,
-    error_out: *mut c_int,
-) -> c_uint {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let mut saf_send = 0;
-    if status.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
+    } else if ((*status).direct_send_result || (*status).store_and_forward_send_result) && (*status).queued_for_retry {
+        error = LibWalletError::from(InterfaceError::NullError(
+            "transaction send status - not valid".to_string(),
+        ))
+        .code;
         ptr::swap(error_out, &mut error as *mut c_int);
+    } else if (*status).queued_for_retry {
+        send_status = 0;
+    } else if (*status).direct_send_result && (*status).store_and_forward_send_result {
+        send_status = 1;
+    } else if (*status).direct_send_result && !(*status).store_and_forward_send_result {
+        send_status = 2;
+    } else if !(*status).direct_send_result && (*status).store_and_forward_send_result {
+        send_status = 3;
     } else {
-        saf_send = (*status).store_and_forward_send_result as c_uint;
-    }
-    saf_send
-}
-
-/// Gets the queued for further retry sending send status of a TariTransactionSendStatus
-///
-/// ## Arguments
-/// `status` - The pointer to a TariTransactionSendStatus
-/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
-/// as an out parameter.
-///
-/// ## Returns
-/// `c_uint` - Returns 1 if the transaction was queued for further retry sending, zero if it was not
-///
-/// # Safety
-/// None
-#[no_mangle]
-pub unsafe extern "C" fn transaction_send_status_get_queued(
-    status: *const TariTransactionSendStatus,
-    error_out: *mut c_int,
-) -> c_uint {
-    let mut error = 0;
-    ptr::swap(error_out, &mut error as *mut c_int);
-    let mut queued = 0;
-    if status.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
+        error = LibWalletError::from(InterfaceError::NullError(
+            "transaction send status - not valid".to_string(),
+        ))
+        .code;
         ptr::swap(error_out, &mut error as *mut c_int);
-    } else {
-        queued = (*status).queued_for_retry as c_uint;
     }
-    queued
+    send_status
 }
 
 /// Frees memory for a TariTransactionSendStatus
@@ -3564,6 +3529,11 @@ unsafe fn init_logging(
 /// when a transaction send is completed. The first parameter is the transaction id and the second contains the
 /// transaction send status, weather it was send direct and/or send via saf on the one hand or queued for further retry
 /// sending on the other hand.
+///     !direct_send & !saf_send &  queued   = 0
+///      direct_send &  saf_send & !queued   = 1
+///      direct_send & !saf_send & !queued   = 2
+///     !direct_send &  saf_send & !queued   = 3
+///     any other combination (is not valid) = 4
 /// `callback_transaction_cancellation` - The callback function pointer matching
 /// the function signature. This is called when a transaction is cancelled. The first parameter is a pointer to the
 /// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the
@@ -6776,21 +6746,86 @@ mod test {
         unsafe {
             let mut error = 0;
             let error_ptr = &mut error as *mut c_int;
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: false,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 0);
+
             let status = Box::into_raw(Box::new(TariTransactionSendStatus {
                 direct_send_result: true,
                 store_and_forward_send_result: true,
                 queued_for_retry: false,
             }));
-            let sent_direct = transaction_send_status_get_direct(status, error_ptr);
-            assert_eq!(error, 0);
-            assert_eq!(sent_direct, 1);
-            let sent_saf = transaction_send_status_get_saf(status, error_ptr);
-            assert_eq!(error, 0);
-            assert_eq!(sent_saf, 1);
-            let queued = transaction_send_status_get_queued(status, error_ptr);
-            assert_eq!(error, 0);
-            assert_eq!(queued, 0);
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
             transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 1);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: false,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 2);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: true,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 3);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: false,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: true,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: false,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: true,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
         }
     }
 

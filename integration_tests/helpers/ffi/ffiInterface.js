@@ -260,9 +260,7 @@ class InterfaceFFI {
         [this.ptr, this.uint, this.intPtr],
       ],
       pending_inbound_transactions_destroy: [this.void, [this.ptr]],
-      transaction_send_status_get_direct: [this.uint, [this.ptr, this.intPtr]],
-      transaction_send_status_get_saf: [this.uint, [this.ptr, this.intPtr]],
-      transaction_send_status_get_queued: [this.uint, [this.ptr, this.intPtr]],
+      transaction_send_status_decode: [this.uint, [this.ptr, this.intPtr]],
       transaction_send_status_destroy: [this.void, [this.ptr]],
       comms_config_create: [
         this.ptr,
@@ -1131,24 +1129,10 @@ class InterfaceFFI {
   //endregion
 
   //region TransactionSendStatus
-  static transactionSendStatusGetDirect(ptr) {
+  static transactionSendStatusDecode(ptr) {
     let error = this.initError();
-    let result = this.fn.transaction_send_status_get_direct(ptr, error);
-    this.checkErrorResult(error, `transactionSendStatusGetDirect`);
-    return result;
-  }
-
-  static transactionSendStatusGetSaf(ptr) {
-    let error = this.initError();
-    let result = this.fn.transaction_send_status_get_saf(ptr, error);
-    this.checkErrorResult(error, `transactionSendStatusGetSaf`);
-    return result;
-  }
-
-  static transactionSendStatusGetQueued(ptr) {
-    let error = this.initError();
-    let result = this.fn.transaction_send_status_get_queued(ptr, error);
-    this.checkErrorResult(error, `transactionSendStatusGetQueued`);
+    let result = this.fn.transaction_send_status_decode(ptr, error);
+    this.checkErrorResult(error, `transactionSendStatusDecode`);
     return result;
   }
 

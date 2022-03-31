@@ -1482,46 +1482,26 @@ where
             } else {
                 (Some(tx.sender_protocol), TransactionSendProtocolStage::Queued)
             };
+            let (not_yet_pending, queued) = (
+                !self.pending_transaction_reply_senders.contains_key(&tx_id),
+                stage == TransactionSendProtocolStage::Queued,
+            );
 
-            if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+            if not_yet_pending {
                 debug!(
                     target: LOG_TARGET,
                     "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx_id
                 );
-                let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
-                let (cancellation_sender, cancellation_receiver) = oneshot::channel();
-                self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
-                self.send_transaction_cancellation_senders
-                    .insert(tx_id, cancellation_sender);
-
-                let protocol = TransactionSendProtocol::new(
-                    tx_id,
-                    self.resources.clone(),
-                    tx_reply_receiver,
-                    cancellation_receiver,
-                    tx.destination_public_key,
-                    tx.amount,
-                    None,
-                    None,
-                    tx.fee,
-                    tx.message,
-                    None,
-                    stage,
-                    None,
-                    self.last_seen_tip_height,
-                    sender_protocol,
-                );
-
-                let join_handle = tokio::spawn(protocol.execute());
-                join_handles.push(join_handle);
-            } else if stage == TransactionSendProtocolStage::Queued {
+            } else if queued {
                 debug!(
                     target: LOG_TARGET,
                     "Retry sending queued Pending Outbound Transaction TxId: {}", tx_id
                 );
                 let _ = self.pending_transaction_reply_senders.remove(&tx_id);
                 let _ = self.send_transaction_cancellation_senders.remove(&tx_id);
+            }
 
+            if not_yet_pending || queued {
                 let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
                 let (cancellation_sender, cancellation_receiver) = oneshot::channel();
                 self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
