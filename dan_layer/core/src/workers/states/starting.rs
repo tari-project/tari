@@ -36,14 +36,9 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::starting";
 
+#[derive(Default)]
 pub struct Starting<TSpecification> {
     _spec: PhantomData<TSpecification>,
-}
-
-impl<TSpecification: ServiceSpecification> Default for Starting<TSpecification> {
-    fn default() -> Self {
-        Self { _spec: PhantomData }
-    }
 }
 
 impl<TSpecification: ServiceSpecification> Starting<TSpecification> {

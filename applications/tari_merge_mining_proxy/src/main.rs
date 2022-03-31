@@ -37,13 +37,17 @@ mod proxy;
 #[cfg(test)]
 mod test;
 
-use std::convert::{Infallible, TryFrom};
+use std::{
+    convert::{Infallible, TryFrom},
+    io::{stdout, Write},
+};
 
+use crossterm::{execute, terminal::SetTitle};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
 use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
 use tari_app_grpc::tari_rpc as grpc;
-use tari_app_utilities::initialization::init_configuration;
+use tari_app_utilities::{consts, initialization::init_configuration};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tokio::time::Duration;
 
@@ -51,6 +55,11 @@ use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    let terminal_title = format!("Tari Merge Mining Proxy - Version {}", consts::APP_VERSION);
+    if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
+        println!("Error setting terminal title. {}", e)
+    }
+
     let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
 
     let config = match MergeMiningProxyConfig::try_from(config) {
