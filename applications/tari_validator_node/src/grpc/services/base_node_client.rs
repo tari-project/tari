@@ -87,14 +87,8 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         while let Some(r) = result.message().await? {
             outputs.push(r);
         }
-        let output = outputs
-            .first()
-            .and_then(|o| o.features.clone())
-            .map(OutputFeatures::try_from)
-            .transpose()
-            .map_err(DigitalAssetError::ConversionError)?
-            .map(BaseLayerOutput::from);
-        Ok(output)
+        let output = outputs.first().and_then(|o| o.features.clone());
+        self.extract_base_layer_output(output)
     }
 
     async fn get_assets_for_dan_node(
@@ -155,14 +149,20 @@ impl BaseNodeClient for GrpcBaseNodeClient {
             asset_public_key: asset_public_key.to_vec(),
         };
         let output = inner.get_asset_metadata(req).await.unwrap().into_inner();
+        self.extract_base_layer_output(output.features)
+    }
+}
 
-        let output = output
-            .features
+impl GrpcBaseNodeClient {
+    fn extract_base_layer_output(
+        &self,
+        output: Option<tari_app_grpc::tari_rpc::OutputFeatures>,
+    ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
+        let res = output
             .map(OutputFeatures::try_from)
             .transpose()
             .map_err(DigitalAssetError::ConversionError)?
             .map(BaseLayerOutput::from);
-
-        Ok(output)
+        Ok(res)
     }
 }
