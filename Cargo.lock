@@ -4738,7 +4738,7 @@ dependencies = [
 [[package]]
 name = "pgp"
 version = "0.7.2"
-source = "git+https://github.com/sdbondi/rpgp.git?rev=f75a238a844909e46be9d5e0ac296a8bd82cf268#f75a238a844909e46be9d5e0ac296a8bd82cf268"
+source = "git+https://github.com/tari-project/rpgp.git?rev=32939dbe86565d5ede769a7907ec42dfdf353849#32939dbe86565d5ede769a7907ec42dfdf353849"
 dependencies = [
  "aes 0.7.5",
  "base64 0.13.0",
