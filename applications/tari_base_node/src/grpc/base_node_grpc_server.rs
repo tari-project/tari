@@ -47,7 +47,7 @@ use tari_core::{
     consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
-    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, DifficultyAdjustment, PowAlgorithm},
+    proof_of_work::PowAlgorithm,
     transactions::transaction_components::Transaction,
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
@@ -59,6 +59,7 @@ use crate::{
     builder::BaseNodeContext,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
 };
@@ -81,10 +82,6 @@ const LIST_HEADERS_PAGE_SIZE: usize = 10;
 const LIST_HEADERS_DEFAULT_NUM_HEADERS: u64 = 10;
 
 const BLOCK_TIMING_MAX_BLOCKS: u64 = 10_000;
-
-// The number of past blocks to be used on moving averages of estimated hashrate
-const SHA3_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
-const MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 15;
 
 pub struct BaseNodeGrpcServer {
     node_service: LocalNodeCommsInterface,
@@ -157,26 +154,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
-        let rules = self.consensus_rules.clone();
-        let mut sha3_hash_rate_lwma = LinearWeightedMovingAverage::new(
-            SHA3_HASH_RATE_MOVING_AVERAGE_WINDOW,
-            rules
-                .consensus_constants(start_height)
-                .get_diff_target_block_interval(PowAlgorithm::Sha3),
-            rules
-                .consensus_constants(start_height)
-                .get_difficulty_max_block_interval(PowAlgorithm::Sha3),
-        );
-
-        let mut monero_hash_rate_lwma = LinearWeightedMovingAverage::new(
-            MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW,
-            rules
-                .consensus_constants(start_height)
-                .get_diff_target_block_interval(PowAlgorithm::Monero),
-            rules
-                .consensus_constants(start_height)
-                .get_difficulty_max_block_interval(PowAlgorithm::Monero),
-        );
+        let mut sha3_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone(), start_height);
+        let mut monero_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone(), start_height);
 
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
@@ -201,49 +182,21 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                let mut headers_iter = headers.iter().peekable();
-
-                while let Some(chain_header) = headers_iter.next() {
+                for chain_header in headers.iter() {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty.as_u64();
                     let current_timestamp = chain_header.header().timestamp.as_u64();
                     let current_height = chain_header.header().height;
                     let pow_algo = chain_header.header().pow.pow_algo;
 
-                    let estimated_hash_rate = headers_iter
-                        .peek()
-                        .map(|chain_header| chain_header.header().timestamp.as_u64())
-                        .and_then(|peeked_timestamp| {
-                            // Sometimes blocks can have the same timestamp, lucky miner and some
-                            // clock drift.
-                            peeked_timestamp
-                                .checked_sub(current_timestamp)
-                                .filter(|td| *td > 0)
-                                .map(|time_diff| current_timestamp / time_diff)
-                        })
-                        .unwrap_or(0);
-
-                    let hash_rate_lwma = match pow_algo {
-                        PowAlgorithm::Monero => &mut monero_hash_rate_lwma,
-                        PowAlgorithm::Sha3 => &mut sha3_hash_rate_lwma,
+                    match pow_algo {
+                        PowAlgorithm::Monero => monero_hash_rate_moving_average.add(chain_header),
+                        PowAlgorithm::Sha3 => sha3_hash_rate_moving_average.add(chain_header),
                     };
-                    let target_difficulty = chain_header.accumulated_data().target_difficulty;
-                    let target_time = rules
-                        .consensus_constants(start_height)
-                        .get_diff_target_block_interval(pow_algo);
-                    hash_rate_lwma.add_back(chain_header.header().timestamp, target_difficulty / target_time);
-
-                    let sha3_estimated_hash_rate = sha3_hash_rate_lwma
-                        .get_difficulty()
-                        .map(Difficulty::as_u64)
-                        .unwrap_or(0);
-                    let monero_estimated_hash_rate = monero_hash_rate_lwma
-                        .get_difficulty()
-                        .map(Difficulty::as_u64)
-                        .unwrap_or(0);
+                    let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.get_hash_rate();
+                    let monero_estimated_hash_rate = monero_hash_rate_moving_average.get_hash_rate();
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty,
-                        estimated_hash_rate,
                         sha3_estimated_hash_rate,
                         monero_estimated_hash_rate,
                         height: current_height,
