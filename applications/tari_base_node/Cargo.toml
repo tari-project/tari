@@ -34,6 +34,7 @@ crossterm = { version = "0.23.1", features = ["event-stream"] }
 derive_more = "0.99.17"
 either = "1.6.1"
 futures = { version = "^0.3.16", default-features = false, features = ["alloc"] }
+qrcode = { version = "0.12" }
 log = { version = "0.4.8", features = ["std"] }
 log-mdc = "0.1.0"
 num_cpus = "1"

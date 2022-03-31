@@ -80,13 +80,14 @@ impl CliLoop {
     pub async fn cli_loop(mut self) {
         cli::print_banner(self.commands.clone(), 3);
 
-        // TODO: Check for a new version here
-        while !self.done {
-            self.watch_loop().await;
-            if self.non_interactive {
-                break;
+        if self.non_interactive {
+            self.watch_loop_non_interactive().await;
+        } else {
+            // TODO: Check for a new version here
+            while !self.done {
+                self.watch_loop().await;
+                self.execute_command().await;
             }
-            self.execute_command().await;
         }
     }
 
@@ -160,6 +161,36 @@ impl CliLoop {
                     crossterm::execute!(io::stdout(), cursor::MoveToNextLine(1)).ok();
                 }
                 terminal::disable_raw_mode().ok();
+            }
+        }
+    }
+
+    async fn watch_loop_non_interactive(&mut self) {
+        if let Some(command) = self.watch_task.take() {
+            let mut interrupt = signal::ctrl_c().fuse().boxed();
+            let config = self.context.config.clone();
+            let line = command.line();
+            let interval = command
+                .interval
+                .map(Duration::from_secs)
+                .unwrap_or(config.base_node_status_line_interval);
+            if let Err(err) = self.context.handle_command_str(line).await {
+                println!("Wrong command to watch `{}`. Failed with: {}", line, err);
+            } else {
+                loop {
+                    let interval = time::sleep(interval);
+                    tokio::select! {
+                        _ = interval => {
+                            if let Err(err) = self.context.handle_command_str(line).await {
+                                println!("Watched command `{}` failed: {}", line, err);
+                            }
+                            continue;
+                        },
+                        _ = &mut interrupt => {
+                            break;
+                        }
+                    }
+                }
             }
         }
     }

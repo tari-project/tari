@@ -19,7 +19,7 @@ async function main() {
       description: "Seed words to use during recovery",
       type: "string",
       default:
-        "cactus pool fuel skull chair casino season disorder flat crash wrist whisper decorate narrow oxygen remember minor among happy cricket embark blue ship sick",
+        "parade jelly sample worth bind release forest snack job mobile divide ranch fee raccoon begin awful source thank check leaf vibrant stove material field",
     })
     .option("log", {
       alias: "l",
