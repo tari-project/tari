@@ -191,13 +191,7 @@ impl Controller {
         }
     }
 
-    pub fn should_we_update_job(
-        &mut self,
-        height: u64,
-        job_id: u64,
-        diff: u64,
-        blob: Vec<u8>,
-    ) -> Result<bool, Error> {
+    pub fn should_we_update_job(&mut self, height: u64, job_id: u64, diff: u64, blob: Vec<u8>) -> Result<bool, Error> {
         if height != self.current_height ||
             job_id != self.current_job_id ||
             diff != self.current_difficulty_target ||
