@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    convert::{TryFrom, TryInto},
-    net::SocketAddr,
-};
+use std::{convert::TryFrom, net::SocketAddr};
 
 use async_trait::async_trait;
 use log::*;
@@ -92,11 +89,11 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         }
         let output = outputs
             .first()
-            .map(|o| match o.features.clone().unwrap().try_into() {
-                Ok(f) => Ok(BaseLayerOutput { features: f }),
-                Err(e) => Err(DigitalAssetError::ConversionError(e)),
-            })
-            .transpose()?;
+            .and_then(|o| o.features.clone())
+            .map(OutputFeatures::try_from)
+            .transpose()
+            .map_err(DigitalAssetError::ConversionError)?
+            .map(BaseLayerOutput::from);
         Ok(output)
     }
 
