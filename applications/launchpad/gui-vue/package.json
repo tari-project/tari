@@ -20,7 +20,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^1.0.0-beta.10",
-    "@vue/cli-plugin-babel": "^5.4.0",
+    "@vue/cli-plugin-babel": "^5.0.4",
     "@vue/cli-plugin-eslint": "^5.0.4",
     "@vue/cli-service": "^5.0.4",
     "@vue/compiler-sfc": "^3.0.0",
