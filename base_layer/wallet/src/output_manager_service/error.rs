@@ -165,14 +165,14 @@ pub enum OutputManagerStorageError {
     DieselConnectionError(#[from] diesel::ConnectionError),
     #[error("Database migration error: `{0}`")]
     DatabaseMigrationError(String),
-    #[error("Blocking task spawn error: `{0}`")]
-    BlockingTaskSpawnError(String),
     #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
     #[error("Aead error: `{0}`")]
     AeadError(String),
+    #[error("Tried to insert a script that already exists in the database")]
+    DuplicateScript,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]

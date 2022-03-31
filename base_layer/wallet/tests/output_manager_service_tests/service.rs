@@ -1867,7 +1867,7 @@ async fn test_txo_revalidation() {
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
     oms.output_manager_handle
-        .add_output_with_tx_id(1.into(), output1.clone(), None)
+        .add_output_with_tx_id(TxId::from(1), output1.clone(), None)
         .await
         .unwrap();
 
@@ -1881,7 +1881,7 @@ async fn test_txo_revalidation() {
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
     oms.output_manager_handle
-        .add_output_with_tx_id(2.into(), output2.clone(), None)
+        .add_output_with_tx_id(TxId::from(2), output2.clone(), None)
         .await
         .unwrap();
 
@@ -2026,14 +2026,17 @@ async fn test_get_status_by_tx_id() {
         .await
         .unwrap();
 
-    let (status, _, _) = oms
+    let output_statuses_by_tx_id = oms
         .output_manager_handle
         .get_output_statuses_by_tx_id(TxId::from(1u64))
         .await
         .unwrap();
 
-    assert_eq!(status.len(), 1);
-    assert_eq!(status[0], OutputStatus::EncumberedToBeReceived);
+    assert_eq!(output_statuses_by_tx_id.statuses.len(), 1);
+    assert_eq!(
+        output_statuses_by_tx_id.statuses[0],
+        OutputStatus::EncumberedToBeReceived
+    );
 }
 
 #[tokio::test]
