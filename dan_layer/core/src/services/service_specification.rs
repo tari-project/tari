@@ -43,7 +43,7 @@ use crate::{
 /// A trait to describe a specific configuration of services. This type allows other services to
 /// simply reference types.
 /// This trait is intended to only include `types` and no methods.
-pub trait ServiceSpecification: Clone {
+pub trait ServiceSpecification: Default + Clone {
     type Addr: NodeAddressable;
     type AssetProcessor: AssetProcessor + Clone + Sync + Send + 'static;
     type AssetProxy: AssetProxy + Clone + Sync + Send + 'static;
