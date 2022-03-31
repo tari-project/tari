@@ -36,7 +36,7 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::starting";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Synchronizing<TSpecification> {
     _spec: PhantomData<TSpecification>,
 }
@@ -128,11 +128,5 @@ impl<TSpecification: ServiceSpecification<Addr = CommsPublicKey>> Synchronizing<
         synchronizer.sync().await?;
 
         Ok(ConsensusWorkerStateEvent::Synchronized)
-    }
-}
-
-impl<TSpecification: ServiceSpecification> Default for Synchronizing<TSpecification> {
-    fn default() -> Self {
-        Self { _spec: PhantomData }
     }
 }

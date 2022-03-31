@@ -52,8 +52,8 @@ use crate::{
     },
 };
 
-#[derive(Clone)]
-pub struct DefaultServiceSpecification {}
+#[derive(Default, Clone)]
+pub struct DefaultServiceSpecification;
 
 impl ServiceSpecification for DefaultServiceSpecification {
     type Addr = PublicKey;
