@@ -31,6 +31,8 @@ service BaseNode {
     rpc ListHeaders(ListHeadersRequest) returns (stream BlockHeader);
     // Get header by hash
     rpc GetHeaderByHash(GetHeaderByHashRequest) returns (BlockHeaderResponse);
+    // Get header by height
+    rpc GetHeaderByHeight(GetHeaderByHeightRequest) returns (BlockHeaderResponse);
     // Returns blocks in the current best chain. Currently only supports querying by height
     rpc GetBlocks(GetBlocksRequest) returns (stream HistoricalBlock);
     // Returns the block timing for the chain heights
@@ -53,8 +55,12 @@ service BaseNode {
     rpc GetNewBlockTemplate(NewBlockTemplateRequest) returns (NewBlockTemplateResponse);
     // Construct a new block from a provided template
     rpc GetNewBlock(NewBlockTemplate) returns (GetNewBlockResult);
+    // Construct a new block and header blob from a provided template
+    rpc GetNewBlockBlob(NewBlockTemplate) returns (GetNewBlockBlobResult);
     // Submit a new block for propagation
     rpc SubmitBlock(Block) returns (SubmitBlockResponse);
+    // Submit a new mined block blob for propagation
+    rpc SubmitBlockBlob(BlockBlobRequest) returns (SubmitBlockResponse);
     // Submit a transaction for propagation
     rpc SubmitTransaction(SubmitTransactionRequest) returns (SubmitTransactionResponse);
     // Get the base node sync information
@@ -134,6 +140,11 @@ message GetTokensResponse {
 
 message SubmitBlockResponse {
     bytes block_hash = 1;
+}
+
+message BlockBlobRequest{
+    bytes header_blob = 1;
+    bytes body_blob = 2;
 }
 
 /// return type of GetTipInfo
@@ -243,6 +254,12 @@ message GetHeaderByHashRequest {
     bytes hash = 1;
 }
 
+// Request that returns a header based by height
+message GetHeaderByHeightRequest {
+    // The height of the block header
+    uint64 height = 1;
+}
+
 message BlockHeaderResponse {
     // The block header
     BlockHeader header = 1;
@@ -328,6 +345,18 @@ message GetNewBlockResult{
     // This is the completed block
     Block block = 2;
     bytes merge_mining_hash =3;
+}
+
+// This is the message that is returned for a miner after it asks for a new block.
+message GetNewBlockBlobResult{
+    // This is the header hash of the completed block
+    bytes block_hash = 1;
+    // This is the completed block's header
+    bytes header = 2;
+    // This is the completed block's body
+    bytes block_body = 3;
+    bytes merge_mining_hash =4;
+    bytes utxo_mr = 5;
 }
 
 // This is mining data for the miner asking for a new block

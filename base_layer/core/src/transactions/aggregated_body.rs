@@ -23,6 +23,8 @@ use std::{
     cmp::max,
     convert::TryInto,
     fmt::{Display, Error, Formatter},
+    io,
+    io::{Read, Write},
 };
 
 use log::*;
@@ -44,20 +46,23 @@ use tari_crypto::{
 };
 use tari_script::ScriptContext;
 
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    tari_amount::MicroTari,
-    transaction_components::{
-        KernelFeatures,
-        KernelSum,
-        OutputFlags,
-        Transaction,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeVec},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::MicroTari,
+        transaction_components::{
+            KernelFeatures,
+            KernelSum,
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
     },
-    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -557,5 +562,25 @@ impl Display for AggregateBody {
             writeln!(fmt, "{}", output)?;
         }
         Ok(())
+    }
+}
+
+impl ConsensusEncoding for AggregateBody {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.inputs.consensus_encode(writer)?;
+        written += self.outputs.consensus_encode(writer)?;
+        written += self.kernels.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for AggregateBody {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        const MAX_SIZE: usize = 50000;
+        let inputs = MaxSizeVec::<TransactionInput, MAX_SIZE>::consensus_decode(reader)?.into();
+        let outputs = MaxSizeVec::<TransactionOutput, MAX_SIZE>::consensus_decode(reader)?.into();
+        let kernels = MaxSizeVec::<TransactionKernel, MAX_SIZE>::consensus_decode(reader)?.into();
+        let body = AggregateBody::new(inputs, outputs, kernels);
+        Ok(body)
     }
 }
