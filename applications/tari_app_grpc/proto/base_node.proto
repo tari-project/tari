@@ -170,9 +170,11 @@ message NewBlockTemplateRequest{
 message NetworkDifficultyResponse {
     uint64 difficulty = 1;
     uint64 estimated_hash_rate = 2;
-    uint64 height = 3;
-    uint64 timestamp = 4;
-    uint64 pow_algo = 5;
+    uint64 sha3_estimated_hash_rate = 3;
+    uint64 monero_estimated_hash_rate = 4;
+    uint64 height = 5;
+    uint64 timestamp = 6;
+    uint64 pow_algo = 7;
 }
 
 // A generic single value response for a specific height
