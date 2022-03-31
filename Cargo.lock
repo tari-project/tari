@@ -7015,6 +7015,7 @@ dependencies = [
  "blake2",
  "bytecodec",
  "clap 2.34.0",
+ "derive_more",
  "digest 0.9.0",
  "futures 0.3.21",
  "lmdb-zero",

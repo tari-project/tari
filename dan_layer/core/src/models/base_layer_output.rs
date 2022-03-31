@@ -23,12 +23,13 @@
 //! A trait to allow abstraction from a specific base layer output
 use std::convert::TryFrom;
 
+use derive_more::From;
 use tari_common_types::types::PublicKey;
 use tari_core::transactions::transaction_components::{OutputFeatures, OutputFlags};
 
 use crate::{fixed_hash::FixedHash, models::ModelError};
 
-#[derive(Debug)]
+#[derive(Debug, From)]
 pub struct BaseLayerOutput {
     pub features: OutputFeatures,
 }

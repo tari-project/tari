@@ -20,12 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryInto, net::SocketAddr};
+use std::{
+    convert::{TryFrom, TryInto},
+    net::SocketAddr,
+};
 
 use async_trait::async_trait;
 use log::*;
 use tari_app_grpc::tari_rpc as grpc;
 use tari_common_types::types::{PublicKey, COMMITTEE_DEFINITION_ID};
+use tari_core::transactions::transaction_components::OutputFeatures;
 use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_core::{
     models::{AssetDefinition, BaseLayerMetadata, BaseLayerOutput},
@@ -157,11 +161,10 @@ impl BaseNodeClient for GrpcBaseNodeClient {
 
         let output = output
             .features
-            .map(|features| match features.try_into() {
-                Ok(f) => Ok(BaseLayerOutput { features: f }),
-                Err(e) => Err(DigitalAssetError::ConversionError(e)),
-            })
-            .transpose()?;
+            .map(OutputFeatures::try_from)
+            .transpose()
+            .map_err(DigitalAssetError::ConversionError)?
+            .map(BaseLayerOutput::from);
 
         Ok(output)
     }

@@ -26,6 +26,7 @@ anyhow = "1.0.53"
 async-trait = "0.1.50"
 blake2 = "0.9.2"
 clap = "2.33.3"
+derive_more = "0.99.17"
 digest = "0.9.0"
 futures = { version = "^0.3.1" }
 log = { version = "0.4.8", features = ["std"] }
