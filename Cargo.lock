@@ -1142,43 +1142,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "console-api"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc347c19eb5b940f396ac155822caee6662f850d97306890ac3773ed76c90c5a"
-dependencies = [
- "prost",
- "prost-types",
- "tonic",
- "tonic-build",
- "tracing-core",
-]
-
-[[package]]
-name = "console-subscriber"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "565a7dfea2d10dd0e5c57cc394d5d441b1910960d8c9211ed14135e0e6ec3a20"
-dependencies = [
- "console-api",
- "crossbeam-channel 0.5.4",
- "crossbeam-utils 0.8.8",
- "futures 0.3.21",
- "hdrhistogram",
- "humantime 2.1.0",
- "prost-types",
- "serde 1.0.136",
- "serde_json",
- "thread_local",
- "tokio 1.17.0",
- "tokio-stream",
- "tonic",
- "tracing",
- "tracing-core",
- "tracing-subscriber 0.3.9",
-]
-
-[[package]]
 name = "console_error_panic_hook"
 version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6912,7 +6875,6 @@ version = "0.30.2"
 dependencies = [
  "bitflags 1.3.2",
  "chrono",
- "console-subscriber",
  "crossterm 0.17.7",
  "digest 0.9.0",
  "futures 0.3.21",
@@ -7514,7 +7476,6 @@ dependencies = [
  "blake2",
  "chrono",
  "clear_on_drop",
- "console-subscriber",
  "crossbeam-channel 0.3.9",
  "derivative",
  "diesel",
@@ -7965,7 +7926,6 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
- "tracing",
  "winapi 0.3.9",
 ]
 

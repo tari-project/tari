@@ -103,8 +103,7 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn add_unspent_output(&self, output: DbUnblindedOutput) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
+        self.db.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutput(
             output.commitment.clone(),
             Box::new(output),
         )))?;
@@ -117,11 +116,11 @@ where T: OutputManagerBackend + 'static
         tx_id: TxId,
         output: DbUnblindedOutput,
     ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.write(WriteOperation::Insert(DbKeyValuePair::UnspentOutputWithTxId(
-            output.commitment.clone(),
-            (tx_id, Box::new(output)),
-        )))?;
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::UnspentOutputWithTxId(
+                output.commitment.clone(),
+                (tx_id, Box::new(output)),
+            )))?;
 
         Ok(())
     }
@@ -131,8 +130,7 @@ where T: OutputManagerBackend + 'static
         tx_id: TxId,
         output: DbUnblindedOutput,
     ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.add_unvalidated_output(output, tx_id)?;
+        self.db.add_unvalidated_output(output, tx_id)?;
 
         Ok(())
     }
@@ -143,11 +141,11 @@ where T: OutputManagerBackend + 'static
         output: DbUnblindedOutput,
         coinbase_block_height: Option<u64>,
     ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.write(WriteOperation::Insert(DbKeyValuePair::OutputToBeReceived(
-            output.commitment.clone(),
-            (tx_id, Box::new(output), coinbase_block_height),
-        )))?;
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::OutputToBeReceived(
+                output.commitment.clone(),
+                (tx_id, Box::new(output), coinbase_block_height),
+            )))?;
 
         Ok(())
     }
@@ -156,8 +154,7 @@ where T: OutputManagerBackend + 'static
         &self,
         current_tip_for_time_lock_calculation: Option<u64>,
     ) -> Result<Balance, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.get_balance(current_tip_for_time_lock_calculation)
+        self.db.get_balance(current_tip_for_time_lock_calculation)
     }
 
     /// This method is called when a transaction is built to be sent. It will encumber unspent outputs against a pending
@@ -168,29 +165,26 @@ where T: OutputManagerBackend + 'static
         outputs_to_send: Vec<DbUnblindedOutput>,
         outputs_to_receive: Vec<DbUnblindedOutput>,
     ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
+        self.db
+            .short_term_encumber_outputs(tx_id, &outputs_to_send, &outputs_to_receive)
     }
 
     /// This method is called when a transaction is finished being negotiated. This will fully encumber the outputs
     /// against a pending transaction.
     pub fn confirm_encumbered_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.confirm_encumbered_outputs(tx_id)
+        self.db.confirm_encumbered_outputs(tx_id)
     }
 
     /// Clear all pending transaction encumberances marked as short term. These are the result of an unfinished
     /// transaction negotiation
     pub fn clear_short_term_encumberances(&self) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.clear_short_term_encumberances()
+        self.db.clear_short_term_encumberances()
     }
 
     /// When a pending transaction is cancelled the encumbered outputs are moved back to the `unspent_outputs`
     /// collection.
     pub fn cancel_pending_transaction_outputs(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.cancel_pending_transaction(tx_id)
+        self.db.cancel_pending_transaction(tx_id)
     }
 
     /// Check if there is a pending coinbase transaction at this block height, if there is clear it.
@@ -198,8 +192,7 @@ where T: OutputManagerBackend + 'static
         &self,
         block_height: u64,
     ) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.clear_pending_coinbase_transaction_at_block_height(block_height)
+        self.db.clear_pending_coinbase_transaction_at_block_height(block_height)
     }
 
     pub fn fetch_all_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
@@ -215,8 +208,7 @@ where T: OutputManagerBackend + 'static
         &self,
         feature: OutputFlags,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.fetch_with_features(feature)
+        self.db.fetch_with_features(feature)
     }
 
     pub fn fetch_by_features_asset_public_key(
@@ -233,15 +225,14 @@ where T: OutputManagerBackend + 'static
         amount: MicroTari,
         tip_height: Option<u64>,
     ) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        let utxos = db_clone.fetch_unspent_outputs_for_spending(strategy, amount.as_u64(), tip_height)?;
+        let utxos = self
+            .db
+            .fetch_unspent_outputs_for_spending(strategy, amount.as_u64(), tip_height)?;
         Ok(utxos)
     }
 
     pub fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-
-        let uo = match db_clone.fetch(&DbKey::SpentOutputs) {
+        let uo = match self.db.fetch(&DbKey::SpentOutputs) {
             Ok(None) => log_error(
                 DbKey::SpentOutputs,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve spent outputs".to_string()),
@@ -254,21 +245,17 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        let utxos = db_clone.fetch_unconfirmed_outputs()?;
+        let utxos = self.db.fetch_unconfirmed_outputs()?;
         Ok(utxos)
     }
 
     pub fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        let utxos = db_clone.fetch_mined_unspent_outputs()?;
+        let utxos = self.db.fetch_mined_unspent_outputs()?;
         Ok(utxos)
     }
 
     pub fn get_timelocked_outputs(&self, tip: u64) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-
-        let uo = match db_clone.fetch(&DbKey::TimeLockedUnspentOutputs(tip)) {
+        let uo = match self.db.fetch(&DbKey::TimeLockedUnspentOutputs(tip)) {
             Ok(None) => log_error(
                 DbKey::UnspentOutputs,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve unspent outputs".to_string()),
@@ -281,9 +268,7 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn get_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-
-        let uo = match db_clone.fetch(&DbKey::InvalidOutputs) {
+        let uo = match self.db.fetch(&DbKey::InvalidOutputs) {
             Ok(None) => log_error(
                 DbKey::InvalidOutputs,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve invalid outputs".to_string()),
@@ -296,36 +281,29 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn update_output_metadata_signature(&self, output: TransactionOutput) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.update_output_metadata_signature(&output)
+        self.db.update_output_metadata_signature(&output)
     }
 
     pub fn revalidate_output(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.revalidate_unspent_output(&commitment)
+        self.db.revalidate_unspent_output(&commitment)
     }
 
     pub fn reinstate_cancelled_inbound_output(&self, tx_id: TxId) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.reinstate_cancelled_inbound_output(tx_id)
+        self.db.reinstate_cancelled_inbound_output(tx_id)
     }
 
     pub fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.apply_encryption(cipher)
+        self.db.apply_encryption(cipher)
     }
 
     pub fn remove_encryption(&self) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.remove_encryption()
+        self.db.remove_encryption()
     }
 
     pub fn get_all_known_one_sided_payment_scripts(
         &self,
     ) -> Result<Vec<KnownOneSidedPaymentScript>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-
-        let scripts = match db_clone.fetch(&DbKey::KnownOneSidedPaymentScripts) {
+        let scripts = match self.db.fetch(&DbKey::KnownOneSidedPaymentScripts) {
             Ok(None) => log_error(
                 DbKey::KnownOneSidedPaymentScripts,
                 OutputManagerStorageError::UnexpectedResult("Could not retrieve known scripts".to_string()),
@@ -338,9 +316,7 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn get_unspent_output(&self, output: HashOutput) -> Result<DbUnblindedOutput, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-
-        let uo = match db_clone.fetch(&DbKey::UnspentOutputHash(output.clone())) {
+        let uo = match self.db.fetch(&DbKey::UnspentOutputHash(output.clone())) {
             Ok(None) => log_error(
                 DbKey::UnspentOutputHash(output.clone()),
                 OutputManagerStorageError::UnexpectedResult(
@@ -363,17 +339,19 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn add_known_script(&self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        db_clone.write(WriteOperation::Insert(DbKeyValuePair::KnownOneSidedPaymentScripts(
-            known_script,
-        )))?;
+        self.db
+            .write(WriteOperation::Insert(DbKeyValuePair::KnownOneSidedPaymentScripts(
+                known_script,
+            )))?;
 
         Ok(())
     }
 
     pub fn remove_output_by_commitment(&self, commitment: Commitment) -> Result<(), OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        match db_clone.write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone()))) {
+        match self
+            .db
+            .write(WriteOperation::Remove(DbKey::AnyOutputByCommitment(commitment.clone())))
+        {
             Ok(None) => Ok(()),
             Ok(Some(DbValue::AnyOutput(_))) => Ok(()),
             Ok(Some(other)) => unexpected_result(DbKey::AnyOutputByCommitment(commitment), other),
@@ -432,8 +410,7 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let db_clone = self.db.clone();
-        let outputs = db_clone.fetch_outputs_by_tx_id(tx_id)?;
+        let outputs = self.db.fetch_outputs_by_tx_id(tx_id)?;
         Ok(outputs)
     }
 }

@@ -75,8 +75,8 @@ pub mod wallet_modes;
 
 /// Application entry point
 fn main() {
-    // Uncomment to enable tokio tracing
-    console_subscriber::init();
+    // Uncomment to enable tokio tracing via tokio-console
+    // console_subscriber::init();
 
     match main_inner() {
         Ok(_) => process::exit(0),

@@ -64,7 +64,7 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
-    // Uncomment to enable tokio tracing
+    // Uncomment to enable tokio tracing via tokio-console
     // console_subscriber::init();
 
     if let Err(err) = main_inner() {
