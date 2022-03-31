@@ -314,6 +314,7 @@ Feature: Wallet Transactions
     Then I restart wallet WALLET_RECV
     Then I wait for wallet WALLET_RECV to have at least 1000000 uT
 
+@critical
   Scenario: Wallet should cancel stale transactions
     Given I have a seed node NODE
     And I have 1 base nodes connected to all seed nodes
