@@ -78,7 +78,7 @@ use crate::{
     storage::database::{WalletBackend, WalletDatabase},
     transaction_service::{
         config::TransactionServiceConfig,
-        error::{TransactionServiceError, TransactionServiceProtocolError},
+        error::{TransactionServiceError, TransactionServiceProtocolError, TransactionStorageError},
         handle::{TransactionEvent, TransactionEventSender, TransactionServiceRequest, TransactionServiceResponse},
         protocols::{
             transaction_broadcast_protocol::TransactionBroadcastProtocol,
@@ -878,7 +878,6 @@ where
             None,
             self.last_seen_tip_height,
         );
-
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
@@ -1540,6 +1539,12 @@ where
                     "A repeated Transaction (TxId: {}) has been received but has been previously cancelled or rejected",
                     tx.tx_id
                 );
+                tokio::spawn(send_transaction_cancelled_message(
+                    tx.tx_id,
+                    source_pubkey,
+                    self.resources.outbound_message_service.clone(),
+                ));
+
                 return Ok(());
             }
 
@@ -1682,6 +1687,21 @@ where
                             Some(s) => s,
                         }
                     },
+                    Err(TransactionStorageError::ValueNotFound(_)) => {
+                        info!(
+                            target: LOG_TARGET,
+                            "Received Finalized Transaction for an unknown pending Inbound Transaction (TxId: {}). \
+                             Sending cancel transaction to to notify sender we are not continuing with this tx.",
+                            tx_id
+                        );
+                        tokio::spawn(send_transaction_cancelled_message(
+                            tx_id,
+                            source_pubkey.clone(),
+                            self.resources.outbound_message_service.clone(),
+                        ));
+                        return Err(TransactionServiceError::TransactionDoesNotExistError);
+                    },
+
                     Err(_) => return Err(TransactionServiceError::TransactionDoesNotExistError),
                 }
             },
