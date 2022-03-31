@@ -77,20 +77,19 @@ impl Controller {
     }
 
     pub fn try_connect(&mut self) -> Result<(), Error> {
-        self.stream = Some(Stream::new());
-        self.stream
-            .as_mut()
-            .unwrap()
-            .try_connect(&self.server_url, self.server_tls_enabled)?;
+        self.stream = None;
+        let stream = Stream::try_connect(&self.server_url, self.server_tls_enabled)?;
+        self.stream = Some(stream);
         Ok(())
     }
 
+    fn stream(&mut self) -> Result<&mut Stream, Error> {
+        self.stream.as_mut().ok_or(Error::NotConnected)
+    }
+
     fn read_message(&mut self) -> Result<Option<String>, Error> {
-        if self.stream.is_none() {
-            return Err(Error::Connection("broken pipe".to_string()));
-        }
         let mut line = String::new();
-        match self.stream.as_mut().unwrap().read_line(&mut line) {
+        match self.stream()?.read_line(&mut line) {
             Ok(_) => {
                 // stream is not returning a proper error on disconnect
                 if line.is_empty() {
@@ -108,13 +107,11 @@ impl Controller {
     }
 
     fn send_message(&mut self, message: &str) -> Result<(), Error> {
-        if self.stream.is_none() {
-            return Err(Error::Connection(String::from("No server connection")));
-        }
+        let stream = self.stream()?;
         debug!(target: LOG_TARGET_FILE, "sending request: {}", message);
-        let _ = self.stream.as_mut().unwrap().write(message.as_bytes());
-        let _ = self.stream.as_mut().unwrap().write(b"\n");
-        let _ = self.stream.as_mut().unwrap().flush();
+        stream.write_all(message.as_bytes())?;
+        stream.write_all(b"\n")?;
+        stream.flush()?;
         Ok(())
     }
 
@@ -201,21 +198,21 @@ impl Controller {
     fn send_miner_job(&mut self, job: types::job_params::JobParams) -> Result<(), Error> {
         let miner_message = types::miner_message::MinerMessage::ReceivedJob(
             job.height,
-            job.job_id.parse::<u64>().unwrap(),
-            job.target.parse::<u64>().unwrap(),
+            job.job_id.parse::<u64>()?,
+            job.target.parse::<u64>()?,
             job.blob,
         );
-        self.miner_tx.send(miner_message).map_err(|e| e.into())
+        self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
     fn send_miner_stop(&mut self) -> Result<(), Error> {
         let miner_message = types::miner_message::MinerMessage::StopJob;
-        self.miner_tx.send(miner_message).map_err(|e| e.into())
+        self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
     fn send_miner_resume(&mut self) -> Result<(), Error> {
         let miner_message = types::miner_message::MinerMessage::ResumeJob;
-        self.miner_tx.send(miner_message).map_err(|e| e.into())
+        self.miner_tx.send(miner_message).map_err(Error::from)
     }
 
     pub fn handle_request(&mut self, req: types::rpc_request::RpcRequest) -> Result<(), Error> {

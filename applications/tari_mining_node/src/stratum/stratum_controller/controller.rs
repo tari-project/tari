@@ -27,7 +27,11 @@ use log::*;
 use tari_app_grpc::tari_rpc::BlockHeader;
 use tari_utilities::{hex::Hex, Hashable};
 
-use crate::{display_report, miner::Miner, stratum, stratum::stratum_types as types};
+use crate::{
+    display_report,
+    miner::Miner,
+    stratum::{error::Error, stratum_types as types},
+};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
@@ -55,7 +59,7 @@ impl Controller {
             current_height: 0,
             current_job_id: 0,
             current_difficulty_target: 0,
-            current_blob: "".to_string(),
+            current_blob: String::new(),
             current_header: None,
             keep_alive_time: SystemTime::now(),
             num_mining_threads,
@@ -66,7 +70,7 @@ impl Controller {
         self.client_tx = Some(client_tx);
     }
 
-    pub async fn run(&mut self) -> Result<(), stratum::error::Error> {
+    pub async fn run(&mut self) -> Result<(), Error> {
         let mut miner: Option<Miner> = None;
         loop {
             // dbg!(&miner.is_some());
@@ -81,7 +85,7 @@ impl Controller {
                                     let header = self
                                         .current_header
                                         .clone()
-                                        .ok_or_else(|| stratum::error::Error::MissingData("Header".to_string()))?;
+                                        .ok_or_else(|| Error::MissingData("Header".to_string()))?;
                                     if let Some(acive_miner) = miner.as_mut() {
                                         acive_miner.kill_threads();
                                     }
@@ -142,8 +146,7 @@ impl Controller {
                         if submit {
                             // Mined a block fitting the difficulty
                             let block_header: tari_core::blocks::BlockHeader =
-                                tari_core::blocks::BlockHeader::try_from(header)
-                                    .map_err(stratum::error::Error::MissingData)?;
+                                tari_core::blocks::BlockHeader::try_from(header).map_err(Error::MissingData)?;
                             let hash = block_header.hash().to_hex();
                             info!(
                                 target: LOG_TARGET,
@@ -161,7 +164,7 @@ impl Controller {
                             );
                             self.client_tx
                                 .as_mut()
-                                .ok_or_else(|| stratum::error::Error::Connection("No connection to pool".to_string()))?
+                                .ok_or_else(|| Error::Connection("No connection to pool".to_string()))?
                                 .send(types::client_message::ClientMessage::FoundSolution(
                                     self.current_job_id,
                                     hash,
@@ -177,24 +180,17 @@ impl Controller {
                     }
                 }
             }
-            if self.keep_alive_time.elapsed().unwrap().as_secs() >= 30 {
+            if self.keep_alive_time.elapsed()?.as_secs() >= 30 {
                 self.keep_alive_time = SystemTime::now();
-                let _ = self
-                    .client_tx
+                self.client_tx
                     .as_mut()
-                    .unwrap()
-                    .send(types::client_message::ClientMessage::KeepAlive);
+                    .ok_or(Error::ClientTxNotSet)?
+                    .send(types::client_message::ClientMessage::KeepAlive)?;
             }
         }
     }
 
-    pub fn should_we_update_job(
-        &mut self,
-        height: u64,
-        job_id: u64,
-        diff: u64,
-        blob: String,
-    ) -> Result<bool, stratum::error::Error> {
+    pub fn should_we_update_job(&mut self, height: u64, job_id: u64, diff: u64, blob: String) -> Result<bool, Error> {
         if height != self.current_height ||
             job_id != self.current_job_id ||
             diff != self.current_difficulty_target ||
@@ -204,8 +200,7 @@ impl Controller {
             self.current_job_id = job_id;
             self.current_blob = blob.clone();
             self.current_difficulty_target = diff;
-            let header_hex = hex::decode(blob)
-                .map_err(|_| stratum::error::Error::Json("Blob is not a valid hex value".to_string()))?;
+            let header_hex = hex::decode(blob)?;
             let tari_header: tari_core::blocks::BlockHeader =
                 serde_json::from_str(&String::from_utf8_lossy(&header_hex).to_string())?;
             self.current_header = Some(tari_app_grpc::tari_rpc::BlockHeader::from(tari_header));
