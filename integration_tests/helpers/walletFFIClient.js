@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const SeedWords = require("./ffi/seedWords");
 const TransportType = require("./ffi/transportType");
 const CommsConfig = require("./ffi/commsConfig");

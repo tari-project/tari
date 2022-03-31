@@ -77,6 +77,7 @@ use crate::{
             OutputManagerRequest,
             OutputManagerResponse,
             PublicRewindKeys,
+            RecoveredOutput,
         },
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
@@ -133,13 +134,13 @@ where
         db.clear_short_term_encumberances().await?;
         Self::initialise_key_manager(&key_manager).await?;
         let rewind_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
             .await?;
         let rewind_blinding_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
         let recovery_byte_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
             rewind_key,
@@ -170,28 +171,30 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager.add_new_branch(OutputManagerKeyManagerBranch::Spend).await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase)
+            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly)
+            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
+            .await?;
+        key_manager
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
             .await?;
         match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => Err(OutputManagerError::TariKeyManagerError(e)),
+            Err(e) => Err(OutputManagerError::KeyManagerServiceError(e)),
         }
     }
 
@@ -417,20 +420,26 @@ where
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::CalculateRecoveryByte { spending_key, value } => Ok(
-                OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(spending_key, value)?),
-            ),
-            OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
+            OutputManagerRequest::CalculateRecoveryByte {
+                spending_key,
+                value,
+                with_rewind_data,
+            } => Ok(OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(
+                spending_key,
+                value,
+                with_rewind_data,
+            )?)),
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs, tx_id)
+            .scan_and_recover_outputs(outputs)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs { outputs, tx_id } => self
-                .scan_outputs_for_one_sided_payments(outputs, tx_id)
+            OutputManagerRequest::ScanOutputs(outputs) => self
+                .scan_outputs_for_one_sided_payments(outputs)
                 .await
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
@@ -592,9 +601,19 @@ where
         self.validate_outputs()
     }
 
-    pub fn calculate_recovery_byte(&mut self, spending_key: PrivateKey, value: u64) -> Result<u8, OutputManagerError> {
+    pub fn calculate_recovery_byte(
+        &mut self,
+        spending_key: PrivateKey,
+        value: u64,
+        with_rewind_data: bool,
+    ) -> Result<u8, OutputManagerError> {
         let commitment = self.resources.factories.commitment.commit_value(&spending_key, value);
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(&self.resources.rewind_data));
+        let rewind_data = if with_rewind_data {
+            Some(&self.resources.rewind_data)
+        } else {
+            None
+        };
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
         Ok(recovery_byte)
     }
 
@@ -700,12 +719,15 @@ where
         let result = self
             .resources
             .master_key_manager
-            .get_next_key(OutputManagerKeyManagerBranch::Spend)
+            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         let script_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, result.index)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                result.index,
+            )
             .await?;
         Ok((result.key, script_key))
     }
@@ -1033,12 +1055,15 @@ where
         let spending_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.to_string(), block_height)
+            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.get_branch_key(), block_height)
             .await?;
         let script_private_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript.to_string(), block_height)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                block_height,
+            )
             .await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
@@ -1325,7 +1350,7 @@ where
         }
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64())?;
+        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
         let output_features = OutputFeatures {
             recovery_byte,
             unique_id: unique_id.clone(),
@@ -1671,7 +1696,7 @@ where
             let output_amount = amount_per_split;
 
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64())?;
+            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64(), true)?;
             let output_features = OutputFeatures {
                 recovery_byte,
                 ..Default::default()
@@ -2006,12 +2031,11 @@ where
     async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
             self.resources.db.get_all_known_one_sided_payment_scripts().await?;
 
-        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
+        let mut rewound_outputs: Vec<RecoveredOutput> = Vec::new();
         for output in outputs {
             let position = known_one_sided_payment_scripts
                 .iter()
@@ -2062,9 +2086,14 @@ where
                     )?;
 
                     let output_hex = output.commitment.to_hex();
+                    let tx_id = TxId::new_random();
+
                     match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                         Ok(_) => {
-                            rewound_outputs.push(rewound_output);
+                            rewound_outputs.push(RecoveredOutput {
+                                output: rewound_output,
+                                tx_id,
+                            });
                         },
                         Err(OutputManagerStorageError::DuplicateOutput) => {
                             warn!(

@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const { Given, When, Then } = require("@cucumber/cucumber");
 const expect = require("chai").expect;
 

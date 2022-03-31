@@ -35,6 +35,7 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::next_view";
 
+#[derive(Default)]
 pub struct NextViewState<TSpecification> {
     _spec: PhantomData<TSpecification>,
 }
@@ -80,11 +81,5 @@ impl<TSpecification: ServiceSpecification> NextViewState<TSpecification> {
             broadcast.send(node_id, leader.clone(), message).await?;
             Ok(ConsensusWorkerStateEvent::NewView { new_view: next_view })
         }
-    }
-}
-
-impl<TSpecification: ServiceSpecification> Default for NextViewState<TSpecification> {
-    fn default() -> Self {
-        Self { _spec: PhantomData }
     }
 }

@@ -188,6 +188,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
         mut client: rpc::BaseNodeSyncRpcClient,
         max_latency: Duration,
     ) -> Result<(), BlockSyncError> {
+        info!(target: LOG_TARGET, "Starting block sync from peer {}", sync_peer);
         self.hooks.call_on_starting_hook();
 
         let tip_header = self.db.fetch_last_header().await?;
@@ -320,7 +321,7 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 .await?;
 
             // Average time between receiving blocks from the peer - used to detect a slow sync peer
-            let last_avg_latency = avg_latency.calculate_average();
+            let last_avg_latency = avg_latency.calculate_average_with_min_samples(5);
             if let Some(latency) = last_avg_latency {
                 sync_peer.set_latency(latency);
             }
@@ -342,12 +343,14 @@ impl<B: BlockchainBackend + 'static> BlockSynchronizer<B> {
                 block.accumulated_data().accumulated_sha_difficulty,
                 latency
             );
-            if last_avg_latency.map(|avg| avg > max_latency).unwrap_or(false) {
-                return Err(BlockSyncError::MaxLatencyExceeded {
-                    peer: sync_peer.node_id().clone(),
-                    latency,
-                    max_latency,
-                });
+            if let Some(avg_latency) = last_avg_latency {
+                if avg_latency > max_latency {
+                    return Err(BlockSyncError::MaxLatencyExceeded {
+                        peer: sync_peer.node_id().clone(),
+                        latency: avg_latency,
+                        max_latency,
+                    });
+                }
             }
 
             current_block = Some(block);

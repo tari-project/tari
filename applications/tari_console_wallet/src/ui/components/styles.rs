@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use tui::style::{Color, Modifier, Style};
 
 pub fn header_row() -> Style {

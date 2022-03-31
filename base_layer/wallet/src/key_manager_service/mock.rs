@@ -35,7 +35,7 @@ const LOG_TARGET: &str = "wallet::Key_manager_mock";
 const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 use std::{collections::HashMap, sync::Arc};
 
-use crate::key_manager_service::{error::KeyManagerError, storage::database::KeyManagerState};
+use crate::key_manager_service::{error::KeyManagerServiceError, storage::database::KeyManagerState};
 
 #[derive(Clone)]
 pub struct KeyManagerMock {
@@ -53,7 +53,7 @@ impl KeyManagerMock {
 }
 
 impl KeyManagerMock {
-    pub async fn add_key_manager_mock(&self, branch: String) -> Result<AddResult, KeyManagerError> {
+    pub async fn add_key_manager_mock(&self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
         let result = if self.key_managers.read().await.contains_key(&branch) {
             AddResult::AlreadyExists
         } else {
@@ -75,9 +75,9 @@ impl KeyManagerMock {
         Ok(result)
     }
 
-    pub async fn get_next_key_mock(&self, branch: String) -> Result<NextKeyResult, KeyManagerError> {
+    pub async fn get_next_key_mock(&self, branch: String) -> Result<NextKeyResult, KeyManagerServiceError> {
         let mut lock = self.key_managers.write().await;
-        let km = lock.get_mut(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
+        let km = lock.get_mut(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let key = km.next_key()?;
         Ok(NextKeyResult {
             key: key.k,
@@ -85,17 +85,21 @@ impl KeyManagerMock {
         })
     }
 
-    pub async fn get_key_at_index_mock(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
+    pub async fn get_key_at_index_mock(
+        &self,
+        branch: String,
+        index: u64,
+    ) -> Result<PrivateKey, KeyManagerServiceError> {
         let lock = self.key_managers.read().await;
-        let km = lock.get(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
+        let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let key = km.derive_key(index)?;
         Ok(key.k)
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index_mock(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
+    pub async fn find_key_index_mock(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
         let lock = self.key_managers.read().await;
-        let km = lock.get(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
+        let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
 
         let current_index = km.key_index();
 
@@ -106,7 +110,7 @@ impl KeyManagerMock {
             }
         }
 
-        Err(KeyManagerError::KeyNotFoundInKeyChain)
+        Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
     }
 
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
@@ -114,9 +118,9 @@ impl KeyManagerMock {
         &self,
         branch: String,
         index: u64,
-    ) -> Result<(), KeyManagerError> {
+    ) -> Result<(), KeyManagerServiceError> {
         let lock = self.key_managers.write().await;
-        let km = lock.get(&branch).ok_or(KeyManagerError::UnknownKeyBranch)?;
+        let km = lock.get(&branch).ok_or(KeyManagerServiceError::UnknownKeyBranch)?;
         let current_index = km.key_index();
         if index > current_index {
             // km.update_key_index(index);
@@ -128,11 +132,11 @@ impl KeyManagerMock {
 
 #[async_trait::async_trait]
 impl KeyManagerInterface for KeyManagerMock {
-    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError> {
+    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         self.add_key_manager_mock(branch.into()).await
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError> {
         self.get_next_key_mock(branch.into()).await
     }
 
@@ -140,15 +144,15 @@ impl KeyManagerInterface for KeyManagerMock {
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerError> {
+    ) -> Result<PrivateKey, KeyManagerServiceError> {
         self.get_key_at_index_mock(branch.into(), index).await
     }
 
-    async fn apply_encryption(&self, _cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+    async fn apply_encryption(&self, _cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
         unimplemented!("Not supported");
     }
 
-    async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+    async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
         unimplemented!("Not supported");
     }
 
@@ -156,7 +160,7 @@ impl KeyManagerInterface for KeyManagerMock {
         &self,
         branch: T,
         key: &PrivateKey,
-    ) -> Result<u64, KeyManagerError> {
+    ) -> Result<u64, KeyManagerServiceError> {
         self.find_key_index_mock(branch.into(), key).await
     }
 
@@ -164,7 +168,7 @@ impl KeyManagerInterface for KeyManagerMock {
         &self,
         branch: T,
         index: u64,
-    ) -> Result<(), KeyManagerError> {
+    ) -> Result<(), KeyManagerServiceError> {
         self.update_current_key_index_if_higher_mock(branch.into(), index).await
     }
 }

@@ -34,7 +34,7 @@ use crate::commands::status_line::{StatusLine, StatusLineOutput};
 /// Prints out the status of this node
 #[derive(Debug, Parser)]
 pub struct Args {
-    #[clap(default_value_t = StatusLineOutput::StdOutAndLog)]
+    #[clap(short, long, default_value_t = StatusLineOutput::StdOutAndLog)]
     output: StatusLineOutput,
 }
 

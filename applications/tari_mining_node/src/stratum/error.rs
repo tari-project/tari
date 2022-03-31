@@ -20,20 +20,41 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-#[derive(Debug)]
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("Connection error: {0}")]
     Connection(String),
+    #[error("Request error: {0}")]
     Request(String),
     // ResponseError(String),
-    Json(String),
-    General(String),
-    MissingData(String),
-}
+    #[error("Failed to parse JSON: {0}")]
+    Json(#[from] serde_json::error::Error),
+    #[error("Blob is not a valid hex value: {0}")]
+    Hex(#[from] hex::FromHexError),
+    #[error("System time error: {0}")]
+    Time(#[from] std::time::SystemTimeError),
+    #[error("Client Tx is not set")]
+    ClientTxNotSet,
 
-impl From<serde_json::error::Error> for Error {
-    fn from(error: serde_json::error::Error) -> Self {
-        Error::Json(format!("Failed to parse JSON: {:?}", error))
-    }
+    // TODO: Group to the separate error
+    #[error("Io error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Can't create TLS connector: {0}")]
+    Tls(#[from] native_tls::Error),
+    #[error("Can't establish TLS connection: {0}")]
+    Tcp(#[from] native_tls::HandshakeError<std::net::TcpStream>),
+    #[error("No connected stream")]
+    NotConnected,
+    #[error("Can't parse int: {0}")]
+    Parse(#[from] std::num::ParseIntError),
+
+    #[error("General error: {0}")]
+    General(String),
+    #[error("Missing Data error: {0}")]
+    MissingData(String),
 }
 
 impl<T> From<std::sync::PoisonError<T>> for Error {

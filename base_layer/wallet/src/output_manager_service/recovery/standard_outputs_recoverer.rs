@@ -43,6 +43,7 @@ use crate::{
     key_manager_service::KeyManagerInterface,
     output_manager_service::{
         error::{OutputManagerError, OutputManagerStorageError},
+        handle::RecoveredOutput,
         resources::OutputManagerKeyManagerBranch,
         storage::{
             database::{OutputManagerBackend, OutputManagerDatabase},
@@ -84,8 +85,7 @@ where
     pub async fn scan_and_recover_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let start = Instant::now();
         let outputs_length = outputs.len();
         let mut rewound_outputs: Vec<(UnblindedOutput, BulletRangeProof)> = outputs
@@ -131,10 +131,8 @@ where
             rewind_time.as_millis(),
         );
 
+        let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
         for (output, proof) in rewound_outputs.iter_mut() {
-            self.update_outputs_script_private_key_and_update_key_manager_index(output)
-                .await?;
-
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
@@ -142,6 +140,7 @@ where
                 None,
                 Some(proof),
             )?;
+            let tx_id = TxId::new_random();
             let output_hex = db_output.commitment.to_hex();
             if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
                 match e {
@@ -150,11 +149,18 @@ where
                             target: LOG_TARGET,
                             "Recoverer attempted to import a duplicate output (Commitment: {})", output_hex
                         );
+                        continue;
                     },
                     _ => return Err(OutputManagerError::from(e)),
                 }
             }
 
+            rewound_outputs_with_tx_id.push(RecoveredOutput {
+                output: output.clone(),
+                tx_id,
+            });
+            self.update_outputs_script_private_key_and_update_key_manager_index(output)
+                .await?;
             trace!(
                 target: LOG_TARGET,
                 "Output {} with value {} with {} recovered",
@@ -164,8 +170,7 @@ where
             );
         }
 
-        let rewound_outputs = rewound_outputs.iter().map(|(ro, _)| ro.clone()).collect();
-        Ok(rewound_outputs)
+        Ok(rewound_outputs_with_tx_id)
     }
 
     /// Find the key manager index that corresponds to the spending key in the rewound output, if found then modify
@@ -179,29 +184,38 @@ where
             let found_index = self
                 .master_key_manager
                 .find_key_index(
-                    OutputManagerKeyManagerBranch::Coinbase.to_string(),
+                    OutputManagerKeyManagerBranch::Coinbase.get_branch_key(),
                     &output.spending_key,
                 )
                 .await?;
 
             self.master_key_manager
-                .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript, found_index)
+                .get_key_at_index(
+                    OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                    found_index,
+                )
                 .await?
         } else {
             let found_index = self
                 .master_key_manager
-                .find_key_index(OutputManagerKeyManagerBranch::Spend, &output.spending_key)
+                .find_key_index(
+                    OutputManagerKeyManagerBranch::Spend.get_branch_key(),
+                    &output.spending_key,
+                )
                 .await?;
 
             self.master_key_manager
-                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend, found_index)
+                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::Spend.get_branch_key(), found_index)
                 .await?;
             self.master_key_manager
-                .update_current_key_index_if_higher(OutputManagerKeyManagerBranch::SpendScript, found_index)
+                .update_current_key_index_if_higher(
+                    OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                    found_index,
+                )
                 .await?;
 
             self.master_key_manager
-                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, found_index)
+                .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript.get_branch_key(), found_index)
                 .await?
         };
 

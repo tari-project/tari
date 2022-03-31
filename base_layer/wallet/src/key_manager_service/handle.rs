@@ -28,7 +28,7 @@ use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
 use crate::key_manager_service::{
-    error::KeyManagerError,
+    error::KeyManagerServiceError,
     interface::NextKeyResult,
     storage::database::{KeyManagerBackend, KeyManagerDatabase},
     AddResult,
@@ -55,7 +55,7 @@ where TBackend: KeyManagerBackend + 'static
 impl<TBackend> KeyManagerInterface for KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
-    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError> {
+    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .write()
             .await
@@ -63,15 +63,15 @@ where TBackend: KeyManagerBackend + 'static
             .await
     }
 
-    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.apply_encryption(cipher).await
     }
 
-    async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+    async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.remove_encryption().await
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError> {
         (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
     }
 
@@ -79,7 +79,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerError> {
+    ) -> Result<PrivateKey, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -91,7 +91,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         key: &PrivateKey,
-    ) -> Result<u64, KeyManagerError> {
+    ) -> Result<u64, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -103,7 +103,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         index: u64,
-    ) -> Result<(), KeyManagerError> {
+    ) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await

@@ -33,7 +33,7 @@ const KEY_MANAGER_MAX_SEARCH_DEPTH: u64 = 1_000_000;
 use std::collections::HashMap;
 
 use crate::key_manager_service::{
-    error::KeyManagerError,
+    error::KeyManagerServiceError,
     interface::NextKeyResult,
     storage::database::{KeyManagerBackend, KeyManagerDatabase, KeyManagerState},
     AddResult,
@@ -56,7 +56,7 @@ where TBackend: KeyManagerBackend + 'static
         }
     }
 
-    pub async fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerError> {
+    pub async fn add_key_manager_branch(&mut self, branch: String) -> Result<AddResult, KeyManagerServiceError> {
         let result = if self.key_managers.contains_key(&branch) {
             AddResult::AlreadyExists
         } else {
@@ -84,11 +84,11 @@ where TBackend: KeyManagerBackend + 'static
         Ok(result)
     }
 
-    pub async fn get_next_key(&self, branch: String) -> Result<NextKeyResult, KeyManagerError> {
+    pub async fn get_next_key(&self, branch: String) -> Result<NextKeyResult, KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(&branch)
-            .ok_or(KeyManagerError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
         let key = km.next_key()?;
@@ -99,33 +99,33 @@ where TBackend: KeyManagerBackend + 'static
         })
     }
 
-    pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerError> {
+    pub async fn get_key_at_index(&self, branch: String, index: u64) -> Result<PrivateKey, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(&branch)
-            .ok_or(KeyManagerError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
         let key = km.derive_key(index)?;
         Ok(key.k)
     }
 
-    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+    pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
         self.db.apply_encryption(cipher).await?;
         Ok(())
     }
 
-    pub async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+    pub async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
         self.db.remove_encryption().await?;
         Ok(())
     }
 
     /// Search the specified branch key manager key chain to find the index of the specified key.
-    pub async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerError> {
+    pub async fn find_key_index(&self, branch: String, key: &PrivateKey) -> Result<u64, KeyManagerServiceError> {
         let km = self
             .key_managers
             .get(&branch)
-            .ok_or(KeyManagerError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
 
@@ -138,15 +138,19 @@ where TBackend: KeyManagerBackend + 'static
             }
         }
 
-        Err(KeyManagerError::KeyNotFoundInKeyChain)
+        Err(KeyManagerServiceError::KeyNotFoundInKeyChain)
     }
 
     /// If the supplied index is higher than the current UTXO key chain indices then they will be updated.
-    pub async fn update_current_key_index_if_higher(&self, branch: String, index: u64) -> Result<(), KeyManagerError> {
+    pub async fn update_current_key_index_if_higher(
+        &self,
+        branch: String,
+        index: u64,
+    ) -> Result<(), KeyManagerServiceError> {
         let mut km = self
             .key_managers
             .get(&branch)
-            .ok_or(KeyManagerError::UnknownKeyBranch)?
+            .ok_or(KeyManagerServiceError::UnknownKeyBranch)?
             .lock()
             .await;
         let current_index = km.key_index();
