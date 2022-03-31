@@ -7703,7 +7703,7 @@ mod test {
                 let utxo_temp = create_unblinded_output(
                     script!(Nop),
                     default_features.clone(),
-                    test_params.clone(),
+                    &test_params,
                     MicroTari::from(100_000),
                 );
                 if utxo_temp.features.recovery_byte != default_features.recovery_byte {
@@ -7757,7 +7757,7 @@ mod test {
                 let utxo_temp = create_unblinded_output(
                     script!(Nop),
                     default_features.clone(),
-                    test_params.clone(),
+                    &test_params,
                     MicroTari::from(200_000),
                 );
                 if utxo_temp.features.recovery_byte != default_features.recovery_byte {
