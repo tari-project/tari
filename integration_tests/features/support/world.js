@@ -654,16 +654,6 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await mmProxy.init();
   await mmProxy.compile();
 
-  const stratumtranscoder = new StratumTranscoderProcess(
-    "compile",
-    "127.0.0.1:9999",
-    "127.0.0.1:9998",
-    null
-  );
-
-  console.log("Compiling stratum transcoder...");
-  await stratumtranscoder.init();
-  await stratumtranscoder.compile();
 
   const miningNode = new MiningNodeProcess(
     "compile",
