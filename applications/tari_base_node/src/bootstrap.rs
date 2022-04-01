@@ -25,7 +25,7 @@ use std::{cmp, str::FromStr, sync::Arc};
 use anyhow::anyhow;
 use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
-use tari_common::configuration::{bootstrap::ApplicationType, CommonConfig};
+use tari_common::configuration::bootstrap::ApplicationType;
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
@@ -44,7 +44,7 @@ use tari_core::{
     transactions::CryptoFactories,
 };
 use tari_p2p::{
-    auto_update::{AutoUpdateConfig, SoftwareUpdaterService},
+    auto_update::SoftwareUpdaterService,
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
@@ -55,16 +55,14 @@ use tari_p2p::{
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::base_node_config::BaseNodeConfig;
+use crate::{base_node_config::BaseNodeConfig, ApplicationConfig};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
 const BASE_NODE_BUFFER_MIN_SIZE: usize = 30;
 
 pub struct BaseNodeBootstrapper<'a, B> {
-    pub auto_update_config: AutoUpdateConfig,
-    pub base_node_config: &'a BaseNodeConfig,
-    pub common_config: &'a CommonConfig,
+    pub app_config: &'a ApplicationConfig,
     pub node_identity: Arc<NodeIdentity>,
     pub db: BlockchainDatabase<B>,
     pub mempool: Mempool,
@@ -77,14 +75,14 @@ impl<B> BaseNodeBootstrapper<'_, B>
 where B: BlockchainBackend + 'static
 {
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
-        let base_node_config = self.base_node_config;
+        let base_node_config = &self.app_config.base_node;
 
         // fs::create_dir_all(&config.comms_peer_db_path)?;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, base_node_config.buffer_size);
         let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, base_node_config.buffer_rate_limit);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
-        let mempool_config = self.base_node_config.mempool.service.clone();
+        let mempool_config = base_node_config.mempool.service.clone();
 
         let p2p_config = base_node_config.p2p.clone();
         let transport_type = create_transport_type(&p2p_config);
@@ -114,14 +112,14 @@ where B: BlockchainBackend + 'static
                 consts::APP_VERSION_NUMBER
                     .parse()
                     .expect("Unable to parse application version. Not valid semver"),
-                self.auto_update_config.clone(),
+                self.app_config.auto_update.clone(),
             ))
             .add_initializer(BaseNodeServiceInitializer::new(
                 peer_message_subscriptions.clone(),
                 self.db.clone().into(),
                 self.mempool.clone(),
                 self.rules.clone(),
-                self.base_node_config.service_request_timeout,
+                base_node_config.messaging_request_timeout,
             ))
             .add_initializer(MempoolServiceInitializer::new(
                 self.mempool.clone(),
@@ -192,10 +190,9 @@ where B: BlockchainBackend + 'static
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
-        let builder = RpcServer::builder();
-        let builder = builder.with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions);
-        let rpc_server = builder.finish();
-        handles.register(rpc_server.get_handle());
+        let rpc_server = RpcServer::builder()
+            .with_maximum_simultaneous_sessions(config.p2p.rpc_max_simultaneous_sessions)
+            .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊
         let rpc_server = rpc_server
@@ -212,6 +209,8 @@ where B: BlockchainBackend + 'static
                 handles.expect_handle::<MempoolHandle>(),
                 handles.expect_handle::<StateMachineHandle>(),
             ));
+
+        handles.register(rpc_server.get_handle());
 
         comms.add_protocol_extension(rpc_server)
     }

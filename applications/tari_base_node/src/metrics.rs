@@ -61,7 +61,7 @@ fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity
     Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetricsConfig {
     override_from: Option<String>,

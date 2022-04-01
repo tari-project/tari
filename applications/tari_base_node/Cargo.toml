@@ -43,6 +43,7 @@ regex = "1"
 rustyline = "9.0"
 rustyline-derive = "0.5"
 serde = "1.0.136"
+serde_json = "1.0.79"
 strum = { version = "0.22", features = ["derive"] }
 strum_macros = "0.22"
 thiserror = "^1.0.26"

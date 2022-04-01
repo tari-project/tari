@@ -114,17 +114,17 @@ tor_forward_address = "/ip4/127.0.0.1/tcp/0"
 tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 tor_onion_port = 18141
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 tor_proxy_bypass_addresses = []
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 tor_proxy_bypass_for_outbound_tcp = false
 
 [dibbler.wallet]
-network="dibbler"
+network = "dibbler"
 
 [dibbler.wallet.p2p]
-dns_seeds =["seeds.dibbler.tari.com"]
+dns_seeds = ["seeds.dibbler.tari.com"]
 peer_seeds = [
     # 333388d1cbe3e2bd17453d052f
     "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",

@@ -9,10 +9,10 @@
 # no-one is cheating you out of your money.
 
 [base_node]
+# Selected network
+network = "dibbler"
 # The socket to expose for the gRPC base node server
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
-
-[base_node.p2p]
 
 [base_node.p2p.transport]
 # # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
@@ -26,37 +26,33 @@ tor_forward_address = "/ip4/127.0.0.1/tcp/0"
 tor_control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
 tor_onion_port = 18141
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 tor_proxy_bypass_addresses = []
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 tor_proxy_bypass_for_outbound_tcp = false
 
-
 [base_node.p2p.dht]
-auto_join=true
-database_url="base_node_dht.db"
+auto_join = true
+database_url = "base_node_dht.db"
 # do we allow test addresses to be accepted like 127.0.0.1
 allow_test_addresses = false
 
 [base_node.p2p.dht.saf_config]
 
 [base_node.lmdb]
-init_size_bytes = 1000
-grow_size_bytes = 50000
-resize_threshold_bytes = 100000
+#init_size_bytes = 1000000
+#grow_size_bytes = 1600000
+#resize_threshold_bytes = 1600000
 
 [base_node.storage]
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
 track_reorgs = true
 
-# Configuration options for testnet dibbler
+# Configuration options for dibbler testnet
 
-[dibbler.base_node]
-network="dibbler"
-
-[dibbler.base_node.p2p]
-dns_seeds =["seeds.dibbler.tari.com"]
+[dibbler.p2p]
+dns_seeds = ["seeds.dibbler.tari.com"]
 peer_seeds = [
     # 333388d1cbe3e2bd17453d052f
     "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
@@ -150,8 +146,8 @@ base_node_tor_identity_file = "config/base_node_tor.json"
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 # tor_proxy_bypass_for_outbound_tcp = false

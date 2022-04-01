@@ -255,28 +255,36 @@ pub trait ConfigLoader: ConfigPath + Sized {
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, MyNodeConfig::default().welcome_message);
 /// ```
-pub trait DefaultConfigLoader: ConfigPath + Sized {
+pub trait DefaultConfigLoader: Sized {
     /// Try to load configuration from supplied Config by `main_key_prefix()`
     /// with values overloaded from `overload_key_prefix()`.
     ///
-    /// Default values will be taken from Default impl for struct
-    fn load_from(config: &Config) -> Result<Self, ConfigurationError>;
+    /// Default values will be taken from Default impl for the struct.
+    fn load_from(config: &Config) -> Result<Self, ConfigurationError>
+    where Self: ConfigPath {
+        Self::load_from_prefixed(Self::main_key_prefix(), config)
+    }
+    /// Try to load configuration from supplied Config by `prefix`
+    /// with values overloaded from `overload_key_prefix()`.
+    ///
+    /// Default values will be taken from Default impl for the struct.
+    fn load_from_prefixed(prefix: &str, config: &Config) -> Result<Self, ConfigurationError>;
 }
 
 impl<C> DefaultConfigLoader for C
 where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Deserialize<'de>
 {
-    fn load_from(config: &Config) -> Result<Self, ConfigurationError> {
+    fn load_from_prefixed(prefix: &str, config: &Config) -> Result<Self, ConfigurationError> {
         let default = <Self as Default>::default();
-        let buf = serde_json::to_string(&default)?;
-        let value: config::Value = serde_json::from_str(buf.as_str())?;
+        let json_val = serde_json::to_value(default)?;
+        let value: config::Value = serde_json::from_value(json_val)?;
         let merger = Self::merge_subconfig(config, value)?;
         // merger.set_default(Self::main_key_prefix(), value)?;
-        let final_value: config::Value = merger.get(Self::main_key_prefix())?;
+        let final_value: config::Value = merger.get(prefix)?;
         // let final_value_string = final_value.to_string();
         final_value
             .try_deserialize()
-            .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce.to_string()))
+            .map_err(|ce| ConfigurationError::new(prefix, None, ce.to_string()))
     }
 }
 

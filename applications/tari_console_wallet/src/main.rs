@@ -124,7 +124,7 @@ fn main_inner() -> Result<(), ExitError> {
     // check for recovery based on existence of wallet file
     let mut boot_mode = boot(&cli, &wallet_config)?;
 
-    let recovery_seed: Option<CipherSeed> = get_recovery_seed(boot_mode, &cli)?;
+    let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
     // get command line password if provided
     let arg_password = cli.password.clone();

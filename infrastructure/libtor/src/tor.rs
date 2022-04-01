@@ -124,6 +124,7 @@ impl Tor {
             tor_onion_port: onion_port,
             tor_proxy_bypass_addresses,
             tor_proxy_bypass_for_outbound_tcp,
+            tor_identity_file,
             ..
         } = transport
         {
@@ -141,6 +142,7 @@ impl Tor {
                 tor_onion_port: onion_port,
                 tor_proxy_bypass_addresses,
                 tor_proxy_bypass_for_outbound_tcp,
+                tor_identity_file,
             };
             debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
             Ok(transport)

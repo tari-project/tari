@@ -58,6 +58,7 @@ impl Cli {
         let mut overrides = self.common.config_property_overrides();
         if let Some(ref network) = self.network {
             overrides.push(("base_node.override_from".to_string(), network.clone()));
+            overrides.push(("base_node.p2p.override_from".to_string(), network.clone()));
         }
         overrides
     }

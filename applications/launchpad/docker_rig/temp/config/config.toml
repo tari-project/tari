@@ -231,8 +231,8 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 # tor_proxy_bypass_for_outbound_tcp = false
@@ -265,8 +265,8 @@ tor_onion_port = 18141
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 # tor_proxy_bypass_for_outbound_tcp = false;

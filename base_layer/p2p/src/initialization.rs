@@ -120,6 +120,7 @@ use tari_common::configuration::utils::{deserialize_string_or_struct, serialize_
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct P2pConfig {
+    /// The type of transport to use
     pub transport: CommsTransport,
     /// Path to the LMDB data files.
     pub datastore_path: PathBuf,
@@ -134,8 +135,6 @@ pub struct P2pConfig {
     pub outbound_buffer_size: usize,
     /// Configuration for DHT
     pub dht: DhtConfig,
-    /// The type of transport to use
-    // pub transport_type: TransportType,
     /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
     /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
     /// should always be false for non-test nodes.
@@ -165,6 +164,9 @@ pub struct P2pConfig {
     /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
     /// Default: None
     pub auxiliary_tcp_listener_address: Option<Multiaddr>,
+    /// The global maximum allowed RPC sessions.
+    /// Default: 100
+    pub rpc_max_simultaneous_sessions: usize,
 }
 
 impl Default for P2pConfig {
@@ -186,6 +188,7 @@ impl Default for P2pConfig {
             dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
             dns_seeds_use_dnssec: false,
             auxiliary_tcp_listener_address: None,
+            rpc_max_simultaneous_sessions: 100,
         }
     }
 }

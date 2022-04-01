@@ -23,7 +23,7 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common::configuration::{CommonConfig, Network};
+use tari_common::configuration::Network;
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
@@ -45,10 +45,7 @@ use tari_core::{
         DifficultyCalculator,
     },
 };
-use tari_p2p::{
-    auto_update::{AutoUpdateConfig, SoftwareUpdaterHandle},
-    services::liveness::LivenessHandle,
-};
+use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
@@ -56,6 +53,7 @@ use tokio::sync::watch;
 use crate::{
     base_node_config::{BaseNodeConfig, DatabaseType},
     bootstrap::BaseNodeBootstrapper,
+    ApplicationConfig,
 };
 
 const LOG_TARGET: &str = "c::bn::initialization";
@@ -168,24 +166,17 @@ impl BaseNodeContext {
 /// ## Returns
 /// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
-    base_node_config: Arc<BaseNodeConfig>,
-    common_config: &CommonConfig,
-    auto_update_config: AutoUpdateConfig,
+    app_config: Arc<ApplicationConfig>,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, anyhow::Error> {
-    let result = match &base_node_config.db_type {
+    let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
-            let backend = create_lmdb_database(base_node_config.lmdb_path.as_path(), base_node_config.lmdb.clone())?;
-            build_node_context(
-                backend,
-                base_node_config,
-                common_config,
-                auto_update_config,
-                node_identity,
-                interrupt_signal,
-            )
-            .await?
+            let backend = create_lmdb_database(
+                app_config.base_node.lmdb_path.as_path(),
+                app_config.base_node.lmdb.clone(),
+            )?;
+            build_node_context(backend, app_config, node_identity, interrupt_signal).await?
         },
     };
     Ok(result)
@@ -204,26 +195,24 @@ pub async fn configure_and_initialize_node(
 /// Result containing the BaseNodeContext, String will contain the reason on error
 async fn build_node_context(
     backend: LMDBDatabase,
-    base_node_config: Arc<BaseNodeConfig>,
-    common_config: &CommonConfig,
-    auto_update_config: AutoUpdateConfig,
+    app_config: Arc<ApplicationConfig>,
     base_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
 ) -> Result<BaseNodeContext, anyhow::Error> {
     //---------------------------------- Blockchain --------------------------------------------//
     debug!(
         target: LOG_TARGET,
-        "Building base node context for {}  network", base_node_config.network
+        "Building base node context for {}  network", app_config.base_node.network
     );
-    let rules = ConsensusManager::builder(base_node_config.network).build();
+    let rules = ConsensusManager::builder(app_config.base_node.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(base_node_config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),
-            base_node_config.bypass_range_proof_verification,
+            app_config.base_node.bypass_range_proof_verification,
             factories.clone(),
         ),
     );
@@ -232,20 +221,20 @@ async fn build_node_context(
         backend,
         rules.clone(),
         validators,
-        base_node_config.storage.clone(),
+        app_config.base_node.storage.clone(),
         DifficultyCalculator::new(rules.clone(), randomx_factory),
     )?;
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(
             factories.clone(),
-            base_node_config.bypass_range_proof_verification,
+            app_config.base_node.bypass_range_proof_verification,
             blockchain_db.clone(),
         )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
     let mempool = Mempool::new(
-        base_node_config.mempool.clone(),
+        app_config.base_node.mempool.clone(),
         rules.clone(),
         Box::new(mempool_validator),
     );
@@ -254,9 +243,7 @@ async fn build_node_context(
     debug!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
-        base_node_config: &base_node_config,
-        common_config,
-        auto_update_config,
+        app_config: &app_config,
         node_identity: base_node_identity,
         db: blockchain_db.clone(),
         mempool,
@@ -271,7 +258,7 @@ async fn build_node_context(
     let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
     Ok(BaseNodeContext {
-        config: base_node_config,
+        config: Arc::new(app_config.base_node.clone()),
         consensus_rules: rules,
         blockchain_db,
         base_node_comms,

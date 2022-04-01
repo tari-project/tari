@@ -109,7 +109,7 @@ impl CommandContext {
             "Rpc",
             format!(
                 "{}/{}",
-                num_active_rpc_sessions, self.config.rpc_max_simultaneous_sessions
+                num_active_rpc_sessions, self.config.p2p.rpc_max_simultaneous_sessions
             ),
         );
         if full_log {

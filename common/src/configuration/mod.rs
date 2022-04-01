@@ -55,7 +55,7 @@ use std::{iter::FromIterator, net::SocketAddr};
 
 pub use collectibles_config::CollectiblesConfig;
 pub use common_config::CommonConfig;
-pub use comms_transport::CommsTransport;
+pub use comms_transport::{CommsTransport, CommsTransportType, Socks5Config, TcpTransportConfig, TorConfig};
 use multiaddr::{Error, Multiaddr, Protocol};
 pub use socks_authentication::SocksAuthentication;
 pub use tor_control_authentication::TorControlAuthentication;

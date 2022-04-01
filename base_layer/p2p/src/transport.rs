@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt;
+use std::{fmt, net::SocketAddr};
 
 use serde::{Deserialize, Serialize};
 use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
@@ -33,7 +33,7 @@ pub enum TransportType {
     /// Use a TcpTransport. This transport can connect to TCP/IP and DNS addresses.
     Tcp {
         listener_address: Multiaddr,
-        /// The optional SOCKS proxy to use when connecting to Tor onion addresses
+        /// The optional SOCKS proxy that enables connections to Tor onion addresses
         tor_socks_config: Option<SocksConfig>,
     },
     /// This does not directly map to a transport, but will configure comms to run over a tor hidden service using the
@@ -49,7 +49,7 @@ pub enum TransportType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TorConfig {
     /// The Tor control server address
-    pub control_server_addr: Multiaddr,
+    pub control_server_addr: SocketAddr,
     /// Authentication for the Tor control server
     pub control_server_auth: tor::Authentication,
     /// The private key and service ID for the Tor hidden service. If not supplied, a new address and private key will
@@ -58,7 +58,7 @@ pub struct TorConfig {
     /// The onion -> local address mapping to use.
     pub port_mapping: tor::PortMapping,
     /// If Some, this address is used as the SOCKS5 server. If None, the address is obtained from the tor control port.
-    pub socks_address_override: Option<Multiaddr>,
+    pub socks_address_override: Option<SocketAddr>,
     /// Authentication for the Tor SOCKS5 proxy
     pub socks_auth: socks::Authentication,
     /// If the underlying SOCKS transport encounters these addresses, bypass the proxy and dial directly using the

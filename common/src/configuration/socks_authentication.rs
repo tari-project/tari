@@ -25,8 +25,11 @@ use std::str::FromStr;
 use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 
+use crate::ConfigError;
+
 #[derive(Derivative, Clone, Serialize, Deserialize)]
 #[derivative(Debug)]
+#[serde(rename_all = "snake_case")]
 pub enum SocksAuthentication {
     None,
     UsernamePassword { username: String, password: String },
@@ -44,7 +47,7 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
 }
 
 impl FromStr for SocksAuthentication {
-    type Err = String;
+    type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (auth_type, maybe_value) = parse_key_value(s, '=');
@@ -58,16 +61,18 @@ impl FromStr for SocksAuthentication {
                         pwd.map(|p| (un, p))
                     })
                     .ok_or_else(|| {
-                        "Invalid format for 'username-password' socks authentication type. It should be in the format \
-                         'username_password=my_username:xxxxxx'."
-                            .to_string()
+                        ConfigError::new(
+                            "invalid format for 'username-password' socks authentication type. It should be in the \
+                             format 'username_password=my_username:xxxxxx'.",
+                            None,
+                        )
                     })?;
                 Ok(SocksAuthentication::UsernamePassword {
                     username,
                     password: password.to_string(),
                 })
             },
-            s => Err(format!("Invalid tor auth type '{}'", s)),
+            s => Err(ConfigError::new("invalid SOCKS auth type", Some(s.to_string()))),
         }
     }
 }

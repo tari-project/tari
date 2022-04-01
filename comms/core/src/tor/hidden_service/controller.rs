@@ -70,10 +70,10 @@ pub enum HiddenServiceControllerError {
 
 pub struct HiddenServiceController {
     client: Option<TorControlPortClient>,
-    control_server_addr: Multiaddr,
+    control_server_addr: SocketAddr,
     control_server_auth: Authentication,
     proxied_port_mapping: PortMapping,
-    socks_address_override: Option<Multiaddr>,
+    socks_address_override: Option<SocketAddr>,
     socks_auth: socks::Authentication,
     identity: Option<TorIdentity>,
     hs_flags: HsFlags,
@@ -84,10 +84,10 @@ pub struct HiddenServiceController {
 
 impl HiddenServiceController {
     pub(super) fn new(
-        control_server_addr: Multiaddr,
+        control_server_addr: SocketAddr,
         control_server_auth: Authentication,
         proxied_port_mapping: PortMapping,
-        socks_address_override: Option<Multiaddr>,
+        socks_address_override: Option<SocketAddr>,
         socks_auth: socks::Authentication,
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
@@ -261,7 +261,7 @@ impl HiddenServiceController {
         Ok(())
     }
 
-    async fn get_socks_address(&mut self) -> Result<Multiaddr, HiddenServiceControllerError> {
+    async fn get_socks_address(&mut self) -> Result<SocketAddr, HiddenServiceControllerError> {
         match self.socks_address_override {
             Some(ref addr) => {
                 debug!(
@@ -278,7 +278,6 @@ impl HiddenServiceController {
                     .iter()
                     .map(|addr| addr.parse::<SocketAddr>())
                     .filter_map(Result::ok)
-                    .map(|addr| socketaddr_to_multiaddr(&addr))
                     .next()
                     .ok_or(HiddenServiceControllerError::FailedToParseSocksAddress)?;
 

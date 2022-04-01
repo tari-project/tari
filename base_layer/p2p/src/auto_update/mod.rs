@@ -83,9 +83,9 @@ impl Default for AutoUpdateConfig {
             name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
             update_uris: vec![],
             use_dnssec: false,
-            download_base_url: "".to_string(),
-            hashes_url: "".to_string(),
-            hashes_sig_url: "".to_string(),
+            download_base_url: String::new(),
+            hashes_url: String::new(),
+            hashes_sig_url: String::new(),
             check_interval: None,
         }
     }
@@ -231,7 +231,6 @@ mod test {
     }
 
     fn get_config(config_name: Option<&str>) -> config::Config {
-        let mut cfg: config::Config = config::Config::default();
         let s = match config_name {
             Some(o) => {
                 format!(
@@ -260,22 +259,24 @@ download_base_url ="http://test.com"
 "#
             .to_string(),
         };
-        cfg.merge(config::File::from_str(s.as_str(), config::FileFormat::Toml))
-            .unwrap();
-        cfg
+
+        config::Config::builder()
+            .add_source(config::File::from_str(s.as_str(), config::FileFormat::Toml))
+            .build()
+            .unwrap()
     }
 
     #[test]
     fn test_no_overrides_config() {
         let cfg = get_config(None);
-        let config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-        assert_eq!(&config.check_interval, &Some(Duration::from_secs(31)));
+        let config = AutoUpdateConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.check_interval, Some(Duration::from_secs(31)));
         assert_eq!(
-            &config.name_server,
-            &DnsNameServer::from_str("127.0.0.1:80/localtest").unwrap(),
+            config.name_server,
+            DnsNameServer::from_str("127.0.0.1:80/localtest").unwrap(),
         );
-        assert_eq!(&config.update_uris, &Vec::<String>::new());
-        assert_eq!(&config.download_base_url, "http://test.com");
+        assert_eq!(config.update_uris, Vec::<String>::new());
+        assert_eq!(config.download_base_url, "http://test.com");
         // update_uris =
         // pub update_uris: Vec<String>,
         // pub download_base_url: String,
@@ -288,19 +289,31 @@ download_base_url ="http://test.com"
     #[test]
     fn test_with_overrides() {
         let cfg = get_config(Some("config_a"));
-        let config = <AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
-        assert_eq!(&config.check_interval, &Some(Duration::from_secs(33)));
+        let config = AutoUpdateConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.check_interval, Some(Duration::from_secs(33)));
         assert_eq!(
-            &config.name_server,
-            &DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
+            config.name_server,
+            DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
         );
-        assert_eq!(&config.update_uris, &vec!["http://none", "http://local"]);
+        assert_eq!(config.update_uris, vec!["http://none", "http://local"]);
+        assert!(config.use_dnssec);
+    }
+    #[test]
+    fn test_wit() {
+        let cfg = get_config(Some("config_a"));
+        let config = AutoUpdateConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.check_interval, Some(Duration::from_secs(33)));
+        assert_eq!(
+            config.name_server,
+            DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
+        );
+        assert_eq!(config.update_uris, vec!["http://none", "http://local"]);
         assert!(config.use_dnssec);
     }
 
     #[test]
     fn test_incorrect_spelling() {
         let cfg = get_config(Some("config_b"));
-        assert!(<AutoUpdateConfig as DefaultConfigLoader>::load_from(&cfg).is_err());
+        assert!(AutoUpdateConfig::load_from(&cfg).is_err());
     }
 }

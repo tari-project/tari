@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use bitflags::bitflags;
 use log::*;
@@ -66,8 +66,8 @@ bitflags! {
 pub struct HiddenServiceBuilder {
     identity: Option<TorIdentity>,
     port_mapping: Option<PortMapping>,
-    socks_addr_override: Option<Multiaddr>,
-    control_server_addr: Option<Multiaddr>,
+    socks_addr_override: Option<SocketAddr>,
+    control_server_addr: Option<SocketAddr>,
     proxy_opts: TorProxyOpts,
     control_server_auth: Authentication,
     socks_auth: socks::Authentication,
@@ -86,7 +86,7 @@ impl HiddenServiceBuilder {
         /// The address of the Tor Control Port. An error will result if this is not provided.
         with_control_server_address,
         control_server_addr,
-        Option<Multiaddr>
+        Option<SocketAddr>
     );
 
     setter!(
@@ -141,7 +141,7 @@ impl HiddenServiceBuilder {
 
     /// The address of the SOCKS5 server. If an address is None, the hidden service builder will use the SOCKS
     /// listener address as given by the tor control port.
-    pub fn with_socks_address_override(mut self, socks_addr_override: Option<Multiaddr>) -> Self {
+    pub fn with_socks_address_override(mut self, socks_addr_override: Option<SocketAddr>) -> Self {
         self.socks_addr_override = socks_addr_override;
         self
     }

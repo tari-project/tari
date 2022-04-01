@@ -23,9 +23,11 @@
 use std::{
     fmt::{Debug, Formatter},
     io,
+    net::SocketAddr,
     sync::Arc,
 };
 
+use log::debug;
 use tokio::net::TcpStream;
 
 use crate::{
@@ -33,11 +35,14 @@ use crate::{
     socks,
     socks::Socks5Client,
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
+    utils::multiaddr::socketaddr_to_multiaddr,
 };
+
+const LOG_TARGET: &str = "comms::transports::socks";
 
 #[derive(Clone)]
 pub struct SocksConfig {
-    pub proxy_address: Multiaddr,
+    pub proxy_address: SocketAddr,
     pub authentication: socks::Authentication,
     pub proxy_bypass_predicate: Arc<dyn Predicate<Multiaddr> + Send + Sync>,
 }
@@ -79,7 +84,7 @@ impl SocksTransport {
         dest_addr: Multiaddr,
     ) -> io::Result<TcpStream> {
         // Create a new connection to the SOCKS proxy
-        let socks_conn = tcp.dial(socks_config.proxy_address).await?;
+        let socks_conn = tcp.dial(socketaddr_to_multiaddr(&socks_config.proxy_address)).await?;
         let mut client = Socks5Client::new(socks_conn);
 
         client
@@ -106,10 +111,10 @@ impl Transport for SocksTransport {
 
     async fn dial(&self, addr: Multiaddr) -> Result<Self::Output, Self::Error> {
         // Bypass the SOCKS proxy and connect to the address directly
-        // if self.socks_config.proxy_bypass_predicate.check(&addr) {
-        //     debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
-        //     return self.tcp_transport.dial(addr).await;
-        // }
+        if self.socks_config.proxy_bypass_predicate.check(&addr) {
+            debug!(target: LOG_TARGET, "SOCKS proxy bypassed for '{}'. Using TCP.", addr);
+            return self.tcp_transport.dial(addr).await;
+        }
 
         let socket = Self::socks_connect(self.tcp_transport.clone(), self.socks_config.clone(), addr).await?;
         Ok(socket)
@@ -123,7 +128,7 @@ mod test {
 
     #[test]
     fn new() {
-        let proxy_address = "/ip4/127.0.0.1/tcp/1234".parse::<Multiaddr>().unwrap();
+        let proxy_address = "127.0.0.1:1234".parse::<SocketAddr>().unwrap();
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),

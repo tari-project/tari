@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
+use std::{borrow::Cow, fmt, fmt::Display, net::SocketAddr, num::NonZeroU16};
 
 use log::*;
 use tokio::{
@@ -39,7 +39,6 @@ use super::{
     LOG_TARGET,
 };
 use crate::{
-    multiaddr::Multiaddr,
     tor::control_client::{event::TorControlEvent, monitor::spawn_monitor},
     transports::{TcpTransport, Transport},
 };
@@ -56,12 +55,12 @@ pub struct TorControlPortClient {
 impl TorControlPortClient {
     /// Connect using TCP to the given address.
     pub async fn connect(
-        addr: Multiaddr,
+        addr: SocketAddr,
         event_tx: broadcast::Sender<TorControlEvent>,
     ) -> Result<Self, TorClientError> {
         let mut tcp = TcpTransport::new();
         tcp.set_nodelay(true);
-        let socket = tcp.dial(addr).await?;
+        let socket = tcp.dial(socketaddr_to_multiaddr(&addr)).await?;
         Ok(Self::new(socket, event_tx))
     }
 
@@ -244,6 +243,8 @@ impl TorControlPortClient {
 
 use serde::{Deserialize, Serialize};
 
+use crate::utils::multiaddr::socketaddr_to_multiaddr;
+
 /// Represents tor control port authentication mechanisms
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
@@ -285,6 +286,7 @@ mod test {
     use crate::{
         runtime,
         tor::control_client::{test_server, test_server::canned_responses, types::PrivateKey},
+        utils::multiaddr::multiaddr_to_socketaddr,
     };
 
     async fn setup_test() -> (TorControlPortClient, test_server::State) {
@@ -300,9 +302,10 @@ mod test {
             .listen("/ip4/127.0.0.1/tcp/0".parse().unwrap())
             .await
             .unwrap();
+        let addr = multiaddr_to_socketaddr(&addr).unwrap();
         let (event_tx, _) = broadcast::channel(1);
         let (result_out, result_in) =
-            future::join(TorControlPortClient::connect(addr, event_tx), listener.next()).await;
+            future::join(TorControlPortClient::connect(&addr, event_tx), listener.next()).await;
 
         // Check that the connection is successfully made
         let _out_sock = result_out.unwrap();

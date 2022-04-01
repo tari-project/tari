@@ -6768,6 +6768,7 @@ dependencies = [
  "rustyline",
  "rustyline-derive",
  "serde 1.0.136",
+ "serde_json",
  "strum 0.22.0",
  "strum_macros 0.22.0",
  "tari_app_grpc",

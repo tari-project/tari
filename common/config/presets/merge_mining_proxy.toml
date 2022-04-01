@@ -6,12 +6,12 @@
 
 [merge_mining_proxy]
 #override_from = "dibbler"
-monerod_url = [ # stagenet
-"http://stagenet.xmr-tw.org:38081",
-"http://stagenet.community.xmr.to:38081",
-"http://monero-stagenet.exan.tech:38081",
-"http://xmr-lux.boldsuck.org:38081",
-"http://singapore.node.xmr.pm:38081",
+monerod_url = [# stagenet
+    "http://stagenet.xmr-tw.org:38081",
+    "http://stagenet.community.xmr.to:38081",
+    "http://monero-stagenet.exan.tech:38081",
+    "http://xmr-lux.boldsuck.org:38081",
+    "http://singapore.node.xmr.pm:38081",
 ]
 grpc_base_node_address = "/ip4/127.0.0.1/tcp/18142"
 grpc_console_wallet_address = "/ip4/127.0.0.1/tcp/18143"
