@@ -23,7 +23,10 @@
 use std::io::stdout;
 
 use chrono::{Datelike, Utc};
-use crossterm::{execute, terminal::SetSize};
+use crossterm::{
+    execute,
+    terminal::{SetSize, SetTitle},
+};
 use tari_app_utilities::consts;
 
 /// returns the top or bottom box line of the specified length
@@ -112,7 +115,12 @@ fn resize_terminal_to_fit_the_box(width: usize, height: usize) {
 }
 
 /// Prints a pretty banner on the console as well as the list of available commands
-pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
+pub fn print_banner(commands: Vec<String>, chunk_size: i32, resize_terminal: bool) {
+    let terminal_title = format!("Tari Base Node - Version {}", consts::APP_VERSION);
+    if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
+        println!("Error setting terminal title. {}", e)
+    }
+
     let chunks: Vec<Vec<String>> = commands.chunks(chunk_size as usize).map(|x| x.to_vec()).collect();
     let mut cell_sizes = Vec::new();
 
@@ -188,5 +196,7 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32) {
     }
     println!("{}", box_line(target_line_length, false));
 
-    resize_terminal_to_fit_the_box(target_line_length, height_to_resize);
+    if resize_terminal {
+        resize_terminal_to_fit_the_box(target_line_length, height_to_resize);
+    }
 }

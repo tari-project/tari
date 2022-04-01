@@ -108,11 +108,7 @@ where
         wallet_client: &mut BaseNodeWalletRpcClient,
         last_mined_header_hash: Option<BlockHash>,
     ) -> Result<(), OutputManagerProtocolError> {
-        let mined_outputs = self
-            .db
-            .fetch_mined_unspent_outputs()
-            .await
-            .for_protocol(self.operation_id)?;
+        let mined_outputs = self.db.fetch_mined_unspent_outputs().for_protocol(self.operation_id)?;
 
         if mined_outputs.is_empty() {
             return Ok(());
@@ -177,7 +173,6 @@ where
 
                     self.db
                         .mark_output_as_spent(output.hash.clone(), deleted_height, deleted_block, confirmed)
-                        .await
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
@@ -200,7 +195,6 @@ where
                 {
                     self.db
                         .mark_output_as_unspent(output.hash.clone())
-                        .await
                         .for_protocol(self.operation_id)?;
                     info!(
                         target: LOG_TARGET,
@@ -220,11 +214,7 @@ where
         &self,
         wallet_client: &mut BaseNodeWalletRpcClient,
     ) -> Result<(), OutputManagerProtocolError> {
-        let unconfirmed_outputs = self
-            .db
-            .fetch_unconfirmed_outputs()
-            .await
-            .for_protocol(self.operation_id)?;
+        let unconfirmed_outputs = self.db.fetch_unconfirmed_outputs().for_protocol(self.operation_id)?;
 
         for batch in unconfirmed_outputs.chunks(self.config.tx_validator_batch_size) {
             debug!(
@@ -273,7 +263,7 @@ where
             "Checking last mined TXO to see if the base node has re-orged (Operation ID: {})", self.operation_id
         );
 
-        while let Some(last_spent_output) = self.db.get_last_spent_output().await.for_protocol(self.operation_id)? {
+        while let Some(last_spent_output) = self.db.get_last_spent_output().for_protocol(self.operation_id)? {
             let mined_height = last_spent_output
                 .marked_deleted_at_height
                 .ok_or(OutputManagerError::InconsistentDataError(
@@ -303,7 +293,6 @@ where
                 );
                 self.db
                     .mark_output_as_unspent(last_spent_output.hash.clone())
-                    .await
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
@@ -315,7 +304,7 @@ where
             }
         }
 
-        while let Some(last_mined_output) = self.db.get_last_mined_output().await.for_protocol(self.operation_id)? {
+        while let Some(last_mined_output) = self.db.get_last_mined_output().for_protocol(self.operation_id)? {
             if last_mined_output.mined_height.is_none() || last_mined_output.mined_in_block.is_none() {
                 return Err(OutputManagerProtocolError::new(
                     self.operation_id,
@@ -341,7 +330,6 @@ where
                 );
                 self.db
                     .set_output_to_unmined(last_mined_output.hash.clone())
-                    .await
                     .for_protocol(self.operation_id)?;
             } else {
                 debug!(
@@ -452,7 +440,6 @@ where
                 mmr_position,
                 confirmed,
             )
-            .await
             .for_protocol(self.operation_id)?;
 
         Ok(())

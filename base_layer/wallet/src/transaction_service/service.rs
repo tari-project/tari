@@ -296,7 +296,7 @@ where
         let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut send_transaction_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         > = FuturesUnordered::new();
 
         let mut receive_transaction_protocol_handles: FuturesUnordered<
@@ -512,7 +512,10 @@ where
                 Some(join_result) = transaction_validation_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner, &mut transaction_broadcast_protocol_handles,).await,
+                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(
+                            join_result_inner,
+                            &mut transaction_broadcast_protocol_handles,
+                        ).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
@@ -531,7 +534,7 @@ where
         &mut self,
         request: TransactionServiceRequest,
         send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
         receive_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -794,7 +797,9 @@ where
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -877,6 +882,7 @@ where
             TransactionSendProtocolStage::Initial,
             None,
             self.last_seen_tip_height,
+            None,
         );
 
         let join_handle = tokio::spawn(protocol.execute());
@@ -1339,40 +1345,44 @@ where
     /// Handle the final clean up after a Send Transaction protocol completes
     async fn complete_send_transaction_protocol(
         &mut self,
-        join_result: Result<TxId, TransactionServiceProtocolError<TxId>>,
+        join_result: Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) {
         match join_result {
-            Ok(id) => {
-                let _ = self.pending_transaction_reply_senders.remove(&id);
-                let _ = self.send_transaction_cancellation_senders.remove(&id);
-                let completed_tx = match self.db.get_completed_transaction(id).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
-                        );
-                        return;
-                    },
-                };
-                let _ = self
-                    .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                    .await
-                    .map_err(|resp| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", resp
-                        );
-                        resp
-                    });
-                trace!(
-                    target: LOG_TARGET,
-                    "Send Transaction Protocol for TxId: {} completed successfully",
-                    id
-                );
+            Ok(val) => {
+                if val.transaction_status != TransactionStatus::Queued {
+                    let _ = self.pending_transaction_reply_senders.remove(&val.tx_id);
+                    let _ = self.send_transaction_cancellation_senders.remove(&val.tx_id);
+                    let completed_tx = match self.db.get_completed_transaction(val.tx_id).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
+                            );
+                            return;
+                        },
+                    };
+                    let _ = self
+                        .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
+                        .await
+                        .map_err(|resp| {
+                            error!(
+                                target: LOG_TARGET,
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}",
+                                resp
+                            );
+                            resp
+                        });
+                } else if val.transaction_status == TransactionStatus::Queued {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Send Transaction Protocol for TxId: {} not completed successfully, transaction Queued",
+                        val.tx_id
+                    );
+                }
             },
             Err(TransactionServiceProtocolError { id, error }) => {
                 let _ = self.pending_transaction_reply_senders.remove(&id);
@@ -1461,20 +1471,43 @@ where
     #[allow(clippy::map_entry)]
     async fn restart_all_send_transaction_protocols(
         &mut self,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
     ) -> Result<(), TransactionServiceError> {
         let outbound_txs = self.db.get_pending_outbound_transactions().await?;
         for (tx_id, tx) in outbound_txs {
-            if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+            let (sender_protocol, stage) = if tx.send_count > 0 {
+                (None, TransactionSendProtocolStage::WaitForReply)
+            } else {
+                (Some(tx.sender_protocol), TransactionSendProtocolStage::Queued)
+            };
+            let (not_yet_pending, queued) = (
+                !self.pending_transaction_reply_senders.contains_key(&tx_id),
+                stage == TransactionSendProtocolStage::Queued,
+            );
+
+            if not_yet_pending {
                 debug!(
                     target: LOG_TARGET,
                     "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx_id
                 );
+            } else if queued {
+                debug!(
+                    target: LOG_TARGET,
+                    "Retry sending queued Pending Outbound Transaction TxId: {}", tx_id
+                );
+                let _ = self.pending_transaction_reply_senders.remove(&tx_id);
+                let _ = self.send_transaction_cancellation_senders.remove(&tx_id);
+            }
+
+            if not_yet_pending || queued {
                 let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
                 let (cancellation_sender, cancellation_receiver) = oneshot::channel();
                 self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
                 self.send_transaction_cancellation_senders
                     .insert(tx_id, cancellation_sender);
+
                 let protocol = TransactionSendProtocol::new(
                     tx_id,
                     self.resources.clone(),
@@ -1487,9 +1520,10 @@ where
                     tx.fee,
                     tx.message,
                     None,
-                    TransactionSendProtocolStage::WaitForReply,
+                    stage,
                     None,
                     self.last_seen_tip_height,
+                    sender_protocol,
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());
@@ -1810,7 +1844,7 @@ where
     async fn restart_transaction_negotiation_protocols(
         &mut self,
         send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
         receive_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -2126,8 +2160,14 @@ where
             "Launch the transaction broadcast protocol for submitted transaction ({}).",
             tx_id
         );
-        self.complete_send_transaction_protocol(Ok(tx_id), transaction_broadcast_join_handles)
-            .await;
+        self.complete_send_transaction_protocol(
+            Ok(TransactionSendResult {
+                tx_id,
+                transaction_status: TransactionStatus::Completed,
+            }),
+            transaction_broadcast_join_handles,
+        )
+        .await;
         Ok(())
     }
 
@@ -2298,4 +2338,11 @@ pub struct PendingCoinbaseSpendingKey {
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
     HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+}
+
+/// Contains the generated TxId and TransactionStatus transaction send result
+#[derive(Debug)]
+pub struct TransactionSendResult {
+    pub tx_id: TxId,
+    pub transaction_status: TransactionStatus,
 }

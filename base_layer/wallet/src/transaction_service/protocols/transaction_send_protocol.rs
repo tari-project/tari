@@ -59,8 +59,8 @@ use crate::{
     transaction_service::{
         config::TransactionRoutingMechanism,
         error::{TransactionServiceError, TransactionServiceProtocolError},
-        handle::{TransactionEvent, TransactionServiceResponse},
-        service::TransactionServiceResources,
+        handle::{TransactionEvent, TransactionSendStatus, TransactionServiceResponse},
+        service::{TransactionSendResult, TransactionServiceResources},
         storage::{
             database::TransactionBackend,
             models::{CompletedTransaction, OutboundTransaction, TxCancellationReason},
@@ -79,6 +79,7 @@ const LOG_TARGET: &str = "wallet::transaction_service::protocols::send_protocol"
 #[derive(Debug, PartialEq)]
 pub enum TransactionSendProtocolStage {
     Initial,
+    Queued,
     WaitForReply,
 }
 
@@ -97,6 +98,7 @@ pub struct TransactionSendProtocol<TBackend, TWalletConnectivity> {
     cancellation_receiver: Option<oneshot::Receiver<()>>,
     prev_header: Option<HashOutput>,
     height: Option<u64>,
+    sender_protocol: Option<SenderTransactionProtocol>,
 }
 
 impl<TBackend, TWalletConnectivity> TransactionSendProtocol<TBackend, TWalletConnectivity>
@@ -121,6 +123,7 @@ where
         stage: TransactionSendProtocolStage,
         prev_header: Option<HashOutput>,
         height: Option<u64>,
+        sender_protocol: Option<SenderTransactionProtocol>,
     ) -> Self {
         Self {
             id,
@@ -137,30 +140,66 @@ where
             stage,
             prev_header,
             height,
+            sender_protocol,
         }
     }
 
     /// Execute the Transaction Send Protocol as an async task.
-    pub async fn execute(mut self) -> Result<TxId, TransactionServiceProtocolError<TxId>> {
+    pub async fn execute(
+        mut self,
+    ) -> Result<crate::transaction_service::service::TransactionSendResult, TransactionServiceProtocolError<TxId>> {
         info!(
             target: LOG_TARGET,
             "Starting Transaction Send protocol for TxId: {} at Stage {:?}", self.id, self.stage
         );
 
-        match self.stage {
+        let transaction_status = match self.stage {
             TransactionSendProtocolStage::Initial => {
                 let sender_protocol = self.prepare_transaction().await?;
-                self.initial_send_transaction(sender_protocol).await?;
-                self.wait_for_reply().await?;
+                let status = self.initial_send_transaction(sender_protocol).await?;
+                if status == TransactionStatus::Pending {
+                    self.wait_for_reply().await?;
+                }
+                status
+            },
+            TransactionSendProtocolStage::Queued => {
+                if let Some(mut sender_protocol) = self.sender_protocol.clone() {
+                    if sender_protocol.is_collecting_single_signature() {
+                        let _ = sender_protocol
+                            .revert_sender_state_to_single_round_message_ready()
+                            .map_err(|e| {
+                                TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
+                            })?;
+                    }
+                    let status = self.initial_send_transaction(sender_protocol).await?;
+                    if status == TransactionStatus::Pending {
+                        self.wait_for_reply().await?;
+                    }
+                    status
+                } else {
+                    error!(
+                        target: LOG_TARGET,
+                        "{:?} not valid; Sender Transaction Protocol does not exist", self.stage
+                    );
+                    return Err(TransactionServiceProtocolError::new(
+                        self.id,
+                        TransactionServiceError::InvalidStateError,
+                    ));
+                }
             },
             TransactionSendProtocolStage::WaitForReply => {
                 self.wait_for_reply().await?;
+                TransactionStatus::Pending
             },
-        }
+        };
 
-        Ok(self.id)
+        Ok(TransactionSendResult {
+            tx_id: self.id,
+            transaction_status,
+        })
     }
 
+    // Prepare transaction to send and encumber the unspent outputs to use as inputs
     async fn prepare_transaction(
         &mut self,
     ) -> Result<SenderTransactionProtocol, TransactionServiceProtocolError<TxId>> {
@@ -222,7 +261,7 @@ where
     async fn initial_send_transaction(
         &mut self,
         mut sender_protocol: SenderTransactionProtocol,
-    ) -> Result<(), TransactionServiceProtocolError<TxId>> {
+    ) -> Result<TransactionStatus, TransactionServiceProtocolError<TxId>> {
         if !sender_protocol.is_single_round_message_ready() {
             error!(target: LOG_TARGET, "Sender Transaction Protocol is in an invalid state");
             return Err(TransactionServiceProtocolError::new(
@@ -231,11 +270,11 @@ where
             ));
         }
 
+        // Build single round message and advance sender state
         let msg = sender_protocol
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         let tx_id = msg.tx_id;
-
         if tx_id != self.id {
             return Err(TransactionServiceProtocolError::new(
                 self.id,
@@ -243,18 +282,43 @@ where
             ));
         }
 
+        // Attempt to send the initial transaction
         let SendResult {
             direct_send_result,
             store_and_forward_send_result,
-        } = self.send_transaction(msg).await?;
+            transaction_status,
+        } = match self.send_transaction(msg).await {
+            Ok(val) => val,
+            Err(e) => {
+                warn!(
+                    target: LOG_TARGET,
+                    "Problem sending Outbound Transaction TxId: {:?}: {:?}", self.id, e
+                );
+                SendResult {
+                    direct_send_result: false,
+                    store_and_forward_send_result: false,
+                    transaction_status: TransactionStatus::Queued,
+                }
+            },
+        };
 
-        if direct_send_result || store_and_forward_send_result {
+        // Confirm pending transaction (confirm encumbered outputs)
+        if transaction_status == TransactionStatus::Pending {
             self.resources
                 .output_manager_service
                 .confirm_pending_transaction(self.id)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+        }
 
+        // Add pending outbound transaction if it does not exist
+        if !self
+            .resources
+            .db
+            .transaction_exists(tx_id)
+            .await
+            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
+        {
             let fee = sender_protocol
                 .get_fee_amount()
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
@@ -264,21 +328,18 @@ where
                 self.amount,
                 fee,
                 sender_protocol.clone(),
-                TransactionStatus::Pending,
+                transaction_status.clone(),
                 self.message.clone(),
                 Utc::now().naive_utc(),
                 direct_send_result,
-            );
-            info!(
-                target: LOG_TARGET,
-                "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
             );
             self.resources
                 .db
                 .add_pending_outbound_transaction(outbound_tx.tx_id, outbound_tx)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-
+        }
+        if transaction_status == TransactionStatus::Pending {
             self.resources
                 .db
                 .increment_send_count(self.id)
@@ -286,41 +347,31 @@ where
                 .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
         }
 
+        // Notify subscribers
         let _ = self
             .resources
             .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(
+            .send(Arc::new(TransactionEvent::TransactionSendResult(
                 self.id,
-                direct_send_result,
-            )));
-        let _ = self
-            .resources
-            .event_publisher
-            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
-                self.id,
-                store_and_forward_send_result,
+                TransactionSendStatus {
+                    direct_send_result,
+                    store_and_forward_send_result,
+                    queued_for_retry: transaction_status == TransactionStatus::Queued,
+                },
             )));
 
-        if !direct_send_result && !store_and_forward_send_result {
-            error!(
+        if transaction_status == TransactionStatus::Pending {
+            info!(
                 target: LOG_TARGET,
-                "Failed to Send Transaction (TxId: {}) both Directly or via Store and Forward. Pending Transaction \
-                 will be cancelled",
-                self.id
+                "Pending Outbound Transaction TxId: {:?} added. Waiting for Reply or Cancellation", self.id,
             );
-            if let Err(e) = self.resources.output_manager_service.cancel_transaction(self.id).await {
-                warn!(
-                    target: LOG_TARGET,
-                    "Failed to Cancel TX_ID: {} after failed sending attempt with error {:?}", self.id, e
-                );
-            };
-            return Err(TransactionServiceProtocolError::new(
-                self.id,
-                TransactionServiceError::OutboundSendFailure,
-            ));
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "Pending Outbound Transaction TxId: {:?} queued. Waiting for wallet to come online", self.id,
+            );
         }
-
-        Ok(())
+        Ok(transaction_status)
     }
 
     async fn wait_for_reply(&mut self) -> Result<(), TransactionServiceProtocolError<TxId>> {
@@ -345,7 +396,10 @@ where
             .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
 
         if !outbound_tx.sender_protocol.is_collecting_single_signature() {
-            error!(target: LOG_TARGET, "Pending Transaction not in correct state");
+            error!(
+                target: LOG_TARGET,
+                "Pending Transaction (TxId: {}) not in correct state", self.id
+            );
             return Err(TransactionServiceProtocolError::new(
                 self.id,
                 TransactionServiceError::InvalidStateError,
@@ -382,7 +436,7 @@ where
         };
 
         if resend {
-            if let Err(e) = self
+            match self
                 .send_transaction(
                     outbound_tx
                         .sender_protocol
@@ -391,16 +445,20 @@ where
                 )
                 .await
             {
-                warn!(
+                Ok(val) => {
+                    if val.transaction_status == TransactionStatus::Pending {
+                        self.resources
+                            .db
+                            .increment_send_count(self.id)
+                            .await
+                            .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?
+                    }
+                },
+                Err(e) => warn!(
                     target: LOG_TARGET,
                     "Error resending Transaction (TxId: {}): {:?}", self.id, e
-                );
-            }
-            self.resources
-                .db
-                .increment_send_count(self.id)
-                .await
-                .map_err(|e| TransactionServiceProtocolError::new(self.id, e.into()))?;
+                ),
+            };
         }
 
         let mut shutdown = self.resources.shutdown_signal.clone();
@@ -427,7 +485,10 @@ where
                 result = &mut cancellation_receiver => {
                     if result.is_ok() {
                         info!(target: LOG_TARGET, "Cancelling Transaction Send Protocol (TxId: {})", self.id);
-                        let _ = send_transaction_cancelled_message(self.id,self.dest_pubkey.clone(), self.resources.outbound_message_service.clone(), ).await.map_err(|e| {
+                        let _ = send_transaction_cancelled_message(
+                            self.id,self.dest_pubkey.clone(),
+                            self.resources.outbound_message_service.clone(), )
+                        .await.map_err(|e| {
                             warn!(
                                 target: LOG_TARGET,
                                 "Error sending Transaction Cancelled (TxId: {}) message: {:?}", self.id, e
@@ -437,7 +498,9 @@ where
                             .db
                             .increment_send_count(self.id)
                             .await
-                            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
+                            .map_err(|e| TransactionServiceProtocolError::new(
+                                self.id, TransactionServiceError::from(e))
+                            )?;
                         return Err(TransactionServiceProtocolError::new(
                             self.id,
                             TransactionServiceError::TransactionCancelled,
@@ -445,24 +508,37 @@ where
                     }
                 },
                 () = resend_timeout => {
-                    if let Err(e) = self.send_transaction(outbound_tx.sender_protocol.get_single_round_message().map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?).await {
-                        warn!(
+                    match self.send_transaction(
+                        outbound_tx
+                        .sender_protocol
+                        .get_single_round_message()
+                        .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?
+                    ).await
+                    {
+                        Ok(val) => if val.transaction_status == TransactionStatus::Pending {
+                             self.resources
+                                .db
+                                .increment_send_count(self.id)
+                                .await
+                                .map_err(|e| TransactionServiceProtocolError::new(
+                                    self.id, TransactionServiceError::from(e))
+                                )?
+                        },
+                        Err(e) => warn!(
                             target: LOG_TARGET,
                             "Error resending Transaction (TxId: {}): {:?}", self.id, e
-                        );
-                    } else {
-                        self.resources
-                            .db
-                            .increment_send_count(self.id)
-                            .await
-                            .map_err(|e| TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e)))?;
-                    }
+                        ),
+                    };
                 },
                 () = &mut timeout_delay => {
                     return self.timeout_transaction().await;
                 }
                 _ = shutdown.wait() => {
-                    info!(target: LOG_TARGET, "Transaction Send Protocol (id: {}) shutting down because it received the shutdown signal", self.id);
+                    info!(
+                        target: LOG_TARGET,
+                        "Transaction Send Protocol (id: {}) shutting down because it received the shutdown signal",
+                        self.id
+                    );
                     return Err(TransactionServiceProtocolError::new(self.id, TransactionServiceError::Shutdown))
                 }
             }
@@ -567,6 +643,7 @@ where
         let mut result = SendResult {
             direct_send_result: false,
             store_and_forward_send_result: false,
+            transaction_status: TransactionStatus::Queued,
         };
 
         match self.resources.config.transaction_routing_mechanism {
@@ -575,6 +652,9 @@ where
             },
             TransactionRoutingMechanism::StoreAndForwardOnly => {
                 result.store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
+                if result.store_and_forward_send_result {
+                    result.transaction_status = TransactionStatus::Pending;
+                }
             },
         };
 
@@ -592,6 +672,7 @@ where
         let proto_message = proto::TransactionSenderMessage::single(msg.clone().into());
         let mut store_and_forward_send_result = false;
         let mut direct_send_result = false;
+        let mut transaction_status = TransactionStatus::Queued;
 
         info!(
             target: LOG_TARGET,
@@ -619,6 +700,7 @@ where
                     .await
                     {
                         direct_send_result = true;
+                        transaction_status = TransactionStatus::Pending;
                     }
                     // Send a Store and Forward (SAF) regardless. Empirical testing determined
                     // that in some cases a direct send would be reported as true, even though the wallet
@@ -631,21 +713,54 @@ where
                         self.id,
                         self.dest_pubkey,
                     );
-                    store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
+                    match self.send_transaction_store_and_forward(msg.clone()).await {
+                        Ok(res) => {
+                            store_and_forward_send_result = res;
+                            if store_and_forward_send_result {
+                                transaction_status = TransactionStatus::Pending
+                            };
+                        },
+                        // Sending SAF is the secondary concern here, so do not propagate the error
+                        Err(e) => warn!(target: LOG_TARGET, "Sending SAF for TxId {} failed ({:?})", self.id, e),
+                    }
                 },
                 SendMessageResponse::Failed(err) => {
                     warn!(
                         target: LOG_TARGET,
                         "Transaction Send Direct for TxID {} failed: {}", self.id, err
                     );
-                    store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
+                    match self.send_transaction_store_and_forward(msg.clone()).await {
+                        Ok(res) => {
+                            store_and_forward_send_result = res;
+                            if store_and_forward_send_result {
+                                transaction_status = TransactionStatus::Pending
+                            };
+                        },
+                        // Sending SAF is the secondary concern here, so do not propagate the error
+                        Err(e) => warn!(target: LOG_TARGET, "Sending SAF for TxId {} failed ({:?})", self.id, e),
+                    }
                 },
                 SendMessageResponse::PendingDiscovery(rx) => {
                     let _ = self
                         .resources
                         .event_publisher
                         .send(Arc::new(TransactionEvent::TransactionDiscoveryInProgress(self.id)));
-                    store_and_forward_send_result = self.send_transaction_store_and_forward(msg.clone()).await?;
+                    match self.send_transaction_store_and_forward(msg.clone()).await {
+                        Ok(res) => {
+                            store_and_forward_send_result = res;
+                            if store_and_forward_send_result {
+                                transaction_status = TransactionStatus::Pending
+                            };
+                        },
+                        // Sending SAF is the secondary concern here, so do not propagate the error
+                        Err(e) => warn!(
+                            target: LOG_TARGET,
+                            "Sending SAF for TxId {} failed; we will still wait for discovery of {} to complete ({:?})",
+                            self.id,
+                            self.dest_pubkey,
+                            e
+                        ),
+                    }
                     // now wait for discovery to complete
                     match rx.await {
                         Ok(SendMessageResponse::Queued(send_states)) => {
@@ -661,6 +776,9 @@ where
                                 self.resources.config.direct_send_timeout,
                             )
                             .await;
+                            if direct_send_result {
+                                transaction_status = TransactionStatus::Pending
+                            };
                         },
                         Ok(SendMessageResponse::Failed(e)) => warn!(
                             target: LOG_TARGET,
@@ -670,20 +788,24 @@ where
                         Err(e) => {
                             warn!(
                                 target: LOG_TARGET,
-                                "Error waiting for Discovery while sending message to TxId: {} {:?}", self.id, e
+                                "Error waiting for Discovery while sending message (TxId: {}) {:?}", self.id, e
                             );
                         },
                     }
                 },
             },
             Err(e) => {
-                warn!(target: LOG_TARGET, "Direct Transaction Send failed: {:?}", e);
+                warn!(
+                    target: LOG_TARGET,
+                    "Direct Transaction Send (TxId: {}) failed: {:?}", self.id, e
+                );
             },
         }
 
         Ok(SendResult {
             direct_send_result,
             store_and_forward_send_result,
+            transaction_status,
         })
     }
 
@@ -835,4 +957,5 @@ where
 struct SendResult {
     direct_send_result: bool,
     store_and_forward_send_result: bool,
+    transaction_status: TransactionStatus,
 }

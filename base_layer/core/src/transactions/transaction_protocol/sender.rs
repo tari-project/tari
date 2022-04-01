@@ -357,6 +357,17 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// Revert the sender state back to 'SingleRoundMessageReady', used if transactions gets queued
+    pub fn revert_sender_state_to_single_round_message_ready(&mut self) -> Result<(), TPE> {
+        match &self.state {
+            SenderState::CollectingSingleSignature(info) => {
+                self.state = SenderState::SingleRoundMessageReady(info.clone());
+                Ok(())
+            },
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Return the single round sender message
     pub fn get_single_round_message(&self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {

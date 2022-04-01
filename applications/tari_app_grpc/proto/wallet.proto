@@ -200,6 +200,8 @@ enum TransactionStatus {
     TRANSACTION_STATUS_FAUX_UNCONFIRMED = 9;
     // All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
     TRANSACTION_STATUS_FAUX_CONFIRMED = 10;
+    // This transaction is still being queued for sending
+    TRANSACTION_STATUS_QUEUED = 11;
 }
 
 message GetCompletedTransactionsRequest { }
