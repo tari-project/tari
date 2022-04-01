@@ -1687,21 +1687,6 @@ where
                             Some(s) => s,
                         }
                     },
-                    Err(TransactionStorageError::ValueNotFound(_)) => {
-                        info!(
-                            target: LOG_TARGET,
-                            "Received Finalized Transaction for an unknown pending Inbound Transaction (TxId: {}). \
-                             Sending cancel transaction to to notify sender we are not continuing with this tx.",
-                            tx_id
-                        );
-                        tokio::spawn(send_transaction_cancelled_message(
-                            tx_id,
-                            source_pubkey.clone(),
-                            self.resources.outbound_message_service.clone(),
-                        ));
-                        return Err(TransactionServiceError::TransactionDoesNotExistError);
-                    },
-
                     Err(_) => return Err(TransactionServiceError::TransactionDoesNotExistError),
                 }
             },
