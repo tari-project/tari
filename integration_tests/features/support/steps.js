@@ -491,11 +491,11 @@ When(/I request the difficulties of a node (.*)/, async function (node) {
 Then("difficulties are available", function () {
   assert.strictEqual(this.lastResult.length, 3);
   // check genesis block, chain in reverse height order
-  assert.strictEqual(this.lastResult[2].difficulty, "1");
-  assert.strictEqual(this.lastResult[2].sha3_estimated_hash_rate, "0");
-  assert.strictEqual(this.lastResult[2].monero_estimated_hash_rate, "0");
-  assert.strictEqual(this.lastResult[2].height, "2");
-  assert.strictEqual(this.lastResult[2].pow_algo, "0");
+  expect(this.lastResult[2].difficulty).to.equal("1");
+  expect(this.lastResult[2].sha3_estimated_hash_rate).to.equal("0");
+  expect(this.lastResult[2].monero_estimated_hash_rate).to.equal("0");
+  expect(this.lastResult[2].height).to.equal("2");
+  expect(this.lastResult[2].pow_algo).to.equal("0");
 });
 
 When(
