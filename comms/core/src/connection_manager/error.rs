@@ -36,14 +36,10 @@ pub enum ConnectionManagerError {
     PeerManagerError(#[from] PeerManagerError),
     #[error("Peer connection error: {0}")]
     PeerConnectionError(String),
-    #[error("Cannot connect to peers which are not persisted in the peer manager database.")]
-    PeerNotPersisted,
     #[error("Failed to send request to ConnectionManagerActor. Channel closed.")]
     SendToActorFailed,
     #[error("Request was canceled before the response could be sent")]
     ActorRequestCanceled,
-    #[error("The dial reply channel was closed when sending a reply")]
-    DialReplyChannelClosed,
     #[error("Failed to connect on all addresses for peer")]
     DialConnectFailedAllAddresses,
     #[error("Failed to connect to peer within the maximum number of attempts")]
@@ -52,8 +48,6 @@ pub enum ConnectionManagerError {
     YamuxConnectionError(String),
     #[error("Failed to perform yamux upgrade on socket: {0}")]
     YamuxUpgradeFailure(String),
-    #[error("Establisher channel is closed or full")]
-    EstablisherChannelError,
     #[error("Transport error: {0}")]
     TransportError(String),
     #[error("The peer authenticated to a public key which did not match the dialed peer's public key")]
@@ -64,8 +58,6 @@ pub enum ConnectionManagerError {
     // send the same response to multiple requesters
     #[error("Noise error: {0}")]
     NoiseError(String),
-    #[error("Incoming listener stream unexpectedly closed")]
-    IncomingListenerStreamClosed,
     #[error("Peer is banned, denying connection")]
     PeerBanned,
     #[error("Unable to parse any of the network addresses offered by the connecting peer")]
@@ -84,8 +76,6 @@ pub enum ConnectionManagerError {
     ListenerOneshotCancelled,
     #[error("Peer sent invalid identity signature")]
     PeerIdentityInvalidSignature,
-    #[error("Peer did not provide the identity timestamp")]
-    PeerIdentityNoUpdatedTimestampProvided,
     #[error("Peer did not provide any public addresses")]
     PeerIdentityNoAddresses,
 }

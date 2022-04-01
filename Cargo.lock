@@ -4738,7 +4738,7 @@ dependencies = [
 [[package]]
 name = "pgp"
 version = "0.7.2"
-source = "git+https://github.com/sdbondi/rpgp.git?rev=f75a238a844909e46be9d5e0ac296a8bd82cf268#f75a238a844909e46be9d5e0ac296a8bd82cf268"
+source = "git+https://github.com/tari-project/rpgp.git?rev=32939dbe86565d5ede769a7907ec42dfdf353849#32939dbe86565d5ede769a7907ec42dfdf353849"
 dependencies = [
  "aes 0.7.5",
  "base64 0.13.0",
@@ -6628,6 +6628,7 @@ dependencies = [
  "num_cpus",
  "opentelemetry",
  "opentelemetry-jaeger",
+ "qrcode",
  "regex",
  "rustyline",
  "rustyline-derive",
@@ -7143,6 +7144,7 @@ dependencies = [
  "bytes 1.1.0",
  "chrono",
  "config 0.9.3",
+ "crossterm 0.17.7",
  "derivative",
  "env_logger 0.7.1",
  "futures 0.3.21",
@@ -7191,6 +7193,7 @@ dependencies = [
  "bufstream",
  "chrono",
  "crossbeam",
+ "crossterm 0.17.7",
  "derivative",
  "futures 0.3.21",
  "hex",

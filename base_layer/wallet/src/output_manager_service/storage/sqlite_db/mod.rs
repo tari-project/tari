@@ -130,6 +130,9 @@ impl OutputManagerSqliteDatabase {
 
             DbKeyValuePair::KnownOneSidedPaymentScripts(script) => {
                 let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
+                if KnownOneSidedPaymentScriptSql::find(&script_sql.script_hash, conn).is_ok() {
+                    return Err(OutputManagerStorageError::DuplicateScript);
+                }
                 self.encrypt_if_necessary(&mut script_sql)?;
                 script_sql.commit(conn)?
             },
@@ -1292,7 +1295,7 @@ impl KnownOneSidedPaymentScriptSql {
         Ok(())
     }
 
-    /// Find a particular Output, if it exists
+    /// Find a particular script, if it exists
     pub fn find(
         hash: &[u8],
         conn: &SqliteConnection,

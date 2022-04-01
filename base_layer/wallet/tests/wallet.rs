@@ -799,7 +799,7 @@ async fn test_import_utxo() {
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
-    let outputs = db.fetch_outputs_by_tx_id(tx_id).await.unwrap();
+    let outputs = db.fetch_outputs_by_tx_id(tx_id).unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }
 

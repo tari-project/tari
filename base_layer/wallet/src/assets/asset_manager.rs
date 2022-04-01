@@ -58,7 +58,6 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         let outputs = self
             .output_database
             .fetch_with_features(OutputFlags::ASSET_REGISTRATION)
-            .await
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         debug!(
