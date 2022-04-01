@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,52 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use anyhow::Error;
-use async_trait::async_trait;
-use clap::Parser;
-use qrcode::{render::unicode, QrCode};
-use tari_utilities::hex::Hex;
+use std::io::{Error, Read, Write};
 
-use super::{CommandContext, HandleCommand};
+use tari_utilities::epoch_time::EpochTime;
 
-/// Display identity information about this node,
-/// including: public key, node ID and the public address
-#[derive(Debug, Parser)]
-pub struct Args {}
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[async_trait]
-impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.whoami()
+impl ConsensusEncoding for EpochTime {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+        self.as_u64().consensus_encode(writer)
     }
 }
 
-impl CommandContext {
-    /// Function to process the whoami command
-    pub fn whoami(&self) -> Result<(), Error> {
-        println!("{}", self.base_node_identity);
-        let peer = format!(
-            "{}::{}",
-            self.base_node_identity.public_key().to_hex(),
-            self.base_node_identity.public_address()
-        );
-        let network = self.config.network;
-        let qr_link = format!(
-            "tari://{}/base_nodes/add?name={}&peer={}",
-            network,
-            self.base_node_identity.node_id(),
-            peer
-        );
-        let code = QrCode::new(qr_link).unwrap();
-        let image = code
-            .render::<unicode::Dense1x2>()
-            .dark_color(unicode::Dense1x2::Dark)
-            .light_color(unicode::Dense1x2::Light)
-            .build()
-            .lines()
-            .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
-        println!("{}", image);
-        Ok(())
+impl ConsensusEncodingSized for EpochTime {
+    fn consensus_encode_exact_size(&self) -> usize {
+        self.as_u64().consensus_encode_exact_size()
+    }
+}
+
+impl ConsensusDecoding for EpochTime {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
+        let timestamp = u64::consensus_decode(reader)?;
+        Ok(EpochTime::from(timestamp))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::consensus::check_consensus_encoding_correctness;
+
+    #[test]
+    fn it_encodes_decodes_correctly() {
+        let t = EpochTime::now();
+        check_consensus_encoding_correctness(t).unwrap();
     }
 }

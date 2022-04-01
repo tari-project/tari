@@ -46,7 +46,7 @@ use crate::propagation::prompt::{parse_from_short_str, user_prompt, SendMethod};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     if env::args().any(|a| a == "--enable-tracing") {
-        // Uncomment to endable tokio tracing
+        // Uncomment to enable tokio tracing via tokio-console
         // console_subscriber::init();
     } else {
         // env logger does not work with console subscriber enabled

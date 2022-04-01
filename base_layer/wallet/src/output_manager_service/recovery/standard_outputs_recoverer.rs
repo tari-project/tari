@@ -142,7 +142,7 @@ where
             )?;
             let tx_id = TxId::new_random();
             let output_hex = db_output.commitment.to_hex();
-            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
+            if let Err(e) = self.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                 match e {
                     OutputManagerStorageError::DuplicateOutput => {
                         info!(

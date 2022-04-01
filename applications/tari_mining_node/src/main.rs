@@ -20,15 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, thread, time::Instant};
+use std::{
+    convert::TryFrom,
+    io::{stdout, Write},
+    thread,
+    time::Instant,
+};
 
 use config::MinerConfig;
+use crossterm::{execute, terminal::SetTitle};
 use errors::{err_empty, MinerError};
 use futures::stream::StreamExt;
 use log::*;
 use miner::Miner;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
-use tari_app_utilities::initialization::init_configuration;
+use tari_app_utilities::{consts, initialization::init_configuration};
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -57,6 +63,10 @@ mod utils;
 /// Application entry point
 fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
+    let terminal_title = format!("Tari Mining Node - Version {}", consts::APP_VERSION);
+    if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
+        println!("Error setting terminal title. {}", e)
+    }
     match rt.block_on(main_inner()) {
         Ok(_) => std::process::exit(0),
         Err(err) => {

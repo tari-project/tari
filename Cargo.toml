@@ -46,4 +46,4 @@ panic = 'abort'
 [patch.crates-io]
 # Temporarily lock pgp to commit (master branch at time of writing) because the currently release crate locks zeroize to =1.3
 #pgp = { git = "https://github.com/rpgp/rpgp.git", rev = "21081b6aaaaa5750ab937cfef30bae879a740d23" }
-pgp = { git = "https://github.com/sdbondi/rpgp.git", rev = "f75a238a844909e46be9d5e0ac296a8bd82cf268" }
+pgp = { git = "https://github.com/tari-project/rpgp.git", rev = "32939dbe86565d5ede769a7907ec42dfdf353849" }
