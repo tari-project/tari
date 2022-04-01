@@ -346,7 +346,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -357,7 +357,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - fetch_unconfirmed_outputs: lock {} + db_op {} = {} ms",
+                "sqlite profile - fetch_unspent_mined_unconfirmed_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -678,7 +678,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - short_term_encumber_outputs: lock {} + db_op {} = {} ms",
+                "sqlite profile - short_term_encumber_outputs (TxId: {}): lock {} + db_op {} = {} ms",
+                tx_id,
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -719,7 +720,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - confirm_encumbered_outputs: lock {} + db_op {} = {} ms",
+                "sqlite profile - confirm_encumbered_outputs (TxId: {}): lock {} + db_op {} = {} ms",
+                tx_id,
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()

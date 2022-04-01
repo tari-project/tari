@@ -69,7 +69,7 @@ use tari_wallet::{
         service::Balance,
     },
     transaction_service::{
-        handle::{TransactionEvent, TransactionEventReceiver},
+        handle::{TransactionEvent, TransactionEventReceiver, TransactionSendStatus},
         storage::{
             database::{TransactionBackend, TransactionDatabase},
             models::{CompletedTransaction, InboundTransaction},
@@ -91,8 +91,7 @@ where TBackend: TransactionBackend + 'static
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut CompletedTransaction),
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-    callback_direct_send_result: unsafe extern "C" fn(u64, bool),
-    callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
+    callback_transaction_send_result: unsafe extern "C" fn(u64, *mut TransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
@@ -134,8 +133,7 @@ where TBackend: TransactionBackend + 'static
         callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut CompletedTransaction),
         callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut CompletedTransaction, u64),
-        callback_direct_send_result: unsafe extern "C" fn(u64, bool),
-        callback_store_and_forward_send_result: unsafe extern "C" fn(u64, bool),
+        callback_transaction_send_result: unsafe extern "C" fn(u64, *mut TransactionSendStatus),
         callback_transaction_cancellation: unsafe extern "C" fn(*mut CompletedTransaction, u64),
         callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
         callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut ContactsLivenessData),
@@ -178,11 +176,7 @@ where TBackend: TransactionBackend + 'static
         );
         info!(
             target: LOG_TARGET,
-            "DirectSendResultCallback -> Assigning Fn:  {:?}", callback_direct_send_result
-        );
-        info!(
-            target: LOG_TARGET,
-            "StoreAndForwardSendResultCallback -> Assigning Fn:  {:?}", callback_store_and_forward_send_result
+            "TransactionSendResultCallback -> Assigning Fn:  {:?}", callback_transaction_send_result
         );
         info!(
             target: LOG_TARGET,
@@ -222,8 +216,7 @@ where TBackend: TransactionBackend + 'static
             callback_transaction_mined_unconfirmed,
             callback_faux_transaction_confirmed,
             callback_faux_transaction_unconfirmed,
-            callback_direct_send_result,
-            callback_store_and_forward_send_result,
+            callback_transaction_send_result,
             callback_transaction_cancellation,
             callback_txo_validation_complete,
             callback_contacts_liveness_data_updated,
@@ -271,12 +264,8 @@ where TBackend: TransactionBackend + 'static
                                     self.receive_finalized_transaction_event(tx_id).await;
                                     self.trigger_balance_refresh().await;
                                 },
-                                TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
-                                    self.receive_direct_send_result(tx_id, result);
-                                    self.trigger_balance_refresh().await;
-                                },
-                                TransactionEvent::TransactionStoreForwardSendResult(tx_id, result) => {
-                                    self.receive_store_and_forward_send_result(tx_id, result);
+                                TransactionEvent::TransactionSendResult(tx_id, status) => {
+                                    self.receive_transaction_send_result(tx_id, status);
                                     self.trigger_balance_refresh().await;
                                 },
                                 TransactionEvent::TransactionCancelled(tx_id, reason) => {
@@ -476,23 +465,14 @@ where TBackend: TransactionBackend + 'static
         }
     }
 
-    fn receive_direct_send_result(&mut self, tx_id: TxId, result: bool) {
+    fn receive_transaction_send_result(&mut self, tx_id: TxId, status: TransactionSendStatus) {
         debug!(
             target: LOG_TARGET,
-            "Calling Direct Send Result callback function for TxId: {} with result {}", tx_id, result
+            "Calling Transaction Send Result callback function for TxId: {} with result {}", tx_id, status
         );
+        let boxing = Box::into_raw(Box::new(status));
         unsafe {
-            (self.callback_direct_send_result)(tx_id.as_u64(), result);
-        }
-    }
-
-    fn receive_store_and_forward_send_result(&mut self, tx_id: TxId, result: bool) {
-        debug!(
-            target: LOG_TARGET,
-            "Calling Store and Forward Send Result callback function for TxId: {} with result {}", tx_id, result
-        );
-        unsafe {
-            (self.callback_store_and_forward_send_result)(tx_id.as_u64(), result);
+            (self.callback_transaction_send_result)(tx_id.as_u64(), boxing);
         }
     }
 
