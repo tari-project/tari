@@ -155,9 +155,9 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
         let mut sha3_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone(), start_height);
+            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
         let mut monero_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone(), start_height);
+            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
 
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
@@ -183,24 +183,27 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 }
 
                 for chain_header in headers.iter() {
-                    let current_difficulty = chain_header.accumulated_data().target_difficulty.as_u64();
-                    let current_timestamp = chain_header.header().timestamp.as_u64();
+                    let current_difficulty = chain_header.accumulated_data().target_difficulty;
+                    let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
                     let pow_algo = chain_header.header().pow.pow_algo;
 
-                    match pow_algo {
-                        PowAlgorithm::Monero => monero_hash_rate_moving_average.add(chain_header),
-                        PowAlgorithm::Sha3 => sha3_hash_rate_moving_average.add(chain_header),
+                    // update the moving average calculation with the header data
+                    let current_hash_rate_moving_average = match pow_algo {
+                        PowAlgorithm::Monero => &mut monero_hash_rate_moving_average,
+                        PowAlgorithm::Sha3 => &mut sha3_hash_rate_moving_average,
                     };
-                    let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.get_hash_rate();
-                    let monero_estimated_hash_rate = monero_hash_rate_moving_average.get_hash_rate();
+                    current_hash_rate_moving_average.add(current_height, current_difficulty);
+
+                    let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.get_average();
+                    let monero_estimated_hash_rate = monero_hash_rate_moving_average.get_average();
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
-                        difficulty: current_difficulty,
+                        difficulty: current_difficulty.as_u64(),
                         sha3_estimated_hash_rate,
                         monero_estimated_hash_rate,
                         height: current_height,
-                        timestamp: current_timestamp,
+                        timestamp: current_timestamp.as_u64(),
                         pow_algo: pow_algo.as_u64(),
                     };
 

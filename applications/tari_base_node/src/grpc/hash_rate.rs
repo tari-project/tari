@@ -20,10 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::collections::VecDeque;
+
 use tari_core::{
-    blocks::ChainHeader,
     consensus::ConsensusManager,
-    proof_of_work::{lwma_diff::LinearWeightedMovingAverage, Difficulty, DifficultyAdjustment, PowAlgorithm},
+    proof_of_work::{Difficulty, PowAlgorithm},
 };
 
 /// The number of past blocks to be used on moving averages for (smooth) estimated hashrate
@@ -34,48 +35,159 @@ const MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 15;
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
     pow_algo: PowAlgorithm,
-    consensus_rules: ConsensusManager,
-    moving_average: LinearWeightedMovingAverage,
+    consensus_manager: ConsensusManager,
+    window_size: usize,
+    hash_rates: VecDeque<u64>,
+    average: u64,
 }
 
 impl HashRateMovingAverage {
-    pub fn new(pow_algo: PowAlgorithm, consensus_rules: ConsensusManager, start_height: u64) -> Self {
+    pub fn new(pow_algo: PowAlgorithm, consensus_manager: ConsensusManager) -> Self {
         let window_size = match pow_algo {
             PowAlgorithm::Monero => MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW,
             PowAlgorithm::Sha3 => SHA3_HASH_RATE_MOVING_AVERAGE_WINDOW,
         };
-
-        let consensus_constants = consensus_rules.consensus_constants(start_height);
-
-        let moving_average = LinearWeightedMovingAverage::new(
-            window_size,
-            consensus_constants.get_diff_target_block_interval(pow_algo),
-            consensus_constants.get_difficulty_max_block_interval(pow_algo),
-        );
+        let hash_rates = VecDeque::with_capacity(window_size);
 
         Self {
             pow_algo,
-            consensus_rules,
-            moving_average,
+            consensus_manager,
+            window_size,
+            hash_rates,
+            average: 0,
         }
     }
 
-    /// Adds a new entry in the moving average to update it
-    pub fn add(&mut self, chain_header: &ChainHeader) {
-        let target_difficulty = chain_header.accumulated_data().target_difficulty;
+    /// Adds a new hash rate entry in the moving average and recalculates the average
+    pub fn add(&mut self, height: u64, difficulty: Difficulty) {
+        // target block time for the current block is provided by the consensus rules
         let target_time = self
-            .consensus_rules
-            .consensus_constants(chain_header.header().height)
+            .consensus_manager
+            .consensus_constants(height)
             .get_diff_target_block_interval(self.pow_algo);
-        self.moving_average
-            .add_back(chain_header.header().timestamp, target_difficulty / target_time);
+
+        // remove old entries if we are at max block window
+        if self.is_full() {
+            self.hash_rates.pop_back();
+        }
+
+        // add the new hash rate to the list
+        let current_hash_rate = difficulty.as_u64() / target_time;
+        self.hash_rates.push_front(current_hash_rate);
+
+        // after adding the hash rate we need to recalculate the average
+        self.average = self.calculate_average();
     }
 
-    /// Gets the most recent hash rate value in the moving average
-    pub fn get_hash_rate(&self) -> u64 {
-        self.moving_average
-            .get_difficulty()
-            .map(Difficulty::as_u64)
-            .unwrap_or(0)
+    fn is_full(&self) -> bool {
+        self.hash_rates.len() >= self.window_size
+    }
+
+    fn calculate_average(&self) -> u64 {
+        // this check is not strictly necessary as this is only called after adding an item
+        // but let's be on the safe side for future changes
+        if self.hash_rates.is_empty() {
+            return 0;
+        }
+
+        let sum: u64 = self.hash_rates.iter().sum();
+        let count = self.hash_rates.len() as u64;
+        sum / count
+    }
+
+    pub fn get_average(&self) -> u64 {
+        self.average
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_core::{
+        consensus::{ConsensusConstants, ConsensusManagerBuilder},
+        proof_of_work::{Difficulty, PowAlgorithm},
+    };
+    use tari_p2p::Network;
+
+    use super::HashRateMovingAverage;
+
+    #[test]
+    fn window_is_empty() {
+        let hash_rate_ma = create_sha3_hash_rate_ma();
+        assert_eq!(hash_rate_ma.is_full(), false);
+        assert_eq!(hash_rate_ma.calculate_average(), 0);
+        assert_eq!(hash_rate_ma.get_average(), 0);
+    }
+
+    #[test]
+    fn window_is_full() {
+        let mut hash_rate_ma = create_sha3_hash_rate_ma();
+        let window_size = hash_rate_ma.window_size;
+
+        // we check that the window is not full when we insert less items than the window size
+        for _ in 0..window_size - 1 {
+            hash_rate_ma.add(0, Difficulty::from(0));
+            assert_eq!(hash_rate_ma.is_full(), false);
+        }
+
+        // from this point onwards, the window should be always full
+        for _ in 0..10 {
+            hash_rate_ma.add(0, Difficulty::from(0));
+            assert_eq!(hash_rate_ma.is_full(), true);
+        }
+    }
+
+    // Checks that the moving average hash rate at every block is correct
+    // We use larger sample data than the SHA window size (12 periods) to check bounds
+    // We assumed a constant target block time of 300 secs (the SHA3 target time for Dibbler)
+    // These expected hash rate values where calculated in a spreadsheet
+    #[test]
+    fn correct_moving_average_calculation() {
+        let mut hash_rate_ma = create_sha3_hash_rate_ma();
+
+        assert_hash_rate(&mut hash_rate_ma, 0, 100_000, 333);
+        assert_hash_rate(&mut hash_rate_ma, 1, 120_100, 366);
+        assert_hash_rate(&mut hash_rate_ma, 2, 110_090, 366);
+        assert_hash_rate(&mut hash_rate_ma, 3, 121_090, 375);
+        assert_hash_rate(&mut hash_rate_ma, 4, 150_000, 400);
+        assert_hash_rate(&mut hash_rate_ma, 5, 155_000, 419);
+        assert_hash_rate(&mut hash_rate_ma, 6, 159_999, 435);
+        assert_hash_rate(&mut hash_rate_ma, 7, 160_010, 448);
+        assert_hash_rate(&mut hash_rate_ma, 8, 159_990, 457);
+        assert_hash_rate(&mut hash_rate_ma, 9, 140_000, 458);
+        assert_hash_rate(&mut hash_rate_ma, 10, 137_230, 458);
+        assert_hash_rate(&mut hash_rate_ma, 11, 130_000, 456);
+        assert_hash_rate(&mut hash_rate_ma, 12, 120_000, 461);
+        assert_hash_rate(&mut hash_rate_ma, 13, 140_000, 467);
+    }
+
+    // Our moving average windows are very small (12 and 15 depending on PoW algorithm)
+    // So we will never get an overflow when we do the sums for the average calculation (we divide by target time)
+    // Anyways, just in case we go with huge windows in the future, this test should fail with a panic due to overflow
+    #[test]
+    fn should_not_overflow() {
+        let mut hash_rate_ma = create_sha3_hash_rate_ma();
+        let window_size = hash_rate_ma.window_size;
+
+        for _ in 0..window_size {
+            hash_rate_ma.add(0, Difficulty::from(u64::MAX));
+        }
+    }
+
+    fn create_sha3_hash_rate_ma() -> HashRateMovingAverage {
+        let pow_algo = PowAlgorithm::Sha3;
+        let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler)
+            .add_consensus_constants(ConsensusConstants::dibbler()[0].clone())
+            .build();
+        HashRateMovingAverage::new(pow_algo, consensus_manager.clone())
+    }
+
+    fn assert_hash_rate(
+        moving_average: &mut HashRateMovingAverage,
+        height: u64,
+        difficulty: u64,
+        expected_hash_rate: u64,
+    ) {
+        moving_average.add(height, Difficulty::from(difficulty));
+        assert_eq!(moving_average.get_average(), expected_hash_rate);
     }
 }
