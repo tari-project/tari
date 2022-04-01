@@ -245,7 +245,7 @@ where T: OutputManagerBackend + 'static
     }
 
     pub fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
-        let utxos = self.db.fetch_unconfirmed_outputs()?;
+        let utxos = self.db.fetch_unspent_mined_unconfirmed_outputs()?;
         Ok(utxos)
     }
 

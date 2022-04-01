@@ -356,6 +356,13 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn restart_transaction_protocols(&mut self) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service = inner.wallet.transaction_service.clone();
+        tx_service.restart_transaction_protocols().await?;
+        Ok(())
+    }
+
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }
@@ -857,6 +864,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
@@ -881,6 +889,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
@@ -922,6 +931,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
@@ -952,6 +962,16 @@ impl AppStateInner {
 
             if let Err(e) = output_manager_service.validate_txos().await {
                 error!(target: LOG_TARGET, "Problem validating UTXOs: {}", e);
+            }
+        });
+    }
+
+    pub fn spawn_restart_transaction_protocols_task(&mut self) {
+        let mut txn_service = self.wallet.transaction_service.clone();
+
+        task::spawn(async move {
+            if let Err(e) = txn_service.restart_transaction_protocols().await {
+                error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
             }
         });
     }
@@ -1173,9 +1193,10 @@ pub struct MyIdentity {
     pub node_id: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UiTransactionSendStatus {
     Initiated,
+    Queued,
     SentDirect,
     TransactionComplete,
     DiscoveryInProgress,

@@ -57,7 +57,7 @@ mod test {
         },
         test_utils::make_wallet_database_connection,
         transaction_service::{
-            handle::TransactionEvent,
+            handle::{TransactionEvent, TransactionSendStatus},
             storage::{
                 database::TransactionDatabase,
                 models::{CompletedTransaction, InboundTransaction, OutboundTransaction, TxCancellationReason},
@@ -83,8 +83,9 @@ mod test {
         pub mined_tx_unconfirmed_callback_called: u64,
         pub faux_tx_confirmed_callback_called: bool,
         pub faux_tx_unconfirmed_callback_called: u64,
-        pub direct_send_callback_called: bool,
-        pub store_and_forward_send_callback_called: bool,
+        pub direct_send_callback_called: u32,
+        pub store_and_forward_send_callback_called: u32,
+        pub transaction_queued_for_retry_callback_called: u32,
         pub tx_cancellation_callback_called_completed: bool,
         pub tx_cancellation_callback_called_inbound: bool,
         pub tx_cancellation_callback_called_outbound: bool,
@@ -107,8 +108,9 @@ mod test {
                 mined_tx_unconfirmed_callback_called: 0,
                 faux_tx_confirmed_callback_called: false,
                 faux_tx_unconfirmed_callback_called: 0,
-                direct_send_callback_called: false,
-                store_and_forward_send_callback_called: false,
+                direct_send_callback_called: 0,
+                store_and_forward_send_callback_called: 0,
+                transaction_queued_for_retry_callback_called: 0,
                 callback_txo_validation_complete: 0,
                 callback_contacts_liveness_data_updated: 0,
                 callback_balance_updated: 0,
@@ -182,15 +184,17 @@ mod test {
         Box::from_raw(tx);
     }
 
-    unsafe extern "C" fn direct_send_callback(_tx_id: u64, _result: bool) {
+    unsafe extern "C" fn transaction_send_result_callback(_tx_id: u64, status: *mut TransactionSendStatus) {
         let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.direct_send_callback_called = true;
-        drop(lock);
-    }
-
-    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: u64, _result: bool) {
-        let mut lock = CALLBACK_STATE.lock().unwrap();
-        lock.store_and_forward_send_callback_called = true;
+        if (*status).direct_send_result {
+            lock.direct_send_callback_called += 1;
+        };
+        if (*status).store_and_forward_send_result {
+            lock.store_and_forward_send_callback_called += 1;
+        };
+        if (*status).queued_for_retry {
+            lock.transaction_queued_for_retry_callback_called += 1;
+        };
         drop(lock);
     }
 
@@ -419,8 +423,7 @@ mod test {
             mined_unconfirmed_callback,
             faux_confirmed_callback,
             faux_unconfirmed_callback,
-            direct_send_callback,
-            store_and_forward_send_callback,
+            transaction_send_result_callback,
             tx_cancellation_callback,
             txo_validation_complete_callback,
             contacts_liveness_data_updated_callback,
@@ -510,16 +513,35 @@ mod test {
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionDirectSendResult(
+            .send(Arc::new(TransactionEvent::TransactionSendResult(
                 2u64.into(),
-                true,
+                TransactionSendStatus {
+                    direct_send_result: true,
+                    store_and_forward_send_result: true,
+                    queued_for_retry: false,
+                },
             )))
             .unwrap();
 
         transaction_event_sender
-            .send(Arc::new(TransactionEvent::TransactionStoreForwardSendResult(
+            .send(Arc::new(TransactionEvent::TransactionSendResult(
                 2u64.into(),
-                true,
+                TransactionSendStatus {
+                    direct_send_result: false,
+                    store_and_forward_send_result: false,
+                    queued_for_retry: true,
+                },
+            )))
+            .unwrap();
+
+        transaction_event_sender
+            .send(Arc::new(TransactionEvent::TransactionSendResult(
+                2u64.into(),
+                TransactionSendStatus {
+                    direct_send_result: false,
+                    store_and_forward_send_result: true,
+                    queued_for_retry: false,
+                },
             )))
             .unwrap();
 
@@ -707,8 +729,9 @@ mod test {
         assert_eq!(lock.mined_tx_unconfirmed_callback_called, 22u64);
         assert!(lock.faux_tx_confirmed_callback_called);
         assert_eq!(lock.faux_tx_unconfirmed_callback_called, 2u64);
-        assert!(lock.direct_send_callback_called);
-        assert!(lock.store_and_forward_send_callback_called);
+        assert_eq!(lock.direct_send_callback_called, 1);
+        assert_eq!(lock.store_and_forward_send_callback_called, 2);
+        assert_eq!(lock.transaction_queued_for_retry_callback_called, 1);
         assert!(lock.tx_cancellation_callback_called_inbound);
         assert!(lock.tx_cancellation_callback_called_completed);
         assert!(lock.tx_cancellation_callback_called_outbound);
