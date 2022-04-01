@@ -23,7 +23,7 @@
 use std::{cmp::Ordering, slice::Iter};
 
 use strum_macros::{Display, EnumString};
-use tari_crypto::tari_utilities::bit::*;
+use tari_crypto::tari_utilities::bit::{bytes_to_bits, checked_bits_to_uint};
 
 use crate::{
     diacritics::*,
@@ -210,25 +210,42 @@ pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words using the specified language
+/// Each of the input string map to a 11bit long word. So if we write the bit representation of the whole input, it will
+/// look something like this:
+/// .....CCCCCCCCCCCBBBBBBBBBBBAAAAAAAAAAA, the input represented as one very large number would look like
+/// A+B*2^11+C*2^22+... And we want to cut it (from the right) to 8 bit long numbers like this:
+/// .....eddddddddccccccccbbbbbbbbaaaaaaaa, the output represented as one very large number would look liek
+/// a+b*2^8+c*2^16+... Where 'A' is the first mnemonic word in the seq and 'a' is the first byte output.
+/// So the algo works like this:
+/// We add 11bits number to what we have 'rest' shited by the number of bit representation of rest ('rest_bits').
+/// We now have enough bits to get some output, we take 8 bits and produce output byte. We do this as long as we have at
+/// least 8 bits in the 'rest'.
+/// Sample of couple first steps:
+/// 1) the first output 'a' is last 8 bits from input 'A', we have leftover 3 bits from 'A'
+/// 2) We add 5 bits from 'B' to generate 'b', the leftover is 6 bits from 'B'
+/// 3) We add 2 bits from 'C to generate 'c', now we have 8 bits needed to generate 'd' and we have 1 bit leftover.
 pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
-    let mut bits: Vec<bool> = Vec::new();
+    let mut bytes: Vec<u8> = Vec::new();
+    let mut rest = 0;
+    let mut rest_bits: u8 = 0;
+
     for curr_word in mnemonic_seq {
-        match find_mnemonic_index_from_word(curr_word, language) {
-            Ok(index) => {
-                let curr_bits = checked_uint_to_bits(index, 11).ok_or(MnemonicError::IntToBitsConversion)?;
-                bits.extend(curr_bits.iter().cloned());
-            },
-            Err(err) => return Err(err),
+        let index = find_mnemonic_index_from_word(curr_word, language)?;
+        // Add 11 bits to the front
+        rest += index << rest_bits;
+        rest_bits += 11;
+        while rest_bits >= 8 {
+            // Get last 8 bits and shift it
+            bytes.push(rest as u8);
+            rest >>= 8;
+            rest_bits -= 8;
         }
     }
-
-    let bytes = bits_to_bytes(&bits);
-
-    if bytes.len() == 33 {
-        Ok(bytes)
-    } else {
-        Err(MnemonicError::EncodeInvalidLength)
+    // If we have any leftover, we write it.
+    if rest > 0 {
+        bytes.push(rest as u8);
     }
+    Ok(bytes)
 }
 
 pub trait Mnemonic<T> {
@@ -480,6 +497,20 @@ mod test {
                 Err(_e) => panic!(),
             },
             Err(_e) => panic!(),
+        }
+    }
+
+    #[test]
+    fn fuzzer() {
+        use rand::RngCore;
+        let start = 33;
+        // We need the step by eleven to make sure that from_bytes will not do a padding with zeros.
+        for len in (start..1024).step_by(11) {
+            let mut secretkey_bytes = vec![0u8; len];
+            OsRng.fill_bytes(&mut secretkey_bytes);
+            let mnemonic_seq = mnemonic::from_bytes(secretkey_bytes.clone(), &MnemonicLanguage::English).unwrap();
+            let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
+            assert_eq!(secretkey_bytes, mnemonic_bytes, "failed len = {}", len);
         }
     }
 }

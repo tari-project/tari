@@ -19,7 +19,7 @@ async function main() {
       description: "Seed words to use during recovery",
       type: "string",
       default:
-        "cactus pool fuel skull chair casino season disorder flat crash wrist whisper decorate narrow oxygen remember minor among happy cricket embark blue ship sick",
+        "parade jelly sample worth bind release forest snack job mobile divide ranch fee raccoon begin awful source thank check leaf vibrant stove material field",
     })
     .option("log", {
       alias: "l",
@@ -87,10 +87,13 @@ async function run(options = {}) {
         let scannedMatch = data.match(RECOVERY_COMPLETE_REGEXP);
         let recoveredAmountMatch = data.match(RECOVERY_WORTH_REGEXP);
         if (scannedMatch && recoveredAmountMatch) {
-          let recoveredAmount = parseInt(recoveredAmountMatch[1]);
+          // JS probably doesn't care but rust would!
+          let recoveredAmount = 0;
           if (recoveredAmountMatch[2] === "T") {
             // convert to micro tari
-            recoveredAmount *= 1000000;
+            recoveredAmount = round(parseFloat(recoveredAmountMatch[1]) * 1000000);
+          } else {
+            recoveredAmount = parseInt(recoveredAmountMatch[1]);
           }
           return {
             numScanned: parseInt(scannedMatch[1]),
