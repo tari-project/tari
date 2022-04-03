@@ -112,7 +112,7 @@ mod test {
 
     #[test]
     fn window_is_empty() {
-        let hash_rate_ma = create_sha3_hash_rate_ma();
+        let hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
         assert_eq!(hash_rate_ma.is_full(), false);
         assert_eq!(hash_rate_ma.calculate_average(), 0);
         assert_eq!(hash_rate_ma.get_average(), 0);
@@ -120,7 +120,7 @@ mod test {
 
     #[test]
     fn window_is_full() {
-        let mut hash_rate_ma = create_sha3_hash_rate_ma();
+        let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
         let window_size = hash_rate_ma.window_size;
 
         // we check that the window is not full when we insert less items than the window size
@@ -142,7 +142,7 @@ mod test {
     // These expected hash rate values where calculated in a spreadsheet
     #[test]
     fn correct_moving_average_calculation() {
-        let mut hash_rate_ma = create_sha3_hash_rate_ma();
+        let mut hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
 
         assert_hash_rate(&mut hash_rate_ma, 0, 100_000, 333);
         assert_hash_rate(&mut hash_rate_ma, 1, 120_100, 366);
@@ -165,7 +165,13 @@ mod test {
     // Anyways, just in case we go with huge windows in the future, this test should fail with a panic due to overflow
     #[test]
     fn should_not_overflow() {
-        let mut hash_rate_ma = create_sha3_hash_rate_ma();
+        let mut sha3_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
+        let mut monero_hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Monero);
+        try_to_overflow(&mut sha3_hash_rate_ma);
+        try_to_overflow(&mut monero_hash_rate_ma);
+    }
+
+    fn try_to_overflow(hash_rate_ma: &mut HashRateMovingAverage) {
         let window_size = hash_rate_ma.window_size;
 
         for _ in 0..window_size {
@@ -173,8 +179,7 @@ mod test {
         }
     }
 
-    fn create_sha3_hash_rate_ma() -> HashRateMovingAverage {
-        let pow_algo = PowAlgorithm::Sha3;
+    fn create_hash_rate_ma(pow_algo: PowAlgorithm) -> HashRateMovingAverage {
         let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler)
             .add_consensus_constants(ConsensusConstants::dibbler()[0].clone())
             .build();
