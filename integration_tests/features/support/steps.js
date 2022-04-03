@@ -492,6 +492,7 @@ Then("difficulties are available", function () {
   assert.strictEqual(this.lastResult.length, 3);
   // check genesis block, chain in reverse height order
   expect(this.lastResult[2].difficulty).to.equal("1");
+  expect(this.lastResult[2].estimated_hash_rate).to.equal("0");
   expect(this.lastResult[2].sha3_estimated_hash_rate).to.equal("0");
   expect(this.lastResult[2].monero_estimated_hash_rate).to.equal("0");
   expect(this.lastResult[2].height).to.equal("2");

@@ -197,9 +197,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
                     let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.get_average();
                     let monero_estimated_hash_rate = monero_hash_rate_moving_average.get_average();
+                    let estimated_hash_rate = sha3_estimated_hash_rate + monero_estimated_hash_rate;
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
                         difficulty: current_difficulty.as_u64(),
+                        estimated_hash_rate,
                         sha3_estimated_hash_rate,
                         monero_estimated_hash_rate,
                         height: current_height,

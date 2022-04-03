@@ -81,6 +81,7 @@ router.get("/", async function (req, res) {
 
     // estimated hash rates
     let lastDifficulties = await client.getNetworkDifficulty({from_tip: 100});
+    let totalHashRates = getHashRates(lastDifficulties, 'estimated_hash_rate');
     let moneroHashRates = getHashRates(lastDifficulties, 'monero_estimated_hash_rate');
     let shaHashRates = getHashRates(lastDifficulties, 'sha3_estimated_hash_rate'); 
 
@@ -108,6 +109,7 @@ router.get("/", async function (req, res) {
       blockTimes: getBlockTimes(last100Headers),
       moneroTimes: getBlockTimes(last100Headers, "0"),
       shaTimes: getBlockTimes(last100Headers, "1"),
+      currentHashRate: totalHashRates[totalHashRates.length-1],
       currentShaHashRate: shaHashRates[shaHashRates.length-1],
       shaHashRates,
       currentMoneroHashRate: moneroHashRates[moneroHashRates.length-1],
