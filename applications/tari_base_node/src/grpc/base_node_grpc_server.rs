@@ -157,7 +157,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let mut sha3_hash_rate_moving_average =
             HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
         let mut monero_hash_rate_moving_average =
-            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
+            HashRateMovingAverage::new(PowAlgorithm::Monero, self.consensus_rules.clone());
 
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
