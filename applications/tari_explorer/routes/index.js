@@ -79,6 +79,18 @@ router.get("/", async function (req, res) {
     // --  mempool
     let mempool = await client.getMempoolTransactions({});
 
+    // estimated hash rates
+    let lastDifficulties = await client.getNetworkDifficulty({ from_tip: 100 });
+    let totalHashRates = getHashRates(lastDifficulties, "estimated_hash_rate");
+    let moneroHashRates = getHashRates(
+      lastDifficulties,
+      "monero_estimated_hash_rate"
+    );
+    let shaHashRates = getHashRates(
+      lastDifficulties,
+      "sha3_estimated_hash_rate"
+    );
+
     // console.log(mempool);
     for (let i = 0; i < mempool.length; i++) {
       let sum = 0;
@@ -103,6 +115,11 @@ router.get("/", async function (req, res) {
       blockTimes: getBlockTimes(last100Headers),
       moneroTimes: getBlockTimes(last100Headers, "0"),
       shaTimes: getBlockTimes(last100Headers, "1"),
+      currentHashRate: totalHashRates[totalHashRates.length - 1],
+      currentShaHashRate: shaHashRates[shaHashRates.length - 1],
+      shaHashRates,
+      currentMoneroHashRate: moneroHashRates[moneroHashRates.length - 1],
+      moneroHashRates,
     };
     res.render("index", result);
   } catch (error) {
@@ -110,6 +127,15 @@ router.get("/", async function (req, res) {
     res.render("error", { error: error });
   }
 });
+
+function getHashRates(difficulties, property) {
+  const end_idx = difficulties.length - 1;
+  const start_idx = end_idx - 60;
+
+  return difficulties
+    .map((d) => parseInt(d[property]))
+    .slice(start_idx, end_idx);
+}
 
 function getBlockTimes(last100Headers, algo) {
   let blocktimes = [];

@@ -90,6 +90,38 @@
 </table>
 <br />
 
+<table class="noborder">
+  <tr>
+    <td>
+      <h3>Estimated Hash Rate</h3>
+      Current total estimated Hash Rate:
+      {{this.currentHashRate}}
+      H/s
+    </td>
+    <td>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>Monero</h3>
+      Current estimated Hash Rate:
+      {{this.currentMoneroHashRate}}
+      H/s
+      <pre>{{chart this.moneroHashRates 15}}
+      </pre>
+    </td>
+    <td>
+      <h3>SHA3</h3>
+      Current estimated Hash Rate:
+      {{this.currentShaHashRate}}
+      H/s
+      <pre>{{chart this.shaHashRates 15}}
+      </pre>
+    </td>
+  </tr>
+</table>
+<br />
+
 <h2>{{title}}</h2>
 <table>
   <thead>
