@@ -84,13 +84,9 @@ try {
         console.log("txFauxUnconfirmed: ", ptr, confirmations);
       }
   );
-  // callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-  const directSendResult = ffi.Callback("void", [u64, bool], function (i, j) {
-    console.log("directSendResult: ", i, j);
-  });
-  // callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-  const safResult = ffi.Callback("void", [u64, bool], function (i, j) {
-    console.log("safResult: ", i, j);
+  // callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
+  const transactionSendResult = ffi.Callback("void", [u64, ["pointer"]], function (i, ptr) {
+    console.log("transactionSendResult: ", i, ptr);
   });
   // callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
   const txCancelled = ffi.Callback("void", ["pointer"], function (ptr) {
@@ -100,7 +96,7 @@ try {
   const txoValidation = ffi.Callback("void", [u64, u8], function (i, j) {
     console.log("txoValidation: ", i, j);
   });
-  // callback_contacts_liveness_data_updated:  unsafe extern "C" fn(*mut ContactsLivenessData),
+  // callback_contacts_liveness_data_updated:  unsafe extern "C" fn(*mut TariContactsLivenessData),
   const contactsLivenessDataUpdated = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("contactsLivenessDataUpdated: ", ptr);
   });
@@ -115,6 +111,10 @@ try {
   // callback_saf_messages_received: unsafe extern "C" fn(),
   const safsReceived = ffi.Callback("void", [], function () {
     console.log("safsReceived");
+  });
+  // callback_connectivity_status: unsafe extern "C" fn(),
+  const connectivityStatus = ffi.Callback("void", [u64], function () {
+    console.log("connectivityStatus");
   });
 
   console.log("Create Wallet...");
@@ -133,14 +133,14 @@ try {
     txMinedUnconfirmed,
     txFauxConfirmed,
     txFauxUnconfirmed,
-    directSendResult,
-    safResult,
+    transactionSendResult,
     txCancelled,
     txoValidation,
     contactsLivenessDataUpdated,
     balanceUpdated,
     txValidation,
     safsReceived,
+    connectivityStatus,
     recoveryInProgress,
     err
   );

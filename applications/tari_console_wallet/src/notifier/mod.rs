@@ -43,6 +43,7 @@ use tokio::runtime::Handle;
 pub const LOG_TARGET: &str = "wallet::notifier";
 const RECEIVED: &str = "received";
 const SENT: &str = "sent";
+const QUEUED: &str = "queued";
 const CONFIRMATION: &str = "confirmation";
 const MINED: &str = "mined";
 const CANCELLED: &str = "cancelled";
@@ -132,9 +133,18 @@ impl Notifier {
         }
     }
 
-    /// Trigger a notification that a pending transaction was sent.
-    pub fn transaction_sent(&self, tx_id: TxId) {
-        debug!(target: LOG_TARGET, "transaction_sent tx_id: {}", tx_id);
+    /// Trigger a notification that a pending transaction was sent or queued.
+    pub fn transaction_sent_or_queued(&self, tx_id: TxId, is_sent: bool) {
+        let event = if is_sent {
+            debug!(target: LOG_TARGET, "Transaction sent tx_id: {}", tx_id);
+            SENT
+        } else {
+            debug!(
+                target: LOG_TARGET,
+                "Transaction queued for further retry sending tx_id: {}", tx_id
+            );
+            QUEUED
+        };
 
         if let Some(program) = self.path.clone() {
             let mut transaction_service = self.wallet.transaction_service.clone();
@@ -143,7 +153,7 @@ impl Notifier {
                 match transaction_service.get_pending_outbound_transactions().await {
                     Ok(txs) => {
                         if let Some(tx) = txs.get(&tx_id) {
-                            let args = args_from_outbound(tx, SENT);
+                            let args = args_from_outbound(tx, event);
                             let result = Command::new(program).args(&args).output();
                             log(result);
                         } else {
