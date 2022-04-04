@@ -6874,7 +6874,6 @@ dependencies = [
  "tari_utilities",
  "tari_wallet",
  "thiserror",
- "tokio 1.17.0",
  "tonic",
  "tracing",
  "tracing-opentelemetry",
