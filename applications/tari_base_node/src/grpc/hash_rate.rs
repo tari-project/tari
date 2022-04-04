@@ -113,7 +113,7 @@ mod test {
     #[test]
     fn window_is_empty() {
         let hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
-        assert_eq!(hash_rate_ma.is_full(), false);
+        assert!(!hash_rate_ma.is_full());
         assert_eq!(hash_rate_ma.calculate_average(), 0);
         assert_eq!(hash_rate_ma.get_average(), 0);
     }
@@ -126,13 +126,13 @@ mod test {
         // we check that the window is not full when we insert less items than the window size
         for _ in 0..window_size - 1 {
             hash_rate_ma.add(0, Difficulty::from(0));
-            assert_eq!(hash_rate_ma.is_full(), false);
+            assert!(!hash_rate_ma.is_full());
         }
 
         // from this point onwards, the window should be always full
         for _ in 0..10 {
             hash_rate_ma.add(0, Difficulty::from(0));
-            assert_eq!(hash_rate_ma.is_full(), true);
+            assert!(hash_rate_ma.is_full());
         }
     }
 
@@ -183,7 +183,7 @@ mod test {
         let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler)
             .add_consensus_constants(ConsensusConstants::dibbler()[0].clone())
             .build();
-        HashRateMovingAverage::new(pow_algo, consensus_manager.clone())
+        HashRateMovingAverage::new(pow_algo, consensus_manager)
     }
 
     fn assert_hash_rate(
