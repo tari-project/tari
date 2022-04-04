@@ -1,0 +1,52 @@
+# Runs daily (2am)
+name: Non critical integration tests
+on:
+  schedule:
+    - cron: "0 2 * * *"
+
+defaults:
+  rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18
+
+commands:
+  cucumber-js:
+    description: Run non critical cucumber tests
+    steps:
+      - run:
+          name: node -v
+          command: node -v
+      - run:
+          name: npm ci
+          command: cd integration_tests && npm ci
+      - run:
+          name: Build base node
+          command: cargo build --release --bin tari_base_node
+      - run:
+          name: Build wallet
+          command: cargo build --release --bin tari_console_wallet
+      - run:
+          name: Build mmproxy
+          command: cargo build --release --bin tari_merge_mining_proxy
+      - run:
+          name: Build mining_node
+          command: cargo build --release --bin tari_mining_node
+      - run:
+          name: Build stratum_transcoder
+          command: cargo build --release --bin tari_stratum_transcoder
+      - run:
+          name: Build validator node
+          command: cargo build --release --bin tari_validator_node
+      - run:
+          name: Run cucumber scenarios
+          no_output_timeout: 1h
+          command: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "non=critical" --tags "not @wallet-ffi"  --format json:cucumber_output/tests.cucumber --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
+          when: always
+      - run:
+          name: Generate report
+          command: cd integration_tests && node ./generate_report.js
+          when: always
+      - store_test_results:
+          path: integration_tests/cucumber_output
+      - store_artifacts:
+          path: integration_tests/cucumber_output
+      - store_artifacts:
+          path: integration_tests/temp/reports
