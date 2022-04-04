@@ -212,47 +212,6 @@ pub(crate) fn wallet_mode(cli: &Cli, boot_mode: WalletBoot) -> WalletMode {
     }
 }
 
-/// Get the notify program script path from config bootstrap or global config if provided
-pub(crate) fn get_notify_script(cli: &Cli, config: &WalletConfig) -> Result<Option<PathBuf>, ExitError> {
-    debug!(target: LOG_TARGET, "Checking args and config for notify script.");
-
-    let notify_script = match (&cli.wallet_notify, &config.notify_file) {
-        // command line arg
-        (Some(path), None) => {
-            info!(
-                target: LOG_TARGET,
-                "Notify script set from command line argument: {:#?}", path
-            );
-            Some(path.clone())
-        },
-        // config
-        (None, Some(path)) => {
-            info!(target: LOG_TARGET, "Notify script set from config: {:#?}", path);
-            Some(path.clone())
-        },
-        // both arg and config, log and use the arg
-        (Some(path), Some(_)) => {
-            warn!(
-                target: LOG_TARGET,
-                "Wallet notify script set from both command line argument and config file! Using the command line \
-                 argument: {:?}",
-                path
-            );
-            Some(path.clone())
-        },
-        _ => None,
-    };
-
-    if let Some(path) = &notify_script {
-        if !path.exists() {
-            let error = format!("Wallet notify script does not exist at path: {:#?}", path);
-            return Err(ExitError::new(ExitCode::ConfigError, error));
-        }
-    }
-
-    Ok(notify_script)
-}
-
 /// Set up the app environment and state for use by the UI
 pub async fn init_wallet(
     config: &ApplicationConfig,

@@ -92,3 +92,47 @@ pub async fn read_body_until_end(body: &mut Body) -> Result<BytesMut, MmProxyErr
     }
     Ok(bytes)
 }
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_convert_json_to_hyper_json_response() {
+        let resp = json::json!({"test key":"test value"});
+        let code = StatusCode::from_u16(200).unwrap();
+        let url = Url::parse("http://test.com/path?test=param").unwrap();
+        // println!("{:?}", resp);
+        let hyper = convert_json_to_hyper_json_response(resp.clone(), code, url)
+            .await
+            .unwrap();
+        assert_eq!(hyper.status(), code);
+        assert_eq!(hyper.body(), &resp);
+        assert_eq!(hyper.version(), Version::HTTP_11);
+    }
+
+    #[tokio::test]
+    async fn test_json_response_and_read_body_until_end() {
+        let status = StatusCode::from_u16(200).unwrap();
+        let body = json::json!({"test key":"test value"});
+        let mut response = json_response(status, &body.clone()).unwrap();
+        assert_eq!(response.status(), status);
+        assert!(response.headers().contains_key("content-type"));
+        assert_eq!(response.headers()["content-type"], "application/json");
+        assert!(response.headers().contains_key("content-length"));
+        assert_eq!(response.headers()["content-length"], body.to_string().len().to_string());
+        let bytes = read_body_until_end(response.body_mut()).await.unwrap();
+        assert_eq!(bytes, body.to_string());
+    }
+
+    #[test]
+    pub fn test_into_body_from_response() {
+        let body = json::json!({"test key": "test value"});
+        let resp = Response::new(body.clone());
+        let response = into_body_from_response(resp);
+        assert!(response.headers().contains_key("content-type"));
+        assert_eq!(response.headers()["content-type"], "application/json");
+        assert!(response.headers().contains_key("content-length"));
+        assert_eq!(response.headers()["content-length"], body.to_string().len().to_string());
+    }
+}

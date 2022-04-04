@@ -93,17 +93,53 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         let output = outputs
             .first()
             .map(|o| match o.features.clone().unwrap().try_into() {
-                Ok(f) => Ok(BaseLayerOutput { features: f }),
+                Ok(f) => Ok(BaseLayerOutput {
+                    features: f,
+                    height: o.mined_height,
+                }),
                 Err(e) => Err(DigitalAssetError::ConversionError(e)),
             })
             .transpose()?;
         Ok(output)
     }
 
+    async fn check_if_in_committee(
+        &mut self,
+        asset_public_key: PublicKey,
+        dan_node_public_key: PublicKey,
+    ) -> Result<(bool, u64), DigitalAssetError> {
+        let tip = self.get_tip_info().await?;
+        if let Some(checkpoint) = self
+            .get_current_checkpoint(
+                tip.height_of_longest_chain,
+                asset_public_key,
+                COMMITTEE_DEFINITION_ID.into(),
+            )
+            .await?
+        {
+            if let Some(committee) = checkpoint.get_side_chain_committee() {
+                if committee.contains(&dan_node_public_key) {
+                    // We know it's part of the committe at this height
+                    // TODO: there could be a scenario where it was not part of the committe for one block (or more,
+                    // depends on the config)
+                    Ok((true, checkpoint.height))
+                } else {
+                    // We know it's no longer part of the committe at this height
+                    // TODO: if the committe changes twice in short period of time, this will cause some glitches
+                    Ok((false, checkpoint.height))
+                }
+            } else {
+                Ok((false, 0))
+            }
+        } else {
+            Ok((false, 0))
+        }
+    }
+
     async fn get_assets_for_dan_node(
         &mut self,
         dan_node_public_key: PublicKey,
-    ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
+    ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
         let inner = match self.inner.as_mut() {
             Some(i) => i,
             None => {
@@ -114,7 +150,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         // TODO: probably should use output mmr indexes here
         let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
         let mut result = inner.list_asset_registrations(request).await?.into_inner();
-        let mut assets: Vec<AssetDefinition> = vec![];
+        let mut assets: Vec<(AssetDefinition, u64)> = vec![];
         let tip = self.get_tip_info().await?;
         while let Some(r) = result.message().await? {
             if let Ok(asset_public_key) = PublicKey::from_bytes(r.asset_public_key.as_bytes()) {
@@ -133,20 +169,23 @@ impl BaseNodeClient for GrpcBaseNodeClient {
                                 "Node is on committee for asset : {}", asset_public_key
                             );
                             let committee = committee.iter().map(Hex::to_hex).collect::<Vec<String>>();
-                            assets.push(AssetDefinition {
-                                committee,
-                                public_key: asset_public_key,
-                                template_parameters: r
-                                    .features
-                                    .unwrap()
-                                    .asset
-                                    .unwrap()
-                                    .template_parameters
-                                    .into_iter()
-                                    .map(|tp| tp.into())
-                                    .collect(),
-                                ..Default::default()
-                            });
+                            assets.push((
+                                AssetDefinition {
+                                    committee,
+                                    public_key: asset_public_key,
+                                    template_parameters: r
+                                        .features
+                                        .unwrap()
+                                        .asset
+                                        .unwrap()
+                                        .template_parameters
+                                        .into_iter()
+                                        .map(|tp| tp.into())
+                                        .collect(),
+                                    ..Default::default()
+                                },
+                                checkpoint.height,
+                            ));
                         }
                     }
                 }
@@ -172,10 +211,14 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         };
         let output = conn.get_asset_metadata(req).await.unwrap().into_inner();
 
+        let mined_height = output.mined_height;
         let output = output
             .features
             .map(|features| match features.try_into() {
-                Ok(f) => Ok(BaseLayerOutput { features: f }),
+                Ok(f) => Ok(BaseLayerOutput {
+                    features: f,
+                    height: mined_height,
+                }),
                 Err(e) => Err(DigitalAssetError::ConversionError(e)),
             })
             .transpose()?;

@@ -28,10 +28,10 @@ use log::Level;
 pub struct CommonCliArgs {
     /// A path to a directory to store your files
     #[clap(
-    short,
-    long,
-    aliases = &["base_path", "base_dir", "base-dir"],
-    default_value_t= defaults::base_path()
+        short,
+        long,
+        aliases = &["base_path", "base_dir", "base-dir"],
+        default_value_t= defaults::base_path()
     )]
     base_path: String,
     /// A path to the configuration file to use (config.toml)

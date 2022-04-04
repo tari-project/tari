@@ -20,15 +20,22 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, thread, time::Instant};
+use std::{
+    convert::TryFrom,
+    io::{stdout, Write},
+    thread,
+    time::Instant,
+};
 
 use clap::Parser;
 use config::MinerConfig;
+use crossterm::{execute, terminal::SetTitle};
 use errors::{err_empty, MinerError};
 use futures::stream::StreamExt;
 use log::*;
 use miner::Miner;
 use tari_app_grpc::tari_rpc::{base_node_client::BaseNodeClient, wallet_client::WalletClient};
+use tari_app_utilities::consts;
 use tari_common::{
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
@@ -58,6 +65,10 @@ mod utils;
 /// Application entry point
 fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
+    let terminal_title = format!("Tari Mining Node - Version {}", consts::APP_VERSION);
+    if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
+        println!("Error setting terminal title. {}", e)
+    }
     match rt.block_on(main_inner()) {
         Ok(_) => std::process::exit(0),
         Err(err) => {
@@ -78,8 +89,7 @@ async fn main_inner() -> Result<(), ExitError> {
         &cli.common.log_config_path("mining_node"),
         include_str!("../log4rs_sample.yml"),
     )?;
-    // let (bootstrap, _global, cfg) = init_configuration(ApplicationType::MiningNode)?;
-    let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    let config = MinerConfig::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET_FILE, "{:?}", config);
 
     if !config.mining_wallet_address.is_empty() && !config.mining_pool_address.is_empty() {

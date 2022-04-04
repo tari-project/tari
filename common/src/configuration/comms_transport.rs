@@ -93,7 +93,7 @@ pub struct TorConfig {
 impl Default for TorConfig {
     fn default() -> Self {
         Self {
-            control_address: ([127, 0, 0, 1], 18189).into(),
+            control_address: ([127, 0, 0, 1], 9051).into(),
             socks_address_override: None,
             forward_address: ([127, 0, 0, 1], 18189).into(),
             control_auth: TorControlAuthentication::None,

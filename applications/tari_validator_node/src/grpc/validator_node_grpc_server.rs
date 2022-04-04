@@ -73,7 +73,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
 
     async fn get_token_data(
         &self,
-        request: tonic::Request<rpc::GetTokenDataRequest>,
+        _request: tonic::Request<rpc::GetTokenDataRequest>,
     ) -> Result<tonic::Response<rpc::GetTokenDataResponse>, tonic::Status> {
         Err(Status::internal("Oh noes"))
     }

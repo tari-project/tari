@@ -103,6 +103,7 @@ pub struct BaseNodeConfig {
     pub buffer_rate_limit: usize,
     pub metadata_auto_ping_interval: Duration,
     pub state_machine: BaseNodeStateMachineConfig,
+    pub resize_terminal_on_startup: bool,
 }
 
 impl Default for BaseNodeConfig {
@@ -128,10 +129,11 @@ impl Default for BaseNodeConfig {
             storage: Default::default(),
             mempool: Default::default(),
             status_line_interval: Duration::from_secs(5),
-            buffer_size: 0,
-            buffer_rate_limit: 0,
-            metadata_auto_ping_interval: Duration::from_secs(30), // TODO: Get actual default
+            buffer_size: 100,
+            buffer_rate_limit: 10,
+            metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
+            resize_terminal_on_startup: true,
         }
     }
 }
@@ -156,6 +158,7 @@ impl BaseNodeConfig {
         if !self.lmdb_path.is_absolute() {
             self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());
         }
+        self.p2p.set_base_path(base_path);
     }
 }
 

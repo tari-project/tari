@@ -48,7 +48,6 @@ use tari_core::transactions::{
     weight::TransactionWeight,
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     assets::Asset,
@@ -354,6 +353,13 @@ impl AppState {
         let inner = self.inner.write().await;
         let mut tx_service = inner.wallet.transaction_service.clone();
         tx_service.restart_broadcast_protocols().await?;
+        Ok(())
+    }
+
+    pub async fn restart_transaction_protocols(&mut self) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service = inner.wallet.transaction_service.clone();
+        tx_service.restart_transaction_protocols().await?;
         Ok(())
     }
 
@@ -858,6 +864,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
@@ -882,6 +889,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
@@ -923,6 +931,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
@@ -957,6 +966,16 @@ impl AppStateInner {
         });
     }
 
+    pub fn spawn_restart_transaction_protocols_task(&mut self) {
+        let mut txn_service = self.wallet.transaction_service.clone();
+
+        task::spawn(async move {
+            if let Err(e) = txn_service.restart_transaction_protocols().await {
+                error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
+            }
+        });
+    }
+
     pub fn add_notification(&mut self, notification: String) {
         self.data.notifications.push((Local::now(), notification));
         self.data.new_notification_count += 1;
@@ -980,9 +999,9 @@ impl AppStateInner {
         self.updated = true;
     }
 
-    pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
-        self.wallet.get_software_updater()
-    }
+    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+    //     self.wallet.get_software_updater()
+    // }
 }
 
 #[derive(Clone)]
@@ -1174,9 +1193,10 @@ pub struct MyIdentity {
     pub node_id: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UiTransactionSendStatus {
     Initiated,
+    Queued,
     SentDirect,
     TransactionComplete,
     DiscoveryInProgress,

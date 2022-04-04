@@ -60,7 +60,7 @@ use std::{
     fmt::{Display, Formatter},
 };
 
-use config::Config;
+use config::{Config, ValueKind};
 
 //-------------------------------------------    ConfigLoader trait    ------------------------------------------//
 
@@ -83,11 +83,15 @@ pub trait ConfigPath {
         match Self::overload_key_prefix(config)? {
             Some(key) => {
                 let overload: config::Value = config.get(key.as_str()).unwrap_or_default();
-                let config = Config::builder()
+                let mut config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
-                    .add_source(config.clone())
-                    .set_override(Self::main_key_prefix(), overload)?
-                    .build()?;
+                    .add_source(config.clone());
+                // If the override is not set, ignore it
+                if !matches!(overload.kind, ValueKind::Nil) {
+                    config = config.set_override(Self::main_key_prefix(), overload)?;
+                }
+
+                let config = config.build()?;
                 Ok(config)
             },
             None => {
@@ -269,9 +273,7 @@ where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Dese
         let buf = serde_json::to_value(&default)?;
         let value: config::Value = serde_json::from_value(buf)?;
         let merger = Self::merge_subconfig(config, value)?;
-        // merger.set_default(Self::main_key_prefix(), value)?;
         let final_value: config::Value = merger.get(Self::main_key_prefix())?;
-        // let final_value_string = final_value.to_string();
         final_value
             .try_deserialize()
             .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce))

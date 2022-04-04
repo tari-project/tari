@@ -396,7 +396,7 @@ impl InnerService {
                     metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
                 );
                 info!(target: LOG_TARGET, "{}", msg);
-                info!("Listening on {}...", self.config.proxy_host_address);
+                info!("Listening on {}...", self.config.proxy_listener_address);
             }
         }
 

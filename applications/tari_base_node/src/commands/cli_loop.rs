@@ -77,8 +77,8 @@ impl CliLoop {
     ///
     /// ## Returns
     /// Doesn't return anything
-    pub async fn cli_loop(mut self) {
-        cli::print_banner(self.commands.clone(), 3);
+    pub async fn cli_loop(mut self, resize_terminal_on_startup: bool) {
+        cli::print_banner(self.commands.clone(), 3, resize_terminal_on_startup);
 
         if self.non_interactive {
             self.watch_loop_non_interactive().await;

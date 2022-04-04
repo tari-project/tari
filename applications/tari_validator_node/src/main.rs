@@ -21,29 +21,31 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::too_many_arguments)]
+mod asset;
+mod cli;
 mod cmd_args;
 mod comms;
 mod config;
 mod dan_node;
 mod default_service_specification;
 mod grpc;
+mod monitoring;
 mod p2p;
 
 use std::{
-    fs,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     process,
     sync::Arc,
 };
 
+use clap::Parser;
 use futures::FutureExt;
 use log::*;
 use tari_app_grpc::tari_rpc::validator_node_server::ValidatorNodeServer;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::{
-    configuration::{bootstrap::ApplicationType, CommonConfig},
     exit_codes::{ExitCode, ExitError},
-    DefaultConfigLoader,
+    load_configuration,
 };
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::Dht;
@@ -56,7 +58,8 @@ use tokio::{runtime, runtime::Runtime, task};
 use tonic::transport::Server;
 
 use crate::{
-    config::ValidatorNodeConfig,
+    cli::Cli,
+    config::{ApplicationConfig, ValidatorNodeConfig},
     dan_node::DanNode,
     default_service_specification::DefaultServiceSpecification,
     grpc::{services::base_node_client::GrpcBaseNodeClient, validator_node_grpc_server::ValidatorNodeGrpcServer},
@@ -66,7 +69,9 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
+    // Uncomment to enable tokio tracing via tokio-console
     // console_subscriber::init();
+
     if let Err(err) = main_inner() {
         let exit_code = err.exit_code;
         eprintln!("{:?}", err);
@@ -79,36 +84,27 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
-    todo!()
-    // let (bootstrap, global, cfg) = init_configuration(ApplicationType::ValidatorNode)?;
-    //
-    // let validator_node_config = <ValidatorNodeConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    // let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    // let runtime = build_runtime()?;
-    // runtime.block_on(run_node(
-    //     &validator_node_config,
-    //     &common_config,
-    //     global,
-    //     bootstrap.create_id,
-    // ))?;
-    //
-    // Ok(())
+    let cli = Cli::parse();
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
+
+    let config = ApplicationConfig::load_from(&cfg)?;
+    let runtime = build_runtime()?;
+    runtime.block_on(run_node(&config, cli))?;
+
+    Ok(())
 }
 
-async fn run_node(
-    validator_node_config: &ValidatorNodeConfig,
-    common_config: &CommonConfig,
-    create_id: bool,
-) -> Result<(), ExitError> {
+async fn run_node(config: &ApplicationConfig, cli: Cli) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
 
     let node_identity = setup_node_identity(
-        &validator_node_config.identity_file,
-        &validator_node_config.public_address,
-        create_id,
+        &config.validator_node.identity_file,
+        &config.validator_node.public_address,
+        cli.create_id,
         PeerFeatures::NONE,
     )?;
-    let db_factory = SqliteDbFactory::new(validator_node_config.data_dir.clone());
+    let db_factory = SqliteDbFactory::new(config.validator_node.data_dir.clone());
     let mempool_service = MempoolServiceHandle::default();
 
     info!(
@@ -119,7 +115,7 @@ async fn run_node(
     );
     // fs::create_dir_all(&global.peer_db_path).map_err(|err| ExitError::new(ExitCode::ConfigError, err))?;
     let (handles, subscription_factory) = comms::build_service_and_comms_stack(
-        validator_node_config,
+        config,
         shutdown.to_signal(),
         node_identity.clone(),
         mempool_service.clone(),
@@ -132,7 +128,7 @@ async fn run_node(
     let validator_node_client_factory =
         TariCommsValidatorNodeClientFactory::new(handles.expect_handle::<Dht>().dht_requester());
     let asset_proxy: ConcreteAssetProxy<DefaultServiceSpecification> = ConcreteAssetProxy::new(
-        GrpcBaseNodeClient::new(validator_node_config.base_node_grpc_address),
+        GrpcBaseNodeClient::new(config.validator_node.base_node_grpc_address),
         validator_node_client_factory,
         5,
         mempool_service.clone(),
@@ -152,7 +148,7 @@ async fn run_node(
     println!("{}", node_identity);
     run_dan_node(
         shutdown.to_signal(),
-        validator_node_config.clone(),
+        config.validator_node.clone(),
         mempool_service,
         db_factory,
         handles,

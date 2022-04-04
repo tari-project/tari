@@ -65,7 +65,6 @@ use super::error::CommandError;
 use crate::{
     automation::command_parser::{ParsedArgument, ParsedCommand},
     utils::db::{CUSTOM_BASE_NODE_ADDRESS_KEY, CUSTOM_BASE_NODE_PUBLIC_KEY_KEY},
-    wallet_modes::ConsoleWalletConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::automation::commands";
@@ -546,24 +545,11 @@ pub async fn monitor_transactions(
     loop {
         match event_stream.recv().await {
             Ok(event) => match &*event {
-                TransactionEvent::TransactionDirectSendResult(id, success) if tx_ids.contains(id) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "tx direct send event for tx_id: {}, success: {}", *id, success
-                    );
-                    if wait_stage == TransactionStage::DirectSendOrSaf {
-                        results.push(SentTransaction {});
-                        if results.len() == tx_ids.len() {
-                            break;
-                        }
-                    }
-                },
-                TransactionEvent::TransactionStoreForwardSendResult(id, success) if tx_ids.contains(id) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "tx store and forward event for tx_id: {}, success: {}", *id, success
-                    );
-                    if wait_stage == TransactionStage::DirectSendOrSaf {
+                TransactionEvent::TransactionSendResult(id, status) if tx_ids.contains(id) => {
+                    debug!(target: LOG_TARGET, "tx send event for tx_id: {}, {}", *id, status);
+                    if wait_stage == TransactionStage::DirectSendOrSaf &&
+                        (status.direct_send_result || status.store_and_forward_send_result)
+                    {
                         results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;

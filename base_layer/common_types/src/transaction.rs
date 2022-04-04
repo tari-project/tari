@@ -34,6 +34,8 @@ pub enum TransactionStatus {
     FauxUnconfirmed,
     /// All Imported and FauxUnconfirmed transactions will end up with this status when the outputs have been confirmed
     FauxConfirmed,
+    /// This transaction is still being queued for initial sending
+    Queued,
 }
 
 impl TransactionStatus {
@@ -66,6 +68,7 @@ impl TryFrom<i32> for TransactionStatus {
             7 => Ok(TransactionStatus::Rejected),
             8 => Ok(TransactionStatus::FauxUnconfirmed),
             9 => Ok(TransactionStatus::FauxConfirmed),
+            10 => Ok(TransactionStatus::Queued),
             code => Err(TransactionConversionError { code }),
         }
     }
@@ -91,6 +94,7 @@ impl Display for TransactionStatus {
             TransactionStatus::Rejected => write!(f, "Rejected"),
             TransactionStatus::FauxUnconfirmed => write!(f, "FauxUnconfirmed"),
             TransactionStatus::FauxConfirmed => write!(f, "FauxConfirmed"),
+            TransactionStatus::Queued => write!(f, "Queued"),
         }
     }
 }

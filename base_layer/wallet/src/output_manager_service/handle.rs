@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -52,11 +52,8 @@ use tower::Service;
 
 use crate::output_manager_service::{
     error::OutputManagerError,
-    service::Balance,
-    storage::{
-        models::{KnownOneSidedPaymentScript, SpendingPriority},
-        OutputStatus,
-    },
+    service::{Balance, OutputStatusesByTxId},
+    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
 };
 
 /// API Request enum
@@ -247,21 +244,12 @@ pub enum OutputManagerResponse {
     RewoundOutputs(Vec<RecoveredOutput>),
     ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures {
-        output: Box<UnblindedOutputBuilder>,
-    },
-    CreatePayToSelfWithOutputs {
-        transaction: Box<Transaction>,
-        tx_id: TxId,
-    },
+    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
+    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
-    OutputStatusesByTxId {
-        statuses: Vec<OutputStatus>,
-        mined_height: Option<u64>,
-        block_hash: Option<BlockHash>,
-    },
+    OutputStatusesByTxId(OutputStatusesByTxId),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -846,17 +834,13 @@ impl OutputManagerHandle {
     pub async fn get_output_statuses_by_tx_id(
         &mut self,
         tx_id: TxId,
-    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
+    ) -> Result<OutputStatusesByTxId, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
             .await??
         {
-            OutputManagerResponse::OutputStatusesByTxId {
-                statuses,
-                mined_height,
-                block_hash,
-            } => Ok((statuses, mined_height, block_hash)),
+            OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

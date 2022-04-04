@@ -275,7 +275,7 @@ async fn run_node(
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
     }
-    task::spawn(main_loop.cli_loop());
+    task::spawn(main_loop.cli_loop(app_config.base_node.resize_terminal_on_startup));
     if !app_config.base_node.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
