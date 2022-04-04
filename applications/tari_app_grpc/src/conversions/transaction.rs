@@ -100,6 +100,7 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             Rejected => grpc::TransactionStatus::Rejected,
             FauxUnconfirmed => grpc::TransactionStatus::FauxUnconfirmed,
             FauxConfirmed => grpc::TransactionStatus::FauxConfirmed,
+            Queued => grpc::TransactionStatus::Queued,
         }
     }
 }

@@ -219,6 +219,31 @@ Feature: Wallet Transactions
     When I mine 6 blocks on NODE_C
     Then all nodes are at height 16
 
+  Scenario: Wallet send transactions while offline
+    Given I have a seed node SEED
+    And I have wallet WALLET_A connected to seed node SEED
+    And I have wallet WALLET_B connected to seed node SEED
+    And I have mining node MINER_A connected to base node SEED and wallet WALLET_A
+    When mining node MINER_A mines 1 blocks with min difficulty 1 and max difficulty 100000
+    When I mine 4 blocks on SEED
+    Then I wait for wallet WALLET_A to have at least 1000000000 uT
+    When I stop wallet WALLET_B
+    When I stop node SEED
+    Then I wait 10 seconds
+    Then I send 100000000 uT without waiting for broadcast from wallet WALLET_A to wallet WALLET_B at fee 20
+    Then I wait 10 seconds
+    And I start base node SEED
+    And I have a base node NODE_A connected to seed SEED
+    And I have a base node NODE_B connected to seed SEED
+    And I stop wallet WALLET_A
+    And I start wallet WALLET_A
+    And I start wallet WALLET_B
+    Then all nodes are at height 5
+    When I mine 1 blocks on SEED
+    Then all nodes are at height 6
+    Then wallet WALLET_B detects all transactions are at least Pending
+    Then I wait 1 seconds
+
   Scenario: Short wallet clearing out invalid transactions after a reorg
     #
     # Chain 1:
@@ -313,3 +338,21 @@ Feature: Wallet Transactions
     And I wait 5 seconds
     Then I restart wallet WALLET_RECV
     Then I wait for wallet WALLET_RECV to have at least 1000000 uT
+
+@critical
+  Scenario: Wallet should cancel stale transactions
+    Given I have a seed node NODE
+    And I have 1 base nodes connected to all seed nodes
+    And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
+    And I have wallet WALLET_RECV connected to all seed nodes
+    And I have mining node MINER connected to base node NODE and wallet WALLET_SENDER
+    And mining node MINER mines 5 blocks
+    Then all nodes are at height 5
+    Then I wait for wallet WALLET_SENDER to have at least 10000000000 uT
+    And I stop wallet WALLET_RECV
+    When I wait 15 seconds
+    And I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    Then I cancel last transaction in wallet WALLET_SENDER
+    Then I restart wallet WALLET_RECV
+    When I wait 15 seconds
+    When wallet WALLET_RECV detects last transaction is Cancelled

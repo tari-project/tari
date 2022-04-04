@@ -57,7 +57,7 @@ pub enum NodeCommsResponse {
     FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchTokensResponse {
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, u64)>,
     },
     FetchAssetRegistrationsResponse {
         outputs: Vec<UtxoMinedInfo>,

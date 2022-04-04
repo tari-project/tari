@@ -207,7 +207,7 @@ impl TariCommsInboundConnectionService {
     async fn forward_message(&mut self, message: Arc<PeerMessage>) -> Result<(), DigitalAssetError> {
         // let from = message.authenticated_origin.as_ref().unwrap().clone();
         let from = message.source_peer.public_key.clone();
-        let proto_message: proto::consensus::HotStuffMessage = message.decode_message().unwrap();
+        let proto_message: proto::consensus::HotStuffMessage = message.decode_message()?;
         let hot_stuff_message: HotStuffMessage<TariDanPayload> = proto_message
             .try_into()
             .map_err(DigitalAssetError::InvalidPeerMessage)?;

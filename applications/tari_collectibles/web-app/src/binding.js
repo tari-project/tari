@@ -53,7 +53,7 @@ async function command_assets_get_registration(assetPublicKey) {
 
 async function command_asset_create_initial_checkpoint(assetPublicKey) {
   return await invoke("assets_create_initial_checkpoint", {
-    assetPublicKey,
+    assetPubKey: assetPublicKey,
   });
 }
 

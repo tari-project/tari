@@ -16,3 +16,6 @@ scan_for_assets = true
 new_asset_scanning_interval = 10
 # If set then only the specific assets will be checked.
 # assets_allow_list = ["<pubkey>"]
+
+committee_management_polling_interval = 5
+committee_management_confirmation_time = 20

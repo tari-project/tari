@@ -20,35 +20,26 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::io;
+
 use thiserror::Error;
 
-use crate::{
-    connection_manager::ConnectionManagerError,
-    peer_manager::PeerManagerError,
-    protocol::ProtocolExtensionError,
-    tor::HiddenServiceControllerError,
-};
-
 #[derive(Debug, Error)]
-pub enum CommsBuilderError {
-    #[error("Peer manager error: {0}")]
-    PeerManagerError(#[from] PeerManagerError),
-    #[error("Connection manager error: {0}")]
-    ConnectionManagerError(#[from] ConnectionManagerError),
-    #[error("Node identity not set. Call `with_node_identity(node_identity)` on [CommsBuilder]")]
-    NodeIdentityNotSet,
-    #[error("Shutdown signal not set. Call `with_shutdown_signal(shutdown_signal)` on [CommsBuilder]")]
-    ShutdownSignalNotSet,
-    #[error("The PeerStorage was not provided to the CommsBuilder. Use `with_peer_storage` to set it.")]
-    PeerStorageNotProvided,
-    #[error("Unable to receive a ConnectionManagerEvent within timeout")]
-    ConnectionManagerEventStreamTimeout,
-    #[error("ConnectionManagerEvent stream unexpectedly closed")]
-    ConnectionManagerEventStreamClosed,
-    #[error("Receiving on ConnectionManagerEvent stream lagged unexpectedly")]
-    ConnectionManagerEventStreamLagged,
-    #[error("Comms protocol extension failed to install: {0}")]
-    CommsProtocolExtensionError(#[from] ProtocolExtensionError),
-    #[error("Failed to initialize tor hidden service: {0}")]
-    HiddenServiceControllerError(#[from] HiddenServiceControllerError),
+pub enum ProtocolError {
+    #[error("IO error: {0}")]
+    IoError(#[from] io::Error),
+    #[error("The ProtocolId was longer than {}", u8::max_value())]
+    ProtocolIdTooLong,
+    #[error("Protocol negotiation failed because the peer did not accept any of the given protocols: {protocols}")]
+    ProtocolOutboundNegotiationFailed { protocols: String },
+    #[error("Protocol negotiation failed because the peer did not offer any protocols supported by this node")]
+    ProtocolInboundNegotiationFailed,
+    #[error("Optimistic protocol negotiation failed because the peer did not offer a protocol supported by this node")]
+    ProtocolOptimisticNegotiationFailed,
+    #[error("Protocol negotiation terminated by peer")]
+    ProtocolNegotiationTerminatedByPeer,
+    #[error("Protocol was not registered")]
+    ProtocolNotRegistered,
+    #[error("Failed to send notification because notification sender disconnected")]
+    NotificationSenderDisconnected,
 }
