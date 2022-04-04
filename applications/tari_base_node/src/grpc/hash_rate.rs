@@ -28,9 +28,9 @@ use tari_core::{
 };
 
 /// The number of past blocks to be used on moving averages for (smooth) estimated hashrate
-/// The hash rate is calculated as the difficulty divided by the target block time
+/// We consider a 60 minute time window reasonable, that means 12 SHA3 blocks and 18 Monero blocks
 const SHA3_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 12;
-const MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 15;
+const MONERO_HASH_RATE_MOVING_AVERAGE_WINDOW: usize = 18;
 
 /// Calculates a linear weighted moving average for hash rate calculations
 pub struct HashRateMovingAverage {
@@ -95,7 +95,7 @@ impl HashRateMovingAverage {
         sum / count
     }
 
-    pub fn get_average(&self) -> u64 {
+    pub fn average(&self) -> u64 {
         self.average
     }
 }
@@ -115,7 +115,7 @@ mod test {
         let hash_rate_ma = create_hash_rate_ma(PowAlgorithm::Sha3);
         assert!(!hash_rate_ma.is_full());
         assert_eq!(hash_rate_ma.calculate_average(), 0);
-        assert_eq!(hash_rate_ma.get_average(), 0);
+        assert_eq!(hash_rate_ma.average(), 0);
     }
 
     #[test]
@@ -193,6 +193,6 @@ mod test {
         expected_hash_rate: u64,
     ) {
         moving_average.add(height, Difficulty::from(difficulty));
-        assert_eq!(moving_average.get_average(), expected_hash_rate);
+        assert_eq!(moving_average.average(), expected_hash_rate);
     }
 }
