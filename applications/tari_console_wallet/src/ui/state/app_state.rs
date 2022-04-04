@@ -980,9 +980,9 @@ impl AppStateInner {
         self.updated = true;
     }
 
-    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
-    //     self.wallet.get_software_updater()
-    // }
+    pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+        self.wallet.get_software_updater()
+    }
 }
 
 #[derive(Clone)]

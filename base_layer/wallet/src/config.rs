@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -28,8 +29,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
-use tari_comms::multiaddr::Multiaddr;
-use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
+use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig};
 
 use crate::{
     base_node_service::config::BaseNodeServiceConfig,
@@ -42,7 +42,7 @@ pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
-    pub override_from: Option<String>,
+    override_from: Option<String>,
     pub p2p: P2pConfig,
     // pub factories: CryptoFactories,
     pub transaction_service_config: TransactionServiceConfig,
@@ -56,16 +56,18 @@ pub struct WalletConfig {
     pub db_file: PathBuf,
     pub connection_manager_pool_size: usize,
     pub password: Option<String>, // TODO: Make clear on drop
-    pub public_address: Option<Multiaddr>,
     pub contacts_auto_ping_interval: Duration,
     pub contacts_online_ping_window: usize,
+    pub command_send_wait_timeout: Duration,
+    pub command_send_wait_stage: String,
     pub notify_file: Option<PathBuf>,
-    pub grpc_address: Option<Multiaddr>,
+    pub grpc_address: Option<SocketAddr>,
     pub custom_base_node: Option<String>,
     pub base_node_service_peers: Vec<String>,
     pub recovery_retry_limit: usize,
     pub fee_per_gram: u64,
     pub num_required_confirmations: u64,
+    pub use_libtor: bool,
 }
 
 impl Default for WalletConfig {
@@ -84,16 +86,18 @@ impl Default for WalletConfig {
             db_file: PathBuf::from_str("console_wallet").unwrap(),
             connection_manager_pool_size: 5, // TODO: get actual default
             password: None,
-            public_address: None,
             contacts_auto_ping_interval: Duration::from_secs(30),
             contacts_online_ping_window: 30,
+            command_send_wait_stage: String::new(),
+            command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
-            grpc_address: Some(Multiaddr::from_str("/ip4/127.0.0.1/tcp/18143").unwrap()),
+            grpc_address: Some(([127, 0, 0, 1], 18143).into()),
             custom_base_node: None,
             base_node_service_peers: vec![],
             recovery_retry_limit: 3,
             fee_per_gram: 5,
             num_required_confirmations: 3,
+            use_libtor: false,
         }
     }
 }
@@ -105,12 +109,12 @@ impl SubConfigPath for WalletConfig {
 }
 
 impl WalletConfig {
-    pub fn set_base_path(&mut self, base_path: &Path) {
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.db_file.is_absolute() {
-            self.db_file = base_path.join(self.db_file.as_path());
+            self.db_file = base_path.as_ref().join(self.db_file.as_path());
         }
         if !self.data_dir.is_absolute() {
-            self.data_dir = base_path.join(self.data_dir.as_path());
+            self.data_dir = base_path.as_ref().join(self.data_dir.as_path());
         }
         self.p2p.set_base_path(self.data_dir.as_path());
     }

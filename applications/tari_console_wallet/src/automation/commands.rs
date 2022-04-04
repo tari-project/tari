@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fs::File,
     io::{LineWriter, Write},
+    str::FromStr,
     time::{Duration, Instant},
 };
 
@@ -30,8 +32,9 @@ use chrono::Utc;
 use digest::Digest;
 use futures::FutureExt;
 use log::*;
+use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common_types::{transaction::TxId, types::PublicKey};
+use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -39,12 +42,13 @@ use tari_comms::{
 };
 use tari_comms_dht::{envelope::NodeDestination, DhtDiscoveryRequester};
 use tari_core::transactions::{
-    tari_amount::{uT, MicroTari},
+    tari_amount::{uT, MicroTari, Tari},
     transaction_components::{TransactionOutput, UnblindedOutput},
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
-use tari_utilities::hex::Hex;
+use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
+    assets::KEY_MANAGER_ASSET_BRANCH,
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
@@ -93,7 +97,7 @@ pub enum WalletCommand {
     RevalidateWalletDb,
 }
 
-#[derive(Debug, EnumString, PartialEq, Clone)]
+#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 pub enum TransactionStage {
     Initiated,
     DirectSendOrSaf,
@@ -101,7 +105,7 @@ pub enum TransactionStage {
     Broadcast,
     MinedUnconfirmed,
     Mined,
-    Timedout,
+    TimedOut,
 }
 
 #[derive(Debug)]
@@ -638,339 +642,331 @@ pub async fn command_runner(
     config: &WalletConfig,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
-    // config: GlobalConfig,
 ) -> Result<(), CommandError> {
-    todo!()
-    // let wait_stage = TransactionStage::from_str(&config.command_send_wait_stage)
-    //     .map_err(|e| CommandError::Config(e.to_string()))?;
-    //
-    // let mut transaction_service = wallet.transaction_service.clone();
-    // let mut output_service = wallet.output_manager_service.clone();
-    // let dht_service = wallet.dht_service.discovery_service_requester().clone();
-    // let connectivity_requester = wallet.comms.connectivity();
-    // let mut online = false;
-    //
-    // let mut tx_ids = Vec::new();
-    //
-    // println!("==============");
-    // println!("Command Runner");
-    // println!("==============");
-    // use WalletCommand::*;
-    // let wallet_config = config.wallet_config.clone().unwrap_or_default();
-    // for (idx, parsed) in commands.into_iter().enumerate() {
-    //     println!("\n{}. {}\n", idx + 1, parsed);
-    //
-    //     match parsed.command {
-    //         GetBalance => match output_service.clone().get_balance().await {
-    //             Ok(balance) => {
-    //                 println!("{}", balance);
-    //             },
-    //             Err(e) => eprintln!("GetBalance error! {}", e),
-    //         },
-    //         DiscoverPeer => {
-    //             if !online {
-    //                 wait_for_comms(&connectivity_requester).await?;
-    //                 online = true;
-    //             }
-    //             discover_peer(dht_service.clone(), parsed.args).await?
-    //         },
-    //         SendTari => {
-    //             let tx_id = send_tari(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
-    //             debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
-    //             tx_ids.push(tx_id);
-    //         },
-    //         SendOneSided => {
-    //             let tx_id =
-    //                 send_one_sided(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
-    //             debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
-    //             tx_ids.push(tx_id);
-    //         },
-    //         MakeItRain => {
-    //             make_it_rain(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
-    //         },
-    //         CoinSplit => {
-    //             let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
-    //             tx_ids.push(tx_id);
-    //             println!("Coin split succeeded");
-    //         },
-    //         Whois => {
-    //             let public_key = match parsed.args[0].clone() {
-    //                 ParsedArgument::PublicKey(key) => Ok(Box::new(key)),
-    //                 _ => Err(CommandError::Argument),
-    //             }?;
-    //             let emoji_id = EmojiId::from_pubkey(&public_key);
-    //
-    //             println!("Public Key: {}", public_key.to_hex());
-    //             println!("Emoji ID  : {}", emoji_id);
-    //         },
-    //         ExportUtxos => {
-    //             let utxos = output_service.get_unspent_outputs().await?;
-    //             let count = utxos.len();
-    //             let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-    //             if parsed.args.is_empty() {
-    //                 for (i, utxo) in utxos.iter().enumerate() {
-    //                     println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
-    //                 }
-    //             } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
-    //                 write_utxos_to_csv_file(utxos, file)?;
-    //             }
-    //             println!("Total number of UTXOs: {}", count);
-    //             println!("Total value of UTXOs: {}", sum);
-    //         },
-    //         ExportSpentUtxos => {
-    //             let utxos = output_service.get_spent_outputs().await?;
-    //             let count = utxos.len();
-    //             let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
-    //             if parsed.args.is_empty() {
-    //                 for (i, utxo) in utxos.iter().enumerate() {
-    //                     println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
-    //                 }
-    //             } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
-    //                 write_utxos_to_csv_file(utxos, file)?;
-    //             }
-    //             println!("Total number of UTXOs: {}", count);
-    //             println!("Total value of UTXOs: {}", sum);
-    //         },
-    //         CountUtxos => {
-    //             let utxos = output_service.get_unspent_outputs().await?;
-    //             let count = utxos.len();
-    //             let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
-    //             let sum: MicroTari = values.iter().sum();
-    //             println!("Total number of UTXOs: {}", count);
-    //             println!("Total value of UTXOs : {}", sum);
-    //             if let Some(min) = values.iter().min() {
-    //                 println!("Minimum value UTXO   : {}", min);
-    //             }
-    //             if count > 0 {
-    //                 let average = f64::from(sum) / count as f64;
-    //                 let average = Tari::try_from(average / 1_000_000f64)?;
-    //                 println!("Average value UTXO   : {}", average);
-    //             }
-    //             if let Some(max) = values.iter().max() {
-    //                 println!("Maximum value UTXO   : {}", max);
-    //             }
-    //         },
-    //         SetBaseNode => {
-    //             set_base_node_peer(wallet.clone(), &parsed.args).await?;
-    //         },
-    //         SetCustomBaseNode => {
-    //             let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
-    //             wallet
-    //                 .db
-    //                 .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
-    //                 .await?;
-    //             wallet
-    //                 .db
-    //                 .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
-    //                 .await?;
-    //             println!("Custom base node peer saved in wallet database.");
-    //         },
-    //         ClearCustomBaseNode => {
-    //             wallet
-    //                 .db
-    //                 .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
-    //                 .await?;
-    //             wallet
-    //                 .db
-    //                 .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
-    //                 .await?;
-    //             println!("Custom base node peer cleared from wallet database.");
-    //         },
-    //         InitShaAtomicSwap => {
-    //             let (tx_id, pre_image, output) = init_sha_atomic_swap(
-    //                 transaction_service.clone(),
-    //                 wallet_config.fee_per_gram,
-    //                 parsed.clone().args,
-    //             )
-    //             .await?;
-    //             debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
-    //             let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
-    //             println!("pre_image hex: {}", pre_image.to_hex());
-    //             println!("pre_image hash: {}", hash.to_hex());
-    //             println!("Output hash: {}", output.hash().to_hex());
-    //             tx_ids.push(tx_id);
-    //         },
-    //         FinaliseShaAtomicSwap => {
-    //             let tx_id =
-    //                 finalise_sha_atomic_swap(output_service.clone(), transaction_service.clone(),
-    // parsed.args).await?;             debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
-    //             tx_ids.push(tx_id);
-    //         },
-    //         ClaimShaAtomicSwapRefund => {
-    //             let tx_id = claim_htlc_refund(output_service.clone(), transaction_service.clone(),
-    // parsed.args).await?;             debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
-    //             tx_ids.push(tx_id);
-    //         },
-    //         RegisterAsset => {
-    //             let name = parsed.args[0].to_string();
-    //             let message = format!("Register asset: {}", name);
-    //             let mut manager = wallet.asset_manager.clone();
-    //             let key_manager = wallet.key_manager_service.clone();
-    //             key_manager.add_new_branch(KEY_MANAGER_ASSET_BRANCH).await?;
-    //             let result = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
-    //             let public_key = PublicKey::from_secret_key(&result.key);
-    //             let public_key_hex = public_key.to_hex();
-    //             println!("Registering asset named: {name}");
-    //             println!("with public key: {public_key_hex}");
-    //             let (tx_id, transaction) = manager
-    //                 .create_registration_transaction(name, public_key, vec![], None, None, vec![])
-    //                 .await?;
-    //             let _result = transaction_service
-    //                 .submit_transaction(tx_id, transaction, 0.into(), message)
-    //                 .await?;
-    //             println!("Done!");
-    //         },
-    //         MintTokens => {
-    //             println!("Minting tokens for asset");
-    //             let public_key = match parsed.args[0] {
-    //                 ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-    //                 _ => Err(CommandError::Argument),
-    //             }?;
-    //
-    //             let unique_ids = parsed.args[1..]
-    //                 .iter()
-    //                 .map(|arg| {
-    //                     let s = arg.to_string();
-    //                     if let Some(s) = s.strip_prefix("0x") {
-    //                         Hex::from_hex(s).map_err(|_| CommandError::Argument)
-    //                     } else {
-    //                         Ok(s.into_bytes())
-    //                     }
-    //                 })
-    //                 .collect::<Result<Vec<Vec<u8>>, _>>()?;
-    //
-    //             let mut asset_manager = wallet.asset_manager.clone();
-    //             let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
-    //             println!("Asset name: {}", asset.name());
-    //
-    //             let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
-    //             let (tx_id, transaction) = asset_manager
-    //                 .create_minting_transaction(
-    //                     &public_key,
-    //                     asset.owner_commitment(),
-    //                     unique_ids.into_iter().map(|id| (id, None)).collect(),
-    //                 )
-    //                 .await?;
-    //             let _result = transaction_service
-    //                 .submit_transaction(tx_id, transaction, 0.into(), message)
-    //                 .await?;
-    //         },
-    //         CreateInitialCheckpoint => {
-    //             println!("Creating Initial Checkpoint for Asset");
-    //             let asset_public_key = match parsed.args[0] {
-    //                 ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-    //                 _ => Err(CommandError::Argument),
-    //             }?;
-    //
-    //             let merkle_root = match parsed.args[1] {
-    //                 ParsedArgument::Text(ref root) => {
-    //                     let bytes = match &root[0..2] {
-    //                         "0x" => Vec::<u8>::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
-    //                         _ => Vec::<u8>::from_hex(root).map_err(|_| CommandError::Argument)?,
-    //                     };
-    //                     copy_into_fixed_array(&bytes).map_err(|_| CommandError::Argument)?
-    //                 },
-    //                 _ => return Err(CommandError::Argument),
-    //             };
-    //
-    //             let message = format!("Initial asset checkpoint for {}", asset_public_key);
-    //
-    //             let mut asset_manager = wallet.asset_manager.clone();
-    //             let (tx_id, transaction) = asset_manager
-    //                 .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
-    //                 .await?;
-    //             let _result = transaction_service
-    //                 .submit_transaction(tx_id, transaction, 0.into(), message)
-    //                 .await?;
-    //         },
-    //         CreateCommitteeDefinition => {
-    //             let asset_public_key = match parsed.args[0] {
-    //                 ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-    //                 _ => Err(CommandError::Argument),
-    //             }?;
-    //             let public_key_hex = asset_public_key.to_hex();
-    //             println!("Creating Committee Definition for Asset");
-    //             println!("with public key {public_key_hex}");
-    //
-    //             let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
-    //                 .iter()
-    //                 .map(|pk| match pk {
-    //                     ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
-    //                     _ => Err(CommandError::Argument),
-    //                 })
-    //                 .collect::<Result<_, _>>()?;
-    //
-    //             let num_members = committee_public_keys.len();
-    //             if num_members < 1 {
-    //                 return Err(CommandError::Config("Committee has no members!".into()));
-    //             }
-    //             let message = format!(
-    //                 "Committee definition with {} members for {}",
-    //                 num_members, asset_public_key
-    //             );
-    //             println!("with {num_members} committee members");
-    //
-    //             let mut asset_manager = wallet.asset_manager.clone();
-    //             // todo: effective sidechain height...
-    //             // todo: updating
-    //             let (tx_id, transaction) = asset_manager
-    //                 .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
-    //                 .await?;
-    //
-    //             let _result = transaction_service
-    //                 .submit_transaction(tx_id, transaction, 0.into(), message)
-    //                 .await?;
-    //             println!("Done!");
-    //         },
-    //         RevalidateWalletDb => {
-    //             output_service
-    //                 .revalidate_all_outputs()
-    //                 .await
-    //                 .map_err(CommandError::OutputManagerError)?;
-    //             transaction_service
-    //                 .revalidate_all_transactions()
-    //                 .await
-    //                 .map_err(CommandError::TransactionServiceError)?;
-    //         },
-    //     }
-    // }
-    //
-    // // listen to event stream
-    // if !tx_ids.is_empty() {
-    //     let duration = Duration::from_secs(config.wallet_command_send_wait_timeout);
-    //     debug!(
-    //         target: LOG_TARGET,
-    //         "wallet monitor_transactions timeout duration {:?}", duration
-    //     );
-    //     match timeout(
-    //         duration,
-    //         monitor_transactions(transaction_service.clone(), tx_ids, wait_stage.clone()),
-    //     )
-    //     .await
-    //     {
-    //         Ok(txs) => {
-    //             debug!(
-    //                 target: LOG_TARGET,
-    //                 "monitor_transactions done to stage {:?} with tx_ids: {:?}", wait_stage, txs
-    //             );
-    //             println!("Done! All transactions monitored to {:?} stage.", wait_stage);
-    //         },
-    //         Err(_e) => {
-    //             println!(
-    //                 "The configured timeout ({:#?}) was reached before all transactions reached the {:?} stage. See \
-    //                  the logs for more info.",
-    //                 duration, wait_stage
-    //             );
-    //         },
-    //     }
-    // } else {
-    //     trace!(
-    //         target: LOG_TARGET,
-    //         "Wallet command runner - no transactions to monitor."
-    //     );
-    // }
-    //
-    // Ok(())
+    let wait_stage =
+        TransactionStage::from_str(&config.command_send_wait_stage).map_err(|e| CommandError::Config(e.to_string()))?;
+
+    let mut transaction_service = wallet.transaction_service.clone();
+    let mut output_service = wallet.output_manager_service.clone();
+    let dht_service = wallet.dht_service.discovery_service_requester().clone();
+    let connectivity_requester = wallet.comms.connectivity();
+    let mut online = false;
+
+    let mut tx_ids = Vec::new();
+
+    println!("==============");
+    println!("Command Runner");
+    println!("==============");
+    use WalletCommand::*;
+    for (idx, parsed) in commands.into_iter().enumerate() {
+        println!("\n{}. {}\n", idx + 1, parsed);
+
+        match parsed.command {
+            GetBalance => match output_service.clone().get_balance().await {
+                Ok(balance) => {
+                    println!("{}", balance);
+                },
+                Err(e) => eprintln!("GetBalance error! {}", e),
+            },
+            DiscoverPeer => {
+                if !online {
+                    wait_for_comms(&connectivity_requester).await?;
+                    online = true;
+                }
+                discover_peer(dht_service.clone(), parsed.args).await?
+            },
+            SendTari => {
+                let tx_id = send_tari(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
+                debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            SendOneSided => {
+                let tx_id = send_one_sided(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
+                debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            MakeItRain => {
+                make_it_rain(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
+            },
+            CoinSplit => {
+                let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
+                tx_ids.push(tx_id);
+                println!("Coin split succeeded");
+            },
+            Whois => {
+                let public_key = match parsed.args[0].clone() {
+                    ParsedArgument::PublicKey(key) => Ok(Box::new(key)),
+                    _ => Err(CommandError::Argument),
+                }?;
+                let emoji_id = EmojiId::from_pubkey(&public_key);
+
+                println!("Public Key: {}", public_key.to_hex());
+                println!("Emoji ID  : {}", emoji_id);
+            },
+            ExportUtxos => {
+                let utxos = output_service.get_unspent_outputs().await?;
+                let count = utxos.len();
+                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                if parsed.args.is_empty() {
+                    for (i, utxo) in utxos.iter().enumerate() {
+                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                    }
+                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+                    write_utxos_to_csv_file(utxos, file)?;
+                }
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs: {}", sum);
+            },
+            ExportSpentUtxos => {
+                let utxos = output_service.get_spent_outputs().await?;
+                let count = utxos.len();
+                let sum: MicroTari = utxos.iter().map(|utxo| utxo.value).sum();
+                if parsed.args.is_empty() {
+                    for (i, utxo) in utxos.iter().enumerate() {
+                        println!("{}. Value: {} {}", i + 1, utxo.value, utxo.features);
+                    }
+                } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
+                    write_utxos_to_csv_file(utxos, file)?;
+                }
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs: {}", sum);
+            },
+            CountUtxos => {
+                let utxos = output_service.get_unspent_outputs().await?;
+                let count = utxos.len();
+                let values: Vec<MicroTari> = utxos.iter().map(|utxo| utxo.value).collect();
+                let sum: MicroTari = values.iter().sum();
+                println!("Total number of UTXOs: {}", count);
+                println!("Total value of UTXOs : {}", sum);
+                if let Some(min) = values.iter().min() {
+                    println!("Minimum value UTXO   : {}", min);
+                }
+                if count > 0 {
+                    let average = f64::from(sum) / count as f64;
+                    let average = Tari::try_from(average / 1_000_000f64)?;
+                    println!("Average value UTXO   : {}", average);
+                }
+                if let Some(max) = values.iter().max() {
+                    println!("Maximum value UTXO   : {}", max);
+                }
+            },
+            SetBaseNode => {
+                set_base_node_peer(wallet.clone(), &parsed.args).await?;
+            },
+            SetCustomBaseNode => {
+                let (public_key, net_address) = set_base_node_peer(wallet.clone(), &parsed.args).await?;
+                wallet
+                    .db
+                    .set_client_key_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string(), public_key.to_string())
+                    .await?;
+                wallet
+                    .db
+                    .set_client_key_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string(), net_address.to_string())
+                    .await?;
+                println!("Custom base node peer saved in wallet database.");
+            },
+            ClearCustomBaseNode => {
+                wallet
+                    .db
+                    .clear_client_value(CUSTOM_BASE_NODE_PUBLIC_KEY_KEY.to_string())
+                    .await?;
+                wallet
+                    .db
+                    .clear_client_value(CUSTOM_BASE_NODE_ADDRESS_KEY.to_string())
+                    .await?;
+                println!("Custom base node peer cleared from wallet database.");
+            },
+            InitShaAtomicSwap => {
+                let (tx_id, pre_image, output) =
+                    init_sha_atomic_swap(transaction_service.clone(), config.fee_per_gram, parsed.clone().args).await?;
+                debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
+                let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
+                println!("pre_image hex: {}", pre_image.to_hex());
+                println!("pre_image hash: {}", hash.to_hex());
+                println!("Output hash: {}", output.hash().to_hex());
+                tx_ids.push(tx_id);
+            },
+            FinaliseShaAtomicSwap => {
+                let tx_id =
+                    finalise_sha_atomic_swap(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            ClaimShaAtomicSwapRefund => {
+                let tx_id = claim_htlc_refund(output_service.clone(), transaction_service.clone(), parsed.args).await?;
+                debug!(target: LOG_TARGET, "claiming tari HTLC tx_id {}", tx_id);
+                tx_ids.push(tx_id);
+            },
+            RegisterAsset => {
+                let name = parsed.args[0].to_string();
+                let message = format!("Register asset: {}", name);
+                let mut manager = wallet.asset_manager.clone();
+                let key_manager = wallet.key_manager_service.clone();
+                key_manager.add_new_branch(KEY_MANAGER_ASSET_BRANCH).await?;
+                let result = key_manager.get_next_key(KEY_MANAGER_ASSET_BRANCH).await?;
+                let public_key = PublicKey::from_secret_key(&result.key);
+                let public_key_hex = public_key.to_hex();
+                println!("Registering asset named: {name}");
+                println!("with public key: {public_key_hex}");
+                let (tx_id, transaction) = manager
+                    .create_registration_transaction(name, public_key, vec![], None, None, vec![])
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+                println!("Done!");
+            },
+            MintTokens => {
+                println!("Minting tokens for asset");
+                let public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let unique_ids = parsed.args[1..]
+                    .iter()
+                    .map(|arg| {
+                        let s = arg.to_string();
+                        if let Some(s) = s.strip_prefix("0x") {
+                            Hex::from_hex(s).map_err(|_| CommandError::Argument)
+                        } else {
+                            Ok(s.into_bytes())
+                        }
+                    })
+                    .collect::<Result<Vec<Vec<u8>>, _>>()?;
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let asset = asset_manager.get_owned_asset_by_pub_key(&public_key).await?;
+                println!("Asset name: {}", asset.name());
+
+                let message = format!("Minting {} tokens for asset {}", unique_ids.len(), asset.name());
+                let (tx_id, transaction) = asset_manager
+                    .create_minting_transaction(
+                        &public_key,
+                        asset.owner_commitment(),
+                        unique_ids.into_iter().map(|id| (id, None)).collect(),
+                    )
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
+            CreateInitialCheckpoint => {
+                println!("Creating Initial Checkpoint for Asset");
+                let asset_public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+
+                let merkle_root = match parsed.args[1] {
+                    ParsedArgument::Text(ref root) => {
+                        let bytes = match &root[0..2] {
+                            "0x" => Vec::<u8>::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
+                            _ => Vec::<u8>::from_hex(root).map_err(|_| CommandError::Argument)?,
+                        };
+                        copy_into_fixed_array(&bytes).map_err(|_| CommandError::Argument)?
+                    },
+                    _ => return Err(CommandError::Argument),
+                };
+
+                let message = format!("Initial asset checkpoint for {}", asset_public_key);
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                let (tx_id, transaction) = asset_manager
+                    .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
+                    .await?;
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+            },
+            CreateCommitteeDefinition => {
+                let asset_public_key = match parsed.args[0] {
+                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                    _ => Err(CommandError::Argument),
+                }?;
+                let public_key_hex = asset_public_key.to_hex();
+                println!("Creating Committee Definition for Asset");
+                println!("with public key {public_key_hex}");
+
+                let committee_public_keys: Vec<PublicKey> = parsed.args[1..]
+                    .iter()
+                    .map(|pk| match pk {
+                        ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                        _ => Err(CommandError::Argument),
+                    })
+                    .collect::<Result<_, _>>()?;
+
+                let num_members = committee_public_keys.len();
+                if num_members < 1 {
+                    return Err(CommandError::Config("Committee has no members!".into()));
+                }
+                let message = format!(
+                    "Committee definition with {} members for {}",
+                    num_members, asset_public_key
+                );
+                println!("with {num_members} committee members");
+
+                let mut asset_manager = wallet.asset_manager.clone();
+                // todo: effective sidechain height...
+                // todo: updating
+                let (tx_id, transaction) = asset_manager
+                    .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
+                    .await?;
+
+                let _result = transaction_service
+                    .submit_transaction(tx_id, transaction, 0.into(), message)
+                    .await?;
+                println!("Done!");
+            },
+            RevalidateWalletDb => {
+                output_service
+                    .revalidate_all_outputs()
+                    .await
+                    .map_err(CommandError::OutputManagerError)?;
+                transaction_service
+                    .revalidate_all_transactions()
+                    .await
+                    .map_err(CommandError::TransactionServiceError)?;
+            },
+        }
+    }
+
+    // listen to event stream
+    if !tx_ids.is_empty() {
+        let duration = config.command_send_wait_timeout;
+        debug!(
+            target: LOG_TARGET,
+            "wallet monitor_transactions timeout duration {:.2?}", duration
+        );
+        match timeout(
+            duration,
+            monitor_transactions(transaction_service.clone(), tx_ids, wait_stage.clone()),
+        )
+        .await
+        {
+            Ok(txs) => {
+                debug!(
+                    target: LOG_TARGET,
+                    "monitor_transactions done to stage {:?} with tx_ids: {:?}", wait_stage, txs
+                );
+                println!("Done! All transactions monitored to {:?} stage.", wait_stage);
+            },
+            Err(_e) => {
+                println!(
+                    "The configured timeout ({:#?}) was reached before all transactions reached the {:?} stage. See \
+                     the logs for more info.",
+                    duration, wait_stage
+                );
+            },
+        }
+    } else {
+        trace!(
+            target: LOG_TARGET,
+            "Wallet command runner - no transactions to monitor."
+        );
+    }
+
+    Ok(())
 }
 
 fn write_utxos_to_csv_file(utxos: Vec<UnblindedOutput>, file_path: String) -> Result<(), CommandError> {

@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![recursion_limit = "1024"]
-use std::{env, process};
+use std::{env, process, sync::Arc};
 
 use clap::Parser;
 use cli::Cli;
@@ -41,24 +41,23 @@ use tari_app_utilities::consts;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
 use tari_common::{
-    configuration::{bootstrap::ApplicationType, CommonConfig},
+    configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
-    DefaultConfigLoader,
 };
 use tari_key_manager::cipher_seed::CipherSeed;
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::Shutdown;
-use tari_wallet::WalletConfig;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
-use crate::{init::wallet_mode, recovery::get_seed_from_seed_words};
+use crate::{app_config::ApplicationConfig, init::wallet_mode, recovery::get_seed_from_seed_words};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
+mod app_config;
 mod automation;
 mod cli;
 mod grpc;
@@ -94,9 +93,7 @@ fn main_inner() -> Result<(), ExitError> {
         &cli.common.log_config_path("wallet"),
         include_str!("../log4rs_sample.yml"),
     )?;
-    let common_config = <CommonConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    let mut wallet_config = <WalletConfig as DefaultConfigLoader>::load_from(&cfg)?;
-    wallet_config.set_base_path(common_config.base_path().as_path());
+    let config = ApplicationConfig::load_from(&cfg).map(Arc::new)?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -122,7 +119,7 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // check for recovery based on existence of wallet file
-    let mut boot_mode = boot(&cli, &wallet_config)?;
+    let mut boot_mode = boot(&cli, &config.wallet)?;
 
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
@@ -135,15 +132,13 @@ fn main_inner() -> Result<(), ExitError> {
 
     if cli.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(wallet_config, arg_password, shutdown_signal));
+        return runtime.block_on(change_password(&config, arg_password, shutdown_signal));
     }
 
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
-    if global_config.console_wallet_use_libtor &&
-        matches!(global_config.comms_transport, CommsTransport::TorHiddenService { .. })
-    {
+    if config.wallet.use_libtor && matches!(global_config.comms_transport, CommsTransport::TorHiddenService { .. }) {
         let tor = Tor::initialize()?;
         global_config.comms_transport = tor.update_comms_transport(global_config.comms_transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
@@ -155,7 +150,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
-        &wallet_config,
+        &config,
         arg_password,
         seed_words_file_name,
         recovery_seed,
@@ -169,7 +164,7 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // get base node/s
-    let base_node_config = runtime.block_on(get_base_node_peer_config(&wallet_config, &mut wallet))?;
+    let base_node_config = runtime.block_on(get_base_node_peer_config(&config, &mut wallet))?;
     let base_node_selected = base_node_config.get_base_node_peer()?;
 
     let wallet_mode = wallet_mode(&cli, boot_mode);
@@ -182,14 +177,14 @@ fn main_inner() -> Result<(), ExitError> {
     let handle = runtime.handle().clone();
 
     let result = match wallet_mode {
-        WalletMode::Tui => tui_mode(handle, &wallet_config, &base_node_config, wallet.clone()),
-        WalletMode::Grpc => grpc_mode(handle, &wallet_config, wallet.clone()),
-        WalletMode::Script(path) => script_mode(handle, &cli, &wallet_config, &base_node_config, wallet.clone(), path),
+        WalletMode::Tui => tui_mode(handle, &config.wallet, &base_node_config, wallet.clone()),
+        WalletMode::Grpc => grpc_mode(handle, &config.wallet, wallet.clone()),
+        WalletMode::Script(path) => script_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), path),
         WalletMode::Command(command) => {
-            command_mode(handle, &cli, &wallet_config, &base_node_config, wallet.clone(), command)
+            command_mode(handle, &cli, &config.wallet, &base_node_config, wallet.clone(), command)
         },
         WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => {
-            recovery_mode(handle, &base_node_config, &wallet_config, wallet_mode, wallet.clone())
+            recovery_mode(handle, &base_node_config, &config.wallet, wallet_mode, wallet.clone())
         },
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,

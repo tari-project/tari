@@ -69,7 +69,7 @@ async fn main() -> Result<(), anyhow::Error> {
         &cli.common.log_config_path("proxy"),
         include_str!("../log4rs_sample.yml"),
     )?;
-    let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+    let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
     debug!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))

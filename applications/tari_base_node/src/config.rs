@@ -26,19 +26,53 @@ use std::{
     time::Duration,
 };
 
+use config::Config;
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::Network, SubConfigPath};
+use tari_common::{
+    configuration::{CommonConfig, Network},
+    ConfigurationError,
+    DefaultConfigLoader,
+    SubConfigPath,
+};
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
     chain_storage::BlockchainDatabaseConfig,
     mempool::MempoolConfig,
 };
-use tari_p2p::P2pConfig;
+use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig, PeerSeedsConfig};
 use tari_storage::lmdb_store::LMDBConfig;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum DatabaseType {
-    Lmdb,
+#[cfg(feature = "metrics")]
+use crate::metrics::MetricsConfig;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ApplicationConfig {
+    pub common: CommonConfig,
+    pub auto_update: AutoUpdateConfig,
+    pub base_node: BaseNodeConfig,
+    pub peer_seeds: PeerSeedsConfig,
+    #[cfg(feature = "metrics")]
+    pub metrics: MetricsConfig,
+}
+
+impl ApplicationConfig {
+    pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let mut config = Self {
+            common: CommonConfig::load_from(&cfg)?,
+            auto_update: AutoUpdateConfig::load_from(&cfg)?,
+            peer_seeds: PeerSeedsConfig::load_from(&cfg)?,
+            base_node: BaseNodeConfig::load_from(&cfg)?,
+            #[cfg(feature = "metrics")]
+            metrics: MetricsConfig::load_from(&cfg)?,
+        };
+
+        config.base_node.set_base_path(config.common.base_path());
+        Ok(config)
+    }
+
+    pub fn network(&self) -> Network {
+        self.base_node.network
+    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -123,4 +157,9 @@ impl BaseNodeConfig {
             self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DatabaseType {
+    Lmdb,
 }

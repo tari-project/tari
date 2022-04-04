@@ -55,7 +55,7 @@ use tari_core::{
     },
 };
 
-use crate::base_node_config::{BaseNodeConfig, DatabaseType};
+use crate::config::{BaseNodeConfig, DatabaseType};
 
 pub const LOG_TARGET: &str = "base_node::app";
 
