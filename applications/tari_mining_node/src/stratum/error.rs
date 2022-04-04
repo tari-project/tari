@@ -45,7 +45,7 @@ pub enum Error {
     #[error("Can't create TLS connector: {0}")]
     Tls(#[from] native_tls::Error),
     #[error("Can't establish TLS connection: {0}")]
-    Tcp(#[from] native_tls::HandshakeError<std::net::TcpStream>),
+    Tcp(#[from] Box<native_tls::HandshakeError<std::net::TcpStream>>),
     #[error("No connected stream")]
     NotConnected,
     #[error("Can't parse int: {0}")]
@@ -66,5 +66,11 @@ impl<T> From<std::sync::PoisonError<T>> for Error {
 impl<T> From<std::sync::mpsc::SendError<T>> for Error {
     fn from(error: std::sync::mpsc::SendError<T>) -> Self {
         Error::General(format!("Failed to send to a channel: {:?}", error))
+    }
+}
+
+impl From<native_tls::HandshakeError<std::net::TcpStream>> for Error {
+    fn from(error: native_tls::HandshakeError<std::net::TcpStream>) -> Self {
+        Error::General(format!("TLS handshake error: {:?}", error))
     }
 }

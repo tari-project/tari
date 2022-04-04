@@ -21,11 +21,13 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #![allow(clippy::too_many_arguments)]
+mod asset;
 mod cmd_args;
 mod comms;
 mod dan_node;
 mod default_service_specification;
 mod grpc;
+mod monitoring;
 mod p2p;
 
 use std::{
@@ -64,7 +66,9 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 fn main() {
+    // Uncomment to enable tokio tracing via tokio-console
     // console_subscriber::init();
+
     if let Err(err) = main_inner() {
         let exit_code = err.exit_code;
         eprintln!("{:?}", err);

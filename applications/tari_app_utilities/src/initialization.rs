@@ -29,7 +29,7 @@ pub fn init_configuration(
     // Load and apply configuration file
     let cfg = bootstrap.load_configuration()?;
 
-    // Initialise the logger
+    // Initialise the logger (Comment out to enable tokio tracing via tokio-console)
     bootstrap.initialize_logging()?;
 
     log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);

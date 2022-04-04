@@ -277,7 +277,7 @@ impl LocalNodeCommsInterface {
         &mut self,
         asset_public_key: PublicKey,
         unique_ids: Vec<Vec<u8>>,
-    ) -> Result<Vec<TransactionOutput>, CommsInterfaceError> {
+    ) -> Result<Vec<(TransactionOutput, u64)>, CommsInterfaceError> {
         match self
             .request_sender
             .call(NodeCommsRequest::FetchTokens {
