@@ -338,3 +338,21 @@ Feature: Wallet Transactions
     And I wait 5 seconds
     Then I restart wallet WALLET_RECV
     Then I wait for wallet WALLET_RECV to have at least 1000000 uT
+
+@critical
+  Scenario: Wallet should cancel stale transactions
+    Given I have a seed node NODE
+    And I have 1 base nodes connected to all seed nodes
+    And I have non-default wallet WALLET_SENDER connected to all seed nodes using StoreAndForwardOnly
+    And I have wallet WALLET_RECV connected to all seed nodes
+    And I have mining node MINER connected to base node NODE and wallet WALLET_SENDER
+    And mining node MINER mines 5 blocks
+    Then all nodes are at height 5
+    Then I wait for wallet WALLET_SENDER to have at least 10000000000 uT
+    And I stop wallet WALLET_RECV
+    When I wait 15 seconds
+    And I send 1000000 uT without waiting for broadcast from wallet WALLET_SENDER to wallet WALLET_RECV at fee 100
+    Then I cancel last transaction in wallet WALLET_SENDER
+    Then I restart wallet WALLET_RECV
+    When I wait 15 seconds
+    When wallet WALLET_RECV detects last transaction is Cancelled

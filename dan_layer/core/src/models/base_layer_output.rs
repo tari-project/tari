@@ -31,6 +31,7 @@ use crate::{fixed_hash::FixedHash, models::ModelError};
 #[derive(Debug)]
 pub struct BaseLayerOutput {
     pub features: OutputFeatures,
+    pub height: u64,
 }
 
 impl BaseLayerOutput {

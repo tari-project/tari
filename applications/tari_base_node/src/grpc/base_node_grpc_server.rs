@@ -450,7 +450,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 asset_pub_key_hex
             );
 
-            for token in tokens {
+            for (token, mined_height) in tokens {
                 let features = match token.features.clone().try_into() {
                     Ok(f) => f,
                     Err(err) => {
@@ -469,7 +469,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         unique_id: token.features.unique_id.unwrap_or_default(),
                         owner_commitment: token.commitment.to_vec(),
                         mined_in_block: vec![],
-                        mined_height: 0,
+                        mined_height,
                         script: token.script.as_bytes(),
                         features: Some(features),
                     }))

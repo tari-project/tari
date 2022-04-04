@@ -24,10 +24,7 @@ use std::num::{ParseFloatError, ParseIntError};
 
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_core::transactions::{
-    tari_amount::{MicroTariError, TariConversionError},
-    transaction_components::TransactionError,
-};
+use tari_core::transactions::{tari_amount::MicroTariError, transaction_components::TransactionError};
 use tari_utilities::hex::HexError;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
@@ -45,8 +42,8 @@ pub const LOG_TARGET: &str = "wallet::automation::error";
 pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,
-    #[error("Tari value conversion error `{0}`")]
-    TariConversionError(#[from] TariConversionError),
+    #[error("Tari value error `{0}`")]
+    MicroTariError(#[from] MicroTariError),
     #[error("Transaction service error `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Transaction service error `{0}`")]

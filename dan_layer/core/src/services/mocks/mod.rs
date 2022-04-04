@@ -199,10 +199,18 @@ impl BaseNodeClient for MockBaseNodeClient {
         todo!();
     }
 
+    async fn check_if_in_committee(
+        &mut self,
+        _asset_public_key: PublicKey,
+        _dan_node_public_key: PublicKey,
+    ) -> Result<(bool, u64), DigitalAssetError> {
+        todo!();
+    }
+
     async fn get_assets_for_dan_node(
         &mut self,
         _dan_node_public_key: PublicKey,
-    ) -> Result<Vec<AssetDefinition>, DigitalAssetError> {
+    ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
         todo!();
     }
 

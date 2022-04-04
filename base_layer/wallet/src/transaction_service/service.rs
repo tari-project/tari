@@ -884,7 +884,6 @@ where
             self.last_seen_tip_height,
             None,
         );
-
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
@@ -1574,6 +1573,12 @@ where
                     "A repeated Transaction (TxId: {}) has been received but has been previously cancelled or rejected",
                     tx.tx_id
                 );
+                tokio::spawn(send_transaction_cancelled_message(
+                    tx.tx_id,
+                    source_pubkey,
+                    self.resources.outbound_message_service.clone(),
+                ));
+
                 return Ok(());
             }
 
