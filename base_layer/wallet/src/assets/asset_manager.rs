@@ -266,12 +266,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(
-                vec![output],
-                ASSET_FPG.into(),
-                Some(COMMITTEE_DEFINITION_ID.into()),
-                Some(asset_public_key),
-            )
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
 
         Ok((tx_id, transaction))

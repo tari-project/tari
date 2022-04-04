@@ -432,11 +432,12 @@ where B: BlockchainBackend + 'static
                         .fetch_all_unspent_by_parent_public_key(asset_public_key.clone(), 0..1000)
                         .await?
                     {
+                        let mined_height = output.mined_height;
                         match output.output {
                             PrunedOutput::Pruned { .. } => {
                                 // TODO: should we return this?
                             },
-                            PrunedOutput::NotPruned { output } => outputs.push(output),
+                            PrunedOutput::NotPruned { output } => outputs.push((output, mined_height)),
                         }
                     }
                 } else {
@@ -450,7 +451,7 @@ where B: BlockchainBackend + 'static
                                 PrunedOutput::Pruned { .. } => {
                                     // TODO: should we return this?
                                 },
-                                PrunedOutput::NotPruned { output } => outputs.push(output),
+                                PrunedOutput::NotPruned { output } => outputs.push((output, out.mined_height)),
                             }
                         }
                     }
