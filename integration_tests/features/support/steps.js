@@ -518,7 +518,9 @@ Then(/(.*) is connected to (.*)/, async function (firstNode, secondNode) {
   const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
   const secondNodeIdentity = await secondNodeClient.identify();
   let peers = await firstNodeClient.listConnectedPeers();
-  expect(peers.some((p) => secondNodeIdentity.public_key === p.public_key)).to.be.true;
+  expect(
+    peers.some((p) => secondNodeIdentity.public_key === p.public_key)
+  ).to.be.true;
 });
 
 When(

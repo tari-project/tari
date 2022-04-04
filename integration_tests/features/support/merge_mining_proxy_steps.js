@@ -22,7 +22,6 @@
 
 const { Given, When, Then } = require("@cucumber/cucumber");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
-const assert = require("assert");
 const expect = require("chai").expect;
 
 Given(
@@ -103,7 +102,7 @@ When(/I ask for a block template from proxy (.*)/, async function (mmProxy) {
 });
 
 Then("Proxy response block template is valid", function () {
-  expect(this.lastResult).to.be.an('object');
+  expect(this.lastResult).to.be.an("object");
   expect(this.lastResult).to.not.be.null;
   expect(this.lastResult._aux).to.not.be.undefined;
   expect(this.lastResult.status).to.equal("OK");
@@ -120,7 +119,7 @@ When(/I submit a block through proxy (.*)/, async function (mmProxy) {
 Then(
   "Proxy response block submission is valid with submitting to origin",
   function () {
-    expect(this.lastResult.result).to.be.an('object');
+    expect(this.lastResult.result).to.be.an("object");
     expect(this.lastResult.result).to.not.be.null;
     expect(this.lastResult.result._aux).to.not.be.undefined;
     expect(this.lastResult.result.status).to.equal("OK");
@@ -146,11 +145,10 @@ When(
 );
 
 Then("Proxy response for last block header is valid", function () {
-  expect(this.lastResult).to.be.an('object');
+  expect(this.lastResult).to.be.an("object");
   expect(this.lastResult).to.not.be.null;
   expect(this.lastResult.result._aux).to.not.be.undefined;
   expect(this.lastResult.result.status).to.equal("OK");
-  
   this.lastResult = this.lastResult.result.block_header.hash;
 });
 
@@ -165,7 +163,7 @@ When(
 );
 
 Then("Proxy response for block header by hash is valid", function () {
-  expect(this.lastResult).to.be.an('object');
+  expect(this.lastResult).to.be.an("object");
   expect(this.lastResult).to.not.be.null;
   expect(this.lastResult.result.status).to.equal("OK");
 });
