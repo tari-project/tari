@@ -43,7 +43,7 @@ use crate::{
 const LOG_TARGET: &str = "tari::dan_layer::core::services::asset_proxy";
 
 #[async_trait]
-pub trait AssetProxy {
+pub trait AssetProxy: Send + Sync {
     async fn invoke_method(
         &self,
         asset_public_key: &PublicKey,
