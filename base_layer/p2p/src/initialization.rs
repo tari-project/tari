@@ -25,7 +25,7 @@ use std::{
     fs,
     fs::File,
     iter,
-    path::{Path, PathBuf},
+    path::Path,
     str::FromStr,
     sync::Arc,
     time::{Duration, Instant},
@@ -36,11 +36,9 @@ use futures::future;
 use lmdb_zero::open;
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use serde::{Deserialize, Serialize};
-use tari_common::{configuration::Network, CommsTransport, DnsNameServer, SubConfigPath};
+use tari_common::configuration::Network;
 use tari_comms::{
     backoff::ConstantBackoff,
-    multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, Peer, PeerFeatures, PeerManagerError},
     pipeline,
     protocol::{
@@ -58,7 +56,7 @@ use tari_comms::{
     PeerManager,
     UnspawnedCommsNode,
 };
-use tari_comms_dht::{Dht, DhtConfig, DhtInitializationError};
+use tari_comms_dht::{Dht, DhtInitializationError};
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
 use tari_shutdown::ShutdownSignal;
 use tari_storage::{
@@ -114,100 +112,7 @@ impl CommsInitializationError {
     }
 }
 
-use tari_common::configuration::utils::{deserialize_string_or_struct, serialize_string};
-
-/// Configuration for a comms node
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct P2pConfig {
-    /// The type of transport to use
-    pub transport: CommsTransport,
-    /// Path to the LMDB data files.
-    pub datastore_path: PathBuf,
-    /// Name to use for the peer database
-    pub peer_database_name: String,
-    /// The maximum number of concurrent Inbound tasks allowed before back-pressure is applied to peers
-    pub max_concurrent_inbound_tasks: usize,
-    /// The maximum number of concurrent outbound tasks allowed before back-pressure is applied to outbound messaging
-    /// queue
-    pub max_concurrent_outbound_tasks: usize,
-    /// The size of the buffer (channel) which holds pending outbound message requests
-    pub outbound_buffer_size: usize,
-    /// Configuration for DHT
-    pub dht: DhtConfig,
-    /// Set to true to allow peers to provide test addresses (loopback, memory etc.). If set to false, memory
-    /// addresses, loopback, local-link (i.e addresses used in local tests) will not be accepted from peers. This
-    /// should always be false for non-test nodes.
-    pub allow_test_addresses: bool,
-    /// The maximum number of liveness sessions allowed for the connection listener.
-    /// Liveness sessions can be used by third party tooling to determine node liveness.
-    /// A value of 0 will disallow any liveness sessions.
-    pub listener_liveness_max_sessions: usize,
-    /// CIDR for addresses allowed to enter into liveness check mode on the listener.
-    pub listener_liveness_allowlist_cidrs: Vec<String>,
-    /// User agent string for this node
-    pub user_agent: String,
-    /// Unparsed peer seeds
-    pub peer_seeds: Vec<String>,
-    /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
-    /// peer list.
-    pub dns_seeds: Vec<String>,
-    #[serde(
-        deserialize_with = "deserialize_string_or_struct",
-        serialize_with = "serialize_string"
-    )]
-    /// DNS name server to use for DNS seeds.
-    pub dns_seeds_name_server: DnsNameServer,
-    /// All DNS seed records must pass DNSSEC validation
-    pub dns_seeds_use_dnssec: bool,
-    /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
-    /// for direct comms between a wallet and base node. If this is set to None, no listener will be bound.
-    /// Default: None
-    pub auxiliary_tcp_listener_address: Option<Multiaddr>,
-    /// The global maximum allowed RPC sessions.
-    /// Default: 100
-    pub rpc_max_simultaneous_sessions: usize,
-}
-
-impl Default for P2pConfig {
-    fn default() -> Self {
-        Self {
-            transport: Default::default(),
-            datastore_path: PathBuf::from("peer_db"),
-            peer_database_name: "peers".to_string(),
-            max_concurrent_inbound_tasks: 50,
-            max_concurrent_outbound_tasks: 100,
-            outbound_buffer_size: 100,
-            dht: Default::default(),
-            allow_test_addresses: false,
-            listener_liveness_max_sessions: 0,
-            listener_liveness_allowlist_cidrs: vec![],
-            user_agent: "".to_string(),
-            peer_seeds: vec![],
-            dns_seeds: vec![],
-            dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
-            dns_seeds_use_dnssec: false,
-            auxiliary_tcp_listener_address: None,
-            rpc_max_simultaneous_sessions: 100,
-        }
-    }
-}
-
-impl SubConfigPath for P2pConfig {
-    fn main_key_prefix() -> &'static str {
-        "p2p"
-    }
-}
-
-impl P2pConfig {
-    /// Sets relative paths to use a common base path
-    pub fn set_base_path(&mut self, base_path: &Path) {
-        if !self.datastore_path.is_absolute() {
-            self.datastore_path = base_path.join(self.datastore_path.as_path());
-        }
-        self.dht.set_base_path(base_path)
-    }
-}
+use crate::config::{P2pConfig, P2pPeerSeedsConfig};
 
 /// Initialize Tari Comms configured for tests
 pub async fn initialize_local_test_comms(
@@ -508,6 +413,7 @@ async fn add_all_peers(
 
 pub struct P2pInitializer {
     config: P2pConfig,
+    seed_config: P2pPeerSeedsConfig,
     network: Network,
     node_identity: Arc<NodeIdentity>,
     connector: Option<PubsubDomainConnector>,
@@ -516,12 +422,14 @@ pub struct P2pInitializer {
 impl P2pInitializer {
     pub fn new(
         config: P2pConfig,
+        seed_config: P2pPeerSeedsConfig,
         network: Network,
         node_identity: Arc<NodeIdentity>,
         connector: PubsubDomainConnector,
     ) -> Self {
         Self {
             config,
+            seed_config,
             network,
             node_identity,
             connector: Some(connector),
@@ -539,12 +447,8 @@ impl P2pInitializer {
             .map_err(Into::into)
     }
 
-    async fn try_resolve_dns_seeds(
-        resolver_addr: DnsNameServer,
-        dns_seeds: &[String],
-        use_dnssec: bool,
-    ) -> Result<Vec<Peer>, ServiceInitializationError> {
-        if dns_seeds.is_empty() {
+    async fn try_resolve_dns_seeds(config: &P2pPeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
+        if config.dns_seeds.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());
         }
@@ -552,20 +456,20 @@ impl P2pInitializer {
         debug!(target: LOG_TARGET, "Resolving DNS seeds...");
         let start = Instant::now();
 
-        let resolver = if use_dnssec {
+        let resolver = if config.dns_seeds_use_dnssec {
             debug!(
                 target: LOG_TARGET,
-                "Using {} to resolve DNS seeds. DNSSEC is enabled", resolver_addr
+                "Using {} to resolve DNS seeds. DNSSEC is enabled", config.dns_seeds_name_server
             );
-            DnsSeedResolver::connect_secure(resolver_addr).await?
+            DnsSeedResolver::connect_secure(config.dns_seeds_name_server.clone()).await?
         } else {
             debug!(
                 target: LOG_TARGET,
-                "Using {} to resolve DNS seeds. DNSSEC is disabled", resolver_addr
+                "Using {} to resolve DNS seeds. DNSSEC is disabled", config.dns_seeds_name_server
             );
-            DnsSeedResolver::connect(resolver_addr).await?
+            DnsSeedResolver::connect(config.dns_seeds_name_server.clone()).await?
         };
-        let resolving = dns_seeds.iter().map(|addr| {
+        let resolving = config.dns_seeds.iter().map(|addr| {
             let mut resolver = resolver.clone();
             async move { (resolver.resolve(addr).await, addr) }
         });
@@ -626,13 +530,7 @@ impl ServiceInitializer for P2pInitializer {
         let peer_manager = comms.peer_manager();
         let node_identity = comms.node_identity();
 
-        let peers = match Self::try_resolve_dns_seeds(
-            config.dns_seeds_name_server,
-            &config.dns_seeds,
-            config.dns_seeds_use_dnssec,
-        )
-        .await
-        {
+        let peers = match Self::try_resolve_dns_seeds(&self.seed_config).await {
             Ok(peers) => peers,
             Err(err) => {
                 warn!(target: LOG_TARGET, "Failed to resolve DNS seeds: {}", err);
@@ -641,7 +539,9 @@ impl ServiceInitializer for P2pInitializer {
         };
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
-        let peers = Self::try_parse_seed_peers(&config.peer_seeds)?;
+        // TODO: Use serde
+        let peers = Self::try_parse_seed_peers(&self.seed_config.peer_seeds)?;
+
         add_all_peers(&peer_manager, &node_identity, peers).await?;
 
         context.register_handle(comms.connectivity());

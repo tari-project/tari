@@ -28,6 +28,7 @@ use tari_common::SubConfigPath;
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MergeMiningProxyConfig {
+    override_from: Option<String>,
     // pub network: String,
     pub monerod_url: Vec<String>,
     pub monerod_username: String,
@@ -43,6 +44,7 @@ pub struct MergeMiningProxyConfig {
 impl Default for MergeMiningProxyConfig {
     fn default() -> Self {
         Self {
+            override_from: None,
             // network: "dibbler".to_string(),
             monerod_url: vec![],
             monerod_username: "".to_string(),
@@ -65,42 +67,41 @@ impl SubConfigPath for MergeMiningProxyConfig {
 
 #[cfg(test)]
 mod test {
-    use tari_common::{configuration::config, DefaultConfigLoader};
+    use tari_common::DefaultConfigLoader;
 
     use crate::config::MergeMiningProxyConfig;
 
-    fn get_config(network: &str) -> config::Config {
-        let mut cfg: config::Config = config::Config::default();
-        let s = format!(
-            r#"
+    fn get_config(override_from: &str) -> config::Config {
+        let s = r#"
 [common]
   baz = "foo"
 [merge_mining_proxy]
-  override_from = "{}"
   monerod_username = "cmot"
   grpc_console_wallet_address = "/dns4/wallet/tcp/9000"
-[merge_mining_proxy.config_a]
+[config_a.merge_mining_proxy]
   monerod_url = [ "http://network.a.org" ]
   monerod_password = "password_igor"
   grpc_base_node_address = "/dns4/base_node_a/tcp/8080"
   grpc_console_wallet_address = "/dns4/wallet_a/tcp/9000"
-[merge_mining_proxy.config_b]
+[config_b.merge_mining_proxy]
   proxy_submit_to_origin = false
- monerod_url = [ "http://network.b.org" ]
+  monerod_url = [ "http://network.b.org" ]
   monerod_password = "password_dibbler"
   grpc_base_node_address = "/dns4/base_node_b/tcp/8080"
-"#,
-            network
-        );
-        cfg.merge(config::File::from_str(s.as_str(), config::FileFormat::Toml))
-            .unwrap();
-        cfg
+"#;
+
+        config::Config::builder()
+            .set_override("merge_mining_proxy.override_from", override_from)
+            .unwrap()
+            .add_source(config::File::from_str(s, config::FileFormat::Toml))
+            .build()
+            .unwrap()
     }
 
     #[test]
     fn merge_mining_proxy_configuration() {
         let cfg = get_config("config_b");
-        let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+        let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.b.org".to_string()]);
         assert!(!config.proxy_submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
@@ -115,7 +116,7 @@ mod test {
         );
 
         let cfg = get_config("config_a");
-        let config = <MergeMiningProxyConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+        let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.a.org".to_string()]);
         assert!(config.proxy_submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");

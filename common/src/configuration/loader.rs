@@ -80,19 +80,33 @@ pub trait ConfigPath {
     /// which can be used to deserialize Self struct
     /// If overload key is not present in config it won't make effect
     fn merge_subconfig(config: &Config, defaults: config::Value) -> Result<Config, ConfigurationError> {
-        use config::Value;
         match Self::overload_key_prefix(config)? {
             Some(key) => {
-                let overload: Value = config.get(key.as_str()).unwrap_or_default();
-                let config = Config::builder()
+                let overload: config::Value = config.get(key.as_str()).unwrap_or_default();
+                let mut config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
-                    .add_source(config.clone())
-                    .set_override(Self::main_key_prefix(), overload)?
+                    .add_source(config.clone());
+
+                match overload.kind {
+                    config::ValueKind::Table(_) => {
+                        // Override each key individually so that values set in the base config are preserved, up to one
+                        // level deep.
+                        for (k, v) in overload.into_table()?.into_iter() {
+                            config = config.set_override(k, v)?;
+                        }
+                    },
+                    config::ValueKind::Nil => {},
+                    _ => {
+                        config = config.set_override(Self::main_key_prefix(), overload)?;
+                    },
+                }
+
+                let config = config
+                    // .set_override(Self::main_key_prefix(), overload)?
                     .build()?;
                 Ok(config)
             },
             None => {
-                //     ConfigBuilder::<DefaultState>::default()?;
                 let config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
                     .add_source(config.clone())
@@ -255,36 +269,28 @@ pub trait ConfigLoader: ConfigPath + Sized {
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, MyNodeConfig::default().welcome_message);
 /// ```
-pub trait DefaultConfigLoader: Sized {
+pub trait DefaultConfigLoader: ConfigPath + Sized {
     /// Try to load configuration from supplied Config by `main_key_prefix()`
     /// with values overloaded from `overload_key_prefix()`.
     ///
     /// Default values will be taken from Default impl for the struct.
-    fn load_from(config: &Config) -> Result<Self, ConfigurationError>
-    where Self: ConfigPath {
-        Self::load_from_prefixed(Self::main_key_prefix(), config)
-    }
-    /// Try to load configuration from supplied Config by `prefix`
-    /// with values overloaded from `overload_key_prefix()`.
-    ///
-    /// Default values will be taken from Default impl for the struct.
-    fn load_from_prefixed(prefix: &str, config: &Config) -> Result<Self, ConfigurationError>;
+    fn load_from(config: &Config) -> Result<Self, ConfigurationError>;
 }
 
 impl<C> DefaultConfigLoader for C
 where C: ConfigPath + Default + serde::ser::Serialize + for<'de> serde::de::Deserialize<'de>
 {
-    fn load_from_prefixed(prefix: &str, config: &Config) -> Result<Self, ConfigurationError> {
+    fn load_from(config: &Config) -> Result<Self, ConfigurationError> {
         let default = <Self as Default>::default();
-        let json_val = serde_json::to_value(default)?;
-        let value: config::Value = serde_json::from_value(json_val)?;
+        let buf = serde_json::to_value(&default)?;
+        let value: config::Value = serde_json::from_value(buf)?;
         let merger = Self::merge_subconfig(config, value)?;
         // merger.set_default(Self::main_key_prefix(), value)?;
-        let final_value: config::Value = merger.get(prefix)?;
+        let final_value: config::Value = merger.get(Self::main_key_prefix())?;
         // let final_value_string = final_value.to_string();
         final_value
             .try_deserialize()
-            .map_err(|ce| ConfigurationError::new(prefix, None, ce.to_string()))
+            .map_err(|ce| ConfigurationError::new(Self::main_key_prefix(), None, ce))
     }
 }
 
@@ -298,11 +304,11 @@ pub struct ConfigurationError {
 }
 
 impl ConfigurationError {
-    pub fn new<F: Into<String>, M: Into<String>>(field: F, value: Option<String>, msg: M) -> Self {
+    pub fn new<F: ToString, M: ToString>(field: F, value: Option<String>, msg: M) -> Self {
         ConfigurationError {
-            field: field.into(),
+            field: field.to_string(),
             value,
-            message: msg.into(),
+            message: msg.to_string(),
         }
     }
 }

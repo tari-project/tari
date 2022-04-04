@@ -44,7 +44,7 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     pub fn list_reorgs(&self) -> Result<(), Error> {
-        if !self.config.storage.track_reorgs {
+        if !self.config.base_node.storage.track_reorgs {
             // TODO: Return error/report
             println!(
                 "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \

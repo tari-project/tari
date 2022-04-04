@@ -49,17 +49,16 @@ pub(crate) struct Cli {
     #[clap(long)]
     pub watch: Option<String>,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, alias = "network")]
-    pub network: Option<String>,
+    #[clap(long, alias = "network", default_value = "mainnet")]
+    pub network: String,
 }
 
 impl Cli {
     pub fn config_property_overrides(&self) -> Vec<(String, String)> {
         let mut overrides = self.common.config_property_overrides();
-        if let Some(ref network) = self.network {
-            overrides.push(("base_node.override_from".to_string(), network.clone()));
-            overrides.push(("base_node.p2p.override_from".to_string(), network.clone()));
-        }
+        overrides.push(("base_node.override_from".to_string(), self.network.clone()));
+        overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
+        overrides.push(("auto_update.override_from".to_string(), self.network.clone()));
         overrides
     }
 }

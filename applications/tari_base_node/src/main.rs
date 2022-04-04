@@ -83,17 +83,17 @@
 #[macro_use]
 mod table;
 
+mod app_config;
+mod base_node_config;
 mod bootstrap;
 mod builder;
 mod cli;
 mod commands;
 mod grpc;
-mod recovery;
-mod utils;
-
-mod base_node_config;
 #[cfg(feature = "metrics")]
 mod metrics;
+mod recovery;
+mod utils;
 
 use std::{env, net::SocketAddr, process, sync::Arc};
 
@@ -120,7 +120,7 @@ use tokio::task;
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-use crate::{base_node_config::ApplicationConfig, cli::Cli};
+use crate::{app_config::ApplicationConfig, cli::Cli};
 
 const LOG_TARGET: &str = "tari::base_node::app";
 
@@ -142,28 +142,19 @@ fn main_inner() -> Result<(), ExitError> {
     let cli = Cli::parse();
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(config_path.as_path(), true, &cli.config_property_overrides())?;
+    let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
     initialize_logging(
         &cli.common.log_config_path("base_node"),
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    let mut app_config = ApplicationConfig::load_from(&cfg)?;
-    app_config.setup_base_paths();
-    // App config will be used in a few places but never mutated
-    let app_config = Arc::new(app_config);
-
-    // let common_config = CommonConfig::load_from(&cfg)?;
-    // let mut base_node_configconfig = BaseNodeConfig::load_from(&cfg)?;
-
-    // base_node_config.set_base_path(common_config.base_path().as_path());
+    let app_config = ApplicationConfig::load_from(&cfg).map(Arc::new)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", app_config);
-    // let auto_update_config = AutoUpdateConfig::load_from(&cfg)?;
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         app_config.base_node.identity_file.as_path(),
-        &app_config.base_node.public_address,
+        &app_config.base_node.p2p.public_address,
         cli.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;

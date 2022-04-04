@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,52 +20,45 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use anyhow::Error;
-use async_trait::async_trait;
-use clap::Parser;
-use qrcode::{render::unicode, QrCode};
-use tari_utilities::hex::Hex;
+use config::Config;
+use serde::{Deserialize, Serialize};
+use tari_common::{
+    configuration::{CommonConfig, Network},
+    ConfigurationError,
+    DefaultConfigLoader,
+};
+use tari_p2p::{auto_update::AutoUpdateConfig, P2pPeerSeedsConfig};
 
-use super::{CommandContext, HandleCommand};
+use crate::base_node_config::BaseNodeConfig;
+#[cfg(feature = "metrics")]
+use crate::metrics::MetricsConfig;
 
-/// Display identity information about this node,
-/// including: public key, node ID and the public address
-#[derive(Debug, Parser)]
-pub struct Args {}
-
-#[async_trait]
-impl HandleCommand<Args> for CommandContext {
-    async fn handle_command(&mut self, _: Args) -> Result<(), Error> {
-        self.whoami()
-    }
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ApplicationConfig {
+    pub common: CommonConfig,
+    pub auto_update: AutoUpdateConfig,
+    pub base_node: BaseNodeConfig,
+    pub peer_seeds: P2pPeerSeedsConfig,
+    #[cfg(feature = "metrics")]
+    pub metrics: MetricsConfig,
 }
 
-impl CommandContext {
-    /// Function to process the whoami command
-    pub fn whoami(&self) -> Result<(), Error> {
-        println!("{}", self.base_node_identity);
-        let peer = format!(
-            "{}::{}",
-            self.base_node_identity.public_key().to_hex(),
-            self.base_node_identity.public_address()
-        );
-        let network = self.config.network();
-        let qr_link = format!(
-            "tari://{}/base_nodes/add?name={}&peer={}",
-            network,
-            self.base_node_identity.node_id(),
-            peer
-        );
-        let code = QrCode::new(qr_link).unwrap();
-        let image = code
-            .render::<unicode::Dense1x2>()
-            .dark_color(unicode::Dense1x2::Dark)
-            .light_color(unicode::Dense1x2::Light)
-            .build()
-            .lines()
-            .skip(1)
-            .fold("".to_string(), |acc, l| format!("{}{}\n", acc, l));
-        println!("{}", image);
-        Ok(())
+impl ApplicationConfig {
+    pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let mut config = Self {
+            common: CommonConfig::load_from(&cfg)?,
+            auto_update: AutoUpdateConfig::load_from(&cfg)?,
+            peer_seeds: P2pPeerSeedsConfig::load_from(&cfg)?,
+            base_node: BaseNodeConfig::load_from(&cfg)?,
+            #[cfg(feature = "metrics")]
+            metrics: MetricsConfig::load_from(&cfg)?,
+        };
+
+        config.base_node.set_base_path(config.common.base_path());
+        Ok(config)
+    }
+
+    pub fn network(&self) -> Network {
+        self.base_node.network
     }
 }

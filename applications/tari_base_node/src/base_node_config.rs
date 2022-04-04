@@ -26,54 +26,19 @@ use std::{
     time::Duration,
 };
 
-use config::Config;
 use serde::{Deserialize, Serialize};
-use tari_common::{
-    configuration::{CommonConfig, Network},
-    ConfigurationError,
-    DefaultConfigLoader,
-    SubConfigPath,
-};
-use tari_comms::multiaddr::Multiaddr;
+use tari_common::{configuration::Network, SubConfigPath};
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
     chain_storage::BlockchainDatabaseConfig,
     mempool::MempoolConfig,
 };
-use tari_p2p::{auto_update::AutoUpdateConfig, initialization::P2pConfig};
+use tari_p2p::P2pConfig;
 use tari_storage::lmdb_store::LMDBConfig;
-
-#[cfg(feature = "metrics")]
-use crate::metrics::MetricsConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DatabaseType {
     Lmdb,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ApplicationConfig {
-    pub common: CommonConfig,
-    pub auto_update: AutoUpdateConfig,
-    pub base_node: BaseNodeConfig,
-    #[cfg(feature = "metrics")]
-    pub metrics: MetricsConfig,
-}
-
-impl ApplicationConfig {
-    pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
-        Ok(Self {
-            common: CommonConfig::load_from(&cfg)?,
-            auto_update: AutoUpdateConfig::load_from(&cfg)?,
-            base_node: BaseNodeConfig::load_from(&cfg)?,
-            #[cfg(feature = "metrics")]
-            metrics: MetricsConfig::load_from(&cfg)?,
-        })
-    }
-
-    pub fn setup_base_paths(&mut self) {
-        self.base_node.set_base_path(self.common.base_path());
-    }
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -85,8 +50,6 @@ pub struct BaseNodeConfig {
     pub identity_file: PathBuf,
     pub use_lib_tor: bool,
     pub tor_identity_file: PathBuf,
-    // TODO: Move to p2p or comms config
-    pub public_address: Option<Multiaddr>,
     pub db_type: DatabaseType,
     pub lmdb: LMDBConfig,
     pub data_dir: PathBuf,
@@ -95,12 +58,12 @@ pub struct BaseNodeConfig {
     pub bypass_range_proof_verification: bool,
     pub orphan_db_clean_out_threshold: usize,
     pub cleanup_orphans_at_startup: bool,
+    pub p2p: P2pConfig,
     pub force_sync_peers: Vec<String>,
     /// The maximum amount of time to wait for remote base node responses for messaging-based requests.
     pub messaging_request_timeout: Duration,
     pub storage: BlockchainDatabaseConfig,
     pub mempool: MempoolConfig,
-    pub p2p: P2pConfig,
     pub status_line_interval: Duration,
     pub buffer_size: usize,
     pub buffer_rate_limit: usize,
@@ -117,7 +80,7 @@ impl Default for BaseNodeConfig {
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_lib_tor: false,
             tor_identity_file: PathBuf::from("config/tor_id.json"),
-            public_address: None,
+            p2p: P2pConfig::default(),
             db_type: DatabaseType::Lmdb,
             lmdb: Default::default(),
             data_dir: PathBuf::from("data/base_node"),
@@ -130,7 +93,6 @@ impl Default for BaseNodeConfig {
             messaging_request_timeout: Duration::from_secs(60),
             storage: Default::default(),
             mempool: Default::default(),
-            p2p: Default::default(),
             status_line_interval: Duration::from_secs(5),
             buffer_size: 0,
             buffer_rate_limit: 0,
@@ -160,6 +122,5 @@ impl BaseNodeConfig {
         if !self.lmdb_path.is_absolute() {
             self.lmdb_path = self.data_dir.join(self.lmdb_path.as_path());
         }
-        self.p2p.set_base_path(self.data_dir.as_path());
     }
 }

@@ -62,7 +62,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// communications stack, the node state machine and handles to the various services that are registered
 /// on the comms stack.
 pub struct BaseNodeContext {
-    config: Arc<BaseNodeConfig>,
+    config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
@@ -85,7 +85,7 @@ impl BaseNodeContext {
     }
 
     /// Return the node config
-    pub fn config(&self) -> Arc<BaseNodeConfig> {
+    pub fn config(&self) -> Arc<ApplicationConfig> {
         self.config.clone()
     }
 
@@ -141,7 +141,7 @@ impl BaseNodeContext {
 
     /// Returns the configured network
     pub fn network(&self) -> Network {
-        self.config.network
+        self.config.base_node.network
     }
 
     /// Returns the consensus rules
@@ -258,7 +258,7 @@ async fn build_node_context(
     let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
     Ok(BaseNodeContext {
-        config: Arc::new(app_config.base_node.clone()),
+        config: app_config,
         consensus_rules: rules,
         blockchain_db,
         base_node_comms,

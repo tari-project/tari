@@ -51,11 +51,12 @@ use tari_p2p::{
     peer_seeds::SeedPeer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     transport::TransportType,
+    P2pConfig,
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
 
-use crate::{base_node_config::BaseNodeConfig, ApplicationConfig};
+use crate::ApplicationConfig;
 
 const LOG_TARGET: &str = "c::bn::initialization";
 /// The minimum buffer size for the base node pubsub_connector channel
@@ -76,16 +77,15 @@ where B: BlockchainBackend + 'static
 {
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
         let base_node_config = &self.app_config.base_node;
-
-        // fs::create_dir_all(&config.comms_peer_db_path)?;
+        let p2p_config = &self.app_config.base_node.p2p;
+        let peer_seeds = &self.app_config.peer_seeds;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, base_node_config.buffer_size);
         let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, base_node_config.buffer_rate_limit);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = base_node_config.mempool.service.clone();
 
-        let p2p_config = base_node_config.p2p.clone();
-        let transport_type = create_transport_type(&p2p_config);
+        let transport_type = create_transport_type(p2p_config);
 
         let sync_peers = base_node_config
             .force_sync_peers
@@ -102,7 +102,8 @@ where B: BlockchainBackend + 'static
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(
-                p2p_config,
+                p2p_config.clone(),
+                peer_seeds.clone(),
                 base_node_config.network,
                 self.node_identity.clone(),
                 publisher,
@@ -149,7 +150,7 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), base_node_config);
+        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), p2p_config);
         let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone()).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
@@ -186,12 +187,12 @@ where B: BlockchainBackend + 'static
         comms: UnspawnedCommsNode,
         handles: &ServiceHandles,
         db: AsyncBlockchainDb<B>,
-        config: &BaseNodeConfig,
+        config: &P2pConfig,
     ) -> UnspawnedCommsNode {
         let dht = handles.expect_handle::<Dht>();
         let base_node_service = handles.expect_handle::<LocalNodeCommsInterface>();
         let rpc_server = RpcServer::builder()
-            .with_maximum_simultaneous_sessions(config.p2p.rpc_max_simultaneous_sessions)
+            .with_maximum_simultaneous_sessions(config.rpc_max_simultaneous_sessions)
             .finish();
 
         // Add your RPC services here ‍🏴‍☠️️☮️🌊

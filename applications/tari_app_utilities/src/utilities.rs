@@ -44,8 +44,8 @@ use tari_comms::{
     utils::multiaddr::socketaddr_to_multiaddr,
 };
 use tari_p2p::{
-    initialization::P2pConfig,
     transport::{TorConfig, TransportType},
+    P2pConfig,
 };
 use tari_utilities::hex::Hex;
 use thiserror::Error;

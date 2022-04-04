@@ -17,21 +17,22 @@ use crate::{ConfigError, LOG_TARGET};
 
 //-------------------------------------           Main API functions         --------------------------------------//
 
-pub fn load_configuration(
-    config_path: &Path,
+pub fn load_configuration<P: AsRef<Path>>(
+    config_path: P,
     create_if_not_exists: bool,
     overrides: &[(String, String)],
 ) -> Result<Config, ConfigError> {
     debug!(
         target: LOG_TARGET,
         "Loading configuration file from  {}",
-        config_path.to_str().unwrap_or("[??]")
+        config_path.as_ref().to_str().unwrap_or("[??]")
     );
-    if !config_path.exists() && create_if_not_exists {
-        write_default_config_to(config_path)
+    if !config_path.as_ref().exists() && create_if_not_exists {
+        write_default_config_to(&config_path)
             .map_err(|io| ConfigError::new("Could not create default config", Some(io.to_string())))?;
     }
     let filename = config_path
+        .as_ref()
         .to_str()
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
     let mut cfg = Config::builder()
@@ -54,7 +55,7 @@ pub fn load_configuration(
 
 /// Installs a new configuration file template, copied from the application type's preset and written to the given path.
 /// Also includes the common configuration defined in `config/presets/common.toml`.
-pub fn write_default_config_to(path: &Path) -> Result<(), std::io::Error> {
+pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::Error> {
     // Use the same config file so that all the settings are easier to find, and easier to
     // support users over chat channels
     let common = include_str!("../../config/presets/common.toml");
@@ -70,7 +71,7 @@ pub fn write_default_config_to(path: &Path) -> Result<(), std::io::Error> {
     ]
     .join("\n");
 
-    if let Some(d) = path.parent() {
+    if let Some(d) = path.as_ref().parent() {
         fs::create_dir_all(d)?
     };
     let mut file = File::create(path)?;

@@ -35,6 +35,7 @@ mod test_utils;
 #[cfg(feature = "auto-update")]
 pub mod auto_update;
 pub mod comms_connector;
+mod config;
 pub mod domain_message;
 pub mod initialization;
 pub mod peer;
@@ -47,6 +48,7 @@ pub mod transport;
 mod dns;
 
 // Re-export
+pub use config::{P2pConfig, P2pPeerSeedsConfig};
 pub use tari_common::configuration::Network;
 
 /// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver

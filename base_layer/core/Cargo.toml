@@ -76,7 +76,7 @@ uint = { version = "0.9", default-features = false }
 tari_p2p = { version = "^0.30", path = "../../base_layer/p2p", features = ["test-mocks"] }
 tari_test_utils = { version = "^0.30", path = "../../infrastructure/test_utils" }
 
-config = { version = "0.9.3" }
+config = { version = "0.12.0" }
 env_logger = "0.7.0"
 tempfile = "3.1.0"
 

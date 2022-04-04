@@ -129,7 +129,7 @@ impl DhtConfig {
     }
 
     /// Sets relative paths to use a common base path
-    pub fn set_base_path(&mut self, base_path: &Path) {
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         self.database_url.set_base_path(base_path);
     }
 }

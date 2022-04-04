@@ -83,9 +83,9 @@ use tokio::{sync::watch, time};
 pub use watch_command::WatchCommand;
 
 use crate::{
-    base_node_config::BaseNodeConfig,
     builder::BaseNodeContext,
     commands::{nom_parser::ParsedCommand, parser::FromHex},
+    ApplicationConfig,
 };
 
 #[derive(Debug, Parser)]
@@ -146,7 +146,7 @@ pub trait HandleCommand<T> {
 }
 
 pub struct CommandContext {
-    pub config: Arc<BaseNodeConfig>,
+    pub config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,
