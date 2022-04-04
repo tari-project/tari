@@ -31,7 +31,7 @@ use tari_core::transactions::{
 use tari_utilities::hex::HexError;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
-    key_manager_service::KeyManagerError,
+    key_manager_service::KeyManagerServiceError,
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
@@ -54,7 +54,7 @@ pub enum CommandError {
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    KeyManagerError(#[from] KeyManagerServiceError),
     #[error("Tokio join error `{0}`")]
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]

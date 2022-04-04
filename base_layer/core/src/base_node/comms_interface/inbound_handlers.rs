@@ -432,11 +432,12 @@ where B: BlockchainBackend + 'static
                         .fetch_all_unspent_by_parent_public_key(asset_public_key.clone(), 0..1000)
                         .await?
                     {
+                        let mined_height = output.mined_height;
                         match output.output {
                             PrunedOutput::Pruned { .. } => {
                                 // TODO: should we return this?
                             },
-                            PrunedOutput::NotPruned { output } => outputs.push(output),
+                            PrunedOutput::NotPruned { output } => outputs.push((output, mined_height)),
                         }
                     }
                 } else {
@@ -450,7 +451,7 @@ where B: BlockchainBackend + 'static
                                 PrunedOutput::Pruned { .. } => {
                                     // TODO: should we return this?
                                 },
-                                PrunedOutput::NotPruned { output } => outputs.push(output),
+                                PrunedOutput::NotPruned { output } => outputs.push((output, out.mined_height)),
                             }
                         }
                     }
@@ -799,13 +800,16 @@ where B: BlockchainBackend + 'static
 
         match block_add_result {
             BlockAddResult::Ok(ref block) => {
+                metrics::tip_height().set(block.height() as i64);
                 update_target_difficulty(block);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
                 metrics::utxo_set_size().set(utxo_set_size.try_into().unwrap_or(i64::MAX));
             },
             BlockAddResult::ChainReorg { added, removed } => {
-                let fork_height = added.last().map(|b| b.height() - 1).unwrap_or_default();
-                metrics::reorg(fork_height, added.len(), removed.len()).inc();
+                if let Some(fork_height) = added.last().map(|b| b.height()) {
+                    metrics::tip_height().set(fork_height as i64);
+                    metrics::reorg(fork_height, added.len(), removed.len()).inc();
+                }
                 for block in added {
                     update_target_difficulty(block);
                 }

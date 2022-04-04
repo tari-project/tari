@@ -26,9 +26,10 @@ use chrono::Local;
 use strum::{Display, EnumString};
 
 #[derive(Debug, Display, EnumString)]
-#[strum(serialize_all = "lowercase")]
 pub enum StatusLineOutput {
+    #[strum(serialize = "log")]
     Log,
+    #[strum(serialize = "all")]
     StdOutAndLog,
 }
 

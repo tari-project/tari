@@ -3,14 +3,14 @@ name = "tari_wallet_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency wallet C FFI bindings"
 license = "BSD-3-Clause"
-version = "0.30.0"
+version = "0.30.2"
 edition = "2018"
 
 [dependencies]
 tari_common_types = {path="../common_types"}
-tari_comms = { version = "^0.30", path = "../../comms", features = ["c_integration"]}
+tari_comms = { version = "^0.30", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.30", path = "../../comms/dht", default-features = false }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_key_manager = { version = "^0.30", path = "../key_manager" }
 tari_p2p = { version = "^0.30", path = "../p2p" }
 tari_script = { path = "../../infrastructure/tari_script" }
@@ -27,6 +27,7 @@ openssl = { version = "0.10", features = ["vendored"] }
 rand = "0.8"
 thiserror = "1.0.26"
 tokio = "1.11"
+env_logger = "0.7.0"
 
 # <workaround>
 # Temporary workaround until crates utilizing openssl have been updated from security-framework 2.4.0

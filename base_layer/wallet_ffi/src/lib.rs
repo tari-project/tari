@@ -121,10 +121,7 @@ use tari_comms::{
     types::{CommsPublicKey, CommsSecretKey},
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
-use tari_core::{
-    covenants::Covenant,
-    transactions::{tari_amount::MicroTari, CryptoFactories},
-};
+use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
 use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     tari_utilities::ByteArray,
@@ -195,6 +192,7 @@ pub struct TariContacts(Vec<TariContact>);
 
 pub type TariContact = tari_wallet::contacts_service::storage::database::Contact;
 pub type TariCompletedTransaction = tari_wallet::transaction_service::storage::models::CompletedTransaction;
+pub type TariTransactionSendStatus = tari_wallet::transaction_service::handle::TransactionSendStatus;
 pub type TariContactsLivenessData = tari_wallet::contacts_service::handle::ContactsLivenessData;
 pub type TariBalance = tari_wallet::output_manager_service::service::Balance;
 pub type TariMnemonicLanguage = tari_key_manager::mnemonic::MnemonicLanguage;
@@ -2836,6 +2834,79 @@ pub unsafe extern "C" fn pending_inbound_transaction_destroy(transaction: *mut T
 
 /// -------------------------------------------------------------------------------------------- ///
 
+/// ----------------------------------- Transport Send Status -----------------------------------///
+
+/// Encode the transaction send status of a TariTransactionSendStatus
+///
+/// ## Arguments
+/// `status` - The pointer to a TariTransactionSendStatus
+/// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
+/// as an out parameter.
+///
+/// ## Returns
+/// `c_uint` - Returns
+///     !direct_send & !saf_send &  queued   = 0
+///      direct_send &  saf_send & !queued   = 1
+///      direct_send & !saf_send & !queued   = 2
+///     !direct_send &  saf_send & !queued   = 3
+///     any other combination (is not valid) = 4
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_send_status_decode(
+    status: *const TariTransactionSendStatus,
+    error_out: *mut c_int,
+) -> c_uint {
+    let mut error = 0;
+    ptr::swap(error_out, &mut error as *mut c_int);
+    let mut send_status = 4;
+    if status.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transaction send status".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else if ((*status).direct_send_result || (*status).store_and_forward_send_result) && (*status).queued_for_retry {
+        error = LibWalletError::from(InterfaceError::NullError(
+            "transaction send status - not valid".to_string(),
+        ))
+        .code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    } else if (*status).queued_for_retry {
+        send_status = 0;
+    } else if (*status).direct_send_result && (*status).store_and_forward_send_result {
+        send_status = 1;
+    } else if (*status).direct_send_result && !(*status).store_and_forward_send_result {
+        send_status = 2;
+    } else if !(*status).direct_send_result && (*status).store_and_forward_send_result {
+        send_status = 3;
+    } else {
+        error = LibWalletError::from(InterfaceError::NullError(
+            "transaction send status - not valid".to_string(),
+        ))
+        .code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+    }
+    send_status
+}
+
+/// Frees memory for a TariTransactionSendStatus
+///
+/// ## Arguments
+/// `status` - The pointer to a TariPendingInboundTransaction
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+/// None
+#[no_mangle]
+pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransactionSendStatus) {
+    if !status.is_null() {
+        Box::from_raw(status);
+    }
+}
+
+/// -------------------------------------------------------------------------------------------- ///
+
 /// ----------------------------------- Transport Types -----------------------------------------///
 
 /// Creates a memory transport type
@@ -3222,7 +3293,7 @@ pub unsafe extern "C" fn comms_config_create(
                         network: selected_network,
                         node_identity: Arc::new(node_identity),
                         transport_type: (*transport_type).clone(),
-                        auxilary_tcp_listener_address: None,
+                        auxiliary_tcp_listener_address: None,
                         datastore_path,
                         peer_database_name: database_name_string,
                         max_concurrent_inbound_tasks: 25,
@@ -3234,6 +3305,8 @@ pub unsafe extern "C" fn comms_config_create(
                             auto_join: true,
                             saf_config: SafConfig {
                                 msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                                // Ensure that SAF messages are requested automatically
+                                auto_request: true,
                                 ..Default::default()
                             },
                             ..Default::default()
@@ -3436,9 +3509,11 @@ unsafe fn init_logging(
 /// `seed_words` - An optional instance of TariSeedWords, used to create a wallet for recovery purposes.
 /// If this is null, then a new master key is created for the wallet.
 /// `callback_received_transaction` - The callback function pointer matching the function signature. This will be
-/// called when an inbound transaction is received. `callback_received_transaction_reply` - The callback function
+/// called when an inbound transaction is received.
+/// `callback_received_transaction_reply` - The callback function
 /// pointer matching the function signature. This will be called when a reply is received for a pending outbound
-/// transaction `callback_received_finalized_transaction` - The callback function pointer matching the function
+/// transaction
+/// `callback_received_finalized_transaction` - The callback function pointer matching the function
 /// signature. This will be called when a Finalized version on an Inbound transaction is received
 /// `callback_transaction_broadcast` - The callback function pointer matching the function signature. This will be
 /// called when a Finalized transaction is detected a Broadcast to a base node mempool.
@@ -3450,12 +3525,15 @@ unsafe fn init_logging(
 /// called when a one-sided transaction is detected as mined AND confirmed.
 /// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This
 /// will be called when a one-sided transaction is detected as mined but not yet confirmed.
-/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
-/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was
-/// successful or not.
-/// `callback_store_and_forward_send_result` - The callback function pointer matching the function
-/// signature. This is called when a direct send is completed. The first parameter is the transaction id and the second
-/// is whether if was successful or not.
+/// `callback_transaction_send_result` - The callback function pointer matching the function signature. This is called
+/// when a transaction send is completed. The first parameter is the transaction id and the second contains the
+/// transaction send status, weather it was send direct and/or send via saf on the one hand or queued for further retry
+/// sending on the other hand.
+///     !direct_send & !saf_send &  queued   = 0
+///      direct_send &  saf_send & !queued   = 1
+///      direct_send & !saf_send & !queued   = 2
+///     !direct_send &  saf_send & !queued   = 3
+///     any other combination (is not valid) = 4
 /// `callback_transaction_cancellation` - The callback function pointer matching
 /// the function signature. This is called when a transaction is cancelled. The first parameter is a pointer to the
 /// cancelled transaction, the second is a reason as to why said transaction failed that is mapped to the
@@ -3515,8 +3593,7 @@ pub unsafe extern "C" fn wallet_create(
     callback_transaction_mined_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_faux_transaction_confirmed: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_faux_transaction_unconfirmed: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
-    callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-    callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
+    callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
     callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction, u64),
     callback_txo_validation_complete: unsafe extern "C" fn(u64, bool),
     callback_contacts_liveness_data_updated: unsafe extern "C" fn(*mut TariContactsLivenessData),
@@ -3728,8 +3805,7 @@ pub unsafe extern "C" fn wallet_create(
                 callback_transaction_mined_unconfirmed,
                 callback_faux_transaction_confirmed,
                 callback_faux_transaction_unconfirmed,
-                callback_direct_send_result,
-                callback_store_and_forward_send_result,
+                callback_transaction_send_result,
                 callback_transaction_cancellation,
                 callback_txo_validation_complete,
                 callback_contacts_liveness_data_updated,
@@ -5135,26 +5211,31 @@ pub unsafe extern "C" fn wallet_get_public_key(wallet: *mut TariWallet, error_ou
     Box::into_raw(Box::new(pk))
 }
 
-/// Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
-/// event.
+/// Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
+/// UTXO (as EncumberedToBeReceived) and create a faux completed transaction to record the event.
 ///
 /// ## Arguments
 /// `wallet` - The TariWallet pointer
 /// `amount` - The value of the UTXO in MicroTari
 /// `spending_key` - The private spending key
 /// `source_public_key` - The public key of the source of the transaction
+/// `features` - Options for an output's structure or use
+/// `metadata_signature` - UTXO signature with the script offset private key, k_O
+/// `sender_offset_public_key` - Tari script offset pubkey, K_O
+/// `script_private_key` - Tari script private key, k_S, is used to create the script signature
+/// `covenant` - The covenant that will be executed when spending this output
 /// `message` - The message that the transaction will have
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
 /// ## Returns
-/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if transaction is
-/// null
+/// `c_ulonglong` -  Returns the TransactionID of the generated transaction, note that it will be zero if the
+/// transaction is null
 ///
 /// # Safety
 /// None
 #[no_mangle]
-pub unsafe extern "C" fn wallet_import_utxo(
+pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     wallet: *mut TariWallet,
     amount: c_ulonglong,
     spending_key: *mut TariPrivateKey,
@@ -5211,10 +5292,10 @@ pub unsafe extern "C" fn wallet_import_utxo(
         return 0;
     }
 
-    let covenant = if covenant.is_null() {
-        Covenant::default()
-    } else {
-        (*covenant).clone()
+    if covenant.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("covenant".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return 0;
     };
 
     let message_string;
@@ -5246,20 +5327,22 @@ pub unsafe extern "C" fn wallet_import_utxo(
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
 
     // TODO: the script_lock_height can be something other than 0, for example an HTLC transaction
-    match (*wallet).runtime.block_on((*wallet).wallet.import_utxo(
-        MicroTari::from(amount),
-        &(*spending_key).clone(),
-        script!(Nop),
-        inputs!(public_script_key),
-        &(*source_public_key).clone(),
-        (*features).clone(),
-        message_string,
-        (*metadata_signature).clone(),
-        &(*script_private_key).clone(),
-        &(*sender_offset_public_key).clone(),
-        0,
-        covenant,
-    )) {
+    match (*wallet)
+        .runtime
+        .block_on((*wallet).wallet.import_external_utxo_as_non_rewindable(
+            MicroTari::from(amount),
+            &(*spending_key).clone(),
+            script!(Nop),
+            inputs!(public_script_key),
+            &(*source_public_key).clone(),
+            (*features).clone(),
+            message_string,
+            (*metadata_signature).clone(),
+            &(*script_private_key).clone(),
+            &(*sender_offset_public_key).clone(),
+            0,
+            (*covenant).clone(),
+        )) {
         Ok(tx_id) => {
             if let Err(e) = (*wallet)
                 .runtime
@@ -6342,9 +6425,13 @@ mod test {
 
     use libc::{c_char, c_uchar, c_uint};
     use tari_common_types::{emoji, transaction::TransactionStatus};
+    use tari_core::transactions::test_helpers::{create_unblinded_output, TestParams};
     use tari_key_manager::{mnemonic::MnemonicLanguage, mnemonic_wordlists};
     use tari_test_utils::random;
-    use tari_wallet::storage::sqlite_utilities::run_migration_and_create_sqlite_connection;
+    use tari_wallet::{
+        storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
+        transaction_service::handle::TransactionSendStatus,
+    };
     use tempfile::tempdir;
 
     use crate::*;
@@ -6364,8 +6451,7 @@ mod test {
         pub mined_tx_unconfirmed_callback_called: bool,
         pub scanned_tx_callback_called: bool,
         pub scanned_tx_unconfirmed_callback_called: bool,
-        pub direct_send_callback_called: bool,
-        pub store_and_forward_send_callback_called: bool,
+        pub transaction_send_result_callback: bool,
         pub tx_cancellation_callback_called: bool,
         pub callback_txo_validation_complete: bool,
         pub callback_contacts_liveness_data_updated: bool,
@@ -6384,8 +6470,7 @@ mod test {
                 mined_tx_unconfirmed_callback_called: false,
                 scanned_tx_callback_called: false,
                 scanned_tx_unconfirmed_callback_called: false,
-                direct_send_callback_called: false,
-                store_and_forward_send_callback_called: false,
+                transaction_send_result_callback: false,
                 tx_cancellation_callback_called: false,
                 callback_txo_validation_complete: false,
                 callback_contacts_liveness_data_updated: false,
@@ -6534,12 +6619,13 @@ mod test {
         completed_transaction_destroy(tx);
     }
 
-    unsafe extern "C" fn direct_send_callback(_tx_id: c_ulonglong, _result: bool) {
-        // assert!(true); //optimized out by compiler
-    }
-
-    unsafe extern "C" fn store_and_forward_send_callback(_tx_id: c_ulonglong, _result: bool) {
-        // assert!(true); //optimized out by compiler
+    unsafe extern "C" fn transaction_send_result_callback(_tx_id: c_ulonglong, status: *mut TransactionSendStatus) {
+        assert!(!status.is_null());
+        assert_eq!(
+            type_of((*status).clone()),
+            std::any::type_name::<TransactionSendStatus>()
+        );
+        transaction_send_status_destroy(status);
     }
 
     unsafe extern "C" fn tx_cancellation_callback(tx: *mut TariCompletedTransaction, _reason: u64) {
@@ -6652,6 +6738,94 @@ mod test {
             let _address = transport_memory_get_address(transport, error_ptr);
             assert_eq!(error, 0);
             transport_type_destroy(transport);
+        }
+    }
+
+    #[test]
+    fn test_transaction_send_status() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: false,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 0);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: true,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 1);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: false,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 2);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: true,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 0);
+            assert_eq!(transaction_status, 3);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: false,
+                queued_for_retry: false,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: true,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: true,
+                store_and_forward_send_result: false,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
+
+            let status = Box::into_raw(Box::new(TariTransactionSendStatus {
+                direct_send_result: false,
+                store_and_forward_send_result: true,
+                queued_for_retry: true,
+            }));
+            let transaction_status = transaction_send_status_decode(status, error_ptr);
+            transaction_send_status_destroy(status);
+            assert_eq!(error, 1);
+            assert_eq!(transaction_status, 4);
         }
     }
 
@@ -6942,8 +7116,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -6982,8 +7155,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7088,8 +7260,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7139,8 +7310,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7173,8 +7343,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7202,8 +7371,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7252,8 +7420,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7331,8 +7498,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7460,6 +7626,208 @@ mod test {
         }
     }
 
+    fn get_next_memory_address() -> Multiaddr {
+        let port = MemoryTransport::acquire_next_memsocket_port();
+        format!("/memory/{}", port).parse().unwrap()
+    }
+
+    #[test]
+    pub fn test_import_external_utxo() {
+        unsafe {
+            let mut error = 0;
+            let error_ptr = &mut error as *mut c_int;
+            let mut recovery_in_progress = true;
+            let recovery_in_progress_ptr = &mut recovery_in_progress as *mut bool;
+
+            // create a new wallet
+            let db_name = CString::new(random::string(8).as_str()).unwrap();
+            let db_name_str: *const c_char = CString::into_raw(db_name) as *const c_char;
+            let temp_dir = tempdir().unwrap();
+            let db_path = CString::new(temp_dir.path().to_str().unwrap()).unwrap();
+            let db_path_str: *const c_char = CString::into_raw(db_path) as *const c_char;
+            let transport_type = transport_memory_create();
+            let address = transport_memory_get_address(transport_type, error_ptr);
+            let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
+            let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
+
+            let config = comms_config_create(
+                address_str,
+                transport_type,
+                db_name_str,
+                db_path_str,
+                20,
+                10800,
+                network_str,
+                error_ptr,
+            );
+
+            let wallet_ptr = wallet_create(
+                config,
+                ptr::null(),
+                0,
+                0,
+                ptr::null(),
+                ptr::null(),
+                received_tx_callback,
+                received_tx_reply_callback,
+                received_tx_finalized_callback,
+                broadcast_callback,
+                mined_callback,
+                mined_unconfirmed_callback,
+                scanned_callback,
+                scanned_unconfirmed_callback,
+                transaction_send_result_callback,
+                tx_cancellation_callback,
+                txo_validation_complete_callback,
+                contacts_liveness_data_updated_callback,
+                balance_updated_callback,
+                transaction_validation_complete_callback,
+                saf_messages_received_callback,
+                connectivity_status_callback,
+                recovery_in_progress_ptr,
+                error_ptr,
+            );
+
+            let node_identity =
+                NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+            let base_node_peer_public_key_ptr = Box::into_raw(Box::new(node_identity.public_key().clone()));
+            let base_node_peer_address_ptr =
+                CString::into_raw(CString::new(node_identity.public_address().to_string()).unwrap()) as *const c_char;
+            wallet_add_base_node_peer(
+                wallet_ptr,
+                base_node_peer_public_key_ptr,
+                base_node_peer_address_ptr,
+                error_ptr,
+            );
+
+            // Create an unblinded output with a non-default recovery byte
+            let default_features = TariOutputFeatures::default();
+            let utxo_1;
+            loop {
+                let test_params = TestParams::new();
+                let utxo_temp = create_unblinded_output(
+                    script!(Nop),
+                    default_features.clone(),
+                    test_params.clone(),
+                    MicroTari::from(100_000),
+                );
+                if utxo_temp.features.recovery_byte != default_features.recovery_byte {
+                    utxo_1 = utxo_temp;
+                    break;
+                }
+            }
+            assert_ne!(utxo_1.features.recovery_byte, default_features.recovery_byte);
+
+            // Test the consistent features case, i.e. with valid 'recovery_byte'
+            let amount = utxo_1.value.as_u64();
+            let spending_key_ptr = Box::into_raw(Box::new(utxo_1.spending_key));
+            let features_ptr = Box::into_raw(Box::new(utxo_1.features.clone()));
+            let source_public_key_ptr = Box::into_raw(Box::new(TariPublicKey::default()));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_1.metadata_signature));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_1.sender_offset_public_key));
+            let script_private_key_ptr = Box::into_raw(Box::new(utxo_1.script_private_key));
+            let covenant_ptr = Box::into_raw(Box::new(utxo_1.covenant));
+            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
+
+            let tx_id = wallet_import_external_utxo_as_non_rewindable(
+                wallet_ptr,
+                amount,
+                spending_key_ptr,
+                source_public_key_ptr,
+                features_ptr,
+                metadata_signature_ptr,
+                sender_offset_public_key_ptr,
+                script_private_key_ptr,
+                covenant_ptr,
+                message_ptr,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            assert!(tx_id > 0);
+
+            // Cleanup
+            string_destroy(message_ptr as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr);
+            let _script_private_key = Box::from_raw(script_private_key_ptr);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
+            let _features = Box::from_raw(features_ptr);
+            let _source_public_key = Box::from_raw(source_public_key_ptr);
+            let _spending_key = Box::from_raw(spending_key_ptr);
+
+            // Create an unblinded output with a non-default recovery byte
+            let mut utxo_2;
+            loop {
+                let test_params = TestParams::new();
+                let utxo_temp = create_unblinded_output(
+                    script!(Nop),
+                    default_features.clone(),
+                    test_params.clone(),
+                    MicroTari::from(200_000),
+                );
+                if utxo_temp.features.recovery_byte != default_features.recovery_byte {
+                    utxo_2 = utxo_temp;
+                    break;
+                }
+            }
+            assert_ne!(utxo_2.features.recovery_byte, default_features.recovery_byte);
+            // Reset the 'recovery_byte' to default; i.e. the 'metadata_signature' will now be inconsistent
+            utxo_2.features.set_recovery_byte(default_features.recovery_byte);
+
+            // Test the inconsistent features case, i.e. with invalid 'recovery_byte'
+            let amount = utxo_2.value.as_u64();
+            let spending_key_ptr = Box::into_raw(Box::new(utxo_2.spending_key));
+            let source_public_key_ptr = Box::into_raw(Box::new(TariPublicKey::default()));
+            let features_ptr = Box::into_raw(Box::new(utxo_2.features));
+            let metadata_signature_ptr = Box::into_raw(Box::new(utxo_2.metadata_signature));
+            let sender_offset_public_key_ptr = Box::into_raw(Box::new(utxo_2.sender_offset_public_key));
+            let script_private_key_ptr = Box::into_raw(Box::new(utxo_2.script_private_key));
+            let covenant_ptr = Box::into_raw(Box::new(utxo_2.covenant));
+            let message_ptr = CString::into_raw(CString::new("For my friend").unwrap()) as *const c_char;
+
+            let tx_id = wallet_import_external_utxo_as_non_rewindable(
+                wallet_ptr,
+                amount,
+                spending_key_ptr,
+                source_public_key_ptr,
+                features_ptr,
+                metadata_signature_ptr,
+                sender_offset_public_key_ptr,
+                script_private_key_ptr,
+                covenant_ptr,
+                message_ptr,
+                error_ptr,
+            );
+            assert_eq!(error, 0);
+            assert!(tx_id > 0);
+
+            // Cleanup
+            string_destroy(message_ptr as *mut c_char);
+            let _covenant = Box::from_raw(covenant_ptr);
+            let _script_private_key = Box::from_raw(script_private_key_ptr);
+            let _sender_offset_public_key = Box::from_raw(sender_offset_public_key_ptr);
+            let _metadata_signature = Box::from_raw(metadata_signature_ptr);
+            let _features = Box::from_raw(features_ptr);
+            let _source_public_key = Box::from_raw(source_public_key_ptr);
+            let _spending_key = Box::from_raw(spending_key_ptr);
+
+            let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
+            string_destroy(base_node_peer_address_ptr as *mut c_char);
+
+            string_destroy(network_str as *mut c_char);
+            string_destroy(db_name_str as *mut c_char);
+            string_destroy(db_path_str as *mut c_char);
+            string_destroy(address_str as *mut c_char);
+            transport_type_destroy(transport_type);
+
+            comms_config_destroy(config);
+            wallet_destroy(wallet_ptr);
+        }
+    }
+
     #[test]
     pub fn test_seed_words() {
         unsafe {
@@ -7541,8 +7909,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,
@@ -7599,8 +7966,7 @@ mod test {
                 mined_unconfirmed_callback,
                 scanned_callback,
                 scanned_unconfirmed_callback,
-                direct_send_callback,
-                store_and_forward_send_callback,
+                transaction_send_result_callback,
                 tx_cancellation_callback,
                 txo_validation_complete_callback,
                 contacts_liveness_data_updated_callback,

@@ -129,7 +129,7 @@ use tari_wallet::{
     transaction_service::{
         config::TransactionServiceConfig,
         error::TransactionServiceError,
-        handle::{TransactionEvent, TransactionServiceHandle},
+        handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle},
         service::TransactionService,
         storage::{
             database::{DbKeyValuePair, TransactionBackend, TransactionDatabase, WriteOperation},
@@ -925,18 +925,15 @@ fn recover_one_sided_transaction() {
         let outputs = completed_tx.transaction.body.outputs().clone();
 
         let unblinded = bob_oms
-            .scan_outputs_for_one_sided_payments(outputs.clone(), TxId::new_random())
+            .scan_outputs_for_one_sided_payments(outputs.clone())
             .await
             .unwrap();
         // Bob should be able to claim 1 output.
         assert_eq!(1, unblinded.len());
-        assert_eq!(value, unblinded[0].value);
+        assert_eq!(value, unblinded[0].output.value);
 
         // Should ignore already existing outputs
-        let unblinded = bob_oms
-            .scan_outputs_for_one_sided_payments(outputs, TxId::new_random())
-            .await
-            .unwrap();
+        let unblinded = bob_oms.scan_outputs_for_one_sided_payments(outputs).await.unwrap();
         assert!(unblinded.is_empty());
     });
 }
@@ -1859,9 +1856,9 @@ fn discovery_async_return_test() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionDirectSendResult(tx_id, result) = (*event.unwrap()).clone() {
+                    if let TransactionEvent::TransactionSendResult(tx_id, status) = (*event.unwrap()).clone() {
                         txid = tx_id;
-                        is_success = result;
+                        is_success = status.direct_send_result;
                         break;
                     }
                 },
@@ -1892,8 +1889,8 @@ fn discovery_async_return_test() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionDirectSendResult(tx_id, success) = &*event.unwrap() {
-                        success_result = *success;
+                    if let TransactionEvent::TransactionSendResult(tx_id, status) = &*event.unwrap() {
+                        success_result = status.direct_send_result;
                         success_tx_id = *tx_id;
                         break;
                     }
@@ -2165,8 +2162,8 @@ fn test_transaction_cancellation() {
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    if let TransactionEvent::TransactionStoreForwardSendResult(_,_) = &*event.unwrap() {
-                       break;
+                    if let TransactionEvent::TransactionSendResult(_,_) = &*event.unwrap() {
+                        break;
                     }
                 },
                 () = &mut delay => {
@@ -2807,22 +2804,16 @@ fn test_tx_direct_send_behaviour() {
             "Testing Message1".to_string(),
         ))
         .unwrap();
+    let mut transaction_send_status = TransactionSendStatus::default();
 
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
-        let mut direct_count = 0;
-        let mut saf_count = 0;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::TransactionDirectSendResult(_, result) => if !result { direct_count+=1 },
-                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if !result { saf_count+=1},
-                        _ => (),
-                    }
-
-                    if direct_count == 1 && saf_count == 1 {
+                    if let TransactionEvent::TransactionSendResult(_, status) = &*event.unwrap() {
+                        transaction_send_status = status.clone();
                         break;
                     }
                 },
@@ -2831,8 +2822,12 @@ fn test_tx_direct_send_behaviour() {
                 },
             }
         }
-        assert_eq!(direct_count, 1, "Should be 1 failed direct");
-        assert_eq!(saf_count, 1, "Should be 1 failed saf");
+        assert!(!transaction_send_status.direct_send_result, "Should be 1 failed direct");
+        assert!(
+            !transaction_send_status.store_and_forward_send_result,
+            "Should be 1 failed saf"
+        );
+        assert!(transaction_send_status.queued_for_retry, "Should be 1 queued");
     });
 
     alice_ts_interface
@@ -2859,18 +2854,11 @@ fn test_tx_direct_send_behaviour() {
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
-        let mut direct_count = 0;
-        let mut saf_count = 0;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::TransactionDirectSendResult(_, result) => if !result { direct_count+=1 },
-                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1 },
-                        _ => (),
-                    }
-
-                    if direct_count == 1 && saf_count == 1 {
+                    if let TransactionEvent::TransactionSendResult(_, status) = &*event.unwrap() {
+                        transaction_send_status = status.clone();
                         break;
                     }
                 },
@@ -2879,15 +2867,19 @@ fn test_tx_direct_send_behaviour() {
                 },
             }
         }
-        assert_eq!(direct_count, 1, "Should be 1 failed direct");
-        assert_eq!(saf_count, 1, "Should be 1 succeeded saf");
+        assert!(!transaction_send_status.direct_send_result, "Should be 1 failed direct");
+        assert!(
+            transaction_send_status.store_and_forward_send_result,
+            "Should be 1 succeed saf"
+        );
+        assert!(!transaction_send_status.queued_for_retry, "Should be 0 queued");
     });
 
     alice_ts_interface
         .outbound_service_mock_state
         .set_behaviour(MockBehaviour {
             direct: ResponseType::QueuedSuccessDelay(Duration::from_secs(1)),
-            broadcast: ResponseType::Queued,
+            broadcast: ResponseType::QueuedFail,
         });
 
     let _tx_id = runtime
@@ -2907,17 +2899,11 @@ fn test_tx_direct_send_behaviour() {
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
         tokio::pin!(delay);
-        let mut direct_count = 0;
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::TransactionDirectSendResult(_, result) => if *result { direct_count+=1 },
-                        TransactionEvent::TransactionStoreForwardSendResult(_, _) => panic!("Should be no SAF messages"),
-                        _ => (),
-                    }
-
-                    if direct_count >= 1  {
+                    if let TransactionEvent::TransactionSendResult(_, status) = &*event.unwrap() {
+                        transaction_send_status = status.clone();
                         break;
                     }
                 },
@@ -2926,7 +2912,12 @@ fn test_tx_direct_send_behaviour() {
                 },
             }
         }
-        assert_eq!(direct_count, 1, "Should be 1 succeeded direct");
+        assert!(transaction_send_status.direct_send_result, "Should be 1 succeed direct");
+        assert!(
+            !transaction_send_status.store_and_forward_send_result,
+            "Should be 1 failed saf"
+        );
+        assert!(!transaction_send_status.queued_for_retry, "Should be 0 queued");
     });
 
     alice_ts_interface
@@ -2952,17 +2943,12 @@ fn test_tx_direct_send_behaviour() {
 
     runtime.block_on(async {
         let delay = sleep(Duration::from_secs(60));
-tokio::pin!(delay);
-        let mut saf_count = 0;
+        tokio::pin!(delay);
         loop {
             tokio::select! {
                 event = alice_event_stream.recv() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::TransactionStoreForwardSendResult(_, result) => if *result { saf_count+=1},
-                        TransactionEvent::TransactionDirectSendResult(_, result) => if *result { panic!("Should be no direct messages") },                         _ => (),
-                    }
-
-                    if saf_count >= 1  {
+                    if let TransactionEvent::TransactionSendResult(_, status) = &*event.unwrap() {
+                        transaction_send_status = status.clone();
                         break;
                     }
                 },
@@ -2971,7 +2957,12 @@ tokio::pin!(delay);
                 },
             }
         }
-        assert_eq!(saf_count, 1, "Should be 1 succeeded saf");
+        assert!(!transaction_send_status.direct_send_result, "Should be 1 failed direct");
+        assert!(
+            transaction_send_status.store_and_forward_send_result,
+            "Should be 1 succeed saf"
+        );
+        assert!(!transaction_send_status.queued_for_retry, "Should be 0 queued");
     });
 }
 

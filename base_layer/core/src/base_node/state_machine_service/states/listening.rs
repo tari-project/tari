@@ -369,10 +369,16 @@ fn determine_sync_mode(
             sync_peers: sync_peers.into_iter().cloned().map(Into::into).collect(),
         }
     } else {
-        info!(
+        debug!(
             target: LOG_TARGET,
-            "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the network \
-             chain tip is at {} with an accumulated difficulty of {}",
+            "{} We're at block {} with an accumulated difficulty of {} and the network chain tip is at {} with an \
+             accumulated difficulty of {}",
+            if local_tip_accum_difficulty > network_tip_accum_difficulty {
+                "Our blockchain is ahead of the network."
+            } else {
+                // Equals
+                "Our blockchain is up-to-date."
+            },
             local.height_of_longest_chain(),
             local_tip_accum_difficulty.to_formatted_string(&Locale::en),
             network.height_of_longest_chain(),

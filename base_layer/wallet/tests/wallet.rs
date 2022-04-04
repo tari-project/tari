@@ -136,7 +136,7 @@ async fn create_wallet(
         transport_type: TransportType::Memory {
             listener_address: node_identity.public_address(),
         },
-        auxilary_tcp_listener_address: None,
+        auxiliary_tcp_listener_address: None,
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
@@ -712,7 +712,7 @@ async fn test_import_utxo() {
             listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
             tor_socks_config: None,
         },
-        auxilary_tcp_listener_address: None,
+        auxiliary_tcp_listener_address: None,
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
@@ -767,7 +767,7 @@ async fn test_import_utxo() {
     let expected_output_hash = output.hash();
 
     let tx_id = alice_wallet
-        .import_utxo(
+        .import_external_utxo_as_non_rewindable(
             utxo.value,
             &utxo.spending_key,
             script.clone(),
@@ -799,7 +799,7 @@ async fn test_import_utxo() {
     assert_eq!(completed_tx.amount, 20000 * uT);
     assert_eq!(completed_tx.status, TransactionStatus::Imported);
     let db = OutputManagerDatabase::new(OutputManagerSqliteDatabase::new(connection, None));
-    let outputs = db.fetch_outputs_by_tx_id(tx_id).await.unwrap();
+    let outputs = db.fetch_outputs_by_tx_id(tx_id).unwrap();
     assert!(outputs.iter().any(|o| { o.hash == expected_output_hash }));
 }
 

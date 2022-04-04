@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 /**
  * NB!: Modify with caution.
  **/
@@ -257,6 +260,8 @@ class InterfaceFFI {
         [this.ptr, this.uint, this.intPtr],
       ],
       pending_inbound_transactions_destroy: [this.void, [this.ptr]],
+      transaction_send_status_decode: [this.uint, [this.ptr, this.intPtr]],
+      transaction_send_status_destroy: [this.void, [this.ptr]],
       comms_config_create: [
         this.ptr,
         [
@@ -280,7 +285,6 @@ class InterfaceFFI {
           this.uint,
           this.uint,
           this.string,
-          this.ptr,
           this.ptr,
           this.ptr,
           this.ptr,
@@ -385,7 +389,7 @@ class InterfaceFFI {
         this.ptr,
         [this.ptr, this.ulonglong, this.intPtr],
       ],
-      wallet_import_utxo: [
+      wallet_import_external_utxo_as_non_rewindable: [
         this.ulonglong,
         [
           this.ptr,
@@ -1124,7 +1128,18 @@ class InterfaceFFI {
   }
   //endregion
 
-  //region Wallet
+  //region TransactionSendStatus
+  static transactionSendStatusDecode(ptr) {
+    let error = this.initError();
+    let result = this.fn.transaction_send_status_decode(ptr, error);
+    this.checkErrorResult(error, `transactionSendStatusDecode`);
+    return result;
+  }
+
+  static transactionSendStatusDestroy(ptr) {
+    this.fn.transaction_send_status_destroy(ptr);
+  }
+  //endregion
 
   //region Callbacks
   static createCallbackReceivedTransaction(fn) {
@@ -1159,12 +1174,8 @@ class InterfaceFFI {
     return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
   }
 
-  static createCallbackDirectSendResult(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.bool], fn);
-  }
-
-  static createCallbackStoreAndForwardSendResult(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.bool], fn);
+  static createCallbackTransactionSendResult(fn) {
+    return ffi.Callback(this.void, [this.ulonglong, this.ptr], fn);
   }
 
   static createCallbackTransactionCancellation(fn) {
@@ -1212,8 +1223,7 @@ class InterfaceFFI {
     callback_transaction_mined_unconfirmed,
     callback_faux_transaction_confirmed,
     callback_faux_transaction_unconfirmed,
-    callback_direct_send_result,
-    callback_store_and_forward_send_result,
+    callback_transaction_send_result,
     callback_transaction_cancellation,
     callback_txo_validation_complete,
     callback_contacts_liveness_data_updated,
@@ -1240,8 +1250,7 @@ class InterfaceFFI {
       callback_transaction_mined_unconfirmed,
       callback_faux_transaction_confirmed,
       callback_faux_transaction_unconfirmed,
-      callback_direct_send_result,
-      callback_store_and_forward_send_result,
+      callback_transaction_send_result,
       callback_transaction_cancellation,
       callback_txo_validation_complete,
       callback_contacts_liveness_data_updated,
@@ -1524,7 +1533,7 @@ class InterfaceFFI {
     message
   ) {
     let error = this.initError();
-    let result = this.fn.wallet_import_utxo(
+    let result = this.fn.wallet_import_external_utxo_as_non_rewindable(
       ptr,
       amount,
       spending_key_ptr,

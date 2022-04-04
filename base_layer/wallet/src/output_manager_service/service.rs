@@ -77,6 +77,7 @@ use crate::{
             OutputManagerRequest,
             OutputManagerResponse,
             PublicRewindKeys,
+            RecoveredOutput,
         },
         recovery::StandardUtxoRecoverer,
         resources::{OutputManagerKeyManagerBranch, OutputManagerResources},
@@ -128,18 +129,15 @@ where
         node_identity: Arc<NodeIdentity>,
         key_manager: TKeyManagerInterface,
     ) -> Result<Self, OutputManagerError> {
-        // Clear any encumberances for transactions that were being negotiated but did not complete to become official
-        // Pending Transactions.
-        db.clear_short_term_encumberances().await?;
         Self::initialise_key_manager(&key_manager).await?;
         let rewind_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key(), 0)
             .await?;
         let rewind_blinding_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key(), 0)
             .await?;
         let recovery_byte_key = key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte, 0)
+            .get_key_at_index(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key(), 0)
             .await?;
         let rewind_data = RewindData {
             rewind_key,
@@ -170,28 +168,30 @@ where
     }
 
     async fn initialise_key_manager(key_manager: &TKeyManagerInterface) -> Result<(), OutputManagerError> {
-        key_manager.add_new_branch(OutputManagerKeyManagerBranch::Spend).await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase)
+            .add_new_branch(OutputManagerKeyManagerBranch::SpendScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript)
+            .add_new_branch(OutputManagerKeyManagerBranch::Coinbase.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly)
+            .add_new_branch(OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key())
             .await?;
         key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryViewOnly.get_branch_key())
+            .await?;
+        key_manager
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryByte.get_branch_key())
             .await?;
         match key_manager
-            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding)
+            .add_new_branch(OutputManagerKeyManagerBranch::RecoveryBlinding.get_branch_key())
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => Err(OutputManagerError::TariKeyManagerError(e)),
+            Err(e) => Err(OutputManagerError::KeyManagerServiceError(e)),
         }
     }
 
@@ -255,33 +255,27 @@ where
         match request {
             OutputManagerRequest::AddOutput((uo, spend_priority)) => self
                 .add_output(None, *uo, spend_priority)
-                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::AddRewindableOutput((uo, spend_priority, custom_rewind_data)) => self
                 .add_rewindable_output(None, *uo, spend_priority, custom_rewind_data)
-                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::AddOutputWithTxId((tx_id, uo, spend_priority)) => self
                 .add_output(Some(tx_id), *uo, spend_priority)
-                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::AddRewindableOutputWithTxId((tx_id, uo, spend_priority, custom_rewind_data)) => self
                 .add_rewindable_output(Some(tx_id), *uo, spend_priority, custom_rewind_data)
-                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::ConvertToRewindableTransactionOutput(uo) => {
-                let transaction_output = self.convert_to_rewindable_transaction_output(*uo).await?;
+                let transaction_output = self.convert_to_rewindable_transaction_output(*uo)?;
                 Ok(OutputManagerResponse::ConvertedToTransactionOutput(Box::new(
                     transaction_output,
                 )))
             },
             OutputManagerRequest::AddUnvalidatedOutput((tx_id, uo, spend_priority)) => self
                 .add_unvalidated_output(tx_id, *uo, spend_priority)
-                .await
                 .map(|_| OutputManagerResponse::OutputAdded),
             OutputManagerRequest::UpdateOutputMetadataSignature(uo) => self
                 .update_output_metadata_signature(*uo)
-                .await
                 .map(|_| OutputManagerResponse::OutputMetadataSignatureUpdated),
             OutputManagerRequest::GetBalance => {
                 let current_tip_for_time_lock_calculation = match self.base_node_service.get_chain_metadata().await {
@@ -289,7 +283,6 @@ where
                     Err(_) => None,
                 };
                 self.get_balance(current_tip_for_time_lock_calculation)
-                    .await
                     .map(OutputManagerResponse::Balance)
             },
             OutputManagerRequest::GetRecipientTransaction(tsm) => self
@@ -355,28 +348,16 @@ where
                 .map(OutputManagerResponse::FeeEstimate),
             OutputManagerRequest::ConfirmPendingTransaction(tx_id) => self
                 .confirm_encumberance(tx_id)
-                .await
                 .map(|_| OutputManagerResponse::PendingTransactionConfirmed),
             OutputManagerRequest::CancelTransaction(tx_id) => self
                 .cancel_transaction(tx_id)
-                .await
                 .map(|_| OutputManagerResponse::TransactionCancelled),
             OutputManagerRequest::GetSpentOutputs => {
-                let outputs = self
-                    .fetch_spent_outputs()
-                    .await?
-                    .into_iter()
-                    .map(|v| v.into())
-                    .collect();
+                let outputs = self.fetch_spent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::SpentOutputs(outputs))
             },
             OutputManagerRequest::GetUnspentOutputs => {
-                let outputs = self
-                    .fetch_unspent_outputs()
-                    .await?
-                    .into_iter()
-                    .map(|v| v.into())
-                    .collect();
+                let outputs = self.fetch_unspent_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::UnspentOutputs(outputs))
             },
             OutputManagerRequest::ValidateUtxos => {
@@ -384,15 +365,9 @@ where
             },
             OutputManagerRequest::RevalidateTxos => self
                 .revalidate_outputs()
-                .await
                 .map(OutputManagerResponse::TxoValidationStarted),
             OutputManagerRequest::GetInvalidOutputs => {
-                let outputs = self
-                    .fetch_invalid_outputs()
-                    .await?
-                    .into_iter()
-                    .map(|v| v.into())
-                    .collect();
+                let outputs = self.fetch_invalid_outputs()?.into_iter().map(|v| v.into()).collect();
                 Ok(OutputManagerResponse::InvalidOutputs(outputs))
             },
             OutputManagerRequest::CreateCoinSplit((amount_per_split, split_count, fee_per_gram, lock_height)) => self
@@ -403,43 +378,44 @@ where
                 .resources
                 .db
                 .apply_encryption(*cipher)
-                .await
                 .map(|_| OutputManagerResponse::EncryptionApplied)
                 .map_err(OutputManagerError::OutputManagerStorageError),
             OutputManagerRequest::RemoveEncryption => self
                 .resources
                 .db
                 .remove_encryption()
-                .await
                 .map(|_| OutputManagerResponse::EncryptionRemoved)
                 .map_err(OutputManagerError::OutputManagerStorageError),
 
             OutputManagerRequest::GetPublicRewindKeys => Ok(OutputManagerResponse::PublicRewindKeys(Box::new(
                 self.get_rewind_public_keys(),
             ))),
-            OutputManagerRequest::CalculateRecoveryByte { spending_key, value } => Ok(
-                OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(spending_key, value)?),
-            ),
-            OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id } => StandardUtxoRecoverer::new(
+            OutputManagerRequest::CalculateRecoveryByte {
+                spending_key,
+                value,
+                with_rewind_data,
+            } => Ok(OutputManagerResponse::RecoveryByte(self.calculate_recovery_byte(
+                spending_key,
+                value,
+                with_rewind_data,
+            )?)),
+            OutputManagerRequest::ScanForRecoverableOutputs(outputs) => StandardUtxoRecoverer::new(
                 self.resources.master_key_manager.clone(),
                 self.resources.rewind_data.clone(),
                 self.resources.factories.clone(),
                 self.resources.db.clone(),
             )
-            .scan_and_recover_outputs(outputs, tx_id)
+            .scan_and_recover_outputs(outputs)
             .await
             .map(OutputManagerResponse::RewoundOutputs),
-            OutputManagerRequest::ScanOutputs { outputs, tx_id } => self
-                .scan_outputs_for_one_sided_payments(outputs, tx_id)
-                .await
+            OutputManagerRequest::ScanOutputs(outputs) => self
+                .scan_outputs_for_one_sided_payments(outputs)
                 .map(OutputManagerResponse::ScanOutputs),
             OutputManagerRequest::AddKnownOneSidedPaymentScript(known_script) => self
                 .add_known_script(known_script)
-                .await
                 .map(|_| OutputManagerResponse::AddKnownOneSidedPaymentScript),
             OutputManagerRequest::ReinstateCancelledInboundTx(tx_id) => self
                 .reinstate_cancelled_inbound_transaction_outputs(tx_id)
-                .await
                 .map(|_| OutputManagerResponse::ReinstatedCancelledInboundTx),
             OutputManagerRequest::CreateOutputWithFeatures { value, features } => {
                 let unblinded_output = self.create_output_with_features(value, *features).await?;
@@ -468,7 +444,6 @@ where
             },
             OutputManagerRequest::SetCoinbaseAbandoned(tx_id, abandoned) => self
                 .set_coinbase_abandoned(tx_id, abandoned)
-                .await
                 .map(|_| OutputManagerResponse::CoinbaseAbandonedSet),
             OutputManagerRequest::CreateClaimShaAtomicSwapTransaction(output_hash, pre_image, fee_per_gram) => {
                 self.claim_sha_atomic_swap_with_hash(output_hash, pre_image, fee_per_gram)
@@ -479,21 +454,14 @@ where
                 .await
                 .map(OutputManagerResponse::ClaimHtlcTransaction),
             OutputManagerRequest::GetOutputStatusesByTxId(tx_id) => {
-                let (statuses, mined_height, block_hash) = self.get_output_status_by_tx_id(tx_id).await?;
-                Ok(OutputManagerResponse::OutputStatusesByTxId {
-                    statuses,
-                    mined_height,
-                    block_hash,
-                })
+                let output_statuses_by_tx_id = self.get_output_status_by_tx_id(tx_id)?;
+                Ok(OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id))
             },
         }
     }
 
-    async fn get_output_status_by_tx_id(
-        &self,
-        tx_id: TxId,
-    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
-        let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id).await?;
+    fn get_output_status_by_tx_id(&self, tx_id: TxId) -> Result<OutputStatusesByTxId, OutputManagerError> {
+        let outputs = self.resources.db.fetch_outputs_by_tx_id(tx_id)?;
         let statuses = outputs.clone().into_iter().map(|uo| uo.status).collect();
         // We need the maximum mined height and corresponding block hash (faux transactions outputs can have different
         // mined heights)
@@ -507,7 +475,11 @@ where
                 }
             }
         }
-        Ok((statuses, max_mined_height, block_hash))
+        Ok(OutputStatusesByTxId {
+            statuses,
+            mined_height: max_mined_height,
+            block_hash,
+        })
     }
 
     async fn claim_sha_atomic_swap_with_hash(
@@ -587,19 +559,29 @@ where
         Ok(id)
     }
 
-    async fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {
-        self.resources.db.set_outputs_to_be_revalidated().await?;
+    fn revalidate_outputs(&mut self) -> Result<u64, OutputManagerError> {
+        self.resources.db.set_outputs_to_be_revalidated()?;
         self.validate_outputs()
     }
 
-    pub fn calculate_recovery_byte(&mut self, spending_key: PrivateKey, value: u64) -> Result<u8, OutputManagerError> {
+    pub fn calculate_recovery_byte(
+        &mut self,
+        spending_key: PrivateKey,
+        value: u64,
+        with_rewind_data: bool,
+    ) -> Result<u8, OutputManagerError> {
         let commitment = self.resources.factories.commitment.commit_value(&spending_key, value);
-        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(&self.resources.rewind_data));
+        let rewind_data = if with_rewind_data {
+            Some(&self.resources.rewind_data)
+        } else {
+            None
+        };
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, rewind_data);
         Ok(recovery_byte)
     }
 
     /// Add an unblinded non-rewindable output to the outputs table and mark it as `Unspent`.
-    pub async fn add_output(
+    pub fn add_output(
         &mut self,
         tx_id: Option<TxId>,
         output: UnblindedOutput,
@@ -617,14 +599,14 @@ where
             output.hash.to_hex()
         );
         match tx_id {
-            None => self.resources.db.add_unspent_output(output).await?,
-            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output).await?,
+            None => self.resources.db.add_unspent_output(output)?,
+            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output)?,
         }
         Ok(())
     }
 
     /// Add an unblinded rewindable output to the outputs table and marks is as `Unspent`.
-    pub async fn add_rewindable_output(
+    pub fn add_rewindable_output(
         &mut self,
         tx_id: Option<TxId>,
         output: UnblindedOutput,
@@ -654,14 +636,14 @@ where
             output.hash.to_hex()
         );
         match tx_id {
-            None => self.resources.db.add_unspent_output(output).await?,
-            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output).await?,
+            None => self.resources.db.add_unspent_output(output)?,
+            Some(t) => self.resources.db.add_unspent_output_with_tx_id(t, output)?,
         }
         Ok(())
     }
 
     /// Convert an unblinded rewindable output into rewindable transaction output using the key manager's rewind data
-    pub async fn convert_to_rewindable_transaction_output(
+    pub fn convert_to_rewindable_transaction_output(
         &mut self,
         output: UnblindedOutput,
     ) -> Result<TransactionOutput, OutputManagerError> {
@@ -672,7 +654,7 @@ where
 
     /// Add an unblinded output to the outputs table and marks is as `EncumberedToBeReceived`. This is so that it will
     /// require a successful validation to confirm that it indeed spendable.
-    pub async fn add_unvalidated_output(
+    pub fn add_unvalidated_output(
         &mut self,
         tx_id: TxId,
         output: UnblindedOutput,
@@ -683,16 +665,13 @@ where
             "Add unvalidated output of value {} to Output Manager", output.value
         );
         let output = DbUnblindedOutput::from_unblinded_output(output, &self.resources.factories, spend_priority)?;
-        self.resources.db.add_unvalidated_output(tx_id, output).await?;
+        self.resources.db.add_unvalidated_output(tx_id, output)?;
         Ok(())
     }
 
     /// Update an output's metadata signature, akin to 'finalize output'
-    pub async fn update_output_metadata_signature(
-        &mut self,
-        output: TransactionOutput,
-    ) -> Result<(), OutputManagerError> {
-        self.resources.db.update_output_metadata_signature(output).await?;
+    pub fn update_output_metadata_signature(&mut self, output: TransactionOutput) -> Result<(), OutputManagerError> {
+        self.resources.db.update_output_metadata_signature(output)?;
         Ok(())
     }
 
@@ -700,12 +679,15 @@ where
         let result = self
             .resources
             .master_key_manager
-            .get_next_key(OutputManagerKeyManagerBranch::Spend)
+            .get_next_key(OutputManagerKeyManagerBranch::Spend.get_branch_key())
             .await?;
         let script_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::SpendScript, result.index)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
+                result.index,
+            )
             .await?;
         Ok((result.key, script_key))
     }
@@ -737,15 +719,8 @@ where
             .with_script_private_key(script_private_key))
     }
 
-    async fn get_balance(
-        &self,
-        current_tip_for_time_lock_calculation: Option<u64>,
-    ) -> Result<Balance, OutputManagerError> {
-        let balance = self
-            .resources
-            .db
-            .get_balance(current_tip_for_time_lock_calculation)
-            .await?;
+    fn get_balance(&self, current_tip_for_time_lock_calculation: Option<u64>) -> Result<Balance, OutputManagerError> {
+        let balance = self.resources.db.get_balance(current_tip_for_time_lock_calculation)?;
         trace!(target: LOG_TARGET, "Balance: {:?}", balance);
         Ok(balance)
     }
@@ -808,8 +783,7 @@ where
 
         self.resources
             .db
-            .add_output_to_be_received(single_round_sender_data.tx_id, output, None)
-            .await?;
+            .add_output_to_be_received(single_round_sender_data.tx_id, output, None)?;
 
         let nonce = PrivateKey::random(&mut OsRng);
 
@@ -1006,8 +980,7 @@ where
         // store them until the transaction times out OR is confirmed
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), change_output)
-            .await?;
+            .encumber_outputs(tx_id, input_selection.into_selected(), change_output)?;
 
         debug!(target: LOG_TARGET, "Prepared transaction (TxId: {}) to send", tx_id);
 
@@ -1033,12 +1006,15 @@ where
         let spending_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.to_string(), block_height)
+            .get_key_at_index(OutputManagerKeyManagerBranch::Coinbase.get_branch_key(), block_height)
             .await?;
         let script_private_key = self
             .resources
             .master_key_manager
-            .get_key_at_index(OutputManagerKeyManagerBranch::CoinbaseScript.to_string(), block_height)
+            .get_key_at_index(
+                OutputManagerKeyManagerBranch::CoinbaseScript.get_branch_key(),
+                block_height,
+            )
             .await?;
 
         let nonce = PrivateKey::random(&mut OsRng);
@@ -1046,7 +1022,7 @@ where
             .with_block_height(block_height)
             .with_fees(fees)
             .with_spend_key(spending_key.clone())
-            .with_script_key(script_private_key.clone())
+            .with_script_key(script_private_key)
             .with_script(script!(Nop))
             .with_nonce(nonce)
             .with_rewind_data(self.resources.rewind_data.clone())
@@ -1065,7 +1041,6 @@ where
             .resources
             .db
             .clear_pending_coinbase_transaction_at_block_height(block_height)
-            .await
         {
             Ok(_) => {
                 debug!(
@@ -1081,12 +1056,7 @@ where
 
         // Clear any matching outputs for this commitment. Even if the older output is valid
         // we are losing no information as this output has the same commitment.
-        match self
-            .resources
-            .db
-            .remove_output_by_commitment(output.commitment.clone())
-            .await
-        {
+        match self.resources.db.remove_output_by_commitment(output.commitment.clone()) {
             Ok(_) => {},
             Err(OutputManagerStorageError::ValueNotFound) => {},
             Err(e) => return Err(e.into()),
@@ -1094,10 +1064,9 @@ where
 
         self.resources
             .db
-            .add_output_to_be_received(tx_id, output, Some(block_height))
-            .await?;
+            .add_output_to_be_received(tx_id, output, Some(block_height))?;
 
-        self.confirm_encumberance(tx_id).await?;
+        self.confirm_encumberance(tx_id)?;
 
         Ok(tx)
     }
@@ -1255,8 +1224,7 @@ where
 
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)
-            .await?;
+            .encumber_outputs(tx_id, input_selection.into_selected(), db_outputs)?;
         stp.finalize(KernelFeatures::empty(), &self.resources.factories, None, u64::MAX)?;
 
         Ok((tx_id, stp.take_transaction()?))
@@ -1325,7 +1293,7 @@ where
         }
 
         let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64())?;
+        let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), amount.as_u64(), true)?;
         let output_features = OutputFeatures {
             recovery_byte,
             unique_id: unique_id.clone(),
@@ -1406,9 +1374,8 @@ where
         );
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)
-            .await?;
-        self.confirm_encumberance(tx_id).await?;
+            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
+        self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
         stp.finalize(
@@ -1424,25 +1391,25 @@ where
 
     /// Confirm that a transaction has finished being negotiated between parties so the short-term encumberance can be
     /// made official
-    async fn confirm_encumberance(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
-        self.resources.db.confirm_encumbered_outputs(tx_id).await?;
+    fn confirm_encumberance(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.confirm_encumbered_outputs(tx_id)?;
 
         Ok(())
     }
 
     /// Cancel a pending transaction and place the encumbered outputs back into the unspent pool
-    pub async fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+    pub fn cancel_transaction(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
         debug!(
             target: LOG_TARGET,
             "Cancelling pending transaction outputs for TxId: {}", tx_id
         );
-        Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id).await?)
+        Ok(self.resources.db.cancel_pending_transaction_outputs(tx_id)?)
     }
 
     /// Restore the pending transaction encumberance and output for an inbound transaction that was previously
     /// cancelled.
-    async fn reinstate_cancelled_inbound_transaction_outputs(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
-        self.resources.db.reinstate_cancelled_inbound_output(tx_id).await?;
+    fn reinstate_cancelled_inbound_transaction_outputs(&mut self, tx_id: TxId) -> Result<(), OutputManagerError> {
+        self.resources.db.reinstate_cancelled_inbound_output(tx_id)?;
 
         Ok(())
     }
@@ -1463,7 +1430,7 @@ where
             Some(unique_id) => {
                 debug!(target: LOG_TARGET, "Looking for {:?}", unique_id);
                 // todo: new method to fetch by unique asset id
-                let uo = self.resources.db.fetch_all_unspent_outputs().await?;
+                let uo = self.resources.db.fetch_all_unspent_outputs()?;
                 if let Some(token_id) = uo.into_iter().find(|x| match &x.unblinded_output.features.unique_id {
                     Some(token_unique_id) => {
                         debug!(target: LOG_TARGET, "Comparing with {:?}", token_unique_id);
@@ -1533,8 +1500,7 @@ where
         let uo = self
             .resources
             .db
-            .fetch_unspent_outputs_for_spending(strategy, amount, tip_height)
-            .await?;
+            .fetch_unspent_outputs_for_spending(strategy, amount, tip_height)?;
         trace!(target: LOG_TARGET, "We found {} UTXOs to select from", uo.len());
 
         // Assumes that default Outputfeatures are used for change utxo
@@ -1570,7 +1536,7 @@ where
 
         if !perfect_utxo_selection && !enough_spendable {
             let current_tip_for_time_lock_calculation = chain_metadata.map(|cm| cm.height_of_longest_chain());
-            let balance = self.get_balance(current_tip_for_time_lock_calculation).await?;
+            let balance = self.get_balance(current_tip_for_time_lock_calculation)?;
             let pending_incoming = balance.pending_incoming_balance;
             if utxos_total_value + pending_incoming >= amount + fee_with_change {
                 return Err(OutputManagerError::FundsPending);
@@ -1588,20 +1554,20 @@ where
         })
     }
 
-    pub async fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_spent_outputs().await?)
+    pub fn fetch_spent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_spent_outputs()?)
     }
 
-    pub async fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.resources.db.fetch_all_unspent_outputs().await?)
+    pub fn fetch_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.fetch_all_unspent_outputs()?)
     }
 
-    pub async fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
-        Ok(self.resources.db.get_invalid_outputs().await?)
+    pub fn fetch_invalid_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerError> {
+        Ok(self.resources.db.get_invalid_outputs()?)
     }
 
-    pub async fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
-        self.resources.db.set_coinbase_abandoned(tx_id, abandoned).await?;
+    pub fn set_coinbase_abandoned(&self, tx_id: TxId, abandoned: bool) -> Result<(), OutputManagerError> {
+        self.resources.db.set_coinbase_abandoned(tx_id, abandoned)?;
         Ok(())
     }
 
@@ -1671,7 +1637,7 @@ where
             let output_amount = amount_per_split;
 
             let (spending_key, script_private_key) = self.get_spend_and_script_keys().await?;
-            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64())?;
+            let recovery_byte = self.calculate_recovery_byte(spending_key.clone(), output_amount.as_u64(), true)?;
             let output_features = OutputFeatures {
                 recovery_byte,
                 ..Default::default()
@@ -1756,9 +1722,8 @@ where
 
         self.resources
             .db
-            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)
-            .await?;
-        self.confirm_encumberance(tx_id).await?;
+            .encumber_outputs(tx_id, input_selection.into_selected(), outputs)?;
+        self.confirm_encumberance(tx_id)?;
         trace!(target: LOG_TARGET, "Finalize coin split transaction ({}).", tx_id);
         stp.finalize(
             KernelFeatures::empty(),
@@ -1884,8 +1849,8 @@ where
         outputs.push(change_output);
 
         trace!(target: LOG_TARGET, "Claiming HTLC with transaction ({}).", tx_id);
-        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs).await?;
-        self.confirm_encumberance(tx_id).await?;
+        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
+        self.confirm_encumberance(tx_id)?;
         let fee = stp.get_fee_amount()?;
         trace!(target: LOG_TARGET, "Finalize send-to-self transaction ({}).", tx_id);
         stp.finalize(
@@ -1904,12 +1869,7 @@ where
         output_hash: HashOutput,
         fee_per_gram: MicroTari,
     ) -> Result<(TxId, MicroTari, MicroTari, Transaction), OutputManagerError> {
-        let output = self
-            .resources
-            .db
-            .get_unspent_output(output_hash)
-            .await?
-            .unblinded_output;
+        let output = self.resources.db.get_unspent_output(output_hash)?.unblinded_output;
 
         let amount = output.value;
 
@@ -1980,22 +1940,27 @@ where
 
         let tx = stp.take_transaction()?;
 
-        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs).await?;
-        self.confirm_encumberance(tx_id).await?;
+        self.resources.db.encumber_outputs(tx_id, Vec::new(), outputs)?;
+        self.confirm_encumberance(tx_id)?;
         Ok((tx_id, fee, amount - fee, tx))
     }
 
     /// Persist a one-sided payment script for a Comms Public/Private key. These are the scripts that this wallet knows
     /// to look for when scanning for one-sided payments
-    async fn add_known_script(&mut self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
+    fn add_known_script(&mut self, known_script: KnownOneSidedPaymentScript) -> Result<(), OutputManagerError> {
         debug!(target: LOG_TARGET, "Adding new script to output manager service");
         // It is not a problem if the script has already been persisted
-        match self.resources.db.add_known_script(known_script).await {
+        match self.resources.db.add_known_script(known_script) {
             Ok(_) => (),
             Err(OutputManagerStorageError::DieselError(DieselError::DatabaseError(
                 DatabaseErrorKind::UniqueViolation,
                 _,
-            ))) => (),
+            ))) => {
+                trace!(target: LOG_TARGET, "Duplicate script not added");
+            },
+            Err(OutputManagerStorageError::DuplicateScript) => {
+                trace!(target: LOG_TARGET, "Duplicate script not added");
+            },
             Err(e) => return Err(e.into()),
         }
         Ok(())
@@ -2003,15 +1968,14 @@ where
 
     /// Attempt to scan and then rewind all of the given transaction outputs into unblinded outputs based on known
     /// pubkeys
-    async fn scan_outputs_for_one_sided_payments(
+    fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         let known_one_sided_payment_scripts: Vec<KnownOneSidedPaymentScript> =
-            self.resources.db.get_all_known_one_sided_payment_scripts().await?;
+            self.resources.db.get_all_known_one_sided_payment_scripts()?;
 
-        let mut rewound_outputs: Vec<UnblindedOutput> = Vec::new();
+        let mut rewound_outputs: Vec<RecoveredOutput> = Vec::new();
         for output in outputs {
             let position = known_one_sided_payment_scripts
                 .iter()
@@ -2062,9 +2026,14 @@ where
                     )?;
 
                     let output_hex = output.commitment.to_hex();
-                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output).await {
+                    let tx_id = TxId::new_random();
+
+                    match self.resources.db.add_unspent_output_with_tx_id(tx_id, db_output) {
                         Ok(_) => {
-                            rewound_outputs.push(rewound_output);
+                            rewound_outputs.push(RecoveredOutput {
+                                output: rewound_output,
+                                tx_id,
+                            });
                         },
                         Err(OutputManagerStorageError::DuplicateOutput) => {
                             warn!(
@@ -2197,4 +2166,11 @@ impl UtxoSelection {
     pub fn iter(&self) -> impl Iterator<Item = &DbUnblindedOutput> + '_ {
         self.utxos.iter()
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct OutputStatusesByTxId {
+    pub statuses: Vec<OutputStatus>,
+    pub(crate) mined_height: Option<u64>,
+    pub(crate) block_hash: Option<BlockHash>,
 }

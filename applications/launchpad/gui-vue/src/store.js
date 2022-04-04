@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import {createStore} from 'vuex'
 import {invoke} from '@tauri-apps/api/tauri'
 import {listen} from "@tauri-apps/api/event";

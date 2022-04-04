@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{path::PathBuf, str::FromStr};
 
 use config::Config;
@@ -26,7 +29,7 @@ pub fn init_configuration(
     // Load and apply configuration file
     let cfg = bootstrap.load_configuration()?;
 
-    // Initialise the logger
+    // Initialise the logger (Comment out to enable tokio tracing via tokio-console)
     bootstrap.initialize_logging()?;
 
     log::info!(target: LOG_TARGET, "{} ({})", application_type, consts::APP_VERSION);

@@ -1,5 +1,44 @@
 # Changelog
 
+### [0.30.2](https://github.com/tari-project/tari/compare/v0.30.1...v0.30.2) (2022-03-29)
+
+
+### Features
+
+* **core:** add tip height metric ([#3964](https://github.com/tari-project/tari/issues/3964)) ([c3f6b11](https://github.com/tari-project/tari/commit/c3f6b11163e52643796296abb8fcd5e053dae13d))
+
+
+### Bug Fixes
+
+* add output option to the status command ([#3969](https://github.com/tari-project/tari/issues/3969)) ([aabb653](https://github.com/tari-project/tari/commit/aabb6539c8b5920b519b40c85093cd5ad07ae229))
+* revert changes to key manager branch seed strings ([#3971](https://github.com/tari-project/tari/issues/3971)) ([db688aa](https://github.com/tari-project/tari/commit/db688aaeaa53b6a9565867c3791d74ee4c571abf))
+
+### [0.30.1](https://github.com/tari-project/tari/compare/v0.30.0...v0.30.1) (2022-03-28)
+
+
+### Features
+
+* add mmr check to reconstructed block and mempool validation for unique excess signature ([#3930](https://github.com/tari-project/tari/issues/3930)) ([b8f9db5](https://github.com/tari-project/tari/commit/b8f9db50e3bca2e1c4364929cebca1c6a3485956))
+* **dht:** monitor and display warning for min ratio for TCPv4 nodes ([#3953](https://github.com/tari-project/tari/issues/3953)) ([c4070ff](https://github.com/tari-project/tari/commit/c4070ffb1b90ac6f6d37394bfa74b8699f366303))
+* gracefully handle recovering a duplicate output in LibWallet ([#3903](https://github.com/tari-project/tari/issues/3903)) ([bcd1418](https://github.com/tari-project/tari/commit/bcd1418c542c07894ba3d709312f1166bfc34c1b))
+* listen to terminal events in the watch mode ([#3931](https://github.com/tari-project/tari/issues/3931)) ([869abd3](https://github.com/tari-project/tari/commit/869abd3ad1453616c0f1d755611bd9a53ccd8e2f))
+* **metrics:** add UTXO set size to base node metrics ([#3932](https://github.com/tari-project/tari/issues/3932)) ([08ecabc](https://github.com/tari-project/tari/commit/08ecabc4559cb9968232b7b4021994e7d88dff31))
+* script to produce coverage report for wallet ([#3938](https://github.com/tari-project/tari/issues/3938)) ([48eb86e](https://github.com/tari-project/tari/commit/48eb86effaaa5823c5a6ea4589a3c471784f3c38))
+
+
+### Bug Fixes
+
+* **base-node:** disable SAF auto requests ([#3919](https://github.com/tari-project/tari/issues/3919)) ([b34503b](https://github.com/tari-project/tari/commit/b34503b3d9b6fb37d69b76649a090f9d85eedca7))
+* bug in block timing grpc method ([#3926](https://github.com/tari-project/tari/issues/3926)) ([1c7adc0](https://github.com/tari-project/tari/commit/1c7adc0e71c8e03b192b1eab3010941989d207a2))
+* correct main path for wallet rpc client ([#3934](https://github.com/tari-project/tari/issues/3934)) ([b36295c](https://github.com/tari-project/tari/commit/b36295c7c08541f3bed7d38d29bcb95b7c7eeba0))
+* fix ffi import external utxo from faucet ([#3956](https://github.com/tari-project/tari/issues/3956)) ([3480323](https://github.com/tari-project/tari/commit/34803238d04298fb9023f4161a3242c0030ed28f))
+* fix handling of creating faux transaction for recovered outputs ([#3959](https://github.com/tari-project/tari/issues/3959)) ([c5eb9e5](https://github.com/tari-project/tari/commit/c5eb9e5d2a86af12a69338445fb38c3170612b54))
+* fix Tor ID deserialization issue ([#3950](https://github.com/tari-project/tari/issues/3950)) ([c290ab9](https://github.com/tari-project/tari/commit/c290ab974406c5c7d787e2220bcc7d8ea11909a6))
+* launch the watch command on start ([#3924](https://github.com/tari-project/tari/issues/3924)) ([7145201](https://github.com/tari-project/tari/commit/71452013493a9ce87ce8ee20621a08ebe7d03391))
+* **sync:** adds extra checks for sync stream termination ([#3927](https://github.com/tari-project/tari/issues/3927)) ([dd544cb](https://github.com/tari-project/tari/commit/dd544cb9c8907b05d4aea937f247c087c6484de6))
+* **sync:** ban peer if sending invalid prev_header ([#3955](https://github.com/tari-project/tari/issues/3955)) ([384ab0c](https://github.com/tari-project/tari/commit/384ab0ceddd25b5b31722fe639229c0ecf554926))
+* **wallet:** ensure that identity sig is stored on startup ([#3951](https://github.com/tari-project/tari/issues/3951)) ([b8d08ed](https://github.com/tari-project/tari/commit/b8d08ed17c23d74b7309867cafd128c136555f82))
+* **wallet:** tor identity private key needs to be serialized ([#3946](https://github.com/tari-project/tari/issues/3946)) ([a68614e](https://github.com/tari-project/tari/commit/a68614e55313270b8a22a68a4cc802780030cfca))
 
 ## [0.30.0](https://github.com/tari-project/tari/compare/v0.29.0...v0.30.0) (2022-03-16)
 

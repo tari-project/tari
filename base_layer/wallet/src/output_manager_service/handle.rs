@@ -25,7 +25,7 @@ use std::{fmt, fmt::Formatter, sync::Arc};
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
     transaction::TxId,
-    types::{BlockHash, HashOutput, PrivateKey, PublicKey},
+    types::{HashOutput, PrivateKey, PublicKey},
 };
 use tari_core::{
     covenants::Covenant,
@@ -52,11 +52,8 @@ use tower::Service;
 
 use crate::output_manager_service::{
     error::OutputManagerError,
-    service::Balance,
-    storage::{
-        models::{KnownOneSidedPaymentScript, SpendingPriority},
-        OutputStatus,
-    },
+    service::{Balance, OutputStatusesByTxId},
+    storage::models::{KnownOneSidedPaymentScript, SpendingPriority},
 };
 
 /// API Request enum
@@ -115,6 +112,7 @@ pub enum OutputManagerRequest {
     CalculateRecoveryByte {
         spending_key: PrivateKey,
         value: u64,
+        with_rewind_data: bool,
     },
     FeeEstimate {
         amount: MicroTari,
@@ -122,14 +120,8 @@ pub enum OutputManagerRequest {
         num_kernels: usize,
         num_outputs: usize,
     },
-    ScanForRecoverableOutputs {
-        outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    },
-    ScanOutputs {
-        outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    },
+    ScanForRecoverableOutputs(Vec<TransactionOutput>),
+    ScanOutputs(Vec<TransactionOutput>),
     AddKnownOneSidedPaymentScript(KnownOneSidedPaymentScript),
     CreateOutputWithFeatures {
         value: MicroTari,
@@ -178,7 +170,9 @@ impl fmt::Display for OutputManagerRequest {
             RemoveEncryption => write!(f, "RemoveEncryption"),
             GetCoinbaseTransaction(_) => write!(f, "GetCoinbaseTransaction"),
             GetPublicRewindKeys => write!(f, "GetPublicRewindKeys"),
-            CalculateRecoveryByte { spending_key, value } => write!(
+            CalculateRecoveryByte {
+                spending_key, value, ..
+            } => write!(
                 f,
                 "CalculateRecoveryByte ({},{})",
                 spending_key.as_bytes().to_vec().to_hex(),
@@ -194,8 +188,8 @@ impl fmt::Display for OutputManagerRequest {
                 "FeeEstimate(amount: {}, fee_per_gram: {}, num_kernels: {}, num_outputs: {})",
                 amount, fee_per_gram, num_kernels, num_outputs
             ),
-            ScanForRecoverableOutputs { .. } => write!(f, "ScanForRecoverableOutputs"),
-            ScanOutputs { .. } => write!(f, "ScanOutputs"),
+            ScanForRecoverableOutputs(_) => write!(f, "ScanForRecoverableOutputs"),
+            ScanOutputs(_) => write!(f, "ScanOutputs"),
             AddKnownOneSidedPaymentScript(_) => write!(f, "AddKnownOneSidedPaymentScript"),
             CreateOutputWithFeatures { value, features } => {
                 write!(f, "CreateOutputWithFeatures({}, {})", value, features,)
@@ -247,24 +241,15 @@ pub enum OutputManagerResponse {
     PublicRewindKeys(Box<PublicRewindKeys>),
     RecoveryByte(u8),
     FeeEstimate(MicroTari),
-    RewoundOutputs(Vec<UnblindedOutput>),
-    ScanOutputs(Vec<UnblindedOutput>),
+    RewoundOutputs(Vec<RecoveredOutput>),
+    ScanOutputs(Vec<RecoveredOutput>),
     AddKnownOneSidedPaymentScript,
-    CreateOutputWithFeatures {
-        output: Box<UnblindedOutputBuilder>,
-    },
-    CreatePayToSelfWithOutputs {
-        transaction: Box<Transaction>,
-        tx_id: TxId,
-    },
+    CreateOutputWithFeatures { output: Box<UnblindedOutputBuilder> },
+    CreatePayToSelfWithOutputs { transaction: Box<Transaction>, tx_id: TxId },
     ReinstatedCancelledInboundTx,
     CoinbaseAbandonedSet,
     ClaimHtlcTransaction((TxId, MicroTari, MicroTari, Transaction)),
-    OutputStatusesByTxId {
-        statuses: Vec<OutputStatus>,
-        mined_height: Option<u64>,
-        block_hash: Option<BlockHash>,
-    },
+    OutputStatusesByTxId(OutputStatusesByTxId),
 }
 
 pub type OutputManagerEventSender = broadcast::Sender<Arc<OutputManagerEvent>>;
@@ -298,6 +283,12 @@ impl fmt::Display for OutputManagerEvent {
 pub struct PublicRewindKeys {
     pub rewind_public_key: PublicKey,
     pub rewind_blinding_public_key: PublicKey,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecoveredOutput {
+    pub tx_id: TxId,
+    pub output: UnblindedOutput,
 }
 
 #[derive(Clone)]
@@ -630,10 +621,15 @@ impl OutputManagerHandle {
         &mut self,
         spending_key: PrivateKey,
         value: u64,
+        with_rewind_data: bool,
     ) -> Result<u8, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::CalculateRecoveryByte { spending_key, value })
+            .call(OutputManagerRequest::CalculateRecoveryByte {
+                spending_key,
+                value,
+                with_rewind_data,
+            })
             .await??
         {
             OutputManagerResponse::RecoveryByte(rk) => Ok(rk),
@@ -728,11 +724,10 @@ impl OutputManagerHandle {
     pub async fn scan_for_recoverable_outputs(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
         match self
             .handle
-            .call(OutputManagerRequest::ScanForRecoverableOutputs { outputs, tx_id })
+            .call(OutputManagerRequest::ScanForRecoverableOutputs(outputs))
             .await??
         {
             OutputManagerResponse::RewoundOutputs(outputs) => Ok(outputs),
@@ -743,13 +738,8 @@ impl OutputManagerHandle {
     pub async fn scan_outputs_for_one_sided_payments(
         &mut self,
         outputs: Vec<TransactionOutput>,
-        tx_id: TxId,
-    ) -> Result<Vec<UnblindedOutput>, OutputManagerError> {
-        match self
-            .handle
-            .call(OutputManagerRequest::ScanOutputs { outputs, tx_id })
-            .await??
-        {
+    ) -> Result<Vec<RecoveredOutput>, OutputManagerError> {
+        match self.handle.call(OutputManagerRequest::ScanOutputs(outputs)).await?? {
             OutputManagerResponse::ScanOutputs(outputs) => Ok(outputs),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
@@ -844,17 +834,13 @@ impl OutputManagerHandle {
     pub async fn get_output_statuses_by_tx_id(
         &mut self,
         tx_id: TxId,
-    ) -> Result<(Vec<OutputStatus>, Option<u64>, Option<BlockHash>), OutputManagerError> {
+    ) -> Result<OutputStatusesByTxId, OutputManagerError> {
         match self
             .handle
             .call(OutputManagerRequest::GetOutputStatusesByTxId(tx_id))
             .await??
         {
-            OutputManagerResponse::OutputStatusesByTxId {
-                statuses,
-                mined_height,
-                block_hash,
-            } => Ok((statuses, mined_height, block_hash)),
+            OutputManagerResponse::OutputStatusesByTxId(output_statuses_by_tx_id) => Ok(output_statuses_by_tx_id),
             _ => Err(OutputManagerError::UnexpectedApiResponse),
         }
     }

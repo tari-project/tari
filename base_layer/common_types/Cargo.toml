@@ -3,11 +3,11 @@ name = "tari_common_types"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency common types"
 license = "BSD-3-Clause"
-version = "0.30.0"
+version = "0.30.2"
 edition = "2018"
 
 [dependencies]
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.1" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 digest = "0.9.0"

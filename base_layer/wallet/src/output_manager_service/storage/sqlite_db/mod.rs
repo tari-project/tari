@@ -130,6 +130,9 @@ impl OutputManagerSqliteDatabase {
 
             DbKeyValuePair::KnownOneSidedPaymentScripts(script) => {
                 let mut script_sql = KnownOneSidedPaymentScriptSql::from(script);
+                if KnownOneSidedPaymentScriptSql::find(&script_sql.script_hash, conn).is_ok() {
+                    return Err(OutputManagerStorageError::DuplicateScript);
+                }
                 self.encrypt_if_necessary(&mut script_sql)?;
                 script_sql.commit(conn)?
             },
@@ -343,7 +346,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+    fn fetch_unspent_mined_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
@@ -354,7 +357,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - fetch_unconfirmed_outputs: lock {} + db_op {} = {} ms",
+                "sqlite profile - fetch_unspent_mined_unconfirmed_outputs: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -675,7 +678,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - short_term_encumber_outputs: lock {} + db_op {} = {} ms",
+                "sqlite profile - short_term_encumber_outputs (TxId: {}): lock {} + db_op {} = {} ms",
+                tx_id,
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -716,7 +720,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - confirm_encumbered_outputs: lock {} + db_op {} = {} ms",
+                "sqlite profile - confirm_encumbered_outputs (TxId: {}): lock {} + db_op {} = {} ms",
+                tx_id,
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -1156,7 +1161,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         if start.elapsed().as_millis() > 0 {
             trace!(
                 target: LOG_TARGET,
-                "sqlite profile - reinstate_cancelled_inbound_output: lock {} + db_op {} = {} ms",
+                "sqlite profile - add_unvalidated_output: lock {} + db_op {} = {} ms",
                 acquire_lock.as_millis(),
                 (start.elapsed() - acquire_lock).as_millis(),
                 start.elapsed().as_millis()
@@ -1292,7 +1297,7 @@ impl KnownOneSidedPaymentScriptSql {
         Ok(())
     }
 
-    /// Find a particular Output, if it exists
+    /// Find a particular script, if it exists
     pub fn find(
         hash: &[u8],
         conn: &SqliteConnection,

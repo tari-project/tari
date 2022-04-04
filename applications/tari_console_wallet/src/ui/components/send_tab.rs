@@ -1,3 +1,7 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+use log::*;
 use tari_core::transactions::tari_amount::MicroTari;
 use tari_utilities::hex::Hex;
 use tari_wallet::tokens::Token;
@@ -18,6 +22,8 @@ use crate::ui::{
     widgets::{draw_dialog, WindowedListState},
 };
 
+const LOG_TARGET: &str = "wallet::console_wallet::send_tab ";
+
 pub struct SendTab {
     balance: Balance,
     send_input_mode: SendInputMode,
@@ -28,6 +34,7 @@ pub struct SendTab {
     message_field: String,
     error_message: Option<String>,
     success_message: Option<String>,
+    offline_message: Option<String>,
     contacts_list_state: WindowedListState,
     send_result_watch: Option<watch::Receiver<UiTransactionSendStatus>>,
     confirmation_dialog: Option<ConfirmationDialogType>,
@@ -47,6 +54,7 @@ impl SendTab {
             message_field: String::new(),
             error_message: None,
             success_message: None,
+            offline_message: None,
             contacts_list_state: WindowedListState::new(),
             send_result_watch: None,
             confirmation_dialog: None,
@@ -448,6 +456,7 @@ impl<B: Backend> Component<B> for SendTab {
 
         let rx_option = self.send_result_watch.take();
         if let Some(rx) = rx_option {
+            trace!(target: LOG_TARGET, "{:?}", (*rx.borrow()).clone());
             let status = match (*rx.borrow()).clone() {
                 UiTransactionSendStatus::Initiated => "Initiated",
                 UiTransactionSendStatus::DiscoveryInProgress => "Discovery In Progress",
@@ -458,6 +467,14 @@ impl<B: Backend> Component<B> for SendTab {
                 UiTransactionSendStatus::SentDirect | UiTransactionSendStatus::SentViaSaf => {
                     self.success_message =
                         Some("Transaction successfully sent!\nPlease press Enter to continue".to_string());
+                    return;
+                },
+                UiTransactionSendStatus::Queued => {
+                    self.offline_message = Some(
+                        "This wallet appears to be offline; transaction queued for further retry sending.\n Please \
+                         press Enter to continue"
+                            .to_string(),
+                    );
                     return;
                 },
                 UiTransactionSendStatus::TransactionComplete => {
@@ -480,6 +497,10 @@ impl<B: Backend> Component<B> for SendTab {
 
         if let Some(msg) = self.success_message.clone() {
             draw_dialog(f, area, "Success!".to_string(), msg, Color::Green, 120, 9);
+        }
+
+        if let Some(msg) = self.offline_message.clone() {
+            draw_dialog(f, area, "Offline!".to_string(), msg, Color::Green, 120, 9);
         }
 
         if let Some(msg) = self.error_message.clone() {
@@ -524,6 +545,13 @@ impl<B: Backend> Component<B> for SendTab {
         if self.success_message.is_some() {
             if '\n' == c {
                 self.success_message = None;
+            }
+            return;
+        }
+
+        if self.offline_message.is_some() {
+            if '\n' == c {
+                self.offline_message = None;
             }
             return;
         }

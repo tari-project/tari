@@ -99,11 +99,10 @@ impl ScriptCommitment {
 /// # use blake2::Blake2b;
 /// # use rand::RngCore;
 /// # use tari_crypto::ristretto::RistrettoSecretKey;
+/// # use tari_script::{ScriptCommitmentFactory, TariScript};
 /// # use tari_crypto::{
 ///     common::Blake256,
 ///     keys::SecretKey,
-///     ristretto::script_commitment::ScriptCommitmentFactory,
-///     script::TariScript,
 /// };
 ///
 /// let mut rng = rand::thread_rng();

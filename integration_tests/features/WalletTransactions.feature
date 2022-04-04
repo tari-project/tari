@@ -1,3 +1,6 @@
+# Copyright 2022 The Tari Project
+# SPDX-License-Identifier: BSD-3-Clause
+
 @wallet-transact @wallet
 Feature: Wallet Transactions
 
@@ -215,6 +218,31 @@ Feature: Wallet Transactions
     Then all nodes are at height 10
     When I mine 6 blocks on NODE_C
     Then all nodes are at height 16
+
+  Scenario: Wallet send transactions while offline
+    Given I have a seed node SEED
+    And I have wallet WALLET_A connected to seed node SEED
+    And I have wallet WALLET_B connected to seed node SEED
+    And I have mining node MINER_A connected to base node SEED and wallet WALLET_A
+    When mining node MINER_A mines 1 blocks with min difficulty 1 and max difficulty 100000
+    When I mine 4 blocks on SEED
+    Then I wait for wallet WALLET_A to have at least 1000000000 uT
+    When I stop wallet WALLET_B
+    When I stop node SEED
+    Then I wait 10 seconds
+    Then I send 100000000 uT without waiting for broadcast from wallet WALLET_A to wallet WALLET_B at fee 20
+    Then I wait 10 seconds
+    And I start base node SEED
+    And I have a base node NODE_A connected to seed SEED
+    And I have a base node NODE_B connected to seed SEED
+    And I stop wallet WALLET_A
+    And I start wallet WALLET_A
+    And I start wallet WALLET_B
+    Then all nodes are at height 5
+    When I mine 1 blocks on SEED
+    Then all nodes are at height 6
+    Then wallet WALLET_B detects all transactions are at least Pending
+    Then I wait 1 seconds
 
   Scenario: Short wallet clearing out invalid transactions after a reorg
     #

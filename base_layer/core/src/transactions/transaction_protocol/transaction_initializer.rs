@@ -36,9 +36,10 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::pedersen::PedersenCommitmentFactory,
-    tari_utilities::fixed_set::FixedSet,
+    tari_utilities::{fixed_set::FixedSet, hex::to_hex},
 };
 use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
@@ -216,10 +217,14 @@ impl SenderTransactionInitializer {
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
         if recovery_byte != output.features.recovery_byte {
-            return self.clone().build_err(&*format!(
-                "Recovery byte not valid (expected {}, got {}), cannot add output: {:?}",
-                recovery_byte, output.features.recovery_byte, output
-            ))?;
+            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
+            error!(
+                target: LOG_TARGET,
+                "Recovery byte set incorrectly (with output) - expected {}, got {} for commitment {}",
+                recovery_byte,
+                output.features.recovery_byte,
+                to_hex(commitment.as_bytes()),
+            );
         }
         let e = TransactionOutput::build_metadata_signature_challenge(
             &output.script,

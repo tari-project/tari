@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const ffi = require("ffi-napi");
 
 const {
@@ -52,7 +55,6 @@ const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {
       u32,
       "string",
       "string",
-      fn,
       fn,
       fn,
       fn,

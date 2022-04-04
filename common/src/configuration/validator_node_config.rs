@@ -46,6 +46,8 @@ pub struct ValidatorNodeConfig {
     #[serde(default = "default_asset_scanning_interval")]
     pub new_asset_scanning_interval: u64,
     pub assets_allow_list: Option<Vec<String>>,
+    pub committee_management_polling_interval: u64,
+    pub committee_management_confirmation_time: u64,
 }
 
 fn default_true() -> bool {

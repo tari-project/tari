@@ -26,8 +26,6 @@ pub mod test_utils;
 #[cfg(feature = "base_node")]
 mod config;
 #[cfg(feature = "base_node")]
-mod consts;
-#[cfg(feature = "base_node")]
 mod error;
 #[cfg(feature = "base_node")]
 #[allow(clippy::module_inception)]

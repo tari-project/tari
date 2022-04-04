@@ -58,7 +58,6 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
         let outputs = self
             .output_database
             .fetch_with_features(OutputFlags::ASSET_REGISTRATION)
-            .await
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         debug!(
@@ -267,12 +266,7 @@ impl<T: OutputManagerBackend + 'static> AssetManager<T> {
 
         let (tx_id, transaction) = self
             .output_manager
-            .create_send_to_self_with_output(
-                vec![output],
-                ASSET_FPG.into(),
-                Some(COMMITTEE_DEFINITION_ID.into()),
-                Some(asset_public_key),
-            )
+            .create_send_to_self_with_output(vec![output], ASSET_FPG.into(), None, None)
             .await?;
 
         Ok((tx_id, transaction))

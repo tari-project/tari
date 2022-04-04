@@ -54,7 +54,6 @@ impl<T: OutputManagerBackend + 'static> TokenManager<T> {
         let outputs = self
             .output_database
             .fetch_with_features(OutputFlags::NON_FUNGIBLE)
-            .await
             .map_err(|err| WalletError::OutputManagerError(err.into()))?;
 
         // These will include assets registrations

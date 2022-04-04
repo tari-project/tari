@@ -32,7 +32,7 @@ use croaring::Bitmap;
 use futures::{stream::FuturesUnordered, StreamExt};
 use log::*;
 use tari_common_types::types::{Commitment, HashDigest, RangeProofService};
-use tari_comms::connectivity::ConnectivityRequester;
+use tari_comms::{connectivity::ConnectivityRequester, peer_manager::NodeId};
 use tari_crypto::{
     commitment::HomomorphicCommitment,
     tari_utilities::{hex::Hex, Hashable},
@@ -58,6 +58,7 @@ use crate::{
         MmrTree,
         PrunedOutput,
     },
+    common::rolling_avg::RollingAverageTime,
     consensus::ConsensusManager,
     proto::base_node::{
         sync_utxo as proto_sync_utxo,
@@ -236,6 +237,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
+        info!(target: LOG_TARGET, "Starting kernel sync from peer {}", sync_peer);
         let local_num_kernels = self.db().fetch_mmr_size(MmrTree::Kernel).await?;
 
         let remote_num_kernels = to_header.kernel_mmr_size;
@@ -288,8 +290,10 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut mmr_position = local_num_kernels;
         let end = remote_num_kernels;
         let mut last_sync_timer = Instant::now();
+        let mut avg_latency = RollingAverageTime::new(20);
         while let Some(kernel) = kernel_stream.next().await {
             let latency = last_sync_timer.elapsed();
+            avg_latency.add_sample(latency);
             let kernel: TransactionKernel = kernel?.try_into().map_err(HorizonSyncError::ConversionError)?;
             kernel
                 .verify_signature()
@@ -368,13 +372,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 self.hooks.call_on_progress_horizon_hooks(info);
             }
 
-            if latency > self.max_latency {
-                return Err(HorizonSyncError::MaxLatencyExceeded {
-                    peer: sync_peer.node_id().clone(),
-                    latency,
-                    max_latency: self.max_latency,
-                });
-            }
+            self.check_latency(sync_peer.node_id(), &avg_latency)?;
 
             last_sync_timer = Instant::now();
         }
@@ -387,12 +385,27 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
+    fn check_latency(&self, peer: &NodeId, avg_latency: &RollingAverageTime) -> Result<(), HorizonSyncError> {
+        if let Some(avg_latency) = avg_latency.calculate_average_with_min_samples(5) {
+            if avg_latency > self.max_latency {
+                return Err(HorizonSyncError::MaxLatencyExceeded {
+                    peer: peer.clone(),
+                    latency: avg_latency,
+                    max_latency: self.max_latency,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
     async fn synchronize_outputs(
         &mut self,
         mut sync_peer: SyncPeer,
         client: &mut rpc::BaseNodeSyncRpcClient,
         to_header: &BlockHeader,
     ) -> Result<(), HorizonSyncError> {
+        info!(target: LOG_TARGET, "Starting output sync from peer {}", sync_peer);
         let local_num_outputs = self.db().fetch_mmr_size(MmrTree::Utxo).await?;
 
         let remote_num_outputs = to_header.output_mmr_size;
@@ -466,9 +479,11 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         let mut witness_mmr = MerkleMountainRange::<HashDigest, _>::new(witness_pruned_set);
         let mut constants = self.rules.consensus_constants(current_header.height()).clone();
         let mut last_sync_timer = Instant::now();
+        let mut avg_latency = RollingAverageTime::new(20);
 
         while let Some(response) = output_stream.next().await {
             let latency = last_sync_timer.elapsed();
+            avg_latency.add_sample(latency);
             let res: SyncUtxosResponse = response?;
 
             if res.mmr_index != 0 && res.mmr_index != mmr_position {
@@ -658,13 +673,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
                 self.hooks.call_on_progress_horizon_hooks(info);
             }
 
-            if latency > self.max_latency {
-                return Err(HorizonSyncError::MaxLatencyExceeded {
-                    peer: sync_peer.node_id().clone(),
-                    latency,
-                    max_latency: self.max_latency,
-                });
-            }
+            self.check_latency(sync_peer.node_id(), &avg_latency)?;
 
             last_sync_timer = Instant::now();
         }

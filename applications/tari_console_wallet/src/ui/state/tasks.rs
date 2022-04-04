@@ -23,7 +23,7 @@
 use tari_common_types::types::PublicKey;
 use tari_comms::types::CommsPublicKey;
 use tari_core::transactions::tari_amount::MicroTari;
-use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionServiceHandle};
+use tari_wallet::transaction_service::handle::{TransactionEvent, TransactionSendStatus, TransactionServiceHandle};
 use tokio::sync::{broadcast, watch};
 
 use crate::ui::{state::UiTransactionSendStatus, UiError};
@@ -42,8 +42,7 @@ pub async fn send_transaction_task(
 ) {
     let _ = result_tx.send(UiTransactionSendStatus::Initiated);
     let mut event_stream = transaction_service_handle.get_event_stream();
-    let mut send_direct_received_result = (false, false);
-    let mut send_saf_received_result = (false, false);
+    let mut send_status = TransactionSendStatus::default();
     match transaction_service_handle
         .send_transaction_or_token(public_key, amount, unique_id, parent_public_key, fee_per_gram, message)
         .await
@@ -53,27 +52,18 @@ pub async fn send_transaction_task(
         },
         Ok(our_tx_id) => {
             loop {
-                match event_stream.recv().await {
+                let next_event = event_stream.recv().await;
+                match next_event {
                     Ok(event) => match &*event {
                         TransactionEvent::TransactionDiscoveryInProgress(tx_id) => {
                             if our_tx_id == *tx_id {
                                 let _ = result_tx.send(UiTransactionSendStatus::DiscoveryInProgress);
                             }
                         },
-                        TransactionEvent::TransactionDirectSendResult(tx_id, result) => {
+                        TransactionEvent::TransactionSendResult(tx_id, status) => {
                             if our_tx_id == *tx_id {
-                                send_direct_received_result = (true, *result);
-                                if send_saf_received_result.0 {
-                                    break;
-                                }
-                            }
-                        },
-                        TransactionEvent::TransactionStoreForwardSendResult(tx_id, result) => {
-                            if our_tx_id == *tx_id {
-                                send_saf_received_result = (true, *result);
-                                if send_direct_received_result.0 {
-                                    break;
-                                }
+                                send_status = status.clone();
+                                break;
                             }
                         },
                         TransactionEvent::TransactionCompletedImmediately(tx_id) => {
@@ -94,10 +84,12 @@ pub async fn send_transaction_task(
                 }
             }
 
-            if send_direct_received_result.1 {
+            if send_status.direct_send_result {
                 let _ = result_tx.send(UiTransactionSendStatus::SentDirect);
-            } else if send_saf_received_result.1 {
+            } else if send_status.store_and_forward_send_result {
                 let _ = result_tx.send(UiTransactionSendStatus::SentViaSaf);
+            } else if send_status.queued_for_retry {
+                let _ = result_tx.send(UiTransactionSendStatus::Queued);
             } else {
                 let _ = result_tx.send(UiTransactionSendStatus::Error(
                     "Transaction could not be sent".to_string(),

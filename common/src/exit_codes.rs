@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::fmt;
 
 use thiserror::Error;
@@ -87,8 +90,10 @@ pub enum ExitCode {
     DatabaseError = 114,
     #[error("Database is in an inconsistent state!")]
     DbInconsistentState = 115,
+    #[error("DigitalAssetError")]
+    DigitalAssetError = 116,
     #[error("Unable to create or load an identity file")]
-    IdentityError = 116,
+    IdentityError = 117,
 }
 
 impl From<super::ConfigError> for ExitError {

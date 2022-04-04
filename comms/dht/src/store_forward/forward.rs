@@ -194,7 +194,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         }
 
         if let Some(expires) = &dht_header.expires {
-            if expires < &EpochTime::now() {
+            if *expires < EpochTime::now() {
                 debug!(
                     target: LOG_TARGET,
                     "Received message {} from peer '{}' that is expired. Discarding message (Trace: {})",
