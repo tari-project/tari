@@ -1051,7 +1051,7 @@ async fn test_get_balance() {
 }
 
 #[tokio::test]
-async fn sending_transaction_with_short_term_clear() {
+async fn sending_transaction_persisted_while_offline() {
     let factories = CryptoFactories::default();
 
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
@@ -1060,15 +1060,18 @@ async fn sending_transaction_with_short_term_clear() {
 
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
-    let available_balance = 10_000 * uT;
-    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance, &factories.commitment, None).await;
+    let available_balance = 20_000 * uT;
+    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance / 2, &factories.commitment, None).await;
+    oms.output_manager_handle.add_output(uo, None).await.unwrap();
+    let (_ti, uo) = make_input(&mut OsRng.clone(), available_balance / 2, &factories.commitment, None).await;
     oms.output_manager_handle.add_output(uo, None).await.unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
     assert_eq!(balance.available_balance, available_balance);
     assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
+    assert_eq!(balance.pending_outgoing_balance, MicroTari::from(0));
 
-    // Check that funds are encumbered and then unencumbered if the pending tx is not confirmed before restart
+    // Check that funds are encumbered and stay encumbered if the pending tx is not confirmed before restart
     let _stp = oms
         .output_manager_handle
         .prepare_transaction_to_send(
@@ -1086,16 +1089,18 @@ async fn sending_transaction_with_short_term_clear() {
         .unwrap();
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    assert_eq!(balance.available_balance, MicroTari::from(0));
+    assert_eq!(balance.available_balance, available_balance / 2);
     assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
-    assert_eq!(balance.pending_outgoing_balance, available_balance);
+    assert_eq!(balance.pending_outgoing_balance, available_balance / 2);
 
+    // This simulates an offline wallet with a  queued transaction that has not been sent to the receiving wallet yet
     drop(oms.output_manager_handle);
     let mut oms = setup_output_manager_service(backend.clone(), ks_backend.clone(), true).await;
 
     let balance = oms.output_manager_handle.get_balance().await.unwrap();
-    assert_eq!(balance.available_balance, available_balance);
+    assert_eq!(balance.available_balance, available_balance / 2);
     assert_eq!(balance.time_locked_balance.unwrap(), MicroTari::from(0));
+    assert_eq!(balance.pending_outgoing_balance, available_balance / 2);
 
     // Check that is the pending tx is confirmed that the encumberance persists after restart
     let stp = oms

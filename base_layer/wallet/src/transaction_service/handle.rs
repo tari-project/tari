@@ -20,7 +20,12 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{collections::HashMap, fmt, fmt::Formatter, sync::Arc};
+use std::{
+    collections::HashMap,
+    fmt,
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 use aes_gcm::Aes256Gcm;
 use tari_common_types::{
@@ -203,6 +208,23 @@ pub enum TransactionServiceResponse {
     ShaAtomicSwapTransactionSent(Box<(TxId, PublicKey, TransactionOutput)>),
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Default)]
+pub struct TransactionSendStatus {
+    pub direct_send_result: bool,
+    pub store_and_forward_send_result: bool,
+    pub queued_for_retry: bool,
+}
+
+impl Display for TransactionSendStatus {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            fmt,
+            "direct('{}')' saf('{}') queued('{}')",
+            self.direct_send_result, self.store_and_forward_send_result, self.queued_for_retry,
+        )
+    }
+}
+
 /// Events that can be published on the Text Message Service Event Stream
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum TransactionEvent {
@@ -211,9 +233,8 @@ pub enum TransactionEvent {
     ReceivedTransactionReply(TxId),
     ReceivedFinalizedTransaction(TxId),
     TransactionDiscoveryInProgress(TxId),
-    TransactionDirectSendResult(TxId, bool),
+    TransactionSendResult(TxId, TransactionSendStatus),
     TransactionCompletedImmediately(TxId),
-    TransactionStoreForwardSendResult(TxId, bool),
     TransactionCancelled(TxId, TxCancellationReason),
     TransactionBroadcast(TxId),
     TransactionImported(TxId),
@@ -260,14 +281,11 @@ impl fmt::Display for TransactionEvent {
             TransactionEvent::TransactionDiscoveryInProgress(tx) => {
                 write!(f, "TransactionDiscoveryInProgress for {}", tx)
             },
-            TransactionEvent::TransactionDirectSendResult(tx, success) => {
-                write!(f, "TransactionDirectSendResult for {}: {}", tx, success)
+            TransactionEvent::TransactionSendResult(tx, status) => {
+                write!(f, "TransactionSendResult for {}: {}", tx, status)
             },
             TransactionEvent::TransactionCompletedImmediately(tx) => {
                 write!(f, "TransactionCompletedImmediately for {}", tx)
-            },
-            TransactionEvent::TransactionStoreForwardSendResult(tx, success) => {
-                write!(f, "TransactionStoreForwardSendResult for {}:{}", tx, success)
             },
             TransactionEvent::TransactionCancelled(tx, rejection) => {
                 write!(f, "TransactionCancelled for {}:{:?}", tx, rejection)
