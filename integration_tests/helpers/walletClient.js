@@ -259,6 +259,22 @@ class WalletClient {
     }
   }
 
+  async isTransactionCancelled(tx_id) {
+    try {
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()],
+      });
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 7) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (err) {
+      // Any error here must be treated as if the required status was not achieved
+      return false;
+    }
+  }
+
   async isTransactionAtLeastCompleted(tx_id) {
     try {
       const txnDetails = await this.getTransactionInfo({
