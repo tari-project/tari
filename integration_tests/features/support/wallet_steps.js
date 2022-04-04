@@ -1125,7 +1125,7 @@ When(
       result.success,
       result.failure_message
     );
-    assert(result.success, true);
+    expect(result.success).to.be.true;
   }
 );
 
@@ -1146,7 +1146,7 @@ Then(
       const obj = resultObj[i];
       if (!obj.is_success) {
         console.log(obj.transaction_id, "failed");
-        assert(obj.is_success, true);
+        expect(obj.is_success).to.be.true;
       } else {
         console.log(
           "Transaction",
@@ -1176,7 +1176,7 @@ Then(
     console.log(
       `Number of successful transactions is ${successCount} of ${txCount}`
     );
-    assert(successCount === txCount);
+    expect(successCount).to.equal(txCount);
     console.log("All transactions found");
   }
 );

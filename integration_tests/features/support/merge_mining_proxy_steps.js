@@ -23,6 +23,8 @@
 const { Given, When, Then } = require("@cucumber/cucumber");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const assert = require("assert");
+const expect = require("chai").expect;
+
 Given(
   /I have a merge mining proxy (.*) connected to (.*) and (.*) with default config/,
   { timeout: 120 * 1000 }, // The timeout must make provision for testing the monerod URL /get_height response
@@ -89,7 +91,7 @@ When(/I ask for a block height from proxy (.*)/, async function (mmProxy) {
 });
 
 Then("Proxy response height is valid", function () {
-  assert(Number.isInteger(this.lastResult), true);
+  expect(Number.isInteger(this.lastResult)).to.be.true;
 });
 
 When(/I ask for a block template from proxy (.*)/, async function (mmProxy) {
@@ -101,9 +103,10 @@ When(/I ask for a block template from proxy (.*)/, async function (mmProxy) {
 });
 
 Then("Proxy response block template is valid", function () {
-  assert(typeof this.lastResult === "object" && this.lastResult !== null, true);
-  assert(typeof this.lastResult._aux !== "undefined", true);
-  assert(this.lastResult.status, "OK");
+  expect(this.lastResult).to.be.an('object');
+  expect(this.lastResult).to.not.be.null;
+  expect(this.lastResult._aux).to.not.be.undefined;
+  expect(this.lastResult.status).to.equal("OK");
 });
 
 When(/I submit a block through proxy (.*)/, async function (mmProxy) {
@@ -117,21 +120,18 @@ When(/I submit a block through proxy (.*)/, async function (mmProxy) {
 Then(
   "Proxy response block submission is valid with submitting to origin",
   function () {
-    assert(
-      typeof this.lastResult.result === "object" &&
-        this.lastResult.result !== null,
-      true
-    );
-    assert(typeof this.lastResult.result._aux !== "undefined", true);
-    assert(this.lastResult.result.status, "OK");
+    expect(this.lastResult.result).to.be.an('object');
+    expect(this.lastResult.result).to.not.be.null;
+    expect(this.lastResult.result._aux).to.not.be.undefined;
+    expect(this.lastResult.result.status).to.equal("OK");
   }
 );
 
 Then(
   "Proxy response block submission is valid without submitting to origin",
   function () {
-    assert(this.lastResult.result !== null, true);
-    assert(this.lastResult.status, "OK");
+    expect(this.lastResult.result).to.not.be.null;
+    expect(this.lastResult.status).to.equal("OK");
   }
 );
 
@@ -146,9 +146,11 @@ When(
 );
 
 Then("Proxy response for last block header is valid", function () {
-  assert(typeof this.lastResult === "object" && this.lastResult !== null, true);
-  assert(typeof this.lastResult.result._aux !== "undefined", true);
-  assert(this.lastResult.result.status, "OK");
+  expect(this.lastResult).to.be.an('object');
+  expect(this.lastResult).to.not.be.null;
+  expect(this.lastResult.result._aux).to.not.be.undefined;
+  expect(this.lastResult.result.status).to.equal("OK");
+  
   this.lastResult = this.lastResult.result.block_header.hash;
 });
 
@@ -163,6 +165,7 @@ When(
 );
 
 Then("Proxy response for block header by hash is valid", function () {
-  assert(typeof this.lastResult === "object" && this.lastResult !== null, true);
-  assert(this.lastResult.result.status, "OK");
+  expect(this.lastResult).to.be.an('object');
+  expect(this.lastResult).to.not.be.null;
+  expect(this.lastResult.result.status).to.equal("OK");
 });
