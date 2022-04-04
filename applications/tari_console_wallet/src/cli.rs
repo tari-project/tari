@@ -25,6 +25,8 @@ use std::path::PathBuf;
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 
+const DEFAULT_NETWORK: &str = "dibbler";
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
@@ -67,16 +69,15 @@ pub(crate) struct Cli {
     #[clap(long, alias = "auto-exit")]
     pub command_mode_auto_exit: bool,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, alias = "network")]
-    pub network: Option<String>,
+    #[clap(long, alias = "network", default_value = DEFAULT_NETWORK)]
+    pub network: String,
 }
 
 impl Cli {
     pub fn config_property_overrides(&self) -> Vec<(String, String)> {
         let mut overrides = self.common.config_property_overrides();
-        if let Some(ref network) = self.network {
-            overrides.push(("wallet.override_from".to_string(), network.clone()));
-        }
+        overrides.push(("wallet.override_from".to_string(), self.network.clone()));
+        overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
         overrides
     }
 }

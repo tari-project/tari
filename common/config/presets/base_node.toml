@@ -14,6 +14,10 @@ network = "dibbler"
 # The socket to expose for the gRPC base node server
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
+[dibbler.base_node]
+# A path to the file that stores your node identity and secret key
+identity_file = "config/base_node_id_dibbler.json"
+
 [base_node.p2p.transport]
 # # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # # onion v2, onion v3 and dns addresses.
@@ -91,9 +95,6 @@ peer_seeds = [
 
 
 
-
-# A path to the file that stores your node identity and secret key
-base_node_identity_file = "config/base_node_id.json"
 
 # -------------- Transport configuration --------------
 # Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with

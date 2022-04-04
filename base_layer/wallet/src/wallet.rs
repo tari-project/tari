@@ -65,6 +65,7 @@ use tari_p2p::{
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
     transport::TransportType,
+    PeerSeedsConfig,
 };
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -139,6 +140,7 @@ where
         factories: CryptoFactories,
         transport_type: TransportType,
         config: WalletConfig,
+        peer_seeds: PeerSeedsConfig,
         node_identity: Arc<NodeIdentity>,
         wallet_database: WalletDatabase<T>,
         transaction_backend: U,
@@ -168,6 +170,7 @@ where
         let stack = StackBuilder::new(shutdown_signal)
             .add_initializer(P2pInitializer::new(
                 config.p2p.clone(),
+                peer_seeds,
                 config.network,
                 node_identity.clone(),
                 publisher,

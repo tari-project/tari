@@ -23,6 +23,8 @@
 use clap::Parser;
 use tari_app_utilities::common_cli_args::CommonCliArgs;
 
+const DEFAULT_NETWORK: &str = "dibbler";
+
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
@@ -49,7 +51,7 @@ pub(crate) struct Cli {
     #[clap(long)]
     pub watch: Option<String>,
     /// Supply a network (overrides existing configuration)
-    #[clap(long, alias = "network", default_value = "mainnet")]
+    #[clap(long, alias = "network", default_value = DEFAULT_NETWORK)]
     pub network: String,
 }
 

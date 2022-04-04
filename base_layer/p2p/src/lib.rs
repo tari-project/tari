@@ -48,7 +48,7 @@ pub mod transport;
 mod dns;
 
 // Re-export
-pub use config::{P2pConfig, P2pPeerSeedsConfig};
+pub use config::{P2pConfig, PeerSeedsConfig};
 pub use tari_common::configuration::Network;
 
 /// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver

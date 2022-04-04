@@ -19,12 +19,12 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{fs, io::Stdout, path::PathBuf};
+use std::{fs, io::Stdout, net::SocketAddr, path::PathBuf};
 
 use log::*;
 use rand::{rngs::OsRng, seq::SliceRandom};
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer, utils::multiaddr::multiaddr_to_socketaddr};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::Peer};
 use tari_wallet::{WalletConfig, WalletSqlite};
 use tokio::runtime::Handle;
 use tonic::transport::Server;
@@ -349,16 +349,15 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     Ok(())
 }
 
-async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: Multiaddr) -> Result<(), String> {
+async fn run_grpc(grpc: WalletGrpcServer, grpc_console_wallet_address: SocketAddr) -> Result<(), String> {
     // Do not remove this println!
     const CUCUMBER_TEST_MARKER_A: &str = "Tari Console Wallet running... (gRPC mode started)";
     println!("{}", CUCUMBER_TEST_MARKER_A);
 
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_console_wallet_address);
-    let socket = multiaddr_to_socketaddr(&grpc_console_wallet_address).map_err(|e| e.to_string())?;
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::wallet_server::WalletServer::new(grpc))
-        .serve(socket)
+        .serve(grpc_console_wallet_address)
         .await
         .map_err(|e| format!("GRPC server returned error:{}", e))?;
 

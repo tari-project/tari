@@ -83,12 +83,11 @@
 #[macro_use]
 mod table;
 
-mod app_config;
-mod base_node_config;
 mod bootstrap;
 mod builder;
 mod cli;
 mod commands;
+mod config;
 mod grpc;
 #[cfg(feature = "metrics")]
 mod metrics;
@@ -120,7 +119,7 @@ use tokio::task;
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-use crate::{app_config::ApplicationConfig, cli::Cli};
+use crate::{cli::Cli, config::ApplicationConfig};
 
 const LOG_TARGET: &str = "tari::base_node::app";
 

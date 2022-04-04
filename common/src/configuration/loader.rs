@@ -83,26 +83,10 @@ pub trait ConfigPath {
         match Self::overload_key_prefix(config)? {
             Some(key) => {
                 let overload: config::Value = config.get(key.as_str()).unwrap_or_default();
-                let mut config = Config::builder()
+                let config = Config::builder()
                     .set_default(Self::main_key_prefix(), defaults)?
-                    .add_source(config.clone());
-
-                match overload.kind {
-                    config::ValueKind::Table(_) => {
-                        // Override each key individually so that values set in the base config are preserved, up to one
-                        // level deep.
-                        for (k, v) in overload.into_table()?.into_iter() {
-                            config = config.set_override(k, v)?;
-                        }
-                    },
-                    config::ValueKind::Nil => {},
-                    _ => {
-                        config = config.set_override(Self::main_key_prefix(), overload)?;
-                    },
-                }
-
-                let config = config
-                    // .set_override(Self::main_key_prefix(), overload)?
+                    .add_source(config.clone())
+                    .set_override(Self::main_key_prefix(), overload)?
                     .build()?;
                 Ok(config)
             },
@@ -317,7 +301,7 @@ impl Display for ConfigurationError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         match &self.value {
             Some(v) => write!(f, "Invalid value `{}` for {}: {}", v, self.field, self.message),
-            None => write!(f, "Invalid value for {}: {}", self.field, self.message),
+            None => write!(f, "Invalid value for `{}`: {}", self.field, self.message),
         }
     }
 }

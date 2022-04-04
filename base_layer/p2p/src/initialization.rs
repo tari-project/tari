@@ -112,7 +112,7 @@ impl CommsInitializationError {
     }
 }
 
-use crate::config::{P2pConfig, P2pPeerSeedsConfig};
+use crate::config::{P2pConfig, PeerSeedsConfig};
 
 /// Initialize Tari Comms configured for tests
 pub async fn initialize_local_test_comms(
@@ -413,7 +413,7 @@ async fn add_all_peers(
 
 pub struct P2pInitializer {
     config: P2pConfig,
-    seed_config: P2pPeerSeedsConfig,
+    seed_config: PeerSeedsConfig,
     network: Network,
     node_identity: Arc<NodeIdentity>,
     connector: Option<PubsubDomainConnector>,
@@ -422,7 +422,7 @@ pub struct P2pInitializer {
 impl P2pInitializer {
     pub fn new(
         config: P2pConfig,
-        seed_config: P2pPeerSeedsConfig,
+        seed_config: PeerSeedsConfig,
         network: Network,
         node_identity: Arc<NodeIdentity>,
         connector: PubsubDomainConnector,
@@ -447,7 +447,7 @@ impl P2pInitializer {
             .map_err(Into::into)
     }
 
-    async fn try_resolve_dns_seeds(config: &P2pPeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
+    async fn try_resolve_dns_seeds(config: &PeerSeedsConfig) -> Result<Vec<Peer>, ServiceInitializationError> {
         if config.dns_seeds.is_empty() {
             debug!(target: LOG_TARGET, "No DNS Seeds configured");
             return Ok(Vec::new());

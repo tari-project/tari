@@ -21,44 +21,34 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use config::Config;
-use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::{CommonConfig, Network},
     ConfigurationError,
     DefaultConfigLoader,
 };
-use tari_p2p::{auto_update::AutoUpdateConfig, P2pPeerSeedsConfig};
+use tari_p2p::PeerSeedsConfig;
+use tari_wallet::WalletConfig;
 
-use crate::base_node_config::BaseNodeConfig;
-#[cfg(feature = "metrics")]
-use crate::metrics::MetricsConfig;
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ApplicationConfig {
     pub common: CommonConfig,
-    pub auto_update: AutoUpdateConfig,
-    pub base_node: BaseNodeConfig,
-    pub peer_seeds: P2pPeerSeedsConfig,
-    #[cfg(feature = "metrics")]
-    pub metrics: MetricsConfig,
+    pub wallet: WalletConfig,
+    // pub auto_update: AutoUpdateConfig,
+    pub peer_seeds: PeerSeedsConfig,
 }
 
 impl ApplicationConfig {
     pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
         let mut config = Self {
             common: CommonConfig::load_from(&cfg)?,
-            auto_update: AutoUpdateConfig::load_from(&cfg)?,
-            peer_seeds: P2pPeerSeedsConfig::load_from(&cfg)?,
-            base_node: BaseNodeConfig::load_from(&cfg)?,
-            #[cfg(feature = "metrics")]
-            metrics: MetricsConfig::load_from(&cfg)?,
+            wallet: WalletConfig::load_from(&cfg)?,
+            peer_seeds: PeerSeedsConfig::load_from(&cfg)?,
         };
 
-        config.base_node.set_base_path(config.common.base_path());
+        config.wallet.set_base_path(config.common.base_path());
         Ok(config)
     }
 
     pub fn network(&self) -> Network {
-        self.base_node.network
+        self.wallet.network
     }
 }

@@ -38,7 +38,7 @@ use tari_comms_dht::DhtConfig;
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct P2pPeerSeedsConfig {
+pub struct PeerSeedsConfig {
     override_from: Option<String>,
     /// Unparsed peer seeds
     pub peer_seeds: Vec<String>,
@@ -55,7 +55,7 @@ pub struct P2pPeerSeedsConfig {
     pub dns_seeds_use_dnssec: bool,
 }
 
-impl Default for P2pPeerSeedsConfig {
+impl Default for PeerSeedsConfig {
     fn default() -> Self {
         Self {
             override_from: None,
@@ -67,7 +67,7 @@ impl Default for P2pPeerSeedsConfig {
     }
 }
 
-impl SubConfigPath for P2pPeerSeedsConfig {
+impl SubConfigPath for PeerSeedsConfig {
     fn main_key_prefix() -> &'static str {
         "p2p.seeds"
     }

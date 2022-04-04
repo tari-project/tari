@@ -51,6 +51,7 @@ use crate::{
     cli::Cli,
     utils::db::get_custom_base_node_peer_from_db,
     wallet_modes::{PeerConfig, WalletMode},
+    ApplicationConfig,
 };
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::init";
@@ -107,11 +108,11 @@ fn prompt_password(prompt: &str) -> Result<String, ExitError> {
 
 /// Allows the user to change the password of the wallet.
 pub async fn change_password(
-    config: WalletConfig,
+    config: &ApplicationConfig,
     arg_password: Option<String>,
     shutdown_signal: ShutdownSignal,
 ) -> Result<(), ExitError> {
-    let mut wallet = init_wallet(&config, arg_password, None, None, shutdown_signal).await?;
+    let mut wallet = init_wallet(config, arg_password, None, None, shutdown_signal).await?;
 
     let passphrase = prompt_password("New wallet password: ")?;
     let confirmed = prompt_password("Confirm new password: ")?;
@@ -140,13 +141,13 @@ pub async fn change_password(
 /// 2. The service peers defined in config they exist
 /// 3. The peer seeds defined in config
 pub async fn get_base_node_peer_config(
-    config: &WalletConfig,
+    config: &ApplicationConfig,
     wallet: &mut WalletSqlite,
 ) -> Result<PeerConfig, ExitError> {
     // custom
     let mut base_node_custom = get_custom_base_node_peer_from_db(wallet).await;
 
-    if let Some(custom) = config.custom_base_node.clone() {
+    if let Some(custom) = config.wallet.custom_base_node.clone() {
         match SeedPeer::from_str(&custom) {
             Ok(node) => {
                 base_node_custom = Some(Peer::from(node));
@@ -162,6 +163,7 @@ pub async fn get_base_node_peer_config(
 
     // config
     let base_node_peers = config
+        .wallet
         .base_node_service_peers
         .iter()
         .map(|s| SeedPeer::from_str(s))
@@ -171,7 +173,7 @@ pub async fn get_base_node_peer_config(
 
     // peer seeds
     let peer_seeds = config
-        .p2p
+        .peer_seeds
         .peer_seeds
         .iter()
         .map(|s| SeedPeer::from_str(s))
@@ -253,8 +255,7 @@ pub(crate) fn get_notify_script(cli: &Cli, config: &WalletConfig) -> Result<Opti
 
 /// Set up the app environment and state for use by the UI
 pub async fn init_wallet(
-    // config: &GlobalConfig,
-    config: &WalletConfig,
+    config: &ApplicationConfig,
     arg_password: Option<String>,
     seed_words_file_name: Option<PathBuf>,
     recovery_seed: Option<CipherSeed>,
@@ -262,20 +263,21 @@ pub async fn init_wallet(
 ) -> Result<WalletSqlite, ExitError> {
     fs::create_dir_all(
         &config
+            .wallet
             .db_file
             .parent()
             .expect("console_wallet_db_file cannot be set to a root directory"),
     )
     .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating Wallet folder. {}", e)))?;
-    fs::create_dir_all(&config.p2p.datastore_path)
+    fs::create_dir_all(&config.wallet.p2p.datastore_path)
         .map_err(|e| ExitError::new(ExitCode::WalletError, format!("Error creating peer db folder. {}", e)))?;
 
     debug!(target: LOG_TARGET, "Running Wallet database migrations");
 
     // test encryption by initializing with no passphrase...
-    let db_path = config.db_file.clone();
+    let db_path = &config.wallet.db_file;
 
-    let result = initialize_sqlite_database_backends(db_path.clone(), None, config.connection_manager_pool_size);
+    let result = initialize_sqlite_database_backends(db_path, None, config.wallet.connection_manager_pool_size);
     let (backends, wallet_encrypted) = match result {
         Ok(backends) => {
             // wallet is not encrypted
@@ -283,9 +285,9 @@ pub async fn init_wallet(
         },
         Err(WalletStorageError::NoPasswordError) => {
             // get supplied or prompt password
-            let passphrase = get_or_prompt_password(arg_password.clone(), config.password.clone())?;
+            let passphrase = get_or_prompt_password(arg_password.clone(), config.wallet.password.clone())?;
             let backends =
-                initialize_sqlite_database_backends(db_path, passphrase, config.connection_manager_pool_size)?;
+                initialize_sqlite_database_backends(db_path, passphrase, config.wallet.connection_manager_pool_size)?;
             (backends, true)
         },
         Err(e) => {
@@ -300,7 +302,7 @@ pub async fn init_wallet(
         "Databases Initialized. Wallet encrypted? {}.", wallet_encrypted
     );
 
-    let node_address = match config.public_address.clone() {
+    let node_address = match config.wallet.p2p.public_address.clone() {
         Some(addr) => addr,
         None => match wallet_db.get_node_address().await? {
             Some(addr) => addr,
@@ -346,7 +348,7 @@ pub async fn init_wallet(
             .await?;
     }
 
-    let transport_type = create_transport_type(&config.p2p);
+    let transport_type = create_transport_type(&config.wallet.p2p);
     let transport_type = match transport_type {
         Tor(mut tor_config) => {
             tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
@@ -360,7 +362,8 @@ pub async fn init_wallet(
     let mut wallet = Wallet::start(
         factories,
         transport_type,
-        config.clone(),
+        config.wallet.clone(),
+        config.peer_seeds.clone(),
         node_identity,
         wallet_db,
         transaction_backend,
