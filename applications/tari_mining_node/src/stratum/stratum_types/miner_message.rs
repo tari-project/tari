@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MinerMessage {
     // Height, Id, difficulty, HeaderBlob
-    ReceivedJob(u64, u64, u64, String),
+    ReceivedJob(u64, u64, u64, Vec<u8>),
     ResumeJob,
     StopJob,
     Shutdown,

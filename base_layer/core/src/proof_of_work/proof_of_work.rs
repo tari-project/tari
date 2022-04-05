@@ -21,8 +21,10 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
-    io::{self, Write},
+    io,
+    io::{ErrorKind, Read, Write},
 };
 
 use bytes::BufMut;
@@ -30,7 +32,7 @@ use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::Hex;
 
 use crate::{
-    consensus::{ConsensusEncoding, ConsensusEncodingSized},
+    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
     proof_of_work::PowAlgorithm,
 };
 
@@ -87,16 +89,21 @@ impl Display for ProofOfWork {
 
 impl ConsensusEncoding for ProofOfWork {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
-        writer.write_all(&[self.pow_algo as u8])?;
-        let mut written = 1;
+        let mut written = self.pow_algo.as_u64().consensus_encode(writer)?;
         written += self.pow_data.consensus_encode(writer)?;
         Ok(written)
     }
 }
 
-impl ConsensusEncodingSized for ProofOfWork {
-    fn consensus_encode_exact_size(&self) -> usize {
-        1 + self.pow_data.consensus_encode_exact_size()
+impl ConsensusDecoding for ProofOfWork {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let pow_algo = PowAlgorithm::try_from(u64::consensus_decode(reader)?)
+            .map_err(|e| io::Error::new(ErrorKind::InvalidInput, e))?;
+        let mut pow = ProofOfWork::new(pow_algo);
+        const MAX_POW_DATA_SIZE: usize = 5120;
+        let pow_data = <MaxSizeBytes<MAX_POW_DATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
+        pow.pow_data = pow_data.into();
+        Ok(pow)
     }
 }
 

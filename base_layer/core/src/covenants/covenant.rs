@@ -132,6 +132,9 @@ impl ConsensusEncodingSized for Covenant {
 impl ConsensusDecoding for Covenant {
     fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error> {
         let len = reader.read_varint::<usize>()?;
+        if len == 0 {
+            return Ok(Covenant::new());
+        };
         // Check the length varint - this may be maliciously misreported
         if len > MAX_COVENANT_BYTES {
             return Err(io::Error::new(

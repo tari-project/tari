@@ -25,27 +25,31 @@ use thiserror::Error;
 #[derive(Debug, Error, PartialEq)]
 pub enum InterfaceError {
     #[error("An error has occurred due to one of the parameters being null: `{0}`")]
-    Null(String),
+    NullError(String),
     #[error("An error has occurred due to conversion failing for: `{0}`")]
     Conversion(String),
     #[error("An error has occurred due to validation failing for: `{0}`")]
     InvalidHash(String),
     #[error("An error has occurred due to difficulty being too low for share: `{0}`")]
     LowDifficulty(String),
+    #[error("An error has occurred when checking the length of the allocated object")]
+    AllocationError,
+    #[error("An error because the supplied position was out of range")]
+    PositionInvalidError,
 }
 
 /// This struct is meant to hold an error for use by Miningcore. The error has an integer code and string
 /// message
 #[derive(Debug, Clone)]
-pub struct StratumTranscoderError {
+pub struct MiningHelperError {
     pub code: i32,
     pub message: String,
 }
 
-impl From<InterfaceError> for StratumTranscoderError {
+impl From<InterfaceError> for MiningHelperError {
     fn from(v: InterfaceError) -> Self {
         match v {
-            InterfaceError::Null(_) => Self {
+            InterfaceError::NullError(_) => Self {
                 code: 1,
                 message: format!("{:?}", v),
             },
@@ -61,13 +65,21 @@ impl From<InterfaceError> for StratumTranscoderError {
                 code: 4,
                 message: format!("{:?}", v),
             },
+            InterfaceError::AllocationError => Self {
+                code: 5,
+                message: format!("{:?}", v),
+            },
+            InterfaceError::PositionInvalidError => Self {
+                code: 6,
+                message: format!("{:?}", v),
+            },
         }
     }
 }
 
 /// This implementation maps the internal HexError to a set of StratumTranscoderErrors.
 /// The mapping is explicitly managed here.
-impl From<HexError> for StratumTranscoderError {
+impl From<HexError> for MiningHelperError {
     fn from(h: HexError) -> Self {
         match h {
             HexError::HexConversionError => Self {

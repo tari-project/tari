@@ -111,7 +111,8 @@ jobs:
         run: |
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
-          echo "TBN_EXT=" >> $GITHUB_ENV
+          echo "TBN_EXT=" >> $GITHUB_ENV          
+          echo "LIB_PRE=lib" >> $GITHUB_ENV
           echo "SHELL_EXT=.sh" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=linux" >> $GITHUB_ENV
           echo "TBN_DIST=/dist" >> $GITHUB_ENV
@@ -120,6 +121,12 @@ jobs:
         if: startsWith(runner.os,'macOS')
         run: |
           echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
+          echo "LIB_EXT=.dylib" >> $GITHUB_ENV
+
+      - name: Set environment variables - Ubuntu
+        if: startsWith(runner.os,'Linux')
+        run: |
+          echo "LIB_EXT=.so" >> $GITHUB_ENV
 
       - name: Set environment variables - Windows
         if: startsWith(runner.os,'Windows')
@@ -127,6 +134,8 @@ jobs:
         run: |
           echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
           echo "TBN_EXT=.exe" >> $GITHUB_ENV
+          echo "LIB_EXT=.dll" >> $GITHUB_ENV
+          echo "LIB_PRE=" >> $GITHUB_ENV
           echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TBN_DIST=\dist" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
@@ -141,13 +150,13 @@ jobs:
       - name: Compile launchpad GUI
         run: |
           cd applications/launchpad/gui-vue
-          npm ci
+          npm install
           npm run build
 
       - name: Compile collectibles GUI
         run: |
           cd applications/tari_collectibles/web-app
-          npm ci
+          npm install
           npm run build
 
       - name: Info - Pre-Compile Space Check for Nix
@@ -190,6 +199,7 @@ jobs:
           cp -v "$GITHUB_WORKSPACE/target/release/tari_validator_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_collectibles${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_launchpad${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/${LIB_PRE}tari_mining_helpers_ffi${LIB_EXT}" .
           cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
 
       - name: Build the macOS pkg
