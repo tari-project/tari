@@ -182,7 +182,7 @@ impl HotStuffMessageType {
 }
 
 impl TryFrom<u8> for HotStuffMessageType {
-    type Error = String;
+    type Error = ModelError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
@@ -191,7 +191,7 @@ impl TryFrom<u8> for HotStuffMessageType {
             3 => Ok(HotStuffMessageType::PreCommit),
             4 => Ok(HotStuffMessageType::Commit),
             255 => Ok(HotStuffMessageType::Genesis),
-            _ => Err("Not a value message type".to_string()),
+            other => Err(ModelError::OutOfRange(other)),
         }
     }
 }

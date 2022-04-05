@@ -38,4 +38,6 @@ pub enum ModelError {
     NotCommitteeDefinitionOutput,
     #[error("Committee output is missing committee of public keys")]
     CommitteeOutputMissingDefinition,
+    #[error("Value is out of the range")]
+    OutOfRange(u8),
 }
