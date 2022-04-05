@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{convert::TryFrom, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, fs, str::FromStr, sync::Arc};
 
 use futures::future::Either;
 use log::*;
@@ -39,7 +39,6 @@ use tari_comms::{
     peer_manager::NodeId,
     socks,
     tor,
-    tor::TorIdentity,
     transports::{predicate::FalsePredicate, SocksConfig},
     types::CommsPublicKey,
     utils::multiaddr::multiaddr_to_socketaddr,
@@ -49,7 +48,7 @@ use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
-use crate::identity_management::load_from_json;
+use crate::identity_management::{load_tor_identity, IdentityError};
 
 pub const LOG_TARGET: &str = "tari::application";
 
@@ -85,12 +84,27 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
             tor_proxy_bypass_addresses,
             tor_proxy_bypass_for_outbound_tcp,
         } => {
-            let identity = Some(&config.base_node_tor_identity_file)
-                .filter(|p| p.exists())
-                .and_then(|p| {
-                    // If this fails, we can just use another address
-                    load_from_json::<_, TorIdentity>(p).ok()
-                });
+            let identity = match load_tor_identity(&config.base_node_tor_identity_file) {
+                Ok(identity) => Some(identity),
+                Err(IdentityError::NotFound) => {
+                    info!(
+                        target: LOG_TARGET,
+                        "Tor identity not found at path {}, a new tor identity will be created",
+                        config.base_node_tor_identity_file.to_string_lossy()
+                    );
+                    None
+                },
+                Err(err) => {
+                    error!(target: LOG_TARGET, "{}", err);
+                    warn!(
+                        target: LOG_TARGET,
+                        "An error occurred when attempting to load the tor identity. A new tor identity will be \
+                         created."
+                    );
+                    let _ = fs::remove_file(&config.base_node_tor_identity_file);
+                    None
+                },
+            };
             debug!(
                 target: LOG_TARGET,
                 "Tor identity at path '{}' {:?}",
