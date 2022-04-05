@@ -1920,11 +1920,7 @@ fn input_malleability() {
 
 mod output_malleability {
     use tari_common_types::types::{ComSignature, RangeProof};
-    use tari_core::{
-        blocks::ChainBlock,
-        chain_storage::MmrRoots,
-        transactions::transaction_components::{TransactionOutput, TransactionOutputVersion},
-    };
+    use tari_core::transactions::transaction_components::TransactionOutputVersion;
     use tari_script::{Opcode, TariScript};
     use tari_utilities::hex::Hex;
 
@@ -1932,53 +1928,56 @@ mod output_malleability {
 
     #[test]
     fn version() {
-        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+        let block_mod_fn = |block: &mut Block| {
+            let output = &mut block.body.outputs_mut()[0];
             let mod_version = match output.version {
                 TransactionOutputVersion::V0 => TransactionOutputVersion::V1,
                 TransactionOutputVersion::V1 => TransactionOutputVersion::V0,
             };
             output.version = mod_version;
-        });
+        };
+        check_malleability(MerkleMountainRangeField::Output, block_mod_fn);
     }
 
     #[test]
     fn features() {
-        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+        let block_mod_fn = |block: &mut Block| {
+            let output = &mut block.body.outputs_mut()[0];
             output.features.maturity += 1;
-        });
+        };
+        check_malleability(MerkleMountainRangeField::Output, block_mod_fn);
     }
 
     #[test]
     fn commitment() {
-        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+        let block_mod_fn = |block: &mut Block| {
+            let output = &mut block.body.outputs_mut()[0];
             let mod_commitment = &output.commitment + &output.commitment;
             output.commitment = mod_commitment;
-        });
+        };
+        check_malleability(MerkleMountainRangeField::Output, block_mod_fn);
     }
 
     #[test]
     fn proof() {
-        let output_mod_fn = |output: &mut TransactionOutput| {
+        let block_mod_fn = |block: &mut Block| {
+            let output = &mut block.body.outputs_mut()[0];
             let mod_proof = RangeProof::from_hex(&(output.proof.to_hex() + "00")).unwrap();
             output.proof = mod_proof;
         };
-
-        let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
-
-        // bulletproofs are included in witness mmr
-        assert_ne!(orig_block.header().witness_mr, modded_root.witness_mr);
-        mod_block.header.witness_mr = modded_root.witness_mr;
-        assert_ne!(orig_block.block().hash(), mod_block.hash());
+        check_malleability(MerkleMountainRangeField::Witness, block_mod_fn);
     }
 
     #[test]
     fn script() {
-        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+        let block_mod_fn = |block: &mut Block| {
+            let output = &mut block.body.outputs_mut()[0];
             let mut script_bytes = output.script.as_bytes();
             Opcode::PushZero.to_bytes(&mut script_bytes);
             let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
             output.script = mod_script;
-        });
+        };
+        check_malleability(MerkleMountainRangeField::Output, block_mod_fn);
     }
 
     // #[test]
@@ -2001,17 +2000,11 @@ mod output_malleability {
 
     #[test]
     fn metadata_signature() {
-        let output_mod_fn = |output: &mut TransactionOutput| {
-            let mod_sig = ComSignature::default();
-            assert_ne!(mod_sig, output.metadata_signature);
+        let block_mod_fn = |block: &mut Block| {
+            let output = &mut block.body.outputs_mut()[0];
             output.metadata_signature = ComSignature::default();
         };
-
-        let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
-
-        assert_ne!(orig_block.header().witness_mr, modded_root.witness_mr);
-        mod_block.header.witness_mr = modded_root.witness_mr;
-        assert_ne!(orig_block.block().hash(), mod_block.hash());
+        check_malleability(MerkleMountainRangeField::Witness, block_mod_fn);
     }
 
     // #[test]
@@ -2022,18 +2015,12 @@ mod output_malleability {
     // });
     // }
 
-    fn assert_output_is_not_malleable(output_mod_fn: impl Fn(&mut TransactionOutput) -> ()) {
-        let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
-
-        // check that we can detect the alteration
-        assert_ne!(orig_block.header().output_mr, modded_root.output_mr);
-        mod_block.header.output_mr = modded_root.output_mr;
-        assert_ne!(orig_block.block().hash(), mod_block.hash());
+    enum MerkleMountainRangeField {
+        Output,
+        Witness,
     }
 
-    fn create_block_with_altered_output(
-        output_mod_fn: impl Fn(&mut TransactionOutput),
-    ) -> (ChainBlock, Block, MmrRoots) {
+    fn check_malleability(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block) -> ()) {
         // create a blockchain with a couple of valid blocks
         let mut blockchain = TestBlockchain::with_genesis("GB");
         let blocks = blockchain.builder();
@@ -2054,17 +2041,27 @@ mod output_malleability {
 
         // create an altered version of the last block, using the provided modification function
         let mut mod_block = block.block().clone();
-        let mod_output = &mut mod_block.body.outputs_mut()[0];
-        output_mod_fn(mod_output);
+        block_mod_fn(&mut mod_block);
 
         // calculate the metadata for the modified block
         blockchain
             .store()
             .rewind_to_height(mod_block.header.height - 1)
             .unwrap();
-        let (mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
+        let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
 
-        (block, mod_block, modded_root)
+        match field {
+            MerkleMountainRangeField::Output => {
+                assert_ne!(block.header().output_mr, modded_root.output_mr);
+                mod_block.header.output_mr = modded_root.output_mr;
+            },
+            MerkleMountainRangeField::Witness => {
+                assert_ne!(block.header().witness_mr, modded_root.witness_mr);
+                mod_block.header.witness_mr = modded_root.witness_mr;
+            },
+        }
+
+        assert_ne!(block.block().hash(), mod_block.hash());
     }
 }
 
