@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{clone::Clone, fs, io, os, path::Path, sync::Arc};
+use std::{clone::Clone, fs, io, path::Path, sync::Arc};
 
 use log::*;
 use rand::rngs::OsRng;
@@ -234,7 +234,7 @@ fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
 
 #[cfg(target_family = "unix")]
 fn set_permissions<P: AsRef<Path>>(path: P, new_perms: u32) -> io::Result<()> {
-    use os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::PermissionsExt;
     let metadata = fs::metadata(&path)?;
     let mut perms = metadata.permissions();
     perms.set_mode(new_perms);
@@ -250,7 +250,7 @@ fn set_permissions<P: AsRef<Path>>(_: P, _: u32) -> io::Result<()> {
 
 #[cfg(target_family = "unix")]
 fn has_permissions<P: AsRef<Path>>(path: P, perms: u32) -> io::Result<bool> {
-    use os::unix::fs::PermissionsExt;
+    use std::os::unix::fs::PermissionsExt;
     let metadata = fs::metadata(path)?;
     Ok(metadata.permissions().mode() == perms)
 }
