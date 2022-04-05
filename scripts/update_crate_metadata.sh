@@ -44,7 +44,7 @@ function update_versions {
    base_layer/tari_mining_helpers_ffi
    common
    common_sqlite
-   comms
+   comms/core
    comms/dht
    comms/rpc_macros
    applications/launchpad/backend

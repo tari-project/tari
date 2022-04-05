@@ -29,10 +29,12 @@ use tari_comms::types::CommsPublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{models::StateRoot, services::WalletClient, DigitalAssetError};
 
+type Inner = grpc::wallet_client::WalletClient<tonic::transport::Channel>;
+
 #[derive(Clone)]
 pub struct GrpcWalletClient {
     endpoint: SocketAddr,
-    inner: Option<grpc::wallet_client::WalletClient<tonic::transport::Channel>>,
+    inner: Option<Inner>,
 }
 
 impl GrpcWalletClient {
@@ -40,9 +42,15 @@ impl GrpcWalletClient {
         Self { endpoint, inner: None }
     }
 
-    pub async fn connect(&mut self) -> Result<(), DigitalAssetError> {
-        self.inner = Some(grpc::wallet_client::WalletClient::connect(format!("http://{}", self.endpoint)).await?);
-        Ok(())
+    pub async fn connection(&mut self) -> Result<&mut Inner, DigitalAssetError> {
+        if self.inner.is_none() {
+            let url = format!("http://{}", self.endpoint);
+            let inner = Inner::connect(url).await?;
+            self.inner = Some(inner);
+        }
+        self.inner
+            .as_mut()
+            .ok_or_else(|| DigitalAssetError::FatalError("no connection".into()))
     }
 }
 
@@ -55,13 +63,7 @@ impl WalletClient for GrpcWalletClient {
         state_root: &StateRoot,
         next_committee: Vec<CommsPublicKey>,
     ) -> Result<(), DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.connection().await?;
 
         let request = CreateFollowOnAssetCheckpointRequest {
             asset_public_key: asset_public_key.as_bytes().to_vec(),

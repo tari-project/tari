@@ -20,21 +20,24 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{clone::Clone, fs, path::Path, str::FromStr, string::ToString, sync::Arc};
+use std::{clone::Clone, fs, io, path::Path, sync::Arc};
 
 use log::*;
 use rand::rngs::OsRng;
 use serde::{de::DeserializeOwned, Serialize};
 use tari_common::{
-    configuration::{bootstrap::prompt, utils::get_local_ip},
+    configuration::bootstrap::prompt,
     exit_codes::{ExitCode, ExitError},
 };
-use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{multiaddr::Multiaddr, peer_manager::PeerFeatures, tor::TorIdentity, NodeIdentity};
 use tari_crypto::tari_utilities::hex::Hex;
 
 pub const LOG_TARGET: &str = "tari_application";
 
+const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
+
 /// Loads the node identity, or creates a new one if the --create-id flag was specified
+///
 /// ## Parameters
 /// `identity_file` - Reference to file path
 /// `public_address` - Network address of the base node
@@ -49,7 +52,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
     create_id: bool,
     peer_features: PeerFeatures,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
-    match load_identity(&identity_file) {
+    match load_node_identity(&identity_file) {
         Ok(id) => match public_address {
             Some(public_address) => {
                 id.set_public_address(public_address.clone());
@@ -57,6 +60,14 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             },
             None => Ok(Arc::new(id)),
         },
+        Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
+            ExitCode::ConfigError,
+            format!(
+                "{path} has incorrect permissions. You can update the identity file with the correct permissions \
+                 using 'chmod 600 {path}', or delete the identity file and re-run the node with the --create-id flag.",
+                path = identity_file.as_ref().to_string_lossy()
+            ),
+        )),
         Err(e) => {
             debug!(target: LOG_TARGET, "Failed to load node identity: {}", e);
             if !create_id {
@@ -83,7 +94,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 
             debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
-            match create_new_identity(&identity_file, public_address.clone(), peer_features) {
+            match create_new_node_identity(&identity_file, public_address.clone(), peer_features) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -108,33 +119,17 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 
 /// Tries to construct a node identity by loading the secret key and other metadata from disk and calculating the
 /// missing fields from that information.
+///
 /// ## Parameters
 /// `path` - Reference to a path
 ///
 /// ## Returns
 /// Result containing a NodeIdentity on success, string indicates the reason on failure
-pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
-    if !path.as_ref().exists() {
-        return Err(format!(
-            "Identity file, {}, does not exist.",
-            path.as_ref().to_str().unwrap_or("?"),
-        ));
-    }
+fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityError> {
+    check_identity_file(&path)?;
 
-    let id_str = fs::read_to_string(path.as_ref()).map_err(|e| {
-        format!(
-            "The node identity file, {}, could not be read. {}",
-            path.as_ref().to_str().unwrap_or("?"),
-            e
-        )
-    })?;
-    let id = json5::from_str::<NodeIdentity>(&id_str).map_err(|e| {
-        format!(
-            "The node identity file, {}, has an error. {}",
-            path.as_ref().to_str().unwrap_or("?"),
-            e
-        )
-    })?;
+    let id_str = fs::read_to_string(path.as_ref())?;
+    let id = json5::from_str::<NodeIdentity>(&id_str)?;
     // Check whether the previous version has a signature and sign if necessary
     if !id.is_signed() {
         id.sign();
@@ -146,7 +141,9 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
     );
     Ok(id)
 }
+
 /// Create a new node id and save it to disk
+///
 /// ## Parameters
 /// `path` - Reference to path to save the file
 /// `public_addr` - Network address of the base node
@@ -154,69 +151,127 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
 ///
 /// ## Returns
 /// Result containing the node identity, string will indicate reason on error
-pub fn create_new_identity<P: AsRef<Path>>(
+fn create_new_node_identity<P: AsRef<Path>>(
     path: P,
     public_addr: Option<Multiaddr>,
     features: PeerFeatures,
-) -> Result<NodeIdentity, String> {
+) -> Result<NodeIdentity, IdentityError> {
     let node_identity = NodeIdentity::random(
         &mut OsRng,
-        match public_addr {
-            Some(public_addr) => public_addr,
-            None => format!("{}/tcp/18141", get_local_ip().ok_or("Can't get local ip address")?)
-                .parse()
-                .map_err(|e: <Multiaddr as FromStr>::Err| e.to_string())?,
-        },
+        public_addr.ok_or(IdentityError::NodeIdentityHasNoAddress)?,
         features,
     );
-    save_as_json(path, &node_identity)?;
+    save_as_json(&path, &node_identity)?;
     Ok(node_identity)
 }
 
 /// Loads the node identity from json at the given path
+///
 /// ## Parameters
 /// `path` - Path to file from which to load the node identity
 ///
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, String> {
-    if !path.as_ref().exists() {
-        return Err(format!(
-            "Identity file, {}, does not exist.",
-            path.as_ref().to_str().unwrap()
-        ));
-    }
-
-    let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
-    let object = json5::from_str(&contents).map_err(|err| err.to_string())?;
+pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, IdentityError> {
+    let contents = fs::read_to_string(path)?;
+    let object = json5::from_str(&contents)?;
     Ok(object)
 }
 
-/// Saves the node identity as json at a given path, creating it if it does not already exist
+/// Attempts to load the TorIdentity from the JSON file at the given path.
+///
+/// ## Parameters
+/// `path` - Path to the `TorIdentity` JSON file
+///
+/// ## Returns
+/// The deserialized `TorIdentity` struct. Returns an error if the path does not exist,  
+pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<TorIdentity, IdentityError> {
+    check_identity_file(&path)?;
+    let identity = load_from_json(path)?;
+    Ok(identity)
+}
+
+/// Saves the identity as json at a given path with 0600 file permissions (UNIX-only), creating it if it does not
+/// already exist.
+///
 /// ## Parameters
 /// `path` - Path to save the file
 /// `object` - Data to be saved
 ///
 /// ## Returns
 /// Result to check if successful or not, string will indicate reason on error
-pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), String> {
-    let json = json5::to_string(object).map_err(|err| err.to_string())?;
+pub fn save_as_json<P: AsRef<Path>, T: Serialize>(path: P, object: &T) -> Result<(), IdentityError> {
+    let json = json5::to_string(object)?;
     if let Some(p) = path.as_ref().parent() {
         if !p.exists() {
-            fs::create_dir_all(p).map_err(|e| format!("Could not save json to data folder. {}", e))?;
+            fs::create_dir_all(p)?;
         }
     }
     let json_with_comment = format!(
         "// This file is generated by the Tari base node. Any changes will be overwritten.\n{}",
         json
     );
-    fs::write(path.as_ref(), json_with_comment.as_bytes()).map_err(|e| {
-        format!(
-            "Error writing json file, {}. {}",
-            path.as_ref().to_str().unwrap_or("<invalid UTF-8>"),
-            e
-        )
-    })?;
-
+    fs::write(path.as_ref(), json_with_comment.as_bytes())?;
+    set_permissions(path, REQUIRED_IDENTITY_PERMS)?;
     Ok(())
+}
+
+/// Check that the given path exists, is a file and has the correct file permissions (mac/linux only)
+fn check_identity_file<P: AsRef<Path>>(path: P) -> Result<(), IdentityError> {
+    if !path.as_ref().exists() {
+        return Err(IdentityError::NotFound);
+    }
+
+    if !path.as_ref().metadata()?.is_file() {
+        return Err(IdentityError::NotFile);
+    }
+
+    if !has_permissions(&path, REQUIRED_IDENTITY_PERMS)? {
+        return Err(IdentityError::InvalidPermissions);
+    }
+    Ok(())
+}
+
+#[cfg(target_family = "unix")]
+fn set_permissions<P: AsRef<Path>>(path: P, new_perms: u32) -> io::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(&path)?;
+    let mut perms = metadata.permissions();
+    perms.set_mode(new_perms);
+    fs::set_permissions(path, perms)?;
+    Ok(())
+}
+
+#[cfg(target_family = "windows")]
+fn set_permissions<P: AsRef<Path>>(_: P, _: u32) -> io::Result<()> {
+    // Windows permissions are very different and are not supported
+    Ok(())
+}
+
+#[cfg(target_family = "unix")]
+fn has_permissions<P: AsRef<Path>>(path: P, perms: u32) -> io::Result<bool> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(path)?;
+    Ok(metadata.permissions().mode() == perms)
+}
+
+#[cfg(target_family = "windows")]
+fn has_permissions<P: AsRef<Path>>(_: P, _: u32) -> io::Result<bool> {
+    Ok(true)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum IdentityError {
+    #[error("Identity file has invalid permissions")]
+    InvalidPermissions,
+    #[error("Identity file was not found")]
+    NotFound,
+    #[error("Path is not a file")]
+    NotFile,
+    #[error("NodeIdentity has no public address")]
+    NodeIdentityHasNoAddress,
+    #[error("Malformed identity file: {0}")]
+    JsonError(#[from] json5::Error),
+    #[error(transparent)]
+    Io(#[from] io::Error),
 }

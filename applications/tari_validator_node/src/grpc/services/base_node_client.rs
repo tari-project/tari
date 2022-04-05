@@ -35,10 +35,12 @@ use tari_dan_core::{
 
 const LOG_TARGET: &str = "tari::validator_node::app";
 
+type Inner = grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>;
+
 #[derive(Clone)]
 pub struct GrpcBaseNodeClient {
     endpoint: SocketAddr,
-    inner: Option<grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>>,
+    inner: Option<Inner>,
 }
 
 impl GrpcBaseNodeClient {
@@ -46,21 +48,21 @@ impl GrpcBaseNodeClient {
         Self { endpoint, inner: None }
     }
 
-    pub async fn connect(&mut self) -> Result<(), DigitalAssetError> {
-        self.inner = Some(grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", self.endpoint)).await?);
-        Ok(())
+    pub async fn connection(&mut self) -> Result<&mut Inner, DigitalAssetError> {
+        if self.inner.is_none() {
+            let url = format!("http://{}", self.endpoint);
+            let inner = Inner::connect(url).await?;
+            self.inner = Some(inner);
+        }
+        self.inner
+            .as_mut()
+            .ok_or_else(|| DigitalAssetError::FatalError("no connection".into()))
     }
 }
 #[async_trait]
 impl BaseNodeClient for GrpcBaseNodeClient {
     async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.connection().await?;
         let request = grpc::Empty {};
         let result = inner.get_tip_info(request).await?.into_inner();
         Ok(BaseLayerMetadata {
@@ -74,13 +76,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         asset_public_key: PublicKey,
         checkpoint_unique_id: Vec<u8>,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.connection().await?;
         let request = grpc::GetTokensRequest {
             asset_public_key: asset_public_key.as_bytes().to_vec(),
             unique_ids: vec![checkpoint_unique_id],
@@ -140,13 +136,7 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         &mut self,
         dan_node_public_key: PublicKey,
     ) -> Result<Vec<(AssetDefinition, u64)>, DigitalAssetError> {
-        let inner = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.connection().await?;
         // TODO: probably should use output mmr indexes here
         let request = grpc::ListAssetRegistrationsRequest { offset: 0, count: 100 };
         let mut result = inner.list_asset_registrations(request).await?.into_inner();
@@ -198,18 +188,12 @@ impl BaseNodeClient for GrpcBaseNodeClient {
         &mut self,
         asset_public_key: PublicKey,
     ) -> Result<Option<BaseLayerOutput>, DigitalAssetError> {
-        let conn = match self.inner.as_mut() {
-            Some(i) => i,
-            None => {
-                self.connect().await?;
-                self.inner.as_mut().unwrap()
-            },
-        };
+        let inner = self.connection().await?;
 
         let req = grpc::GetAssetMetadataRequest {
             asset_public_key: asset_public_key.to_vec(),
         };
-        let output = conn.get_asset_metadata(req).await.unwrap().into_inner();
+        let output = inner.get_asset_metadata(req).await.unwrap().into_inner();
 
         let mined_height = output.mined_height;
         let output = output
