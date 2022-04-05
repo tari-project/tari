@@ -34,14 +34,14 @@ use crate::{
     services::infrastructure_services::NodeAddressable,
 };
 
-pub trait ValidatorNodeClientFactory {
+pub trait ValidatorNodeClientFactory: Send + Sync {
     type Addr: NodeAddressable;
-    type Client: ValidatorNodeRpcClient + Sync + Send;
+    type Client: ValidatorNodeRpcClient;
     fn create_client(&self, address: &Self::Addr) -> Self::Client;
 }
 
 #[async_trait]
-pub trait ValidatorNodeRpcClient {
+pub trait ValidatorNodeRpcClient: Send + Sync {
     async fn invoke_read_method(
         &mut self,
         asset_public_key: &PublicKey,
