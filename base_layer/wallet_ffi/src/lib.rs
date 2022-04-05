@@ -98,6 +98,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use rand::rngs::OsRng;
+use tari_common::configuration::CommsTransportType;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -3668,13 +3669,13 @@ pub unsafe extern "C" fn wallet_create(
 
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
     let mut comms_config = (*config).clone();
-    comms_config.transport_type = match comms_config.transport_type {
-        Tor(mut tor_config) => {
+    comms_config.transport_type = match comms_config.transport.transport_type {
+        CommsTransportType::Tor(mut tor_config) => {
             tor_config.identity = match runtime.block_on(wallet_database.get_tor_id()) {
                 Ok(Some(v)) => Some(Box::new(v)),
                 _ => None,
             };
-            Tor(tor_config)
+            TransportType::Tor(tor_config)
         },
         _ => comms_config.transport_type,
     };

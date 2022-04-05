@@ -105,7 +105,7 @@ use tari_app_utilities::{consts, identity_management::setup_node_identity, utili
 #[cfg(all(unix, feature = "libtor"))]
 use tari_common::CommsTransport;
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, CommsTransportType},
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
@@ -182,13 +182,18 @@ fn main_inner() -> Result<(), ExitError> {
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
-    if app_config.base_node.use_libtor && matches!(config.comms_transport, CommsTransport::TorHiddenService { .. }) {
+    if app_config.base_node.use_libtor &&
+        matches!(
+            app_config.base_node.p2p.transport.transport_type,
+            CommsTransportType::Tor
+        )
+    {
         let tor = Tor::initialize()?;
-        config.comms_transport = tor.update_comms_transport(config.comms_transport)?;
+        tor.update_comms_transport(&mut app_config.config.base_node.p2p.transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,
-            "Updated Tor comms transport: {:?}", config.comms_transport
+            "Updated Tor comms transport: {:?}", app_config.base_node.p2p.transport
         );
     }
 

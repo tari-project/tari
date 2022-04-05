@@ -43,7 +43,6 @@ pub mod loader;
 mod network;
 mod tor_control_authentication;
 pub use network::Network;
-mod collectibles_config;
 mod common_config;
 mod comms_transport;
 pub mod name_server;
@@ -53,7 +52,6 @@ pub mod utils;
 
 use std::{iter::FromIterator, net::SocketAddr};
 
-pub use collectibles_config::CollectiblesConfig;
 pub use common_config::CommonConfig;
 pub use comms_transport::{CommsTransport, CommsTransportType, Socks5Config, TcpTransportConfig, TorConfig};
 use multiaddr::{Error, Multiaddr, Protocol};

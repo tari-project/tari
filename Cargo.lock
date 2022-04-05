@@ -6650,6 +6650,7 @@ name = "tari_collectibles"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "clap 3.1.8",
  "derivative",
  "diesel",
  "diesel_migrations",
@@ -7473,6 +7474,7 @@ dependencies = [
  "openssl",
  "rand 0.8.5",
  "security-framework",
+ "tari_common",
  "tari_common_types",
  "tari_comms",
  "tari_comms_dht",

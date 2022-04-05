@@ -27,7 +27,6 @@ use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
 
 #[derive(Debug, Clone)]
 pub enum TransportType {
-    // TODO: Add none
     /// Use a memory transport. This transport recognises /memory addresses primarily used for local testing.
     Memory { listener_address: Multiaddr },
     /// Use a TcpTransport. This transport can connect to TCP/IP and DNS addresses.

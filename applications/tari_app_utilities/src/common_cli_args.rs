@@ -76,6 +76,10 @@ impl CommonCliArgs {
         }
     }
 
+    pub fn get_base_path(&self) -> PathBuf {
+        PathBuf::from(&self.base_path)
+    }
+
     pub fn log_config_path(&self, application_name: &str) -> PathBuf {
         if let Some(ref log_config) = self.log_config {
             let path = PathBuf::from(log_config);
@@ -103,7 +107,6 @@ impl CommonCliArgs {
 }
 
 mod defaults {
-
     use tari_common::dir_utils;
 
     const DEFAULT_CONFIG: &str = "config/config.toml";

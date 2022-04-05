@@ -108,7 +108,7 @@ pub fn create_transport_type(config: &P2pConfig) -> TransportType {
             );
 
             TransportType::Tor(TorConfig {
-                control_server_addr: tor_config.control_address.clone(),
+                control_server_addr: tor_config.control_address,
                 control_server_auth: {
                     match tor_config.control_auth.clone() {
                         TorControlAuthentication::None => tor::Authentication::None,
@@ -120,7 +120,7 @@ pub fn create_transport_type(config: &P2pConfig) -> TransportType {
                 socks_address_override: tor_config.socks_address_override,
                 socks_auth: socks::Authentication::None,
                 tor_proxy_bypass_addresses: tor_config.proxy_bypass_addresses.clone(),
-                tor_proxy_bypass_for_outbound_tcp: tor_config.proxy_bypass_for_outbound_tcp.clone(),
+                tor_proxy_bypass_for_outbound_tcp: tor_config.proxy_bypass_for_outbound_tcp,
             })
         },
         Socks5 => {

@@ -198,7 +198,7 @@ impl HiddenServiceController {
                 target: LOG_TARGET,
                 "Attempting to reestablish control port connection at '{}'", self.control_server_addr
             );
-            let connect_fut = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx.clone());
+            let connect_fut = TorControlPortClient::connect(self.control_server_addr, event_tx.clone());
             pin_mut!(connect_fut);
             let either = future::select(connect_fut, signal.take().expect("signal was None")).await;
             match either {
@@ -239,7 +239,7 @@ impl HiddenServiceController {
         }
 
         let (event_tx, _) = broadcast::channel(20);
-        let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx)
+        let client = TorControlPortClient::connect(self.control_server_addr, event_tx)
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "Tor client error: {:?}", err);
@@ -268,7 +268,7 @@ impl HiddenServiceController {
                     target: LOG_TARGET,
                     "Using SOCKS override '{}' for tor SOCKS proxy", addr
                 );
-                Ok(addr.clone())
+                Ok(*addr)
             },
             None => {
                 // Get configured SOCK5 address from Tor
