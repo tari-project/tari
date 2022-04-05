@@ -26,6 +26,8 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    io,
+    io::{ErrorKind, Read, Write},
 };
 
 use blake2::Digest;
@@ -40,6 +42,7 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
     common::hash_writer::HashWriter,
+    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
     covenants::Covenant,
     transactions::{
         transaction_components,
@@ -427,6 +430,27 @@ impl Ord for TransactionInput {
     }
 }
 
+impl ConsensusEncoding for TransactionInput {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.spent_output.consensus_encode(writer)?;
+        written += self.input_data.consensus_encode(writer)?;
+        written += self.script_signature.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for TransactionInput {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = TransactionInputVersion::consensus_decode(reader)?;
+        let spent_output = SpentOutput::consensus_decode(reader)?;
+        let input_data = ExecutionStack::consensus_decode(reader)?;
+        let script_signature = ComSignature::consensus_decode(reader)?;
+        let input = TransactionInput::new(version, spent_output, input_data, script_signature);
+        Ok(input)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum SpentOutput {
@@ -440,4 +464,70 @@ pub enum SpentOutput {
         /// The transaction covenant
         covenant: Covenant,
     },
+}
+
+impl SpentOutput {
+    pub fn get_type(&self) -> u8 {
+        match self {
+            SpentOutput::OutputHash(_) => 0,
+            SpentOutput::OutputData { .. } => 1,
+        }
+    }
+}
+
+impl ConsensusEncoding for SpentOutput {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        writer.write_all(&[self.get_type()])?;
+        let written = match self {
+            SpentOutput::OutputHash(hash) => hash.consensus_encode(writer)?,
+            SpentOutput::OutputData {
+                version,
+                features,
+                commitment,
+                script,
+                sender_offset_public_key,
+                covenant,
+            } => {
+                let mut write = version.consensus_encode(writer)?;
+                write += features.consensus_encode(writer)?;
+                write += commitment.consensus_encode(writer)?;
+                write += script.consensus_encode(writer)?;
+                write += sender_offset_public_key.consensus_encode(writer)?;
+                write += covenant.consensus_encode(writer)?;
+                write
+            },
+        };
+        Ok(written + 1)
+    }
+}
+
+impl ConsensusDecoding for SpentOutput {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        match buf[0] {
+            0 => {
+                const MAX_HASH_SIZE: usize = 32;
+                let hash = <MaxSizeBytes<MAX_HASH_SIZE> as ConsensusDecoding>::consensus_decode(reader)?.into();
+                Ok(SpentOutput::OutputHash(hash))
+            },
+            1 => {
+                let version = TransactionOutputVersion::consensus_decode(reader)?;
+                let features = OutputFeatures::consensus_decode(reader)?;
+                let commitment = Commitment::consensus_decode(reader)?;
+                let script = TariScript::consensus_decode(reader)?;
+                let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
+                let covenant = Covenant::consensus_decode(reader)?;
+                Ok(SpentOutput::OutputData {
+                    version,
+                    features,
+                    commitment,
+                    script,
+                    sender_offset_public_key,
+                    covenant,
+                })
+            },
+            _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),
+        }
+    }
 }

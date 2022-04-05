@@ -117,9 +117,6 @@ proxy_host_address = "/ip4/mm_proxy/tcp/7878"
 
 [merge_mining_proxy]
 
-[stratum_transcoder]
-transcoder_host_address = "127.0.0.1:7879"
-
 [validator_node]
 committee = ["2ea0df3059caf4411624d6bf5b9c02238d607d2798c586b3e6c2a054da3f205a"] # cannot be of zero size
 phase_timeout = 30

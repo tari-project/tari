@@ -7186,9 +7186,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "tari_mining_helper_ffi"
+version = "0.30.2"
+dependencies = [
+ "hex",
+ "libc",
+ "serde 1.0.136",
+ "serde_json",
+ "tari_common",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_utilities",
+ "thiserror",
+]
+
+[[package]]
 name = "tari_mining_node"
 version = "0.30.2"
 dependencies = [
+ "base64 0.13.0",
  "bufstream",
  "chrono",
  "crossbeam",
@@ -7328,55 +7345,6 @@ dependencies = [
  "serde_derive",
  "tari_utilities",
  "thiserror",
-]
-
-[[package]]
-name = "tari_stratum_ffi"
-version = "0.30.2"
-dependencies = [
- "hex",
- "libc",
- "serde 1.0.136",
- "serde_json",
- "tari_common",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_utilities",
- "thiserror",
-]
-
-[[package]]
-name = "tari_stratum_transcoder"
-version = "0.30.2"
-dependencies = [
- "bincode",
- "bytes 0.5.6",
- "chrono",
- "config 0.9.3",
- "env_logger 0.7.1",
- "futures 0.3.21",
- "hex",
- "hyper",
- "jsonrpc",
- "log",
- "rand 0.7.3",
- "reqwest",
- "serde 1.0.136",
- "serde_json",
- "structopt",
- "tari_app_grpc",
- "tari_common",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_utilities",
- "thiserror",
- "tokio 1.17.0",
- "tonic",
- "tonic-build",
- "tracing",
- "url 2.2.2",
 ]
 
 [[package]]

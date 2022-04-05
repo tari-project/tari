@@ -8,7 +8,6 @@ A number of applications have been developed by the Tari community to implement 
 - Tari Console Wallet
 - Tari Mining Node
 - Tari Merge Mining Proxy
-- Tari Stratum Transcoder
 - Tari Aurora wallets for Android and iOS
 
 Only the first four applications will be discussed in this README (see [wallet-android](https://github.com/tari-project/wallet-android) and [wallet-ios](https://github.com/tari-project/wallet-ios) for mobile wallets' repos).
@@ -413,7 +412,6 @@ In order to perform pooled SHA3 mining with Tari, the following applications are
 * For a pool operator:
   - A Tari Base Node [_to supply blockchain metadata information_];
   - A Tari Console Wallet [_to collect the Tari block rewards (coinbase transactions)_];
-  - A Tari Stratum Transocder [_to translate and route requests by the pool to the Tari Base Node and the Tari Console Wallet_];
   - Miningcore [_pool software supporting various cryptocurrencies, configured for Tari_]
 
 * For a miner:
@@ -422,7 +420,7 @@ In order to perform pooled SHA3 mining with Tari, the following applications are
 
 #### Runtime prerequisites
 
-The Tari Base Node, Tari Console Wallet, Tari Stratum Transcoder and Tari Mining Node can all run in the same directory. By performing the
+The Tari Base Node, Tari Console Wallet and Tari Mining Node can all run in the same directory. By performing the
 default installation as described in [Installing using binaries](#installing-using-binaries), all these applications
 will be available.
 
@@ -449,14 +447,6 @@ transport = "tor"
 allow_test_addresses = false
 grpc_enabled = true
 grpc_base_node_address = "127.0.0.1:18142"
-```
-
-For Tari Stratum Transcoder:
-```
-[stratum_transcoder]
-
-# Address of the tari_stratum_transcoder application
-transcoder_host_address = "127.0.0.1:7879"
 ```
 
 For MiningCore:
@@ -568,7 +558,6 @@ and performing mining:
       - Linux/OSX: As per [Runtime links](#runtime-links).
       - Windows: As per [Runtime links](#runtime-links) or `Start Console Wallet` menu item or
     `start_tari_console_wallet` shortcut in the Tari installation folder.
-    - Tari Stratum Transcoder
     - MiningCore
   * Miners:
     - Tari Mining Node:
