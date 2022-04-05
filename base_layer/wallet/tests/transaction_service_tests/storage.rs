@@ -70,7 +70,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let input = create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
-        TestParams::new(),
+        &TestParams::new(),
         MicroTari::from(100_000),
     );
     let constants = create_consensus_constants(0);

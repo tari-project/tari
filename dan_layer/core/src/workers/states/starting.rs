@@ -94,7 +94,7 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
         );
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
-        let _ = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
+        let _chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
 
         Ok(ConsensusWorkerStateEvent::Initialized)
     }

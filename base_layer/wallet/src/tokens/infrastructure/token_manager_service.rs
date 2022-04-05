@@ -65,7 +65,7 @@ impl<T: OutputManagerBackend + 'static> TokenManagerService<T> {
                         warn!(target: LOG_TARGET, "Error handling request: {:?}", e);
                         e
                     });
-                    let _ = reply_tx.send(response).map_err(|e| {
+                    let _result = reply_tx.send(response).map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e
                     });

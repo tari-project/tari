@@ -12,7 +12,7 @@ pub struct ExitError {
 }
 
 impl ExitError {
-    pub fn new(exit_code: ExitCode, details: impl ToString) -> Self {
+    pub fn new(exit_code: ExitCode, details: &impl ToString) -> Self {
         let details = Some(details.to_string());
         Self { exit_code, details }
     }
@@ -36,7 +36,7 @@ impl fmt::Display for ExitError {
 
 impl From<anyhow::Error> for ExitError {
     fn from(err: anyhow::Error) -> Self {
-        ExitError::new(ExitCode::UnknownError, err)
+        ExitError::new(ExitCode::UnknownError, &err)
     }
 }
 
@@ -49,7 +49,7 @@ tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050
 
 impl ExitCode {
     pub fn hint(&self) -> Option<&str> {
-        use ExitCode::*;
+        use ExitCode::TorOffline;
         match self {
             TorOffline => Some(TOR_HINT),
             _ => None,
@@ -100,24 +100,24 @@ impl From<super::ConfigError> for ExitError {
     fn from(err: super::ConfigError) -> Self {
         // TODO: Move it out
         // error!(target: LOG_TARGET, "{}", err);
-        Self::new(ExitCode::ConfigError, err)
+        Self::new(ExitCode::ConfigError, &err)
     }
 }
 
 impl From<crate::ConfigurationError> for ExitError {
     fn from(err: crate::ConfigurationError) -> Self {
-        Self::new(ExitCode::ConfigError, err)
+        Self::new(ExitCode::ConfigError, &err)
     }
 }
 
 impl From<multiaddr::Error> for ExitError {
     fn from(err: multiaddr::Error) -> Self {
-        Self::new(ExitCode::ConfigError, err)
+        Self::new(ExitCode::ConfigError, &err)
     }
 }
 
 impl From<std::io::Error> for ExitError {
     fn from(err: std::io::Error) -> Self {
-        Self::new(ExitCode::IOError, err)
+        Self::new(ExitCode::IOError, &err)
     }
 }

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{fmt, time::Duration};
+use std::{convert::TryFrom, fmt, time::Duration};
 
 use bitflags::bitflags;
 use bytes::Bytes;
@@ -213,15 +213,15 @@ bitflags! {
     }
 }
 impl RpcMessageFlags {
-    pub fn is_fin(&self) -> bool {
+    pub fn is_fin(self) -> bool {
         self.contains(Self::FIN)
     }
 
-    pub fn is_ack(&self) -> bool {
+    pub fn is_ack(self) -> bool {
         self.contains(Self::ACK)
     }
 
-    pub fn is_more(&self) -> bool {
+    pub fn is_more(self) -> bool {
         self.contains(Self::MORE)
     }
 }
@@ -240,7 +240,7 @@ impl proto::rpc::RpcRequest {
     }
 
     pub fn flags(&self) -> RpcMessageFlags {
-        RpcMessageFlags::from_bits_truncate(self.flags as u8)
+        RpcMessageFlags::from_bits_truncate(u8::try_from(self.flags).unwrap())
     }
 }
 
@@ -290,11 +290,11 @@ impl Default for RpcResponse {
 
 impl proto::rpc::RpcResponse {
     pub fn flags(&self) -> RpcMessageFlags {
-        RpcMessageFlags::from_bits_truncate(self.flags as u8)
+        RpcMessageFlags::from_bits_truncate(u8::try_from(self.flags).unwrap())
     }
 
     pub fn is_fin(&self) -> bool {
-        self.flags as u8 & RpcMessageFlags::FIN.bits() != 0
+        u8::try_from(self.flags).unwrap() & RpcMessageFlags::FIN.bits() != 0
     }
 }
 

@@ -23,6 +23,7 @@
 // Acknowledgement to @sticnarf for tokio-socks on which this code is based
 use std::{
     borrow::Cow,
+    convert::TryFrom,
     fmt,
     fmt::Formatter,
     net::{Ipv4Addr, Ipv6Addr},
@@ -62,7 +63,7 @@ impl Default for Authentication {
 
 impl fmt::Debug for Authentication {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use Authentication::*;
+        use Authentication::{None, Password};
         match self {
             None => write!(f, "None"),
             Password(username, _) => write!(f, "Password({}, ...)", username),
@@ -363,12 +364,12 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.buf[0] = 0x01;
                 let username_bytes = username.as_bytes();
                 let username_len = username_bytes.len();
-                self.buf[1] = username_len as u8;
+                self.buf[1] = u8::try_from(username_len).unwrap();
                 self.buf[2..(2 + username_len)].copy_from_slice(username_bytes);
                 let password_bytes = password.as_bytes();
                 let password_len = password_bytes.len();
                 self.len = 3 + username_len + password_len;
-                self.buf[(2 + username_len)] = password_len as u8;
+                self.buf[(2 + username_len)] = u8::try_from(password_len).unwrap();
                 self.buf[(3 + username_len)..self.len].copy_from_slice(password_bytes);
             },
             Authentication::None => unreachable!(),
@@ -407,7 +408,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();
-                self.buf[4] = len as u8;
+                self.buf[4] = u8::try_from(len).unwrap();
                 self.buf[5..5 + len].copy_from_slice(domain);
                 self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
@@ -417,7 +418,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 self.buf[3] = 0x03;
                 let domain = domain.as_bytes();
                 let len = domain.len();
-                self.buf[4] = len as u8;
+                self.buf[4] = u8::try_from(len).unwrap();
                 self.buf[5..5 + len].copy_from_slice(domain);
                 // Zero port
                 self.buf[5 + len] = 0;
@@ -426,9 +427,9 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
             },
             (p @ Protocol::Onion(_, _), None) => {
                 self.buf[3] = 0x03;
-                let (domain, port) = Self::extract_onion_address(p)?;
+                let (domain, port) = Self::extract_onion_address(&p)?;
                 let len = domain.len();
-                self.buf[4] = len as u8;
+                self.buf[4] = u8::try_from(len).unwrap();
                 self.buf[5..5 + len].copy_from_slice(domain.as_bytes());
                 self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
@@ -438,7 +439,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
                 let port = addr.port();
                 let domain = format!("{}.onion", BASE32.encode(addr.hash()));
                 let len = domain.len();
-                self.buf[4] = len as u8;
+                self.buf[4] = u8::try_from(len).unwrap();
                 self.buf[5..5 + len].copy_from_slice(domain.as_bytes());
                 self.buf[(5 + len)..(7 + len)].copy_from_slice(&port.to_be_bytes());
                 self.len = 7 + len;
@@ -448,7 +449,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
         Ok(())
     }
 
-    fn extract_onion_address(p: Protocol<'_>) -> Result<(String, u16)> {
+    fn extract_onion_address(p: &Protocol<'_>) -> Result<(String, u16)> {
         let onion_addr = p.to_string();
         let mut parts = onion_addr.split('/').nth(2).expect("already checked").split(':');
         let domain = format!("{}.onion", parts.next().expect("already checked"),);

@@ -48,7 +48,7 @@ impl Future for CommsShutdown {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let _ = futures::ready!(self.signals.poll_unpin(cx));
+        let _result = futures::ready!(self.signals.poll_unpin(cx));
         Poll::Ready(())
     }
 }

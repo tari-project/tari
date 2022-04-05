@@ -35,7 +35,7 @@ impl TryInto<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_into(self) -> Result<NodeCommsRequest, Self::Error> {
-        use ProtoNodeCommsRequest::*;
+        use ProtoNodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
         let request = match self {
             FetchBlocksByHash(block_hashes) => NodeCommsRequest::FetchBlocksByHash(block_hashes.outputs),
             FetchMempoolTransactionsByExcessSigs(excess_sigs) => {
@@ -56,7 +56,7 @@ impl TryFrom<NodeCommsRequest> for ProtoNodeCommsRequest {
     type Error = String;
 
     fn try_from(request: NodeCommsRequest) -> Result<Self, Self::Error> {
-        use NodeCommsRequest::*;
+        use NodeCommsRequest::{FetchBlocksByHash, FetchMempoolTransactionsByExcessSigs};
         match request {
             FetchBlocksByHash(block_hashes) => Ok(ProtoNodeCommsRequest::FetchBlocksByHash(block_hashes.into())),
             FetchMempoolTransactionsByExcessSigs { excess_sigs } => Ok(

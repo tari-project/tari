@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt,
     fmt::{Display, Formatter},
     time::Duration,
@@ -126,7 +127,7 @@ pub enum LastConnectionAttempt {
 
 /// Convert `chrono::Duration` to `std::time::Duration`
 fn convert_to_std_duration(old_duration: chrono::Duration) -> Duration {
-    Duration::from_millis(old_duration.num_milliseconds() as u64)
+    Duration::from_millis(u64::try_from(old_duration.num_milliseconds()).unwrap())
 }
 
 impl Default for LastConnectionAttempt {
@@ -137,7 +138,7 @@ impl Default for LastConnectionAttempt {
 
 impl Display for LastConnectionAttempt {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        use LastConnectionAttempt::*;
+        use LastConnectionAttempt::{Failed, Never, Succeeded};
         match self {
             Never => write!(f, "Connection never attempted"),
             Succeeded(succeeded_at) => write!(f, "Connection succeeded at {}", succeeded_at),

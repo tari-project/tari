@@ -42,7 +42,7 @@ const PROTOCOL_NAME: &[u8] = b"test/dummy/protocol";
 pub async fn spawn_node(signal: ShutdownSignal) -> (CommsNode, ProtocolNotificationRx<Substream>) {
     let (notif_tx, notif_rx) = mpsc::channel(1);
     let comms = create_comms(signal)
-        .add_protocol(&[ProtocolId::from_static(PROTOCOL_NAME)], notif_tx)
+        .add_protocol(&[ProtocolId::from_static(PROTOCOL_NAME)], &notif_tx)
         .spawn_with_transport(TcpTransport::new())
         .await
         .unwrap();

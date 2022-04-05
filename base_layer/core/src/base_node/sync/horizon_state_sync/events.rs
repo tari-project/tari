@@ -39,7 +39,7 @@ impl HorizonSyncInfo {
     }
 
     pub fn to_progress_string(&self) -> String {
-        use HorizonSyncStatus::*;
+        use HorizonSyncStatus::{Finalizing, Kernels, Outputs, Starting};
         match self.status {
             Starting => "Starting horizon sync".to_string(),
             Kernels {

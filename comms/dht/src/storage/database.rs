@@ -58,7 +58,7 @@ impl DhtDatabase {
             })
     }
 
-    pub fn set_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey, value: T) -> Result<(), StorageError> {
+    pub fn set_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey, value: &T) -> Result<(), StorageError> {
         let bytes = value.to_binary()?;
         self.set_metadata_value_bytes(key, bytes)
     }

@@ -291,7 +291,7 @@ where
                         config.network_info.network_byte,
                         byte,
                     );
-                    let _ = socket.shutdown().await;
+                    let _result = socket.shutdown().await;
                 },
                 Ok(WireMode::Liveness) => {
                     if liveness_session_count.load(Ordering::SeqCst) > 0 &&
@@ -308,7 +308,7 @@ where
                             "No liveness sessions available or permitted for peer address '{}'", peer_addr
                         );
 
-                        let _ = socket.shutdown().await;
+                        let _result = socket.shutdown().await;
                     }
                 },
                 Err(err) => {

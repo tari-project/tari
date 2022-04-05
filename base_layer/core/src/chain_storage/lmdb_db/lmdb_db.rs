@@ -260,6 +260,7 @@ impl LMDBDatabase {
     }
 
     fn apply_db_transaction(&mut self, txn: &DbTransaction) -> Result<(), ChainStorageError> {
+        #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
         let write_txn = self.write_transaction()?;
         for op in txn.operations() {
@@ -815,6 +816,7 @@ impl LMDBDatabase {
                 "The first header inserted must have height 0. Height provided: {}",
                 header.height
             )));
+        } else {
         }
 
         lmdb_insert(
@@ -1382,7 +1384,7 @@ impl LMDBDatabase {
             let (_height, hash) = lmdb_first_after::<_, (u64, Vec<u8>)>(
                 write_txn,
                 &self.output_mmr_size_index,
-                &((pos + 1) as u64).to_be_bytes(),
+                &u64::from(pos + 1).to_be_bytes(),
             )
             .or_not_found("BlockHeader", "mmr_position", pos.to_string())?;
             let key = OutputKey::new(&hash, *pos, &[]);
@@ -1529,7 +1531,7 @@ impl LMDBDatabase {
 
 pub fn create_recovery_lmdb_database<P: AsRef<Path>>(path: P) -> Result<(), ChainStorageError> {
     let new_path = path.as_ref().join("temp_recovery");
-    let _ = fs::create_dir_all(&new_path);
+    let _result = fs::create_dir_all(&new_path);
 
     let data_file = path.as_ref().join("data.mdb");
 

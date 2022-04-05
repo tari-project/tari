@@ -43,7 +43,16 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
             .map_err(|_| "script_signature could not be converted".to_string())?;
 
         // Check if the received Transaction input is in compact form or not
-        if !input.commitment.is_empty() {
+        if input.commitment.is_empty() {
+            if input.output_hash.is_empty() {
+                return Err("Compact Transaction Input does not contain `output_hash`".to_string());
+            }
+            Ok(TransactionInput::new_with_output_hash(
+                input.output_hash,
+                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
+                script_signature,
+            ))
+        } else {
             let commitment = Commitment::from_bytes(&input.commitment).map_err(|e| e.to_string())?;
             let features = input
                 .features
@@ -65,15 +74,6 @@ impl TryFrom<grpc::TransactionInput> for TransactionInput {
                 script_signature,
                 sender_offset_public_key,
                 covenant,
-            ))
-        } else {
-            if input.output_hash.is_empty() {
-                return Err("Compact Transaction Input does not contain `output_hash`".to_string());
-            }
-            Ok(TransactionInput::new_with_output_hash(
-                input.output_hash,
-                ExecutionStack::from_bytes(input.input_data.as_slice()).map_err(|err| format!("{:?}", err))?,
-                script_signature,
             ))
         }
     }

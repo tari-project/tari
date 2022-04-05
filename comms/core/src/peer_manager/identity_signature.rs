@@ -120,7 +120,7 @@ impl IdentitySignature {
     ) -> Challenge {
         let challenge = Challenge::new()
             .chain(version.to_le_bytes())
-            .chain((updated_at.timestamp() as u64).to_le_bytes())
+            .chain(u64::try_from(updated_at.timestamp()).unwrap().to_le_bytes())
             .chain(features.bits().to_le_bytes());
         addresses
             .into_iter()
@@ -163,7 +163,7 @@ impl TryFrom<proto::identity::IdentitySignature> for IdentitySignature {
 impl From<&IdentitySignature> for proto::identity::IdentitySignature {
     fn from(identity_sig: &IdentitySignature) -> Self {
         proto::identity::IdentitySignature {
-            version: identity_sig.version as u32,
+            version: u32::from(identity_sig.version),
             signature: identity_sig.signature.get_signature().to_vec(),
             public_nonce: identity_sig.signature.get_public_nonce().to_vec(),
             updated_at: identity_sig.updated_at.timestamp(),

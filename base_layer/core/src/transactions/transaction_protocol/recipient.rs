@@ -48,7 +48,7 @@ pub enum RecipientState {
 
 impl fmt::Display for RecipientState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use RecipientState::*;
+        use RecipientState::{Failed, Finalized};
         match self {
             Finalized(signed_message) => write!(
                 f,

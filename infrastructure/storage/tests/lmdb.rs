@@ -21,6 +21,7 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fs::File,
     io::{BufRead, BufReader},
     net::Ipv4Addr,
@@ -90,7 +91,7 @@ fn get_path(name: &str) -> String {
 
 fn init(name: &str) -> Result<LMDBStore, LMDBError> {
     let path = get_path(name);
-    std::fs::create_dir(&path).unwrap_or_default();
+    std::fs::create_dir_all(&path).unwrap_or_default();
     LMDBBuilder::new()
         .set_path(&path)
         .set_env_config(LMDBConfig::default())
@@ -137,7 +138,7 @@ fn single_thread() {
         for user in &users {
             db.insert(&user.id, &user).unwrap();
         }
-        for user in users.iter() {
+        for user in &users {
             let check: User = db.get(&user.id).unwrap().unwrap();
             assert_eq!(check, *user);
         }
@@ -183,7 +184,7 @@ fn transactions() {
         let (users, db) = insert_all_users("transactions");
         // Test the `exists` and value retrieval functions
         db.with_read_transaction(|txn| {
-            for user in users.iter() {
+            for user in &users {
                 assert!(txn.exists(&user.id).unwrap());
                 let check: User = txn.get(&user.id).unwrap().unwrap();
                 assert_eq!(check, *user);
@@ -258,7 +259,7 @@ fn pair_iterator() {
         let res = db.for_each::<u64, User, _>(|pair| {
             let (key, user) = pair.unwrap();
             assert_eq!(user.id, key);
-            assert_eq!(users[key as usize - 1], user);
+            assert_eq!(users[usize::try_from(key).unwrap() - 1], user);
             IterationResult::Continue
         });
         assert!(res.is_ok());
@@ -282,7 +283,7 @@ fn lmdb_resize_on_create() {
     let db_env_name = "resize";
     {
         let path = get_path(db_env_name);
-        std::fs::create_dir(&path).unwrap_or_default();
+        std::fs::create_dir_all(&path).unwrap_or_default();
         let size_used_round_1: usize;
         const PRESET_SIZE: usize = 1;
         let db_name = "test";
@@ -340,7 +341,7 @@ fn test_lmdb_resize_before_full() {
     let db_env_name = "resize_dynamic";
     {
         let path = get_path(db_env_name);
-        std::fs::create_dir(&path).unwrap_or_default();
+        std::fs::create_dir_all(&path).unwrap_or_default();
         let db_name = "test_full";
         {
             // Create db with 1MB capacity

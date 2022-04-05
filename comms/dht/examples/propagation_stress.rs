@@ -23,6 +23,7 @@
 mod propagation;
 use std::{
     collections::VecDeque,
+    convert::TryFrom,
     env,
     sync::Arc,
     time::{Duration, Instant},
@@ -107,11 +108,11 @@ async fn main() -> anyhow::Result<()> {
 async fn prompt(node: &CommsNode, dht: &Dht) -> anyhow::Result<()> {
     let mut outbound = dht.outbound_requester();
     let node_identity = node.node_identity();
-    let opts = task::spawn_blocking(move || user_prompt(node_identity)).await??;
+    let opts = task::spawn_blocking(move || user_prompt(&node_identity)).await??;
 
     let mut send_states = Vec::with_capacity(opts.num_msgs);
     for i in 0..opts.num_msgs {
-        let msg = OutboundDomainMessage::new(999, PropagationMessage::new(i as u32, opts.msg_size));
+        let msg = OutboundDomainMessage::new(&999, PropagationMessage::new(u32::try_from(i).unwrap(), opts.msg_size));
         let states = match opts.send_method {
             SendMethod::Direct => outbound
                 .send_direct_node_id(opts.peer.node_id.clone(), msg)

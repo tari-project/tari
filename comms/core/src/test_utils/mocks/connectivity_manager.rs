@@ -212,6 +212,7 @@ impl ConnectivityManagerMock {
     }
 
     async fn handle_request(&self, req: ConnectivityRequest) {
+        #[allow(clippy::enum_glob_use)]
         use ConnectivityRequest::*;
         self.state.add_call(format!("{:?}", req)).await;
         match req {
@@ -229,7 +230,7 @@ impl ConnectivityManagerMock {
                             replies.push(reply_tx);
                         },
                         None => {
-                            let _ = reply_tx.send(
+                            let _result = reply_tx.send(
                                 state
                                     .active_conns
                                     .get(&node_id)

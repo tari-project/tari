@@ -118,7 +118,7 @@ impl Default for LastConnectionAttempt {
 
 impl Display for LastConnectionAttempt {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        use LastConnectionAttempt::*;
+        use LastConnectionAttempt::{Failed, Never, Succeeded};
         match self {
             Never => write!(f, "Connection never attempted"),
             Succeeded(succeeded_at) => write!(

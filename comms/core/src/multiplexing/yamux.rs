@@ -203,7 +203,7 @@ impl Stream for IncomingSubstreams {
 
 impl Drop for IncomingSubstreams {
     fn drop(&mut self) {
-        let _ = self.shutdown.trigger();
+        self.shutdown.trigger();
     }
 }
 

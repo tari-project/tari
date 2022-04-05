@@ -633,7 +633,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that utxos with the lowest 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 7);
-    for utxo in utxos.iter() {
+    for utxo in &utxos {
         assert_ne!(utxo.features.maturity, 1);
         assert_ne!(utxo.value, amount);
         assert_ne!(utxo.features.maturity, 2);
@@ -660,7 +660,7 @@ async fn test_utxo_selection_with_chain_metadata() {
     // test that utxos with the highest spendable 2 maturities were encumbered
     let utxos = oms.get_unspent_outputs().await.unwrap();
     assert_eq!(utxos.len(), 5);
-    for utxo in utxos.iter() {
+    for utxo in &utxos {
         assert_ne!(utxo.features.maturity, 4);
         assert_ne!(utxo.value, 4 * amount);
         assert_ne!(utxo.features.maturity, 5);
@@ -796,7 +796,7 @@ async fn send_no_change() {
             create_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 MicroTari::from(value1),
             ),
             None,
@@ -809,7 +809,7 @@ async fn send_no_change() {
             create_unblinded_output(
                 script!(Nop),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 MicroTari::from(value2),
             ),
             None,
@@ -860,7 +860,7 @@ async fn send_not_enough_for_change() {
             create_unblinded_output(
                 TariScript::default(),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 value1,
             ),
             None,
@@ -873,7 +873,7 @@ async fn send_not_enough_for_change() {
             create_unblinded_output(
                 TariScript::default(),
                 OutputFeatures::default(),
-                TestParamsHelpers::new(),
+                &TestParamsHelpers::new(),
                 value2,
             ),
             None,
@@ -1230,7 +1230,7 @@ async fn handle_coinbase() {
     let fees3 = MicroTari::from(500);
     let value3 = reward3 + fees3;
 
-    let _ = oms
+    let _transaction = oms
         .output_manager_handle
         .get_coinbase_transaction(1u64.into(), reward1, fees1, 1)
         .await
@@ -1438,7 +1438,7 @@ async fn test_txo_validation() {
     let (_recv_tx_id, sender_message) =
         generate_sender_transaction_message(recv_value, Some(oms.output_manager_handle.clone())).await;
 
-    let _ = oms
+    let _receiver_transaction_protocal = oms
         .output_manager_handle
         .get_recipient_transaction(sender_message)
         .await
@@ -1732,7 +1732,7 @@ async fn test_txo_validation() {
         .send(Arc::new(BaseNodeEvent::BaseNodeStateChanged(BaseNodeState::default())))
         .unwrap();
 
-    let _ = oms
+    let _result = oms
         .base_node_wallet_rpc_mock_state
         .wait_pop_get_header_by_height_calls(2, Duration::from_secs(60))
         .await
@@ -1867,7 +1867,7 @@ async fn test_txo_revalidation() {
     let output1 = create_unblinded_output(
         script!(Nop),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(output1_value),
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
@@ -1880,7 +1880,7 @@ async fn test_txo_revalidation() {
     let output2 = create_unblinded_output(
         script!(Nop),
         OutputFeatures::default(),
-        TestParamsHelpers::new(),
+        &TestParamsHelpers::new(),
         MicroTari::from(output2_value),
     );
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();

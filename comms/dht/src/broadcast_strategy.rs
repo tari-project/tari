@@ -70,6 +70,7 @@ pub enum BroadcastStrategy {
 
 impl fmt::Display for BroadcastStrategy {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
         match self {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
@@ -88,7 +89,7 @@ impl fmt::Display for BroadcastStrategy {
 impl BroadcastStrategy {
     /// Returns true if this strategy will send multiple indirect messages, otherwise false
     pub fn is_multi_message(&self, chosen_peers: &[NodeId]) -> bool {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::{Broadcast, ClosestNodes, DirectOrClosestNodes, Flood, Propagate, Random};
 
         match self {
             DirectOrClosestNodes(strategy) => {
@@ -101,12 +102,12 @@ impl BroadcastStrategy {
     }
 
     pub fn is_direct(&self) -> bool {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::{DirectNodeId, DirectPublicKey};
         matches!(self, DirectNodeId(_) | DirectPublicKey(_))
     }
 
     pub fn direct_node_id(&self) -> Option<&NodeId> {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::DirectNodeId;
         match self {
             DirectNodeId(node_id) => Some(node_id),
             _ => None,
@@ -114,7 +115,7 @@ impl BroadcastStrategy {
     }
 
     pub fn direct_public_key(&self) -> Option<&CommsPublicKey> {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::DirectPublicKey;
         match self {
             DirectPublicKey(pk) => Some(pk),
             _ => None,
@@ -122,7 +123,7 @@ impl BroadcastStrategy {
     }
 
     pub fn into_direct_public_key(self) -> Option<Box<CommsPublicKey>> {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::DirectPublicKey;
         match self {
             DirectPublicKey(pk) => Some(pk),
             _ => None,

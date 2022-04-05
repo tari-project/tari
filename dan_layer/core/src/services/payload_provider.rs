@@ -66,7 +66,7 @@ impl<TMempoolService: MempoolService> PayloadProvider<TariDanPayload> for TariDa
 
     fn create_genesis_payload(&self, asset_definition: &AssetDefinition) -> TariDanPayload {
         let mut instruction_set = InstructionSet::empty();
-        for params in asset_definition.template_parameters.iter() {
+        for params in &asset_definition.template_parameters {
             let instructions = self.template_factory.initial_instructions(params);
             instruction_set.extend(instructions);
         }

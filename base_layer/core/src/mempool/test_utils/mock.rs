@@ -125,7 +125,7 @@ impl MempoolServiceMock {
     }
 
     async fn handle_request(&self, req: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
-        use MempoolRequest::*;
+        use MempoolRequest::{GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
 
         self.state.inc_call_count();
         match req {

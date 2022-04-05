@@ -89,7 +89,7 @@ pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Ch
     create_origin_mac_challenge_parts(
         header.version,
         &header.destination,
-        &header.message_type,
+        header.message_type,
         header.flags,
         header.expires,
         header.ephemeral_public_key.as_ref(),
@@ -100,7 +100,7 @@ pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Ch
 pub fn create_origin_mac_challenge_parts(
     protocol_version: DhtProtocolVersion,
     destination: &NodeDestination,
-    message_type: &DhtMessageType,
+    message_type: DhtMessageType,
     flags: DhtMessageFlags,
     expires: Option<EpochTime>,
     ephemeral_public_key: Option<&CommsPublicKey>,
@@ -109,7 +109,7 @@ pub fn create_origin_mac_challenge_parts(
     let mut mac_challenge = Challenge::new();
     mac_challenge.update(&protocol_version.to_bytes());
     mac_challenge.update(destination.to_inner_bytes().as_slice());
-    mac_challenge.update(&(*message_type as i32).to_le_bytes());
+    mac_challenge.update(&(message_type as i32).to_le_bytes());
     mac_challenge.update(&flags.bits().to_le_bytes());
     if let Some(t) = expires {
         mac_challenge.update(&t.as_u64().to_le_bytes());

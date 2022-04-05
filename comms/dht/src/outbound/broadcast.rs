@@ -252,7 +252,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             .is_some()
         {
             warn!(target: LOG_TARGET, "Attempt to send a message to ourselves");
-            let _ = reply_tx.send(SendMessageResponse::Failed(SendFailure::SendToOurselves));
+            let _result = reply_tx.send(SendMessageResponse::Failed(SendFailure::SendToOurselves));
             return Err(DhtOutboundError::SendToOurselves);
         }
 
@@ -293,7 +293,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     let (discovery_reply_tx, discovery_reply_rx) = oneshot::channel();
                     let target_public_key = broadcast_strategy.into_direct_public_key().expect("already checked");
 
-                    let _ = reply_tx
+                    let _result = reply_tx
                         .take()
                         .expect("cannot fail")
                         .send(SendMessageResponse::PendingDiscovery(discovery_reply_rx));
@@ -305,11 +305,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                             peers = vec![peer.node_id];
                         },
                         Err(err @ DhtOutboundError::DiscoveryFailed) => {
-                            let _ = discovery_reply_tx.send(SendMessageResponse::Failed(SendFailure::DiscoveryFailed));
+                            let _result =
+                                discovery_reply_tx.send(SendMessageResponse::Failed(SendFailure::DiscoveryFailed));
                             return Err(err);
                         },
                         Err(err) => {
-                            let _ = discovery_reply_tx
+                            let _result = discovery_reply_tx
                                 .send(SendMessageResponse::Failed(SendFailure::General(err.to_string())));
                             return Err(err);
                         },
@@ -336,7 +337,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 {
                     Ok((msgs, send_states)) => {
                         // Reply with the `MessageTag`s for each message
-                        let _ = reply_tx
+                        let _result = reply_tx
                             .take()
                             .expect("cannot fail")
                             .send(SendMessageResponse::Queued(send_states.into()));
@@ -344,7 +345,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                         Ok(msgs)
                     },
                     Err(err) => {
-                        let _ = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed(
+                        let _result = reply_tx.take().expect("cannot fail").send(SendMessageResponse::Failed(
                             SendFailure::FailedToGenerateMessages(err.to_string()),
                         ));
                         Err(err)
@@ -352,7 +353,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 }
             },
             Err(err) => {
-                let _ = reply_tx.send(SendMessageResponse::Failed(SendFailure::General(err.to_string())));
+                let _result = reply_tx.send(SendMessageResponse::Failed(SendFailure::General(err.to_string())));
                 Err(err)
             },
         }
@@ -421,7 +422,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             &encryption,
             force_origin,
             &destination,
-            &dht_message_type,
+            dht_message_type,
             dht_flags,
             expires_epochtime,
             body,
@@ -488,7 +489,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         encryption: &OutboundEncryption,
         include_origin: bool,
         destination: &NodeDestination,
-        message_type: &DhtMessageType,
+        message_type: DhtMessageType,
         flags: DhtMessageFlags,
         expires: Option<EpochTime>,
         body: Bytes,
@@ -497,8 +498,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
             OutboundEncryption::EncryptFor(public_key) => {
                 trace!(target: LOG_TARGET, "Encrypting message for {}", public_key);
                 // Generate ephemeral public/private key pair and ECDH shared secret
-                let (e_sk, e_pk) = CommsPublicKey::random_keypair(&mut OsRng);
-                let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_sk, &**public_key);
+                let (e_secret_key, e_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
+                let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_secret_key, &**public_key);
                 // Encrypt the message with the body
                 let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
 
@@ -508,7 +509,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                     message_type,
                     flags,
                     expires,
-                    Some(&e_pk),
+                    Some(&e_public_key),
                     &encrypted_body,
                 );
                 // Sign the encrypted message
@@ -516,7 +517,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Encrypt and set the origin field
                 let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac)?;
                 Ok((
-                    Some(Arc::new(e_pk)),
+                    Some(Arc::new(e_public_key)),
                     Some(encrypted_origin_mac.into()),
                     encrypted_body.into(),
                 ))

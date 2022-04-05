@@ -212,11 +212,11 @@ impl TariCommsInboundConnectionService {
             .try_into()
             .map_err(DigitalAssetError::InvalidPeerMessage)?;
         if hot_stuff_message.asset_public_key() == &self.asset_public_key {
-            dbg!(&hot_stuff_message);
+            println!("{:?}", hot_stuff_message);
             // self.sender.send((from, hot_stuff_message)).await.unwrap();
             self.process_message(from, hot_stuff_message).await?;
         } else {
-            dbg!("filtered");
+            println!("filtered");
         }
         Ok(())
     }

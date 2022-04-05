@@ -273,7 +273,7 @@ mod test {
         block_on(future::join(
             async move {
                 // `_` drops the response receiver, so when a reply is sent it will fail
-                let _ = requestor.call("PING");
+                let _response = requestor.call("PING");
             },
             async move {
                 let a = request_stream.next().await.unwrap();

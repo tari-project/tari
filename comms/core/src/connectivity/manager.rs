@@ -119,7 +119,7 @@ impl ConnectivityStatus {
     is_fn!(is_degraded, ConnectivityStatus::Degraded(_));
 
     pub fn num_connected_nodes(&self) -> usize {
-        use ConnectivityStatus::*;
+        use ConnectivityStatus::{Degraded, Initializing, Offline, Online};
         match self {
             Initializing | Offline => 0,
             Online(n) | Degraded(n) => *n,
@@ -214,6 +214,7 @@ impl ConnectivityManagerActor {
     }
 
     async fn handle_request(&mut self, req: ConnectivityRequest) {
+        #[allow(clippy::enum_glob_use)]
         use ConnectivityRequest::*;
         trace!(target: LOG_TARGET, "Request: {:?}", req);
         match req {
@@ -231,14 +232,14 @@ impl ConnectivityManagerActor {
                     match self.peer_manager.is_peer_banned(&node_id).await {
                         Ok(true) => {
                             if let Some(reply) = reply_tx {
-                                let _ = reply.send(Err(ConnectionManagerError::PeerBanned));
+                                let _result = reply.send(Err(ConnectionManagerError::PeerBanned));
                             }
                             return;
                         },
                         Ok(false) => {},
                         Err(err) => {
                             if let Some(reply) = reply_tx {
-                                let _ = reply.send(Err(err.into()));
+                                let _result = reply.send(Err(err.into()));
                             }
                             return;
                         },
@@ -251,7 +252,7 @@ impl ConnectivityManagerActor {
                                 node_id.short_str()
                             );
                             if let Some(reply_tx) = reply_tx {
-                                let _ = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
+                                let _result = reply_tx.send(Ok(state.connection().cloned().expect("Already checked")));
                             }
                         },
                         _ => {
@@ -273,10 +274,10 @@ impl ConnectivityManagerActor {
                 .await
             },
             SelectConnections(selection, reply) => {
-                let _ = reply.send(self.select_connections(selection).await);
+                let _result = reply.send(self.select_connections(selection).await);
             },
             GetConnection(node_id, reply) => {
-                let _ = reply.send(
+                let _result = reply.send(
                     self.pool
                         .get(&node_id)
                         .filter(|c| c.status() == ConnectionStatus::Connected)
@@ -287,18 +288,17 @@ impl ConnectivityManagerActor {
             },
             GetAllConnectionStates(reply) => {
                 let states = self.pool.all().into_iter().cloned().collect();
-                let _ = reply.send(states);
+                let _result = reply.send(states);
             },
             BanPeer(node_id, duration, reason) => {
-                if !self.allow_list.contains(&node_id) {
-                    if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
-                        error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
-                    }
-                } else {
+                if self.allow_list.contains(&node_id) {
                     info!(
                         target: LOG_TARGET,
                         "Peer is excluded from being banned as it was found in the AllowList, NodeId: {:?}", node_id
                     );
+                } else if let Err(err) = self.ban_peer(&node_id, duration, reason).await {
+                    error!(target: LOG_TARGET, "Error when banning peer: {:?}", err);
+                } else {
                 }
             },
             AddPeerToAllowList(node_id) => {
@@ -312,7 +312,7 @@ impl ConnectivityManagerActor {
                 }
             },
             GetActiveConnections(reply) => {
-                let _ = reply.send(
+                let _result = reply.send(
                     self.pool
                         .filter_connection_states(|s| s.is_connected())
                         .into_iter()
@@ -504,7 +504,7 @@ impl ConnectivityManagerActor {
         &mut self,
         event: &ConnectionManagerEvent,
     ) -> Result<(), ConnectivityError> {
-        use ConnectionManagerEvent::*;
+        use ConnectionManagerEvent::{PeerConnectFailed, PeerConnected, PeerDisconnected};
         debug!(target: LOG_TARGET, "Received event: {}", event);
         match event {
             PeerConnected(new_conn) => {
@@ -537,7 +537,7 @@ impl ConnectivityManagerActor {
                                 existing_conn.direction(),
                             );
 
-                            let _ = existing_conn.disconnect_silent().await;
+                            let _result = existing_conn.disconnect_silent().await;
                             self.pool.remove(existing_conn.peer_node_id());
                         } else {
                             debug!(
@@ -552,7 +552,7 @@ impl ConnectivityManagerActor {
                                 existing_conn.direction(),
                             );
 
-                            let _ = new_conn.clone().disconnect_silent().await;
+                            let _result = new_conn.clone().disconnect_silent().await;
                             // Ignore this event - state can stay as is
                             return Ok(());
                         }
@@ -612,7 +612,7 @@ impl ConnectivityManagerActor {
 
         let node_id = node_id.clone();
 
-        use ConnectionStatus::*;
+        use ConnectionStatus::{Connected, Disconnected, Failed};
         match (old_status, new_status) {
             (_, Connected) => {
                 self.mark_peer_succeeded(node_id.clone());
@@ -663,7 +663,7 @@ impl ConnectivityManagerActor {
             existing_conn.direction(),
             new_conn.direction()
         );
-        use ConnectionDirection::*;
+        use ConnectionDirection::{Inbound, Outbound};
         match (existing_conn.direction(), new_conn.direction()) {
             // They connected to us twice for some reason. Drop the older connection
             (Inbound, Inbound) => true,
@@ -732,7 +732,7 @@ impl ConnectivityManagerActor {
     }
 
     fn transition(&mut self, next_status: ConnectivityStatus, required_num_peers: usize) {
-        use ConnectivityStatus::*;
+        use ConnectivityStatus::{Degraded, Offline, Online};
         if self.status != next_status {
             debug!(
                 target: LOG_TARGET,
@@ -789,7 +789,7 @@ impl ConnectivityManagerActor {
 
     fn publish_event(&mut self, event: ConnectivityEvent) {
         // A send operation can only fail if there are no subscribers, so it is safe to ignore the error
-        let _ = self.event_tx.send(event);
+        let _result = self.event_tx.send(event);
     }
 
     async fn ban_peer(

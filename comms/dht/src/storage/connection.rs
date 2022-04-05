@@ -46,7 +46,7 @@ pub enum DbConnectionUrl {
 
 impl DbConnectionUrl {
     pub fn to_url_string(&self) -> String {
-        use DbConnectionUrl::*;
+        use DbConnectionUrl::{File, Memory, MemoryShared};
         match self {
             Memory => ":memory:".to_owned(),
             MemoryShared(identifier) => format!("file:{}?mode=memory&cache=shared", identifier),
@@ -66,10 +66,10 @@ pub struct DbConnection {
 impl DbConnection {
     #[cfg(test)]
     pub fn connect_memory(name: String) -> Result<Self, StorageError> {
-        Self::connect_url(DbConnectionUrl::MemoryShared(name))
+        Self::connect_url(&DbConnectionUrl::MemoryShared(name))
     }
 
-    pub fn connect_url(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+    pub fn connect_url(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
         debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
 
         let mut pool = SqliteConnectionPool::new(
@@ -84,7 +84,7 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
-    pub fn connect_and_migrate(db_url: DbConnectionUrl) -> Result<Self, StorageError> {
+    pub fn connect_and_migrate(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate()?;
         debug!(target: LOG_TARGET, "DHT database migration: {}", output.trim());

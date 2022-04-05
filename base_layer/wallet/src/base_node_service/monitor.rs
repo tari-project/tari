@@ -217,7 +217,7 @@ where
     }
 
     fn publish_event(&self, event: BaseNodeEvent) {
-        let _ = self.event_publisher.send(Arc::new(event));
+        let _size = self.event_publisher.send(Arc::new(event));
     }
 }
 
