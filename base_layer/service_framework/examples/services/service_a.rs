@@ -81,7 +81,7 @@ impl ServiceA {
 
                     let mut response = self.response_msg.clone();
                     response.push_str(request.clone().as_str());
-                    let _ = reply_tx.send(response);
+                    let _resp = reply_tx.send(response);
                 },
                 _ = shutdown_signal.wait() => {
                     println!("Service A shutting down because the shutdown signal was received");
@@ -120,6 +120,7 @@ impl ServiceAInitializer {
 }
 
 #[async_trait]
+#[allow(clippy::similar_names)]
 impl ServiceInitializer for ServiceAInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
         let (sender, receiver) = reply_channel::unbounded();

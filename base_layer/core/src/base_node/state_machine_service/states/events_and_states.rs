@@ -105,7 +105,7 @@ impl SyncStatus {
 
 impl Display for SyncStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        use SyncStatus::*;
+        use SyncStatus::{Lagging, UpToDate};
         match self {
             Lagging {
                 network, sync_peers, ..
@@ -123,6 +123,7 @@ impl Display for SyncStatus {
 
 impl Display for StateEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        #[allow(clippy::enum_glob_use)]
         use StateEvent::*;
         match self {
             Initialized => write!(f, "Initialized"),
@@ -145,6 +146,7 @@ impl Display for StateEvent {
 
 impl Display for BaseNodeState {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
+        #[allow(clippy::enum_glob_use)]
         use BaseNodeState::*;
         let s = match self {
             Starting(_) => "Initializing",
@@ -173,7 +175,7 @@ pub enum StateInfo {
 
 impl StateInfo {
     pub fn short_desc(&self) -> String {
-        use StateInfo::*;
+        use StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp};
         match self {
             StartUp => "Starting up".to_string(),
             HeaderSync(None) => "Starting header sync".to_string(),
@@ -194,7 +196,7 @@ impl StateInfo {
     }
 
     pub fn is_synced(&self) -> bool {
-        use StateInfo::*;
+        use StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp};
         match self {
             StartUp | HeaderSync(_) | HorizonSync(_) | BlockSync(_) | BlockSyncStarting => false,
             Listening(info) => info.is_synced(),
@@ -204,7 +206,7 @@ impl StateInfo {
 
 impl Display for StateInfo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        use StateInfo::*;
+        use StateInfo::{BlockSync, BlockSyncStarting, HeaderSync, HorizonSync, Listening, StartUp};
         match self {
             StartUp => write!(f, "Node starting up"),
             HeaderSync(Some(info)) => write!(f, "Synchronizing block headers: {}", info),

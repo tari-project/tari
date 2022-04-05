@@ -87,7 +87,7 @@ impl OutboundService for TariCommsOutboundService<TariDanPayload> {
         }
 
         let inner = proto::consensus::HotStuffMessage::from(message);
-        let tari_message = OutboundDomainMessage::new(TariMessageType::DanConsensusMessage, inner);
+        let tari_message = OutboundDomainMessage::new(&TariMessageType::DanConsensusMessage, inner);
 
         self.outbound_message_requester.send_direct(to, tari_message).await?;
         Ok(())

@@ -187,7 +187,7 @@ pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
     allow_test_addrs: bool,
 ) -> Result<(), ConnectionManagerError> {
     let mut has_address = false;
-    for addr in addresses.into_iter() {
+    for addr in addresses {
         has_address = true;
         validate_address(addr, allow_test_addrs)?;
     }

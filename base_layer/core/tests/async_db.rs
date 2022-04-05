@@ -63,7 +63,7 @@ fn fetch_async_headers() {
     let (db, blocks, _, _) = create_blockchain_db_no_cut_through();
     test_async(move |rt| {
         let db = AsyncBlockchainDb::new(db);
-        for block in blocks.into_iter() {
+        for block in blocks {
             let height = block.height();
             let hash = block.hash().clone();
             let db = db.clone();
@@ -120,7 +120,7 @@ fn fetch_async_block() {
     test_async(move |rt| {
         let db = AsyncBlockchainDb::new(db);
         rt.spawn(async move {
-            for block in blocks.into_iter() {
+            for block in blocks {
                 let height = block.height();
                 let block_check = db.fetch_block(height).await.unwrap();
                 assert_eq!(block.block(), block_check.block());

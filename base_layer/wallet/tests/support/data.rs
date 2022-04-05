@@ -42,7 +42,7 @@ pub fn clean_up_sql_database(name: &str) {
 pub fn init_sql_database(name: &str) {
     clean_up_sql_database(name);
     let path = get_path(None);
-    let _ = std::fs::create_dir(&path).unwrap_or_default();
+    std::fs::create_dir_all(&path).unwrap_or_default();
 }
 
 pub fn get_temp_sqlite_database_connection() -> (WalletDbConnection, TempDir) {

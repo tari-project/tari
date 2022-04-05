@@ -43,10 +43,7 @@ impl CommandContext {
     pub fn print_version(&self) -> Result<(), Error> {
         println!("Version: {}", consts::APP_VERSION);
         println!("Author: {}", consts::APP_AUTHOR);
-        println!("Avx2: {}", match cfg!(feature = "avx2") {
-            true => "enabled",
-            false => "disabled",
-        });
+        println!("Avx2: {}", if cfg!(feature = "avx2") { "enabled" } else { "disabled" });
 
         if let Some(ref update) = *self.software_updater.new_update_notifier().borrow() {
             println!(

@@ -160,6 +160,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         ban_duration: Duration,
         message: DhtInboundMessage,
     ) -> Result<(), PipelineError> {
+        #[allow(clippy::enum_glob_use)]
         use DecryptionError::*;
         let source = message.source_peer.clone();
         let trace_id = message.dht_header.message_tag;

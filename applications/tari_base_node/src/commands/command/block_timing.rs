@@ -62,7 +62,9 @@ enum ArgsError {
 impl CommandContext {
     pub async fn block_timing(&self, start: u64, end: Option<u64>) -> Result<(), Error> {
         let headers = self.get_chain_headers(start, end).await?;
-        if !headers.is_empty() {
+        if headers.is_empty() {
+            Err(ArgsError::NoHeaders.into())
+        } else {
             let headers = headers.into_iter().map(|ch| ch.into_header()).rev().collect::<Vec<_>>();
             let (max, min, avg) = BlockHeader::timing_stats(&headers);
             let first = headers.first().ok_or(ArgsError::HeaderLost)?.height;
@@ -72,8 +74,6 @@ impl CommandContext {
             println!("Min block time: {}", min);
             println!("Avg block time: {}", avg);
             Ok(())
-        } else {
-            Err(ArgsError::NoHeaders.into())
         }
     }
 }

@@ -36,7 +36,7 @@ pub enum MempoolResponse {
 
 impl fmt::Display for MempoolResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use MempoolResponse::*;
+        use MempoolResponse::{State, Stats, TxStorage};
         match &self {
             Stats(_) => write!(f, "Stats"),
             State(_) => write!(f, "State"),

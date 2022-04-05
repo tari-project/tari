@@ -222,11 +222,11 @@ impl CliLoop {
                         }
                         Err(ReadlineError::Interrupted) => {
                             // If `Ctrl-C` is pressed
-                            if !self.first_signal {
+                            if self.first_signal {
+                                self.done = true;
+                            } else {
                                 println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
                                 self.first_signal = true;
-                            } else {
-                                self.done = true;
                             }
                         }
                         Err(ReadlineError::Eof) => {

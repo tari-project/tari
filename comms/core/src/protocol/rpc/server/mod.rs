@@ -37,6 +37,7 @@ pub mod mock;
 mod router;
 use std::{
     borrow::Cow,
+    convert::TryFrom,
     future::Future,
     io,
     pin::Pin,
@@ -283,7 +284,7 @@ where
     }
 
     async fn handle_request(&self, req: RpcServerRequest) {
-        use RpcServerRequest::*;
+        use RpcServerRequest::GetNumActiveSessions;
         match req {
             GetNumActiveSessions(reply) => {
                 let max_sessions = self
@@ -516,7 +517,7 @@ where
                 "({}) Client has an invalid deadline. {}", self.logging_context_string, decoded_msg
             );
             // Let the client know that they have disobeyed the spec
-            let status = RpcStatus::bad_request(format!(
+            let status = RpcStatus::bad_request(&format!(
                 "Invalid deadline ({:.0?}). The deadline MUST be greater than {:.0?}.",
                 self.node_id, deadline,
             ));
@@ -531,7 +532,7 @@ where
             return Ok(());
         }
 
-        let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+        let msg_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(decoded_msg.flags).unwrap());
 
         if msg_flags.contains(RpcMessageFlags::FIN) {
             debug!(target: LOG_TARGET, "({}) Client sent FIN.", self.logging_context_string);
@@ -708,7 +709,7 @@ where
                         return Poll::Ready(Some(RpcServerError::UnexpectedIncomingMessageMalformed));
                     },
                 };
-                let msg_flags = RpcMessageFlags::from_bits_truncate(decoded_msg.flags as u8);
+                let msg_flags = RpcMessageFlags::from_bits_truncate(u8::try_from(decoded_msg.flags).unwrap());
                 if msg_flags.is_fin() {
                     Poll::Ready(Some(RpcServerError::ClientInterruptedStream))
                 } else {

@@ -137,7 +137,7 @@ impl Dht {
             event_publisher,
         };
 
-        let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
+        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone())
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
@@ -239,7 +239,7 @@ impl Dht {
             conn,
             self.peer_manager.clone(),
             self.dht_requester(),
-            self.connectivity.clone(),
+            &self.connectivity.clone(),
             self.outbound_requester(),
             request_rx,
             saf_response_signal_rx,

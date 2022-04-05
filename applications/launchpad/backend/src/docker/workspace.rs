@@ -271,7 +271,7 @@ impl TariWorkspace {
         let mut ids = HashMap::new();
         for image in ImageType::iter() {
             if let Some(id) = self.create_or_load_identity(root_path.as_str(), image)? {
-                let _ = ids.insert(image, id);
+                let _node_identity = ids.insert(image, id);
             }
         }
         Ok(ids)

@@ -109,7 +109,7 @@ where B: BlockchainBackend + 'static
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
@@ -189,12 +189,12 @@ where B: BlockchainBackend + 'static
             TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
-                    .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+                    .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
             identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
-                .map_err(|e| ExitError::new(ExitCode::IdentityError, e))?;
+                .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
         }
 
         handles.register(comms);

@@ -238,10 +238,11 @@ impl Controller {
     fn handle_error(&mut self, error: types::rpc_error::RpcError) {
         if vec![-1, 24].contains(&error.code) {
             // unauthorized
-            let _ = self.send_login();
+            let _result = self.send_login();
         } else if vec![21, 20, 22, 23, 25].contains(&error.code) {
             // problem with template
-            let _ = self.send_message_get_job_template();
+            let _result = self.send_message_get_job_template();
+        } else {
         }
     }
 
@@ -261,7 +262,7 @@ impl Controller {
                         "Got a new job for height {} with target difficulty {}", st.job.height, st.job.target
                     );
                     self.last_request_id = st.id;
-                    let _ = self.send_miner_job(st.job);
+                    let _result = self.send_miner_job(st.job);
                     return Ok(());
                 };
                 let job_response = serde_json::from_value::<types::job_params::JobParams>(result.clone());
@@ -270,7 +271,7 @@ impl Controller {
                         target: LOG_TARGET,
                         "Got a new job for height {} with target difficulty {}", st.height, st.target
                     );
-                    let _ = self.send_miner_job(st);
+                    let _result = self.send_miner_job(st);
                     return Ok(());
                 };
                 let submit_response = serde_json::from_value::<types::submit_response::SubmitResponse>(result.clone());
@@ -317,7 +318,7 @@ impl Controller {
             // Check our connection status, and try to correct if possible
             if self.stream.is_none() {
                 if !was_disconnected {
-                    let _ = self.send_miner_stop();
+                    let _result = self.send_miner_stop();
                 }
                 was_disconnected = true;
                 if Instant::now() > next_server_retry {
@@ -343,8 +344,8 @@ impl Controller {
                 // get new job template
                 if was_disconnected {
                     was_disconnected = false;
-                    let _ = self.send_login();
-                    let _ = self.send_miner_resume();
+                    let _result = self.send_login();
+                    let _result = self.send_miner_resume();
                 }
                 // read messages from server
                 if Instant::now() > next_server_read {

@@ -123,7 +123,7 @@ impl DhtDiscoveryService {
     }
 
     async fn handle_request(&mut self, request: DhtDiscoveryRequest) {
-        use DhtDiscoveryRequest::*;
+        use DhtDiscoveryRequest::{DiscoverPeer, NotifyDiscoveryResponseReceived};
         match request {
             DiscoverPeer(dest_pubkey, destination, reply_tx) => {
                 log_if_error!(
@@ -189,7 +189,7 @@ impl DhtDiscoveryService {
 
                         for request in self.collect_all_discovery_requests(&public_key) {
                             if !reply_tx.is_closed() {
-                                let _ = request.reply_tx.send(Ok(peer.clone()));
+                                let _result = request.reply_tx.send(Ok(peer.clone()));
                             }
                         }
 
@@ -210,7 +210,7 @@ impl DhtDiscoveryService {
                     },
                 }
 
-                let _ = reply_tx.send(result);
+                let _result = reply_tx.send(result);
             },
             None => {
                 debug!(
@@ -278,7 +278,7 @@ impl DhtDiscoveryService {
     ) -> Result<(), DhtDiscoveryError> {
         let nonce = OsRng.next_u64();
         if let Err(err) = self.send_discover(nonce, destination, dest_pubkey.clone()).await {
-            let _ = reply_tx.send(Err(err));
+            let _result = reply_tx.send(Err(err));
             return Ok(());
         }
 

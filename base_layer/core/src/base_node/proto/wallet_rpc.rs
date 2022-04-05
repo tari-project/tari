@@ -50,6 +50,7 @@ pub enum TxSubmissionRejectionReason {
 
 impl Display for TxSubmissionRejectionReason {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
+        #[allow(clippy::enum_glob_use)]
         use TxSubmissionRejectionReason::*;
         let response = match self {
             AlreadyMined => "Already Mined ",
@@ -67,6 +68,7 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
     type Error = String;
 
     fn try_from(tx_rejection_reason: proto::TxSubmissionRejectionReason) -> Result<Self, Self::Error> {
+        #[allow(clippy::enum_glob_use)]
         use proto::TxSubmissionRejectionReason::*;
         Ok(match tx_rejection_reason {
             None => TxSubmissionRejectionReason::None,
@@ -81,6 +83,7 @@ impl TryFrom<proto::TxSubmissionRejectionReason> for TxSubmissionRejectionReason
 
 impl From<TxSubmissionRejectionReason> for proto::TxSubmissionRejectionReason {
     fn from(response: TxSubmissionRejectionReason) -> Self {
+        #[allow(clippy::enum_glob_use)]
         use TxSubmissionRejectionReason::*;
         match response {
             None => proto::TxSubmissionRejectionReason::None,
@@ -158,7 +161,7 @@ impl TryFrom<proto::TxLocation> for TxLocation {
     type Error = String;
 
     fn try_from(tx_location: proto::TxLocation) -> Result<Self, Self::Error> {
-        use proto::TxLocation::*;
+        use proto::TxLocation::{InMempool, Mined, None, NotStored};
         Ok(match tx_location {
             None => return Err("TxLocation not provided".to_string()),
             NotStored => TxLocation::NotStored,
@@ -170,7 +173,7 @@ impl TryFrom<proto::TxLocation> for TxLocation {
 
 impl From<TxLocation> for proto::TxLocation {
     fn from(resp: TxLocation) -> Self {
-        use TxLocation::*;
+        use TxLocation::{InMempool, Mined, NotStored};
         match resp {
             NotStored => proto::TxLocation::NotStored,
             InMempool => proto::TxLocation::InMempool,
@@ -232,7 +235,7 @@ impl TryFrom<proto::TxQueryBatchResponse> for TxQueryBatchResponse {
 
 impl proto::SyncUtxosResponse {
     pub fn into_utxo(self) -> Option<proto::SyncUtxo> {
-        use proto::sync_utxos_response::UtxoOrDeleted::*;
+        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
         match self.utxo_or_deleted? {
             Utxo(utxo) => Some(utxo),
             DeletedDiff(_) => None,
@@ -240,7 +243,7 @@ impl proto::SyncUtxosResponse {
     }
 
     pub fn into_bitmap(self) -> Option<Vec<u8>> {
-        use proto::sync_utxos_response::UtxoOrDeleted::*;
+        use proto::sync_utxos_response::UtxoOrDeleted::{DeletedDiff, Utxo};
         match self.utxo_or_deleted? {
             Utxo(_) => None,
             DeletedDiff(bitmap) => Some(bitmap),
@@ -250,7 +253,7 @@ impl proto::SyncUtxosResponse {
 
 impl proto::sync_utxo::Utxo {
     pub fn into_transaction_output(self) -> Option<types::TransactionOutput> {
-        use proto::sync_utxo::Utxo::*;
+        use proto::sync_utxo::Utxo::{Output, PrunedOutput};
         match self {
             Output(output) => Some(output),
             PrunedOutput(_) => None,

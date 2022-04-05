@@ -175,14 +175,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 if headers.is_empty() {
-                    let _ = tx.send(Err(Status::invalid_argument(format!(
+                    let _network_difficulty_response = tx.send(Err(Status::invalid_argument(format!(
                         "No blocks found within range {} - {}",
                         start, end
                     ))));
                     return;
                 }
 
-                for chain_header in headers.iter() {
+                for chain_header in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
@@ -320,7 +320,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let from_height = cmp::min(request.from_height, tip);
 
-        let (header_range, is_reversed) = if from_height != 0 {
+        let (header_range, is_reversed) = if from_height == 0 {
+            match sorting {
+                Sorting::Desc => {
+                    let from = match tip.overflowing_sub(num_headers) {
+                        (_, true) => 0,
+                        (res, false) => res + 1,
+                    };
+                    (from..=tip, true)
+                },
+                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
+            }
+        } else {
             match sorting {
                 Sorting::Desc => {
                     let from = match from_height.overflowing_sub(num_headers) {
@@ -333,17 +344,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let to = from_height.saturating_add(num_headers).saturating_sub(1);
                     (from_height..=to, false)
                 },
-            }
-        } else {
-            match sorting {
-                Sorting::Desc => {
-                    let from = match tip.overflowing_sub(num_headers) {
-                        (_, true) => 0,
-                        (res, false) => res + 1,
-                    };
-                    (from..=tip, true)
-                },
-                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
             }
         };
 
@@ -438,7 +438,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(tokens) => tokens,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _ = tx.send(Err(Status::internal("Internal error")));
+                    let _get_token_response = tx.send(Err(Status::internal("Internal error")));
                     return;
                 },
             };
@@ -455,7 +455,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Ok(f) => f,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
-                        let _ = tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
+                        let _get_token_response =
+                            tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
                         break;
                     },
                 };
@@ -581,7 +582,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(outputs) => outputs,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _ = tx.send(Err(Status::internal("Internal error")));
+                    let _list_assest_registrations_response = tx.send(Err(Status::internal("Internal error")));
                     return;
                 },
             };
@@ -601,7 +602,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Ok(f) => f,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
-                        let _ = tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
+                        let _list_assest_registrations_response =
+                            tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
                         break;
                     },
                 };
@@ -636,11 +638,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
-        let algo: PowAlgorithm = ((request.algo)
-            .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
-            .pow_algo as u64)
-            .try_into()
-            .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
+        let algo: PowAlgorithm = (u64::try_from(
+            (request.algo)
+                .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
+                .pow_algo,
+        )
+        .unwrap())
+        .try_into()
+        .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
         let mut handler = self.node_service.clone();
 
         let new_template = handler
@@ -1423,9 +1428,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             _ => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
-                state: match state.is_synced() {
-                    true => tari_rpc::SyncState::Done.into(),
-                    false => tari_rpc::SyncState::Startup.into(),
+                state: if state.is_synced() {
+                    tari_rpc::SyncState::Done.into()
+                } else {
+                    tari_rpc::SyncState::Startup.into()
                 },
             },
         };

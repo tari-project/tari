@@ -87,7 +87,7 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         };
         let sha3_miner = Sha3MinerConfig {
             delay: zero_delay,
-            num_mining_threads: settings.num_mining_threads as usize,
+            num_mining_threads: usize::try_from(settings.num_mining_threads).unwrap(),
         };
         let mut mm_proxy = MmProxyConfig {
             delay: zero_delay,
@@ -196,7 +196,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     }; // drop read-only lock
     if should_create_workspace {
         let package_info = &state.package_info;
-        let _ = create_workspace_folders(&config.data_directory).map_err(|e| e.chained_message());
+        let _result = create_workspace_folders(&config.data_directory).map_err(|e| e.chained_message());
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "log4rs.yml")?;
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one

@@ -78,7 +78,7 @@ where
         self.hashes
             .clear()
             .map_err(|e| MerkleMountainRangeError::BackendError(e.to_string()))?;
-        for hash in hash_iter.into_iter() {
+        for hash in hash_iter {
             self.push(hash)?;
         }
         Ok(())
@@ -187,7 +187,7 @@ where
             let left_hash = self
                 .hashes
                 .get(left_sibling)
-                .map_err(MerkleMountainRangeError::backend_error)?
+                .map_err(|error| MerkleMountainRangeError::backend_error(&error))?
                 .unwrap();
             peak *= 2;
             pos += 1;

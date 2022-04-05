@@ -82,7 +82,7 @@ impl ContactsBackend for ContactsServiceSqliteDatabase {
             WriteOperation::Upsert(kvp) => match *kvp {
                 DbKeyValuePair::Contact(k, c) => match ContactSql::find_by_public_key(&k.to_vec(), &conn) {
                     Ok(found_c) => {
-                        let _ = found_c.update(
+                        let _contact_sql = found_c.update(
                             UpdateContact {
                                 alias: Some(c.alias),
                                 last_seen: None,

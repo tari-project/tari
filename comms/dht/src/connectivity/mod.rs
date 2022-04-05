@@ -133,7 +133,7 @@ impl DhtConnectivity {
         task::spawn(async move {
             log_mdc::extend(mdc.clone());
             debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
-            let _ = self.connectivity.wait_started().await;
+            let _result = self.connectivity.wait_started().await;
             log_mdc::extend(mdc.clone());
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
@@ -559,6 +559,7 @@ impl DhtConnectivity {
     }
 
     async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) -> Result<(), DhtConnectivityError> {
+        #[allow(clippy::enum_glob_use)]
         use ConnectivityEvent::*;
         debug!(target: LOG_TARGET, "Connectivity event: {}", event);
         match event {

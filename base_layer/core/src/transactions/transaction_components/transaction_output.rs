@@ -265,7 +265,7 @@ impl TransactionOutput {
     // Create commitment signature for the metadata
 
     fn create_metadata_signature(
-        value: &MicroTari,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -316,7 +316,7 @@ impl TransactionOutput {
         covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
-            value,
+            *value,
             spending_key,
             script,
             output_features,
@@ -338,7 +338,7 @@ impl TransactionOutput {
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
-            value,
+            *value,
             spending_key,
             script,
             output_features,

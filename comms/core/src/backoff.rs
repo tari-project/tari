@@ -56,7 +56,7 @@ impl Backoff for ExponentialBackoff {
         if attempts <= 1 {
             return Duration::from_secs(0);
         }
-        let secs = (self.factor as f64) * ((1usize << min(attempts, 63)) as f64 - 1.0);
+        let secs = (f64::from(self.factor)) * ((1usize << min(attempts, 63)) as f64 - 1.0);
         Duration::from_secs(secs.ceil() as u64)
     }
 }

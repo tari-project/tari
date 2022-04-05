@@ -76,7 +76,7 @@ pub enum RpcError {
 }
 
 impl RpcError {
-    pub fn client_internal_error<T: ToString>(err: T) -> Self {
+    pub fn client_internal_error<T: ToString>(err: &T) -> Self {
         RpcError::ClientInternalError(err.to_string())
     }
 }
@@ -105,6 +105,7 @@ impl HandshakeRejectReason {
 
 impl From<rpc_proto::rpc_session_reply::HandshakeRejectReason> for HandshakeRejectReason {
     fn from(reason: rpc_proto::rpc_session_reply::HandshakeRejectReason) -> Self {
+        #[allow(clippy::enum_glob_use)]
         use rpc_proto::rpc_session_reply::HandshakeRejectReason::*;
         match reason {
             UnsupportedVersion => HandshakeRejectReason::UnsupportedVersion,
@@ -117,6 +118,7 @@ impl From<rpc_proto::rpc_session_reply::HandshakeRejectReason> for HandshakeReje
 
 impl From<HandshakeRejectReason> for rpc_proto::rpc_session_reply::HandshakeRejectReason {
     fn from(reason: HandshakeRejectReason) -> Self {
+        #[allow(clippy::enum_glob_use)]
         use rpc_proto::rpc_session_reply::HandshakeRejectReason::*;
         match reason {
             HandshakeRejectReason::UnsupportedVersion => UnsupportedVersion,

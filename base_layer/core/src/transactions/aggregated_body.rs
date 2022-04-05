@@ -236,7 +236,7 @@ impl AggregateBody {
     /// will be added to the public key used in the signature verification.
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel signatures",);
-        for kernel in self.kernels.iter() {
+        for kernel in &self.kernels {
             kernel.verify_signature().map_err(|e| {
                 warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
                 e
@@ -466,7 +466,7 @@ impl AggregateBody {
     }
 
     fn validate_covenants(&self, height: u64) -> Result<(), TransactionError> {
-        for input in self.inputs.iter() {
+        for input in &self.inputs {
             input.covenant()?.execute(height, input, &self.outputs)?;
         }
         Ok(())
@@ -554,11 +554,11 @@ impl Display for AggregateBody {
             writeln!(fmt, "{}", kernel)?;
         }
         writeln!(fmt, "--- Inputs ({}) ---", self.inputs.len())?;
-        for input in self.inputs.iter() {
+        for input in &self.inputs {
             writeln!(fmt, "{}", input)?;
         }
         writeln!(fmt, "--- Outputs ({}) ---", self.outputs.len())?;
-        for output in self.outputs.iter() {
+        for output in &self.outputs {
             writeln!(fmt, "{}", output)?;
         }
         Ok(())

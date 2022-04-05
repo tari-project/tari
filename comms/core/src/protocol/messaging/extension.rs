@@ -74,7 +74,7 @@ where
 {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_tx, proto_rx) = mpsc::channel(MESSAGING_PROTOCOL_EVENTS_BUFFER_SIZE);
-        context.add_protocol(&[MESSAGING_PROTOCOL.clone()], proto_tx);
+        context.add_protocol(&[MESSAGING_PROTOCOL.clone()], &proto_tx);
 
         let (messaging_request_tx, messaging_request_rx) = mpsc::channel(MESSAGING_REQUEST_BUFFER_SIZE);
         let (inbound_message_tx, inbound_message_rx) = mpsc::channel(INBOUND_MESSAGE_BUFFER_SIZE);

@@ -77,7 +77,7 @@ impl<'a, 'b> TorCommand for KeyValueCommand<'a, 'b> {
         if let Some(last_line) = responses.last() {
             // Drop the last line if it's '250 OK' - some commands return it (GETINFO), some don't (GETCONF)
             if last_line.value == "OK" {
-                let _ = responses.pop();
+                let _result = responses.pop();
             }
         }
 

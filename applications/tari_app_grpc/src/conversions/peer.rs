@@ -37,7 +37,7 @@ impl From<Peer> for grpc::Peer {
         for address in peer.addresses.addresses {
             addresses.push(address.clone().into())
         }
-        let flags = peer.flags.bits() as u32;
+        let flags = u32::from(peer.flags.bits());
         let banned_until = match peer.banned_until {
             Some(v) => Some(datetime_to_timestamp((v.timestamp() as u64).into())),
             None => Some(datetime_to_timestamp(0.into())),
@@ -94,7 +94,7 @@ impl From<MutliaddrWithStats> for grpc::Address {
 
 impl From<ConnectivityStatus> for grpc::ConnectivityStatus {
     fn from(status: ConnectivityStatus) -> Self {
-        use ConnectivityStatus::*;
+        use ConnectivityStatus::{Degraded, Initializing, Offline, Online};
         match status {
             Initializing => grpc::ConnectivityStatus::Initializing,
             Online(_) => grpc::ConnectivityStatus::Online,

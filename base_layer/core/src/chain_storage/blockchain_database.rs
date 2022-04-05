@@ -248,6 +248,7 @@ where B: BlockchainBackend
                  resync your blockchain database."
                     .into(),
             ));
+        } else {
         }
         if cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
@@ -952,7 +953,7 @@ where B: BlockchainBackend
     /// Clean out the entire orphan pool
     pub fn cleanup_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        let _ = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?;
+        cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?;
         Ok(())
     }
 
@@ -964,7 +965,7 @@ where B: BlockchainBackend
     /// Clean out the entire orphan pool
     pub fn cleanup_all_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        let _ = cleanup_orphans(&mut *db, 0)?;
+        cleanup_orphans(&mut *db, 0)?;
         Ok(())
     }
 
@@ -1168,8 +1169,11 @@ where B: BlockchainBackend
     }
 }
 
-fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
+fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
+    let msg = format!(
+        "Unexpected result for database query {}. Response: {}",
+        request, response
+    );
     error!(target: LOG_TARGET, "{}", msg);
     Err(ChainStorageError::UnexpectedResult(msg))
 }
@@ -1197,6 +1201,7 @@ impl std::fmt::Display for MmrRoots {
     }
 }
 
+#[allow(clippy::similar_names)]
 pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;
@@ -2344,7 +2349,7 @@ impl<T> Clone for BlockchainDatabase<T> {
 fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Option<u64>) {
     let start = bounds.start_bound();
     let end = bounds.end_bound();
-    use Bound::*;
+    use Bound::{Excluded, Included, Unbounded};
     let start = match start {
         Included(n) => Some(*n),
         Excluded(n) => Some(n.saturating_add(1)),
@@ -2880,7 +2885,7 @@ mod test {
         .unwrap();
         result.assert_orphaned();
 
-        let _ = handle_possible_reorg(
+        let _error = handle_possible_reorg(
             &mut *access,
             &Default::default(),
             &MockValidator::new(false),

@@ -28,7 +28,7 @@ use crate::{
   },
 };
 use diesel::prelude::*;
-
+use std::convert::TryFrom;
 use tari_common_types::types::PublicKey;
 
 use tari_utilities::ByteArray;
@@ -102,8 +102,8 @@ impl AssetsTableGateway<SqliteTransaction> for SqliteAssetsTableGateway {
 
 impl SqliteAssetsTableGateway {
   fn convert_asset(r: &models::Asset) -> Result<AssetRow, StorageError> {
-    let mut committee = Vec::with_capacity(r.committee_length as usize);
-    for i in 0..r.committee_length as usize {
+    let mut committee = Vec::with_capacity(usize::try_from(r.committee_length).unwrap());
+    for i in 0..usize::try_from(r.committee_length).unwrap() {
       committee.push(PublicKey::from_bytes(&r.committee_pub_keys[i * 32..(i + 1) * 32]).unwrap());
     }
     Ok(AssetRow {

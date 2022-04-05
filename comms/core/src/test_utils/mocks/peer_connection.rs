@@ -196,7 +196,7 @@ impl PeerConnectionMock {
     }
 
     async fn handle_request(&mut self, req: PeerConnectionRequest) {
-        use PeerConnectionRequest::*;
+        use PeerConnectionRequest::{Disconnect, OpenSubstream};
         self.state.inc_call_count();
         match req {
             OpenSubstream { protocol_id, reply_tx } => match self.state.open_substream().await {
