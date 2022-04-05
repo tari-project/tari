@@ -196,11 +196,13 @@ impl Controller {
     }
 
     fn send_miner_job(&mut self, job: types::job_params::JobParams) -> Result<(), Error> {
+        let blob_bytes =
+            base64::decode(&job.blob).map_err(|_| Error::General("Invalid base64 byte string received".to_string()))?;
         let miner_message = types::miner_message::MinerMessage::ReceivedJob(
             job.height,
             job.job_id.parse::<u64>()?,
             job.target.parse::<u64>()?,
-            job.blob,
+            blob_bytes,
         );
         self.miner_tx.send(miner_message).map_err(Error::from)
     }

@@ -44,11 +44,11 @@ use tari_core::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, PrunedOutput},
-    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
+    consensus::{emission::Emission, ConsensusDecoding, ConsensusEncoding, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::Transaction,
+    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -59,6 +59,7 @@ use crate::{
     builder::BaseNodeContext,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
 };
@@ -153,6 +154,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
+        let mut sha3_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
+        let mut monero_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Monero, self.consensus_rules.clone());
+
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
             for (start, end) in page_iter {
@@ -176,33 +182,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                let mut headers_iter = headers.iter().peekable();
-
-                while let Some(chain_header) = headers_iter.next() {
-                    let current_difficulty = chain_header.accumulated_data().target_difficulty.as_u64();
-                    let current_timestamp = chain_header.header().timestamp.as_u64();
+                for chain_header in headers.iter() {
+                    let current_difficulty = chain_header.accumulated_data().target_difficulty;
+                    let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
-                    let pow_algo = chain_header.header().pow.pow_algo.as_u64();
+                    let pow_algo = chain_header.header().pow.pow_algo;
 
-                    let estimated_hash_rate = headers_iter
-                        .peek()
-                        .map(|chain_header| chain_header.header().timestamp.as_u64())
-                        .and_then(|peeked_timestamp| {
-                            // Sometimes blocks can have the same timestamp, lucky miner and some
-                            // clock drift.
-                            peeked_timestamp
-                                .checked_sub(current_timestamp)
-                                .filter(|td| *td > 0)
-                                .map(|time_diff| current_timestamp / time_diff)
-                        })
-                        .unwrap_or(0);
+                    // update the moving average calculation with the header data
+                    let current_hash_rate_moving_average = match pow_algo {
+                        PowAlgorithm::Monero => &mut monero_hash_rate_moving_average,
+                        PowAlgorithm::Sha3 => &mut sha3_hash_rate_moving_average,
+                    };
+                    current_hash_rate_moving_average.add(current_height, current_difficulty);
+
+                    let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.average();
+                    let monero_estimated_hash_rate = monero_hash_rate_moving_average.average();
+                    let estimated_hash_rate = sha3_estimated_hash_rate + monero_estimated_hash_rate;
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
-                        difficulty: current_difficulty,
+                        difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
+                        sha3_estimated_hash_rate,
+                        monero_estimated_hash_rate,
                         height: current_height,
-                        timestamp: current_timestamp,
-                        pow_algo,
+                        timestamp: current_timestamp.as_u64(),
+                        pow_algo: pow_algo.as_u64(),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
@@ -710,6 +714,53 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    async fn get_new_block_blob(
+        &self,
+        request: Request<tari_rpc::NewBlockTemplate>,
+    ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
+        let block_template: NewBlockTemplate = request
+            .try_into()
+            .map_err(|s| Status::invalid_argument(format!("Invalid block template: {}", s)))?;
+
+        let mut handler = self.node_service.clone();
+
+        let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(Status::invalid_argument(message));
+            },
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(status);
+            },
+            Err(e) => return Err(Status::internal(e.to_string())),
+        };
+        // construct response
+        let block_hash = new_block.hash();
+        let mining_hash = new_block.header.merged_mining_hash();
+
+        let (header, block_body) = new_block.into_header_body();
+        let mut header_bytes = Vec::new();
+        let _ = header.consensus_encode(&mut header_bytes)?;
+        let mut block_body_bytes = Vec::new();
+        let _ = block_body.consensus_encode(&mut block_body_bytes)?;
+        let response = tari_rpc::GetNewBlockBlobResult {
+            block_hash,
+            header: header_bytes,
+            block_body: block_body_bytes,
+            merge_mining_hash: mining_hash,
+            utxo_mr: header.output_mr,
+        };
+        debug!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
+        Ok(Response::new(response))
+    }
+
     async fn submit_block(
         &self,
         request: Request<tari_rpc::Block>,
@@ -717,6 +768,42 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)))?;
+        let block_height = block.header.height;
+        debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
+        info!(
+            target: LOG_TARGET,
+            "Received SubmitBlock #{} request from client", block_height
+        );
+
+        let mut handler = self.node_service.clone();
+        let block_hash = handler
+            .submit_block(block)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Sending SubmitBlock #{} response to client", block_height
+        );
+        Ok(Response::new(tari_rpc::SubmitBlockResponse { block_hash }))
+    }
+
+    async fn submit_block_blob(
+        &self,
+        request: Request<tari_rpc::BlockBlobRequest>,
+    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
+        debug!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "request: {:?}", request);
+        let mut header_bytes = request.header_blob.as_slice();
+        let mut body_bytes = request.body_blob.as_slice();
+        debug!(target: LOG_TARGET, "doing header");
+        let header = BlockHeader::consensus_decode(&mut header_bytes).map_err(|e| Status::internal(e.to_string()))?;
+        debug!(target: LOG_TARGET, "doing body");
+        let body = AggregateBody::consensus_decode(&mut body_bytes).map_err(|e| Status::internal(e.to_string()))?;
+        // let body = request.body_blob.try_into().unwrap();
+
+        let block = Block::new(header, body);
         let block_height = block.header.height;
         debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
         info!(
@@ -1350,7 +1437,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
-
         let response = self
             .state_machine_handle
             .get_status_info_watch()
@@ -1401,6 +1487,38 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(Response::new(resp))
             },
             None => Err(Status::not_found(format!("Header not found with hash `{}`", hash_hex))),
+        }
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<tari_rpc::GetHeaderByHeightRequest>,
+    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
+        let tari_rpc::GetHeaderByHeightRequest { height } = request.into_inner();
+        let mut node_service = self.node_service.clone();
+        let block = node_service
+            .get_block(height)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        match block {
+            Some(block) => {
+                let (block, acc_data, confirmations, _) = block.dissolve();
+                let total_block_reward = self
+                    .consensus_rules
+                    .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+
+                let resp = tari_rpc::BlockHeaderResponse {
+                    difficulty: acc_data.achieved_difficulty.into(),
+                    num_transactions: block.body.kernels().len() as u32,
+                    confirmations,
+                    header: Some(block.header.into()),
+                    reward: total_block_reward.into(),
+                };
+
+                Ok(Response::new(resp))
+            },
+            None => Err(Status::not_found(format!("Header not found with height `{}`", height))),
         }
     }
 

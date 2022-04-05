@@ -26,6 +26,8 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    io,
+    io::{Read, Write},
 };
 
 use blake2::Digest;
@@ -36,6 +38,7 @@ use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteA
 use super::TransactionKernelVersion;
 use crate::{
     common::hash_writer::HashWriter,
+    consensus::{ConsensusDecoding, ConsensusEncoding},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -165,5 +168,30 @@ impl PartialOrd for TransactionKernel {
 impl Ord for TransactionKernel {
     fn cmp(&self, other: &Self) -> Ordering {
         self.excess_sig.cmp(&other.excess_sig)
+    }
+}
+
+impl ConsensusEncoding for TransactionKernel {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.features.consensus_encode(writer)?;
+        written += self.fee.consensus_encode(writer)?;
+        written += self.lock_height.consensus_encode(writer)?;
+        written += self.excess.consensus_encode(writer)?;
+        written += self.excess_sig.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for TransactionKernel {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = TransactionKernelVersion::consensus_decode(reader)?;
+        let features = KernelFeatures::consensus_decode(reader)?;
+        let fee = MicroTari::consensus_decode(reader)?;
+        let lock_height = u64::consensus_decode(reader)?;
+        let excess = Commitment::consensus_decode(reader)?;
+        let excess_sig = Signature::consensus_decode(reader)?;
+        let input = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig);
+        Ok(input)
     }
 }

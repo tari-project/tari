@@ -1,5 +1,5 @@
 [package]
-name = "tari_stratum_ffi"
+name = "tari_mining_helper_ffi"
 authors = ["The Tari Development Community"]
 description = "Tari cryptocurrency miningcore C FFI bindings"
 license = "BSD-3-Clause"
@@ -10,7 +10,7 @@ edition = "2018"
 tari_comms = { version = "^0.30", path = "../../comms/core" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_common = {  path = "../../common" }
-tari_core = {  path = "../../base_layer/core", default-features = false, features = ["transactions"]}
+tari_core = {  path = "../core", default-features = false, features = ["transactions"]}
 tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 libc = "0.2.65"
 thiserror = "1.0.26"
