@@ -140,7 +140,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
-        &config.comms_public_address,
+        config.comms_public_address.as_ref(),
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
