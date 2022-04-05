@@ -1946,7 +1946,7 @@ fn output_malleability() {
     let mod_commitment = &mod_output.commitment + &mod_output.commitment;
     mod_output.commitment = mod_commitment;
 
-    // add a new block with the altered output to get a merke root for the altered block
+    // add a new block with the altered output to get a merkle root for the altered block
     blockchain
         .store()
         .rewind_to_height(mod_block.header.height - 1)
