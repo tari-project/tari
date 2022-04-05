@@ -57,7 +57,7 @@ impl MempoolInboundHandlers {
     /// Handle inbound Mempool service requests from remote nodes and local services.
     pub async fn handle_request(&mut self, request: MempoolRequest) -> Result<MempoolResponse, MempoolServiceError> {
         debug!(target: LOG_TARGET, "Handling remote request: {}", request);
-        use MempoolRequest::*;
+        use MempoolRequest::{GetState, GetStats, GetTxStateByExcessSig, SubmitTransaction};
         match request {
             GetStats => Ok(MempoolResponse::Stats(self.mempool.stats().await?)),
             GetState => Ok(MempoolResponse::State(self.mempool.state().await?)),
@@ -154,7 +154,7 @@ impl MempoolInboundHandlers {
 
     /// Handle inbound block events from the local base node service.
     pub async fn handle_block_event(&mut self, block_event: &BlockEvent) -> Result<(), MempoolServiceError> {
-        use BlockEvent::*;
+        use BlockEvent::{AddBlockFailed, BlockSyncComplete, BlockSyncRewind, ValidBlockAdded};
         match block_event {
             ValidBlockAdded(block, BlockAddResult::Ok(_)) => {
                 self.mempool.process_published_block(block.clone()).await?;

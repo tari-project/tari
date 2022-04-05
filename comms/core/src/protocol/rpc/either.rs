@@ -63,7 +63,7 @@ where
     type Response = A::Response;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        use self::Either::*;
+        use self::Either::{A, B};
 
         match self {
             A(service) => Poll::Ready(Ok(ready!(service.poll_ready(cx))?)),
@@ -72,7 +72,7 @@ where
     }
 
     fn call(&mut self, request: Request) -> Self::Future {
-        use self::Either::*;
+        use self::Either::{A, B};
 
         match self {
             A(service) => A(service.call(request)),

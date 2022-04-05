@@ -82,7 +82,7 @@ impl<TSubstream> Protocols<TSubstream> {
     pub fn add<I: AsRef<[ProtocolId]>>(
         &mut self,
         protocols: I,
-        notifier: ProtocolNotificationTx<TSubstream>,
+        notifier: &ProtocolNotificationTx<TSubstream>,
     ) -> &mut Self {
         self.protocols
             .extend(protocols.as_ref().iter().map(|p| (p.clone(), notifier.clone())));
@@ -125,7 +125,7 @@ impl<TSubstream> Protocols<TSubstream> {
 impl ProtocolExtension for Protocols<Substream> {
     fn install(mut self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         for (protocol, notifier) in self.protocols.drain() {
-            context.add_protocol(&[protocol], notifier);
+            context.add_protocol(&[protocol], &notifier);
         }
         Ok(())
     }
@@ -146,7 +146,7 @@ mod test {
             ProtocolId::from_static(b"/tari/test/2"),
         ];
         let mut protocols = Protocols::<()>::new();
-        protocols.add(&protos, tx);
+        protocols.add(&protos, &tx);
 
         assert!(protocols.get_supported_protocols().iter().all(|p| protos.contains(p)));
     }
@@ -156,7 +156,7 @@ mod test {
         let (tx, mut rx) = mpsc::channel(1);
         let protos = [ProtocolId::from_static(b"/tari/test/1")];
         let mut protocols = Protocols::<()>::new();
-        protocols.add(&protos, tx);
+        protocols.add(&protos, &tx);
 
         protocols
             .notify(&protos[0], ProtocolEvent::NewInboundSubstream(NodeId::new(), ()))

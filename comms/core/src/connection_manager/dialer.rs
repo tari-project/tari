@@ -161,7 +161,7 @@ where
     }
 
     fn handle_request(&mut self, pending_dials: &mut DialFuturesUnordered, request: DialerRequest) {
-        use DialerRequest::*;
+        use DialerRequest::{CancelPendingDial, Dial, NotifyNewInboundConnection};
         debug!(target: LOG_TARGET, "Connection dialer got request: {:?}", request);
         match request {
             Dial(peer, reply_tx) => {
@@ -181,13 +181,13 @@ where
 
     fn cancel_dial(&mut self, peer_id: &NodeId) {
         if let Some(mut s) = self.cancel_signals.remove(peer_id) {
-            let _ = s.trigger();
+            s.trigger();
         }
     }
 
     fn resolve_pending_dials(&mut self, conn: PeerConnection) {
         let peer = conn.peer_node_id().clone();
-        self.reply_to_pending_requests(&peer, Ok(conn));
+        self.reply_to_pending_requests(&peer, &Ok(conn));
         self.cancel_dial(&peer);
     }
 
@@ -239,7 +239,7 @@ where
             );
         }
 
-        self.reply_to_pending_requests(&node_id, dial_result);
+        self.reply_to_pending_requests(&node_id, &dial_result);
         self.cancel_dial(&node_id);
     }
 
@@ -254,7 +254,7 @@ where
     fn reply_to_pending_requests(
         &mut self,
         peer_node_id: &NodeId,
-        result: Result<PeerConnection, ConnectionManagerError>,
+        result: &Result<PeerConnection, ConnectionManagerError>,
     ) {
         self.pending_dial_requests
             .remove(peer_node_id)

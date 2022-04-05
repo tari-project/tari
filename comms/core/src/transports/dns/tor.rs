@@ -68,15 +68,15 @@ impl DnsResolver for TorDnsResolver {
             let addr = if common::is_dns4_addr(&addr) {
                 let mut client = resolver.connect().await?;
                 debug!(target: LOG_TARGET, "Resolving address `{}` using tor", addr);
-                let resolved = match client.tor_resolve(&addr).await {
-                    Ok(a) => a,
+                let resolved_address = match client.tor_resolve(&addr).await {
+                    Ok(address) => address,
                     Err(err) => {
                         error!(target: LOG_TARGET, "Error resolving address: {}", err);
                         return Err(err.into());
                     },
                 };
-                debug!(target: LOG_TARGET, "Resolved address `{}` using tor", resolved);
-                resolved
+                debug!(target: LOG_TARGET, "Resolved address `{}` using tor", resolved_address);
+                resolved_address
             } else {
                 addr
             };

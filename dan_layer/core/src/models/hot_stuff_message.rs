@@ -190,6 +190,7 @@ impl<TPayload: Payload> HotStuffMessage<TPayload> {
             b = b.chain(node.calculate_hash().as_bytes());
         } else if let Some(ref node_hash) = self.node_hash {
             b = b.chain(node_hash.as_bytes());
+        } else {
         }
         b.finalize().to_vec()
     }

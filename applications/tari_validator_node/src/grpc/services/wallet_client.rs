@@ -77,7 +77,7 @@ impl WalletClient for GrpcWalletClient {
             .await
             .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
 
-        dbg!(&res);
+        println!("{:?}", res);
         Ok(())
     }
 }

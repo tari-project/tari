@@ -54,14 +54,14 @@ impl CommandContext {
     /// Function to process the list-headers command
     pub async fn list_headers(&self, start: u64, end: Option<u64>) -> Result<(), Error> {
         let headers = self.get_chain_headers(start, end).await?;
-        if !headers.is_empty() {
+        if headers.is_empty() {
+            Err(ArgsError::NoHeaders.into())
+        } else {
             for header in headers {
                 println!("\n\nHeader hash: {}", header.hash().to_hex());
                 println!("{}", header);
             }
             Ok(())
-        } else {
-            Err(ArgsError::NoHeaders.into())
         }
     }
 }

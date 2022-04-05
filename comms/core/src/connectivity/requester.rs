@@ -62,6 +62,7 @@ pub enum ConnectivityEvent {
 
 impl fmt::Display for ConnectivityEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use ConnectivityEvent::*;
         match self {
             PeerDisconnected(node_id) => write!(f, "PeerDisconnected({})", node_id),

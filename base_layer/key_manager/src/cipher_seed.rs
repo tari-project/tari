@@ -96,7 +96,7 @@ impl CipherSeed {
     #[cfg(not(target_arch = "wasm32"))]
     pub fn new() -> Self {
         const SECONDS_PER_DAY: u64 = 24 * 60 * 60;
-        let days = chrono::Utc::now().timestamp() as u64 / SECONDS_PER_DAY;
+        let days = u64::try_from(chrono::Utc::now().timestamp()).unwrap() / SECONDS_PER_DAY;
         let birthday = u16::try_from(days).unwrap_or(0u16);
         CipherSeed::new_with_birthday(birthday)
     }
@@ -288,20 +288,20 @@ impl Mnemonic<CipherSeed> for CipherSeed {
     /// Generates a SecretKey that represent the provided mnemonic sequence of words using the specified language
     fn from_mnemonic_with_language(
         mnemonic_seq: &[String],
-        language: &MnemonicLanguage,
+        language: MnemonicLanguage,
         passphrase: Option<String>,
     ) -> Result<CipherSeed, KeyManagerError> {
-        let bytes = to_bytes_with_language(mnemonic_seq, language)?;
+        let bytes = to_bytes_with_language(mnemonic_seq, &language)?;
         CipherSeed::from_enciphered_bytes(&bytes, passphrase)
     }
 
     /// Generates a mnemonic sequence of words from the provided secret key
     fn to_mnemonic(
         &self,
-        language: &MnemonicLanguage,
+        language: MnemonicLanguage,
         passphrase: Option<String>,
     ) -> Result<Vec<String>, KeyManagerError> {
-        Ok(from_bytes(self.encipher(passphrase)?, language)?)
+        Ok(from_bytes(&self.encipher(passphrase)?, language)?)
     }
 }
 
@@ -352,20 +352,17 @@ mod test {
     fn test_cipher_seed_to_mnemonic_and_from_mnemonic() {
         // Valid Mnemonic sequence
         let seed = CipherSeed::new();
-        match seed.to_mnemonic(&MnemonicLanguage::Japanese, None) {
-            Ok(mnemonic_seq) => {
-                match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
-                    Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-                    Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
-                }
-                // Language known
-                match CipherSeed::from_mnemonic_with_language(&mnemonic_seq, &MnemonicLanguage::Japanese, None) {
-                    Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-                    Err(_e) => panic!("Couldn't create CipherSeed from Mnemonic with Language"),
-                }
-            },
-            Err(_e) => panic!("Couldn't convert CipherSeed to Mnemonic"),
+        let mnemonic_seq = seed
+            .to_mnemonic(MnemonicLanguage::Japanese, None)
+            .expect("Couldn't convert CipherSeed to Mnemonic");
+        match CipherSeed::from_mnemonic(&mnemonic_seq, None) {
+            Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
+            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
+        // Language known
+        let mnemonic_seed = CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None)
+            .expect("Couldn't create CipherSeed from Mnemonic with Language");
+        assert_eq!(seed, mnemonic_seed);
         // Invalid Mnemonic sequence
         let mnemonic_seq = vec![
             "stay", "what", "minor", "stay", "olive", "clip", "buyer", "know", "report", "obey", "pen", "door", "type",
@@ -380,7 +377,7 @@ mod test {
             Err(_e) => {},
         }
         // Language known
-        match CipherSeed::from_mnemonic_with_language(&mnemonic_seq, &MnemonicLanguage::Japanese, None) {
+        match CipherSeed::from_mnemonic_with_language(&mnemonic_seq, MnemonicLanguage::Japanese, None) {
             Ok(_k) => panic!(),
             Err(_e) => {},
         }
@@ -389,22 +386,20 @@ mod test {
     #[test]
     fn cipher_seed_to_and_from_mnemonic_with_passphrase() {
         let seed = CipherSeed::new();
-        match seed.to_mnemonic(&MnemonicLanguage::Spanish, Some("Passphrase".to_string())) {
-            Ok(mnemonic_seq) => match CipherSeed::from_mnemonic(&mnemonic_seq, Some("Passphrase".to_string())) {
-                Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
-                Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
-            },
-            Err(_e) => panic!("Couldn't convert CipherSeed to Mnemonic"),
+        let mnemonic_seq = seed
+            .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
+            .expect("Couldn't convert CipherSeed to Mnemonic");
+        match CipherSeed::from_mnemonic(&mnemonic_seq, Some("Passphrase".to_string())) {
+            Ok(mnemonic_seed) => assert_eq!(seed, mnemonic_seed),
+            Err(e) => panic!("Couldn't create CipherSeed from Mnemonic: {}", e),
         }
 
-        match seed.to_mnemonic(&MnemonicLanguage::Spanish, Some("Passphrase".to_string())) {
-            Ok(mnemonic_seq) => {
-                assert!(
-                    !CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_ok(),
-                    "Should not be able to derive seed with wrong passphrase"
-                );
-            },
-            Err(_e) => panic!("Couldn't convert CipherSeed to Mnemonic"),
-        }
+        let mnemonic_seq = seed
+            .to_mnemonic(MnemonicLanguage::Spanish, Some("Passphrase".to_string()))
+            .expect("Couldn't convert CipherSeed to Mnemonic");
+        assert!(
+            !CipherSeed::from_mnemonic(&mnemonic_seq, Some("WrongPassphrase".to_string())).is_ok(),
+            "Should not be able to derive seed with wrong passphrase"
+        );
     }
 }

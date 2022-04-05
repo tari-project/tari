@@ -66,7 +66,7 @@ enum State {
 
 impl Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use State::*;
+        use State::{Discovering, Initializing, OnConnect, Ready, Shutdown, Waiting};
         match self {
             Initializing => write!(f, "Initializing"),
             Ready(_) => write!(f, "Ready"),
@@ -98,6 +98,7 @@ pub enum StateEvent {
 
 impl Display for StateEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use StateEvent::*;
         match self {
             Initialized => write!(f, "Initialized"),
@@ -147,7 +148,7 @@ impl NetworkDiscoveryContext {
     }
 
     pub(super) fn publish_event(&self, event: DhtEvent) {
-        let _ = self.event_tx.send(Arc::new(event));
+        let _result = self.event_tx.send(Arc::new(event));
     }
 
     pub(super) async fn set_last_round(&self, last_round: DhtNetworkDiscoveryRoundInfo) {
@@ -193,7 +194,7 @@ impl DhtNetworkDiscovery {
     }
 
     async fn get_next_event(&mut self, state: &mut State) -> StateEvent {
-        use State::*;
+        use State::{Discovering, Initializing, OnConnect, Ready, Waiting};
         match state {
             Initializing => self::Initializing::new(&mut self.context).next_event().await,
             Ready(ready) => ready.next_event().await,

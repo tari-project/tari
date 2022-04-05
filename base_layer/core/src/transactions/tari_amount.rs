@@ -259,7 +259,7 @@ impl Tari {
     }
 
     pub fn to_currency_string(&self, sep: char) -> String {
-        let d = Decimal::from_parts(self.0.as_u64() as u128, 6, false).unwrap();
+        let d = Decimal::from_parts(u128::from(self.0.as_u64()), 6, false).unwrap();
         format!("{} T", format_currency(&d.to_string(), sep))
     }
 }

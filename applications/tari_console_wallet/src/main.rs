@@ -211,7 +211,7 @@ fn main_inner() -> Result<(), ExitError> {
         WalletMode::RecoveryDaemon | WalletMode::RecoveryTui => recovery_mode(config, wallet.clone()),
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
-            "Invalid wallet mode - are you trying too many command options at once?",
+            &"Invalid wallet mode - are you trying too many command options at once?",
         )),
     };
 

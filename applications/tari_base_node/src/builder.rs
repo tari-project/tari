@@ -195,7 +195,7 @@ pub async fn configure_and_initialize_node(
         },
         DatabaseType::LMDB(p) => {
             let backend = create_lmdb_database(&p, config.db_config.clone())
-                .map_err(|e| ExitError::new(ExitCode::DatabaseError, e))?;
+                .map_err(|e| ExitError::new(ExitCode::DatabaseError, &e))?;
             build_node_context(
                 backend,
                 node_identity,
@@ -262,10 +262,10 @@ async fn build_node_context(
         if let ChainStorageError::DatabaseResyncRequired(reason) = err {
             return ExitError::new(
                 ExitCode::DbInconsistentState,
-                format!("You may need to re-sync your database because {}", reason),
+                &format!("You may need to re-sync your database because {}", reason),
             );
         } else {
-            ExitError::new(ExitCode::DatabaseError, err)
+            ExitError::new(ExitCode::DatabaseError, &err)
         }
     })?;
     let mempool_validator = MempoolValidator::new(vec![

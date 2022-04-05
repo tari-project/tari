@@ -23,6 +23,8 @@
 #[allow(dead_code)]
 mod support;
 
+use std::convert::TryFrom;
+
 use rand::{
     distributions::{Distribution, Uniform},
     Rng,
@@ -32,7 +34,6 @@ use tari_mmr::{
     functions::{calculate_mmr_root, calculate_pruned_mmr_root, prune_mmr},
     Hash,
 };
-
 #[test]
 fn pruned_mmr_empty() {
     let mmr = create_mmr(0);
@@ -75,7 +76,7 @@ fn get_changes() -> (usize, Vec<Hash>, Vec<u32>) {
     let deletions: Vec<u32> = Uniform::from(0..src_size)
         .sample_iter(&mut rng)
         .take(src_size / 5)
-        .map(|v| v as u32)
+        .map(|v| u32::try_from(v).unwrap())
         .collect();
     (src_size, additions, deletions)
 }

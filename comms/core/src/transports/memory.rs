@@ -24,6 +24,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    convert::TryFrom,
     io,
     num::NonZeroU16,
     pin::Pin,
@@ -99,7 +100,7 @@ fn parse_addr(addr: &Multiaddr) -> io::Result<u16> {
         ));
     }
 
-    Ok(port as u16)
+    Ok(u16::try_from(port).unwrap())
 }
 
 #[must_use = "streams do nothing unless polled"]

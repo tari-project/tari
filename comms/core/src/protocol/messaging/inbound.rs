@@ -103,7 +103,7 @@ impl InboundMessaging {
                         break;
                     }
 
-                    let _ = self.messaging_events_tx.send(Arc::new(event));
+                    let _result = self.messaging_events_tx.send(Arc::new(event));
                 },
                 Err(err) => {
                     metrics::error_count(peer).inc();

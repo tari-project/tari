@@ -88,7 +88,7 @@ impl HeaderSyncState {
         let randomx_vm_cnt = shared.get_randomx_vm_cnt();
         let randomx_vm_flags = shared.get_randomx_vm_flags();
         synchronizer.on_starting(move || {
-            let _ = status_event_sender.send(StatusInfo {
+            let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::HeaderSync(None),
                 randomx_vm_cnt,
@@ -103,7 +103,7 @@ impl HeaderSyncState {
                 local_height: current_height,
                 sync_peer: sync_peer.clone(),
             };
-            let _ = status_event_sender.send(StatusInfo {
+            let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::HeaderSync(Some(details)),
                 randomx_vm_cnt,

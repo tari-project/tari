@@ -564,7 +564,7 @@ async fn dht_propagate_dedup() {
         age: u32,
     }
 
-    let out_msg = OutboundDomainMessage::new(123, Person {
+    let out_msg = OutboundDomainMessage::new(&123, Person {
         name: "John Conway".into(),
         age: 82,
     });
@@ -600,9 +600,9 @@ async fn dht_propagate_dedup() {
     let node_D_id = node_D.node_identity().node_id().clone();
 
     // Ensure that the message has propagated before disconnecting everyone
-    let _ = node_B_messaging2.recv().await.unwrap();
-    let _ = node_C_messaging2.recv().await.unwrap();
-    let _ = node_D_messaging2.recv().await.unwrap();
+    let _result = node_B_messaging2.recv().await.unwrap();
+    let _result = node_C_messaging2.recv().await.unwrap();
+    let _result = node_D_messaging2.recv().await.unwrap();
 
     node_A.shutdown().await;
     node_B.shutdown().await;
@@ -700,7 +700,7 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
     }
 
     // Just a message to test connectivity between Node A -> Node C, and to get the header from
-    let out_msg = OutboundDomainMessage::new(123, Person {
+    let out_msg = OutboundDomainMessage::new(&123, Person {
         name: "John Conway".into(),
         age: 82,
     });
@@ -852,7 +852,7 @@ async fn dht_repropagate() {
         age: u32,
     }
 
-    let out_msg = OutboundDomainMessage::new(123, Person {
+    let out_msg = OutboundDomainMessage::new(&123, Person {
         name: "Alan Turing".into(),
         age: 41,
     });

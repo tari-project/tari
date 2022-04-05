@@ -23,7 +23,7 @@
 #![cfg(feature = "rpc")]
 
 use core::iter;
-use std::{cmp, time::Duration};
+use std::{cmp, convert::TryFrom, time::Duration};
 
 use tari_comms::{
     async_trait,
@@ -78,7 +78,7 @@ impl GreetingRpc for GreetingService {
         let greeting = self
             .greetings
             .get(msg.language as usize)
-            .ok_or_else(|| RpcStatus::bad_request(format!("{} is not a valid language identifier", msg.language)))?;
+            .ok_or_else(|| RpcStatus::bad_request(&format!("{} is not a valid language identifier", msg.language)))?;
 
         let greeting = format!("{} {}", greeting, msg.name);
         Ok(Response::new(SayHelloResponse { greeting }))
@@ -94,7 +94,7 @@ impl GreetingRpc for GreetingService {
     }
 
     async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Response<Vec<u8>>, RpcStatus> {
-        let size = request.into_message() as usize;
+        let size = usize::try_from(request.into_message()).unwrap();
         Ok(Response::new(iter::repeat(0).take(size).collect()))
     }
 
@@ -111,9 +111,11 @@ impl GreetingRpc for GreetingService {
         let (tx, rx) = mpsc::channel(10);
         let t = std::time::Instant::now();
         task::spawn(async move {
-            let item = iter::repeat(0u8).take(item_size as usize).collect::<Vec<_>>();
+            let item = iter::repeat(0u8)
+                .take(usize::try_from(item_size).unwrap())
+                .collect::<Vec<_>>();
             for (i, item) in iter::repeat_with(|| Ok(item.clone()))
-                .take(num_items as usize)
+                .take(usize::try_from(num_items).unwrap())
                 .enumerate()
             {
                 tx.send(item).await.unwrap();

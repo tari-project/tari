@@ -1,14 +1,6 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
-
 use std::{
     fs::File,
     io::{stdout, Write},
@@ -76,12 +68,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let script = script!(Nop);
                 let (utxo, key, _) = create_utxo(value, &fc, feature, script, Covenant::default());
                 print!(".");
-                let _ = stdout().flush();
+                let _result = stdout().flush();
                 (utxo, key, value)
             })
             .await
             .expect("Could not create key");
-            let _ = txc.send(result).await;
+            let _result = txc.send(result).await;
         });
     }
     println!("Go!");
@@ -107,7 +99,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
             proof: utxo.proof.to_hex(),
         };
         let key_str = format!("{}\n", serde_json::to_string(&key).unwrap());
-        let _ = key_file.write_all(key_str.as_bytes());
+        let _result = key_file.write_all(key_str.as_bytes());
 
         let utxo_s = serde_json::to_string(&utxo).unwrap();
         match utxo_file.write_all(format!("{}\n", utxo_s).as_bytes()) {
@@ -124,7 +116,7 @@ async fn write_keys(mut rx: mpsc::Receiver<(TransactionOutput, PrivateKey, Micro
     let excess = Commitment::from_public_key(&pk);
     let kernel = TransactionKernel::new_current_version(KernelFeatures::empty(), MicroTari::from(0), 0, excess, sig);
     let kernel = serde_json::to_string(&kernel).unwrap();
-    let _ = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
+    let _result = utxo_file.write_all(format!("{}\n", kernel).as_bytes());
 
     println!("Done.");
 }

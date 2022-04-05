@@ -101,7 +101,7 @@ pub fn create_transport_type(config: &GlobalConfig) -> TransportType {
                         "An error occurred when attempting to load the tor identity. A new tor identity will be \
                          created."
                     );
-                    let _ = fs::remove_file(&config.base_node_tor_identity_file);
+                    let _result = fs::remove_file(&config.base_node_tor_identity_file);
                     None
                 },
             };
@@ -187,7 +187,7 @@ pub fn setup_runtime(config: &GlobalConfig) -> Result<Runtime, ExitError> {
 
     builder.enable_all().build().map_err(|e| {
         let msg = format!("There was an error while building the node runtime. {}", e);
-        ExitError::new(ExitCode::UnknownError, msg)
+        ExitError::new(ExitCode::UnknownError, &msg)
     })
 }
 

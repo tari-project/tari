@@ -96,7 +96,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
 impl From<TransactionKernel> for proto::types::TransactionKernel {
     fn from(kernel: TransactionKernel) -> Self {
         Self {
-            features: kernel.features.bits() as u32,
+            features: u32::from(kernel.features.bits()),
             excess: Some(kernel.excess.into()),
             excess_sig: Some(kernel.excess_sig.into()),
             fee: kernel.fee.into(),
@@ -309,7 +309,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
 impl From<OutputFeatures> for proto::types::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
-            flags: features.flags.bits() as u32,
+            flags: u32::from(features.flags.bits()),
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id.unwrap_or_default(),
@@ -322,7 +322,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
-            recovery_byte: features.recovery_byte as u32,
+            recovery_byte: u32::from(features.recovery_byte),
         }
     }
 }

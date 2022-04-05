@@ -137,6 +137,7 @@ pub enum OutputManagerRequest {
 
 impl fmt::Display for OutputManagerRequest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use OutputManagerRequest::*;
         match self {
             GetBalance => write!(f, "GetBalance"),

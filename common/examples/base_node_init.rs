@@ -58,7 +58,7 @@ fn main() -> anyhow::Result<()> {
     let mut args = Arguments::from_args();
     args.bootstrap.init_dirs(ApplicationType::BaseNode)?;
     println!("CLI arguments:\n");
-    dbg!(&args);
+    println!("{:?}", args);
 
     let mut config = args.bootstrap.load_configuration()?;
 

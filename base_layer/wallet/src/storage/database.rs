@@ -518,7 +518,7 @@ mod test {
             ("key3".to_string(), "value3".to_string()),
         ];
 
-        for kv in client_key_values.iter() {
+        for kv in &client_key_values {
             runtime
                 .block_on(db.set_client_key_value(kv.0.clone(), kv.1.clone()))
                 .unwrap();

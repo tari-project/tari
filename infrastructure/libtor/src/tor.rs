@@ -146,7 +146,7 @@ impl Tor {
             Ok(transport)
         } else {
             let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
-            Err(ExitError::new(ExitCode::ConfigError, e))
+            Err(ExitError::new(ExitCode::ConfigError, &e))
         }
     }
 

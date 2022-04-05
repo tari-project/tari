@@ -148,7 +148,7 @@ async fn run_stress_test(test_params: Params) {
                     r.as_ref().err().map(ToString::to_string).unwrap_or_else(String::new)
                 );
 
-                let _ = r.unwrap();
+                let _result = r.unwrap();
             }
             assert_eq!(count, num_items);
         }));

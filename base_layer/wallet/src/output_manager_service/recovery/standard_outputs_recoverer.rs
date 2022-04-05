@@ -132,7 +132,7 @@ where
         );
 
         let mut rewound_outputs_with_tx_id: Vec<RecoveredOutput> = Vec::new();
-        for (output, proof) in rewound_outputs.iter_mut() {
+        for (output, proof) in &mut rewound_outputs {
             let db_output = DbUnblindedOutput::rewindable_from_unblinded_output(
                 output.clone(),
                 &self.factories,
