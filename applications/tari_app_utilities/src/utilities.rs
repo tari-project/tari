@@ -20,137 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{borrow::Cow, convert::TryFrom, str::FromStr, sync::Arc};
+use std::{convert::TryFrom, str::FromStr};
 
 use futures::future::Either;
 use log::*;
-use tari_common::{
-    configuration::CommsTransportType,
-    exit_codes::{ExitCode, ExitError},
-    SocksAuthentication,
-    TorControlAuthentication,
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::{
     emoji::EmojiId,
     types::{BlockHash, PublicKey},
 };
-use tari_comms::{
-    peer_manager::NodeId,
-    socks,
-    tor,
-    tor::TorIdentity,
-    transports::{predicate::FalsePredicate, SocksConfig},
-    types::CommsPublicKey,
-    utils::multiaddr::socketaddr_to_multiaddr,
-};
-use tari_p2p::{
-    transport::{TorConfig, TransportType},
-    P2pConfig,
-};
+use tari_comms::{peer_manager::NodeId, types::CommsPublicKey};
 use tari_utilities::hex::Hex;
 use thiserror::Error;
 use tokio::{runtime, runtime::Runtime};
 
-use crate::identity_management::load_from_json;
-
 pub const LOG_TARGET: &str = "tari::application";
-
-/// Creates a transport type from the given configuration
-///
-/// ## Paramters
-/// `config` - The reference to the configuration in which to set up the comms stack, see [GlobalConfig]
-///
-/// ##Returns
-/// TransportType based on the configuration
-pub fn create_transport_type(config: &P2pConfig) -> TransportType {
-    debug!(target: LOG_TARGET, "Transport is set to '{:?}'", config.transport);
-    use CommsTransportType::*;
-
-    match config.transport.transport_type {
-        Tcp => {
-            let tcp_config = &config.transport.tcp;
-            TransportType::Tcp {
-                listener_address: socketaddr_to_multiaddr(&tcp_config.listener_address.clone()),
-                tor_socks_config: tcp_config
-                    .tor_socks_address
-                    .as_ref()
-                    .cloned()
-                    .map(|proxy_address| SocksConfig {
-                        proxy_address,
-                        authentication: tcp_config
-                            .tor_socks_auth
-                            .clone()
-                            .map(convert_socks_authentication)
-                            .unwrap_or_default(),
-                        proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-                    }),
-            }
-        },
-        Tor => {
-            let tor_config = &config.transport.tor;
-            let identity = tor_config.identity_file.as_ref().filter(|p| p.exists()).and_then(|p| {
-                // If this fails, we can just use another address
-                load_from_json::<_, TorIdentity>(p).ok()
-            });
-            debug!(
-                target: LOG_TARGET,
-                "Tor identity at path '{}' {:?}",
-                tor_config
-                    .identity_file
-                    .as_ref()
-                    .map(|path| path.to_string_lossy())
-                    .unwrap_or_else(|| Cow::Borrowed("--")),
-                identity
-                    .as_ref()
-                    .map(|ident| format!("loaded for address '{}.onion'", ident.service_id))
-                    .or_else(|| Some("not found".to_string()))
-                    .unwrap()
-            );
-
-            TransportType::Tor(TorConfig {
-                control_server_addr: tor_config.control_address,
-                control_server_auth: {
-                    match tor_config.control_auth.clone() {
-                        TorControlAuthentication::None => tor::Authentication::None,
-                        TorControlAuthentication::Password(password) => tor::Authentication::HashedPassword(password),
-                    }
-                },
-                identity: identity.map(Box::new),
-                port_mapping: (tor_config.onion_port, tor_config.forward_address).into(),
-                socks_address_override: tor_config.socks_address_override,
-                socks_auth: socks::Authentication::None,
-                tor_proxy_bypass_addresses: tor_config.proxy_bypass_addresses.clone(),
-                tor_proxy_bypass_for_outbound_tcp: tor_config.proxy_bypass_for_outbound_tcp,
-            })
-        },
-        Socks5 => {
-            let socks_config = config.transport.socks.clone();
-            TransportType::Socks {
-                socks_config: SocksConfig {
-                    proxy_address: socks_config.proxy_address,
-                    authentication: convert_socks_authentication(socks_config.auth),
-                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
-                },
-                listener_address: socketaddr_to_multiaddr(&config.transport.tcp.listener_address),
-            }
-        },
-    }
-}
-
-/// Converts one socks authentication struct into another
-/// ## Parameters
-/// `auth` - Socks authentication of type SocksAuthentication
-///
-/// ## Returns
-/// Socks authentication of type socks::Authentication
-pub fn convert_socks_authentication(auth: SocksAuthentication) -> socks::Authentication {
-    match auth {
-        SocksAuthentication::None => socks::Authentication::None,
-        SocksAuthentication::UsernamePassword { username, password } => {
-            socks::Authentication::Password { username, password }
-        },
-    }
-}
 
 pub fn setup_runtime() -> Result<Runtime, ExitError> {
     let mut builder = runtime::Builder::new_multi_thread();

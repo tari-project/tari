@@ -58,12 +58,12 @@ pub struct ApplicationConfig {
 impl ApplicationConfig {
     pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
         let mut config = Self {
-            common: CommonConfig::load_from(&cfg)?,
-            auto_update: AutoUpdateConfig::load_from(&cfg)?,
-            peer_seeds: PeerSeedsConfig::load_from(&cfg)?,
-            base_node: BaseNodeConfig::load_from(&cfg)?,
+            common: CommonConfig::load_from(cfg)?,
+            auto_update: AutoUpdateConfig::load_from(cfg)?,
+            peer_seeds: PeerSeedsConfig::load_from(cfg)?,
+            base_node: BaseNodeConfig::load_from(cfg)?,
             #[cfg(feature = "metrics")]
-            metrics: MetricsConfig::load_from(&cfg)?,
+            metrics: MetricsConfig::load_from(cfg)?,
         };
 
         config.base_node.set_base_path(config.common.base_path());
@@ -148,9 +148,6 @@ impl BaseNodeConfig {
     pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
         if !self.identity_file.is_absolute() {
             self.identity_file = base_path.as_ref().join(self.identity_file.as_path());
-        }
-        if !self.tor_identity_file.is_absolute() {
-            self.tor_identity_file = base_path.as_ref().join(self.tor_identity_file.as_path());
         }
         if !self.data_dir.is_absolute() {
             self.data_dir = base_path.as_ref().join(self.data_dir.as_path());

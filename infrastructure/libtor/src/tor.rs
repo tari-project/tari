@@ -26,12 +26,8 @@ use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::{
-    configuration::CommsTransportType,
-    exit_codes::{ExitCode, ExitError},
-    CommsTransport,
-    TorControlAuthentication,
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
@@ -115,9 +111,9 @@ impl Tor {
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance
-    pub fn update_comms_transport(&self, transport: &mut CommsTransport) -> Result<(), ExitError> {
+    pub fn update_comms_transport(&self, transport: &mut TransportConfig) -> Result<(), ExitError> {
         match transport.transport_type {
-            CommsTransportType::Tor => {
+            TransportType::Tor => {
                 if let Some(ref passphrase) = self.passphrase.0 {
                     transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
                 }

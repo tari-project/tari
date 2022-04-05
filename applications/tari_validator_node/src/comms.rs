@@ -22,7 +22,7 @@
 
 use std::sync::Arc;
 
-use tari_app_utilities::{identity_management, utilities::create_transport_type};
+use tari_app_utilities::{identity_management, identity_management::load_from_json};
 use tari_common::{
     configuration::Network,
     exit_codes::{ExitCode, ExitError},
@@ -50,6 +50,10 @@ pub async fn build_service_and_comms_stack(
 ) -> Result<(ServiceHandles, SubscriptionFactory), ExitError> {
     let (publisher, peer_message_subscriptions) = pubsub_connector(100, 50);
 
+    let mut transport_config = config.validator_node.p2p.transport.clone();
+    transport_config.tor.identity = load_from_json(&config.validator_node.tor_identity_file)
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+
     let mut handles = StackBuilder::new(shutdown.clone())
         .add_initializer(P2pInitializer::new(
             config.validator_node.p2p.clone(),
@@ -69,9 +73,9 @@ pub async fn build_service_and_comms_stack(
 
     let comms = setup_p2p_rpc(config, comms, &handles, mempool, db_factory, asset_processor);
 
-    let comms = spawn_comms_using_transport(comms, create_transport_type(&config.validator_node.p2p))
+    let comms = spawn_comms_using_transport(comms, transport_config)
         .await
-        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport:{}", e)))?;
+        .map_err(|e| ExitError::new(ExitCode::ConfigError, format!("Could not spawn using transport: {}", e)))?;
 
     // Save final node identity after comms has initialized. This is required because the public_address can be
     // changed by comms during initialization when using tor.

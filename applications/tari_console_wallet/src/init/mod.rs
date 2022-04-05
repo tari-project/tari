@@ -25,7 +25,6 @@ use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
-use tari_app_utilities::utilities::create_transport_type;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -36,7 +35,7 @@ use tari_comms::{
 use tari_core::transactions::CryptoFactories;
 use tari_crypto::keys::PublicKey;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
-use tari_p2p::{peer_seeds::SeedPeer, transport::TransportType::Tor};
+use tari_p2p::{peer_seeds::SeedPeer, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
@@ -307,23 +306,18 @@ pub async fn init_wallet(
             .await?;
     }
 
-    let transport_type = create_transport_type(&config.wallet.p2p);
-    let transport_type = match transport_type {
-        Tor(mut tor_config) => {
-            tor_config.identity = wallet_db.get_tor_id().await?.map(Box::new);
-            Tor(tor_config)
-        },
-        _ => transport_type,
-    };
+    let mut wallet_config = config.wallet.clone();
+    if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
+        wallet_config.p2p.transport.tor.identity = wallet_db.get_tor_id().await?;
+    }
 
     let factories = CryptoFactories::default();
 
     let mut wallet = Wallet::start(
-        factories,
-        transport_type,
         config.wallet.clone(),
         config.peer_seeds.clone(),
         node_identity,
+        factories,
         wallet_db,
         transaction_backend,
         output_manager_backend,

@@ -68,7 +68,7 @@ use tari_core::{
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
-use tari_p2p::{initialization::P2pConfig, transport::TransportType, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{depr_transport::TransportType, initialization::P2pConfig, Network, DEFAULT_DNS_NAME_SERVER};
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;

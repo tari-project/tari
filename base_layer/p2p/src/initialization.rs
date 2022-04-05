@@ -48,8 +48,8 @@ use tari_comms::{
     },
     tor,
     tor::HiddenServiceControllerError,
-    transports::{MemoryTransport, SocksTransport, TcpWithTorTransport},
-    utils::cidr::parse_cidrs,
+    transports::{predicate::FalsePredicate, MemoryTransport, SocksConfig, SocksTransport, TcpWithTorTransport},
+    utils::{cidr::parse_cidrs, multiaddr::socketaddr_to_multiaddr},
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
@@ -71,6 +71,7 @@ use crate::{
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorConfig, TransportType},
+    TransportConfig,
     MAJOR_NETWORK_VERSION,
     MINOR_NETWORK_VERSION,
 };
@@ -198,36 +199,43 @@ pub async fn initialize_local_test_comms(
 
 pub async fn spawn_comms_using_transport(
     comms: UnspawnedCommsNode,
-    transport_type: TransportType,
+    transport_config: TransportConfig,
 ) -> Result<CommsNode, CommsInitializationError> {
-    let comms = match transport_type {
-        TransportType::Memory { listener_address } => {
+    let comms = match transport_config.transport_type {
+        TransportType::Memory => {
             debug!(target: LOG_TARGET, "Building in-memory comms stack");
             comms
-                .with_listener_address(listener_address)
+                .with_listener_address(transport_config.memory.listener_address.clone())
                 .spawn_with_transport(MemoryTransport)
                 .await?
         },
-        TransportType::Tcp {
-            listener_address,
-            tor_socks_config,
-        } => {
+        TransportType::Tcp => {
+            let config = transport_config.tcp;
             debug!(
                 target: LOG_TARGET,
                 "Building TCP comms stack{}",
-                tor_socks_config.as_ref().map(|_| " with Tor support").unwrap_or("")
+                config
+                    .tor_socks_address
+                    .as_ref()
+                    .map(|_| " with Tor support")
+                    .unwrap_or("")
             );
             let mut transport = TcpWithTorTransport::new();
-            if let Some(config) = tor_socks_config {
-                transport.set_tor_socks_proxy(config);
+            if let Some(addr) = config.tor_socks_address {
+                transport.set_tor_socks_proxy(SocksConfig {
+                    proxy_address: addr,
+                    authentication: config.tor_socks_auth.into(),
+                    proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
+                });
             }
             comms
-                .with_listener_address(listener_address)
+                .with_listener_address(socketaddr_to_multiaddr(&config.listener_address))
                 .spawn_with_transport(transport)
                 .await?
         },
-        TransportType::Tor(tor_config) => {
-            debug!(target: LOG_TARGET, "Building TOR comms stack ({})", tor_config);
+        TransportType::Tor => {
+            let tor_config = transport_config.tor;
+            debug!(target: LOG_TARGET, "Building TOR comms stack ({:?})", tor_config);
             let mut hidden_service_ctl = initialize_hidden_service(tor_config).await?;
             // Set the listener address to be the address (usually local) to which tor will forward all traffic
             let transport = hidden_service_ctl.initialize_transport().await?;
@@ -238,14 +246,11 @@ pub async fn spawn_comms_using_transport(
                 .spawn_with_transport(transport)
                 .await?
         },
-        TransportType::Socks {
-            socks_config,
-            listener_address,
-        } => {
+        TransportType::Socks5 => {
             debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
-            let transport = SocksTransport::new(socks_config);
+            let transport = SocksTransport::new(transport_config.socks.into());
             comms
-                .with_listener_address(listener_address)
+                .with_listener_address(socketaddr_to_multiaddr(&transport_config.tcp.listener_address))
                 .spawn_with_transport(transport)
                 .await?
         },
@@ -255,23 +260,23 @@ pub async fn spawn_comms_using_transport(
 }
 
 async fn initialize_hidden_service(
-    config: TorConfig,
+    mut config: TorConfig,
 ) -> Result<tor::HiddenServiceController, tor::HiddenServiceBuilderError> {
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
-        .with_port_mapping(config.port_mapping)
+        .with_port_mapping(config.to_port_mapping())
         .with_socks_address_override(config.socks_address_override)
-        .with_socks_authentication(config.socks_auth)
-        .with_control_server_auth(config.control_server_auth)
-        .with_control_server_address(config.control_server_addr)
-        .with_bypass_proxy_addresses(config.tor_proxy_bypass_addresses.into());
+        .with_socks_authentication(config.to_socks_auth())
+        .with_control_server_auth(config.to_control_auth())
+        .with_control_server_address(config.control_address)
+        .with_bypass_proxy_addresses(config.proxy_bypass_addresses.into());
 
-    if config.tor_proxy_bypass_for_outbound_tcp {
+    if config.proxy_bypass_for_outbound_tcp {
         builder = builder.bypass_tor_for_tcp_addresses();
     }
 
-    if let Some(identity) = config.identity {
-        builder = builder.with_tor_identity(*identity);
+    if let Some(identity) = config.identity.take() {
+        builder = builder.with_tor_identity(identity);
     }
 
     builder.build().await

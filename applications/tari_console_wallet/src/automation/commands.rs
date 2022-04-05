@@ -925,7 +925,7 @@ pub async fn command_runner(
         );
         match timeout(
             duration,
-            monitor_transactions(transaction_service.clone(), tx_ids, wait_stage.clone()),
+            monitor_transactions(transaction_service.clone(), tx_ids, wait_stage),
         )
         .await
         {

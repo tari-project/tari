@@ -121,20 +121,21 @@ pub fn load_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, String> {
         ));
     }
 
-    let id_str = fs::read_to_string(path.as_ref()).map_err(|e| {
-        format!(
-            "The node identity file, {}, could not be read. {}",
-            path.as_ref().to_str().unwrap_or("?"),
-            e
-        )
-    })?;
-    let id = json5::from_str::<NodeIdentity>(&id_str).map_err(|e| {
-        format!(
-            "The node identity file, {}, has an error. {}",
-            path.as_ref().to_str().unwrap_or("?"),
-            e
-        )
-    })?;
+    let id = load_from_json::<_, NodeIdentity>(&path)
+        .map_err(|e| {
+            format!(
+                "The node identity file, {}, could not be read. {}",
+                path.as_ref().to_str().unwrap_or("?"),
+                e
+            )
+        })?
+        .ok_or_else(|| {
+            format!(
+                "The node identity file, {}, does not exist.",
+                path.as_ref().to_str().unwrap_or("?"),
+            )
+        })?;
+
     // Check whether the previous version has a signature and sign if necessary
     if !id.is_signed() {
         id.sign();
@@ -179,17 +180,14 @@ pub fn create_new_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, String> {
+pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Option<T>, String> {
     if !path.as_ref().exists() {
-        return Err(format!(
-            "Identity file, {}, does not exist.",
-            path.as_ref().to_str().unwrap()
-        ));
+        return Ok(None);
     }
 
     let contents = fs::read_to_string(path).map_err(|err| err.to_string())?;
     let object = json5::from_str(&contents).map_err(|err| err.to_string())?;
-    Ok(object)
+    Ok(Some(object))
 }
 
 /// Saves the node identity as json at a given path, creating it if it does not already exist

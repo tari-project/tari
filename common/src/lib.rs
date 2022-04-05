@@ -90,9 +90,6 @@ pub use configuration::{
     loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, SubConfigPath},
     name_server::DnsNameServer,
     utils::load_configuration,
-    CommsTransport,
-    SocksAuthentication,
-    TorControlAuthentication,
 };
 pub mod dir_utils;
 pub use logging::initialize_logging;

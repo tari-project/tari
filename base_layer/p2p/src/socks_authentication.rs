@@ -20,19 +20,24 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
+use std::{
+    fmt::{Debug, Formatter},
+    str::FromStr,
+};
 
-use derivative::Derivative;
 use serde::{Deserialize, Serialize};
+use tari_comms::socks;
 
-use crate::ConfigError;
-
-#[derive(Derivative, Clone, Serialize, Deserialize)]
-#[derivative(Debug)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SocksAuthentication {
     None,
     UsernamePassword { username: String, password: String },
+}
+impl Default for SocksAuthentication {
+    fn default() -> Self {
+        SocksAuthentication::None
+    }
 }
 
 fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
@@ -47,7 +52,7 @@ fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
 }
 
 impl FromStr for SocksAuthentication {
-    type Err = ConfigError;
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let (auth_type, maybe_value) = parse_key_value(s, '=');
@@ -61,18 +66,40 @@ impl FromStr for SocksAuthentication {
                         pwd.map(|p| (un, p))
                     })
                     .ok_or_else(|| {
-                        ConfigError::new(
-                            "invalid format for 'username-password' socks authentication type. It should be in the \
-                             format 'username_password=my_username:xxxxxx'.",
-                            None,
-                        )
+                        "invalid format for 'username-password' socks authentication type. It should be in the format \
+                         'username_password=my_username:xxxxxx'."
+                            .to_string()
                     })?;
                 Ok(SocksAuthentication::UsernamePassword {
                     username,
                     password: password.to_string(),
                 })
             },
-            s => Err(ConfigError::new("invalid SOCKS auth type", Some(s.to_string()))),
+            s => Err(format!("invalid SOCKS auth type: {}", s)),
+        }
+    }
+}
+
+impl Debug for SocksAuthentication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SocksAuthentication::None => write!(f, "SocksAuthentication::None"),
+            SocksAuthentication::UsernamePassword { username, .. } => write!(
+                f,
+                r#"SocksAuthentication::UsernamePassword {{ username: {}, password: "..."}}"#,
+                username
+            ),
+        }
+    }
+}
+
+impl From<SocksAuthentication> for socks::Authentication {
+    fn from(config: SocksAuthentication) -> Self {
+        match config {
+            SocksAuthentication::None => socks::Authentication::None,
+            SocksAuthentication::UsernamePassword { username, password } => {
+                socks::Authentication::Password { username, password }
+            },
         }
     }
 }

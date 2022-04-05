@@ -42,14 +42,20 @@ pub mod peer;
 pub mod peer_seeds;
 pub mod proto;
 pub mod services;
+mod socks_authentication;
 pub mod tari_message;
+mod tor_authentication;
 pub mod transport;
 
 mod dns;
 
 // Re-export
-pub use config::{P2pConfig, PeerSeedsConfig};
+pub use socks_authentication::SocksAuthentication;
 pub use tari_common::configuration::Network;
+pub use tor_authentication::TorControlAuthentication;
+pub use transport::{Socks5Config, TcpTransportConfig, TorConfig, TransportConfig, TransportType};
+
+pub use self::config::{P2pConfig, PeerSeedsConfig};
 
 /// Default DNS resolver set to cloudflare's private 1.1.1.1 resolver
 pub const DEFAULT_DNS_NAME_SERVER: &str = "1.1.1.1:853/cloudflare-dns.com";

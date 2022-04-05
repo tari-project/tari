@@ -245,7 +245,7 @@ pub fn tui_mode(
 ) -> Result<(), ExitError> {
     if let Some(grpc_address) = &config.grpc_address {
         let grpc = WalletGrpcServer::new(wallet.clone());
-        handle.spawn(run_grpc(grpc, grpc_address.clone()));
+        handle.spawn(run_grpc(grpc, *grpc_address));
     }
 
     let notifier = Notifier::new(config.notify_file.clone(), handle.clone(), wallet.clone());
@@ -340,7 +340,7 @@ pub fn grpc_mode(handle: Handle, config: &WalletConfig, wallet: WalletSqlite) ->
     if let Some(grpc_address) = &config.grpc_address {
         let grpc = WalletGrpcServer::new(wallet);
         handle
-            .block_on(run_grpc(grpc, grpc_address.clone()))
+            .block_on(run_grpc(grpc, *grpc_address))
             .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
     } else {
         println!("No grpc address specified");

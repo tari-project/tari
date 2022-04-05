@@ -35,9 +35,9 @@ pub struct ApplicationConfig {
 impl ApplicationConfig {
     pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
         let mut config = Self {
-            common: CommonConfig::load_from(&cfg)?,
-            wallet: WalletConfig::load_from(&cfg)?,
-            peer_seeds: PeerSeedsConfig::load_from(&cfg)?,
+            common: CommonConfig::load_from(cfg)?,
+            wallet: WalletConfig::load_from(cfg)?,
+            peer_seeds: PeerSeedsConfig::load_from(cfg)?,
         };
 
         config.wallet.set_base_path(config.common.base_path());

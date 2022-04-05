@@ -102,10 +102,8 @@ use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
 use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
-#[cfg(all(unix, feature = "libtor"))]
-use tari_common::CommsTransport;
 use tari_common::{
-    configuration::{bootstrap::ApplicationType, CommsTransportType},
+    configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
@@ -147,7 +145,8 @@ fn main_inner() -> Result<(), ExitError> {
         include_str!("../log4rs_sample.yml"),
     )?;
 
-    let app_config = ApplicationConfig::load_from(&cfg).map(Arc::new)?;
+    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
+    let mut app_config = ApplicationConfig::load_from(&cfg)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", app_config);
 
     // Load or create the Node identity
@@ -182,14 +181,9 @@ fn main_inner() -> Result<(), ExitError> {
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
-    if app_config.base_node.use_libtor &&
-        matches!(
-            app_config.base_node.p2p.transport.transport_type,
-            CommsTransportType::Tor
-        )
-    {
+    if app_config.base_node.use_libtor && app_config.base_node.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
-        tor.update_comms_transport(&mut app_config.config.base_node.p2p.transport)?;
+        tor.update_comms_transport(&mut app_config.base_node.p2p.transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,
@@ -198,7 +192,7 @@ fn main_inner() -> Result<(), ExitError> {
     }
 
     // Run the base node
-    runtime.block_on(run_node(node_identity, app_config, cli, shutdown))?;
+    runtime.block_on(run_node(node_identity, Arc::new(app_config), cli, shutdown))?;
 
     // Shutdown and send any traces
     global::shutdown_tracer_provider();
@@ -263,7 +257,7 @@ async fn run_node(
             ExitError::new(ExitCode::UnknownError, err)
         })?;
 
-    if let Some(address) = app_config.base_node.grpc_address.clone() {
+    if let Some(address) = app_config.base_node.grpc_address {
         // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
         task::spawn(run_grpc(grpc, address, shutdown.to_signal()));

@@ -22,11 +22,7 @@
 //
 
 use bollard::models::CreateImageInfo;
-use futures::{
-    future::{join_all, try_join_all},
-    stream::StreamExt,
-    TryFutureExt,
-};
+use futures::{future::join_all, stream::StreamExt, TryFutureExt};
 use log::{debug, error};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Wry};

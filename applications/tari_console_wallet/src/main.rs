@@ -20,8 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![recursion_limit = "1024"]
-use std::{env, process, sync::Arc};
+use std::{env, process};
 
 use clap::Parser;
 use cli::Cli;
@@ -38,8 +37,6 @@ use log::*;
 use opentelemetry::{self, global, KeyValue};
 use recovery::prompt_private_key_from_seed_words;
 use tari_app_utilities::consts;
-#[cfg(all(unix, feature = "libtor"))]
-use tari_common::CommsTransport;
 use tari_common::{
     configuration::bootstrap::ApplicationType,
     exit_codes::{ExitCode, ExitError},
@@ -96,7 +93,9 @@ fn main_inner() -> Result<(), ExitError> {
         &cli.common.log_config_path("wallet"),
         include_str!("../log4rs_sample.yml"),
     )?;
-    let config = ApplicationConfig::load_from(&cfg).map(Arc::new)?;
+
+    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
+    let mut config = ApplicationConfig::load_from(&cfg)?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -141,13 +140,13 @@ fn main_inner() -> Result<(), ExitError> {
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
-    if config.wallet.use_libtor && matches!(global_config.comms_transport, CommsTransport::TorHiddenService { .. }) {
+    if config.wallet.use_libtor && config.wallet.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
-        global_config.comms_transport = tor.update_comms_transport(global_config.comms_transport)?;
+        tor.update_comms_transport(&mut config.wallet.p2p.transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,
-            "Updated Tor comms transport: {:?}", global_config.comms_transport
+            "Updated Tor comms transport: {:?}", config.wallet.p2p.transport
         );
     }
 

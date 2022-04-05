@@ -35,27 +35,27 @@ use crate::commands::AppState;
 /// can listen to this event stream to read in the event messages.
 #[tauri::command]
 pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
-    // info!("Setting up event stream");
-    // let state = app.state::<AppState>();
-    // let docker = state.docker.read().await;
-    // let mut stream = docker.events().await;
-    // let app_clone = app.clone();
-    // tauri::async_runtime::spawn(async move {
-    //     while let Some(event_result) = stream.next().await {
-    //         match event_result {
-    //             Ok(event) => {
-    //                 debug!("Event received: {:?}", event);
-    //                 if let Err(err) = app_clone.emit_all(event_name(), event) {
-    //                     warn!("Could not emit event to front-end, {:?}", err);
-    //                 }
-    //             },
-    //             Err(err) => {
-    //                 warn!("Error in event stream: {:#?}", err)
-    //             },
-    //         };
-    //     }
-    //     info!("Event stream has closed.");
-    // });
+    info!("Setting up event stream");
+    let state = app.state::<AppState>();
+    let docker = state.docker.read().await;
+    let mut stream = docker.events().await;
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        while let Some(event_result) = stream.next().await {
+            match event_result {
+                Ok(event) => {
+                    debug!("Event received: {:?}", event);
+                    if let Err(err) = app_clone.emit_all(event_name(), event) {
+                        warn!("Could not emit event to front-end, {:?}", err);
+                    }
+                },
+                Err(err) => {
+                    warn!("Error in event stream: {:#?}", err)
+                },
+            };
+        }
+        info!("Event stream has closed.");
+    });
     Ok(())
 }
 

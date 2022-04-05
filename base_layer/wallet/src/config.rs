@@ -42,7 +42,7 @@ pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 #[derive(Clone, Serialize, Deserialize, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct WalletConfig {
-    override_from: Option<String>,
+    pub override_from: Option<String>,
     pub p2p: P2pConfig,
     // pub factories: CryptoFactories,
     pub transaction_service_config: TransactionServiceConfig,

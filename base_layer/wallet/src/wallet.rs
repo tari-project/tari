@@ -64,7 +64,6 @@ use tari_p2p::{
     initialization,
     initialization::P2pInitializer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
-    transport::TransportType,
     PeerSeedsConfig,
 };
 use tari_script::{script, ExecutionStack, TariScript};
@@ -137,11 +136,10 @@ where
     X: KeyManagerBackend + 'static,
 {
     pub async fn start(
-        factories: CryptoFactories,
-        transport_type: TransportType,
         config: WalletConfig,
         peer_seeds: PeerSeedsConfig,
         node_identity: Arc<NodeIdentity>,
+        factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
         transaction_backend: U,
         output_manager_backend: V,
@@ -237,7 +235,7 @@ where
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack");
-        let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
+        let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();

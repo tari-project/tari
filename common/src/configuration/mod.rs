@@ -41,22 +41,16 @@ pub mod bootstrap;
 pub mod error;
 pub mod loader;
 mod network;
-mod tor_control_authentication;
 pub use network::Network;
 mod common_config;
-mod comms_transport;
 pub mod name_server;
 pub mod serializers;
-mod socks_authentication;
 pub mod utils;
 
 use std::{iter::FromIterator, net::SocketAddr};
 
 pub use common_config::CommonConfig;
-pub use comms_transport::{CommsTransport, CommsTransportType, Socks5Config, TcpTransportConfig, TorConfig};
 use multiaddr::{Error, Multiaddr, Protocol};
-pub use socks_authentication::SocksAuthentication;
-pub use tor_control_authentication::TorControlAuthentication;
 
 /// Interpret a string as either a socket address (first) or a multiaddr format string.
 /// If the former, it gets converted into a MultiAddr before being returned.

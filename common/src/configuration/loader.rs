@@ -353,7 +353,7 @@ mod test {
     #[test]
     fn configuration_error() {
         let e = ConfigurationError::new("test", None, "is a string");
-        assert_eq!(e.to_string(), "Invalid value for test: is a string");
+        assert_eq!(e.to_string(), "Invalid value for `test`: is a string");
     }
 
     use serde::{Deserialize, Serialize};
@@ -419,7 +419,7 @@ mod test {
 
     #[test]
     fn config_loaders() -> anyhow::Result<()> {
-        let mut config = Config::default();
+        let config = Config::default();
 
         // no network value
         // [ ] one.param1(default) [X] one.param1(default) [ ] one.param2 [X] one.param2(default)
@@ -427,7 +427,12 @@ mod test {
         assert_eq!(one.param1, OneConfig::default().param1);
         assert_eq!(one.param2, OneConfig::default().param2);
 
-        config.set("one.param1", "can load from main section")?;
+        let config = Config::builder()
+            .add_source(config)
+            .set_override("one.param1", "can load from main section")
+            .unwrap()
+            .build()
+            .unwrap();
         let one = <OneConfig as DefaultConfigLoader>::load_from(&config)?;
         assert_eq!(one.param1, "can load from main section");
         assert_eq!(one.param2, "param2");

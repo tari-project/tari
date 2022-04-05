@@ -23,12 +23,25 @@
 use std::{convert::TryFrom, fmt, fmt::Formatter, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use tari_comms::tor;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(try_from = "String")]
 pub enum TorControlAuthentication {
     None,
     Password(String),
+    /// Cookie authentication. The contents of the cookie file encoded as hex
+    Cookie(String),
+}
+
+impl From<TorControlAuthentication> for tor::Authentication {
+    fn from(auth: TorControlAuthentication) -> Self {
+        match auth {
+            TorControlAuthentication::None => tor::Authentication::None,
+            TorControlAuthentication::Password(passwd) => tor::Authentication::HashedPassword(passwd),
+            TorControlAuthentication::Cookie(cookie) => tor::Authentication::Cookie(cookie),
+        }
+    }
 }
 
 fn parse_key_value(s: &str, split_chr: char) -> (String, Option<&str>) {
@@ -65,6 +78,13 @@ impl FromStr for TorControlAuthentication {
                 })?;
                 Ok(TorControlAuthentication::Password(password.to_string()))
             },
+            "cookie" => {
+                let password = maybe_value.ok_or_else(|| {
+                    "Invalid format for 'cookie' tor authentication type. It should be in the format 'cookie=xxxxxx'."
+                        .to_string()
+                })?;
+                Ok(TorControlAuthentication::Cookie(password.to_string()))
+            },
             s => Err(format!("Invalid tor auth type '{}'", s)),
         }
     }
@@ -76,6 +96,7 @@ impl fmt::Debug for TorControlAuthentication {
         match self {
             None => write!(f, "None"),
             Password(_) => write!(f, "Password(...)"),
+            Cookie(_) => write!(f, "Cookie(...)"),
         }
     }
 }

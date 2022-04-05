@@ -14,8 +14,6 @@ build = ["toml", "prost-build"]
 static-application-info = ["git2"]
 
 [dependencies]
-tari_storage = { version = "^0.30", path = "../infrastructure/storage"}
-
 anyhow = "1.0.53"
 config = { version = "0.13.0", default_features = false, features = ["toml"] }
 derivative = "2.2.0"

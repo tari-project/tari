@@ -28,18 +28,19 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tari_common::{
     configuration::utils::{deserialize_string_or_struct, serialize_string},
-    CommsTransport,
     DnsNameServer,
     SubConfigPath,
 };
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
 
+use crate::transport::TransportConfig;
+
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PeerSeedsConfig {
-    override_from: Option<String>,
+    pub override_from: Option<String>,
     /// Unparsed peer seeds
     pub peer_seeds: Vec<String>,
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
@@ -77,13 +78,14 @@ impl SubConfigPath for PeerSeedsConfig {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct P2pConfig {
-    override_from: Option<String>,
+    /// Internal field used for configuration.
+    pub override_from: Option<String>,
     /// The public address adverised to other peers by this node. If not set it will be set automatically depending on
     /// the transport type. The TCP transport is not able to determine the users public IP, so this will need to be
     /// manually set.
     pub public_address: Option<Multiaddr>,
-    /// The type of transport to use
-    pub transport: CommsTransport,
+    /// Transport configuration
+    pub transport: TransportConfig,
     /// Path to the LMDB data files.
     pub datastore_path: PathBuf,
     /// Name to use for the peer database

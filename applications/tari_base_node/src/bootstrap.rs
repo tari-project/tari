@@ -24,7 +24,7 @@ use std::{cmp, str::FromStr, sync::Arc};
 
 use anyhow::anyhow;
 use log::*;
-use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
+use tari_app_utilities::{consts, identity_management, identity_management::load_from_json};
 use tari_common::configuration::bootstrap::ApplicationType;
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::Dht;
@@ -50,8 +50,8 @@ use tari_p2p::{
     initialization::P2pInitializer,
     peer_seeds::SeedPeer,
     services::liveness::{config::LivenessConfig, LivenessInitializer},
-    transport::TransportType,
     P2pConfig,
+    TransportType,
 };
 use tari_service_framework::{ServiceHandles, StackBuilder};
 use tari_shutdown::ShutdownSignal;
@@ -77,15 +77,13 @@ where B: BlockchainBackend + 'static
 {
     pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
         let base_node_config = &self.app_config.base_node;
-        let p2p_config = &self.app_config.base_node.p2p;
+        let mut p2p_config = self.app_config.base_node.p2p.clone();
         let peer_seeds = &self.app_config.peer_seeds;
 
         let buf_size = cmp::max(BASE_NODE_BUFFER_MIN_SIZE, base_node_config.buffer_size);
         let (publisher, peer_message_subscriptions) = pubsub_connector(buf_size, base_node_config.buffer_rate_limit);
         let peer_message_subscriptions = Arc::new(peer_message_subscriptions);
         let mempool_config = base_node_config.mempool.service.clone();
-
-        let transport_type = create_transport_type(p2p_config);
 
         let sync_peers = base_node_config
             .force_sync_peers
@@ -99,6 +97,9 @@ where B: BlockchainBackend + 'static
 
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
+
+        let tor_identity = load_from_json(&base_node_config.tor_identity_file).map_err(|e| anyhow!("{}", e))?;
+        p2p_config.transport.tor.identity = tor_identity;
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
             .add_initializer(P2pInitializer::new(
@@ -150,12 +151,12 @@ where B: BlockchainBackend + 'static
             .expect("P2pInitializer was not added to the stack or did not add UnspawnedCommsNode");
 
         let comms = comms.add_protocol_extension(mempool_protocol);
-        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), p2p_config);
-        let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone()).await?;
+        let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
+        let comms = initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone()).await?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
-        match transport_type {
-            TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
+        match p2p_config.transport.transport_type {
+            TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
                 identity_management::save_as_json(base_node_config.identity_file.as_path(), &*comms.node_identity())
                     .map_err(|e| {
