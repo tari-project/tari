@@ -59,6 +59,7 @@ use crate::{
     builder::BaseNodeContext,
     grpc::{
         blocks::{block_fees, block_heights, block_size, GET_BLOCKS_MAX_HEIGHTS, GET_BLOCKS_PAGE_SIZE},
+        hash_rate::HashRateMovingAverage,
         helpers::{mean, median},
     },
 };
@@ -153,6 +154,11 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         }
         let (mut tx, rx) = mpsc::channel(cmp::min(num_requested as usize, GET_DIFFICULTY_PAGE_SIZE));
 
+        let mut sha3_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Sha3, self.consensus_rules.clone());
+        let mut monero_hash_rate_moving_average =
+            HashRateMovingAverage::new(PowAlgorithm::Monero, self.consensus_rules.clone());
+
         task::spawn(async move {
             let page_iter = NonOverlappingIntegerPairIter::new(start_height, end_height + 1, GET_DIFFICULTY_PAGE_SIZE);
             for (start, end) in page_iter {
@@ -176,33 +182,31 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                let mut headers_iter = headers.iter().peekable();
-
-                while let Some(chain_header) = headers_iter.next() {
-                    let current_difficulty = chain_header.accumulated_data().target_difficulty.as_u64();
-                    let current_timestamp = chain_header.header().timestamp.as_u64();
+                for chain_header in headers.iter() {
+                    let current_difficulty = chain_header.accumulated_data().target_difficulty;
+                    let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
-                    let pow_algo = chain_header.header().pow.pow_algo.as_u64();
+                    let pow_algo = chain_header.header().pow.pow_algo;
 
-                    let estimated_hash_rate = headers_iter
-                        .peek()
-                        .map(|chain_header| chain_header.header().timestamp.as_u64())
-                        .and_then(|peeked_timestamp| {
-                            // Sometimes blocks can have the same timestamp, lucky miner and some
-                            // clock drift.
-                            peeked_timestamp
-                                .checked_sub(current_timestamp)
-                                .filter(|td| *td > 0)
-                                .map(|time_diff| current_timestamp / time_diff)
-                        })
-                        .unwrap_or(0);
+                    // update the moving average calculation with the header data
+                    let current_hash_rate_moving_average = match pow_algo {
+                        PowAlgorithm::Monero => &mut monero_hash_rate_moving_average,
+                        PowAlgorithm::Sha3 => &mut sha3_hash_rate_moving_average,
+                    };
+                    current_hash_rate_moving_average.add(current_height, current_difficulty);
+
+                    let sha3_estimated_hash_rate = sha3_hash_rate_moving_average.average();
+                    let monero_estimated_hash_rate = monero_hash_rate_moving_average.average();
+                    let estimated_hash_rate = sha3_estimated_hash_rate + monero_estimated_hash_rate;
 
                     let difficulty = tari_rpc::NetworkDifficultyResponse {
-                        difficulty: current_difficulty,
+                        difficulty: current_difficulty.as_u64(),
                         estimated_hash_rate,
+                        sha3_estimated_hash_rate,
+                        monero_estimated_hash_rate,
                         height: current_height,
-                        timestamp: current_timestamp,
-                        pow_algo,
+                        timestamp: current_timestamp.as_u64(),
+                        pow_algo: pow_algo.as_u64(),
                     };
 
                     if let Err(err) = tx.send(Ok(difficulty)).await {
@@ -446,7 +450,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 asset_pub_key_hex
             );
 
-            for token in tokens {
+            for (token, mined_height) in tokens {
                 let features = match token.features.clone().try_into() {
                     Ok(f) => f,
                     Err(err) => {
@@ -465,7 +469,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                         unique_id: token.features.unique_id.unwrap_or_default(),
                         owner_commitment: token.commitment.to_vec(),
                         mined_in_block: vec![],
-                        mined_height: 0,
+                        mined_height,
                         script: token.script.as_bytes(),
                         features: Some(features),
                     }))

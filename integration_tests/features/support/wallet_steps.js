@@ -1311,6 +1311,36 @@ Then(
 );
 
 Then(
+  /wallet (.*) detects last transaction is Cancelled/,
+  { timeout: 120 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
+    const walletClient = await wallet.connectClient();
+
+    let lastTxId = this.lastResult.results[0].transaction_id;
+    console.log(
+      "Waiting for Transaction ",
+      lastTxId,
+      "to be cancelled in wallet",
+      walletName
+    );
+
+    await waitFor(
+      async () => walletClient.isTransactionCancelled(lastTxId),
+      true,
+      115 * 1000,
+      5 * 1000,
+      5
+    );
+    const transactionPending = await walletClient.isTransactionPending(
+      lastTxId
+    );
+
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+Then(
   /wallet (.*) detects all transactions are at least Completed/,
   { timeout: 1200 * 1000 }, // Must allow for many transactions; dynamic time out used below
   async function (walletName) {

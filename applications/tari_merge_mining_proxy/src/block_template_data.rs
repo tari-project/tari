@@ -24,7 +24,9 @@
 
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{self, DateTime, Duration, Utc};
+#[cfg(not(test))]
+use chrono::Duration;
+use chrono::{self, DateTime, Utc};
 use tari_app_grpc::tari_rpc as grpc;
 use tari_core::proof_of_work::monero_rx::FixedByteArray;
 use tokio::sync::RwLock;
@@ -96,6 +98,9 @@ impl BlockTemplateRepository {
     pub async fn remove_outdated(&self) {
         trace!(target: LOG_TARGET, "Removing outdated blocktemplates");
         let mut b = self.blocks.write().await;
+        #[cfg(test)]
+        let threshold = Utc::now();
+        #[cfg(not(test))]
         let threshold = Utc::now() - Duration::minutes(20);
         *b = b.drain().filter(|(_, i)| i.datetime() >= threshold).collect();
     }
@@ -193,5 +198,109 @@ impl BlockTemplateDataBuilder {
             monero_difficulty,
             tari_difficulty,
         })
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use std::convert::TryInto;
+
+    use tari_core::{
+        blocks::{Block, BlockHeader},
+        transactions::aggregated_body::AggregateBody,
+    };
+
+    use super::*;
+
+    fn create_block_template_data() -> BlockTemplateData {
+        let header = BlockHeader::new(100);
+        let body = AggregateBody::empty();
+        let block = Block::new(header, body);
+        let miner_data = grpc::MinerData {
+            reward: 10000,
+            target_difficulty: 600000,
+            total_fees: 100,
+            algo: Some(grpc::PowAlgo { pow_algo: 0 }),
+        };
+        let btdb = BlockTemplateDataBuilder::new()
+            .monero_seed(FixedByteArray::new())
+            .tari_block(block.try_into().unwrap())
+            .tari_miner_data(miner_data)
+            .monero_difficulty(123456)
+            .tari_difficulty(12345);
+        btdb.build().unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_block_template_repository() {
+        let btr = BlockTemplateRepository::new();
+        let hash1 = vec![1; 32];
+        let hash2 = vec![2; 32];
+        let hash3 = vec![3; 32];
+        let block_template = create_block_template_data();
+        btr.save(hash1.clone(), block_template.clone()).await;
+        btr.save(hash2.clone(), block_template).await;
+        assert!(btr.get(hash1.clone()).await.is_some());
+        assert!(btr.get(hash2.clone()).await.is_some());
+        assert!(btr.get(hash3.clone()).await.is_none());
+        assert!(btr.remove(hash1.clone()).await.is_some());
+        assert!(btr.get(hash1.clone()).await.is_none());
+        assert!(btr.get(hash2.clone()).await.is_some());
+        assert!(btr.get(hash3.clone()).await.is_none());
+        btr.remove_outdated().await;
+        assert!(btr.get(hash1).await.is_none());
+        assert!(btr.get(hash2).await.is_none());
+        assert!(btr.get(hash3).await.is_none());
+    }
+
+    #[test]
+    pub fn err_block_template_data_builder() {
+        // Empty
+        let btdb = BlockTemplateDataBuilder::new();
+        assert!(matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"monero_seed not provided"));
+        // With monero seed
+        let btdb = BlockTemplateDataBuilder::new().monero_seed(FixedByteArray::new());
+        assert!(matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"block not provided"));
+        // With monero seed, block
+        let header = BlockHeader::new(100);
+        let body = AggregateBody::empty();
+        let block = Block::new(header, body);
+        let btdb = BlockTemplateDataBuilder::new()
+            .monero_seed(FixedByteArray::new())
+            .tari_block(block.clone().try_into().unwrap());
+        assert!(matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"miner_data not provided"));
+        // With monero seed, block, miner data
+        let miner_data = grpc::MinerData {
+            reward: 10000,
+            target_difficulty: 600000,
+            total_fees: 100,
+            algo: Some(grpc::PowAlgo { pow_algo: 0 }),
+        };
+        let btdb = BlockTemplateDataBuilder::new()
+            .monero_seed(FixedByteArray::new())
+            .tari_block(block.clone().try_into().unwrap())
+            .tari_miner_data(miner_data.clone());
+        assert!(
+            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"monero_difficulty not provided")
+        );
+        // With monero seed, block, miner data, monero difficulty
+        let btdb = BlockTemplateDataBuilder::new()
+            .monero_seed(FixedByteArray::new())
+            .tari_block(block.try_into().unwrap())
+            .tari_miner_data(miner_data)
+            .monero_difficulty(123456);
+        assert!(
+            matches!(btdb.build(), Err(MmProxyError::MissingDataError(err)) if err == *"tari_difficulty not provided")
+        );
+    }
+
+    #[test]
+    pub fn ok_block_template_data_builder() {
+        let build = create_block_template_data();
+        assert!(build.monero_seed.is_empty());
+        assert_eq!(build.tari_block.header.unwrap().version, 100);
+        assert_eq!(build.tari_miner_data.target_difficulty, 600000);
+        assert_eq!(build.monero_difficulty, 123456);
+        assert_eq!(build.tari_difficulty, 12345);
     }
 }
