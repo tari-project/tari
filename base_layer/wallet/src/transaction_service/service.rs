@@ -1352,8 +1352,8 @@ where
         match join_result {
             Ok(val) => {
                 if val.transaction_status != TransactionStatus::Queued {
-                    let _ = self.pending_transaction_reply_senders.remove(&val.tx_id);
-                    let _ = self.send_transaction_cancellation_senders.remove(&val.tx_id);
+                    let _sender = self.pending_transaction_reply_senders.remove(&val.tx_id);
+                    let _sender = self.send_transaction_cancellation_senders.remove(&val.tx_id);
                     let completed_tx = match self.db.get_completed_transaction(val.tx_id).await {
                         Ok(v) => v,
                         Err(e) => {
@@ -1364,7 +1364,7 @@ where
                             return;
                         },
                     };
-                    let _ = self
+                    let _result = self
                         .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
                         .await
                         .map_err(|resp| {
@@ -1381,6 +1381,7 @@ where
                         "Send Transaction Protocol for TxId: {} not completed successfully, transaction Queued",
                         val.tx_id
                     );
+                } else {
                 }
             },
             Err(TransactionServiceProtocolError { id, error }) => {
@@ -1496,8 +1497,9 @@ where
                     target: LOG_TARGET,
                     "Retry sending queued Pending Outbound Transaction TxId: {}", tx_id
                 );
-                let _ = self.pending_transaction_reply_senders.remove(&tx_id);
-                let _ = self.send_transaction_cancellation_senders.remove(&tx_id);
+                let _sender = self.pending_transaction_reply_senders.remove(&tx_id);
+                let _sender = self.send_transaction_cancellation_senders.remove(&tx_id);
+            } else {
             }
 
             if not_yet_pending || queued {

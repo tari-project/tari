@@ -103,12 +103,12 @@ pub enum CommsInitializationError {
 
 impl CommsInitializationError {
     pub fn into_exit_error(self) -> ExitError {
-        use CommsInitializationError::*;
+        use CommsInitializationError::HiddenServiceControllerError;
         match self {
             HiddenServiceControllerError(self::HiddenServiceControllerError::TorControlPortOffline) => {
-                ExitError::new(ExitCode::TorOffline, self)
+                ExitError::new(ExitCode::TorOffline, &self)
             },
-            err => ExitError::new(ExitCode::NetworkError, err),
+            err => ExitError::new(ExitCode::NetworkError, &err),
         }
     }
 }

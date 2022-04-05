@@ -483,9 +483,12 @@ pub async fn init_wallet(
     .map_err(|e| match e {
         WalletError::CommsInitializationError(CommsInitializationError::HiddenServiceControllerError(
             HiddenServiceControllerError::TorControlPortOffline,
-        )) => ExitError::new(ExitCode::TorOffline, e),
-        WalletError::CommsInitializationError(e) => ExitError::new(ExitCode::WalletError, e),
-        e => ExitError::new(ExitCode::WalletError, format!("Error creating Wallet Container: {}", e)),
+        )) => ExitError::new(ExitCode::TorOffline, &e),
+        WalletError::CommsInitializationError(e) => ExitError::new(ExitCode::WalletError, &e),
+        e => ExitError::new(
+            ExitCode::WalletError,
+            &format!("Error creating Wallet Container: {}", e),
+        ),
     })?;
     if let Some(hs) = wallet.comms.hidden_service() {
         wallet

@@ -165,7 +165,7 @@ where
             TransactionSendProtocolStage::Queued => {
                 if let Some(mut sender_protocol) = self.sender_protocol.clone() {
                     if sender_protocol.is_collecting_single_signature() {
-                        let _ = sender_protocol
+                        sender_protocol
                             .revert_sender_state_to_single_round_message_ready()
                             .map_err(|e| {
                                 TransactionServiceProtocolError::new(self.id, TransactionServiceError::from(e))
@@ -348,7 +348,7 @@ where
         }
 
         // Notify subscribers
-        let _ = self
+        let _size = self
             .resources
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionSendResult(

@@ -182,7 +182,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     return;
                 }
 
-                for chain_header in headers.iter() {
+                for chain_header in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;

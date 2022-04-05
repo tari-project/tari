@@ -62,7 +62,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
         },
         Err(IdentityError::InvalidPermissions) => Err(ExitError::new(
             ExitCode::ConfigError,
-            format!(
+            &format!(
                 "{path} has incorrect permissions. You can update the identity file with the correct permissions \
                  using 'chmod 600 {path}', or delete the identity file and re-run the node with the --create-id flag.",
                 path = identity_file.as_ref().to_string_lossy()

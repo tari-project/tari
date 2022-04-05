@@ -176,7 +176,7 @@ struct ConsensusWorkerProcessor<'a, T: ServiceSpecification> {
 
 impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a, T> {
     async fn next_state_event(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        use ConsensusWorkerState::*;
+        use ConsensusWorkerState::{Commit, Decide, Idle, NextView, PreCommit, Prepare, Starting, Synchronizing};
         match &mut self.worker.state {
             Starting => self.starting().await,
             Synchronizing => self.synchronizing().await,

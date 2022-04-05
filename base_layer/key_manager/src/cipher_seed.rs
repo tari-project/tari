@@ -291,7 +291,7 @@ impl Mnemonic<CipherSeed> for CipherSeed {
         language: MnemonicLanguage,
         passphrase: Option<String>,
     ) -> Result<CipherSeed, KeyManagerError> {
-        let bytes = to_bytes_with_language(mnemonic_seq, language)?;
+        let bytes = to_bytes_with_language(mnemonic_seq, &language)?;
         CipherSeed::from_enciphered_bytes(&bytes, passphrase)
     }
 

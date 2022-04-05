@@ -85,11 +85,11 @@ pub async fn send_transaction_task(
             }
 
             if send_status.direct_send_result {
-                let _ = result_tx.send(UiTransactionSendStatus::SentDirect);
+                let _result = result_tx.send(UiTransactionSendStatus::SentDirect);
             } else if send_status.store_and_forward_send_result {
-                let _ = result_tx.send(UiTransactionSendStatus::SentViaSaf);
+                let _result = result_tx.send(UiTransactionSendStatus::SentViaSaf);
             } else if send_status.queued_for_retry {
-                let _ = result_tx.send(UiTransactionSendStatus::Queued);
+                let _result = result_tx.send(UiTransactionSendStatus::Queued);
             } else {
                 let _result = result_tx.send(UiTransactionSendStatus::Error(
                     "Transaction could not be sent".to_string(),

@@ -405,7 +405,7 @@ pub async fn make_it_rain(
                 "`make-it-rain` scheduled to start at {}: msg \"{}\"",
                 start_time, message
             );
-            u64::try_from((start_time - now).num_milliseconds()).unwrap()
+            (start_time - now).num_milliseconds() as u64
         } else {
             0
         };

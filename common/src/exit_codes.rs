@@ -36,7 +36,7 @@ impl fmt::Display for ExitError {
 
 impl From<anyhow::Error> for ExitError {
     fn from(err: anyhow::Error) -> Self {
-        ExitError::new(ExitCode::UnknownError, err)
+        ExitError::new(ExitCode::UnknownError, &err)
     }
 }
 
@@ -49,7 +49,7 @@ tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050
 
 impl ExitCode {
     pub fn hint(&self) -> Option<&str> {
-        use ExitCode::*;
+        use ExitCode::TorOffline;
         match self {
             TorOffline => Some(TOR_HINT),
             _ => None,

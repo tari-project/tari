@@ -206,7 +206,7 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String
 /// sequence is detected
 pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
     let language = MnemonicLanguage::detect_language(mnemonic_seq)?;
-    to_bytes_with_language(mnemonic_seq, language)
+    to_bytes_with_language(mnemonic_seq, &language)
 }
 
 /// Generates a vector of bytes that represent the provided mnemonic sequence of words using the specified language
@@ -230,7 +230,7 @@ pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLangua
     let mut rest_bits: u8 = 0;
 
     for curr_word in mnemonic_seq {
-        let index = find_mnemonic_index_from_word(curr_word, language)?;
+        let index = find_mnemonic_index_from_word(curr_word, *language)?;
         // Add 11 bits to the front
         rest += index << rest_bits;
         rest_bits += 11;
@@ -460,7 +460,7 @@ mod test {
         for len in (start..1024).step_by(11) {
             let mut secretkey_bytes = vec![0u8; len];
             OsRng.fill_bytes(&mut secretkey_bytes);
-            let mnemonic_seq = mnemonic::from_bytes(secretkey_bytes.clone(), &MnemonicLanguage::English).unwrap();
+            let mnemonic_seq = mnemonic::from_bytes(&secretkey_bytes, MnemonicLanguage::English).unwrap();
             let mnemonic_bytes = mnemonic::to_bytes(&mnemonic_seq).unwrap();
             assert_eq!(secretkey_bytes, mnemonic_bytes, "failed len = {}", len);
         }
