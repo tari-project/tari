@@ -1918,6 +1918,48 @@ fn input_malleability() {
     assert_ne!(*block_hash, mod_block_hash);
 }
 
+#[test]
+fn output_malleability() {
+    // create a blockchain with a couple of valid blocks
+    let mut blockchain = TestBlockchain::with_genesis("GB");
+    let blocks = blockchain.builder();
+
+    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+
+    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])]);
+    blockchain.add_block(
+        blocks
+            .new_block("A2")
+            .child_of("A1")
+            .difficulty(1)
+            .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
+    );
+
+    // store the block metadata for later comparison
+    let block = blockchain.get_block("A2").cloned().unwrap().block;
+    let header = block.header();
+    let block_hash = block.hash();
+
+    // create an altered version of the last block, with a different commitment in one output
+    let mut mod_block = block.block().clone();
+    let mut mod_output = &mut mod_block.body.outputs_mut()[0];
+    let mod_commitment = &mod_output.commitment + &mod_output.commitment;
+    mod_output.commitment = mod_commitment;
+
+    // add a new block with the altered output to get a merke root for the altered block
+    blockchain
+        .store()
+        .rewind_to_height(mod_block.header.height - 1)
+        .unwrap();
+    let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
+
+    // check that we can detect the alteration
+    assert_ne!(header.output_mr, modded_root.output_mr);
+    mod_block.header.output_mr = modded_root.output_mr;
+    let mod_block_hash = mod_block.hash();
+    assert_ne!(*block_hash, mod_block_hash);
+}
+
 #[allow(clippy::identity_op)]
 #[test]
 fn fetch_deleted_position_block_hash() {
