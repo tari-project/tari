@@ -48,7 +48,7 @@ const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
 pub fn setup_node_identity<P: AsRef<Path>>(
     identity_file: P,
-    public_address: &Option<Multiaddr>,
+    public_address: Option<&Multiaddr>,
     create_id: bool,
     peer_features: PeerFeatures,
 ) -> Result<Arc<NodeIdentity>, ExitError> {
@@ -94,7 +94,11 @@ pub fn setup_node_identity<P: AsRef<Path>>(
 
             debug!(target: LOG_TARGET, "Existing node id not found. {}. Creating new ID", e);
 
-            match create_new_node_identity(&identity_file, public_address.clone(), peer_features) {
+            match create_new_node_identity(
+                &identity_file,
+                public_address.cloned().unwrap_or_else(Multiaddr::empty),
+                peer_features,
+            ) {
                 Ok(id) => {
                     info!(
                         target: LOG_TARGET,
@@ -106,10 +110,10 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                     Ok(Arc::new(id))
                 },
                 Err(e) => {
-                    error!(target: LOG_TARGET, "Could not create new node id. {:?}.", e);
+                    error!(target: LOG_TARGET, "Could not create new node id. {}.", e);
                     Err(ExitError::new(
                         ExitCode::ConfigError,
-                        format!("Could not create new node id. {:?}.", e),
+                        format!("Could not create new node id. {}.", e),
                     ))
                 },
             }
@@ -153,14 +157,10 @@ fn load_node_identity<P: AsRef<Path>>(path: P) -> Result<NodeIdentity, IdentityE
 /// Result containing the node identity, string will indicate reason on error
 fn create_new_node_identity<P: AsRef<Path>>(
     path: P,
-    public_addr: Option<Multiaddr>,
+    public_addr: Multiaddr,
     features: PeerFeatures,
 ) -> Result<NodeIdentity, IdentityError> {
-    let node_identity = NodeIdentity::random(
-        &mut OsRng,
-        public_addr.ok_or(IdentityError::NodeIdentityHasNoAddress)?,
-        features,
-    );
+    let node_identity = NodeIdentity::random(&mut OsRng, public_addr, features);
     save_as_json(&path, &node_identity)?;
     Ok(node_identity)
 }
@@ -268,8 +268,6 @@ pub enum IdentityError {
     NotFound,
     #[error("Path is not a file")]
     NotFile,
-    #[error("NodeIdentity has no public address")]
-    NodeIdentityHasNoAddress,
     #[error("Malformed identity file: {0}")]
     JsonError(#[from] json5::Error),
     #[error(transparent)]

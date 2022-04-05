@@ -256,7 +256,7 @@ impl TariWorkspace {
     ) -> Result<Option<NodeIdentity>, DockerWrapperError> {
         if let Some(id_file_path) = self.config.id_path(root_path, image) {
             debug!("Loading or creating identity file {}", id_file_path.to_string_lossy());
-            let id = setup_node_identity(id_file_path, &None, true, PeerFeatures::COMMUNICATION_NODE)?
+            let id = setup_node_identity(id_file_path, None, true, PeerFeatures::COMMUNICATION_NODE)?
                 .as_ref()
                 .clone();
             Ok(Some(id))
