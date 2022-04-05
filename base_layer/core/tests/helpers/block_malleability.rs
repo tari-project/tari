@@ -1,34 +1,58 @@
+// Copyright 2022. The Tari Project
+//
+// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// following conditions are met:
+//
+// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+// disclaimer.
+//
+// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+// following disclaimer in the documentation and/or other materials provided with the distribution.
+//
+// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+// products derived from this software without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 use tari_core::{
     blocks::Block,
-    transactions::{
-        tari_amount::T,
-        test_helpers::schema_to_transaction,
-    },
+    transactions::{tari_amount::T, test_helpers::schema_to_transaction},
     txn_schema,
 };
 use tari_utilities::Hashable;
 
 use super::test_blockchain::TestBlockchain;
 
+#[allow(dead_code)]
 enum MerkleMountainRangeField {
     Input,
     Output,
     Witness,
 }
 
-pub fn check_input_malleability(block_mod_fn: impl Fn(&mut Block) -> ()) {
+#[allow(dead_code)]
+pub fn check_input_malleability(block_mod_fn: impl Fn(&mut Block)) {
     check_block_changes_are_detected(MerkleMountainRangeField::Input, block_mod_fn);
 }
 
-pub fn check_output_malleability(block_mod_fn: impl Fn(&mut Block) -> ()) {
+#[allow(dead_code)]
+pub fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
     check_block_changes_are_detected(MerkleMountainRangeField::Output, block_mod_fn);
 }
 
-pub fn check_witness_malleability(block_mod_fn: impl Fn(&mut Block) -> ()) {
+#[allow(dead_code)]
+pub fn check_witness_malleability(block_mod_fn: impl Fn(&mut Block)) {
     check_block_changes_are_detected(MerkleMountainRangeField::Witness, block_mod_fn);
 }
 
-fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block) -> ()) {
+#[allow(dead_code)]
+fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_fn: impl Fn(&mut Block)) {
     // create a blockchain with a couple of valid blocks
     let mut blockchain = TestBlockchain::with_genesis("GB");
     let blocks = blockchain.builder();
