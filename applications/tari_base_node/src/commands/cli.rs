@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::stdout;
+use std::{convert::TryFrom, io::stdout};
 
 use chrono::{Datelike, Utc};
 use crossterm::{
@@ -145,7 +145,10 @@ pub fn print_banner(commands: Vec<String>, chunk_size: i32, resize_terminal: boo
         command_data.push(cells);
     }
 
-    let row_cell_sizes: Vec<Vec<usize>> = cell_sizes.chunks(chunk_size as usize).map(|x| x.to_vec()).collect();
+    let row_cell_sizes: Vec<Vec<usize>> = cell_sizes
+        .chunks(usize::try_from(chunk_size).unwrap())
+        .map(|x| x.to_vec())
+        .collect();
     let mut row_cell_size = Vec::new();
     let mut max_cell_size: usize = 0;
     for sizes in row_cell_sizes {

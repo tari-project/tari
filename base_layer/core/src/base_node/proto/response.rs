@@ -40,7 +40,7 @@ impl TryInto<NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
 
     fn try_into(self) -> Result<NodeCommsResponse, Self::Error> {
-        use ProtoNodeCommsResponse::*;
+        use ProtoNodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
         let response = match self {
             HistoricalBlocks(blocks) => {
                 let blocks = try_convert_all(blocks.blocks)?;
@@ -74,7 +74,7 @@ impl TryFrom<NodeCommsResponse> for ProtoNodeCommsResponse {
     type Error = String;
 
     fn try_from(response: NodeCommsResponse) -> Result<Self, Self::Error> {
-        use NodeCommsResponse::*;
+        use NodeCommsResponse::{FetchMempoolTransactionsByExcessSigsResponse, HistoricalBlocks};
         match response {
             HistoricalBlocks(historical_blocks) => {
                 let historical_blocks = historical_blocks

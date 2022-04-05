@@ -401,7 +401,7 @@ where
         let mut unmined = vec![];
 
         let mut returned_outputs = HashMap::new();
-        for output_proto in batch_response.responses.iter() {
+        for output_proto in &batch_response.responses {
             returned_outputs.insert(output_proto.output_hash.clone(), output_proto);
         }
 

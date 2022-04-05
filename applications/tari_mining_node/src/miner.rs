@@ -134,11 +134,12 @@ impl Stream for Miner {
         } else if self.channels.is_empty() {
             debug!(target: LOG_TARGET, "Finished mining");
             return Poll::Ready(None);
+        } else {
         }
 
         // Non blocking select from all miner's receiver channels
         let mut sel = Select::new();
-        for rx in self.channels.iter() {
+        for rx in &self.channels {
             sel.recv(rx);
         }
         let report = match sel.try_select() {
@@ -203,12 +204,12 @@ pub fn mining_task(
             }
             // If we are mining in share mode, this share might not be a block, so we need to keep mining till we get a
             // new job
-            if !share_mode {
+            if share_mode {
+                waker.clone().wake();
+            } else {
                 waker.wake();
                 trace!(target: LOG_TARGET, "Mining thread {} stopped", miner);
                 return;
-            } else {
-                waker.clone().wake();
             }
         }
         if hasher.nonce % REPORTING_FREQUENCY == 0 {

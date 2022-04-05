@@ -28,11 +28,11 @@ use path_clean::PathClean;
 pub fn create_data_directory(base_dir: Option<&PathBuf>) -> Result<(), std::io::Error> {
     let home = default_path("", base_dir);
 
-    if !home.exists() {
+    if home.exists() {
+        Ok(())
+    } else {
         println!("Creating {:?}", home);
         std::fs::create_dir_all(home)
-    } else {
-        Ok(())
     }
 }
 

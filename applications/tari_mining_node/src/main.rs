@@ -106,7 +106,7 @@ async fn main_inner() -> Result<(), ExitError> {
         let _ = RistrettoPublicKey::from_hex(&miner_address).map_err(|_| {
             ExitError::new(
                 ExitCode::ConfigError,
-                "Miner is not configured with a valid wallet address.",
+                &"Miner is not configured with a valid wallet address.",
             )
         })?;
         if !config.mining_worker_name.is_empty() {
@@ -126,7 +126,7 @@ async fn main_inner() -> Result<(), ExitError> {
             });
         mc.set_client_tx(cc.tx.clone());
 
-        let _ = thread::Builder::new()
+        let _join_handle = thread::Builder::new()
             .name("client_controller".to_string())
             .spawn(move || {
                 cc.run();
@@ -134,7 +134,7 @@ async fn main_inner() -> Result<(), ExitError> {
 
         mc.run()
             .await
-            .map_err(|err| ExitError::new(ExitCode::UnknownError, format!("Stratum error: {:?}", err)))?;
+            .map_err(|err| ExitError::new(ExitCode::UnknownError, &format!("Stratum error: {:?}", err)))?;
 
         Ok(())
     } else {
@@ -145,7 +145,7 @@ async fn main_inner() -> Result<(), ExitError> {
         );
         let (mut node_conn, mut wallet_conn) = connect(&config)
             .await
-            .map_err(|err| ExitError::new(ExitCode::GrpcError, format!("GRPC connection error: {}", err)))?;
+            .map_err(|err| ExitError::new(ExitCode::GrpcError, &format!("GRPC connection error: {}", err)))?;
 
         let mut blocks_found: u64 = 0;
         loop {

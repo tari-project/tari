@@ -642,7 +642,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         let mut fetch_utxos_calls = acquire_lock!(self.state.fetch_utxos_calls);
         (*fetch_utxos_calls).push(message.output_hashes.clone());
 
-        for hash in message.output_hashes.iter() {
+        for hash in &message.output_hashes {
             if let Some(output) = utxos.iter().find(|o| &o.hash() == hash) {
                 result.push(TransactionOutputProto::from(output.clone()));
             }
@@ -742,7 +742,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         headers.sort_by(|a, b| b.height.cmp(&a.height));
 
         let mut found_height = 0;
-        for h in headers.iter() {
+        for h in &headers {
             if h.timestamp.as_u64() < time {
                 found_height = h.height;
                 break;

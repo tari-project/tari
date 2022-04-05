@@ -44,11 +44,11 @@ use tari_core::{
     },
     blocks::{Block, BlockHeader, NewBlockTemplate},
     chain_storage::{ChainStorageError, PrunedOutput},
-    consensus::{emission::Emission, ConsensusManager, NetworkConsensus},
+    consensus::{emission::Emission, ConsensusDecoding, ConsensusEncoding, ConsensusManager, NetworkConsensus},
     iterators::NonOverlappingIntegerPairIter,
     mempool::{service::LocalMempoolService, TxStorageResponse},
     proof_of_work::PowAlgorithm,
-    transactions::transaction_components::Transaction,
+    transactions::{aggregated_body::AggregateBody, transaction_components::Transaction},
 };
 use tari_p2p::{auto_update::SoftwareUpdaterHandle, services::liveness::LivenessHandle};
 use tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
@@ -175,14 +175,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 };
 
                 if headers.is_empty() {
-                    let _ = tx.send(Err(Status::invalid_argument(format!(
+                    let _network_difficulty_response = tx.send(Err(Status::invalid_argument(format!(
                         "No blocks found within range {} - {}",
                         start, end
                     ))));
                     return;
                 }
 
-                for chain_header in headers.iter() {
+                for chain_header in &headers {
                     let current_difficulty = chain_header.accumulated_data().target_difficulty;
                     let current_timestamp = chain_header.header().timestamp;
                     let current_height = chain_header.header().height;
@@ -320,7 +320,18 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
 
         let from_height = cmp::min(request.from_height, tip);
 
-        let (header_range, is_reversed) = if from_height != 0 {
+        let (header_range, is_reversed) = if from_height == 0 {
+            match sorting {
+                Sorting::Desc => {
+                    let from = match tip.overflowing_sub(num_headers) {
+                        (_, true) => 0,
+                        (res, false) => res + 1,
+                    };
+                    (from..=tip, true)
+                },
+                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
+            }
+        } else {
             match sorting {
                 Sorting::Desc => {
                     let from = match from_height.overflowing_sub(num_headers) {
@@ -333,17 +344,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     let to = from_height.saturating_add(num_headers).saturating_sub(1);
                     (from_height..=to, false)
                 },
-            }
-        } else {
-            match sorting {
-                Sorting::Desc => {
-                    let from = match tip.overflowing_sub(num_headers) {
-                        (_, true) => 0,
-                        (res, false) => res + 1,
-                    };
-                    (from..=tip, true)
-                },
-                Sorting::Asc => (0..=num_headers.saturating_sub(1), false),
             }
         };
 
@@ -438,7 +438,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(tokens) => tokens,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _ = tx.send(Err(Status::internal("Internal error")));
+                    let _get_token_response = tx.send(Err(Status::internal("Internal error")));
                     return;
                 },
             };
@@ -455,7 +455,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Ok(f) => f,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
-                        let _ = tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
+                        let _get_token_response =
+                            tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
                         break;
                     },
                 };
@@ -581,7 +582,7 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(outputs) => outputs,
                 Err(err) => {
                     warn!(target: LOG_TARGET, "Error communicating with base node: {:?}", err,);
-                    let _ = tx.send(Err(Status::internal("Internal error")));
+                    let _list_assest_registrations_response = tx.send(Err(Status::internal("Internal error")));
                     return;
                 },
             };
@@ -601,7 +602,8 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                     Ok(f) => f,
                     Err(err) => {
                         warn!(target: LOG_TARGET, "Could not convert features: {}", err,);
-                        let _ = tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
+                        let _list_assest_registrations_response =
+                            tx.send(Err(Status::internal(format!("Could not convert features:{}", err))));
                         break;
                     },
                 };
@@ -636,11 +638,14 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         debug!(target: LOG_TARGET, "Incoming GRPC request for get new block template");
         trace!(target: LOG_TARGET, "Request {:?}", request);
-        let algo: PowAlgorithm = ((request.algo)
-            .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
-            .pow_algo as u64)
-            .try_into()
-            .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
+        let algo: PowAlgorithm = (u64::try_from(
+            (request.algo)
+                .ok_or_else(|| Status::invalid_argument("No valid pow algo selected".to_string()))?
+                .pow_algo,
+        )
+        .unwrap())
+        .try_into()
+        .map_err(|_| Status::invalid_argument("No valid pow algo selected".to_string()))?;
         let mut handler = self.node_service.clone();
 
         let new_template = handler
@@ -714,6 +719,53 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         Ok(Response::new(response))
     }
 
+    async fn get_new_block_blob(
+        &self,
+        request: Request<tari_rpc::NewBlockTemplate>,
+    ) -> Result<Response<tari_rpc::GetNewBlockBlobResult>, Status> {
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "Incoming GRPC request for get new block blob");
+        let block_template: NewBlockTemplate = request
+            .try_into()
+            .map_err(|s| Status::invalid_argument(format!("Invalid block template: {}", s)))?;
+
+        let mut handler = self.node_service.clone();
+
+        let new_block = match handler.get_new_block(block_template).await {
+            Ok(b) => b,
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::InvalidArguments { message, .. })) => {
+                return Err(Status::invalid_argument(message));
+            },
+            Err(CommsInterfaceError::ChainStorageError(ChainStorageError::CannotCalculateNonTipMmr(msg))) => {
+                let status = Status::with_details(
+                    tonic::Code::FailedPrecondition,
+                    msg,
+                    Bytes::from_static(b"CannotCalculateNonTipMmr"),
+                );
+                return Err(status);
+            },
+            Err(e) => return Err(Status::internal(e.to_string())),
+        };
+        // construct response
+        let block_hash = new_block.hash();
+        let mining_hash = new_block.header.merged_mining_hash();
+
+        let (header, block_body) = new_block.into_header_body();
+        let mut header_bytes = Vec::new();
+        let _ = header.consensus_encode(&mut header_bytes)?;
+        let mut block_body_bytes = Vec::new();
+        let _ = block_body.consensus_encode(&mut block_body_bytes)?;
+        let response = tari_rpc::GetNewBlockBlobResult {
+            block_hash,
+            header: header_bytes,
+            block_body: block_body_bytes,
+            merge_mining_hash: mining_hash,
+            utxo_mr: header.output_mr,
+        };
+        debug!(target: LOG_TARGET, "Sending GetNewBlockBlob response to client");
+        Ok(Response::new(response))
+    }
+
     async fn submit_block(
         &self,
         request: Request<tari_rpc::Block>,
@@ -721,6 +773,42 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         let request = request.into_inner();
         let block = Block::try_from(request)
             .map_err(|e| Status::invalid_argument(format!("Failed to convert arguments. Invalid block: {:?}", e)))?;
+        let block_height = block.header.height;
+        debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
+        info!(
+            target: LOG_TARGET,
+            "Received SubmitBlock #{} request from client", block_height
+        );
+
+        let mut handler = self.node_service.clone();
+        let block_hash = handler
+            .submit_block(block)
+            .await
+            .map_err(|e| Status::internal(e.to_string()))?;
+
+        debug!(
+            target: LOG_TARGET,
+            "Sending SubmitBlock #{} response to client", block_height
+        );
+        Ok(Response::new(tari_rpc::SubmitBlockResponse { block_hash }))
+    }
+
+    async fn submit_block_blob(
+        &self,
+        request: Request<tari_rpc::BlockBlobRequest>,
+    ) -> Result<Response<tari_rpc::SubmitBlockResponse>, Status> {
+        debug!(target: LOG_TARGET, "Received block blob from miner: {:?}", request);
+        let request = request.into_inner();
+        debug!(target: LOG_TARGET, "request: {:?}", request);
+        let mut header_bytes = request.header_blob.as_slice();
+        let mut body_bytes = request.body_blob.as_slice();
+        debug!(target: LOG_TARGET, "doing header");
+        let header = BlockHeader::consensus_decode(&mut header_bytes).map_err(|e| Status::internal(e.to_string()))?;
+        debug!(target: LOG_TARGET, "doing body");
+        let body = AggregateBody::consensus_decode(&mut body_bytes).map_err(|e| Status::internal(e.to_string()))?;
+        // let body = request.body_blob.try_into().unwrap();
+
+        let block = Block::new(header, body);
         let block_height = block.header.height;
         debug!(target: LOG_TARGET, "Miner submitted block: {}", block);
         info!(
@@ -1340,9 +1428,10 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
             _ => tari_rpc::SyncProgressResponse {
                 tip_height: 0,
                 local_height: 0,
-                state: match state.is_synced() {
-                    true => tari_rpc::SyncState::Done.into(),
-                    false => tari_rpc::SyncState::Startup.into(),
+                state: if state.is_synced() {
+                    tari_rpc::SyncState::Done.into()
+                } else {
+                    tari_rpc::SyncState::Startup.into()
                 },
             },
         };
@@ -1354,7 +1443,6 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
         _request: Request<tari_rpc::Empty>,
     ) -> Result<Response<tari_rpc::SyncInfoResponse>, Status> {
         debug!(target: LOG_TARGET, "Incoming GRPC request for BN sync data");
-
         let response = self
             .state_machine_handle
             .get_status_info_watch()
@@ -1405,6 +1493,38 @@ impl tari_rpc::base_node_server::BaseNode for BaseNodeGrpcServer {
                 Ok(Response::new(resp))
             },
             None => Err(Status::not_found(format!("Header not found with hash `{}`", hash_hex))),
+        }
+    }
+
+    async fn get_header_by_height(
+        &self,
+        request: Request<tari_rpc::GetHeaderByHeightRequest>,
+    ) -> Result<Response<tari_rpc::BlockHeaderResponse>, Status> {
+        let tari_rpc::GetHeaderByHeightRequest { height } = request.into_inner();
+        let mut node_service = self.node_service.clone();
+        let block = node_service
+            .get_block(height)
+            .await
+            .map_err(|err| Status::internal(err.to_string()))?;
+
+        match block {
+            Some(block) => {
+                let (block, acc_data, confirmations, _) = block.dissolve();
+                let total_block_reward = self
+                    .consensus_rules
+                    .calculate_coinbase_and_fees(block.header.height, block.body.kernels());
+
+                let resp = tari_rpc::BlockHeaderResponse {
+                    difficulty: acc_data.achieved_difficulty.into(),
+                    num_transactions: block.body.kernels().len() as u32,
+                    confirmations,
+                    header: Some(block.header.into()),
+                    reward: total_block_reward.into(),
+                };
+
+                Ok(Response::new(resp))
+            },
+            None => Err(Status::not_found(format!("Header not found with height `{}`", height))),
         }
     }
 

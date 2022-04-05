@@ -208,7 +208,7 @@ where
 {
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError> {
         let (proto_notif_tx, proto_notif_rx) = mpsc::channel(20);
-        context.add_protocol(&self.protocol_names, proto_notif_tx);
+        context.add_protocol(&self.protocol_names, &proto_notif_tx);
         let rpc_context = RpcCommsBackend::new(context.peer_manager(), context.connectivity());
         task::spawn(self.serve(proto_notif_rx, rpc_context));
         Ok(())

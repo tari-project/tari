@@ -143,7 +143,7 @@ impl Listening {
                         };
                         // If this fails, its not the end of the world, we just want to keep record of the stats of
                         // the peer
-                        let _ = shared
+                        let _old_data = shared
                             .peer_manager
                             .set_peer_metadata(peer.node_id(), 1, peer_data.to_bytes())
                             .await;
@@ -329,7 +329,7 @@ fn determine_sync_mode(
     network: &ChainMetadata,
     sync_peers: Vec<&PeerChainMetadata>,
 ) -> SyncStatus {
-    use SyncStatus::*;
+    use SyncStatus::{Lagging, UpToDate};
     let network_tip_accum_difficulty = network.accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {

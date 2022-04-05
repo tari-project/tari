@@ -36,7 +36,7 @@ impl From<BlockHeader> for grpc::BlockHeader {
         let pow_algo = h.pow_algo();
         Self {
             hash: h.hash(),
-            version: h.version as u32,
+            version: u32::from(h.version),
             height: h.height,
             prev_hash: h.prev_hash,
             timestamp: Some(datetime_to_timestamp(h.timestamp)),

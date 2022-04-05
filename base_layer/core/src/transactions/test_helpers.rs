@@ -313,7 +313,7 @@ pub fn create_random_signature_from_s_key(
 pub fn create_unblinded_output(
     script: TariScript,
     output_features: OutputFeatures,
-    test_params: TestParams,
+    test_params: &TestParams,
     value: MicroTari,
 ) -> UnblindedOutput {
     test_params.create_unblinded_output(UtxoTestParams {
@@ -325,7 +325,7 @@ pub fn create_unblinded_output(
 }
 
 pub fn update_unblinded_output_with_updated_output_features(
-    test_params: TestParams,
+    test_params: &TestParams,
     uo: UnblindedOutput,
     updated_features: OutputFeatures,
 ) -> UnblindedOutput {
@@ -467,9 +467,9 @@ pub fn create_tx(
         input_maturity,
         output_count,
         fee_per_gram,
-        output_features,
-        script![Nop],
-        Default::default(),
+        &output_features,
+        &script![Nop],
+        &Default::default(),
     );
     let tx = create_transaction_with(lock_height, fee_per_gram, inputs.clone(), outputs.clone());
     (tx, inputs, outputs.into_iter().map(|(utxo, _)| utxo).collect())
@@ -481,9 +481,9 @@ pub fn create_unblinded_txos(
     input_maturity: u64,
     output_count: usize,
     fee_per_gram: MicroTari,
-    output_features: OutputFeatures,
-    output_script: TariScript,
-    output_covenant: Covenant,
+    output_features: &OutputFeatures,
+    output_script: &TariScript,
+    output_covenant: &Covenant,
 ) -> (Vec<UnblindedOutput>, Vec<(UnblindedOutput, PrivateKey)>) {
     let weighting = TransactionWeight::latest();
     // This is a best guess to not underestimate metadata size
@@ -734,7 +734,7 @@ pub fn create_test_kernel(fee: MicroTari, lock_height: u64) -> TransactionKernel
 pub fn create_utxo(
     value: MicroTari,
     factories: &CryptoFactories,
-    features: OutputFeatures,
+    features: &OutputFeatures,
     script: &TariScript,
     covenant: &Covenant,
 ) -> (TransactionOutput, PrivateKey, PrivateKey) {
@@ -743,7 +743,7 @@ pub fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
 
-    let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, &features);
+    let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, features);
 
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
         &value,

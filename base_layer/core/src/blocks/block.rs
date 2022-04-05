@@ -26,6 +26,8 @@
 use std::{
     fmt,
     fmt::{Display, Formatter},
+    io,
+    io::{Read, Write},
 };
 
 use log::*;
@@ -37,7 +39,7 @@ use thiserror::Error;
 
 use crate::{
     blocks::BlockHeader,
-    consensus::ConsensusConstants,
+    consensus::{ConsensusConstants, ConsensusDecoding, ConsensusEncoding},
     proof_of_work::ProofOfWork,
     transactions::{
         aggregated_body::AggregateBody,
@@ -141,6 +143,11 @@ impl Block {
     ) {
         let (i, o, k) = self.body.dissolve();
         (self.header, i, o, k)
+    }
+
+    /// Destroys the block and returns the pieces of the block: header, body
+    pub fn into_header_body(self) -> (BlockHeader, AggregateBody) {
+        (self.header, self.body)
     }
 
     /// Return a cloned version of this block with the TransactionInputs in their compact form
@@ -260,6 +267,23 @@ impl Hashable for Block {
     /// respective MMR roots in the header itself.
     fn hash(&self) -> Vec<u8> {
         self.header.hash()
+    }
+}
+
+impl ConsensusEncoding for Block {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.header.consensus_encode(writer)?;
+        written += self.body.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for Block {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let header = BlockHeader::consensus_decode(reader)?;
+        let body = AggregateBody::consensus_decode(reader)?;
+        let block = Block::new(header, body);
+        Ok(block)
     }
 }
 

@@ -61,6 +61,7 @@ pub fn initialize_logging(config_file: &Path, base_path: &Path) -> bool {
 
 /// Installs a new default logfile configuration, copied from the specified application type sample to the given path.
 pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
+    #[allow(clippy::enum_glob_use)]
     use ApplicationType::*;
     let source = match application_type {
         BaseNode => include_str!("../logging/log4rs_sample_base_node.yml"),

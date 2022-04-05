@@ -79,65 +79,64 @@ impl TryFrom<WorkspaceLaunchOptions> for LaunchpadConfig {
         let tari_network = TariNetwork::try_from(options.tari_network.to_lowercase().as_str())?;
         let tor_control_password = create_password(16);
         let tor_delay = Duration::from_secs(options.wait_for_tor.unwrap_or(10));
-        let base_node = match options.has_base_node {
-            false => None,
-            true => Some(BaseNodeConfig { delay: tor_delay }),
+        let base_node = if options.has_base_node {
+            Some(BaseNodeConfig { delay: tor_delay })
+        } else {
+            None
         };
-        let wallet = match options.has_wallet {
-            false => None,
-            true => {
-                if options.wallet_password.is_none() {
-                    return Err(LauncherError::ConfigVariableRequired(
-                        "wallet".to_string(),
-                        "wallet_password".to_string(),
-                    ));
-                }
-                Some(WalletConfig {
-                    delay: tor_delay,
-                    password: options.wallet_password.unwrap(),
-                })
-            },
+        let wallet = if options.has_wallet {
+            if options.wallet_password.is_none() {
+                return Err(LauncherError::ConfigVariableRequired(
+                    "wallet".to_string(),
+                    "wallet_password".to_string(),
+                ));
+            }
+            Some(WalletConfig {
+                delay: tor_delay,
+                password: options.wallet_password.unwrap(),
+            })
+        } else {
+            None
         };
-        let sha3_miner = match options.has_sha3_miner {
-            false => None,
-            true => Some(Sha3MinerConfig {
+        let sha3_miner = if options.has_sha3_miner {
+            Some(Sha3MinerConfig {
                 delay: Duration::from_secs(options.wait_for_tor.unwrap_or(15)),
                 num_mining_threads: options.sha3_mining_threads.unwrap_or(1),
-            }),
+            })
+        } else {
+            None
         };
-        let mm_proxy = match options.has_mm_proxy {
-            false => None,
-            true => {
-                let mut config = MmProxyConfig {
-                    delay: Duration::from_secs(options.wait_for_tor.unwrap_or(15)),
-                    ..Default::default()
-                };
-                if let Some(val) = options.monerod_url {
-                    config.monerod_url = val;
-                }
-                if let Some(val) = options.monero_username {
-                    config.monero_username = val;
-                }
-                if let Some(val) = options.monero_password {
-                    config.monero_password = val;
-                }
-                if let Some(val) = options.monero_use_auth {
-                    config.monero_use_auth = val;
-                }
-                Some(config)
-            },
+        let mm_proxy = if options.has_mm_proxy {
+            let mut config = MmProxyConfig {
+                delay: Duration::from_secs(options.wait_for_tor.unwrap_or(15)),
+                ..Default::default()
+            };
+            if let Some(val) = options.monerod_url {
+                config.monerod_url = val;
+            }
+            if let Some(val) = options.monero_username {
+                config.monero_username = val;
+            }
+            if let Some(val) = options.monero_password {
+                config.monero_password = val;
+            }
+            if let Some(val) = options.monero_use_auth {
+                config.monero_use_auth = val;
+            }
+            Some(config)
+        } else {
+            None
         };
-        let xmrig = match options.has_xmrig {
-            false => None,
-            true => {
-                let monero_mining_address = options
-                    .monero_mining_address
-                    .unwrap_or_else(|| DEFAULT_MINING_ADDRESS.to_string());
-                Some(XmRigConfig {
-                    delay: Duration::from_secs(options.wait_for_tor.unwrap_or(20)),
-                    monero_mining_address,
-                })
-            },
+        let xmrig = if options.has_xmrig {
+            let monero_mining_address = options
+                .monero_mining_address
+                .unwrap_or_else(|| DEFAULT_MINING_ADDRESS.to_string());
+            Some(XmRigConfig {
+                delay: Duration::from_secs(options.wait_for_tor.unwrap_or(20)),
+                monero_mining_address,
+            })
+        } else {
+            None
         };
         Ok(LaunchpadConfig {
             data_directory: PathBuf::from(options.root_folder),

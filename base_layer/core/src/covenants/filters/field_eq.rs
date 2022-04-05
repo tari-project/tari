@@ -36,6 +36,7 @@ impl Filter for FieldEqFilter {
         let field = context.next_arg()?.require_outputfield()?;
         let arg = context.next_arg()?;
         output_set.retain(|output| {
+            #[allow(clippy::enum_glob_use)]
             use CovenantArg::*;
             match &arg {
                 Hash(hash) => field.is_eq(output, hash),
@@ -47,7 +48,7 @@ impl Filter for FieldEqFilter {
                     let val = field
                         .get_field_value_ref::<u64>(output)
                         .copied()
-                        .or_else(|| field.get_field_value_ref::<u32>(output).map(|v| *v as u64));
+                        .or_else(|| field.get_field_value_ref::<u32>(output).map(|v| u64::from(*v)));
 
                     match val {
                         Some(val) => Ok(val == *int),

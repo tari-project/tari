@@ -81,7 +81,7 @@ pub fn create_coinbase(
     let unblinded_output = create_unblinded_output(
         script!(Nop),
         OutputFeatures::create_coinbase(maturity_height, rand::thread_rng().gen::<u8>()),
-        p,
+        &p,
         value,
     );
     let output = unblinded_output.as_transaction_output(factories).unwrap();
@@ -122,7 +122,7 @@ fn print_new_genesis_block() {
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
+        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script![Nop],
         &Covenant::default(),
     );
@@ -218,7 +218,7 @@ pub fn create_genesis_block_with_utxos(
     let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let p = TestParams::new();
-        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), p, *v);
+        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), &p, *v);
         secrets.push(unblinded_output.clone());
         let output = unblinded_output.as_transaction_output(factories).unwrap();
         template.body.add_output(output);

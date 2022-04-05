@@ -44,13 +44,7 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     pub fn list_reorgs(&self) -> Result<(), Error> {
-        if !self.config.blockchain_track_reorgs {
-            // TODO: Return error/report
-            println!(
-                "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \
-                 turn it on."
-            );
-        } else {
+        if self.config.blockchain_track_reorgs {
             let reorgs = self.blockchain_db.inner().fetch_all_reorgs()?;
             let mut table = Table::new();
             table.set_titles(vec!["#", "New Tip", "Prev Tip", "Depth", "Timestamp"]);
@@ -65,6 +59,12 @@ impl CommandContext {
                 ]);
             }
             table.enable_row_count().print_stdout();
+        } else {
+            // TODO: Return error/report
+            println!(
+                "Reorg tracking is turned off. Add `track_reorgs = true` to the [base_node] section of your config to \
+                 turn it on."
+            );
         }
         Ok(())
     }

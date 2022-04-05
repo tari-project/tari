@@ -134,12 +134,12 @@ impl<B: Backend> Component<B> for BaseNode {
             .direction(Direction::Horizontal)
             .constraints(
                 [
-                    Constraint::Ratio(title.width() as u32, MAX_WIDTH as u32),
+                    Constraint::Ratio(title.width() as u32, u32::from(MAX_WIDTH)),
                     Constraint::Ratio(
-                        MAX_WIDTH.saturating_sub((title.width() + base_node_id.width()) as u16) as u32,
-                        MAX_WIDTH as u32,
+                        u32::from(MAX_WIDTH.saturating_sub((title.width() + base_node_id.width()) as u16)),
+                        u32::from(MAX_WIDTH),
                     ),
-                    Constraint::Ratio(base_node_id.width() as u32, MAX_WIDTH as u32),
+                    Constraint::Ratio(base_node_id.width() as u32, u32::from(MAX_WIDTH)),
                 ]
                 .as_ref(),
             )

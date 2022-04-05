@@ -210,6 +210,7 @@ mod test {
             } else if key == 3 {
                 key3_found = true;
                 assert_eq!(val, val3);
+            } else {
             }
             IterationResult::Continue
         });

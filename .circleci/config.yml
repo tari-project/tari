@@ -32,9 +32,6 @@ commands:
           name: Build mining_node
           command: cargo build --release --bin tari_mining_node
       - run:
-          name: Build stratum_transcoder
-          command: cargo build --release --bin tari_stratum_transcoder
-      - run:
           name: Build validator node
           command: cargo build --release --bin tari_validator_node
       - run:
@@ -82,9 +79,6 @@ commands:
       - run:
           name: Build mining_node
           command: cargo build --release --bin tari_mining_node
-      - run:
-          name: Build stratum_transcoder
-          command: cargo build --release --bin tari_stratum_transcoder
       - run:
           name: Build validator node
           command: cargo build --release --bin tari_validator_node

@@ -197,7 +197,7 @@ impl Iterator for ChunkedResponseIter {
 
 #[cfg(test)]
 mod test {
-    use std::iter;
+    use std::{convert::TryFrom, iter};
 
     use super::*;
 
@@ -215,7 +215,7 @@ mod test {
         assert_eq!(iter.total_chunks, 1);
         let msgs = iter.collect::<Vec<_>>();
         assert_eq!(msgs.len(), 1);
-        assert!(!RpcMessageFlags::from_bits_truncate(msgs[0].flags as u8).is_more());
+        assert!(!RpcMessageFlags::from_bits_truncate(u8::try_from(msgs[0].flags).unwrap()).is_more());
     }
 
     #[test]
@@ -224,7 +224,7 @@ mod test {
         assert_eq!(iter.total_chunks, 1);
         let msgs = iter.collect::<Vec<_>>();
         assert_eq!(msgs.len(), 1);
-        assert!(!RpcMessageFlags::from_bits_truncate(msgs[0].flags as u8).is_more());
+        assert!(!RpcMessageFlags::from_bits_truncate(u8::try_from(msgs[0].flags).unwrap()).is_more());
     }
 
     #[test]
@@ -251,10 +251,11 @@ mod test {
 
     #[test]
     fn it_sets_the_more_flag_except_last() {
+        use std::convert::TryFrom;
         let iter = create(RPC_CHUNKING_THRESHOLD * 3);
         let msgs = iter.collect::<Vec<_>>();
-        assert!(RpcMessageFlags::from_bits_truncate(msgs[0].flags as u8).is_more());
-        assert!(RpcMessageFlags::from_bits_truncate(msgs[1].flags as u8).is_more());
-        assert!(!RpcMessageFlags::from_bits_truncate(msgs[2].flags as u8).is_more());
+        assert!(RpcMessageFlags::from_bits_truncate(u8::try_from(msgs[0].flags).unwrap()).is_more());
+        assert!(RpcMessageFlags::from_bits_truncate(u8::try_from(msgs[1].flags).unwrap()).is_more());
+        assert!(!RpcMessageFlags::from_bits_truncate(u8::try_from(msgs[2].flags).unwrap()).is_more());
     }
 }

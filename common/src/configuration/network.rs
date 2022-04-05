@@ -48,6 +48,7 @@ impl Network {
     }
 
     pub const fn as_str(self) -> &'static str {
+        #[allow(clippy::enum_glob_use)]
         use Network::*;
         match self {
             MainNet => "mainnet",
@@ -71,6 +72,7 @@ impl FromStr for Network {
     type Err = ConfigurationError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
+        #[allow(clippy::enum_glob_use)]
         use Network::*;
         match value.to_lowercase().as_str() {
             "ridcully" => Ok(Ridcully),

@@ -104,7 +104,7 @@ impl HorizonStateSync {
         let sync_peers_node_id = sync_peers.iter().map(|p| p.node_id()).cloned().collect();
         horizon_sync.on_starting(move || {
             let info = HorizonSyncInfo::new(sync_peers_node_id, HorizonSyncStatus::Starting);
-            let _ = status_event_sender.send(StatusInfo {
+            let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::HorizonSync(info),
                 randomx_vm_cnt,
@@ -114,7 +114,7 @@ impl HorizonStateSync {
 
         let status_event_sender = shared.status_event_sender.clone();
         horizon_sync.on_progress(move |info| {
-            let _ = status_event_sender.send(StatusInfo {
+            let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::HorizonSync(info),
                 randomx_vm_cnt,

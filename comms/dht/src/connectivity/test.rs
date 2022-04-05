@@ -186,7 +186,7 @@ async fn replace_peer_when_peer_goes_offline() {
         max_attempts = 20,
         interval = Duration::from_millis(10),
     );
-    let _ = connectivity.take_calls().await;
+    let _result = connectivity.take_calls().await;
 
     let dialed = connectivity.take_dialed_peers().await;
     assert_eq!(dialed.len(), 5);
@@ -201,7 +201,7 @@ async fn replace_peer_when_peer_goes_offline() {
         interval = Duration::from_millis(10),
     );
 
-    let _ = connectivity.take_calls().await;
+    let _result = connectivity.take_calls().await;
     // Redial
     let dialed = connectivity.take_dialed_peers().await;
     assert_eq!(dialed.len(), 1);

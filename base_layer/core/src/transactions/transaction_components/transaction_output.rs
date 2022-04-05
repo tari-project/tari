@@ -26,6 +26,8 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    io,
+    io::{Read, Write},
 };
 
 use digest::{Digest, FixedOutput};
@@ -55,7 +57,7 @@ use tari_script::TariScript;
 use super::TransactionOutputVersion;
 use crate::{
     common::hash_writer::HashWriter,
-    consensus::ConsensusEncodingSized,
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -263,7 +265,7 @@ impl TransactionOutput {
     // Create commitment signature for the metadata
 
     fn create_metadata_signature(
-        value: &MicroTari,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -314,7 +316,7 @@ impl TransactionOutput {
         covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
-            value,
+            *value,
             spending_key,
             script,
             output_features,
@@ -336,7 +338,7 @@ impl TransactionOutput {
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
-            value,
+            *value,
             spending_key,
             script,
             output_features,
@@ -422,5 +424,43 @@ impl PartialOrd for TransactionOutput {
 impl Ord for TransactionOutput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.commitment.cmp(&other.commitment)
+    }
+}
+
+impl ConsensusEncoding for TransactionOutput {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.features.consensus_encode(writer)?;
+        written += self.commitment.consensus_encode(writer)?;
+        written += self.proof.consensus_encode(writer)?;
+        written += self.script.consensus_encode(writer)?;
+        written += self.sender_offset_public_key.consensus_encode(writer)?;
+        written += self.metadata_signature.consensus_encode(writer)?;
+        written += self.covenant.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for TransactionOutput {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = TransactionOutputVersion::consensus_decode(reader)?;
+        let features = OutputFeatures::consensus_decode(reader)?;
+        let commitment = Commitment::consensus_decode(reader)?;
+        let proof = RangeProof::consensus_decode(reader)?;
+        let script = TariScript::consensus_decode(reader)?;
+        let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
+        let metadata_signature = ComSignature::consensus_decode(reader)?;
+        let covenant = Covenant::consensus_decode(reader)?;
+        let output = TransactionOutput::new(
+            version,
+            features,
+            commitment,
+            proof,
+            script,
+            sender_offset_public_key,
+            metadata_signature,
+            covenant,
+        );
+        Ok(output)
     }
 }

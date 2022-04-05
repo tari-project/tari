@@ -23,6 +23,7 @@
 use core::iter;
 use std::{
     cmp,
+    convert::TryFrom,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -108,7 +109,7 @@ impl GreetingRpc for GreetingService {
         let greeting = self
             .greetings
             .get(msg.language as usize)
-            .ok_or_else(|| RpcStatus::bad_request(format!("{} is not a valid language identifier", msg.language)))?;
+            .ok_or_else(|| RpcStatus::bad_request(&format!("{} is not a valid language identifier", msg.language)))?;
 
         let greeting = format!("{} {}", greeting, msg.name);
         Ok(Response::new(SayHelloResponse { greeting }))
@@ -125,7 +126,7 @@ impl GreetingRpc for GreetingService {
         let num = *request.message();
         let greetings = self.greetings[..cmp::min(num as usize, self.greetings.len())].to_vec();
         task::spawn(async move {
-            let _ = utils::mpsc::send_all(&tx, greetings.into_iter().map(Ok)).await;
+            let _result = utils::mpsc::send_all(&tx, greetings.into_iter().map(Ok)).await;
         });
 
         Ok(Streaming::new(rx))
@@ -133,7 +134,7 @@ impl GreetingRpc for GreetingService {
 
     async fn streaming_error(&self, request: Request<String>) -> Result<Streaming<String>, RpcStatus> {
         self.inc_call_count();
-        Err(RpcStatus::bad_request(format!(
+        Err(RpcStatus::bad_request(&format!(
             "What does '{}' mean?",
             request.message()
         )))
@@ -157,7 +158,7 @@ impl GreetingRpc for GreetingService {
 
     async fn reply_with_msg_of_size(&self, request: Request<u64>) -> Result<Vec<u8>, RpcStatus> {
         self.inc_call_count();
-        let size = request.into_message() as usize;
+        let size = usize::try_from(request.into_message()).unwrap();
         Ok(iter::repeat(0).take(size).collect())
     }
 
@@ -352,7 +353,7 @@ impl<T: GreetingRpc> __rpc_deps::Service<Request<__rpc_deps::Bytes>> for Greetin
                 Box::pin(fut)
             },
 
-            id => Box::pin(__rpc_deps::future::ready(Err(RpcStatus::unsupported_method(format!(
+            id => Box::pin(__rpc_deps::future::ready(Err(RpcStatus::unsupported_method(&format!(
                 "Method identifier `{}` is not recognised or supported",
                 id
             ))))),

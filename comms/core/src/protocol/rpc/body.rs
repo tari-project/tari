@@ -117,11 +117,11 @@ impl Stream for Body {
                 Poll::Ready(Some(Err(err)))
             },
             None => {
-                if !*this.is_terminated {
+                if *this.is_terminated {
+                    Poll::Ready(None)
+                } else {
                     *this.is_terminated = true;
                     Poll::Ready(Some(Ok(BodyBytes::terminated())))
-                } else {
-                    Poll::Ready(None)
                 }
             },
         }

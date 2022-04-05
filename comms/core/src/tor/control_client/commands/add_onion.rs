@@ -50,7 +50,7 @@ pub enum AddOnionFlag {
 
 impl fmt::Display for AddOnionFlag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use AddOnionFlag::*;
+        use AddOnionFlag::{BasicAuth, Detach, DiscardPK, MaxStreamsCloseCircuit, NonAnonymous};
         match self {
             DiscardPK => write!(f, "DiscardPK"),
             Detach => write!(f, "Detach"),

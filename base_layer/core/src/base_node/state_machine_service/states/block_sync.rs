@@ -58,7 +58,7 @@ impl BlockSync {
 
         let status_event_sender = shared.status_event_sender.clone();
         let bootstrapped = shared.is_bootstrapped();
-        let _ = status_event_sender.send(StatusInfo {
+        let _result = status_event_sender.send(StatusInfo {
             bootstrapped,
             state_info: StateInfo::BlockSyncStarting,
             randomx_vm_cnt: 0,
@@ -74,7 +74,7 @@ impl BlockSync {
                 BlockAddResult::Ok(block),
             ));
 
-            let _ = status_event_sender.send(StatusInfo {
+            let _result = status_event_sender.send(StatusInfo {
                 bootstrapped,
                 state_info: StateInfo::BlockSync(BlockSyncInfo {
                     tip_height: remote_tip_height,

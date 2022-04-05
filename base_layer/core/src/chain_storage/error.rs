@@ -149,7 +149,7 @@ impl From<task::JoinError> for ChainStorageError {
 
 impl From<lmdb_zero::Error> for ChainStorageError {
     fn from(err: lmdb_zero::Error) -> Self {
-        use lmdb_zero::Error::*;
+        use lmdb_zero::Error::Code;
         match err {
             Code(error::NOTFOUND) => ChainStorageError::ValueNotFound {
                 entity: "<unspecified entity>",
@@ -188,7 +188,7 @@ impl<U> OrNotFound<U> for Result<Option<U>, ChainStorageError> {
 
 impl<U> OrNotFound<U> for Result<U, lmdb_zero::Error> {
     fn or_not_found(self, entity: &'static str, field: &'static str, value: String) -> Result<U, ChainStorageError> {
-        use lmdb_zero::Error::*;
+        use lmdb_zero::Error::Code;
         match self {
             Ok(v) => Ok(v),
             Err(err) => match err {

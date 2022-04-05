@@ -40,7 +40,7 @@ pub fn mean(list: Vec<u64>) -> Option<f64> {
     }
     let mut count = 0;
     let total = list.iter().inspect(|_| count += 1).sum::<u64>();
-    Some(total as f64 / count as f64)
+    Some(total as f64 / f64::from(count))
 }
 
 #[cfg(test)]

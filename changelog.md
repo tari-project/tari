@@ -1,5 +1,27 @@
 # Changelog
 
+All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+## [0.31.0](https://github.com/tari-project/tari/compare/v0.30.2...v0.31.0) (2022-04-05)
+
+### Features
+
+* add config setting to resize terminal ([#3920](https://github.com/tari-project/tari/issues/3920)) ([ce697bd](https://github.com/tari-project/tari/commit/ce697bdc68d8d0864b2d8406dd0f79bbd8b9125d))
+* add less aggressive txn cancelling ([#3904](https://github.com/tari-project/tari/issues/3904)) ([40bedde](https://github.com/tari-project/tari/commit/40bedde2053a8e98a2c1a97fc5223be105d0e60e))
+* check file perms on identity files ([#3958](https://github.com/tari-project/tari/issues/3958)) ([7f381d3](https://github.com/tari-project/tari/commit/7f381d3ada56f14472fd4f8b0644a9c5840b6d50))
+* implement qr code for base node ([#3977](https://github.com/tari-project/tari/issues/3977)) ([2f618a2](https://github.com/tari-project/tari/commit/2f618a2560611903e2e87b3d9f93ed6e513dda04))
+* remove spawn blocking calls from wallet db (output manager service) ([#3982](https://github.com/tari-project/tari/issues/3982)) ([cbf75ca](https://github.com/tari-project/tari/commit/cbf75ca762a7affc17b8794ea79679b75626f5d1))
+* update committee from the committee definions TXs ([#3911](https://github.com/tari-project/tari/issues/3911)) ([0b29c89](https://github.com/tari-project/tari/commit/0b29c89442607089f0d985f07395b76175d76e93))
+* **wallet:** send a cancel message to a receiver when it responds to a canceled transaction ([#3976](https://github.com/tari-project/tari/issues/3976)) ([96d24c6](https://github.com/tari-project/tari/commit/96d24c66b534234151974664eb8fcb2e35225386))
+
+
+### Bug Fixes
+
+* another fix for the recovery daily test ([#3978](https://github.com/tari-project/tari/issues/3978)) ([73365a4](https://github.com/tari-project/tari/commit/73365a466e1e14d697f16f5cd9ff8ca51c310d54))
+* estimated hashrate calculation is incorrect ([#3996](https://github.com/tari-project/tari/issues/3996)) ([4587fc0](https://github.com/tari-project/tari/commit/4587fc0e7605359432830ba634f21f18207d3821))
+* recovery daily test reporting of uT was rounding incorrectly ([#3992](https://github.com/tari-project/tari/issues/3992)) ([b5797b7](https://github.com/tari-project/tari/commit/b5797b7db05c95a1401bfbc5d8ba78783037bfec))
+* separate watch loop for the non-interactive mode ([#3979](https://github.com/tari-project/tari/issues/3979)) ([9bf6503](https://github.com/tari-project/tari/commit/9bf6503e750da7c34c64dc39e5bb1d7e3dda763b))
+
 ### [0.30.2](https://github.com/tari-project/tari/compare/v0.30.1...v0.30.2) (2022-03-29)
 
 

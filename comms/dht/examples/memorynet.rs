@@ -175,7 +175,7 @@ async fn main() {
     // peer_list_summary(&nodes).await;
 
     log::info!("------------------------------- WALLET JOIN -------------------------------");
-    for wallet in wallets.iter_mut() {
+    for wallet in &mut wallets {
         println!(
             "Wallet '{}' is joining the network via node '{}'",
             wallet,

@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{cmp, io::Write};
+use std::{cmp, convert::TryFrom, io::Write};
 
 use anyhow::Error;
 use async_trait::async_trait;
@@ -116,7 +116,7 @@ impl CommandContext {
             let achieved = header.accumulated_data().achieved_difficulty;
             let solve_time = header.header().timestamp.as_u64() as i64 - prev_header.header().timestamp.as_u64() as i64;
             let normalized_solve_time = cmp::min(
-                cmp::max(solve_time, 1) as u64,
+                u64::try_from(cmp::max(solve_time, 1)).unwrap(),
                 self.consensus_rules
                     .consensus_constants(height)
                     .get_difficulty_max_block_interval(pow_algo),

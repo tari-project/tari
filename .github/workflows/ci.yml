@@ -21,7 +21,6 @@ env:
   PROTOC: protoc
 
 jobs:
-
   checks:
     name: npm checks
     runs-on: ubuntu-latest
@@ -84,11 +83,16 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
-      - name: Clippy check
+      - name: Install cargo-lints
         uses: actions-rs/cargo@v1
         with:
-          command: clippy
-          args: --all-targets -- -D warnings
+          command: install
+          args: cargo-lints
+      - name: Clippy check (with lints)
+        uses: actions-rs/cargo@v1
+        with:
+          command: lints
+          args: clippy --all-targets
   build:
     name: check nightly
     runs-on: ubuntu-18.04
