@@ -1918,46 +1918,154 @@ fn input_malleability() {
     assert_ne!(*block_hash, mod_block_hash);
 }
 
-#[test]
-fn output_malleability() {
-    // create a blockchain with a couple of valid blocks
-    let mut blockchain = TestBlockchain::with_genesis("GB");
-    let blocks = blockchain.builder();
+mod output_malleability {
+    use tari_common_types::types::{ComSignature, RangeProof};
+    use tari_core::{
+        blocks::ChainBlock,
+        chain_storage::MmrRoots,
+        transactions::transaction_components::{TransactionOutput, TransactionOutputVersion},
+    };
+    use tari_script::{Opcode, TariScript};
+    use tari_utilities::hex::Hex;
 
-    let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+    use super::*;
 
-    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])]);
-    blockchain.add_block(
-        blocks
-            .new_block("A2")
-            .child_of("A1")
-            .difficulty(1)
-            .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
-    );
+    #[test]
+    fn version() {
+        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+            let mod_version = match output.version {
+                TransactionOutputVersion::V0 => TransactionOutputVersion::V1,
+                TransactionOutputVersion::V1 => TransactionOutputVersion::V0,
+            };
+            output.version = mod_version;
+        });
+    }
 
-    // store the block metadata for later comparison
-    let block = blockchain.get_block("A2").cloned().unwrap().block;
-    let header = block.header();
-    let block_hash = block.hash();
+    #[test]
+    fn features() {
+        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+            output.features.maturity += 1;
+        });
+    }
 
-    // create an altered version of the last block, with a different commitment in one output
-    let mut mod_block = block.block().clone();
-    let mut mod_output = &mut mod_block.body.outputs_mut()[0];
-    let mod_commitment = &mod_output.commitment + &mod_output.commitment;
-    mod_output.commitment = mod_commitment;
+    #[test]
+    fn commitment() {
+        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+            let mod_commitment = &output.commitment + &output.commitment;
+            output.commitment = mod_commitment;
+        });
+    }
 
-    // calculate the metadata for the modified block
-    blockchain
-        .store()
-        .rewind_to_height(mod_block.header.height - 1)
-        .unwrap();
-    let (mut mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
+    #[test]
+    fn proof() {
+        let output_mod_fn = |output: &mut TransactionOutput| {
+            let mod_proof = RangeProof::from_hex(&(output.proof.to_hex() + "00")).unwrap();
+            output.proof = mod_proof;
+        };
 
-    // check that we can detect the alteration
-    assert_ne!(header.output_mr, modded_root.output_mr);
-    mod_block.header.output_mr = modded_root.output_mr;
-    let mod_block_hash = mod_block.hash();
-    assert_ne!(*block_hash, mod_block_hash);
+        let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
+
+        // bulletproofs are included in witness mmr
+        assert_ne!(orig_block.header().witness_mr, modded_root.witness_mr);
+        mod_block.header.witness_mr = modded_root.witness_mr;
+        assert_ne!(orig_block.block().hash(), mod_block.hash());
+    }
+
+    #[test]
+    fn script() {
+        assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+            let mut script_bytes = output.script.as_bytes();
+            Opcode::PushZero.to_bytes(&mut script_bytes);
+            let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
+            output.script = mod_script;
+        });
+    }
+
+    // #[test]
+    // fn sender_offset_public_key() {
+    // let output_mod_fn = |output: &mut TransactionOutput| {
+    // let mod_pk = generate_keys().pk;
+    // "gerate_keys" should return a random, different key than the present one
+    // but let's check that it's actually different
+    // assert_ne!(mod_pk, output.sender_offset_public_key);
+    // output.sender_offset_public_key = mod_pk;
+    // };
+    //
+    // let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
+    //
+    // bulletproofs are included in witness mmr
+    // assert_ne!(orig_block.header().witness_mr, modded_root.witness_mr);
+    // mod_block.header.witness_mr = modded_root.witness_mr;
+    // assert_ne!(orig_block.block().hash(), mod_block.hash());
+    // }
+
+    #[test]
+    fn metadata_signature() {
+        let output_mod_fn = |output: &mut TransactionOutput| {
+            let mod_sig = ComSignature::default();
+            assert_ne!(mod_sig, output.metadata_signature);
+            output.metadata_signature = ComSignature::default();
+        };
+
+        let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
+
+        assert_ne!(orig_block.header().witness_mr, modded_root.witness_mr);
+        mod_block.header.witness_mr = modded_root.witness_mr;
+        assert_ne!(orig_block.block().hash(), mod_block.hash());
+    }
+
+    // #[test]
+    // fn covenant() {
+    // assert_output_is_not_malleable(|output: &mut TransactionOutput| {
+    // let mod_covenant = covenant!(fields_preserved(@fields(@field::features_unique_id, @field::covenant)));
+    // output.covenant = mod_covenant;
+    // });
+    // }
+
+    fn assert_output_is_not_malleable(output_mod_fn: impl Fn(&mut TransactionOutput) -> ()) {
+        let (orig_block, mut mod_block, modded_root) = create_block_with_altered_output(output_mod_fn);
+
+        // check that we can detect the alteration
+        assert_ne!(orig_block.header().output_mr, modded_root.output_mr);
+        mod_block.header.output_mr = modded_root.output_mr;
+        assert_ne!(orig_block.block().hash(), mod_block.hash());
+    }
+
+    fn create_block_with_altered_output(
+        output_mod_fn: impl Fn(&mut TransactionOutput),
+    ) -> (ChainBlock, Block, MmrRoots) {
+        // create a blockchain with a couple of valid blocks
+        let mut blockchain = TestBlockchain::with_genesis("GB");
+        let blocks = blockchain.builder();
+
+        let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
+
+        let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])]);
+        blockchain.add_block(
+            blocks
+                .new_block("A2")
+                .child_of("A1")
+                .difficulty(1)
+                .with_transactions(txs.into_iter().map(|tx| Clone::clone(&*tx)).collect()),
+        );
+
+        // store the block metadata for later comparison
+        let block = blockchain.get_block("A2").cloned().unwrap().block;
+
+        // create an altered version of the last block, using the provided modification function
+        let mut mod_block = block.block().clone();
+        let mod_output = &mut mod_block.body.outputs_mut()[0];
+        output_mod_fn(mod_output);
+
+        // calculate the metadata for the modified block
+        blockchain
+            .store()
+            .rewind_to_height(mod_block.header.height - 1)
+            .unwrap();
+        let (mod_block, modded_root) = blockchain.store().calculate_mmr_roots(mod_block).unwrap();
+
+        (block, mod_block, modded_root)
+    }
 }
 
 #[allow(clippy::identity_op)]
