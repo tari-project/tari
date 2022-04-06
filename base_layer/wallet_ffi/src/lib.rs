@@ -3140,7 +3140,7 @@ pub unsafe extern "C" fn transport_memory_get_address(
     if transport.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int)
-    } else if !transport.is_null() {
+    } else {
         match (*transport).transport_type {
             TransportType::Memory => match CString::new((*transport).memory.listener_address.to_string()) {
                 Ok(v) => address = v,
