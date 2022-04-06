@@ -341,7 +341,7 @@ impl TransactionInput {
                 ref covenant,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let writer = HashWriter::new(HashDigest::new())
+                let mut writer = HashWriter::new(HashDigest::new())
                     .chain(version)
                     .chain(features)
                     .chain(commitment)
@@ -350,6 +350,12 @@ impl TransactionInput {
                     .chain(&self.script_signature)
                     .chain(&self.input_data)
                     .chain(covenant);
+
+                // previous versions were incorrectly ignoring the input "version" in the hash
+                // so to maintain backwards compatibility we include it from a new "V2" version onwards
+                if self.version >= TransactionInputVersion::V2 {
+                    writer = writer.chain(&self.version);
+                }
 
                 Ok(writer.finalize().to_vec())
             },

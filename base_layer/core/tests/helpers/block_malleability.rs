@@ -25,7 +25,7 @@ use tari_core::{
     transactions::{
         tari_amount::T,
         test_helpers::schema_to_transaction,
-        transaction_components::TransactionOutputVersion,
+        transaction_components::{TransactionInputVersion, TransactionOutputVersion},
     },
     txn_schema,
 };
@@ -69,10 +69,12 @@ fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_f
 
     let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
 
-    // we need to use tx output version V2 to include the "sender_offset_public_key" into the output hash
+    // we need to use input version V2 to include the "version" into the input hash
+    // and also the output version V2 to include the "sender_offset_public_key" into the output hash
     let (txs, _) = schema_to_transaction(&[txn_schema!(
         from: vec![output],
         to: vec![50 * T],
+        input_version: TransactionInputVersion::V2,
         output_version: TransactionOutputVersion::V2
     )]);
     blockchain.add_block(

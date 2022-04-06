@@ -367,17 +367,18 @@ macro_rules! tx {
 /// ```ignore
 ///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250,
 ///     features: OutputFeatures { maturity: 1320, ..Default::default() },
+///     input_version: TransactioInputVersion::get_current_version(),
 ///     output_version: TransactionOutputVersion::get_current_version()
 ///   );
-///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features, default output_version and zero lock height
-///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height, default features and default output_version
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features, default versions and zero lock height
+///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height, default features and default versions
 ///   // as above, and transaction splits the first input in roughly half, returning remainder as change
 ///   txn_schema!(from: inputs);
 /// ```
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, output_version: $output_version:expr) => {{
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {{
         $crate::transactions::test_helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
@@ -388,7 +389,7 @@ macro_rules! txn_schema {
             script: tari_script::script![Nop],
             covenant: Default::default(),
             input_data: None,
-            input_version: None,
+            input_version: $input_version.clone(),
             output_version: $output_version.clone()
         }
     }};
@@ -400,6 +401,7 @@ macro_rules! txn_schema {
             fee:$fee,
             lock:$lock,
             features: $features.clone(),
+            input_version: None,
             output_version: None
         )
     }};
@@ -411,6 +413,7 @@ macro_rules! txn_schema {
             fee: 5.into(),
             lock: 0,
             features: $features,
+            input_version: None,
             output_version: None
         )
     }};
@@ -422,6 +425,7 @@ macro_rules! txn_schema {
             fee:$fee,
             lock:0,
             features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            input_version: None,
             output_version: None
         )
     };
@@ -430,13 +434,14 @@ macro_rules! txn_schema {
         txn_schema!(from: $input, to:$outputs, fee: 5.into())
     };
 
-    (from: $input:expr, to: $outputs:expr, output_version: $output_version:expr) => {
+    (from: $input:expr, to: $outputs:expr, input_version: $input_version:expr, output_version: $output_version:expr) => {
         txn_schema!(
             from: $input,
             to:$outputs,
             fee: 5.into(),
             lock:0,
             features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            input_version: Some($input_version),
             output_version: Some($output_version)
         )
     };

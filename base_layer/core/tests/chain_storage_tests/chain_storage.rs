@@ -1898,9 +1898,6 @@ mod malleability {
 
         use super::*;
 
-        // the input "version" field is not included in the "TransactionInput.canonical_hash" function
-        // if we add it, the version will not be malleabe but it will introduce breaking changes
-        #[ignore]
         #[test]
         fn version() {
             check_input_malleability(|block: &mut Block| {
