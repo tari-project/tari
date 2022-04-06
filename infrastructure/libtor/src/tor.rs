@@ -117,7 +117,7 @@ impl Tor {
                 if let Some(ref passphrase) = self.passphrase.0 {
                     transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
                 }
-                transport.tor.control_address = ([127, 0, 0, 1], self.control_port).into();
+                transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
                 debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
                 Ok(())
             },
