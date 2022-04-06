@@ -1899,6 +1899,8 @@ mod malleability {
     }
 
     mod output {
+        use tari_core::transactions::test_helpers::generate_keys;
+
         use super::*;
 
         #[test]
@@ -1947,6 +1949,16 @@ mod malleability {
                 Opcode::PushZero.to_bytes(&mut script_bytes);
                 let mod_script = TariScript::from_bytes(&script_bytes).unwrap();
                 output.script = mod_script;
+            });
+        }
+
+        #[test]
+        fn sender_offset_public_key() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                // "gerate_keys" should return a random, different key than the present one
+                let mod_pk = generate_keys().pk;
+                output.sender_offset_public_key = mod_pk;
             });
         }
 

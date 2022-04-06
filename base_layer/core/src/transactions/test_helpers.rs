@@ -365,19 +365,19 @@ macro_rules! tx {
 ///
 /// The full syntax allows maximum flexibility, but most arguments are optional with sane defaults
 /// ```ignore
-///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250, OutputFeatures {
-///      maturity: 1320,
-///      ..Default::default()
-///   });
-///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features and zero lock height
-///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height and default features
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT, lock: 1250,
+///     features: OutputFeatures { maturity: 1320, ..Default::default() },
+///     output_version: TransactionOutputVersion::get_current_version()
+///   );
+///   txn_schema!(from: inputs, to: outputs, fee: 50*uT); // Uses default features, default output_version and zero lock height
+///   txn_schema!(from: inputs, to: outputs); // min fee of 25µT, zero lock height, default features and default output_version
 ///   // as above, and transaction splits the first input in roughly half, returning remainder as change
 ///   txn_schema!(from: inputs);
 /// ```
 /// The output of this macro is intended to be used in [spend_utxos].
 #[macro_export]
 macro_rules! txn_schema {
-    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr) => {{
+    (from: $input:expr, to: $outputs:expr, fee: $fee:expr, lock: $lock:expr, features: $features:expr, output_version: $output_version:expr) => {{
         $crate::transactions::test_helpers::TransactionSchema {
             from: $input.clone(),
             to: $outputs.clone(),
@@ -389,7 +389,7 @@ macro_rules! txn_schema {
             covenant: Default::default(),
             input_data: None,
             input_version: None,
-            output_version: None,
+            output_version: $output_version.clone()
         }
     }};
 
@@ -399,7 +399,8 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:$lock,
-            features: $features.clone()
+            features: $features.clone(),
+            output_version: None
         )
     }};
 
@@ -409,7 +410,8 @@ macro_rules! txn_schema {
             to:$outputs,
             fee: 5.into(),
             lock: 0,
-            features: $features
+            features: $features,
+            output_version: None
         )
     }};
 
@@ -419,12 +421,24 @@ macro_rules! txn_schema {
             to:$outputs,
             fee:$fee,
             lock:0,
-            features: $crate::transactions::transaction_components::OutputFeatures::default()
+            features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            output_version: None
         )
     };
 
     (from: $input:expr, to: $outputs:expr) => {
         txn_schema!(from: $input, to:$outputs, fee: 5.into())
+    };
+
+    (from: $input:expr, to: $outputs:expr, output_version: $output_version:expr) => {
+        txn_schema!(
+            from: $input,
+            to:$outputs,
+            fee: 5.into(),
+            lock:0,
+            features: $crate::transactions::transaction_components::OutputFeatures::default(),
+            output_version: Some($output_version)
+        )
     };
 
     // Spend inputs to ± half the first input value, with default fee and lock height
@@ -645,7 +659,7 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
             script: schema.script.clone(),
             input_data: schema.input_data.clone(),
             covenant: schema.covenant.clone(),
-            output_version: None,
+            output_version: schema.output_version,
         });
         outputs.push(utxo.clone());
         stx_builder

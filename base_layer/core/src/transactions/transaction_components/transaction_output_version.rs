@@ -38,6 +38,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 pub enum TransactionOutputVersion {
     V0 = 0,
     V1 = 1,
+    V2 = 2,
 }
 
 impl TransactionOutputVersion {
@@ -57,6 +58,7 @@ impl TryFrom<u8> for TransactionOutputVersion {
         match value {
             0 => Ok(TransactionOutputVersion::V0),
             1 => Ok(TransactionOutputVersion::V1),
+            2 => Ok(TransactionOutputVersion::V2),
             _ => Err("Unknown version!".to_string()),
         }
     }

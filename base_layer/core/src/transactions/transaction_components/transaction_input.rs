@@ -306,12 +306,21 @@ impl TransactionInput {
             SpentOutput::OutputHash(ref h) => h.clone(),
             SpentOutput::OutputData {
                 version,
+                ref features,
                 ref commitment,
                 ref script,
-                ref features,
+                ref sender_offset_public_key,
                 ref covenant,
                 ..
-            } => transaction_components::hash_output(version, features, commitment, script, covenant).to_vec(),
+            } => transaction_components::hash_output(
+                version,
+                features,
+                commitment,
+                script,
+                sender_offset_public_key,
+                covenant,
+            )
+            .to_vec(),
         }
     }
 

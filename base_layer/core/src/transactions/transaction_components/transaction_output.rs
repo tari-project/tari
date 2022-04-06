@@ -370,6 +370,7 @@ impl Hashable for TransactionOutput {
             &self.features,
             &self.commitment,
             &self.script,
+            &self.sender_offset_public_key,
             &self.covenant,
         )
         .to_vec()

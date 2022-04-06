@@ -22,7 +22,11 @@
 
 use tari_core::{
     blocks::Block,
-    transactions::{tari_amount::T, test_helpers::schema_to_transaction},
+    transactions::{
+        tari_amount::T,
+        test_helpers::schema_to_transaction,
+        transaction_components::TransactionOutputVersion,
+    },
     txn_schema,
 };
 use tari_utilities::Hashable;
@@ -59,7 +63,12 @@ fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_f
 
     let (_, output) = blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
 
-    let (txs, _) = schema_to_transaction(&[txn_schema!(from: vec![output], to: vec![50 * T])]);
+    // we need to use tx output version V2 to include the "sender_offset_public_key" into the output hash
+    let (txs, _) = schema_to_transaction(&[txn_schema!(
+        from: vec![output],
+        to: vec![50 * T],
+        output_version: TransactionOutputVersion::V2
+    )]);
     blockchain.add_block(
         blocks
             .new_block("A2")
