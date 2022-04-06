@@ -92,6 +92,7 @@ impl FromStr for TorControlAuthentication {
 
 impl fmt::Debug for TorControlAuthentication {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use TorControlAuthentication::*;
         match self {
             None => write!(f, "None"),

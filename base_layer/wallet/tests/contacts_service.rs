@@ -63,7 +63,6 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
 ) -> (ContactsServiceHandle, Arc<NodeIdentity>, Shutdown) {
     let _enter = runtime.enter();
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
-    const NETWORK: Network = Network::Weatherwax;
     let node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
         get_next_memory_address(),
