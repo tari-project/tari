@@ -21,7 +21,6 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    net::SocketAddr,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -34,6 +33,7 @@ use tari_common::{
     DefaultConfigLoader,
     SubConfigPath,
 };
+use tari_comms::multiaddr::Multiaddr;
 use tari_core::{
     base_node::BaseNodeStateMachineConfig,
     chain_storage::BlockchainDatabaseConfig,
@@ -80,7 +80,7 @@ impl ApplicationConfig {
 pub struct BaseNodeConfig {
     override_from: Option<String>,
     pub network: Network,
-    pub grpc_address: Option<SocketAddr>,
+    pub grpc_address: Option<Multiaddr>,
     pub identity_file: PathBuf,
     pub use_libtor: bool,
     pub tor_identity_file: PathBuf,
@@ -111,7 +111,7 @@ impl Default for BaseNodeConfig {
         Self {
             override_from: None,
             network: Network::LocalNet,
-            grpc_address: Some(([127, 0, 0, 1], 18142).into()),
+            grpc_address: Some("/ip4/127.0.0.1/tcp/18142".parse().unwrap()),
             identity_file: PathBuf::from("config/base_node_id.json"),
             use_libtor: false,
             tor_identity_file: PathBuf::from("config/tor_id.json"),

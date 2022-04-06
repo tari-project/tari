@@ -50,13 +50,13 @@ use tari_shutdown::Shutdown;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 use wallet_modes::{command_mode, grpc_mode, recovery_mode, script_mode, tui_mode, WalletMode};
 
-use crate::{app_config::ApplicationConfig, init::wallet_mode, recovery::get_seed_from_seed_words};
+use crate::{config::ApplicationConfig, init::wallet_mode, recovery::get_seed_from_seed_words};
 
 pub const LOG_TARGET: &str = "wallet::console_wallet::main";
 
-mod app_config;
 mod automation;
 mod cli;
+mod config;
 mod grpc;
 mod init;
 mod notifier;

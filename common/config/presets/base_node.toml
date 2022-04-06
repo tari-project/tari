@@ -22,62 +22,55 @@ grpc_address = "/ip4/127.0.0.1/tcp/18142"
 # A path to the file that stores your node identity and secret key
 identity_file = "config/base_node_id_dibbler.json"
 
-[base_node.p2p.transport]
-# -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable.
-#transport = "tcp"
-# The address and port to listen for peer connections over TCP.
-#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
-# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
-# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
-# only advertise an onion address.
-#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
-#tcp_tor_socks_auth = "none"
-
-# # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-# # onion v2, onion v3 and dns addresses.
-type = "tor"
-# Address of the tor control server
-tor.control_address = "/ip4/127.0.0.1/tcp/9051"
-# The address to which traffic on the node's onion address will be forwarded
-#tor.forward_address = "/ip4/127.0.0.1/tcp/0"
-# Authentication to use for the tor control server
-#tor.control_auth = "none" # or "password=xxxxxx"
-# The onion port to use.
-#tor.onion_port = 18141
-# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-#tor.proxy_bypass_addresses = []
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-#tor.proxy_bypass_for_outbound_tcp = false
-
-# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-tor.proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-tor.proxy_bypass_for_outbound_tcp = false
-
+[base_node.p2p]
 # The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
 # peers can find you.
 # _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
 # automatically configured
-#public_address = "/ip4/172.2.3.4/tcp/18189"
-
-# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
-#transport = "socks5"
-# The address of the SOCKS5 proxy
-# socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
-# The address to which traffic will be forwarded
-#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
-#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+public_address = "/ip4/172.2.3.4/tcp/18189"
 
 # Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
 # Use cases include:
 # - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
 # - multiple P2P addresses, one public over DNS and one private over TOR
 # - a "bridge" between TOR and TCP-only nodes
-# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+
+[base_node.p2p.transport]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+tcp.tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+tcp.tor_socks_auth = "none"
+
+# # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
+# # onion v2, onion v3 and dns addresses.
+#type = "tor"
+# Address of the tor control server
+tor.control_address = "/ip4/127.0.0.1/tcp/9051"
+# Authentication to use for the tor control server
+tor.control_auth = "none" # or "password=xxxxxx"
+# The onion port to use.
+tor.onion_port = 18141
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+tor.proxy_bypass_addresses = []
+#tor.proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
+tor.proxy_bypass_for_outbound_tcp = false
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#type = "socks5"
+# The address of the SOCKS5 proxy
+# Traffic will be forwarded to tcp.listener_address
+socks.proxy_address = "/ip4/127.0.0.1/tcp/9050"
+socks.auth = "none" # or "username_password=username:xxxxxxx"
 
 [base_node.p2p.dht]
 auto_join = true
@@ -95,27 +88,3 @@ allow_test_addresses = false
 [base_node.storage]
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
 track_reorgs = true
-
-# Configuration options for dibbler testnet
-
-[dibbler.p2p]
-dns_seeds = ["seeds.dibbler.tari.com"]
-peer_seeds = [
-    # 333388d1cbe3e2bd17453d052f
-    "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
-    # 555575715a49fc242d756e52ca
-    "42fcde82b44af1de95a505d858cb31a422c56c4ac4747fbf3da47d648d4fc346::/onion3/2l3e7ysmihc23zybapdrsbcfg6omtjtfkvwj65dstnfxkwtai2fawtyd:18141",
-    # 77771f53be07fab4be5f1e1ff7
-    "50e6aa8f6c50f1b9d9b3d438dfd2a29cfe1f3e3a650bd9e6b1e10f96b6c38f4d::/onion3/7s6y3cz5bnewlj5ypm7sekhgvqjyrq4bpaj5dyvvo7vxydj7hsmyf5ad:18141",
-    # 9999016f1f3a6162dddf5a45aa
-    "36a9df45e1423b5315ffa7a91521924210c8e1d1537ad0968450f20f21e5200d::/onion3/v24qfheti2rztlwzgk6v4kdbes3ra7mo3i2fobacqkbfrk656e3uvnid:18141",
-    # bbbb8358387d81c388fadb4649
-    "be128d570e8ec7b15c101ee1a56d6c56dd7d109199f0bd02f182b71142b8675f::/onion3/ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
-    # eeeeb0a943ed143e613a135392
-    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
-]
-
-
-[base_node.metrics]
-# server_bind_address = ...
-# push_endpoint = http://localhost:9091/metrics/job/base-node

@@ -60,11 +60,11 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
     let common = include_str!("../../config/presets/common.toml");
     let source = [
         common,
+        include_str!("../../config/presets/peer_seeds.toml"),
         include_str!("../../config/presets/base_node.toml"),
         include_str!("../../config/presets/console_wallet.toml"),
         include_str!("../../config/presets/mining_node.toml"),
         include_str!("../../config/presets/merge_mining_proxy.toml"),
-        include_str!("../../config/presets/stratum_transcoder.toml"),
         include_str!("../../config/presets/validator_node.toml"),
         include_str!("../../config/presets/collectibles.toml"),
     ]

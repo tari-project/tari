@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    net::SocketAddr,
     path::{Path, PathBuf},
     str::FromStr,
     time::Duration,
@@ -29,6 +28,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::{configuration::Network, SubConfigPath};
+use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig};
 
 use crate::{
@@ -61,7 +61,7 @@ pub struct WalletConfig {
     pub command_send_wait_timeout: Duration,
     pub command_send_wait_stage: String,
     pub notify_file: Option<PathBuf>,
-    pub grpc_address: Option<SocketAddr>,
+    pub grpc_address: Option<Multiaddr>,
     pub custom_base_node: Option<String>,
     pub base_node_service_peers: Vec<String>,
     pub recovery_retry_limit: usize,
@@ -91,7 +91,7 @@ impl Default for WalletConfig {
             command_send_wait_stage: String::new(),
             command_send_wait_timeout: Duration::from_secs(300),
             notify_file: None,
-            grpc_address: Some(([127, 0, 0, 1], 18143).into()),
+            grpc_address: None,
             custom_base_node: None,
             base_node_service_peers: vec![],
             recovery_retry_limit: 3,

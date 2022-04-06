@@ -82,15 +82,15 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
-    let base_node = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
+    let base_node = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
     info!(target: LOG_TARGET, "Connecting to base node at {}", base_node);
     println!("Connecting to base node at {}", base_node);
     let base_node_client = grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
-    let wallet = multiaddr_to_socketaddr(&config.console_wallet_grpc_address)?;
+    let wallet = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet);
     println!("Connecting to wallet at {}", wallet);
     let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
-    let listen_addr = multiaddr_to_socketaddr(&config.proxy_listener_address)?;
+    let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
 
     let xmrig_service = MergeMiningProxyService::new(
         config,

@@ -20,8 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::net::SocketAddr;
-
 use serde::{Deserialize, Serialize};
 use tari_common::SubConfigPath;
 
@@ -29,18 +27,18 @@ use tari_common::SubConfigPath;
 #[serde(deny_unknown_fields)]
 pub struct CollectiblesConfig {
   override_from: Option<String>,
-  pub validator_node_grpc_address: SocketAddr,
-  pub base_node_grpc_address: SocketAddr,
-  pub wallet_grpc_address: SocketAddr,
+  pub validator_node_grpc_address: MultiAddr,
+  pub base_node_grpc_address: MultiAddr,
+  pub wallet_grpc_address: MultiAddr,
 }
 
 impl Default for CollectiblesConfig {
   fn default() -> Self {
     Self {
       override_from: None,
-      validator_node_grpc_address: ([127, 0, 0, 1], 18144).into(),
-      base_node_grpc_address: ([127, 0, 0, 1], 18142).into(),
-      wallet_grpc_address: ([127, 0, 0, 1], 18143).into(),
+      validator_node_grpc_address: "/ip4/127.0.0.1/tcp/18144".parse().unwrap(),
+      base_node_grpc_address: "/ip4/127.0.0.1/18142".parse().unwrap(),
+      wallet_grpc_address: "/ip4/127.0.0.1/tpc/18143".parse().unwrap(),
     }
   }
 }

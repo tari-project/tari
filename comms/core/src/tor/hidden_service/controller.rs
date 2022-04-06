@@ -70,10 +70,10 @@ pub enum HiddenServiceControllerError {
 
 pub struct HiddenServiceController {
     client: Option<TorControlPortClient>,
-    control_server_addr: SocketAddr,
+    control_server_addr: Multiaddr,
     control_server_auth: Authentication,
     proxied_port_mapping: PortMapping,
-    socks_address_override: Option<SocketAddr>,
+    socks_address_override: Option<Multiaddr>,
     socks_auth: socks::Authentication,
     identity: Option<TorIdentity>,
     hs_flags: HsFlags,
@@ -84,10 +84,10 @@ pub struct HiddenServiceController {
 
 impl HiddenServiceController {
     pub(super) fn new(
-        control_server_addr: SocketAddr,
+        control_server_addr: Multiaddr,
         control_server_auth: Authentication,
         proxied_port_mapping: PortMapping,
-        socks_address_override: Option<SocketAddr>,
+        socks_address_override: Option<Multiaddr>,
         socks_auth: socks::Authentication,
         identity: Option<TorIdentity>,
         hs_flags: HsFlags,
@@ -198,7 +198,7 @@ impl HiddenServiceController {
                 target: LOG_TARGET,
                 "Attempting to reestablish control port connection at '{}'", self.control_server_addr
             );
-            let connect_fut = TorControlPortClient::connect(self.control_server_addr, event_tx.clone());
+            let connect_fut = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx.clone());
             pin_mut!(connect_fut);
             let either = future::select(connect_fut, signal.take().expect("signal was None")).await;
             match either {
@@ -239,7 +239,7 @@ impl HiddenServiceController {
         }
 
         let (event_tx, _) = broadcast::channel(20);
-        let client = TorControlPortClient::connect(self.control_server_addr, event_tx)
+        let client = TorControlPortClient::connect(self.control_server_addr.clone(), event_tx)
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "Tor client error: {:?}", err);
@@ -261,14 +261,14 @@ impl HiddenServiceController {
         Ok(())
     }
 
-    async fn get_socks_address(&mut self) -> Result<SocketAddr, HiddenServiceControllerError> {
+    async fn get_socks_address(&mut self) -> Result<Multiaddr, HiddenServiceControllerError> {
         match self.socks_address_override {
             Some(ref addr) => {
                 debug!(
                     target: LOG_TARGET,
                     "Using SOCKS override '{}' for tor SOCKS proxy", addr
                 );
-                Ok(*addr)
+                Ok(addr.clone())
             },
             None => {
                 // Get configured SOCK5 address from Tor
@@ -278,6 +278,7 @@ impl HiddenServiceController {
                     .iter()
                     .map(|addr| addr.parse::<SocketAddr>())
                     .filter_map(Result::ok)
+                    .map(|addr| socketaddr_to_multiaddr(&addr))
                     .next()
                     .ok_or(HiddenServiceControllerError::FailedToParseSocksAddress)?;
 

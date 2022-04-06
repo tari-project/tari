@@ -19,7 +19,7 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{net::SocketAddr, num::NonZeroU16, sync::Arc};
+use std::{num::NonZeroU16, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use tari_comms::{
@@ -76,9 +76,9 @@ impl Default for TransportType {
 #[serde(deny_unknown_fields)]
 pub struct TcpTransportConfig {
     /// Socket to bind the TCP listener
-    pub listener_address: SocketAddr,
+    pub listener_address: Multiaddr,
     /// Optional socket address of the tor SOCKS proxy, enabling the node to communicate with Tor nodes
-    pub tor_socks_address: Option<SocketAddr>,
+    pub tor_socks_address: Option<Multiaddr>,
     /// Optional tor SOCKS proxy authentication
     pub tor_socks_auth: SocksAuthentication,
 }
@@ -86,7 +86,7 @@ pub struct TcpTransportConfig {
 impl Default for TcpTransportConfig {
     fn default() -> Self {
         Self {
-            listener_address: ([0, 0, 0, 0], 18189).into(),
+            listener_address: "/ip4/0.0.0.0/tcp/18189".parse().unwrap(),
             tor_socks_address: None,
             tor_socks_auth: SocksAuthentication::None,
         }
@@ -97,11 +97,11 @@ impl Default for TcpTransportConfig {
 #[serde(deny_unknown_fields)]
 pub struct TorConfig {
     /// The address of the control server
-    pub control_address: SocketAddr,
+    pub control_address: Multiaddr,
     /// SOCKS proxy auth
     pub socks_auth: SocksAuthentication,
     /// Use this socks address instead of getting it from the tor proxy.
-    pub socks_address_override: Option<SocketAddr>,
+    pub socks_address_override: Option<Multiaddr>,
     pub control_auth: TorControlAuthentication,
     pub onion_port: NonZeroU16,
     /// When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the
@@ -132,7 +132,7 @@ impl TorConfig {
 impl Default for TorConfig {
     fn default() -> Self {
         Self {
-            control_address: ([127, 0, 0, 1], 9051).into(),
+            control_address: "/ip4/127.0.0.1/tcp/9051".parse().unwrap(),
             socks_auth: SocksAuthentication::None,
             socks_address_override: None,
             control_auth: TorControlAuthentication::None,
@@ -147,7 +147,7 @@ impl Default for TorConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Socks5Config {
-    pub proxy_address: SocketAddr,
+    pub proxy_address: Multiaddr,
     pub auth: SocksAuthentication,
 }
 
@@ -164,7 +164,7 @@ impl From<Socks5Config> for SocksConfig {
 impl Default for Socks5Config {
     fn default() -> Self {
         Self {
-            proxy_address: ([127, 0, 0, 1], 8000).into(),
+            proxy_address: "/ip4/127.0.0.1/tcp/8080".parse().unwrap(),
             auth: SocksAuthentication::None,
         }
     }

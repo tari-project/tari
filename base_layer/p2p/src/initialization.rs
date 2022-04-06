@@ -49,7 +49,7 @@ use tari_comms::{
     tor,
     tor::HiddenServiceControllerError,
     transports::{predicate::FalsePredicate, MemoryTransport, SocksConfig, SocksTransport, TcpWithTorTransport},
-    utils::{cidr::parse_cidrs, multiaddr::socketaddr_to_multiaddr},
+    utils::cidr::parse_cidrs,
     CommsBuilder,
     CommsBuilderError,
     CommsNode,
@@ -212,7 +212,7 @@ pub async fn spawn_comms_using_transport(
                 });
             }
             comms
-                .with_listener_address(socketaddr_to_multiaddr(&config.listener_address))
+                .with_listener_address(config.listener_address)
                 .spawn_with_transport(transport)
                 .await?
         },
@@ -233,7 +233,7 @@ pub async fn spawn_comms_using_transport(
             debug!(target: LOG_TARGET, "Building SOCKS5 comms stack");
             let transport = SocksTransport::new(transport_config.socks.into());
             comms
-                .with_listener_address(socketaddr_to_multiaddr(&transport_config.tcp.listener_address))
+                .with_listener_address(transport_config.tcp.listener_address)
                 .spawn_with_transport(transport)
                 .await?
         },
@@ -248,9 +248,9 @@ async fn initialize_hidden_service(
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
         .with_port_mapping(config.to_port_mapping())
-        .with_socks_address_override(config.socks_address_override)
         .with_socks_authentication(config.to_socks_auth())
         .with_control_server_auth(config.to_control_auth())
+        .with_socks_address_override(config.socks_address_override)
         .with_control_server_address(config.control_address)
         .with_bypass_proxy_addresses(config.proxy_bypass_addresses.into());
 

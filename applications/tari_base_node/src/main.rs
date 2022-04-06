@@ -85,7 +85,7 @@ mod metrics;
 mod recovery;
 mod utils;
 
-use std::{env, net::SocketAddr, process, sync::Arc};
+use std::{env, process, sync::Arc};
 
 use clap::Parser;
 use commands::{cli_loop::CliLoop, command::CommandContext};
@@ -99,7 +99,12 @@ use tari_common::{
     initialize_logging,
     load_configuration,
 };
-use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::PeerFeatures,
+    utils::multiaddr::multiaddr_to_socketaddr,
+    NodeIdentity,
+};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -230,7 +235,7 @@ async fn run_node(
     // Build, node, build!
     let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
 
-    if let Some(address) = config.base_node.grpc_address {
+    if let Some(address) = config.base_node.grpc_address.clone() {
         // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
         task::spawn(run_grpc(grpc, address, shutdown.to_signal()));
@@ -288,11 +293,12 @@ fn enable_tracing() {
 /// Runs the gRPC server
 async fn run_grpc(
     grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
-    grpc_address: SocketAddr,
+    grpc_address: Multiaddr,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
+    let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))

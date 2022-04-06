@@ -28,15 +28,14 @@ use tari_comms::multiaddr::Multiaddr;
 #[serde(deny_unknown_fields)]
 pub struct MergeMiningProxyConfig {
     override_from: Option<String>,
-    // pub network: String,
     pub monerod_url: Vec<String>,
     pub monerod_username: String,
     pub monerod_password: String,
     pub monerod_use_auth: bool,
-    pub base_node_grpc_address: Multiaddr,
-    pub console_wallet_grpc_address: Multiaddr,
-    pub proxy_listener_address: Multiaddr,
-    pub proxy_submit_to_origin: bool,
+    pub grpc_base_node_address: Multiaddr,
+    pub grpc_console_wallet_address: Multiaddr,
+    pub listener_address: Multiaddr,
+    pub submit_to_origin: bool,
     pub wait_for_initial_sync_at_startup: bool,
 }
 
@@ -44,15 +43,14 @@ impl Default for MergeMiningProxyConfig {
     fn default() -> Self {
         Self {
             override_from: None,
-            // network: "dibbler".to_string(),
             monerod_url: vec![],
             monerod_username: "".to_string(),
             monerod_password: "".to_string(),
             monerod_use_auth: false,
-            base_node_grpc_address: "/ip4/127.0.0.1/tcp/18142".parse().unwrap(),
-            console_wallet_grpc_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
-            proxy_listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
-            proxy_submit_to_origin: true,
+            grpc_base_node_address: "/ip4/127.0.0.1/tcp/18142".parse().unwrap(),
+            grpc_console_wallet_address: "/ip4/127.0.0.1/tcp/18143".parse().unwrap(),
+            listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
+            submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
         }
     }
@@ -102,30 +100,30 @@ mod test {
         let cfg = get_config("config_b");
         let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.b.org".to_string()]);
-        assert!(!config.proxy_submit_to_origin);
+        assert!(!config.submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.as_str(), "password_dibbler");
         assert_eq!(
-            config.base_node_grpc_address.to_string().as_str(),
+            config.grpc_base_node_address.to_string().as_str(),
             "/dns4/base_node_b/tcp/8080"
         );
         assert_eq!(
-            config.console_wallet_grpc_address.to_string().as_str(),
+            config.grpc_console_wallet_address.to_string().as_str(),
             "/dns4/wallet/tcp/9000"
         );
 
         let cfg = get_config("config_a");
         let config = MergeMiningProxyConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(&config.monerod_url, &["http://network.a.org".to_string()]);
-        assert!(config.proxy_submit_to_origin);
+        assert!(config.submit_to_origin);
         assert_eq!(config.monerod_username.as_str(), "cmot");
         assert_eq!(config.monerod_password.as_str(), "password_igor");
         assert_eq!(
-            config.base_node_grpc_address.to_string().as_str(),
+            config.grpc_base_node_address.to_string().as_str(),
             "/dns4/base_node_a/tcp/8080"
         );
         assert_eq!(
-            config.console_wallet_grpc_address.to_string().as_str(),
+            config.grpc_console_wallet_address.to_string().as_str(),
             "/dns4/wallet_a/tcp/9000"
         );
     }
@@ -133,8 +131,8 @@ mod test {
     #[test]
     fn default_config() {
         let config = MergeMiningProxyConfig::default();
-        assert_eq!(&config.base_node_grpc_address.to_string(), "/ip4/127.0.0.1/tcp/18142");
+        assert_eq!(&config.grpc_base_node_address.to_string(), "/ip4/127.0.0.1/tcp/18142");
         assert!(!config.monerod_use_auth);
-        assert!(config.proxy_submit_to_origin);
+        assert!(config.submit_to_origin);
     }
 }

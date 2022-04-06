@@ -264,7 +264,7 @@ impl InnerService {
             let start = Instant::now();
             match base_node_client.submit_block(block_data.tari_block).await {
                 Ok(resp) => {
-                    if self.config.proxy_submit_to_origin {
+                    if self.config.submit_to_origin {
                         json_resp = json_rpc::success_response(
                             request["id"].as_i64(),
                             json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
@@ -286,7 +286,7 @@ impl InnerService {
                         trace!(
                             target: LOG_TARGET,
                             "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
-                            self.config.proxy_submit_to_origin,
+                            self.config.submit_to_origin,
                             json_resp
                         );
                     }
@@ -301,7 +301,7 @@ impl InnerService {
                         err
                     );
 
-                    if !self.config.proxy_submit_to_origin {
+                    if !self.config.submit_to_origin {
                         // When "submit to origin" is turned off the block is never submitted to monerod, and so we need
                         // to construct an error message here.
                         json_resp = json_rpc::error_response(
@@ -318,9 +318,7 @@ impl InnerService {
 
         debug!(
             target: LOG_TARGET,
-            "Sending submit_block response (proxy_submit_to_origin({})): {}",
-            self.config.proxy_submit_to_origin,
-            json_resp
+            "Sending submit_block response (proxy_submit_to_origin({})): {}", self.config.submit_to_origin, json_resp
         );
         Ok(proxy::into_response(parts, &json_resp))
     }
@@ -387,7 +385,7 @@ impl InnerService {
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
                 println!("{}", msg);
-                println!("Listening on {}...", self.config.proxy_listener_address);
+                println!("Listening on {}...", self.config.listener_address);
             } else {
                 let msg = format!(
                     "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
@@ -677,7 +675,7 @@ impl InnerService {
                 target: LOG_TARGET,
                 "submitblock({}), proxy_submit_to_origin({})",
                 submit_block,
-                self.config.proxy_submit_to_origin
+                self.config.submit_to_origin
             );
         }
 
@@ -685,7 +683,7 @@ impl InnerService {
 
         // If the request is a block submission and we are not submitting blocks
         // to the origin (self-select mode, see next comment for a full explanation)
-        if submit_block && !self.config.proxy_submit_to_origin {
+        if submit_block && !self.config.submit_to_origin {
             debug!(
                 target: LOG_TARGET,
                 "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, submitting to \

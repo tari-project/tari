@@ -23,7 +23,6 @@
 use std::{
     fmt::{Debug, Formatter},
     io,
-    net::SocketAddr,
     sync::Arc,
 };
 
@@ -35,14 +34,13 @@ use crate::{
     socks,
     socks::Socks5Client,
     transports::{dns::SystemDnsResolver, predicate::Predicate, tcp::TcpTransport, Transport},
-    utils::multiaddr::socketaddr_to_multiaddr,
 };
 
 const LOG_TARGET: &str = "comms::transports::socks";
 
 #[derive(Clone)]
 pub struct SocksConfig {
-    pub proxy_address: SocketAddr,
+    pub proxy_address: Multiaddr,
     pub authentication: socks::Authentication,
     pub proxy_bypass_predicate: Arc<dyn Predicate<Multiaddr> + Send + Sync>,
 }
@@ -84,7 +82,7 @@ impl SocksTransport {
         dest_addr: Multiaddr,
     ) -> io::Result<TcpStream> {
         // Create a new connection to the SOCKS proxy
-        let socks_conn = tcp.dial(socketaddr_to_multiaddr(&socks_config.proxy_address)).await?;
+        let socks_conn = tcp.dial(socks_config.proxy_address).await?;
         let mut client = Socks5Client::new(socks_conn);
 
         client
@@ -128,7 +126,7 @@ mod test {
 
     #[test]
     fn new() {
-        let proxy_address = "127.0.0.1:1234".parse::<SocketAddr>().unwrap();
+        let proxy_address = "/ip4/127.0.0.1/tcp/1234".parse::<Multiaddr>().unwrap();
         let transport = SocksTransport::new(SocksConfig {
             proxy_address: proxy_address.clone(),
             authentication: Default::default(),

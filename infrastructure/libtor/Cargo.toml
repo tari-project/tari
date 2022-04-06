@@ -11,7 +11,7 @@ tari_p2p = { path = "../../base_layer/p2p" }
 derivative = "2.2.0"
 log = "0.4.8"
 log4rs = { version = "1.0.0", default_features = false, features = ["config_parsing", "threshold_filter", "yaml_format"] }
-multiaddr = { version = "0.13.0" }
+multiaddr = { version = "0.14.0" }
 
 # NB: make sure this crate is not included in any other crate used by wallet_ffi
 [target.'cfg(unix)'.dependencies]

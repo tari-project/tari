@@ -20,3 +20,7 @@ update_uris = ["updates.dibbler.taripulse.com"]
 # Customize the location of the update SHA hashes and maintainer-signed signature.
 # "auto_update.hashes_url" = "https://<address>/hashes.txt"
 # "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
+
+[metrics]
+# server_bind_address = "127.0.0.1:5577"
+# push_endpoint = http://localhost:9091/metrics/job/base-node

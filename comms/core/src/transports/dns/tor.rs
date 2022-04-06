@@ -30,7 +30,6 @@ use crate::{
     multiaddr::Multiaddr,
     socks::Socks5Client,
     transports::{dns::common, SocksConfig, SocksTransport, TcpTransport, Transport},
-    utils::multiaddr::socketaddr_to_multiaddr,
 };
 
 const LOG_TARGET: &str = "comms::dns::tor_resolver";
@@ -49,7 +48,7 @@ impl TorDnsResolver {
     }
 
     pub async fn connect(self) -> Result<TcpSocks5Client, DnsResolverError> {
-        let mut client = connect_inner(socketaddr_to_multiaddr(&self.socks_config.proxy_address))
+        let mut client = connect_inner(self.socks_config.proxy_address)
             .await
             .map_err(DnsResolverError::ProxyConnectFailed)?;
         client.with_authentication(self.socks_config.authentication)?;
