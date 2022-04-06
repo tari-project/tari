@@ -1887,19 +1887,68 @@ mod malleability {
         covenant,
         transactions::{test_helpers::generate_keys, transaction_components::TransactionOutputVersion},
     };
-    use tari_script::{Opcode, StackItem, TariScript};
+    use tari_script::{Opcode, TariScript};
     use tari_utilities::hex::Hex;
 
     use crate::helpers::block_malleability::*;
 
-    #[test]
-    fn input() {
-        check_input_malleability(|block: &mut Block| {
-            block.body.inputs_mut()[0]
-                .input_data
-                .push(StackItem::Hash(*b"I can't do whatever I want......"))
-                .unwrap();
-        });
+    mod input {
+        use tari_core::transactions::transaction_components::TransactionInputVersion;
+        use tari_script::StackItem;
+
+        use super::*;
+
+        // the input "version" field is not included in the "TransactionInput.canonical_hash" function
+        // if we add it, the version will not be malleabe but it will introduce breaking changes
+        #[ignore]
+        #[test]
+        fn version() {
+            check_input_malleability(|block: &mut Block| {
+                let input = &mut block.body.inputs_mut()[0];
+                let mod_version = match input.version {
+                    TransactionInputVersion::V0 => TransactionInputVersion::V1,
+                    _ => TransactionInputVersion::V0,
+                };
+                input.version = mod_version;
+            });
+        }
+
+        #[test]
+        fn spent_output() {
+            check_input_malleability(|block: &mut Block| {
+                // to modify the spent output, we will substitue it for a copy of a different output
+                // we will use one of the outputs of the current transaction
+                // because of how the test blockchain is created, they will never be equal
+                let output = &block.body.outputs()[0].clone();
+                let input = &mut block.body.inputs_mut()[0];
+                input.add_output_data(
+                    output.version,
+                    output.features.clone(),
+                    output.commitment.clone(),
+                    output.script.clone(),
+                    output.sender_offset_public_key.clone(),
+                    output.covenant.clone(),
+                );
+            });
+        }
+
+        #[test]
+        fn input_data() {
+            check_input_malleability(|block: &mut Block| {
+                block.body.inputs_mut()[0]
+                    .input_data
+                    .push(StackItem::Hash(*b"I can't do whatever I want......"))
+                    .unwrap();
+            });
+        }
+
+        #[test]
+        fn script_signature() {
+            check_input_malleability(|block: &mut Block| {
+                let input = &mut block.body.inputs_mut()[0];
+                input.script_signature = ComSignature::default();
+            });
+        }
     }
 
     mod output {
@@ -2020,7 +2069,6 @@ mod malleability {
         fn excess_sig() {
             check_kernel_malleability(|block: &mut Block| {
                 let kernel = &mut block.body.kernels_mut()[0];
-
                 // "gerate_keys" should return a group of random keys, different from the ones in the field
                 let keys = generate_keys();
                 kernel.excess_sig = Signature::new(keys.pk, keys.k);
