@@ -123,7 +123,7 @@ impl CliLoop {
             let interval = command
                 .interval
                 .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
+                .unwrap_or(config.base_node.status_line_interval);
             if let Err(err) = self.context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {
@@ -170,12 +170,12 @@ impl CliLoop {
     async fn watch_loop_non_interactive(&mut self) {
         if let Some(command) = self.watch_task.take() {
             let mut interrupt = signal::ctrl_c().fuse().boxed();
-            let config = self.context.config.clone();
+            let config = &self.context.config;
             let line = command.line();
             let interval = command
                 .interval
                 .map(Duration::from_secs)
-                .unwrap_or(config.base_node_status_line_interval);
+                .unwrap_or(config.base_node.status_line_interval);
             if let Err(err) = self.context.handle_command_str(line).await {
                 println!("Wrong command to watch `{}`. Failed with: {}", line, err);
             } else {

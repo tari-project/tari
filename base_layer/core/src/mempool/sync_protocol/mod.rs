@@ -191,7 +191,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
         let mempool = self.mempool.clone();
         let permits = self.permits.clone();
         let num_synched = self.num_synched.clone();
-        let config = self.config;
+        let config = self.config.clone();
         task::spawn(async move {
             // Only initiate this protocol with a single peer at a time
             let _permit = permits.acquire().await;
@@ -232,7 +232,7 @@ where TSubstream: AsyncRead + AsyncWrite + Unpin + Send + Sync + 'static
 
     fn spawn_inbound_handler(&self, node_id: NodeId, substream: TSubstream) {
         let mempool = self.mempool.clone();
-        let config = self.config;
+        let config = self.config.clone();
         task::spawn(async move {
             let framed = framing::canonical(substream, MAX_FRAME_SIZE);
             let mut protocol = MempoolPeerProtocol::new(config, framed, node_id.clone(), mempool);

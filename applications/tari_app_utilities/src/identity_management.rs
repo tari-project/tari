@@ -172,10 +172,14 @@ fn create_new_node_identity<P: AsRef<Path>>(
 ///
 /// ## Returns
 /// Result containing an object on success, string will indicate reason on error
-pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T, IdentityError> {
+pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<Option<T>, IdentityError> {
+    if !path.as_ref().exists() {
+        return Ok(None);
+    }
+
     let contents = fs::read_to_string(path)?;
     let object = json5::from_str(&contents)?;
-    Ok(object)
+    Ok(Some(object))
 }
 
 /// Attempts to load the TorIdentity from the JSON file at the given path.
@@ -184,8 +188,8 @@ pub fn load_from_json<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> Result<T,
 /// `path` - Path to the `TorIdentity` JSON file
 ///
 /// ## Returns
-/// The deserialized `TorIdentity` struct. Returns an error if the path does not exist,  
-pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<TorIdentity, IdentityError> {
+/// The deserialized `TorIdentity` struct. Returns an Ok(None) if the path does not exist,  
+pub fn load_tor_identity<P: AsRef<Path>>(path: P) -> Result<Option<TorIdentity>, IdentityError> {
     check_identity_file(&path)?;
     let identity = load_from_json(path)?;
     Ok(identity)

@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,20 +20,27 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derivative::Derivative;
-use multiaddr::Multiaddr;
+use config::Config;
+use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
+use tari_p2p::PeerSeedsConfig;
+use tari_wallet::WalletConfig;
 
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
-pub struct MergeMiningConfig {
-    pub monerod_url: Vec<String>,
-    pub monerod_use_auth: bool,
-    pub monerod_username: String,
-    #[derivative(Debug = "ignore")]
-    pub monerod_password: String,
-    pub proxy_host_address: Multiaddr,
-    pub base_node_grpc_address: Multiaddr,
-    pub wallet_grpc_address: Multiaddr,
-    pub proxy_submit_to_origin: bool,
-    pub wait_for_initial_sync_at_startup: bool,
+pub struct ApplicationConfig {
+    pub common: CommonConfig,
+    pub wallet: WalletConfig,
+    // pub auto_update: AutoUpdateConfig,
+    pub peer_seeds: PeerSeedsConfig,
+}
+
+impl ApplicationConfig {
+    pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let mut config = Self {
+            common: CommonConfig::load_from(cfg)?,
+            wallet: WalletConfig::load_from(cfg)?,
+            peer_seeds: PeerSeedsConfig::load_from(cfg)?,
+        };
+
+        config.wallet.set_base_path(config.common.base_path());
+        Ok(config)
+    }
 }

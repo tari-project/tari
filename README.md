@@ -617,9 +617,9 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Solo mining
 
-- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
+- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy`**
   ```
-  [merge_mining_proxy.weatherwax]
+  [merge_mining_proxy]
   monerod_url = [ # stagenet
     "http://stagenet.xmr-tw.org:38081",
     "http://stagenet.community.xmr.to:38081",
@@ -628,7 +628,7 @@ And then depending on if you are using solo mining or self-select mining you wil
     "http://singapore.node.xmr.pm:38081",
   ]
 
-  proxy_host_address = "127.0.0.1:7878"
+  proxy_host_address = "127.0.0.1:18081"
   proxy_submit_to_origin = true
   monerod_use_auth = false
   monerod_username = ""
@@ -637,9 +637,9 @@ And then depending on if you are using solo mining or self-select mining you wil
 
 ###### Self-Select mining
 
-- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy.weatherwax`**
+- For the Tari Merge Mining Proxy, under section **`merge_mining_proxy`**
   ```
-  [merge_mining_proxy.weatherwax]
+  [merge_mining_proxy]
   monerod_url = [ # stagenet
     "http://stagenet.xmr-tw.org:38081",
     "http://stagenet.community.xmr.to:38081",
@@ -648,14 +648,14 @@ And then depending on if you are using solo mining or self-select mining you wil
     "http://singapore.node.xmr.pm:38081",
   ]
 
-  proxy_host_address = "127.0.0.1:7878"
+  proxy_host_address = "127.0.0.1:18081"
   proxy_submit_to_origin = false
   monerod_use_auth = false
   monerod_username = ""
   monerod_password = ""
   ```
 
-**Note:** The ports `7878`, `18142` and `18143` shown in the example above should not be in use by other processes. If
+**Note:** The ports `18081`, `18142` and `18143` shown in the example above should not be in use by other processes. If
 they are, choose different ports. You will need to update the ports in the steps below as well.
 
 The `monerod_url` set must contain valid addresses (`host:port`) for `monerod` that is running Monero mainnet (e.g.
@@ -731,7 +731,7 @@ Using the public stagenet wallet address above the resulting configuration file 
     "pools": [
         {
             "coin": "monero",
-            "url": "127.0.0.1:7878",
+            "url": "127.0.0.1:18081",
             "user": "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
             "tls": false,
             "daemon": true
@@ -767,7 +767,7 @@ be augmented with Tari specific settings. Using the wizard, create the following
 
 - Result -> With `Config file`, copy or download, than save as `config.json`.
 
-- Add custom entries for `"self-select": "127.0.0.1:7878"` and `"submit-to-origin": true` in the `"pools"` section.
+- Add custom entries for `"self-select": "127.0.0.1:18081"` and `"submit-to-origin": true` in the `"pools"` section.
 
 Mining pool `cryptonote.social` requires you to add a personalized handle to the wallet address so that you can
 query your own pool statistics, separated by a full stop, i.e. `<YOUR WALLET ADDRESS>.<pool specific user name>`. For
@@ -791,7 +791,7 @@ activity for that address. The configuration file used for this exercise is show
             "tls": false,
             "keepalive": true,
             "nicehash": false,
-            "self-select": "127.0.0.1:7878",
+            "self-select": "127.0.0.1:18081",
             "submit-to-origin": true
         }
     ]
@@ -874,14 +874,14 @@ Look out for the following outputs in the XMRig console to confirm that it is co
 and accepting jobs:
 
 ```
-* POOL #1      127.0.0.1:7878 coin monero
+* POOL #1      127.0.0.1:18081 coin monero
 ```
 
 ```
-[2021-01-21 12:10:18.960]  net      use daemon 127.0.0.1:7878  127.0.0.1
-[2021-01-21 12:10:18.960]  net      new job from 127.0.0.1:7878 diff 286811 algo rx/0 height 756669
+[2021-01-21 12:10:18.960]  net      use daemon 127.0.0.1:18081  127.0.0.1
+[2021-01-21 12:10:18.960]  net      new job from 127.0.0.1:18081 diff 286811 algo rx/0 height 756669
 [2021-01-21 12:10:56.730]  cpu      rejected (0/1) diff 286811 "Block not accepted" (656 ms)
-[2021-01-21 12:10:57.398]  net      new job from 127.0.0.1:7878 diff 293330 algo rx/0 height 756670
+[2021-01-21 12:10:57.398]  net      new job from 127.0.0.1:18081 diff 293330 algo rx/0 height 756670
 [2021-01-21 12:12:23.695]  miner    speed 10s/60s/15m 4089.0 4140.2 n/a H/s max 4390.9 H/s
 [2021-01-21 12:12:57.983]  cpu      accepted (1/1) diff 293330 (594 ms)
 ```
@@ -926,7 +926,7 @@ Look out for the following outputs in the XMRig console to confirm that it is co
 Mining Proxy and accepting jobs:
 
 ```
-* POOL #1      cryptonote.social:5555 coin monero self-select 127.0.0.1:7878 submit-to-origin
+* POOL #1      cryptonote.social:5555 coin monero self-select 127.0.0.1:18081 submit-to-origin
 ```
 
 ```

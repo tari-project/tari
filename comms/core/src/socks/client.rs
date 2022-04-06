@@ -31,6 +31,7 @@ use std::{
 
 use data_encoding::BASE32;
 use multiaddr::{Multiaddr, Protocol};
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use super::error::SocksError;
@@ -38,18 +39,18 @@ use super::error::SocksError;
 pub type Result<T> = std::result::Result<T, SocksError>;
 
 /// Authentication methods
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// No auth
     None,
     /// Password auth (username, password)
-    Password(String, String),
+    Password { username: String, password: String },
 }
 
 impl Authentication {
     fn id(&self) -> u8 {
         match self {
-            Authentication::Password(_, _) => 0x02,
+            Authentication::Password { .. } => 0x02,
             Authentication::None => 0x00,
         }
     }
@@ -66,7 +67,7 @@ impl fmt::Debug for Authentication {
         use Authentication::{None, Password};
         match self {
             None => write!(f, "None"),
-            Password(username, _) => write!(f, "Password({}, ...)", username),
+            Password { username, .. } => write!(f, "Password({}, ...)", username),
         }
     }
 }
@@ -148,7 +149,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
     fn validate_auth(auth: &Authentication) -> Result<()> {
         match auth {
             Authentication::None => {},
-            Authentication::Password(username, password) => {
+            Authentication::Password { username, password } => {
                 let username_len = username.as_bytes().len();
                 if !(1..=255).contains(&username_len) {
                     return Err(SocksError::InvalidAuthValues(
@@ -359,7 +360,7 @@ where TSocket: AsyncRead + AsyncWrite + Unpin
 
     fn prepare_send_password_auth(&mut self) {
         match &self.authentication {
-            Authentication::Password(username, password) => {
+            Authentication::Password { username, password } => {
                 self.ptr = 0;
                 self.buf[0] = 0x01;
                 let username_bytes = username.as_bytes();

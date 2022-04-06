@@ -35,8 +35,7 @@
 //! [LivenessRequest]: ./messages/enum.LivenessRequets.html
 //! [PingPong]: ./messages/enum.PingPong.html
 
-mod config;
-pub use config::LivenessConfig;
+pub mod config;
 
 pub mod error;
 
@@ -80,7 +79,7 @@ use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
     services::{
-        liveness::state::LivenessState,
+        liveness::{config::LivenessConfig, state::LivenessState},
         utils::{map_decode, ok_or_skip_result},
     },
     tari_message::TariMessageType,
@@ -118,6 +117,7 @@ impl LivenessInitializer {
 #[async_trait]
 impl ServiceInitializer for LivenessInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing Liveness Service");
         let (sender, receiver) = reply_channel::unbounded();
 
         let (publisher, _) = broadcast::channel(200);
@@ -154,6 +154,7 @@ impl ServiceInitializer for LivenessInitializer {
             debug!(target: LOG_TARGET, "Liveness service has shut down");
         });
 
+        debug!(target: LOG_TARGET, "Liveness service initialized");
         Ok(())
     }
 }

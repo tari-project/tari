@@ -72,12 +72,11 @@ impl WalletClient for GrpcWalletClient {
             next_committee: next_committee.into_iter().map(|c| c.as_bytes().to_vec()).collect(),
         };
 
-        let res = inner
+        let _res = inner
             .create_follow_on_asset_checkpoint(request)
             .await
             .map_err(|e| DigitalAssetError::FatalError(format!("Could not create checkpoint:{}", e)))?;
 
-        println!("{:?}", res);
         Ok(())
     }
 }

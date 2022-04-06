@@ -21,25 +21,28 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common::NetworkConfigPath;
+use tari_common::SubConfigPath;
 
 use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
 /// Configuration for the Mempool.
-#[derive(Clone, Copy, Deserialize, Serialize, Default)]
+#[derive(Clone, Deserialize, Serialize, Default, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolConfig {
     pub unconfirmed_pool: UnconfirmedPoolConfig,
     pub reorg_pool: ReorgPoolConfig,
+    pub service: MempoolServiceConfig,
 }
 
-impl NetworkConfigPath for MempoolConfig {
+impl SubConfigPath for MempoolConfig {
     fn main_key_prefix() -> &'static str {
         "mempool"
     }
 }
 
 /// Configuration for the MempoolService.
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolServiceConfig {
     /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
     /// not initiate any more mempool syncs. Default: 2
@@ -54,12 +57,6 @@ impl Default for MempoolServiceConfig {
             initial_sync_num_peers: 2,
             initial_sync_max_transactions: 10_000,
         }
-    }
-}
-
-impl NetworkConfigPath for MempoolServiceConfig {
-    fn main_key_prefix() -> &'static str {
-        "mempool_service"
     }
 }
 
@@ -93,8 +90,8 @@ mod test {
             .expect("Could not set ''");
 
         config
-            .set("mempool.network", "mainnet")
-            .expect("Could not set 'network'");
+            .set("mempool.override_from", "mainnet")
+            .expect("Could not set 'override_from'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
@@ -104,10 +101,5 @@ mod test {
             my_config.reorg_pool.expiry_height,
             ReorgPoolConfig::default().expiry_height
         );
-
-        config
-            .set("mempool.network", "wrong_network")
-            .expect("Could not set 'network'");
-        assert!(MempoolConfig::load_from(&config).is_err());
     }
 }

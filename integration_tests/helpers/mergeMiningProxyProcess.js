@@ -24,11 +24,9 @@ class MergeMiningProxyProcess {
     submitOrigin = true
   ) {
     this.name = name;
-    this.nodeAddress = baseNodeAddress.split(":")[0];
-    this.nodeGrpcPort = baseNodeAddress.split(":")[1];
+    this.baseNodeAddress = baseNodeAddress;
     this.baseNodeClient = baseNodeClient;
-    this.walletAddress = walletAddress.split(":")[0];
-    this.walletGrpcPort = walletAddress.split(":")[1];
+    this.walletAddress = walletAddress;
     this.submitOrigin = submitOrigin;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
   }
@@ -50,23 +48,13 @@ class MergeMiningProxyProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const proxyAddress = "/ip4/127.0.0.1/tcp/" + this.port;
+      const proxyFullAddress = "/ip4/127.0.0.1/tcp/" + this.port;
 
-      const envs = createEnv(
-        this.name,
-        false,
-        "nodeid.json",
-        this.walletAddress,
-        this.walletGrpcPort,
-        this.port,
-        this.nodeAddress,
-        this.nodeGrpcPort,
-        this.baseNodePort,
-        proxyAddress,
-        "127.0.0.1:8085",
-        [],
-        []
-      );
+      const envs = createEnv({
+        walletGrpcAddress: this.walletAddress,
+        baseNodeGrpcAddress: this.baseNodeAddress,
+        proxyFullAddress,
+      });
       const extraEnvs = {
         TARI_MERGE_MINING_PROXY__PROXY_SUBMIT_TO_ORIGIN: this.submitOrigin,
       };

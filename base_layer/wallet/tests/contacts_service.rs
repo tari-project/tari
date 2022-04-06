@@ -46,9 +46,9 @@ use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_p2p::{
     comms_connector::pubsub_connector,
+    depr_transport::TransportType,
     initialization::{P2pConfig, P2pInitializer},
     services::liveness::{LivenessConfig, LivenessInitializer},
-    transport::TransportType,
     DEFAULT_DNS_NAME_SERVER,
 };
 

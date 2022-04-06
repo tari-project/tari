@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,9 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use multiaddr::Multiaddr;
+use clap::Parser;
+use tari_app_utilities::common_cli_args::CommonCliArgs;
 
-#[derive(Debug, Clone, Default)]
-pub struct BaseNodeConfig {
-    pub grpc_address: Option<Multiaddr>,
+const DEFAULT_NETWORK: &str = "dibbler";
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+pub(crate) struct Cli {
+  #[clap(flatten)]
+  pub common: CommonCliArgs,
+  /// Command to run
+  #[clap(long)]
+  pub command: Option<String>,
+  /// Supply a network (overrides existing configuration)
+  #[clap(long, default_value = DEFAULT_NETWORK)]
+  pub network: String,
+}
+
+impl Cli {
+  pub fn config_property_overrides(&self) -> Vec<(String, String)> {
+    let mut overrides = self.common.config_property_overrides();
+    overrides.push((
+      "collectibles.override_from".to_string(),
+      self.network.clone(),
+    ));
+    overrides
+  }
 }

@@ -22,6 +22,7 @@
 
 use std::{cmp::Ordering, slice::Iter};
 
+use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 use tari_crypto::tari_utilities::bit::{bytes_to_bits, checked_bits_to_uint};
 
@@ -36,7 +37,8 @@ use crate::{
 // TODO: Develop a language autodetection mechanism to distinguish between ChineseTraditional and ChineseSimplified
 // #LOGGED
 
-#[derive(Clone, Debug, PartialEq, EnumString, Display, Copy)]
+#[derive(Clone, Debug, PartialEq, EnumString, Display, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MnemonicLanguage {
     ChineseSimplified,
     English,

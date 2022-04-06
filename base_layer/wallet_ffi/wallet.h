@@ -78,7 +78,7 @@ struct TariPendingInboundTransactions;
 
 struct TariPendingInboundTransaction;
 
-struct TariTransportType;
+struct TariTransportConfig;
 
 struct TariSeedWords;
 
@@ -89,13 +89,13 @@ struct TariTransactionKernel;
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
-struct TariTransportType *transport_memory_create();
+struct TariTransportConfig *transport_memory_create();
 
 // Creates a tcp transport type
-struct TariTransportType *transport_tcp_create(const char *listener_address, int *error_out);
+struct TariTransportConfig *transport_tcp_create(const char *listener_address, int *error_out);
 
 // Creates a tor transport type
-struct TariTransportType *transport_tor_create(
+struct TariTransportConfig *transport_tor_create(
     const char *control_server_address,
     struct ByteVector *tor_cookie,
     unsigned short tor_port,
@@ -105,10 +105,13 @@ struct TariTransportType *transport_tor_create(
     int *error_out);
 
 // Gets the address from a memory transport type
-char *transport_memory_get_address(struct TariTransportType *transport, int *error_out);
+char *transport_memory_get_address(struct TariTransportConfig *transport, int *error_out);
 
-// Frees memory for a transport type
-void transport_type_destroy(struct TariTransportType *transport);
+// Frees memory for a transport config (deprecated alias to transport_config_destroy)
+void transport_type_destroy(struct TariTransportConfig *transport);
+
+// Frees memory for a transport config
+void transport_config_destroy(struct TariTransportConfig *transport);
 
 /// -------------------------------- Strings ----------------------------------------------- ///
 
@@ -448,7 +451,7 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 // Creates a TariCommsConfig
 // Valid values for network are: dibbler, igor, localnet, mainnet
 struct TariCommsConfig *comms_config_create(const char *public_address,
-                                            struct TariTransportType *transport,
+                                            struct TariTransportConfig *transport,
                                             const char *database_name,
                                             const char *datastore_path,
                                             unsigned long long discovery_timeout_in_secs,

@@ -22,13 +22,11 @@ class MiningNodeProcess {
     this.name = `MiningNode-${name}`;
     this.maxBlocks = 1;
     this.mineTillHeight = 1000000;
+    this.walletAddress = walletAddress;
+    this.baseNodeAddress = baseNodeAddress;
     this.minDiff = 0;
     this.maxDiff = 100000;
-    this.nodeAddress = baseNodeAddress.split(":")[0];
-    this.nodeGrpcPort = baseNodeAddress.split(":")[1];
     this.baseNodeClient = baseNodeClient;
-    this.walletAddress = walletAddress.split(":")[0];
-    this.walletGrpcPort = walletAddress.split(":")[1];
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.mineOnTipOnly = mineOnTipOnly;
     this.numMiningThreads = 1;
@@ -66,24 +64,14 @@ class MiningNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      const envs = createEnv(
-        this.name,
-        false,
-        "nodeid.json",
-        this.walletAddress,
-        this.walletGrpcPort,
-        "8080",
-        this.nodeAddress,
-        this.nodeGrpcPort,
-        this.baseNodePort,
-        "/ip4/127.0.0.1/tcp/8084",
-        "127.0.0.1:8085",
-        {
+      const envs = createEnv({
+        walletGrpcAddress: this.walletAddress,
+        baseNodeGrpcAddress: this.baseNodeAddress,
+        options: {
           mineOnTipOnly: this.mineOnTipOnly,
           numMiningThreads: this.numMiningThreads,
         },
-        []
-      );
+      });
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,

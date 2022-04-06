@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use tari_app_utilities::consts;
+use tari_comms::runtime::Handle;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
@@ -55,7 +56,7 @@ impl<B: Backend> Component<B> for Menu {
         let network = Spans::from(vec![
             Span::styled(" Network: ", Style::default().fg(Color::White)),
             Span::styled(
-                app_state.get_network().to_string(),
+                Handle::current().block_on(app_state.get_network()).to_string(),
                 Style::default().fg(Color::LightGreen),
             ),
             Span::raw(" "),

@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,6 +20,39 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod json_rpc;
-pub mod mining;
-pub mod proxy;
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+
+use crate::SubConfigPath;
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct CommonConfig {
+    override_from: Option<String>,
+    base_path: PathBuf,
+}
+
+impl Default for CommonConfig {
+    fn default() -> Self {
+        let base_path = dirs_next::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(PathBuf::from(".tari"));
+        Self {
+            override_from: None,
+            base_path,
+        }
+    }
+}
+
+impl SubConfigPath for CommonConfig {
+    fn main_key_prefix() -> &'static str {
+        "common"
+    }
+}
+
+impl CommonConfig {
+    pub fn base_path(&self) -> PathBuf {
+        self.base_path.clone()
+    }
+}

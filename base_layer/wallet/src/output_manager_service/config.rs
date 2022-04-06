@@ -22,9 +22,10 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use tari_key_manager::mnemonic::MnemonicLanguage;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputManagerServiceConfig {
     pub base_node_query_timeout: Duration,
     pub max_utxo_query_size: usize,

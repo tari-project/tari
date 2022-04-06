@@ -24,6 +24,7 @@ use std::{future::Future, sync::Arc};
 use futures::{future, future::Either};
 use log::*;
 use randomx_rs::RandomXFlag;
+use serde::{Deserialize, Serialize};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -46,7 +47,8 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct BaseNodeStateMachineConfig {
     pub blockchain_sync_config: BlockchainSyncConfig,
     pub orphan_db_clean_out_threshold: usize,

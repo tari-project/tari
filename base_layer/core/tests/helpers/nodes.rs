@@ -35,7 +35,7 @@ use tari_core::{
     base_node::{
         chain_metadata_service::{ChainMetadataHandle, ChainMetadataServiceInitializer},
         comms_interface::OutboundNodeCommsInterface,
-        service::{BaseNodeServiceConfig, BaseNodeServiceInitializer},
+        service::BaseNodeServiceInitializer,
         LocalNodeCommsInterface,
         StateMachineHandle,
     },
@@ -61,7 +61,7 @@ use tari_core::{
 use tari_p2p::{
     comms_connector::{pubsub_connector, InboundDomainConnector},
     initialization::initialize_local_test_comms,
-    services::liveness::{LivenessConfig, LivenessHandle, LivenessInitializer},
+    services::liveness::{config::LivenessConfig, LivenessHandle, LivenessInitializer},
 };
 use tari_service_framework::{RegisterHandle, StackBuilder};
 use tari_shutdown::Shutdown;
@@ -101,7 +101,6 @@ impl NodeInterfaces {
 pub struct BaseNodeBuilder {
     node_identity: Option<Arc<NodeIdentity>>,
     peers: Option<Vec<Arc<NodeIdentity>>>,
-    base_node_service_config: Option<BaseNodeServiceConfig>,
     mempool_config: Option<MempoolConfig>,
     mempool_service_config: Option<MempoolServiceConfig>,
     liveness_service_config: Option<LivenessConfig>,
@@ -117,7 +116,6 @@ impl BaseNodeBuilder {
         Self {
             node_identity: None,
             peers: None,
-            base_node_service_config: None,
             mempool_config: None,
             mempool_service_config: None,
             liveness_service_config: None,
@@ -136,12 +134,6 @@ impl BaseNodeBuilder {
     /// Set the initial peers that will be available in the peer manager.
     pub fn with_peers(mut self, peers: Vec<Arc<NodeIdentity>>) -> Self {
         self.peers = Some(peers);
-        self
-    }
-
-    /// Set the configuration of the Base Node Service
-    pub fn with_base_node_service_config(mut self, config: BaseNodeServiceConfig) -> Self {
-        self.base_node_service_config = Some(config);
         self
     }
 
@@ -208,7 +200,6 @@ impl BaseNodeBuilder {
             blockchain_db,
             mempool,
             consensus_manager.clone(),
-            self.base_node_service_config.unwrap_or_default(),
             self.liveness_service_config.unwrap_or_default(),
             data_path,
         )
@@ -256,7 +247,6 @@ pub async fn create_network_with_2_base_nodes(data_path: &str) -> (NodeInterface
 // Creates a network with two Base Nodes where each node in the network knows the other nodes in the network.
 #[allow(dead_code)]
 pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
-    base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
@@ -267,7 +257,6 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     let network = Network::LocalNet;
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
-        .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
@@ -276,7 +265,6 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity)
         .with_peers(vec![alice_node_identity])
-        .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
@@ -296,7 +284,6 @@ pub async fn create_network_with_3_base_nodes(
     let network = Network::LocalNet;
     let consensus_manager = ConsensusManagerBuilder::new(network).build();
     create_network_with_3_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,
@@ -308,7 +295,6 @@ pub async fn create_network_with_3_base_nodes(
 // Creates a network with three Base Nodes where each node in the network knows the other nodes in the network.
 #[allow(dead_code)]
 pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
-    base_node_service_config: BaseNodeServiceConfig,
     mempool_service_config: MempoolServiceConfig,
     liveness_service_config: LivenessConfig,
     consensus_manager: ConsensusManager,
@@ -327,7 +313,6 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     );
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(carol_node_identity.clone())
-        .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
@@ -336,7 +321,6 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![carol_node_identity.clone()])
-        .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
@@ -345,7 +329,6 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity)
         .with_peers(vec![bob_node_identity, carol_node_identity])
-        .with_base_node_service_config(base_node_service_config)
         .with_mempool_service_config(mempool_service_config)
         .with_liveness_service_config(liveness_service_config)
         .with_consensus_manager(consensus_manager)
@@ -399,7 +382,6 @@ async fn setup_base_node_services(
     blockchain_db: BlockchainDatabase<TempDatabase>,
     mempool: Mempool,
     consensus_manager: ConsensusManager,
-    base_node_service_config: BaseNodeServiceConfig,
     liveness_service_config: LivenessConfig,
     data_path: &str,
 ) -> NodeInterfaces {
@@ -422,7 +404,7 @@ async fn setup_base_node_services(
             blockchain_db.clone().into(),
             mempool.clone(),
             consensus_manager,
-            base_node_service_config,
+            Duration::from_secs(60),
         ))
         .add_initializer(MempoolServiceInitializer::new(mempool.clone(), subscription_factory))
         .add_initializer(mock_state_machine.get_initializer())

@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,19 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use multiaddr::Multiaddr;
+use clap::Parser;
+use tari_app_utilities::common_cli_args::CommonCliArgs;
 
-#[derive(Debug, Clone)]
-pub struct WalletConfig {
-    pub grpc_address: Option<Multiaddr>,
-    pub fee_per_gram: u64,
-}
-
-impl Default for WalletConfig {
-    fn default() -> Self {
-        Self {
-            grpc_address: None,
-            fee_per_gram: 5,
-        }
-    }
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+pub(crate) struct Cli {
+    #[clap(flatten)]
+    pub common: CommonCliArgs,
 }

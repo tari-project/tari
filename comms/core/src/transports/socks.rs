@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use log::*;
+use log::debug;
 use tokio::net::TcpStream;
 
 use crate::{

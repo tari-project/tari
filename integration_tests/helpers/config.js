@@ -74,6 +74,10 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     TARI_WALLET__NETWORK: "localnet",
     TARI_MINER__NETWORK: "localnet",
     TARI_COMMON__NETWORK: "localnet",
+    TARI_COMMON__CONFIG: "localnet",
+    TARI_BASE_NODE__CONFIG: "localnet",
+    TARI_WALLET__CONFIG: "localnet",
+    TARI_MINER__CONFIG: "localnet",
     TARI_BASE_NODE__LOCALNET__DATA_DIR: "localnet",
     TARI_BASE_NODE__LOCALNET__DB_TYPE: "lmdb",
     TARI_BASE_NODE__LOCALNET__ORPHAN_STORAGE_CAPACITY: "10",
@@ -105,13 +109,13 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
       "http://xmr-lux.boldsuck.org:38081",
       "http://singapore.node.xmr.pm:38081",
     ],
-    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USE_AUTH: false,
-    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_USERNAME: '""',
-    TARI_MERGE_MINING_PROXY__LOCALNET__MONEROD_PASSWORD: '""',
-    TARI_MERGE_MINING_PROXY__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
+    TARI_MERGE_MINING_PROXY__MONEROD_USE_AUTH: false,
+    TARI_MERGE_MINING_PROXY__MONEROD_USERNAME: '""',
+    TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD: '""',
     TARI_BASE_NODE__LOCALNET__DB_INIT_SIZE_MB: 100,
     TARI_BASE_NODE__LOCALNET__DB_RESIZE_THRESHOLD_MB: 10,
     TARI_BASE_NODE__LOCALNET__DB_GROW_SIZE_MB: 20,
+    TARI_MERGE_MINING_PROXY__WAIT_FOR_INITIAL_SYNC_AT_STARTUP: false,
     TARI_MINING_NODE__NUM_MINING_THREADS: "1",
     TARI_MINING_NODE__MINE_ON_TIP_ONLY: true,
     TARI_MINING_NODE__VALIDATE_TIP_TIMEOUT_SEC: 1,
@@ -131,34 +135,49 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
   return envs;
 }
 
-function createEnv(
-  _name = "config_identity",
-  isWallet = false,
-  nodeFile = "newnodeid.json",
-  walletGrpcAddress = "127.0.0.1",
-  walletGrpcPort = "8082",
-  walletPort = "8083",
-  baseNodeGrpcAddress = "127.0.0.1",
-  baseNodeGrpcPort = "8080",
-  baseNodePort = "8081",
-  proxyMultiAddress = "/ip4/127.0.0.1/tcp/8084",
-  transcoderMultiAddress = "/ip4/127.0.0.1/tcp/8085",
-  options,
-  peerSeeds = [],
-  _txnSendingMechanism = "DirectAndStoreAndForward",
-  forceSyncPeers = [],
-  committee = []
-) {
+let defaultArgs = {
+  isWallet: false,
+  nodeFile: "newnodeid.json",
+  walletGrpcAddress: "/ip4/127.0.0.1/tcp/8082",
+  baseNodeGrpcAddress: "/ip4/127.0.0.1/tcp/8080",
+  walletPort: 8083,
+  baseNodePort: 8081,
+  proxyFullAddress: "127.0.0.1:8084",
+  transcoderFullAddress: "127.0.0.1:8085",
+  options: {},
+  peerSeeds: [],
+  forceSyncPeers: [],
+  committee: [],
+};
+
+function createEnv(args) {
+  let {
+    isWallet,
+    nodeFile,
+    walletGrpcAddress,
+    walletPort,
+    baseNodeGrpcAddress,
+    baseNodePort,
+    proxyFullAddress,
+    transcoderFullAddress,
+    options,
+    peerSeeds,
+    forceSyncPeers,
+    committee,
+  } = { ...defaultArgs, ...args };
+
   const envs = baseEnvs(peerSeeds, forceSyncPeers, committee);
   const network =
     options && options.network ? options.network.toUpperCase() : "LOCALNET";
   const configEnvs = {
     [`TARI_BASE_NODE__GRPC_ENABLED`]: `true`,
-    [`TARI_BASE_NODE__GRPC_ADDRESS`]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
-    [`TARI_WALLET__GRPC_ADDRESS`]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
+    [`TARI_BASE_NODE__GRPC_ADDRESS`]: baseNodeGrpcAddress,
+    [`TARI_WALLET__GRPC_ADDRESS`]: walletGrpcAddress,
 
-    ["TARI_MERGE_MINING_PROXY__BASE_NODE_GRPC_ADDRESS"]: `/ip4/${baseNodeGrpcAddress}/tcp/${baseNodeGrpcPort}`,
-    ["TARI_MERGE_MINING_PROXY__WALLET_GRPC_ADDRESS"]: `/ip4/${walletGrpcAddress}/tcp/${walletGrpcPort}`,
+    [`TARI_MERGE_MINING_PROXY__${network}__GRPC_BASE_NODE_ADDRESS`]:
+      baseNodeGrpcAddress,
+    [`TARI_MERGE_MINING_PROXY__${network}__GRPC_CONSOLE_WALLET_ADDRESS`]:
+      walletGrpcAddress,
     [`TARI_BASE_NODE__${network}__BASE_NODE_IDENTITY_FILE`]: `${nodeFile}`,
 
     [`TARI_BASE_NODE__${network}__TRANSPORT`]: "tcp",
@@ -170,8 +189,8 @@ function createEnv(
     [`TARI_WALLET__${network}__TRANSPORT`]: "tcp",
     [`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
     [`TARI_WALLET__${network}__PUBLIC_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
-    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderMultiAddress}`,
 
+    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderMultiAddress}`,
     [`TARI_MERGE_MINING_PROXY__PROXY_HOST_ADDRESS`]: `${proxyMultiAddress}`,
   };
 

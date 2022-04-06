@@ -20,7 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{path::Path, time::Duration};
+
+use serde::{Deserialize, Serialize};
 
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
@@ -29,7 +31,8 @@ use crate::{
     version::DhtProtocolVersion,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConfig {
     /// The major protocol version to use. Default: DhtProtocolVersion::latest()
     pub protocol_version: DhtProtocolVersion,
@@ -124,6 +127,11 @@ impl DhtConfig {
             ..Default::default()
         }
     }
+
+    /// Sets relative paths to use a common base path
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
+        self.database_url.set_base_path(base_path);
+    }
 }
 
 impl Default for DhtConfig {
@@ -156,7 +164,8 @@ impl Default for DhtConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConnectivityConfig {
     /// The interval to update the neighbouring and random pools, if necessary.
     /// Default: 2 minutes

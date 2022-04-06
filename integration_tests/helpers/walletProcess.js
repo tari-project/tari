@@ -41,7 +41,7 @@ class WalletProcess {
   }
 
   getGrpcAddress() {
-    return "127.0.0.1:" + this.grpcPort;
+    return "/ip4/127.0.0.1/tcp/" + this.grpcPort;
   }
 
   async connectClient() {
@@ -76,21 +76,12 @@ class WalletProcess {
           : "LOCALNET";
       envs[`TARI_BASE_NODE__COMMON__NETWORK`] = network;
       if (!this.excludeTestEnvars) {
-        envs = createEnv(
-          this.name,
-          true,
-          "cwalletid.json",
-          "127.0.0.1",
-          this.grpcPort,
-          this.port,
-          "127.0.0.1",
-          "8080",
-          "8081",
-          "/ip4/127.0.0.1/tcp/8084",
-          "127.0.0.1:8085",
-          this.options,
-          this.peerSeeds
-        );
+        envs = createEnv({
+          isWallet: true,
+          nodeFile: "cwalletid.json",
+          options: this.options,
+          peerSeeds: this.peerSeeds,
+        });
       } else if (this.options["grpc_console_wallet_address"]) {
         envs[`TARI_WALLET__GRPC_ADDRESS`] =
           this.options["grpc_console_wallet_address"];
@@ -100,7 +91,11 @@ class WalletProcess {
       }
 
       if (saveFile) {
-        fs.appendFileSync(`${this.baseDir}/.env`, JSON.stringify(envs));
+        // clear the .env file
+        fs.writeFileSync(`${this.baseDir}/.env`, "");
+        Object.keys(envs).forEach((key) => {
+          fs.appendFileSync(`${this.baseDir}/.env`, `${key}=${envs[key]}\n`);
+        });
       }
 
       const ps = spawn(cmd, args, {
@@ -114,7 +109,7 @@ class WalletProcess {
         ps.stdin.write(input_buffer);
       }
       ps.stdout.on("data", (data) => {
-        //console.log(`\nstdout: ${data}`);
+        console.log(`\nstdout: ${data}`);
         if (output !== undefined && output.buffer !== undefined) {
           output.buffer += data;
         }
@@ -129,6 +124,7 @@ class WalletProcess {
                 /(?=.*Tari Console Wallet running)(?=.*Command mode completed)/gim
               ))
         ) {
+          console.log("Wallet started");
           this.recoverWallet = false;
           resolve(ps);
         }
