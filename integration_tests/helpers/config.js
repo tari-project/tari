@@ -190,8 +190,8 @@ function createEnv(args) {
     [`TARI_WALLET__${network}__TCP_LISTENER_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
     [`TARI_WALLET__${network}__PUBLIC_ADDRESS`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
 
-    [`TARI_MERGE_MINING_PROXY__PROXY_HOST_ADDRESS`]: `${proxyFullAddress}`,
-    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderFullAddress}`,
+    [`TARI_STRATUM_TRANSCODER__${network}__TRANSCODER_HOST_ADDRESS`]: `${transcoderMultiAddress}`,
+    [`TARI_MERGE_MINING_PROXY__PROXY_HOST_ADDRESS`]: `${proxyMultiAddress}`,
   };
 
   return { ...envs, ...configEnvs, ...mapEnvs(options || {}) };

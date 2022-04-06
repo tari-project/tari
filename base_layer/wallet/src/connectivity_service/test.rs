@@ -146,7 +146,7 @@ async fn it_changes_to_a_new_base_node() {
     mock_state.await_call_count(1).await;
     mock_state.expect_dial_peer(base_node_peer1.node_id()).await;
     assert!(mock_state.count_calls_containing("DialPeer").await >= 1);
-    let _ = mock_state.take_calls().await;
+    let _result = mock_state.take_calls().await;
 
     let rpc_client = handle.obtain_base_node_wallet_rpc_client().await.unwrap();
     assert!(rpc_client.is_connected());
@@ -176,7 +176,7 @@ async fn it_gracefully_handles_connect_fail_reconnect() {
     // Now a connection will given to the service
     mock_state.add_active_connection(conn.clone()).await;
     // Empty out all the calls
-    let _ = mock_state.take_calls().await;
+    let _result = mock_state.take_calls().await;
     conn.disconnect().await.unwrap();
 
     let barrier = Arc::new(Barrier::new(2));

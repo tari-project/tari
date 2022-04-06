@@ -488,6 +488,7 @@ where TBackend: TransactionBackend + 'static
             let mut inbound_tx = CompletedTransaction::from(tx);
             inbound_tx.destination_public_key = self.comms_public_key.clone();
             transaction = Some(inbound_tx);
+        } else {
         };
 
         match transaction {

@@ -205,7 +205,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::OutputsByTxIdAndStatus(tx_id, status) => {
                 let mut outputs = OutputSql::find_by_tx_id_and_status(*tx_id, *status, &conn)?;
-                for o in outputs.iter_mut() {
+                for o in &mut outputs {
                     self.decrypt_if_necessary(o)?;
                 }
                 Some(DbValue::AnyOutputs(
@@ -217,7 +217,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::UnspentOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Unspent, &conn)?;
-                for o in outputs.iter_mut() {
+                for o in &mut outputs {
                     self.decrypt_if_necessary(o)?;
                 }
 
@@ -230,7 +230,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::SpentOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Spent, &conn)?;
-                for o in outputs.iter_mut() {
+                for o in &mut outputs {
                     self.decrypt_if_necessary(o)?;
                 }
 
@@ -243,7 +243,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::TimeLockedUnspentOutputs(tip) => {
                 let mut outputs = OutputSql::index_time_locked(*tip, &conn)?;
-                for o in outputs.iter_mut() {
+                for o in &mut outputs {
                     self.decrypt_if_necessary(o)?;
                 }
 
@@ -256,7 +256,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::InvalidOutputs => {
                 let mut outputs = OutputSql::index_status(OutputStatus::Invalid, &conn)?;
-                for o in outputs.iter_mut() {
+                for o in &mut outputs {
                     self.decrypt_if_necessary(o)?;
                 }
 
@@ -269,7 +269,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             },
             DbKey::KnownOneSidedPaymentScripts => {
                 let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
-                for script in known_one_sided_payment_scripts.iter_mut() {
+                for script in &mut known_one_sided_payment_scripts {
                     self.decrypt_if_necessary(script)?;
                 }
 
@@ -298,7 +298,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn fetch_with_features(&self, flags: OutputFlags) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
         let mut outputs = OutputSql::index_by_feature_flags(flags, &conn)?;
-        for o in outputs.iter_mut() {
+        for o in &mut outputs {
             self.decrypt_if_necessary(o)?;
         }
 
@@ -327,7 +327,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let mut outputs = OutputSql::index_marked_deleted_in_block_is_null(&conn)?;
-        for output in outputs.iter_mut() {
+        for output in &mut outputs {
             self.decrypt_if_necessary(output)?;
         }
         if start.elapsed().as_millis() > 0 {
@@ -351,7 +351,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let conn = self.database_connection.get_pooled_connection()?;
         let acquire_lock = start.elapsed();
         let mut outputs = OutputSql::index_unconfirmed(&conn)?;
-        for output in outputs.iter_mut() {
+        for output in &mut outputs {
             self.decrypt_if_necessary(output)?;
         }
         if start.elapsed().as_millis() > 0 {
@@ -438,7 +438,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             &conn,
         )?);
         outputs.extend(OutputSql::index_status(OutputStatus::UnspentMinedUnconfirmed, &conn)?);
-        for o in outputs.iter_mut() {
+        for o in &mut outputs {
             self.decrypt_if_necessary(o)?;
         }
         if start.elapsed().as_millis() > 0 {
@@ -696,7 +696,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let outputs_to_be_received =
             OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::ShortTermEncumberedToBeReceived, &conn)?;
-        for o in outputs_to_be_received.iter() {
+        for o in &outputs_to_be_received {
             o.update(
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeReceived),
@@ -708,7 +708,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let outputs_to_be_spent =
             OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::ShortTermEncumberedToBeSpent, &conn)?;
-        for o in outputs_to_be_spent.iter() {
+        for o in &outputs_to_be_spent {
             o.update(
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeSpent),
@@ -737,7 +737,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let outputs_to_be_received = OutputSql::index_status(OutputStatus::ShortTermEncumberedToBeReceived, &conn)?;
-        for o in outputs_to_be_received.iter() {
+        for o in &outputs_to_be_received {
             o.update(
                 UpdateOutput {
                     status: Some(OutputStatus::CancelledInbound),
@@ -748,7 +748,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         let outputs_to_be_spent = OutputSql::index_status(OutputStatus::ShortTermEncumberedToBeSpent, &conn)?;
-        for o in outputs_to_be_spent.iter() {
+        for o in &outputs_to_be_spent {
             o.update(
                 UpdateOutput {
                     status: Some(OutputStatus::Unspent),
@@ -850,7 +850,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             return Err(OutputManagerStorageError::ValueNotFound);
         }
 
-        for output in outputs.iter() {
+        for output in &outputs {
             if output.received_in_tx_id == Some(i64::from(tx_id)) {
                 info!(
                     target: LOG_TARGET,
@@ -883,6 +883,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     },
                     &conn,
                 )?;
+            } else {
             }
         }
         if start.elapsed().as_millis() > 0 {
@@ -965,9 +966,9 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let mut outputs = OutputSql::index(&conn)?;
 
         // If the db is already encrypted then the very first output we try to encrypt will fail.
-        for o in outputs.iter_mut() {
+        for o in &mut outputs {
             // Test if this output is encrypted or not to avoid a double encryption.
-            let _ = PrivateKey::from_vec(&o.spending_key).map_err(|_| {
+            let _secret_key = PrivateKey::from_vec(&o.spending_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might already be encrypted"
@@ -981,8 +982,8 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
 
-        for script in known_one_sided_payment_scripts.iter_mut() {
-            let _ = PrivateKey::from_vec(&script.private_key).map_err(|_| {
+        for script in &mut known_one_sided_payment_scripts {
+            let _secret_key = PrivateKey::from_vec(&script.private_key).map_err(|_| {
                 error!(
                     target: LOG_TARGET,
                     "Could not create PrivateKey from stored bytes, They might already be encrypted"
@@ -1021,7 +1022,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
         let mut outputs = OutputSql::index(&conn)?;
 
-        for o in outputs.iter_mut() {
+        for o in &mut outputs {
             o.decrypt(&cipher)
                 .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
             o.update_encryption(&conn)?;
@@ -1029,7 +1030,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
 
         let mut known_one_sided_payment_scripts = KnownOneSidedPaymentScriptSql::index(&conn)?;
 
-        for script in known_one_sided_payment_scripts.iter_mut() {
+        for script in &mut known_one_sided_payment_scripts {
             script
                 .decrypt(&cipher)
                 .map_err(|_| OutputManagerStorageError::AeadError("Encryption Error".to_string()))?;
@@ -1096,7 +1097,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             .num_rows_affected_or_not_found(1)?;
         } else {
             let output = OutputSql::find_by_tx_id_and_status(tx_id, OutputStatus::AbandonedCoinbase, &conn)?;
-            for o in output.into_iter() {
+            for o in output {
                 o.update(
                     UpdateOutput {
                         status: Some(OutputStatus::EncumberedToBeReceived),
@@ -1185,7 +1186,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
             None => i64::MAX,
         };
         let mut outputs = OutputSql::fetch_unspent_outputs_for_spending(strategy, amount, tip, &conn)?;
-        for o in outputs.iter_mut() {
+        for o in &mut outputs {
             self.decrypt_if_necessary(o)?;
         }
         trace!(
@@ -1204,7 +1205,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
     fn fetch_outputs_by_tx_id(&self, tx_id: TxId) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let conn = self.database_connection.get_pooled_connection()?;
         let mut outputs = OutputSql::find_by_tx_id(tx_id, &conn)?;
-        for o in outputs.iter_mut() {
+        for o in &mut outputs {
             self.decrypt_if_necessary(o)?;
         }
         outputs
@@ -1344,7 +1345,7 @@ impl KnownOneSidedPaymentScriptSql {
 
     /// Update the changed fields of this record after encryption/decryption is performed
     pub fn update_encryption(&self, conn: &SqliteConnection) -> Result<(), OutputManagerStorageError> {
-        let _ = self.update(
+        let _known_one_sided_payment_script_sql = self.update(
             UpdateKnownOneSidedPaymentScript {
                 private_key: Some(self.private_key.clone()),
                 script: None,
@@ -1466,7 +1467,7 @@ mod test {
         let test_params = TestParamsHelpers::new();
         let factory = CommitmentFactory::default();
 
-        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params, val);
+        let unblinded_output = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, val);
         let input = unblinded_output.as_transaction_input(&factory).unwrap();
 
         (input, unblinded_output)
@@ -1555,7 +1556,7 @@ mod test {
 
         assert!(OutputSql::find_status(&outputs[0].spending_key, OutputStatus::Spent, &conn).is_err());
 
-        let _ = OutputSql::find(&outputs[4].spending_key, &conn).unwrap().delete(&conn);
+        let _result = OutputSql::find(&outputs[4].spending_key, &conn).unwrap().delete(&conn);
 
         assert_eq!(OutputSql::index(&conn).unwrap().len(), 4);
 

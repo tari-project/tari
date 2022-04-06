@@ -162,7 +162,7 @@ pub fn test_contacts_service() {
         _ => panic!("There should be a specific error here"),
     }
 
-    let _ = runtime
+    let _contact = runtime
         .block_on(contacts_service.remove_contact(contacts[0].public_key.clone()))
         .unwrap();
     contacts.remove(0);
@@ -182,6 +182,7 @@ pub fn test_contacts_service() {
 
     assert_eq!(new_contact.alias, updated_contact.alias);
 
+    #[allow(clippy::match_wild_err_arm)]
     match liveness_event_stream.try_recv() {
         Ok(_) => panic!("Should not receive any event here"),
         Err(TryRecvError::Empty) => {},

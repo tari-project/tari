@@ -235,7 +235,7 @@ async fn send_message_substream_bulk_failure() {
     let mut expected_out_msg_tags = Vec::with_capacity(NUM_MSGS);
     expected_out_msg_tags.push(send_msg(&mut request_tx, peer_node_id.clone()).await);
 
-    let _ = peer_conn_mock2.next_incoming_substream().await.unwrap();
+    let _substream = peer_conn_mock2.next_incoming_substream().await.unwrap();
     // Close destination peer's channel before queuing the message to send
     peer_conn_mock2.disconnect().await.unwrap();
     drop(peer_conn_mock2);

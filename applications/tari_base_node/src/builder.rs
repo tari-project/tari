@@ -23,12 +23,15 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common::configuration::Network;
+use tari_common::{
+    configuration::Network,
+    exit_codes::{ExitCode, ExitError},
+};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
-    chain_storage::{create_lmdb_database, BlockchainDatabase, LMDBDatabase, Validators},
+    chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
     consensus::ConsensusManager,
     mempool::{service::LocalMempoolService, Mempool},
     proof_of_work::randomx_factory::RandomXFactory,
@@ -165,13 +168,14 @@ pub async fn configure_and_initialize_node(
     app_config: Arc<ApplicationConfig>,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
-) -> Result<BaseNodeContext, anyhow::Error> {
+) -> Result<BaseNodeContext, ExitError> {
     let result = match &app_config.base_node.db_type {
         DatabaseType::Lmdb => {
             let backend = create_lmdb_database(
                 app_config.base_node.lmdb_path.as_path(),
                 app_config.base_node.lmdb.clone(),
-            )?;
+            )
+            .map_err(|e| ExitError::new(ExitCode::DatabaseError, &e))?;
             build_node_context(backend, app_config, node_identity, interrupt_signal).await?
         },
     };
@@ -194,7 +198,7 @@ async fn build_node_context(
     app_config: Arc<ApplicationConfig>,
     base_node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
-) -> Result<BaseNodeContext, anyhow::Error> {
+) -> Result<BaseNodeContext, ExitError> {
     //---------------------------------- Blockchain --------------------------------------------//
     debug!(
         target: LOG_TARGET,
@@ -219,7 +223,17 @@ async fn build_node_context(
         validators,
         app_config.base_node.storage.clone(),
         DifficultyCalculator::new(rules.clone(), randomx_factory),
-    )?;
+    )
+    .map_err(|err| {
+        if let ChainStorageError::DatabaseResyncRequired(reason) = err {
+            return ExitError::new(
+                ExitCode::DbInconsistentState,
+                &format!("You may need to re-sync your database because {}", reason),
+            );
+        } else {
+            ExitError::new(ExitCode::DatabaseError, &err)
+        }
+    })?;
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(
             factories.clone(),

@@ -114,7 +114,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         &self,
         request: Request<rpc::GetMetadataRequest>,
     ) -> Result<Response<rpc::GetMetadataResponse>, Status> {
-        dbg!(&request);
+        println!("{:?}", request);
         // let db = self.db_factory.create();
         todo!()
         // let mut tx = db.new_unit_of_work();
@@ -129,7 +129,7 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         &self,
         request: Request<rpc::InvokeReadMethodRequest>,
     ) -> Result<Response<rpc::InvokeReadMethodResponse>, Status> {
-        dbg!(&request);
+        println!("{:?}", request);
         let request = request.into_inner();
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
             .map_err(|err| Status::invalid_argument(format!("Asset public key was not a valid public key:{}", err)))?;

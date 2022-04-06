@@ -87,7 +87,7 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         };
         let sha3_miner = Sha3MinerConfig {
             delay: zero_delay,
-            num_mining_threads: settings.num_mining_threads as usize,
+            num_mining_threads: usize::try_from(settings.num_mining_threads).unwrap(),
         };
         let mut mm_proxy = MmProxyConfig {
             delay: zero_delay,

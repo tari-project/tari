@@ -22,10 +22,12 @@
 
 use std::{cmp, str::FromStr, sync::Arc};
 
-use anyhow::anyhow;
 use log::*;
 use tari_app_utilities::{consts, identity_management, identity_management::load_from_json};
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCode, ExitError},
+};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
@@ -75,7 +77,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
 impl<B> BaseNodeBootstrapper<'_, B>
 where B: BlockchainBackend + 'static
 {
-    pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
+    pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
         let base_node_config = &self.app_config.base_node;
         let mut p2p_config = self.app_config.base_node.p2p.clone();
         let peer_seeds = &self.app_config.peer_seeds;
@@ -91,14 +93,15 @@ where B: BlockchainBackend + 'static
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| anyhow!("Invalid force sync peer: {:?}", e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
         let mempool_sync = MempoolSyncInitializer::new(mempool_config, self.mempool.clone());
         let mempool_protocol = mempool_sync.get_protocol_extension();
 
-        let tor_identity = load_from_json(&base_node_config.tor_identity_file).map_err(|e| anyhow!("{}", e))?;
+        let tor_identity = load_from_json(&base_node_config.tor_identity_file)
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
         p2p_config.transport.tor.identity = tor_identity;
 
         let mut handles = StackBuilder::new(self.interrupt_signal)
@@ -152,31 +155,21 @@ where B: BlockchainBackend + 'static
 
         let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), &p2p_config);
-        let comms = initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone()).await?;
+        let comms = initialization::spawn_comms_using_transport(comms, p2p_config.transport.clone())
+            .await
+            .map_err(|e| ExitError::new(ExitCode::NetworkError, &e))?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match p2p_config.transport.transport_type {
             TransportType::Tcp => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
-                identity_management::save_as_json(base_node_config.identity_file.as_path(), &*comms.node_identity())
-                    .map_err(|e| {
-                        anyhow!(
-                            "Failed to save node identity - {:?}: {:?}",
-                            base_node_config.identity_file,
-                            e
-                        )
-                    })?;
+                identity_management::save_as_json(&base_node_config.identity_file, &*comms.node_identity())
+                    .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(base_node_config.tor_identity_file.as_path(), hs.tor_identity())
-                .map_err(|e| {
-                    anyhow!(
-                        "Failed to save tor identity - {:?}: {:?}",
-                        base_node_config.tor_identity_file,
-                        e
-                    )
-                })?;
+            identity_management::save_as_json(&base_node_config.tor_identity_file, hs.tor_identity())
+                .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
         }
 
         handles.register(comms);

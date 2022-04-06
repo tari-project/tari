@@ -146,7 +146,7 @@ impl RandomXFactoryInner {
         if self.vms.len() >= self.max_vms {
             let mut oldest_value = Instant::now();
             let mut oldest_key = None;
-            for (k, v) in self.vms.iter() {
+            for (k, v) in &self.vms {
                 if v.0 < oldest_value {
                     oldest_key = Some(k.clone());
                     oldest_value = v.0;

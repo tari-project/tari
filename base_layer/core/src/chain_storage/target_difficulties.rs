@@ -59,7 +59,7 @@ impl TargetDifficulties {
     }
 
     pub fn get(&self, algo: PowAlgorithm) -> &TargetDifficultyWindow {
-        use PowAlgorithm::*;
+        use PowAlgorithm::{Monero, Sha3};
         match algo {
             Monero => &self.monero,
             Sha3 => &self.sha3,
@@ -67,7 +67,7 @@ impl TargetDifficulties {
     }
 
     fn get_mut(&mut self, algo: PowAlgorithm) -> &mut TargetDifficultyWindow {
-        use PowAlgorithm::*;
+        use PowAlgorithm::{Monero, Sha3};
         match algo {
             Monero => &mut self.monero,
             Sha3 => &mut self.sha3,

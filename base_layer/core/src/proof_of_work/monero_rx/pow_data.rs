@@ -67,7 +67,7 @@ impl MoneroPowData {
     }
 
     pub fn to_blockhashing_blob(&self) -> Vec<u8> {
-        create_block_hashing_blob(&self.header, &self.merkle_root, self.transaction_count as u64)
+        create_block_hashing_blob(&self.header, &self.merkle_root, u64::from(self.transaction_count))
     }
 
     pub fn randomx_key(&self) -> &[u8] {
@@ -154,7 +154,7 @@ mod test {
         #[should_panic(expected = "capacity overflow")]
         fn simple_capacity_overflow_panic() {
             let data = &[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x7f];
-            let _ = deserialize::<Vec<TxIn>>(data);
+            let _result = deserialize::<Vec<TxIn>>(data);
         }
 
         #[test]
@@ -169,7 +169,7 @@ mod test {
                 0x62, 0x38, 0xdb, 0x5e, 0x4d, 0x6d, 0x9c, 0x94, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x00,
                 0x8f, 0x74, 0x3c, 0xb3, 0x1b, 0x6e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             ];
-            let _ = deserialize::<monero::Block>(&data);
+            let _result = deserialize::<monero::Block>(&data);
         }
     }
 }

@@ -184,7 +184,7 @@ async fn create_wallet(
 
     let metadata = ChainMetadata::new(std::i64::MAX as u64, Vec::new(), 0, 0, 0);
 
-    let _ = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
+    let _db_value = wallet_backend.write(WriteOperation::Insert(DbKeyValuePair::BaseNodeChainMetadata(metadata)));
 
     let wallet_db = WalletDatabase::new(wallet_backend);
     let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
@@ -330,6 +330,7 @@ async fn test_wallet() {
         .unwrap();
 
     // Second encryption should fail
+    #[allow(clippy::match_wild_err_arm)]
     match alice_wallet
         .apply_encryption("It's turtles all the way down".to_string())
         .await
@@ -757,7 +758,7 @@ async fn test_import_utxo() {
     let temp_features = OutputFeatures::create_coinbase(50, rand::thread_rng().gen::<u8>());
 
     let p = TestParams::new();
-    let utxo = create_unblinded_output(script.clone(), temp_features, p.clone(), 20000 * uT);
+    let utxo = create_unblinded_output(script.clone(), temp_features, &p, 20000 * uT);
     let output = utxo.as_transaction_output(&factories).unwrap();
     let expected_output_hash = output.hash();
 
@@ -925,7 +926,7 @@ fn test_contacts_service_liveness() {
                                 ping_count += 1;
                             } else if data.message_type() == ContactMessageType::Pong {
                                 pong_count += 1;
-                            }
+                            } else {}
                         }
                         if ping_count > 1 && pong_count > 1 {
                             break;
@@ -957,7 +958,7 @@ fn test_contacts_service_liveness() {
                                 ping_count += 1;
                             } else if data.message_type() == ContactMessageType::Pong {
                                 pong_count += 1;
-                            }
+                            } else {}
                         }
                         if ping_count > 1 && pong_count > 1 {
                             break;

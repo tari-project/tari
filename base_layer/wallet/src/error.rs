@@ -109,7 +109,7 @@ pub const LOG_TARGET: &str = "tari::application";
 impl From<WalletError> for ExitError {
     fn from(err: WalletError) -> Self {
         log::error!(target: LOG_TARGET, "{}", err);
-        Self::new(ExitCode::WalletError, err)
+        Self::new(ExitCode::WalletError, &err)
     }
 }
 
@@ -177,10 +177,10 @@ pub enum WalletStorageError {
 
 impl From<WalletStorageError> for ExitError {
     fn from(err: WalletStorageError) -> Self {
-        use WalletStorageError::*;
+        use WalletStorageError::{InvalidPassphrase, NoPasswordError};
         match err {
             NoPasswordError | InvalidPassphrase => ExitCode::IncorrectOrEmptyPassword.into(),
-            e => ExitError::new(ExitCode::WalletError, e),
+            e => ExitError::new(ExitCode::WalletError, &e),
         }
     }
 }

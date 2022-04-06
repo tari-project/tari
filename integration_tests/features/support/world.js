@@ -9,7 +9,6 @@ const {
 } = require("@cucumber/cucumber");
 
 const BaseNodeProcess = require("../../helpers/baseNodeProcess");
-const StratumTranscoderProcess = require("../../helpers/stratumTranscoderProcess");
 const ValidatorNodeProcess = require("../../helpers/validatorNodeProcess");
 const MergeMiningProxyProcess = require("../../helpers/mergeMiningProxyProcess");
 const WalletProcess = require("../../helpers/walletProcess");
@@ -653,7 +652,6 @@ BeforeAll({ timeout: 2400000 }, async function () {
   console.log("Compiling mmproxy...");
   await mmProxy.init();
   await mmProxy.compile();
-
 
   const miningNode = new MiningNodeProcess(
     "compile",

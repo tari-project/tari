@@ -591,7 +591,7 @@ where
             ))
         })?;
 
-        let seed_words = master_seed.to_mnemonic(language, None)?;
+        let seed_words = master_seed.to_mnemonic(*language, None)?;
         Ok(seed_words)
     }
 }

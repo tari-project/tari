@@ -45,23 +45,20 @@ pub fn create_workspace_folders<P: AsRef<Path>>(root: P) -> Result<(), DockerWra
     let make_subfolder = |folder: &str| -> Result<(), std::io::Error> {
         let p = root.as_ref().join(folder);
         let p_str = p.as_path().to_str().unwrap_or("???");
-        match p.exists() {
-            true => {
-                info!("{} already exists", p_str);
-                Ok(())
-            },
-            false => {
-                info!("Creating new data folder, {}", p_str);
-                fs::create_dir_all(&p)?;
-                #[cfg(any(target_os = "linux", target_os = "macos"))]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = std::fs::metadata(&p)?.permissions();
-                    perms.set_mode(0o777);
-                    fs::set_permissions(&p, perms)?;
-                }
-                Ok(())
-            },
+        if p.exists() {
+            info!("{} already exists", p_str);
+            Ok(())
+        } else {
+            info!("Creating new data folder, {}", p_str);
+            fs::create_dir_all(&p)?;
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&p)?.permissions();
+                perms.set_mode(0o777);
+                fs::set_permissions(&p, perms)?;
+            }
+            Ok(())
         }
     };
     info!("Making config folder");

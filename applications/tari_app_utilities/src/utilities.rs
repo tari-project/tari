@@ -40,7 +40,7 @@ pub fn setup_runtime() -> Result<Runtime, ExitError> {
     let mut builder = runtime::Builder::new_multi_thread();
     builder.enable_all().build().map_err(|e| {
         let msg = format!("There was an error while building the node runtime. {}", e);
-        ExitError::new(ExitCode::UnknownError, msg)
+        ExitError::new(ExitCode::UnknownError, &msg)
     })
 }
 

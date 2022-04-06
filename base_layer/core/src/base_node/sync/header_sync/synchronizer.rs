@@ -451,7 +451,7 @@ impl<'a, B: BlockchainBackend + 'static> HeaderSynchronizer<'a, B> {
         }
 
         if fork_hash_index >= block_hashes.len() as u64 {
-            let _ = self
+            let _result = self
                 .ban_peer_long(sync_peer.node_id(), BanReason::SplitHashGreaterThanHashes {
                     fork_hash_index,
                     num_block_hashes: block_hashes.len(),

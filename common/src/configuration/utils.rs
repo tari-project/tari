@@ -5,7 +5,6 @@ use std::{fmt, fmt::Display, fs, fs::File, io::Write, marker::PhantomData, path:
 
 use config::Config;
 use log::{debug, info};
-use multiaddr::{Multiaddr, Protocol};
 use serde::{
     de::{self, MapAccess, Visitor},
     Deserialize,
@@ -76,28 +75,6 @@ pub fn write_default_config_to<P: AsRef<Path>>(path: P) -> Result<(), std::io::E
     };
     let mut file = File::create(path)?;
     file.write_all(source.as_ref())
-}
-
-pub fn get_local_ip() -> Option<Multiaddr> {
-    use std::net::IpAddr;
-
-    get_if_addrs::get_if_addrs().ok().and_then(|if_addrs| {
-        if_addrs
-            .into_iter()
-            .find(|if_addr| !if_addr.is_loopback())
-            .map(|if_addr| {
-                let mut addr = Multiaddr::empty();
-                match if_addr.ip() {
-                    IpAddr::V4(ip) => {
-                        addr.push(Protocol::Ip4(ip));
-                    },
-                    IpAddr::V6(ip) => {
-                        addr.push(Protocol::Ip6(ip));
-                    },
-                }
-                addr
-            })
-    })
 }
 
 pub fn serialize_string<S, T>(source: &T, ser: S) -> Result<S::Ok, S::Error>

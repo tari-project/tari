@@ -80,7 +80,7 @@ impl TariScript {
         // Local execution state
         let mut state = ExecutionState::default();
 
-        for opcode in self.script.iter() {
+        for opcode in &self.script {
             if self.should_execute(opcode, &state)? {
                 self.execute_opcode(opcode, &mut stack, context, &mut state)?
             } else {
@@ -109,7 +109,7 @@ impl TariScript {
     }
 
     fn should_execute(&self, opcode: &Opcode, state: &ExecutionState) -> Result<bool, ScriptError> {
-        use Opcode::*;
+        use Opcode::{Else, EndIf, IfThen};
         match opcode {
             // always execute these, they will update execution state
             IfThen | Else | EndIf => Ok(true),
@@ -186,8 +186,9 @@ impl TariScript {
         ctx: &ScriptContext,
         state: &mut ExecutionState,
     ) -> Result<(), ScriptError> {
+        #[allow(clippy::enum_glob_use)]
         use Opcode::*;
-        use StackItem::*;
+        use StackItem::{Hash, Number, PublicKey};
         match opcode {
             CheckHeightVerify(height) => TariScript::handle_check_height_verify(*height, ctx.block_height()),
             CheckHeight(height) => TariScript::handle_check_height(stack, *height, ctx.block_height()),
@@ -208,37 +209,51 @@ impl TariScript {
             LtZero => TariScript::handle_cmp_to_zero(stack, &[Ordering::Less]),
             Add => TariScript::handle_op_add(stack),
             Sub => TariScript::handle_op_sub(stack),
-            Equal => match TariScript::handle_equal(stack)? {
-                true => stack.push(Number(1)),
-                false => stack.push(Number(0)),
+            Equal => {
+                if TariScript::handle_equal(stack)? {
+                    stack.push(Number(1))
+                } else {
+                    stack.push(Number(0))
+                }
             },
-            EqualVerify => match TariScript::handle_equal(stack)? {
-                true => Ok(()),
-                false => Err(ScriptError::VerifyFailed),
+            EqualVerify => {
+                if TariScript::handle_equal(stack)? {
+                    Ok(())
+                } else {
+                    Err(ScriptError::VerifyFailed)
+                }
             },
             Or(n) => TariScript::handle_or(stack, *n),
             OrVerify(n) => TariScript::handle_or_verify(stack, *n),
             HashBlake256 => TariScript::handle_hash::<Blake256>(stack),
             HashSha256 => TariScript::handle_hash::<Sha256>(stack),
             HashSha3 => TariScript::handle_hash::<Sha3_256>(stack),
-            CheckSig(msg) => match self.check_sig(stack, *msg.deref())? {
-                true => stack.push(Number(1)),
-                false => stack.push(Number(0)),
+            CheckSig(msg) => {
+                if self.check_sig(stack, *msg.deref())? {
+                    stack.push(Number(1))
+                } else {
+                    stack.push(Number(0))
+                }
             },
-            CheckSigVerify(msg) => match self.check_sig(stack, *msg.deref())? {
-                true => Ok(()),
-                false => Err(ScriptError::VerifyFailed),
+            CheckSigVerify(msg) => {
+                if self.check_sig(stack, *msg.deref())? {
+                    Ok(())
+                } else {
+                    Err(ScriptError::VerifyFailed)
+                }
             },
             CheckMultiSig(m, n, public_keys, msg) => {
-                match self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
-                    true => stack.push(Number(1)),
-                    false => stack.push(Number(0)),
+                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                    stack.push(Number(1))
+                } else {
+                    stack.push(Number(0))
                 }
             },
             CheckMultiSigVerify(m, n, public_keys, msg) => {
-                match self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
-                    true => Ok(()),
-                    false => Err(ScriptError::VerifyFailed),
+                if self.check_multisig(stack, *m, *n, public_keys, *msg.deref())? {
+                    Ok(())
+                } else {
+                    Err(ScriptError::VerifyFailed)
                 }
             },
             Return => Err(ScriptError::Return),
@@ -395,7 +410,7 @@ impl TariScript {
     /// Handle opcodes that push a hash to the stack. I'm not doing any length checks right now, so this should be
     /// added once other digest functions are provided that don't produce 32 byte hashes
     fn handle_hash<D: Digest>(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
-        use StackItem::*;
+        use StackItem::{Commitment, Hash, PublicKey};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         // use a closure to grab &b while it still exists in the match expression
         let to_arr = |b: &[u8]| {
@@ -430,7 +445,7 @@ impl TariScript {
     }
 
     fn handle_op_add(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
-        use StackItem::*;
+        use StackItem::{Commitment, Number, PublicKey, Signature};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let two = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (top, two) {
@@ -443,7 +458,7 @@ impl TariScript {
     }
 
     fn handle_op_sub(stack: &mut ExecutionStack) -> Result<(), ScriptError> {
-        use StackItem::*;
+        use StackItem::{Commitment, Number};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let two = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (top, two) {
@@ -454,7 +469,7 @@ impl TariScript {
     }
 
     fn handle_equal(stack: &mut ExecutionStack) -> Result<bool, ScriptError> {
-        use StackItem::*;
+        use StackItem::{Commitment, Hash, Number, PublicKey, Signature};
         let top = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let two = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (top, two) {
@@ -468,7 +483,7 @@ impl TariScript {
     }
 
     fn check_sig(&self, stack: &mut ExecutionStack, message: Message) -> Result<bool, ScriptError> {
-        use StackItem::*;
+        use StackItem::{PublicKey, Signature};
         let pk = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         let sig = stack.pop().ok_or(ScriptError::StackUnderflow)?;
         match (pk, sig) {
@@ -503,7 +518,7 @@ impl TariScript {
         #[allow(clippy::mutable_key_type)]
         let mut sig_set = HashSet::new();
 
-        for s in signatures.iter() {
+        for s in &signatures {
             for (i, pk) in public_keys.iter().enumerate() {
                 if !sig_set.contains(s) && !key_signed[i] && s.verify_challenge(pk, &message) {
                     key_signed[i] = true;
@@ -740,7 +755,7 @@ mod test {
         let script = script!(CheckHeight(5));
 
         for block_height in 1..=10 {
-            let ctx = context_with_height(block_height as u64);
+            let ctx = context_with_height(u64::try_from(block_height).unwrap());
             assert_eq!(
                 script.execute_with_context(&inputs, &ctx).unwrap(),
                 Number(block_height - 5)
@@ -774,7 +789,7 @@ mod test {
         let inputs = inputs!(5);
 
         for block_height in 1..=10 {
-            let ctx = context_with_height(block_height as u64);
+            let ctx = context_with_height(u64::try_from(block_height).unwrap());
             assert_eq!(
                 script.execute_with_context(&inputs, &ctx).unwrap(),
                 Number(block_height - 5)
@@ -987,7 +1002,7 @@ mod test {
 
     #[test]
     fn check_multisig() {
-        use crate::{op_codes::Opcode::*, StackItem::Number};
+        use crate::{op_codes::Opcode::CheckMultiSig, StackItem::Number};
         let mut rng = rand::thread_rng();
         let (k_alice, p_alice) = RistrettoPublicKey::random_keypair(&mut rng);
         let (k_bob, p_bob) = RistrettoPublicKey::random_keypair(&mut rng);
@@ -1484,7 +1499,7 @@ mod test {
         let s_eve = RistrettoSchnorr::sign(k_eve, r3, m.as_bytes()).unwrap();
 
         // 1 of 2
-        use crate::Opcode::*;
+        use crate::Opcode::{CheckSig, Drop, Dup, Else, EndIf, IfThen, PushPubKey, Return};
         let ops = vec![
             Dup,
             PushPubKey(Box::new(p_alice.clone())),

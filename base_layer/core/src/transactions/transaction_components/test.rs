@@ -379,9 +379,9 @@ fn inputs_not_malleable() {
         1,
         2,
         15.into(),
-        Default::default(),
-        script![Nop],
-        Default::default(),
+        &Default::default(),
+        &script![Nop],
+        &Default::default(),
     );
     let mut stack = inputs[0].input_data.clone();
     let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs);
@@ -569,9 +569,9 @@ mod validate_internal_consistency {
             0,
             1,
             5 * uT,
-            utxo_params.features.clone(),
-            utxo_params.script.clone(),
-            utxo_params.covenant.clone(),
+            &utxo_params.features.clone(),
+            &utxo_params.script.clone(),
+            &utxo_params.covenant.clone(),
         );
         inputs[0].features = input_params.features.clone();
         inputs[0].covenant = input_params.covenant.clone();

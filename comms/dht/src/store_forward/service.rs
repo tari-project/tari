@@ -196,7 +196,7 @@ impl StoreAndForwardService {
         conn: DbConnection,
         peer_manager: Arc<PeerManager>,
         dht_requester: DhtRequester,
-        connectivity: ConnectivityRequester,
+        connectivity: &ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         saf_response_signal_rx: mpsc::Receiver<()>,
@@ -265,19 +265,20 @@ impl StoreAndForwardService {
     }
 
     async fn handle_request(&mut self, request: StoreAndForwardRequest) {
+        #[allow(clippy::enum_glob_use)]
         use StoreAndForwardRequest::*;
         trace!(target: LOG_TARGET, "Request: {:?}", request);
         match request {
-            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(query) {
+            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(&query) {
                 Ok(messages) => {
-                    let _ = reply_tx.send(Ok(messages));
+                    let _result = reply_tx.send(Ok(messages));
                 },
                 Err(err) => {
                     error!(
                         target: LOG_TARGET,
                         "Failed to fetch stored messages because '{:?}'", err
                     );
-                    let _ = reply_tx.send(Err(err));
+                    let _result = reply_tx.send(Err(err));
                 },
             },
             InsertMessage(msg, reply_tx) => {
@@ -289,16 +290,16 @@ impl StoreAndForwardService {
                             .map(|p| format!("public key '{}'", p))
                             .or_else(|| node_id.map(|n| format!("node id '{}'", n)))
                             .unwrap_or_else(|| "<Anonymous>".to_string());
-                        if !existed {
-                            info!(target: LOG_TARGET, "Stored message for {}", pub_key);
-                        } else {
+                        if existed {
                             info!(target: LOG_TARGET, "SAF message for {} already stored", pub_key);
+                        } else {
+                            info!(target: LOG_TARGET, "Stored message for {}", pub_key);
                         }
-                        let _ = reply_tx.send(Ok(existed));
+                        let _result = reply_tx.send(Ok(existed));
                     },
                     Err(err) => {
                         error!(target: LOG_TARGET, "InsertMessage failed because '{:?}'", err);
-                        let _ = reply_tx.send(Err(err.into()));
+                        let _result = reply_tx.send(Err(err.into()));
                     },
                 }
             },
@@ -332,7 +333,7 @@ impl StoreAndForwardService {
     }
 
     async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> SafResult<()> {
-        use ConnectivityEvent::*;
+        use ConnectivityEvent::{ConnectivityStateOnline, PeerConnected};
 
         #[allow(clippy::single_match)]
         match event {
@@ -454,8 +455,8 @@ impl StoreAndForwardService {
         }
     }
 
-    fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
-        use SafResponseType::*;
+    fn handle_fetch_message_query(&self, query: &FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
+        use SafResponseType::{Anonymous, Discovery, ForMe, Join};
         let limit = i64::try_from(self.config.max_returned_messages)
             .ok()
             .or(Some(std::i64::MAX))

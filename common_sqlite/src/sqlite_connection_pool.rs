@@ -28,6 +28,7 @@ use core::{
     },
     time::Duration,
 };
+use std::convert::TryFrom;
 
 use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
@@ -67,7 +68,7 @@ impl SqliteConnectionPool {
     pub fn create_pool(&mut self) -> Result<(), SqliteStorageError> {
         if self.pool.is_none() {
             let pool = Pool::builder()
-                .max_size(self.pool_size as u32)
+                .max_size(u32::try_from(self.pool_size)?)
                 .connection_customizer(Box::new(self.connection_options.clone()))
                 .build(ConnectionManager::<SqliteConnection>::new(self.db_path.as_str()))
                 .map_err(|e| SqliteStorageError::DieselR2d2Error(e.to_string()));

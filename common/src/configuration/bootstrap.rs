@@ -43,6 +43,7 @@ pub enum ApplicationType {
 
 impl ApplicationType {
     pub const fn as_str(&self) -> &'static str {
+        #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
             BaseNode => "Tari Base Node",
@@ -56,6 +57,7 @@ impl ApplicationType {
     }
 
     pub const fn as_config_str(&self) -> &'static str {
+        #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match self {
             BaseNode => "base_node",
@@ -73,6 +75,7 @@ impl FromStr for ApplicationType {
     type Err = ConfigError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        #[allow(clippy::enum_glob_use)]
         use ApplicationType::*;
         match s {
             "base-node" | "base_node" => Ok(BaseNode),

@@ -95,7 +95,7 @@ pub enum MessagingEvent {
 
 impl fmt::Display for MessagingEvent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use MessagingEvent::*;
+        use MessagingEvent::{InvalidMessageReceived, MessageReceived, OutboundProtocolExited};
         match self {
             MessageReceived(node_id, tag) => write!(f, "MessageReceived({}, {})", node_id.short_str(), tag),
             InvalidMessageReceived(node_id) => write!(f, "InvalidMessageReceived({})", node_id.short_str()),
@@ -200,7 +200,7 @@ impl MessagingProtocol {
     }
 
     async fn handle_internal_messaging_event(&mut self, event: MessagingEvent) {
-        use MessagingEvent::*;
+        use MessagingEvent::OutboundProtocolExited;
         trace!(target: LOG_TARGET, "Internal messaging event '{}'", event);
         match event {
             OutboundProtocolExited(node_id) => {
@@ -217,17 +217,17 @@ impl MessagingProtocol {
                         node_id.short_str()
                     );
                 }
-                let _ = self.messaging_events_tx.send(Arc::new(OutboundProtocolExited(node_id)));
+                let _result = self.messaging_events_tx.send(Arc::new(OutboundProtocolExited(node_id)));
             },
             evt => {
                 // Forward the event
-                let _ = self.messaging_events_tx.send(Arc::new(evt));
+                let _result = self.messaging_events_tx.send(Arc::new(evt));
             },
         }
     }
 
     async fn handle_request(&mut self, req: MessagingRequest) -> Result<(), MessagingProtocolError> {
-        use MessagingRequest::*;
+        use MessagingRequest::SendMessage;
         match req {
             SendMessage(msg) => {
                 trace!(target: LOG_TARGET, "Received request to send message ({})", msg);

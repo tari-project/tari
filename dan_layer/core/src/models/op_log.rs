@@ -51,7 +51,7 @@ pub enum StateOperation {
 
 impl StateOperation {
     pub fn as_op_str(&self) -> &str {
-        use StateOperation::*;
+        use StateOperation::{Delete, Set};
         match self {
             Set => "S",
             Delete => "D",

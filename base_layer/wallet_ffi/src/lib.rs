@@ -20,14 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![warn(dead_code)]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
-
 //! # LibWallet API Definition
 //! This module contains the Rust backend implementations of the functionality that a wallet for the Tari Base Layer
 //! will require. The module contains a number of sub-modules that are implemented as async services. These services are
@@ -246,7 +238,7 @@ pub struct TariWallet {
 #[no_mangle]
 pub unsafe extern "C" fn string_destroy(ptr: *mut c_char) {
     if !ptr.is_null() {
-        let _ = CString::from_raw(ptr);
+        let _string = CString::from_raw(ptr);
     }
 }
 
@@ -2963,7 +2955,11 @@ pub unsafe extern "C" fn transport_tcp_create(
     ptr::swap(error_out, &mut error as *mut c_int);
 
     let listener_address_str;
-    if !listener_address.is_null() {
+    if listener_address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("listener_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
         match CStr::from_ptr(listener_address).to_str() {
             Ok(v) => {
                 listener_address_str = v.to_owned();
@@ -2974,10 +2970,6 @@ pub unsafe extern "C" fn transport_tcp_create(
                 return ptr::null_mut();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("listener_address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
     }
 
     match listener_address_str.parse::<Multiaddr>() {
@@ -3041,7 +3033,11 @@ pub unsafe extern "C" fn transport_tor_create(
     ptr::swap(error_out, &mut error as *mut c_int);
 
     let control_address_str;
-    if !control_server_address.is_null() {
+    if control_server_address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("control_server_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
         match CStr::from_ptr(control_server_address).to_str() {
             Ok(v) => {
                 control_address_str = v.to_owned();
@@ -3052,10 +3048,6 @@ pub unsafe extern "C" fn transport_tor_create(
                 return ptr::null_mut();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("control_server_address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
     }
 
     let username_str;
@@ -3089,12 +3081,13 @@ pub unsafe extern "C" fn transport_tor_create(
         SocksAuthentication::None
     };
 
-    let tor_authentication = if !tor_cookie.is_null() {
+    let tor_authentication = if tor_cookie.is_null() {
+        TorControlAuthentication::None
+    } else {
         let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
         TorControlAuthentication::Cookie(cookie_hex)
-    } else {
-        TorControlAuthentication::None
     };
+
     let onion_port = match NonZeroU16::new(tor_port) {
         Some(p) => p,
         None => {
@@ -3165,7 +3158,10 @@ pub unsafe extern "C" fn transport_memory_get_address(
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let mut address = CString::new("").expect("Blank CString will not fail.");
-    if !transport.is_null() {
+    if transport.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int)
+    } else if !transport.is_null() {
         match (*transport).transport_type {
             TransportType::Memory => match CString::new((*transport).memory.listener_address.to_string()) {
                 Ok(v) => address = v,
@@ -3178,10 +3174,7 @@ pub unsafe extern "C" fn transport_memory_get_address(
                 error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
-        };
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
+        }
     }
 
     address.into_raw()
@@ -3258,7 +3251,11 @@ pub unsafe extern "C" fn comms_config_create(
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
     let public_address_str;
-    if !public_address.is_null() {
+    if public_address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("public_address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
         match CStr::from_ptr(public_address).to_str() {
             Ok(v) => {
                 public_address_str = v.to_owned();
@@ -3269,14 +3266,14 @@ pub unsafe extern "C" fn comms_config_create(
                 return ptr::null_mut();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("public_address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
     }
 
     let database_name_string;
-    if !database_name.is_null() {
+    if database_name.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
         match CStr::from_ptr(database_name).to_str() {
             Ok(v) => {
                 database_name_string = v.to_owned();
@@ -3287,14 +3284,14 @@ pub unsafe extern "C" fn comms_config_create(
                 return ptr::null_mut();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("database_name".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
     }
 
     let datastore_path_string;
-    if !datastore_path.is_null() {
+    if datastore_path.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
         match CStr::from_ptr(datastore_path).to_str() {
             Ok(v) => {
                 datastore_path_string = v.to_owned();
@@ -3305,10 +3302,6 @@ pub unsafe extern "C" fn comms_config_create(
                 return ptr::null_mut();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("datastore_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
     }
     let datastore_path = PathBuf::from(datastore_path_string);
 
@@ -3491,7 +3484,7 @@ unsafe fn init_logging(
         let roller = FixedWindowRoller::builder()
             .build(pattern.as_str(), num_rolling_log_files)
             .expect("Should be able to create a Roller");
-        let size_trigger = SizeTrigger::new(size_per_log_file_bytes as u64);
+        let size_trigger = SizeTrigger::new(u64::from(size_per_log_file_bytes));
         let policy = CompoundPolicy::new(Box::new(size_trigger), Box::new(roller));
 
         Box::new(
@@ -3651,14 +3644,14 @@ pub unsafe extern "C" fn wallet_create(
         }
     }
 
-    let passphrase_option = if !passphrase.is_null() {
+    let passphrase_option = if passphrase.is_null() {
+        None
+    } else {
         let pf = CStr::from_ptr(passphrase)
             .to_str()
             .expect("A non-null passphrase should be able to be converted to string")
             .to_owned();
         Some(pf)
-    } else {
-        None
     };
 
     let recovery_seed = if seed_words.is_null() {
@@ -4105,7 +4098,11 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
     }
 
     let parsed_addr;
-    if !address.is_null() {
+    if address.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return false;
+    } else {
         match CStr::from_ptr(address).to_str() {
             Ok(v) => {
                 parsed_addr = match Multiaddr::from_str(v) {
@@ -4124,10 +4121,6 @@ pub unsafe extern "C" fn wallet_add_base_node_peer(
                 return false;
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("address".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return false;
     }
 
     if let Err(e) = (*wallet)
@@ -4397,7 +4390,15 @@ pub unsafe extern "C" fn wallet_send_transaction(
     }
 
     let message_string;
-    if !message.is_null() {
+    if message.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        message_string = CString::new("")
+            .expect("Blank CString will not fail")
+            .to_str()
+            .expect("CString.to_str() will not fail")
+            .to_owned();
+    } else {
         match CStr::from_ptr(message).to_str() {
             Ok(v) => {
                 message_string = v.to_owned();
@@ -4412,51 +4413,40 @@ pub unsafe extern "C" fn wallet_send_transaction(
                     .to_owned();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        message_string = CString::new("")
-            .expect("Blank CString will not fail")
-            .to_str()
-            .expect("CString.to_str() will not fail")
-            .to_owned();
     };
 
-    match one_sided {
-        true => {
-            match (*wallet)
-                .runtime
-                .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
-                    (*dest_public_key).clone(),
-                    MicroTari::from(amount),
-                    MicroTari::from(fee_per_gram),
-                    message_string,
-                )) {
-                Ok(tx_id) => tx_id.as_u64(),
-                Err(e) => {
-                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    0
-                },
-            }
-        },
-        false => {
-            match (*wallet)
-                .runtime
-                .block_on((*wallet).wallet.transaction_service.send_transaction(
-                    (*dest_public_key).clone(),
-                    MicroTari::from(amount),
-                    MicroTari::from(fee_per_gram),
-                    message_string,
-                )) {
-                Ok(tx_id) => tx_id.as_u64(),
-                Err(e) => {
-                    error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    0
-                },
-            }
-        },
+    if one_sided {
+        match (*wallet)
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.send_one_sided_transaction(
+                (*dest_public_key).clone(),
+                MicroTari::from(amount),
+                MicroTari::from(fee_per_gram),
+                message_string,
+            )) {
+            Ok(tx_id) => tx_id.as_u64(),
+            Err(e) => {
+                error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                0
+            },
+        }
+    } else {
+        match (*wallet)
+            .runtime
+            .block_on((*wallet).wallet.transaction_service.send_transaction(
+                (*dest_public_key).clone(),
+                MicroTari::from(amount),
+                MicroTari::from(fee_per_gram),
+                message_string,
+            )) {
+            Ok(tx_id) => tx_id.as_u64(),
+            Err(e) => {
+                error = LibWalletError::from(WalletError::TransactionServiceError(e)).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                0
+            },
+        }
     }
 }
 
@@ -5324,7 +5314,15 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
     };
 
     let message_string;
-    if !message.is_null() {
+    if message.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        message_string = CString::new("Imported UTXO")
+            .expect("CString will not fail")
+            .to_str()
+            .expect("CString.toStr() will not fail")
+            .to_owned();
+    } else {
         match CStr::from_ptr(message).to_str() {
             Ok(v) => {
                 message_string = v.to_owned();
@@ -5339,14 +5337,6 @@ pub unsafe extern "C" fn wallet_import_external_utxo_as_non_rewindable(
                     .to_owned();
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("message".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        message_string = CString::new("Imported UTXO")
-            .expect("CString will not fail")
-            .to_str()
-            .expect("CString.toStr() will not fail")
-            .to_owned();
     };
 
     let public_script_key = PublicKey::from_secret_key(&(*spending_key));
@@ -5618,7 +5608,9 @@ pub unsafe extern "C" fn wallet_coin_split(
 
     let message;
 
-    if !msg.is_null() {
+    if msg.is_null() {
+        message = "Coin Split".to_string()
+    } else {
         match CStr::from_ptr(msg).to_str() {
             Ok(v) => {
                 message = v.to_owned();
@@ -5627,8 +5619,6 @@ pub unsafe extern "C" fn wallet_coin_split(
                 message = "Coin Split".to_string();
             },
         }
-    } else {
-        message = "Coin Split".to_string()
     };
 
     match (*wallet).runtime.block_on((*wallet).wallet.coin_split(
@@ -6238,7 +6228,11 @@ pub unsafe extern "C" fn file_partial_backup(
     ptr::swap(error_out, &mut error as *mut c_int);
 
     let original_path_string;
-    if !original_file_path.is_null() {
+    if original_file_path.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("original_file_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    } else {
         match CStr::from_ptr(original_file_path).to_str() {
             Ok(v) => {
                 original_path_string = v.to_owned();
@@ -6249,15 +6243,15 @@ pub unsafe extern "C" fn file_partial_backup(
                 return;
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("original_file_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
     }
     let original_path = PathBuf::from(original_path_string);
 
     let backup_path_string;
-    if !backup_file_path.is_null() {
+    if backup_file_path.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("backup_file_path".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return;
+    } else {
         match CStr::from_ptr(backup_file_path).to_str() {
             Ok(v) => {
                 backup_path_string = v.to_owned();
@@ -6268,10 +6262,6 @@ pub unsafe extern "C" fn file_partial_backup(
                 return;
             },
         }
-    } else {
-        error = LibWalletError::from(InterfaceError::NullError("backup_file_path".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return;
     }
     let backup_path = PathBuf::from(backup_path_string);
 
@@ -7541,7 +7531,7 @@ mod test {
                 ("key3".to_string(), "value3".to_string()),
             ];
 
-            for kv in client_key_values.iter() {
+            for kv in &client_key_values {
                 let k = CString::new(kv.0.as_str()).unwrap();
                 let k_str: *const c_char = CString::into_raw(k) as *const c_char;
                 let v = CString::new(kv.1.as_str()).unwrap();
@@ -7559,7 +7549,7 @@ mod test {
             wallet_apply_encryption(alice_wallet, passphrase_const_str, error_ptr);
             assert_eq!(error, 0);
 
-            for kv in client_key_values.iter() {
+            for kv in &client_key_values {
                 let k = CString::new(kv.0.as_str()).unwrap();
                 let k_str: *const c_char = CString::into_raw(k) as *const c_char;
 
@@ -7736,7 +7726,7 @@ mod test {
                 let utxo_temp = create_unblinded_output(
                     script!(Nop),
                     default_features.clone(),
-                    test_params.clone(),
+                    &test_params,
                     MicroTari::from(100_000),
                 );
                 if utxo_temp.features.recovery_byte != default_features.recovery_byte {
@@ -7790,7 +7780,7 @@ mod test {
                 let utxo_temp = create_unblinded_output(
                     script!(Nop),
                     default_features.clone(),
-                    test_params.clone(),
+                    &test_params,
                     MicroTari::from(200_000),
                 );
                 if utxo_temp.features.recovery_byte != default_features.recovery_byte {

@@ -159,7 +159,7 @@ impl<TSpecification: ServiceSpecification> CommitState<TSpecification> {
         let mut node_hash = None;
         for message in self.received_new_view_messages.values() {
             node_hash = match node_hash {
-                None => message.node_hash().cloned(),
+                None => message.node_hash().copied(),
                 Some(n) => {
                     if let Some(m_node) = message.node_hash() {
                         if &n != m_node {

@@ -90,7 +90,7 @@ fn verify_header(header: &BlockHeader) -> Result<MoneroPowData, MergeMineError> 
 }
 
 pub fn extract_tari_hash(monero: &monero::Block) -> Option<&monero::Hash> {
-    for item in monero.miner_tx.prefix.extra.0.iter() {
+    for item in &monero.miner_tx.prefix.extra.0 {
         if let SubField::MergeMining(_depth, merge_mining_hash) = item {
             return Some(merge_mining_hash);
         }
@@ -176,6 +176,8 @@ pub fn create_block_hashing_blob(
 
 #[cfg(test)]
 mod test {
+    use std::convert::TryFrom;
+
     use monero::{
         blockdata::transaction::{ExtraField, TxOutTarget},
         consensus::deserialize,
@@ -358,7 +360,7 @@ mod test {
         };
         let hash = block_header.merged_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
-        let count = 1 + (block.tx_hashes.len() as u16);
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
         // Note: tx_hashes is empty, so |hashes| == 1
@@ -407,7 +409,7 @@ mod test {
             nonce: 0,
             pow: ProofOfWork::default(),
         };
-        let count = 1 + (block.tx_hashes.len() as u16);
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
         for item in block.clone().tx_hashes {
@@ -458,7 +460,7 @@ mod test {
         };
         let hash = Hash::null_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
-        let count = 1 + (block.tx_hashes.len() as u16);
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
@@ -512,7 +514,7 @@ mod test {
         };
         let hash = block_header.merged_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
-        let count = 1 + (block.tx_hashes.len() as u16);
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());
@@ -603,7 +605,7 @@ mod test {
         };
         let hash = block_header.merged_mining_hash();
         append_merge_mining_tag(&mut block, hash).unwrap();
-        let count = 1 + (block.tx_hashes.len() as u16);
+        let count = 1 + (u16::try_from(block.tx_hashes.len()).unwrap());
         let mut hashes = Vec::with_capacity(count as usize);
         let mut proof = Vec::with_capacity(count as usize);
         hashes.push(block.miner_tx.hash());

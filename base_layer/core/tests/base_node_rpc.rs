@@ -264,7 +264,7 @@ async fn test_base_node_wallet_rpc() {
     let response = service.fetch_matching_utxos(req).await.unwrap().into_message();
 
     assert_eq!(response.outputs.len(), utxos1.len());
-    for output_proto in response.outputs.iter() {
+    for output_proto in &response.outputs {
         let output = TransactionOutput::try_from(output_proto.clone()).unwrap();
 
         assert!(utxos1

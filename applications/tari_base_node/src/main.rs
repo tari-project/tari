@@ -20,15 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
-#![deny(clippy::needless_borrow)]
-
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣶⣶⣤⣄⡀⠀⠀⠀⠀⠀⠉⠛⣿⣿⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⣿⣿⡏⠉⠉⠉⠉⠀⠀⣰⣿⣿⣿⣿⠀⠀⠀⠀⢸⣿⣿⠉⠉⠉⠛⣿⣿⡆⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -108,8 +99,7 @@ use tari_common::{
     initialize_logging,
     load_configuration,
 };
-use tari_comms::{peer_manager::PeerFeatures, tor::HiddenServiceControllerError, NodeIdentity};
-use tari_core::chain_storage::ChainStorageError;
+use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -126,7 +116,11 @@ fn main() {
     if let Err(err) = main_inner() {
         eprintln!("{:?}", err);
         let exit_code = err.exit_code;
-        eprintln!("{}", exit_code.hint());
+        if let Some(hint) = exit_code.hint() {
+            eprintln!();
+            eprintln!("{}", hint);
+            eprintln!();
+        }
         error!(
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}", exit_code as i32, err
@@ -146,13 +140,13 @@ fn main_inner() -> Result<(), ExitError> {
     )?;
 
     #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
-    let mut app_config = ApplicationConfig::load_from(&cfg)?;
-    debug!(target: LOG_TARGET, "Using base node configuration: {:?}", app_config);
+    let mut config = ApplicationConfig::load_from(&cfg)?;
+    debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
-        app_config.base_node.identity_file.as_path(),
-        &app_config.base_node.p2p.public_address,
+        &config.base_node.identity_file,
+        config.base_node.p2p.public_address.as_ref(),
         cli.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
@@ -162,7 +156,7 @@ fn main_inner() -> Result<(), ExitError> {
         info!(
             target: LOG_TARGET,
             "Base node's node ID created at '{}'. Done.",
-            app_config.base_node.identity_file.as_path().to_string_lossy(),
+            config.base_node.identity_file.as_path().to_string_lossy(),
         );
         return Ok(());
     }
@@ -181,18 +175,18 @@ fn main_inner() -> Result<(), ExitError> {
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
-    if app_config.base_node.use_libtor && app_config.base_node.p2p.transport.is_tor() {
+    if config.base_node.use_libtor && config.base_node.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
-        tor.update_comms_transport(&mut app_config.base_node.p2p.transport)?;
+        tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,
-            "Updated Tor comms transport: {:?}", app_config.base_node.p2p.transport
+            "Updated Tor comms transport: {:?}", config.base_node.p2p.transport
         );
     }
 
     // Run the base node
-    runtime.block_on(run_node(node_identity, Arc::new(app_config), cli, shutdown))?;
+    runtime.block_on(run_node(node_identity, Arc::new(config), cli, shutdown))?;
 
     // Shutdown and send any traces
     global::shutdown_tracer_provider();
@@ -203,7 +197,7 @@ fn main_inner() -> Result<(), ExitError> {
 /// Sets up the base node and runs the cli_loop
 async fn run_node(
     node_identity: Arc<NodeIdentity>,
-    app_config: Arc<ApplicationConfig>,
+    config: Arc<ApplicationConfig>,
     cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
@@ -216,7 +210,7 @@ async fn run_node(
         metrics::install(
             ApplicationType::BaseNode,
             &node_identity,
-            &app_config.metrics,
+            &config.metrics,
             shutdown.to_signal(),
         );
     }
@@ -226,38 +220,17 @@ async fn run_node(
 
     if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&app_config.base_node)?;
-        recovery::run_recovery(&app_config.base_node)
+        recovery::initiate_recover_db(&config.base_node)?;
+        recovery::run_recovery(&config.base_node)
             .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, &e))?;
         return Ok(());
     };
 
     // Build, node, build!
-    let ctx = builder::configure_and_initialize_node(app_config.clone(), node_identity, shutdown.to_signal())
-        .await
-        .map_err(|err| {
-            for boxed_error in err.chain() {
-                if let Some(HiddenServiceControllerError::TorControlPortOffline) = boxed_error.downcast_ref() {
-                    return ExitCode::TorOffline.into();
-                }
-                if let Some(ChainStorageError::DatabaseResyncRequired(reason)) = boxed_error.downcast_ref() {
-                    return ExitError::new(
-                        ExitCode::DbInconsistentState,
-                        format!("You may need to resync your database because {}", reason),
-                    );
-                }
+    let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
 
-                // todo: find a better way to do this
-                if boxed_error.to_string().contains("Invalid force sync peer") {
-                    println!("Please check your force sync peers configuration");
-                    return ExitError::new(ExitCode::ConfigError, boxed_error);
-                }
-            }
-            ExitError::new(ExitCode::UnknownError, err)
-        })?;
-
-    if let Some(address) = app_config.base_node.grpc_address {
+    if let Some(address) = config.base_node.grpc_address {
         // Go, GRPC, go go
         let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
         task::spawn(run_grpc(grpc, address, shutdown.to_signal()));
@@ -274,8 +247,8 @@ async fn run_node(
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
     }
-    task::spawn(main_loop.cli_loop(app_config.base_node.resize_terminal_on_startup));
-    if !app_config.base_node.force_sync_peers.is_empty() {
+    task::spawn(main_loop.cli_loop(config.base_node.resize_terminal_on_startup));
+    if !config.base_node.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
             "Force Sync Peers have been set! This node will only sync to the nodes in this set."

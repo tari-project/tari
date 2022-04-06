@@ -65,7 +65,7 @@ impl ConnectivitySelection {
 
     /// Select peers from the pool according to the ConnectivitySelection
     pub fn select<'a>(&self, pool: &'a ConnectionPool) -> Vec<&'a PeerConnection> {
-        use SelectionMode::*;
+        use SelectionMode::{AllNodes, ClosestTo, RandomNodes};
         match &self.selection_mode {
             AllNodes => select_connected_nodes(pool, &self.excluded_peers),
             RandomNodes(n) => select_random_nodes(pool, *n, &self.excluded_peers),
@@ -104,7 +104,7 @@ pub fn select_closest<'a>(pool: &'a ConnectionPool, node_id: &NodeId, exclude: &
 
 pub fn select_random_nodes<'a>(pool: &'a ConnectionPool, n: usize, exclude: &[NodeId]) -> Vec<&'a PeerConnection> {
     let nodes = select_connected_nodes(pool, exclude);
-    nodes.choose_multiple(&mut OsRng, n).cloned().collect()
+    nodes.choose_multiple(&mut OsRng, n).copied().collect()
 }
 
 impl Display for ConnectivitySelection {
@@ -120,7 +120,7 @@ impl Display for ConnectivitySelection {
 
 impl Display for SelectionMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use SelectionMode::*;
+        use SelectionMode::{AllNodes, ClosestTo, RandomNodes};
         match self {
             AllNodes => write!(f, "AllNodes"),
             RandomNodes(n) => write!(f, "RandomNodes({})", n),

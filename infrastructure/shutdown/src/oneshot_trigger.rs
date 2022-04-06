@@ -56,7 +56,7 @@ impl<T: Clone> OneshotTrigger<T> {
 
     pub fn broadcast(&mut self, item: T) {
         if let Some(tx) = self.sender.take() {
-            let _ = tx.send(item);
+            let _result = tx.send(item);
         }
     }
 

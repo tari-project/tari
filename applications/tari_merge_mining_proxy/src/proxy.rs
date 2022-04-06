@@ -264,16 +264,7 @@ impl InnerService {
             let start = Instant::now();
             match base_node_client.submit_block(block_data.tari_block).await {
                 Ok(resp) => {
-                    if !self.config.proxy_submit_to_origin {
-                        // self-select related, do not change.
-                        json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
-                        trace!(
-                            target: LOG_TARGET,
-                            "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
-                            self.config.proxy_submit_to_origin,
-                            json_resp
-                        );
-                    } else {
+                    if self.config.proxy_submit_to_origin {
                         json_resp = json_rpc::success_response(
                             request["id"].as_i64(),
                             json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
@@ -288,6 +279,15 @@ impl InnerService {
                             "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
                             height,
                             start.elapsed()
+                        );
+                    } else {
+                        // self-select related, do not change.
+                        json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
+                        trace!(
+                            target: LOG_TARGET,
+                            "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
+                            self.config.proxy_submit_to_origin,
+                            json_resp
                         );
                     }
                     self.block_templates.remove(&hash).await;
@@ -379,24 +379,26 @@ impl InnerService {
                 .await?
                 .into_inner();
 
-            if !initial_sync_achieved {
+            if initial_sync_achieved {
+                self.initial_sync_achieved.store(true, Ordering::Relaxed);
+                let msg = format!(
+                    "Initial base node sync achieved. Ready to mine at height #{}",
+                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
+                );
+                debug!(target: LOG_TARGET, "{}", msg);
+                println!("{}", msg);
+                println!("Listening on {}...", self.config.proxy_listener_address);
+            } else {
                 let msg = format!(
                     "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
                     metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
                     self.config.wait_for_initial_sync_at_startup,
                 );
                 debug!(target: LOG_TARGET, "{}", msg);
+                println!("{}", msg);
                 if self.config.wait_for_initial_sync_at_startup {
                     return Err(MmProxyError::MissingDataError(msg));
                 }
-            } else {
-                self.initial_sync_achieved.store(true, Ordering::Relaxed);
-                let msg = format!(
-                    "Initial base node sync achieved. Ready to mine at height #{}",
-                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
-                );
-                info!(target: LOG_TARGET, "{}", msg);
-                info!("Listening on {}...", self.config.proxy_listener_address);
             }
         }
 

@@ -215,7 +215,7 @@ pub async fn oms_reply_channel_task(
             )),
         };
 
-        let _ = reply_tx.send(response);
+        let _result = reply_tx.send(response);
     }
 }
 
@@ -267,7 +267,7 @@ async fn tx_broadcast_protocol_submit_success() {
         is_synced: false,
     });
 
-    let _ = rpc_service_state
+    let _transactions = rpc_service_state
         .wait_pop_submit_transaction_calls(5, Duration::from_secs(6))
         .await
         .unwrap();
@@ -279,7 +279,7 @@ async fn tx_broadcast_protocol_submit_success() {
         is_synced: true,
     });
 
-    let _ = rpc_service_state
+    let _transactions = rpc_service_state
         .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
         .await
         .unwrap();
@@ -415,7 +415,7 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
 
     // Check if in mempool (its not)
     // Wait for 1 queries
-    let _ = rpc_service_state
+    let _schnorr_signatures = rpc_service_state
         .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
         .await
         .unwrap();
@@ -430,13 +430,13 @@ async fn tx_broadcast_protocol_restart_protocol_as_query() {
     });
 
     // Should receive a resubmission call
-    let _ = rpc_service_state
+    let _transactions = rpc_service_state
         .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
         .await
         .expect("Should receive a resubmission call");
 
     // Wait for 1 more query
-    let _ = rpc_service_state
+    let _schnorr_signatures = rpc_service_state
         .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
         .await
         .unwrap();
@@ -506,12 +506,12 @@ async fn tx_broadcast_protocol_submit_success_followed_by_rejection() {
     });
 
     // Wait for 1 query
-    let _ = rpc_service_state
+    let _schnorr_signatures = rpc_service_state
         .wait_pop_transaction_query_calls(1, Duration::from_secs(30))
         .await
         .unwrap();
 
-    let _ = rpc_service_state
+    let _transactions = rpc_service_state
         .wait_pop_submit_transaction_calls(2, Duration::from_secs(30))
         .await
         .unwrap();
@@ -587,12 +587,12 @@ async fn tx_broadcast_protocol_submit_already_mined() {
 
     let join_handle = task::spawn(protocol.execute());
 
-    let _ = rpc_service_state
+    let _transactions = rpc_service_state
         .wait_pop_submit_transaction_calls(1, Duration::from_secs(5))
         .await
         .expect("Should receive a submission call");
 
-    let _ = rpc_service_state
+    let _schnorr_signatures = rpc_service_state
         .wait_pop_transaction_query_calls(1, Duration::from_secs(5))
         .await
         .unwrap();
@@ -656,7 +656,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     let join_handle = task::spawn(protocol.execute());
 
     // Wait for 1 queries
-    let _ = rpc_service_state
+    let _schnorr_signatures = rpc_service_state
         .wait_pop_transaction_query_calls(1, Duration::from_secs(205))
         .await
         .unwrap();
@@ -689,7 +689,7 @@ async fn tx_broadcast_protocol_submit_and_base_node_gets_changed() {
     wallet_connectivity.notify_base_node_set(new_server_node_identity.to_peer());
 
     // Wait for 1 query
-    let _ = new_rpc_service_state
+    let _schnorr_signatures = new_rpc_service_state
         .wait_pop_transaction_query_calls(1, Duration::from_secs(20))
         .await
         .unwrap();
@@ -1152,7 +1152,7 @@ async fn tx_validation_protocol_reorg() {
     let completed_txs = resources.db.get_completed_transactions().await.unwrap();
     let mut unconfirmed_count = 0;
     let mut confirmed_count = 0;
-    for (_k, tx) in completed_txs.iter() {
+    for tx in completed_txs.values() {
         if tx.status == TransactionStatus::MinedUnconfirmed {
             unconfirmed_count += 1;
         }
@@ -1166,8 +1166,8 @@ async fn tx_validation_protocol_reorg() {
     // Now we will reorg to new blocks 8 and 9, tx 4 will disappear and tx5 will appear in block 9, coinbase_tx2 should
     // become invalid and coinbase_tx1 should return to coinbase status
 
-    let _ = block_headers.remove(&9);
-    let _ = block_headers.remove(&10);
+    let _block_header = block_headers.remove(&9);
+    let _block_header = block_headers.remove(&10);
     let mut block_header = BlockHeader::new(2);
     block_header.height = 8;
     block_headers.insert(8, block_header.clone());
@@ -1239,7 +1239,7 @@ async fn tx_validation_protocol_reorg() {
     };
 
     rpc_service_state.set_transaction_query_batch_responses(batch_query_response.clone());
-    let _ = rpc_service_state.take_get_header_by_height_calls();
+    let _result = rpc_service_state.take_get_header_by_height_calls();
 
     let protocol = TransactionValidationProtocol::new(
         2.into(),

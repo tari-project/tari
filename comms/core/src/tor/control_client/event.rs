@@ -41,7 +41,7 @@ pub enum TorControlEvent {
 }
 
 impl TorControlEvent {
-    pub fn try_from_response(resp: ResponseLine) -> Result<Self, ControlEventError> {
+    pub fn try_from_response(resp: &ResponseLine) -> Result<Self, ControlEventError> {
         debug_assert!(resp.is_event());
 
         let mut parts = resp.value.splitn(2, ' ');

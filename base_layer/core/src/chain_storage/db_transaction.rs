@@ -356,6 +356,7 @@ pub enum WriteOperation {
 
 impl fmt::Display for WriteOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use WriteOperation::*;
         match self {
             InsertOrphanBlock(block) => write!(

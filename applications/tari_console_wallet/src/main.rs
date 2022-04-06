@@ -73,8 +73,14 @@ fn main() {
     match main_inner() {
         Ok(_) => process::exit(0),
         Err(err) => {
-            eprintln!("{:?}", err);
+            eprintln!("{}", err);
             let exit_code = err.exit_code;
+            if let Some(hint) = exit_code.hint() {
+                eprintln!();
+                eprintln!("{}", hint);
+                eprintln!();
+            }
+
             error!(
                 target: LOG_TARGET,
                 "Exiting with code ({}): {:?}: {}", exit_code as i32, exit_code, err
@@ -190,7 +196,7 @@ fn main_inner() -> Result<(), ExitError> {
         },
         WalletMode::Invalid => Err(ExitError::new(
             ExitCode::InputError,
-            "Invalid wallet mode - are you trying too many command options at once?",
+            &"Invalid wallet mode - are you trying too many command options at once?",
         )),
     };
 

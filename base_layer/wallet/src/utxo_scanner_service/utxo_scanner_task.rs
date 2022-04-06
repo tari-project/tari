@@ -85,6 +85,7 @@ where TBackend: WalletBackend + 'static
                 "Scanning round aborted as a Recovery is in progress"
             );
             return Ok(());
+        } else {
         }
 
         loop {
@@ -326,16 +327,16 @@ where TBackend: WalletBackend + 'static
         let mut found_scanned_block = None;
         let mut num_outputs = 0u64;
         let mut amount = MicroTari::from(0);
-        for sb in scanned_blocks.into_iter() {
+        for sb in scanned_blocks {
             if sb.height <= current_tip_height {
                 if found_scanned_block.is_none() {
                     let header = BlockHeader::try_from(client.get_header_by_height(sb.height).await?)
                         .map_err(UtxoScannerError::ConversionError)?;
                     let header_hash = header.hash();
-                    if header_hash != sb.header_hash {
-                        missing_scanned_blocks.push(sb.clone());
-                    } else {
+                    if header_hash == sb.header_hash {
                         found_scanned_block = Some(sb.clone());
+                    } else {
+                        missing_scanned_blocks.push(sb.clone());
                     }
                 }
                 if found_scanned_block.is_some() {
@@ -587,7 +588,7 @@ where TBackend: WalletBackend + 'static
     }
 
     fn publish_event(&self, event: UtxoScannerEvent) {
-        let _ = self.event_sender.send(event);
+        let _size = self.event_sender.send(event);
     }
 
     /// A faux incoming transaction will be created to provide a record of the event of importing a scanned UTXO. The
@@ -640,7 +641,7 @@ where TBackend: WalletBackend + 'static
         let birthday = self.resources.db.get_wallet_birthday().await?;
         // Calculate the unix epoch time of two days before the wallet birthday. This is to avoid any weird time zone
         // issues
-        let epoch_time = (birthday.saturating_sub(2) as u64) * 60 * 60 * 24;
+        let epoch_time = u64::from(birthday.saturating_sub(2)) * 60 * 60 * 24;
         let block_height = match client.get_height_at_time(epoch_time).await {
             Ok(b) => b,
             Err(e) => {

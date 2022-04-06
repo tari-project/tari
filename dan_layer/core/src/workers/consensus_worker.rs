@@ -127,7 +127,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
             .get_or_create_chain_db(&self.asset_definition.public_key)?;
         self.current_view_id = chain_db
             .get_tip_node()?
-            .map(|n| ViewId(n.height() as u64))
+            .map(|n| ViewId(u64::from(n.height())))
             .unwrap_or_else(|| ViewId(0));
         info!(
             target: LOG_TARGET,
@@ -176,7 +176,7 @@ struct ConsensusWorkerProcessor<'a, T: ServiceSpecification> {
 
 impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a, T> {
     async fn next_state_event(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        use ConsensusWorkerState::*;
+        use ConsensusWorkerState::{Commit, Decide, Idle, NextView, PreCommit, Prepare, Starting, Synchronizing};
         match &mut self.worker.state {
             Starting => self.starting().await,
             Synchronizing => self.synchronizing().await,
@@ -362,7 +362,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         &mut self,
         event: ConsensusWorkerStateEvent,
     ) -> Result<(ConsensusWorkerState, ConsensusWorkerState), DigitalAssetError> {
-        use ConsensusWorkerState::*;
+        use ConsensusWorkerState::{Commit, Decide, Idle, NextView, PreCommit, Prepare, Starting, Synchronizing};
+        #[allow(clippy::enum_glob_use)]
         use ConsensusWorkerStateEvent::*;
         let from = self.state;
         self.state = match (&self.state, event) {
@@ -386,8 +387,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                 unimplemented!("Base layer checkpoint not found!")
             },
             (s, e) => {
-                dbg!(&s);
-                dbg!(&e);
+                println!("{:?}", s);
+                println!("{:?}", e);
                 unimplemented!("State machine transition not implemented")
             },
         };
@@ -402,7 +403,10 @@ mod test {
 
     use super::*;
     use crate::{
-        models::{Committee, ConsensusWorkerState::*},
+        models::{
+            Committee,
+            ConsensusWorkerState::{Commit, Decide, NextView, PreCommit, Prepare},
+        },
         services::{
             infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
             mocks::{mock_events_publisher, MockCommitteeManager, MockEventsPublisher},
@@ -502,7 +506,7 @@ mod test {
     }
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
-        dbg!(events);
+        println!("{:?}", events);
         let mapped_events = events.iter().map(|e| match e {
             ConsensusWorkerDomainEvent::StateChanged { from: _, to: new } => Some(new),
         });

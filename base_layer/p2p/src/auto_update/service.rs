@@ -103,7 +103,7 @@ impl SoftwareUpdaterService {
             let maybe_update = tokio::select! {
                 Some(reply) = request_rx.recv() => {
                     let maybe_update = self.check_for_updates().await;
-                    let _ = reply.send(maybe_update.clone());
+                    let _result = reply.send(maybe_update.clone());
                     maybe_update
                },
 
@@ -121,7 +121,7 @@ impl SoftwareUpdaterService {
                     .map(|up| up.version() < update.version())
                     .unwrap_or(true)
                 {
-                    let _ = notifier.send(Some(update.clone()));
+                    let _result = notifier.send(Some(update.clone()));
                 }
             }
         }

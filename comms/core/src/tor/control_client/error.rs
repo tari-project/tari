@@ -54,7 +54,7 @@ pub enum TorClientError {
 
 impl From<LinesCodecError> for TorClientError {
     fn from(err: LinesCodecError) -> Self {
-        use LinesCodecError::*;
+        use LinesCodecError::{Io, MaxLineLengthExceeded};
         match err {
             MaxLineLengthExceeded => TorClientError::MaxLineLengthExceeded,
             Io(err) => TorClientError::Io(err),

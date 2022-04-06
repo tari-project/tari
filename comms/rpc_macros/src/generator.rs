@@ -83,7 +83,7 @@ impl RpcCodeGenerator {
             match req.method().id() {
                 #match_branches
 
-                id => Box::pin(#dep_mod::future::ready(Err(RpcStatus::unsupported_method(format!(
+                id => Box::pin(#dep_mod::future::ready(Err(RpcStatus::unsupported_method(&format!(
                     "Method identifier `{}` is not recognised or supported",
                     id
                 ))))),

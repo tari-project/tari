@@ -69,13 +69,13 @@ use tower::ServiceBuilder;
 
 use crate::{
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
+    config::{P2pConfig, PeerSeedsConfig},
     peer_seeds::{DnsSeedResolver, SeedPeer},
     transport::{TorConfig, TransportType},
     TransportConfig,
     MAJOR_NETWORK_VERSION,
     MINOR_NETWORK_VERSION,
 };
-
 const LOG_TARGET: &str = "p2p::initialization";
 
 #[derive(Debug, Error)]
@@ -97,23 +97,6 @@ pub enum CommsInitializationError {
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
 }
-
-impl CommsInitializationError {
-    pub fn to_friendly_string(&self) -> String {
-        // Add any helpful user-facing messages here
-        match self {
-            CommsInitializationError::HiddenServiceControllerError(HiddenServiceControllerError::TorControlPortOffline)
-                 => r#"Unable to connect to the Tor control port.
-    Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
-    If you are unsure of what to do, use the following command to start the Tor proxy:
-    tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1"#
-                    .to_string(),
-            err => format!("Failed to initialize comms: {:?}", err),
-        }
-    }
-}
-
-use crate::config::{P2pConfig, PeerSeedsConfig};
 
 /// Initialize Tari Comms configured for tests
 pub async fn initialize_local_test_comms(
@@ -150,7 +133,7 @@ pub async fn initialize_local_test_comms(
         .with_listener_address(node_identity.public_address())
         .with_listener_liveness_max_sessions(1)
         .with_node_identity(node_identity)
-        .with_user_agent("/test/1.0")
+        .with_user_agent(&"/test/1.0")
         .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1)

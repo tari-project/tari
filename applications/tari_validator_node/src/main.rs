@@ -100,7 +100,7 @@ async fn run_node(config: &ApplicationConfig, cli: Cli) -> Result<(), ExitError>
 
     let node_identity = setup_node_identity(
         &config.validator_node.identity_file,
-        &config.validator_node.public_address,
+        config.validator_node.public_address.as_ref(),
         cli.create_id,
         PeerFeatures::NONE,
     )?;
@@ -164,7 +164,7 @@ fn build_runtime() -> Result<Runtime, ExitError> {
     builder
         .enable_all()
         .build()
-        .map_err(|e| ExitError::new(ExitCode::UnknownError, e))
+        .map_err(|e| ExitError::new(ExitCode::UnknownError, &e))
 }
 
 async fn run_dan_node(

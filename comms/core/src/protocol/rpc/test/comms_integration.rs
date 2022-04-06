@@ -81,7 +81,7 @@ async fn run_service() {
 
     let mut client = conn.connect_rpc::<MockRpcClient>().await.unwrap();
 
-    mock_state.set_response_ok(());
+    mock_state.set_response_ok(&());
     client.request_response::<_, ()>((), 0.into()).await.unwrap();
     assert_eq!(mock_state.call_count(), 1);
 

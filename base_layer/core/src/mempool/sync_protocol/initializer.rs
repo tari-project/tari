@@ -63,7 +63,7 @@ impl MempoolSyncInitializer {
     pub fn get_protocol_extension(&self) -> impl ProtocolExtension {
         let notif_tx = self.notif_tx.clone();
         move |context: &mut ProtocolExtensionContext| -> Result<(), ProtocolExtensionError> {
-            context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx);
+            context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], &notif_tx);
             Ok(())
         }
     }

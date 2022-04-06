@@ -88,6 +88,7 @@ async fn connect_to_nonexistent_peer() {
 }
 
 #[runtime::test]
+#[allow(clippy::similar_names)]
 async fn dial_success() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
@@ -102,7 +103,7 @@ async fn dial_success() {
     let peer_manager1 = build_peer_manager();
 
     let mut protocols = Protocols::new();
-    protocols.add([TEST_PROTO.clone()], proto_tx1);
+    protocols.add([TEST_PROTO.clone()], &proto_tx1);
     let mut conn_man1 = build_connection_manager(
         {
             let mut config = TestNodeConfig {
@@ -122,7 +123,7 @@ async fn dial_success() {
 
     let peer_manager2 = build_peer_manager();
     let mut protocols = Protocols::new();
-    protocols.add([TEST_PROTO.clone()], proto_tx2);
+    protocols.add([TEST_PROTO.clone()], &proto_tx2);
     let mut conn_man2 = build_connection_manager(
         {
             let mut config = TestNodeConfig {
@@ -199,6 +200,7 @@ async fn dial_success() {
 }
 
 #[runtime::test]
+#[allow(clippy::similar_names)]
 async fn dial_success_aux_tcp_listener() {
     static TEST_PROTO: ProtocolId = ProtocolId::from_static(b"/test/valid");
     let shutdown = Shutdown::new();
@@ -213,7 +215,7 @@ async fn dial_success_aux_tcp_listener() {
     let peer_manager1 = build_peer_manager();
 
     let mut protocols = Protocols::new();
-    protocols.add([TEST_PROTO.clone()], proto_tx1);
+    protocols.add([TEST_PROTO.clone()], &proto_tx1);
     let mut conn_man1 = build_connection_manager(
         {
             let mut config = TestNodeConfig {
@@ -256,7 +258,7 @@ async fn dial_success_aux_tcp_listener() {
         .await
         .unwrap();
     let mut protocols = Protocols::new();
-    protocols.add([TEST_PROTO.clone()], proto_tx2);
+    protocols.add([TEST_PROTO.clone()], &proto_tx2);
     let mut conn_man2 = build_connection_manager(
         {
             let mut config = TestNodeConfig {

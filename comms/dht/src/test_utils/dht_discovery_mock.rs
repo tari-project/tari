@@ -99,7 +99,7 @@ impl DhtDiscoveryMock {
     }
 
     async fn handle_request(&self, req: DhtDiscoveryRequest) {
-        use DhtDiscoveryRequest::*;
+        use DhtDiscoveryRequest::{DiscoverPeer, NotifyDiscoveryResponseReceived};
         trace!(target: LOG_TARGET, "DhtDiscoveryMock received request {:?}", req);
         self.state.inc_call_count();
         match req {

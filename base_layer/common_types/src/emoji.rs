@@ -22,6 +22,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     fmt::{Display, Error, Formatter},
 };
 
@@ -155,7 +156,7 @@ impl EmojiId {
         let mut v = Vec::with_capacity(32);
         for c in s.chars().take(32) {
             if let Some(index) = REVERSE_EMOJI.get(&c) {
-                v.push(*index as u8);
+                v.push(u8::try_from(*index).unwrap());
             } else {
                 return Err(EmojiIdError);
             }

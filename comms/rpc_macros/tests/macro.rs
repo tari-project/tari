@@ -166,9 +166,9 @@ async fn it_generates_client_calls() {
 
     // This is a test that the correct client functions are generated - if this test compiles then it has already passed
     task::spawn(async move {
-        let _ = client.request_response(111).await;
+        let _result = client.request_response(111).await;
         let mut streaming_resp = client.server_streaming(CustomMessage).await.unwrap();
         streaming_resp.next().await;
-        let _ = client.unit().await;
+        let _result = client.unit().await;
     });
 }

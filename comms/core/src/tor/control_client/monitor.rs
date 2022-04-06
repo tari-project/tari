@@ -83,9 +83,9 @@ where
                             }
 
                             if line.is_event() {
-                                match TorControlEvent::try_from_response(line) {
+                                match TorControlEvent::try_from_response(&line) {
                                     Ok(event) => {
-                                        let _ = event_tx.send(event);
+                                        let _result = event_tx.send(event);
                                     },
                                     Err(err) => {
                                         log_server_response_error(err);
@@ -96,6 +96,7 @@ where
                                     target: LOG_TARGET,
                                     "Failed to send response on internal channel: {:?}", err
                                 );
+                            } else {
                             }
                         },
                         Err(err) => log_server_response_error(err),
@@ -117,7 +118,7 @@ where
                         target: LOG_TARGET,
                         "Connection to tor control port closed. Monitor is exiting."
                     );
-                    let _ = event_tx.send(TorControlEvent::TorControlDisconnected);
+                    let _result = event_tx.send(TorControlEvent::TorControlDisconnected);
                     break;
                 },
             }

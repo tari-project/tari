@@ -49,8 +49,10 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
 }
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc>> {
-    let naive = NaiveDateTime::from_timestamp_opt(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32)?;
+    let naive =
+        NaiveDateTime::from_timestamp_opt(timestamp.seconds, u32::try_from(cmp::max(0, timestamp.nanos)).unwrap())?;
     Some(DateTime::from_utc(naive, Utc))
 }
 
@@ -126,7 +128,7 @@ impl DhtMessageType {
     }
 
     pub fn is_saf_message(self) -> bool {
-        use DhtMessageType::*;
+        use DhtMessageType::{SafRequestMessages, SafStoredMessages};
         matches!(self, SafRequestMessages | SafStoredMessages)
     }
 }
@@ -248,7 +250,7 @@ impl From<DhtMessageHeader> for DhtHeader {
 }
 
 impl DhtEnvelope {
-    pub fn new(header: DhtHeader, body: Bytes) -> Self {
+    pub fn new(header: DhtHeader, body: &Bytes) -> Self {
         Self {
             header: Some(header),
             body: body.to_vec(),
@@ -270,7 +272,7 @@ pub enum NodeDestination {
 
 impl NodeDestination {
     pub fn to_inner_bytes(&self) -> Vec<u8> {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
             Unknown => Vec::default(),
             PublicKey(pk) => pk.to_vec(),
@@ -279,7 +281,7 @@ impl NodeDestination {
     }
 
     pub fn public_key(&self) -> Option<&CommsPublicKey> {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
             Unknown => None,
             PublicKey(pk) => Some(pk),
@@ -288,7 +290,7 @@ impl NodeDestination {
     }
 
     pub fn node_id(&self) -> Option<&NodeId> {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
             Unknown => None,
             PublicKey(_) => None,
@@ -382,7 +384,7 @@ impl From<NodeId> for NodeDestination {
 
 impl From<NodeDestination> for Destination {
     fn from(destination: NodeDestination) -> Self {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match destination {
             Unknown => Destination::Unknown(true),
             PublicKey(pk) => Destination::PublicKey(pk.to_vec()),

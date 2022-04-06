@@ -125,7 +125,7 @@ impl ReorgPool {
         if txs.is_empty() {
             self.cleanup_expired(height);
         }
-        for tx in txs.into_iter() {
+        for tx in txs {
             self.insert(height, tx);
         }
     }
@@ -203,7 +203,7 @@ impl ReorgPool {
 
     fn remove_from_height_index(&mut self, tx_id: TransactionId) {
         let mut heights_to_remove = Vec::new();
-        for (height, ids) in self.txs_by_height.iter_mut() {
+        for (height, ids) in &mut self.txs_by_height {
             if let Some(pos) = ids.iter().position(|id| *id == tx_id) {
                 ids.remove(pos);
                 if ids.is_empty() {
@@ -222,7 +222,7 @@ impl ReorgPool {
     /// published block.
     fn discard_double_spends(&mut self, published_block: &Block) {
         let mut to_remove = Vec::new();
-        for (id, tx) in self.tx_by_key.iter() {
+        for (id, tx) in &self.tx_by_key {
             for input in tx.body.inputs() {
                 if published_block.body.inputs().contains(input) {
                     to_remove.push(*id);

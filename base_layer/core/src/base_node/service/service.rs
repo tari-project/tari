@@ -382,7 +382,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     let send_message_response = outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
+            OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
         )
         .await?;
 
@@ -446,7 +446,7 @@ async fn handle_incoming_response(
             started.elapsed().as_millis(),
             is_synced
         );
-        let _ = reply_tx.send(Ok(response).map_err(|e| {
+        let _result = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
                 "Failed to finalize request (request key:{}): {:?}", &request_key, e
@@ -483,7 +483,7 @@ async fn handle_outbound_request(
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
-            OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request.clone()),
+            OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
         )
         .await?;
 
@@ -556,7 +556,7 @@ async fn handle_outbound_block(
             OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
-                TariMessageType::NewBlock,
+                &TariMessageType::NewBlock,
                 shared_protos::core::NewBlock::from(new_block),
             ),
         )
@@ -582,7 +582,7 @@ async fn handle_request_timeout(
             started.elapsed().as_millis()
         );
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);
-        let _ = reply_tx.send(reply_msg.map_err(|e| {
+        let _result = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Failed to process outbound request (request key: {}): {:?}", &request_key, e

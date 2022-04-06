@@ -49,12 +49,12 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     type Payload = String;
 
     fn is_empty(&self) -> Result<bool, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         Ok(lock.nodes.is_empty())
     }
 
     fn node_exists(&self, node_hash: &TreeNodeHash) -> Result<bool, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         let exists = lock.nodes.rows().any(|rec| rec.hash == *node_hash);
         Ok(exists)
     }
@@ -64,13 +64,13 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn insert_node(&self, node: &DbNode, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        let mut lock = self.db.write().unwrap();
+        let mut lock = self.db.write()?;
         lock.nodes.insert(node.clone());
         Ok(())
     }
 
     fn update_node(&self, id: &Self::Id, item: &DbNode, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        let mut lock = self.db.write().unwrap();
+        let mut lock = self.db.write()?;
         if lock.nodes.update(*id, item.clone()) {
             Ok(())
         } else {
@@ -79,7 +79,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn insert_instruction(&self, item: &DbInstruction, _: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        let mut lock = self.db.write().unwrap();
+        let mut lock = self.db.write()?;
         lock.instructions.insert(item.clone());
         Ok(())
     }
@@ -97,7 +97,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn find_highest_prepared_qc(&self) -> Result<QuorumCertificate, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         let highest = lock
             .prepare_qc
             .rows()
@@ -112,21 +112,21 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn get_locked_qc(&self) -> Result<QuorumCertificate, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         // FIXME: when this implementation is finalized in sqlite/lmdb impl
         let rec = lock.locked_qc.rows().next().cloned().map(Into::into).unwrap();
         Ok(rec)
     }
 
     fn get_prepare_qc(&self) -> Result<Option<QuorumCertificate>, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         // FIXME: when this implementation is finalized in sqlite/lmdb impl
         let rec = lock.prepare_qc.rows().next().cloned().map(Into::into);
         Ok(rec)
     }
 
     fn find_node_by_hash(&self, node_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         let recs = lock
             .nodes
             .records()
@@ -136,7 +136,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn find_node_by_parent_hash(&self, parent_hash: &TreeNodeHash) -> Result<Option<(Self::Id, DbNode)>, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         let rec = lock
             .nodes
             .records()
@@ -146,7 +146,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn find_all_instructions_by_node(&self, node_id: Self::Id) -> Result<Vec<DbInstruction>, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         let node = lock.nodes.get(node_id).ok_or(StorageError::NotFound)?;
         let recs = lock
             .instructions
@@ -158,7 +158,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn update_prepare_qc(&self, item: &DbQc, _transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        let mut lock = self.db.write().unwrap();
+        let mut lock = self.db.write()?;
         let id = lock
             .prepare_qc
             .records()
@@ -170,7 +170,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn update_locked_qc(&self, locked_qc: &DbQc, _transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
-        let mut lock = self.db.write().unwrap();
+        let mut lock = self.db.write()?;
         let id = lock
             .locked_qc
             .records()
@@ -182,7 +182,7 @@ impl ChainDbBackendAdapter for MockChainDbBackupAdapter {
     }
 
     fn get_tip_node(&self) -> Result<Option<DbNode>, Self::Error> {
-        let lock = self.db.read().unwrap();
+        let lock = self.db.read()?;
         let found = lock
             .nodes
             .rows()

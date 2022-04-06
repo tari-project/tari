@@ -40,9 +40,9 @@ pub async fn start(listen_addr: SocketAddr, registry: Registry) {
 
 async fn metrics_text_handler(registry: Registry) -> Result<impl Reply, Rejection> {
     task::spawn_blocking::<_, Result<_, Error>>(move || {
-        let encoder = TextEncoder::new();
+        let text_encoder = TextEncoder::new();
         let mut buffer = Vec::new();
-        encoder.encode(&registry.gather(), &mut buffer)?;
+        text_encoder.encode(&registry.gather(), &mut buffer)?;
         let encoded = String::from_utf8(buffer)?;
         Ok(encoded)
     })

@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::convert::TryFrom;
+
+use croaring::Bitmap;
+use digest::Digest;
+
 use crate::{
     backend::ArrayLike,
     common::node_index,
@@ -28,8 +33,6 @@ use crate::{
     Hash,
     MerkleMountainRange,
 };
-use croaring::Bitmap;
-use digest::Digest;
 
 /// Unlike a pure MMR, which is append-only, in `MutableMmr`, leaf nodes can be marked as deleted.
 ///
@@ -61,7 +64,7 @@ where
     pub fn new(mmr_backend: B, deleted: Bitmap) -> Result<MutableMmr<D, B>, MerkleMountainRangeError> {
         let mmr = MerkleMountainRange::new(mmr_backend);
         Ok(MutableMmr {
-            size: mmr.get_leaf_count()? as u32,
+            size: u32::try_from(mmr.get_leaf_count()?).unwrap(),
             mmr,
             deleted,
         })
@@ -71,7 +74,7 @@ where
     pub fn assign(&mut self, state: MutableMmrLeafNodes) -> Result<(), MerkleMountainRangeError> {
         self.mmr.assign(state.leaf_hashes)?;
         self.deleted = state.deleted;
-        self.size = self.mmr.get_leaf_count()? as u32;
+        self.size = u32::try_from(self.mmr.get_leaf_count()?).unwrap();
         Ok(())
     }
 
@@ -83,12 +86,12 @@ where
     #[allow(clippy::len_without_is_empty)]
     #[inline(always)]
     pub fn len(&self) -> u32 {
-        self.size - self.deleted.cardinality() as u32
+        self.size - u32::try_from(self.deleted.cardinality()).unwrap()
     }
 
     /// Returns true if the the MMR contains no nodes, OR all nodes have been marked for deletion
     pub fn is_empty(&self) -> Result<bool, MerkleMountainRangeError> {
-        Ok(self.mmr.is_empty()? || self.deleted.cardinality() == self.size as u64)
+        Ok(self.mmr.is_empty()? || self.deleted.cardinality() == u64::from(self.size))
     }
 
     /// This function returns the hash of the leaf index provided, indexed from 0. If the hash does not exist, or if it
@@ -205,13 +208,13 @@ where
     fn get_sub_bitmap(&self, leaf_index: usize, count: usize) -> Result<Bitmap, MerkleMountainRangeError> {
         let mut deleted = self.deleted.clone();
         if leaf_index > 0 {
-            deleted.remove_range_closed(0..(leaf_index - 1) as u32)
+            deleted.remove_range_closed(0..u32::try_from(leaf_index - 1).unwrap())
         }
         let leaf_count = self.mmr.get_leaf_count()?;
         if leaf_count > 1 {
             let last_index = leaf_index + count - 1;
             if last_index < leaf_count - 1 {
-                deleted.remove_range_closed((last_index + 1) as u32..leaf_count as u32);
+                deleted.remove_range_closed(u32::try_from(last_index + 1).unwrap()..u32::try_from(leaf_count).unwrap());
             }
         }
         Ok(deleted)

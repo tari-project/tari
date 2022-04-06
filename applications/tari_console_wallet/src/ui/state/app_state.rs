@@ -140,7 +140,7 @@ impl AppState {
 
     pub async fn start_balance_enquiry_debouncer(&self) -> Result<(), UiError> {
         tokio::spawn(self.balance_enquiry_debouncer.clone().run());
-        let _ = self
+        let _size = self
             .balance_enquiry_debouncer
             .clone()
             .get_sender()
@@ -430,8 +430,8 @@ impl AppState {
         }
     }
 
-    pub fn get_confirmations(&self, tx_id: &TxId) -> Option<&u64> {
-        (&self.cached_data.confirmations).get(tx_id)
+    pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
+        (&self.cached_data.confirmations).get(&tx_id)
     }
 
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
@@ -687,22 +687,22 @@ impl AppStateInner {
         match found {
             None => {
                 // If it's not in the backend then remove it from AppState
-                let _: Option<CompletedTransaction> = self
+                let _completed_transaction: Option<CompletedTransaction> = self
                     .data
                     .pending_txs
                     .iter()
                     .position(|i| i.tx_id == tx_id)
                     .and_then(|index| {
-                        let _ = self.data.pending_txs.remove(index);
+                        let _completed_transaction_info = self.data.pending_txs.remove(index);
                         None
                     });
-                let _: Option<CompletedTransaction> = self
+                let _completed_transaction: Option<CompletedTransaction> = self
                     .data
                     .completed_txs
                     .iter()
                     .position(|i| i.tx_id == tx_id)
                     .and_then(|index| {
-                        let _ = self.data.pending_txs.remove(index);
+                        let _completed_transaction_info = self.data.pending_txs.remove(index);
                         None
                     });
             },
@@ -715,7 +715,7 @@ impl AppStateInner {
                         self.updated = true;
                         return Ok(());
                     } else {
-                        let _ = self.data.pending_txs.remove(index);
+                        let _completed_transaction_info = self.data.pending_txs.remove(index);
                     }
                 } else if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                     self.data.pending_txs.push(tx);
@@ -726,6 +726,7 @@ impl AppStateInner {
                     });
                     self.updated = true;
                     return Ok(());
+                } else {
                 }
 
                 if let Some(index) = self.data.completed_txs.iter().position(|i| i.tx_id == tx_id) {
@@ -774,7 +775,7 @@ impl AppStateInner {
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());
-        for c in connections.iter() {
+        for c in &connections {
             if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
                 peers.push(p);
             }
@@ -982,7 +983,7 @@ impl AppStateInner {
 
         const MAX_NOTIFICATIONS: usize = 100;
         if self.data.notifications.len() > MAX_NOTIFICATIONS {
-            let _ = self.data.notifications.remove(0);
+            let _notification = self.data.notifications.remove(0);
         }
 
         self.updated = true;

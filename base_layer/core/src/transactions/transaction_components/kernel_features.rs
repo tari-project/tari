@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Write};
+use std::{
+    io,
+    io::{Error, Read, Write},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::consensus::{ConsensusEncoding, ConsensusEncodingSized};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 bitflags! {
     /// Options for a kernel's structure or use.
@@ -52,5 +55,13 @@ impl ConsensusEncoding for KernelFeatures {
 impl ConsensusEncodingSized for KernelFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
         1
+    }
+}
+
+impl ConsensusDecoding for KernelFeatures {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        Ok(KernelFeatures { bits: buf[0] })
     }
 }

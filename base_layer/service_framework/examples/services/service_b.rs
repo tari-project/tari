@@ -75,7 +75,7 @@ impl ServiceB {
                     let (request, reply_tx) = request_context.split();
                     let mut response = self.response_msg.clone();
                     response.push_str(request.clone().as_str());
-                    let _ = reply_tx.send(response);
+                    let _resp = reply_tx.send(response);
                 },
                 _ = shutdown_signal.wait() => {
                     println!("Service B shutting down because the shutdown signal was received");

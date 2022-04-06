@@ -67,7 +67,7 @@ fn main() {
     //         info!("Received Exit event");
     //         block_on(async move {
     //             let state = app.state();
-    //             let _ = shutdown(state).await;
+    //             let _message = shutdown(state).await;
     //         });
     //     }
     // });

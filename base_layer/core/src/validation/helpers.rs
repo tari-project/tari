@@ -151,7 +151,7 @@ pub fn check_pow_data<B: BlockchainBackend>(
     rules: &ConsensusManager,
     db: &B,
 ) -> Result<(), ValidationError> {
-    use PowAlgorithm::*;
+    use PowAlgorithm::{Monero, Sha3};
     match block_header.pow.pow_algo {
         Monero => {
             let monero_data =
@@ -745,14 +745,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
         .iter()
         .map(|input| match input.is_mature_at(height) {
             Ok(mature) => {
-                if !mature {
+                if mature {
+                    Ok(0)
+                } else {
                     warn!(
                         target: LOG_TARGET,
                         "Input found that has not yet matured to spending height: {}", input
                     );
                     Err(TransactionError::InputMaturity)
-                } else {
-                    Ok(0)
                 }
             },
             Err(e) => Err(e),
