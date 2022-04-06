@@ -38,12 +38,48 @@ pub struct TransportConfig {
     #[serde(rename = "type")]
     pub transport_type: TransportType,
     pub tcp: TcpTransportConfig,
-    pub tor: TorConfig,
-    pub socks: Socks5Config,
-    pub memory: MemoryConfig,
+    pub tor: TorTransportConfig,
+    pub socks: Socks5TransportConfig,
+    pub memory: MemoryTransportConfig,
 }
 
 impl TransportConfig {
+    pub fn new_memory(config: MemoryTransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Memory,
+            memory: config,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_tcp(config: TcpTransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Tcp,
+            tcp: config,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_tor(config: TorTransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Tor,
+            tor: config,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_socks5(forward_address: Multiaddr, config: Socks5TransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Socks5,
+            socks: config,
+            tcp: TcpTransportConfig {
+                listener_address: forward_address,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
     pub fn is_tor(&self) -> bool {
         matches!(self.transport_type, TransportType::Tor)
     }
@@ -95,7 +131,7 @@ impl Default for TcpTransportConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TorConfig {
+pub struct TorTransportConfig {
     /// The address of the control server
     pub control_address: Multiaddr,
     /// SOCKS proxy auth
@@ -115,7 +151,7 @@ pub struct TorConfig {
     pub identity: Option<TorIdentity>,
 }
 
-impl TorConfig {
+impl TorTransportConfig {
     pub fn to_port_mapping(&self) -> tor::PortMapping {
         tor::PortMapping::new(self.onion_port.get(), ([127, 0, 0, 1], 0).into())
     }
@@ -129,7 +165,7 @@ impl TorConfig {
     }
 }
 
-impl Default for TorConfig {
+impl Default for TorTransportConfig {
     fn default() -> Self {
         Self {
             control_address: "/ip4/127.0.0.1/tcp/9051".parse().unwrap(),
@@ -146,13 +182,13 @@ impl Default for TorConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Socks5Config {
+pub struct Socks5TransportConfig {
     pub proxy_address: Multiaddr,
     pub auth: SocksAuthentication,
 }
 
-impl From<Socks5Config> for SocksConfig {
-    fn from(config: Socks5Config) -> Self {
+impl From<Socks5TransportConfig> for SocksConfig {
+    fn from(config: Socks5TransportConfig) -> Self {
         Self {
             proxy_address: config.proxy_address,
             authentication: config.auth.into(),
@@ -161,7 +197,7 @@ impl From<Socks5Config> for SocksConfig {
     }
 }
 
-impl Default for Socks5Config {
+impl Default for Socks5TransportConfig {
     fn default() -> Self {
         Self {
             proxy_address: "/ip4/127.0.0.1/tcp/8080".parse().unwrap(),
@@ -172,11 +208,11 @@ impl Default for Socks5Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct MemoryConfig {
+pub struct MemoryTransportConfig {
     pub listener_address: Multiaddr,
 }
 
-impl Default for MemoryConfig {
+impl Default for MemoryTransportConfig {
     fn default() -> Self {
         Self {
             listener_address: "/memory/0".parse().unwrap(),

@@ -68,7 +68,14 @@ use tari_core::{
 };
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
-use tari_p2p::{depr_transport::TransportType, initialization::P2pConfig, Network, DEFAULT_DNS_NAME_SERVER};
+use tari_p2p::{
+    transport::MemoryTransportConfig,
+    Network,
+    P2pConfig,
+    PeerSeedsConfig,
+    TcpTransportConfig,
+    TransportConfig,
+};
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
 use tari_test_utils::random;
@@ -128,15 +135,14 @@ async fn create_wallet(
     passphrase: Option<String>,
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
-    const network: Network = Network::Weatherwax;
+    const NETWORK: Network = Network::Weatherwax;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
-        network,
-        // node_identity: Arc::new(node_identity.clone()),
-        // transport_type: TransportType::Memory {
-        //     listener_address: node_identity.public_address(),
-        // },
-        auxilary_tcp_listener_address: None,
+        override_from: None,
+        public_address: None,
+        transport: TransportConfig::new_memory(MemoryTransportConfig {
+            listener_address: node_identity.public_address(),
+        }),
         datastore_path: data_path.to_path_buf(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
@@ -155,10 +161,8 @@ async fn create_wallet(
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-        peer_seeds: Default::default(),
-        dns_seeds: Default::default(),
-        dns_seeds_use_dnssec: false,
+        auxiliary_tcp_listener_address: None,
+        rpc_max_simultaneous_sessions: 0,
     };
 
     let sql_database_path = comms_config
@@ -176,9 +180,9 @@ async fn create_wallet(
     };
 
     let config = WalletConfig {
-        comms_config,
+        p2p: comms_config,
         transaction_service_config,
-        network,
+        network: NETWORK,
         ..Default::default()
     };
 
@@ -190,12 +194,10 @@ async fn create_wallet(
     let master_seed = read_or_create_master_seed(recovery_seed, &wallet_db).await?;
 
     Wallet::start(
-        factories,
-        TransportType::Memory {
-            listener_address: node_identity.public_address(),
-        },
         config,
+        PeerSeedsConfig::default(),
         Arc::new(node_identity.clone()),
+        factories,
         wallet_db,
         transaction_backend,
         output_manager_backend,
@@ -692,26 +694,26 @@ fn test_store_and_forward_send_tx() {
 async fn test_import_utxo() {
     let factories = CryptoFactories::default();
     let shutdown = Shutdown::new();
-    let alice_identity = NodeIdentity::random(
+    let alice_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24521".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
-    );
-    let base_node_identity = NodeIdentity::random(
+    ));
+    let base_node_identity = Arc::new(NodeIdentity::random(
         &mut OsRng,
         "/ip4/127.0.0.1/tcp/24522".parse().unwrap(),
         PeerFeatures::COMMUNICATION_NODE,
-    );
+    ));
     let temp_dir = tempdir().unwrap();
     let (connection, _temp_dir) = make_wallet_database_connection(None);
     let comms_config = P2pConfig {
-        network: Network::Weatherwax,
-        // node_identity: Arc::new(alice_identity.clone()),
-        // transport_type: TransportType::Tcp {
-        //     listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-        //     tor_socks_config: None,
-        // },
-        auxilary_tcp_listener_address: None,
+        override_from: None,
+        public_address: None,
+        transport: TransportConfig::new_tcp(TcpTransportConfig {
+            listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
+            tor_socks_address: None,
+            tor_socks_auth: Default::default(),
+        }),
         datastore_path: temp_dir.path().to_path_buf(),
         peer_database_name: random::string(8),
         max_concurrent_inbound_tasks: 10,
@@ -722,25 +724,20 @@ async fn test_import_utxo() {
         listener_liveness_allowlist_cidrs: Vec::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-        peer_seeds: Default::default(),
-        dns_seeds: Default::default(),
-        dns_seeds_use_dnssec: false,
+        auxiliary_tcp_listener_address: None,
+        rpc_max_simultaneous_sessions: 0,
     };
     let config = WalletConfig {
-        comms_config,
+        p2p: comms_config,
         network: Network::Weatherwax,
         ..Default::default()
     };
 
     let mut alice_wallet = Wallet::start(
-        factories.clone(),
-        TransportType::Tcp {
-            listener_address: "/ip4/127.0.0.1/tcp/0".parse().unwrap(),
-            tor_socks_config: None,
-        },
         config,
-        Arc::new(alice_identity.clone()),
+        PeerSeedsConfig::default(),
+        alice_identity.clone(),
+        factories.clone(),
         WalletDatabase::new(WalletSqliteDatabase::new(connection.clone(), None).unwrap()),
         TransactionServiceSqliteDatabase::new(connection.clone(), None),
         OutputManagerSqliteDatabase::new(connection.clone(), None),

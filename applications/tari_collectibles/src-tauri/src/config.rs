@@ -20,6 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
 use tari_common::SubConfigPath;
 
@@ -27,9 +28,9 @@ use tari_common::SubConfigPath;
 #[serde(deny_unknown_fields)]
 pub struct CollectiblesConfig {
   override_from: Option<String>,
-  pub validator_node_grpc_address: MultiAddr,
-  pub base_node_grpc_address: MultiAddr,
-  pub wallet_grpc_address: MultiAddr,
+  pub validator_node_grpc_address: Multiaddr,
+  pub base_node_grpc_address: Multiaddr,
+  pub wallet_grpc_address: Multiaddr,
 }
 
 impl Default for CollectiblesConfig {

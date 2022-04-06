@@ -105,7 +105,7 @@ impl MinerConfig {
 
 #[cfg(test)]
 mod test {
-    use tari_common::{configuration::config, DefaultConfigLoader};
+    use tari_common::DefaultConfigLoader;
 
     use crate::MinerConfig;
 
@@ -118,6 +118,7 @@ base_node_addr = "/dns4/my_base_node/tcp/1234"
 mine_on_tip_only = false
 "#;
         let mut cfg: config::Config = config::Config::default();
+        #[allow(deprecated)]
         cfg.merge(config::File::from_str(CONFIG, config::FileFormat::Toml))
             .unwrap();
         let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");

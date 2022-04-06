@@ -257,7 +257,7 @@ pub async fn create_network_with_2_base_nodes_with_config<P: AsRef<Path>>(
     let network = Network::LocalNet;
     let (alice_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(alice_node_identity.clone())
-        .with_mempool_service_config(mempool_service_config)
+        .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(data_path.as_ref().join("alice").as_os_str().to_str().unwrap())
@@ -313,7 +313,7 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     );
     let (carol_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(carol_node_identity.clone())
-        .with_mempool_service_config(mempool_service_config)
+        .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(data_path.as_ref().join("carol").as_os_str().to_str().unwrap())
@@ -321,7 +321,7 @@ pub async fn create_network_with_3_base_nodes_with_config<P: AsRef<Path>>(
     let (bob_node, consensus_manager) = BaseNodeBuilder::new(network.into())
         .with_node_identity(bob_node_identity.clone())
         .with_peers(vec![carol_node_identity.clone()])
-        .with_mempool_service_config(mempool_service_config)
+        .with_mempool_service_config(mempool_service_config.clone())
         .with_liveness_service_config(liveness_service_config.clone())
         .with_consensus_manager(consensus_manager)
         .start(data_path.as_ref().join("bob").as_os_str().to_str().unwrap())

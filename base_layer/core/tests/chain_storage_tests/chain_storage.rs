@@ -1249,7 +1249,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(rules.clone(), Default::default()),
         )
         .unwrap();
@@ -1272,7 +1272,7 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(rules.clone(), Default::default()),
         )
         .unwrap();
@@ -1698,7 +1698,7 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
         )
         .unwrap();
@@ -1751,7 +1751,7 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
         )
         .unwrap();

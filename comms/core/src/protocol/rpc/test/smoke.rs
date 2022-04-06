@@ -381,7 +381,7 @@ async fn stream_still_works_after_cancel() {
         .unwrap();
 
     // Ask for a stream, but immediately throw away the receiver
-    let _client_streaming = client
+    client
         .slow_stream(SlowStreamRequest {
             num_items: 100,
             item_size: 100,

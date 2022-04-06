@@ -7164,6 +7164,7 @@ dependencies = [
  "bufstream",
  "chrono",
  "clap 3.1.8",
+ "config",
  "crossbeam",
  "crossterm 0.17.7",
  "derivative",

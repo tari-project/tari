@@ -36,6 +36,7 @@
 //! [PingPong]: ./messages/enum.PingPong.html
 
 pub mod config;
+pub use self::config::LivenessConfig;
 
 pub mod error;
 
@@ -79,7 +80,7 @@ use crate::{
     comms_connector::{PeerMessage, TopicSubscriptionFactory},
     domain_message::DomainMessage,
     services::{
-        liveness::{config::LivenessConfig, state::LivenessState},
+        liveness::state::LivenessState,
         utils::{map_decode, ok_or_skip_result},
     },
     tari_message::TariMessageType,

@@ -71,7 +71,7 @@ use crate::{
     comms_connector::{InboundDomainConnector, PubsubDomainConnector},
     config::{P2pConfig, PeerSeedsConfig},
     peer_seeds::{DnsSeedResolver, SeedPeer},
-    transport::{TorConfig, TransportType},
+    transport::{TorTransportConfig, TransportType},
     TransportConfig,
     MAJOR_NETWORK_VERSION,
     MINOR_NETWORK_VERSION,
@@ -243,7 +243,7 @@ pub async fn spawn_comms_using_transport(
 }
 
 async fn initialize_hidden_service(
-    mut config: TorConfig,
+    mut config: TorTransportConfig,
 ) -> Result<tor::HiddenServiceController, tor::HiddenServiceBuilderError> {
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)

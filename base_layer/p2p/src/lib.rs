@@ -45,7 +45,7 @@ mod dns;
 pub use socks_authentication::SocksAuthentication;
 pub use tari_common::configuration::Network;
 pub use tor_authentication::TorControlAuthentication;
-pub use transport::{Socks5Config, TcpTransportConfig, TorConfig, TransportConfig, TransportType};
+pub use transport::{Socks5TransportConfig, TcpTransportConfig, TorTransportConfig, TransportConfig, TransportType};
 
 pub use self::config::{P2pConfig, PeerSeedsConfig};
 

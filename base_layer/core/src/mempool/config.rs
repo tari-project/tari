@@ -29,6 +29,7 @@ use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedP
 #[derive(Clone, Deserialize, Serialize, Default, Debug)]
 #[serde(deny_unknown_fields)]
 pub struct MempoolConfig {
+    override_from: Option<String>,
     pub unconfirmed_pool: UnconfirmedPoolConfig,
     pub reorg_pool: ReorgPoolConfig,
     pub service: MempoolServiceConfig,
@@ -62,6 +63,9 @@ impl Default for MempoolServiceConfig {
 
 #[cfg(test)]
 mod test {
+    // TODO: Use new Config api - seems that you need to use the builder each time you want to change a value which
+    //       isn't great, there must be a better way.
+    #![allow(deprecated)]
     use config::Config;
     use tari_common::DefaultConfigLoader;
 
@@ -69,8 +73,8 @@ mod test {
     use crate::mempool::reorg_pool::ReorgPoolConfig;
 
     #[test]
-    pub fn test_mempool() {
-        let mut config = Config::new();
+    pub fn test_mempool_config() {
+        let mut config = Config::builder().build().unwrap();
 
         config
             .set("mempool.unconfirmed_pool.storage_capacity", 3)
@@ -86,7 +90,7 @@ mod test {
         );
 
         config
-            .set("mempool.mainnet.unconfirmed_pool.storage_capacity", 20)
+            .set("mainnet.mempool.unconfirmed_pool.storage_capacity", 20)
             .expect("Could not set ''");
 
         config

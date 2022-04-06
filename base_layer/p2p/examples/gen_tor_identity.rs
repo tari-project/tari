@@ -20,13 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{env::current_dir, fs, net::SocketAddr, path::Path};
+use std::{env::current_dir, fs, path::Path};
 
 /// Generates a random node identity JSON file. A node identity contains a node's public and secret keys, it's node
 /// id and an address used to establish peer connections. The files generated from this example are used to
 /// populate the peer manager in other examples.
 use clap::{App, Arg};
-use tari_comms::tor;
+use tari_comms::{multiaddr::Multiaddr, tor};
 use tari_crypto::tari_utilities::message_format::MessageFormat;
 
 fn to_abs_path(path: &str) -> String {
@@ -77,7 +77,7 @@ async fn main() {
     let tor_control_addr = matches
         .value_of("tor-control-addr")
         .unwrap()
-        .parse::<SocketAddr>()
+        .parse::<Multiaddr>()
         .expect("Invalid tor-control-addr");
 
     let port = matches

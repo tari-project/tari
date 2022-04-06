@@ -110,7 +110,6 @@ use tari_comms::{
     peer_manager::{NodeIdentity, PeerFeatures},
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
-    utils::multiaddr::multiaddr_to_socketaddr,
 };
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, DhtConfig};
 use tari_core::transactions::{tari_amount::MicroTari, CryptoFactories};
@@ -120,13 +119,13 @@ use tari_crypto::{
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
-    transport::MemoryConfig,
+    transport::MemoryTransportConfig,
     Network,
     PeerSeedsConfig,
     SocksAuthentication,
     TcpTransportConfig,
-    TorConfig,
     TorControlAuthentication,
+    TorTransportConfig,
     TransportConfig,
     TransportType,
     DEFAULT_DNS_NAME_SERVER,
@@ -2927,7 +2926,7 @@ pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
         .expect("Should be able to create memory address");
     let transport = TransportConfig {
         transport_type: TransportType::Memory,
-        memory: MemoryConfig { listener_address },
+        memory: MemoryTransportConfig { listener_address },
         ..Default::default()
     };
     Box::into_raw(Box::new(transport))
@@ -2972,21 +2971,12 @@ pub unsafe extern "C" fn transport_tcp_create(
         }
     }
 
-    match listener_address_str.parse::<Multiaddr>() {
+    match listener_address_str.parse() {
         Ok(v) => {
-            // Convert the listener addr to a socket, resolving DNS if necessary
-            let listener_address = match multiaddr_to_socketaddr(&v) {
-                Ok(a) => a,
-                Err(_) => {
-                    error = LibWalletError::from(InterfaceError::InvalidArgument("listener_address".to_string())).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    return ptr::null_mut();
-                },
-            };
             let transport = TariTransportConfig {
                 transport_type: TransportType::Tcp,
                 tcp: TcpTransportConfig {
-                    listener_address,
+                    listener_address: v,
                     ..Default::default()
                 },
                 ..Default::default()
@@ -3100,23 +3090,12 @@ pub unsafe extern "C" fn transport_tor_create(
         },
     };
 
-    match control_address_str.parse::<Multiaddr>() {
+    match control_address_str.parse() {
         Ok(v) => {
-            let control_address = match multiaddr_to_socketaddr(&v) {
-                Ok(a) => a,
-                Err(_) => {
-                    error = LibWalletError::from(InterfaceError::InvalidArgument(
-                        "control_address must be a dns or tcp address".to_string(),
-                    ))
-                    .code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    return ptr::null_mut();
-                },
-            };
             let transport = TariTransportConfig {
                 transport_type: TransportType::Tor,
-                tor: TorConfig {
-                    control_address,
+                tor: TorTransportConfig {
+                    control_address: v,
                     control_auth: tor_authentication,
                     // The wallet will populate this from the db
                     identity: None,
@@ -6752,7 +6731,7 @@ mod test {
             let transport = transport_memory_create();
             let _address = transport_memory_get_address(transport, error_ptr);
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
         }
     }
 
@@ -6853,7 +6832,7 @@ mod test {
             let address_listener_str: *const c_char = CString::into_raw(address_listener) as *const c_char;
             let transport = transport_tcp_create(address_listener_str, error_ptr);
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
         }
     }
 
@@ -6875,7 +6854,7 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
 
             bypass = true;
             transport = transport_tor_create(
@@ -6888,7 +6867,7 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
         }
     }
 
@@ -7083,8 +7062,8 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_type_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
@@ -7097,12 +7076,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7222,7 +7200,7 @@ mod test {
             string_destroy(original_path_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            transport_type_destroy(transport_type_alice);
+            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
         }
     }
@@ -7242,8 +7220,8 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_type_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let alice_network = CString::new(NETWORK_STRING).unwrap();
@@ -7251,12 +7229,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7300,12 +7277,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7411,12 +7387,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7457,7 +7432,7 @@ mod test {
             string_destroy(wrong_passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            transport_type_destroy(transport_type_alice);
+            transport_config_destroy(transport_config_alice);
 
             comms_config_destroy(alice_config);
             seed_words_destroy(seed_words);
@@ -7479,22 +7454,18 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_type_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
-            let alice_network = CString::new(NETWORK_STRING).unwrap();
-            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
-
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7571,14 +7542,13 @@ mod test {
             assert_eq!(found_value, ptr::null_mut());
             assert_eq!(*error_ptr, 424i32);
 
-            string_destroy(alice_network_str as *mut c_char);
             string_destroy(k_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             string_destroy(passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_type_destroy(transport_type_alice);
+            transport_config_destroy(transport_config_alice);
 
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
@@ -7665,9 +7635,6 @@ mod test {
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
-            let network = CString::new(NETWORK_STRING).unwrap();
-            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
-
             let config = comms_config_create(
                 address_str,
                 transport_type,
@@ -7675,7 +7642,6 @@ mod test {
                 db_path_str,
                 20,
                 10800,
-                network_str,
                 error_ptr,
             );
 
@@ -7832,11 +7798,10 @@ mod test {
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
             string_destroy(base_node_peer_address_ptr as *mut c_char);
 
-            string_destroy(network_str as *mut c_char);
             string_destroy(db_name_str as *mut c_char);
             string_destroy(db_path_str as *mut c_char);
             string_destroy(address_str as *mut c_char);
-            transport_type_destroy(transport_type);
+            transport_config_destroy(transport_type);
 
             comms_config_destroy(config);
             wallet_destroy(wallet_ptr);
@@ -7895,9 +7860,6 @@ mod test {
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
-            let network = CString::new(NETWORK_STRING).unwrap();
-            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
-
             let config = comms_config_create(
                 address_str,
                 transport_type,
@@ -7905,7 +7867,6 @@ mod test {
                 db_path_str,
                 20,
                 10800,
-                network_str,
                 error_ptr,
             );
 
@@ -7952,9 +7913,6 @@ mod test {
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
-            let network = CString::new(NETWORK_STRING).unwrap();
-            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
-
             let config = comms_config_create(
                 address_str,
                 transport_type,
@@ -7962,7 +7920,6 @@ mod test {
                 db_path_str,
                 20,
                 10800,
-                network_str,
                 error_ptr,
             );
 

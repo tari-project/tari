@@ -28,7 +28,6 @@ use std::{
 };
 
 use clap::Parser;
-use config::MinerConfig;
 use crossterm::{execute, terminal::SetTitle};
 use errors::{err_empty, MinerError};
 use futures::stream::StreamExt;
@@ -49,7 +48,7 @@ use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};
 
-use crate::{cli::Cli, miner::MiningReport, stratum::stratum_controller::controller::Controller};
+use crate::{cli::Cli, config::MinerConfig, miner::MiningReport, stratum::stratum_controller::controller::Controller};
 
 pub const LOG_TARGET: &str = "tari_mining_node::miner::main";
 pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::main";
