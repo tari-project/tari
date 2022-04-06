@@ -116,6 +116,11 @@ impl AggregateBody {
         &self.inputs
     }
 
+    /// Should be used for tests only. Get a mutable reference to the inputs
+    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
+        &mut self.inputs
+    }
+
     /// Provide read-only access to the output list
     pub fn outputs(&self) -> &Vec<TransactionOutput> {
         &self.outputs
@@ -131,9 +136,9 @@ impl AggregateBody {
         &self.kernels
     }
 
-    /// Should be used for tests only. Get a mutable reference to the inputs
-    pub fn inputs_mut(&mut self) -> &mut Vec<TransactionInput> {
-        &mut self.inputs
+    /// Should be used for tests only. Get a mutable reference to the kernels
+    pub fn kernels_mut(&mut self) -> &mut Vec<TransactionKernel> {
+        &mut self.kernels
     }
 
     /// Add an input to the existing aggregate body

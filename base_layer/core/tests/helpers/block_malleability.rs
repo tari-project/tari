@@ -38,6 +38,7 @@ enum MerkleMountainRangeField {
     Input,
     Output,
     Witness,
+    Kernel,
 }
 
 #[allow(dead_code)]
@@ -53,6 +54,11 @@ pub fn check_output_malleability(block_mod_fn: impl Fn(&mut Block)) {
 #[allow(dead_code)]
 pub fn check_witness_malleability(block_mod_fn: impl Fn(&mut Block)) {
     check_block_changes_are_detected(MerkleMountainRangeField::Witness, block_mod_fn);
+}
+
+#[allow(dead_code)]
+pub fn check_kernel_malleability(block_mod_fn: impl Fn(&mut Block)) {
+    check_block_changes_are_detected(MerkleMountainRangeField::Kernel, block_mod_fn);
 }
 
 #[allow(dead_code)]
@@ -103,6 +109,10 @@ fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_f
         MerkleMountainRangeField::Witness => {
             assert_ne!(block.header().witness_mr, modded_root.witness_mr);
             mod_block.header.witness_mr = modded_root.witness_mr;
+        },
+        MerkleMountainRangeField::Kernel => {
+            assert_ne!(block.header().kernel_mr, modded_root.kernel_mr);
+            mod_block.header.kernel_mr = modded_root.kernel_mr;
         },
     }
 

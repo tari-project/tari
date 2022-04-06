@@ -1882,7 +1882,11 @@ fn pruned_mode_cleanup_and_fetch_block() {
 
 mod malleability {
     use tari_common_types::types::{ComSignature, RangeProof};
-    use tari_core::{blocks::Block, covenant, transactions::transaction_components::TransactionOutputVersion};
+    use tari_core::{
+        blocks::Block,
+        covenant,
+        transactions::{test_helpers::generate_keys, transaction_components::TransactionOutputVersion},
+    };
     use tari_script::{Opcode, StackItem, TariScript};
     use tari_utilities::hex::Hex;
 
@@ -1899,8 +1903,6 @@ mod malleability {
     }
 
     mod output {
-        use tari_core::transactions::test_helpers::generate_keys;
-
         use super::*;
 
         #[test]
@@ -1976,6 +1978,52 @@ mod malleability {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_covenant = covenant!(absolute_height(@uint(42)));
                 output.covenant = mod_covenant;
+            });
+        }
+    }
+
+    mod kernel {
+        use tari_common_types::types::Signature;
+        use tari_core::transactions::tari_amount::MicroTari;
+
+        use super::*;
+
+        // the "version" field only has one value (V0) so malleability test is not possible for it
+        // the "features" field has only a constant value at the moment, so no malleability test possible
+
+        #[test]
+        fn fee() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                kernel.fee += MicroTari::from(1);
+            });
+        }
+
+        #[test]
+        fn lock_height() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                kernel.lock_height += 1;
+            });
+        }
+
+        #[test]
+        fn excess() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+                let mod_excess = &kernel.excess + &kernel.excess;
+                kernel.excess = mod_excess;
+            });
+        }
+
+        #[test]
+        fn excess_sig() {
+            check_kernel_malleability(|block: &mut Block| {
+                let kernel = &mut block.body.kernels_mut()[0];
+
+                // "gerate_keys" should return a group of random keys, different from the ones in the field
+                let keys = generate_keys();
+                kernel.excess_sig = Signature::new(keys.pk, keys.k);
             });
         }
     }
