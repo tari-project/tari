@@ -44,8 +44,7 @@ pub use error::CovenantError;
 // Used in macro
 #[allow(unused_imports)]
 pub(crate) use fields::OutputField;
-#[allow(unused_imports)]
-pub(crate) use token::CovenantToken;
+pub use token::CovenantToken;
 
 #[macro_use]
 mod macros;

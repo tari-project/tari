@@ -1882,7 +1882,7 @@ fn pruned_mode_cleanup_and_fetch_block() {
 
 mod malleability {
     use tari_common_types::types::{ComSignature, RangeProof};
-    use tari_core::{blocks::Block, transactions::transaction_components::TransactionOutputVersion};
+    use tari_core::{blocks::Block, covenant, transactions::transaction_components::TransactionOutputVersion};
     use tari_script::{Opcode, StackItem, TariScript};
     use tari_utilities::hex::Hex;
 
@@ -1955,6 +1955,15 @@ mod malleability {
             check_witness_malleability(|block: &mut Block| {
                 let output = &mut block.body.outputs_mut()[0];
                 output.metadata_signature = ComSignature::default();
+            });
+        }
+
+        #[test]
+        fn covenant() {
+            check_output_malleability(|block: &mut Block| {
+                let output = &mut block.body.outputs_mut()[0];
+                let mod_covenant = covenant!(absolute_height(@uint(42)));
+                output.covenant = mod_covenant;
             });
         }
     }
