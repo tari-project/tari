@@ -1,6 +1,13 @@
 # Changelog
 
-All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
+
+### [0.31.1](https://github.com/tari-project/tari/compare/v0.31.0...v0.31.1) (2022-04-06)
+
+
+### Bug Fixes
+
+* clippy error when not on unix ([#4000](https://github.com/tari-project/tari/issues/4000)) ([7e38259](https://github.com/tari-project/tari/commit/7e382597aa450e642433c3ec3dce5ac77ec09215))
+* fix NodeIdentityHasNoAddress when creating new node identity ([#4002](https://github.com/tari-project/tari/issues/4002)) ([76b526e](https://github.com/tari-project/tari/commit/76b526e22c279d43b3c7d15b12f7c736c4812166))
 
 ## [0.31.0](https://github.com/tari-project/tari/compare/v0.30.2...v0.31.0) (2022-04-05)
 
