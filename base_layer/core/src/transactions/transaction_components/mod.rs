@@ -112,7 +112,7 @@ pub(super) fn hash_output(
         .chain(covenant);
 
     // previous versions were incorrectly ignoring the "sender_offset_public_key" in the hash
-    // so to maintain backwards compatibility we include it from a new "V2" version onwards    
+    // so to maintain backwards compatibility we include it from a new "V2" version onwards
     if version >= TransactionOutputVersion::V2 {
         hash_writer = hash_writer.chain(sender_offset_public_key);
     }
