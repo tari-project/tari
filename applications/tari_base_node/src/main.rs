@@ -87,7 +87,7 @@ mod utils;
 
 use std::{env, net::SocketAddr, process, sync::Arc};
 
-use clap::Parser as ClapParser;
+use clap::Parser;
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;

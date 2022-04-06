@@ -14,27 +14,70 @@ network = "dibbler"
 # The socket to expose for the gRPC base node server
 grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
+# Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
+# This requires that the base node was built with the optional "libtor" feature flag.
+#use_libtor = true
+
 [dibbler.base_node]
 # A path to the file that stores your node identity and secret key
 identity_file = "config/base_node_id_dibbler.json"
 
 [base_node.p2p.transport]
+# -------------- Transport configuration --------------
+# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
+# e.g. tor onion addresses will not be contactable.
+#transport = "tcp"
+# The address and port to listen for peer connections over TCP.
+#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
+# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
+# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
+# only advertise an onion address.
+#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
+#tcp_tor_socks_auth = "none"
+
 # # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # # onion v2, onion v3 and dns addresses.
 type = "tor"
 # Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
+tor.control_address = "/ip4/127.0.0.1/tcp/9051"
 # The address to which traffic on the node's onion address will be forwarded
-tor_forward_address = "/ip4/127.0.0.1/tcp/0"
+#tor.forward_address = "/ip4/127.0.0.1/tcp/0"
 # Authentication to use for the tor control server
-tor_control_auth = "none" # or "password=xxxxxx"
+#tor.control_auth = "none" # or "password=xxxxxx"
 # The onion port to use.
-tor_onion_port = 18141
+#tor.onion_port = 18141
 # When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
 # directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-tor_proxy_bypass_addresses = []
+#tor.proxy_bypass_addresses = []
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-tor_proxy_bypass_for_outbound_tcp = false
+#tor.proxy_bypass_for_outbound_tcp = false
+
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+tor.proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
+# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
+tor.proxy_bypass_for_outbound_tcp = false
+
+# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
+# peers can find you.
+# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
+# automatically configured
+#public_address = "/ip4/172.2.3.4/tcp/18189"
+
+# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
+#transport = "socks5"
+# The address of the SOCKS5 proxy
+# socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
+# The address to which traffic will be forwarded
+#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
+#socks5_auth = "none" # or "username_password=username:xxxxxxx"
+
+# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
+# Use cases include:
+# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
+# - multiple P2P addresses, one public over DNS and one private over TOR
+# - a "bridge" between TOR and TCP-only nodes
+# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
 [base_node.p2p.dht]
 auto_join = true
@@ -73,86 +116,6 @@ peer_seeds = [
 ]
 
 
-
-
-
-# Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then
-# it is recommended to leave this setting as it. Available values are ViaBestChainMetadata and ViaRandomPeer.
-#block_sync_strategy="ViaBestChainMetadata"
-
-# Configure the maximum number of threads available for base node operation. These threads are spawned lazily, so a higher
-# number is recommended.
-# max_threads = 512
-
-# The number of threads to spawn and keep active at all times. The default is the number of cores available on this node.
-# core_threads = <number of cores>
-
-# The node's publicly-accessible hostname. This is the host name that is advertised on the network so that
-# peers can find you.
-# _NOTE_: If using the `tor` transport type, public_address will be ignored and an onion address will be
-# automatically configured
-#public_address = "/ip4/172.2.3.4/tcp/18189"
-
-
-
-
-# -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable.
-#transport = "tcp"
-# The address and port to listen for peer connections over TCP.
-#tcp_listener_address = "/ip4/0.0.0.0/tcp/18189"
-# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
-# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
-# only advertise an onion address.
-#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
-#tcp_tor_socks_auth = "none"
-
-# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-# onion v2, onion v3 and dns addresses.
-transport = "tor"
-
-# Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
-# This requires that the base node was built with the optional "libtor" feature flag.
-#use_libtor = true
-
-# Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
-
-# Authentication to use for the tor control server
-#tor_control_auth = "none" # or "password=xxxxxx"
-# The onion port to use.
-#tor_onion_port = 18141
-# The address to which traffic on the node's onion address will be forwarded
-# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
-# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
-# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
-#tor_socks_address_override=
-
-# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
-#transport = "socks5"
-# The address of the SOCKS5 proxy
-# socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
-# The address to which traffic will be forwarded
-#socks5_listener_address = "/ip4/127.0.0.1/tcp/18189"
-#socks5_auth = "none" # or "username_password=username:xxxxxxx"
-
-# A path to the file that stores the tor hidden service private key, if using the tor transport.
-base_node_tor_identity_file = "config/base_node_tor.json"
-
-# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
-# Use cases include:
-# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
-# - multiple P2P addresses, one public over DNS and one private over TOR
-# - a "bridge" between TOR and TCP-only nodes
-# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
-
-# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false
-
-[metrics]
+[base_node.metrics]
 # server_bind_address = ...
 # push_endpoint = http://localhost:9091/metrics/job/base-node

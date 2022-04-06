@@ -61,6 +61,8 @@ impl Cli {
         overrides.push(("base_node.override_from".to_string(), self.network.clone()));
         overrides.push(("p2p.seeds.override_from".to_string(), self.network.clone()));
         overrides.push(("auto_update.override_from".to_string(), self.network.clone()));
+        #[cfg(features = "metrics")]
+        overrides.push(("metrics.override_from".to_string(), self.network.clone()));
         overrides
     }
 }
