@@ -10,7 +10,6 @@
 #data_dir="data"
 
 [auto_update]
-override_from = "dibbler"
 # This interval in seconds to check for software updates. Setting this to 0 disables checking.
 check_interval = 300
 

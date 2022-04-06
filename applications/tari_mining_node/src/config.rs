@@ -63,7 +63,7 @@ pub enum ProofOfWork {
 
 impl SubConfigPath for MinerConfig {
     fn main_key_prefix() -> &'static str {
-        "mining_node"
+        "miner"
     }
 }
 
