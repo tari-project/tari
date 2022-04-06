@@ -55,7 +55,6 @@ use tari_core::{
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
 use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::Hashable};
-use tari_script::StackItem;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -1883,11 +1882,10 @@ fn pruned_mode_cleanup_and_fetch_block() {
 
 mod malleability {
     use tari_common_types::types::{ComSignature, RangeProof};
-    use tari_core::transactions::transaction_components::TransactionOutputVersion;
-    use tari_script::{Opcode, TariScript};
+    use tari_core::{blocks::Block, transactions::transaction_components::TransactionOutputVersion};
+    use tari_script::{Opcode, StackItem, TariScript};
     use tari_utilities::hex::Hex;
 
-    use super::*;
     use crate::helpers::block_malleability::*;
 
     #[test]
@@ -1909,7 +1907,7 @@ mod malleability {
                 let output = &mut block.body.outputs_mut()[0];
                 let mod_version = match output.version {
                     TransactionOutputVersion::V0 => TransactionOutputVersion::V1,
-                    TransactionOutputVersion::V1 => TransactionOutputVersion::V0,
+                    _ => TransactionOutputVersion::V0,
                 };
                 output.version = mod_version;
             });
