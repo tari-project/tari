@@ -1,6 +1,9 @@
 // Copyright 2022 The Tari Project
 // SPDX-License-Identifier: BSD-3-Clause
 
+// FIXME: ignoring for now
+#![allow(unused_imports)]
+#![allow(dead_code)]
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 use log::*;
 mod commands;
