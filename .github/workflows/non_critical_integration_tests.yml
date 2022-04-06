@@ -7,7 +7,7 @@ on:
 defaults:
   rust_image: &rust_image quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-09-18
 
-commands:
+jobs:
   cucumber-js:
     description: Run non critical cucumber tests
     steps:
