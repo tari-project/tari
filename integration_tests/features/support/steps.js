@@ -493,10 +493,10 @@ Then("difficulties are available", function () {
   // check genesis block, chain in reverse height order
   expect(this.lastResult[2].difficulty).to.equal("1");
   expect(this.lastResult[2].estimated_hash_rate).to.equal("0");
-  expect(this.lastResult[2].sha3_estimated_hash_rate).to.equal("0");
-  expect(this.lastResult[2].monero_estimated_hash_rate).to.equal("0");
   expect(this.lastResult[2].height).to.equal("2");
   expect(this.lastResult[2].pow_algo).to.equal("0");
+  expect(this.lastResult[2].sha3_estimated_hash_rate).to.equal("0");
+  expect(this.lastResult[2].monero_estimated_hash_rate).to.equal("0");
 });
 
 When(
@@ -518,7 +518,9 @@ Then(/(.*) is connected to (.*)/, async function (firstNode, secondNode) {
   const secondNodeClient = await this.getNodeOrWalletClient(secondNode);
   const secondNodeIdentity = await secondNodeClient.identify();
   let peers = await firstNodeClient.listConnectedPeers();
-  assert(peers.some((p) => secondNodeIdentity.public_key === p.public_key));
+  expect(
+    peers.some((p) => secondNodeIdentity.public_key === p.public_key)
+  ).to.be.true;
 });
 
 When(

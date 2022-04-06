@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-const assert = require("assert");
 const { Given, When, Then } = require("@cucumber/cucumber");
 const WalletProcess = require("../../helpers/walletProcess");
 const {
@@ -1125,7 +1124,7 @@ When(
       result.success,
       result.failure_message
     );
-    assert(result.success, true);
+    expect(result.success).to.be.true;
   }
 );
 
@@ -1146,7 +1145,7 @@ Then(
       const obj = resultObj[i];
       if (!obj.is_success) {
         console.log(obj.transaction_id, "failed");
-        assert(obj.is_success, true);
+        expect(obj.is_success).to.be.true;
       } else {
         console.log(
           "Transaction",
@@ -1176,7 +1175,7 @@ Then(
     console.log(
       `Number of successful transactions is ${successCount} of ${txCount}`
     );
-    assert(successCount === txCount);
+    expect(successCount).to.equal(txCount);
     console.log("All transactions found");
   }
 );
