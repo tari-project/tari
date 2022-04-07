@@ -2003,7 +2003,15 @@ mod malleability {
         #[test]
         fn sender_offset_public_key() {
             check_output_malleability(|block: &mut Block| {
-                let output = &mut block.body.outputs_mut()[0];
+                // we need to test on an output with version V2,
+                // as this field is only included in the hash after that version
+                let output = &mut block
+                    .body
+                    .outputs_mut()
+                    .iter_mut()
+                    .find(|out| out.version == TransactionOutputVersion::V2)
+                    .unwrap();
+
                 // "gerate_keys" should return a random, different key than the present one
                 let mod_pk = generate_keys().pk;
                 output.sender_offset_public_key = mod_pk;
