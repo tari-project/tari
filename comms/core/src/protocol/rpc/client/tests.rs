@@ -99,8 +99,8 @@ mod lazy_pool {
         assert_eq!(pool.refresh_num_active_connections(), 1);
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 1);
         pool.get_least_used_or_connect().await.unwrap();
-        assert_eq!(pool.refresh_num_active_connections(), 1);
-        async_assert_eventually!(mock_state.num_open_substreams(), expect = 1);
+        assert_eq!(pool.refresh_num_active_connections(), 2);
+        async_assert_eventually!(mock_state.num_open_substreams(), expect = 2);
     }
 
     #[runtime::test]
