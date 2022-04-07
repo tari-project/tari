@@ -367,8 +367,6 @@ async fn rejected_no_sessions_available() {
     ));
 }
 
-// FIXME: this test made the github action for "cargo test" timeout after 5 hours
-#[ignore]
 #[runtime::test]
 async fn stream_still_works_after_cancel() {
     let service_impl = GreetingService::default();
@@ -383,7 +381,7 @@ async fn stream_still_works_after_cancel() {
         .unwrap();
 
     // Ask for a stream, but immediately throw away the receiver
-    let _client_streaming = client
+    client
         .slow_stream(SlowStreamRequest {
             num_items: 100,
             item_size: 100,
