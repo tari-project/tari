@@ -68,7 +68,7 @@ impl KeyBlob<'_> {
 
 impl fmt::Display for KeyBlob<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use KeyBlob::*;
+        use KeyBlob::{Best, Ed25519V3, Rsa1024, String};
         match self {
             Best => write!(f, "Best"),
             Rsa1024 => write!(f, "Rsa1024"),

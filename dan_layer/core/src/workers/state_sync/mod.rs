@@ -113,7 +113,7 @@ where
             .get_sidechain_state(&self.last_checkpoint.parent_public_key)
             .await?;
 
-        let mut uow = self.state_db.new_unit_of_work(tip_node.height() as u64);
+        let mut uow = self.state_db.new_unit_of_work(u64::from(tip_node.height()));
 
         for schema in state_schemas {
             let name = schema.name;

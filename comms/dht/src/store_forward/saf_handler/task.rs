@@ -567,11 +567,11 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             }
             Ok((Some(authenticated_pk), envelope_body))
         } else {
-            let authenticated_pk = if !header.origin_mac.is_empty() {
+            let authenticated_pk = if header.origin_mac.is_empty() {
+                None
+            } else {
                 let mac_challenge = crypt::create_origin_mac_challenge(header, body);
                 Some(Self::authenticate_message(&header.origin_mac, mac_challenge)?)
-            } else {
-                None
             };
             let envelope_body = EnvelopeBody::decode(body).map_err(|_| StoreAndForwardError::MalformedMessage)?;
             Ok((authenticated_pk, envelope_body))
@@ -661,6 +661,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[allow(clippy::similar_names)]
     async fn request_stored_messages() {
         let spy = service_spy();
         let (requester, mock_state) = create_store_and_forward_mock();
@@ -811,6 +812,7 @@ mod test {
     }
 
     #[runtime::test]
+    #[allow(clippy::similar_names)]
     async fn receive_stored_messages() {
         let spy = service_spy();
         let (saf_requester, saf_mock_state) = create_store_and_forward_mock();

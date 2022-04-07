@@ -70,6 +70,7 @@ pub enum NodeCommsResponse {
 
 impl Display for NodeCommsResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use NodeCommsResponse::*;
         match self {
             ChainMetadata(_) => write!(f, "ChainMetadata"),

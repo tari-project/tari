@@ -206,7 +206,7 @@ impl HiddenServiceController {
                     self.client = Some(client);
                     self.authenticate().await?;
                     self.set_events().await?;
-                    let _ = self.create_hidden_service_from_identity().await;
+                    let _result = self.create_hidden_service_from_identity().await;
                     break Ok(());
                 },
                 Either::Left((Err(err), shutdown_signal)) => {
@@ -331,9 +331,9 @@ impl HiddenServiceController {
         })
     }
 
-    pub fn set_proxied_addr(&mut self, addr: Multiaddr) {
+    pub fn set_proxied_addr(&mut self, addr: &Multiaddr) {
         self.proxied_port_mapping.set_proxied_addr(
-            multiaddr_to_socketaddr(&addr).expect("set_proxied_addr: multiaddr must be a valid TCP socket address"),
+            multiaddr_to_socketaddr(addr).expect("set_proxied_addr: multiaddr must be a valid TCP socket address"),
         )
     }
 

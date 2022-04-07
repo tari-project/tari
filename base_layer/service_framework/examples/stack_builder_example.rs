@@ -30,6 +30,7 @@ use tokio::time::sleep;
 use crate::services::{ServiceAHandle, ServiceAInitializer, ServiceBHandle, ServiceBInitializer};
 
 #[tokio::main]
+#[allow(clippy::similar_names)]
 async fn main() {
     let mut shutdown = Shutdown::new();
     let fut = StackBuilder::new(shutdown.to_signal())
@@ -51,7 +52,7 @@ async fn main() {
     println!("Response from Service A: {}", response_a);
     println!("----------------------------------------------------");
 
-    let _ = shutdown.trigger();
+    shutdown.trigger();
 
     sleep(Duration::from_secs(5)).await;
 }

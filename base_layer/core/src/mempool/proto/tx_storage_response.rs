@@ -28,7 +28,7 @@ impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
     type Error = String;
 
     fn try_from(tx_storage: proto::TxStorageResponse) -> Result<Self, Self::Error> {
-        use proto::TxStorageResponse::*;
+        use proto::TxStorageResponse::{None, NotStored, ReorgPool, UnconfirmedPool};
         Ok(match tx_storage {
             None => return Err("TxStorageResponse not provided".to_string()),
             UnconfirmedPool => TxStorageResponse::UnconfirmedPool,
@@ -40,6 +40,7 @@ impl TryFrom<proto::TxStorageResponse> for TxStorageResponse {
 
 impl From<TxStorageResponse> for proto::TxStorageResponse {
     fn from(response: TxStorageResponse) -> Self {
+        #[allow(clippy::enum_glob_use)]
         use TxStorageResponse::*;
         match response {
             UnconfirmedPool => proto::TxStorageResponse::UnconfirmedPool,

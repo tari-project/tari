@@ -196,7 +196,7 @@ async fn main() {
     if let Err(e) = run_python_network_graph_render(
         "join_propagation",
         DEFAULT_GRAPH_OUTPUT_DIR,
-        PythonRenderType::Propagation,
+        &PythonRenderType::Propagation,
     ) {
         println!("Error rendering graphs: {}", e);
     }

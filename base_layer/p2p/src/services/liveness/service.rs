@@ -117,7 +117,7 @@ where
                 // Requests from the handle
                 Some(request_context) = request_stream.next() => {
                     let (request, reply_tx) = request_context.split();
-                    let _ = reply_tx.send(self.handle_request(request).await);
+                    let _result = reply_tx.send(self.handle_request(request).await);
                 },
 
                 // Tick events
@@ -212,7 +212,7 @@ where
         debug!(target: LOG_TARGET, "Sending ping to peer '{}'", node_id.short_str(),);
 
         self.outbound_messaging
-            .send_direct_node_id(node_id, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
+            .send_direct_node_id(node_id, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
             .await
             .map_err(Into::<DhtOutboundError>::into)?;
 
@@ -222,13 +222,14 @@ where
     async fn send_pong(&mut self, nonce: u64, dest: CommsPublicKey) -> Result<(), LivenessError> {
         let msg = PingPongMessage::pong_with_metadata(nonce, self.state.metadata().clone());
         self.outbound_messaging
-            .send_direct(dest, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
+            .send_direct(dest, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
             .await
             .map(|_| ())
             .map_err(Into::into)
     }
 
     async fn handle_request(&mut self, request: LivenessRequest) -> Result<LivenessResponse, LivenessError> {
+        #[allow(clippy::enum_glob_use)]
         use LivenessRequest::*;
         match request {
             SendPing(node_id) => {
@@ -301,7 +302,7 @@ where
             let msg = PingPongMessage::ping_with_metadata(self.state.metadata().clone());
             self.state.add_inflight_ping(msg.nonce, peer.clone());
             self.outbound_messaging
-                .send_direct_node_id(peer, OutboundDomainMessage::new(TariMessageType::PingPong, msg))
+                .send_direct_node_id(peer, OutboundDomainMessage::new(&TariMessageType::PingPong, msg))
                 .await?;
         }
 
@@ -467,7 +468,7 @@ mod test {
             }
         });
 
-        let _res = liveness_handle.send_ping(node_id).await.unwrap();
+        liveness_handle.send_ping(node_id).await.unwrap();
     }
 
     fn create_dummy_message<T>(inner: T) -> DomainMessage<T> {

@@ -126,7 +126,7 @@ impl ProtocolExtensionContext {
     pub fn add_protocol<I: AsRef<[ProtocolId]>>(
         &mut self,
         protocols: I,
-        notifier: ProtocolNotificationTx<Substream>,
+        notifier: &ProtocolNotificationTx<Substream>,
     ) -> &mut Self {
         self.protocols
             .as_mut()

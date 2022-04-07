@@ -261,7 +261,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
                 }
             }
 
-            for input in inputs.iter_mut() {
+            for input in &mut inputs {
                 // Read the spent_output for this compact input
                 if input.is_compact() {
                     let output_mined_info = db

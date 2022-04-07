@@ -267,7 +267,7 @@ async fn response_too_big() {
     unpack_enum!(RpcStatusCode::MalformedResponse = status.as_status_code());
 
     // Check that the exact frame size boundary works and that the session is still going
-    let _ = client
+    let _string = client
         .reply_with_msg_of_size(rpc::max_response_payload_size() as u64 - 9)
         .await
         .unwrap();
@@ -381,7 +381,7 @@ async fn stream_still_works_after_cancel() {
         .unwrap();
 
     // Ask for a stream, but immediately throw away the receiver
-    let _ = client
+    client
         .slow_stream(SlowStreamRequest {
             num_items: 100,
             item_size: 100,
@@ -429,7 +429,7 @@ async fn stream_interruption_handling() {
         .await
         .unwrap();
 
-    let _ = resp.next().await.unwrap().unwrap();
+    let _buffer = resp.next().await.unwrap().unwrap();
     // Drop it before the stream is finished
     drop(resp);
 

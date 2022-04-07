@@ -144,7 +144,7 @@ impl MetricsCollector {
     }
 
     fn handle(&mut self, op: MetricOp) {
-        use MetricOp::*;
+        use MetricOp::{Read, Write};
         match op {
             Write(write) => self.handle_write(write),
             Read(read) => self.handle_read(read),
@@ -152,7 +152,7 @@ impl MetricsCollector {
     }
 
     fn handle_write(&mut self, write: MetricWrite) {
-        use MetricWrite::*;
+        use MetricWrite::{ClearMetrics, MessageReceived};
         match write {
             MessageReceived(node_id) => {
                 self.state.add_message_received(node_id);
@@ -164,16 +164,17 @@ impl MetricsCollector {
     }
 
     fn handle_read(&mut self, query: MetricRead) {
+        #[allow(clippy::enum_glob_use)]
         use MetricRead::*;
         match query {
             GetMessagesReceivedTimeseries(node_id, reply) => {
-                let _ = reply.send(self.state.message_received_get_timeseries(&node_id));
+                let _result = reply.send(self.state.message_received_get_timeseries(&node_id));
             },
             ExceedingMessagesReceivedRate((counts, timespan), reply) => {
-                let _ = reply.send(self.state.message_received_get_nodes_exceeding(counts, timespan));
+                let _result = reply.send(self.state.message_received_get_nodes_exceeding(counts, timespan));
             },
             MessagesReceivedTotalCountInTimespan(timespan, reply) => {
-                let _ = reply.send(self.state.message_received_get_total_count_in_timespan(timespan));
+                let _result = reply.send(self.state.message_received_get_total_count_in_timespan(timespan));
             },
         }
     }

@@ -95,7 +95,7 @@ pub async fn network_graph_snapshot(
             .expect("Can't get connections");
 
         let node_index = node_indices.get(&node_id).expect("Can't find Node Index 1");
-        for peer in connected_peers.iter() {
+        for peer in &connected_peers {
             let distance = node_id.distance(peer.peer_node_id());
             let peer_node_index = node_indices.get(peer.peer_node_id()).expect("Can't find Node Index 2");
 
@@ -114,7 +114,7 @@ pub async fn network_graph_snapshot(
                 .expect("Can't get connections");
 
             let node_index = node_indices.get(&node_id).expect("Can't find Node Index 1");
-            for neighbour in connected_neighbours.iter() {
+            for neighbour in &connected_neighbours {
                 let distance = node_id.distance(neighbour.peer_node_id());
                 let peer_node_index = node_indices
                     .get(neighbour.peer_node_id())
@@ -135,7 +135,7 @@ pub async fn network_graph_snapshot(
     if frame_num == 0 {
         let path = tmp_file_path.to_str().expect("Can't clean output directory");
 
-        let _ = fs::remove_dir_all(path);
+        let _result = fs::remove_dir_all(path);
         fs::create_dir_all(path).expect("Could not create temp graph directory");
     }
 
@@ -159,7 +159,7 @@ pub async fn network_graph_snapshot(
 pub fn run_python_network_graph_render(
     name: &str,
     output_dir: &str,
-    graph_type: PythonRenderType,
+    graph_type: &PythonRenderType,
 ) -> Result<(), String> {
     let temp_path = Path::new(TEMP_GRAPH_OUTPUT_DIR).join(name);
     let tmp_file_path = match temp_path.to_str() {
@@ -173,11 +173,11 @@ pub fn run_python_network_graph_render(
         Some(p) => p,
     };
 
-    let plot_full_network = (graph_type == PythonRenderType::NetworkGraphFull ||
-        graph_type == PythonRenderType::NetworkGraphOnlyConnections)
+    let plot_full_network = (*graph_type == PythonRenderType::NetworkGraphFull ||
+        *graph_type == PythonRenderType::NetworkGraphOnlyConnections)
         .to_string();
-    let plot_full_neighbours = (graph_type == PythonRenderType::NetworkGraphFull ||
-        graph_type == PythonRenderType::NetworkGraphOnlyNeighbours)
+    let plot_full_neighbours = (*graph_type == PythonRenderType::NetworkGraphFull ||
+        *graph_type == PythonRenderType::NetworkGraphOnlyNeighbours)
         .to_string();
 
     let arguments = match graph_type {

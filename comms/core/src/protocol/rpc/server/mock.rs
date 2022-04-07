@@ -146,6 +146,7 @@ pub trait RpcMock {
         method_state.requests.write().await.push(request.into_message());
         let resp = method_state.response.read().await.clone()?;
         let (tx, rx) = mpsc::channel(resp.len());
+        #[allow(clippy::match_wild_err_arm)]
         match utils::mpsc::send_all(&tx, resp.into_iter().map(Ok)).await {
             Ok(_) => {},
             // This is done because tokio mpsc channels give the item back to you in the error, and our item doesn't
@@ -303,7 +304,7 @@ impl Service<Request<Bytes>> for MockRpcImpl {
             let method_id = req.method().id();
             match state.lock().await.accepted_calls.get(&method_id) {
                 Some(resp) => Ok(resp.clone().map(Body::single)),
-                None => Err(RpcStatus::unsupported_method(format!(
+                None => Err(RpcStatus::unsupported_method(&format!(
                     "Method identifier `{}` is not recognised or supported",
                     method_id
                 ))),

@@ -31,7 +31,7 @@ impl LinearWeightedMovingAverage {
         Self {
             target_difficulties: VecDeque::with_capacity(block_window + 1),
             block_window,
-            target_time: target_time as u128,
+            target_time: u128::from(target_time),
             max_block_time,
         }
     }
@@ -51,7 +51,7 @@ impl LinearWeightedMovingAverage {
             .target_difficulties
             .iter()
             .skip(1)
-            .fold(0u128, |difficulty, (_, d)| difficulty + d.as_u64() as u128);
+            .fold(0u128, |difficulty, (_, d)| difficulty + u128::from(d.as_u64()));
 
         let ave_difficulty = difficulty / n;
 
@@ -71,7 +71,7 @@ impl LinearWeightedMovingAverage {
 
             // Give linearly higher weight to more recent solve times.
             // Note: This will not overflow for practical values of block_window and solve time.
-            weighted_times += (solve_time * (i + 1) as u64) as u128;
+            weighted_times += u128::from(solve_time * (i + 1) as u64);
         }
         // k is the sum of weights (1+2+..+n) * target_time
         let k = n * (n + 1) * self.target_time / 2;

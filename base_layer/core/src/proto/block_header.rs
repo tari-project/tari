@@ -54,7 +54,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
             None => return Err("No proof of work provided".into()),
         };
         Ok(Self {
-            version: header.version as u16,
+            version: u16::try_from(header.version).unwrap(),
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp,
@@ -75,7 +75,7 @@ impl TryFrom<proto::BlockHeader> for BlockHeader {
 impl From<BlockHeader> for proto::BlockHeader {
     fn from(header: BlockHeader) -> Self {
         Self {
-            version: header.version as u32,
+            version: u32::try_from(header.version).unwrap(),
             height: header.height,
             prev_hash: header.prev_hash,
             timestamp: Some(datetime_to_timestamp(header.timestamp)),

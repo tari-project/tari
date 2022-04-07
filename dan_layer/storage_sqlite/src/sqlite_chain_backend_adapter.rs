@@ -177,7 +177,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn update_locked_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         use crate::schema::locked_qc::dsl;
-        let message_type = item.message_type.as_u8() as i32;
+        let message_type = i32::from(item.message_type.as_u8());
         let existing: Result<LockedQc, _> = dsl::locked_qc.find(1).first(transaction.connection());
         match existing {
             Ok(_) => {
@@ -215,7 +215,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
 
     fn update_prepare_qc(&self, item: &DbQc, transaction: &Self::BackendTransaction) -> Result<(), Self::Error> {
         use crate::schema::prepare_qc::dsl;
-        let message_type = item.message_type.as_u8() as i32;
+        let message_type = i32::from(item.message_type.as_u8());
         let existing: Result<PrepareQc, _> = dsl::prepare_qc.find(1).first(transaction.connection());
         match existing {
             Ok(_) => {
@@ -264,7 +264,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             })?;
         qc.map(|qc| {
             Ok(QuorumCertificate::new(
-                HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+                HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
                 ViewId::from(qc.view_number as u64),
                 qc.node_hash.try_into()?,
                 qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
@@ -326,7 +326,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         };
 
         Ok(QuorumCertificate::new(
-            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+            HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
             ViewId::from(qc.view_number as u64),
             qc.node_hash.try_into()?,
             qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
@@ -344,7 +344,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
                 operation: "get_locked_qc".to_string(),
             })?;
         Ok(QuorumCertificate::new(
-            HotStuffMessageType::try_from(qc.message_type as u8).unwrap(),
+            HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
             ViewId::from(qc.view_number as u64),
             qc.node_hash.try_into()?,
             qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
@@ -367,7 +367,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             Some(node) => Ok(Some((node.id, DbNode {
                 hash: node.hash.try_into()?,
                 parent: node.parent.try_into()?,
-                height: node.height as u32,
+                height: u32::try_from(node.height).unwrap(),
                 is_committed: node.is_committed,
             }))),
             None => Ok(None),

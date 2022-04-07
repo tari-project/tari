@@ -47,6 +47,8 @@ impl CliLoop {
             .build();
         let mut rustyline = Editor::with_config(cli_config);
         rustyline.set_helper(Some(parser));
+        // Saves the user from having to type this in again to return to "watch status"
+        rustyline.history_mut().add("watch status");
         let reader = CommandReader::new(rustyline);
         let watch_task = {
             if let Some(line) = watch_command {
@@ -220,11 +222,11 @@ impl CliLoop {
                         }
                         Err(ReadlineError::Interrupted) => {
                             // If `Ctrl-C` is pressed
-                            if !self.first_signal {
+                            if self.first_signal {
+                                self.done = true;
+                            } else {
                                 println!("Are you leaving already? Press Ctrl-C again (or Ctrl-D) to terminate the node.");
                                 self.first_signal = true;
-                            } else {
-                                self.done = true;
                             }
                         }
                         Err(ReadlineError::Eof) => {

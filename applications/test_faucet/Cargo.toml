@@ -1,6 +1,6 @@
 [package]
 name = "test_faucet"
-version = "0.30.2"
+version = "0.31.1"
 authors = ["The Tari Development Community"]
 edition = "2018"
 license = "BSD-3-Clause"

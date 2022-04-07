@@ -22,6 +22,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     time::{Duration, Instant},
 };
 
@@ -211,7 +212,7 @@ impl LivenessState {
                 Some(current + latency)
             })
             // num_peers in map will always be > 0
-            .map(|latency| Duration::from_millis(latency.as_millis() as u64 / num_peers as u64))
+            .map(|latency| Duration::from_millis(u64::try_from(latency.as_millis()).unwrap() / num_peers as u64))
     }
 
     pub fn failed_pings_iter(&self) -> impl Iterator<Item = (&NodeId, &usize)> {
@@ -244,7 +245,7 @@ impl AverageLatency {
         if self.samples.len() == self.samples.capacity() {
             self.samples.remove(0);
         }
-        self.samples.push(sample.as_millis() as u32)
+        self.samples.push(u32::try_from(sample.as_millis()).unwrap())
     }
 
     /// Calculate the average of the recorded samples

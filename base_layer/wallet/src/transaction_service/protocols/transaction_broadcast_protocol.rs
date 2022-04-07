@@ -245,7 +245,7 @@ where
 
             self.cancel_transaction(reason).await;
 
-            let _ = self
+            let _size = self
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCancelled(self.tx_id, reason)))
@@ -276,7 +276,7 @@ where
                 .broadcast_completed_transaction(self.tx_id)
                 .await
                 .map_err(|e| TransactionServiceProtocolError::new(self.tx_id, TransactionServiceError::from(e)))?;
-            let _ = self
+            let _size = self
                 .resources
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionBroadcast(self.tx_id)))
@@ -360,7 +360,7 @@ where
                 );
                 self.cancel_transaction(TxCancellationReason::InvalidTransaction).await;
 
-                let _ = self
+                let _size = self
                     .resources
                     .event_publisher
                     .send(Arc::new(TransactionEvent::TransactionCancelled(

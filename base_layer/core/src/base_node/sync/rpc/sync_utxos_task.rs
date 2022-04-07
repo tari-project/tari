@@ -80,7 +80,7 @@ where B: BlockchainBackend + 'static
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
 
         if start_header.height() > end_header.height {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "start header height {} cannot be greater than the end header height ({})",
                 start_header.height(),
                 end_header.height
@@ -99,7 +99,7 @@ where B: BlockchainBackend + 'static
 
             let skip = msg.start.checked_sub(prev_header.output_mmr_size)
                 // This is a data inconsistency because fetch_header_containing_utxo_mmr returned the header we are basing this on
-                .ok_or_else(|| RpcStatus::general(format!("Data inconsistency: output mmr size of header at {} was more than the start index {}", prev_header.height, msg.start)))?;
+                .ok_or_else(|| RpcStatus::general(&format!("Data inconsistency: output mmr size of header at {} was more than the start index {}", prev_header.height, msg.start)))?;
             (skip, prev_header.output_mmr_size)
         };
 
@@ -126,7 +126,7 @@ where B: BlockchainBackend + 'static
                     target: LOG_TARGET,
                     "UTXO stream errored for peer '{}': {}", self.peer_node_id, err
                 );
-                let _ = tx.send(Err(err)).await;
+                let _result = tx.send(Err(err)).await;
             }
             debug!(
                 target: LOG_TARGET,
@@ -155,7 +155,7 @@ where B: BlockchainBackend + 'static
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "Failed to get deleted bitmap: {}", err);
-                RpcStatus::general(format!(
+                RpcStatus::general(&format!(
                     "Could not get deleted bitmap at hash {}",
                     end_header.hash().to_hex()
                 ))
@@ -277,7 +277,7 @@ where B: BlockchainBackend + 'static
                 .await
                 .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::general(format!(
+                    RpcStatus::general(&format!(
                         "Potential data consistency issue: header {} not found",
                         current_header.height + 1
                     ))

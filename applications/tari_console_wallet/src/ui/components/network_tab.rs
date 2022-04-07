@@ -97,7 +97,7 @@ impl NetworkTab {
             (false, Style::default().fg(Color::Reset)),
         ]
         .iter()
-        .cloned()
+        .copied()
         .collect();
 
         for (peer_type, peer) in base_node_list {
@@ -287,6 +287,7 @@ impl NetworkTab {
                 self.confirmation_dialog = false;
                 self.base_node_edit_mode = BaseNodeInputMode::Selection;
                 return KeyHandled::Handled;
+            } else {
             }
         }
         KeyHandled::NotHandled

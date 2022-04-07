@@ -29,7 +29,7 @@ use crate::{
 };
 
 #[async_trait]
-pub trait BaseNodeClient {
+pub trait BaseNodeClient: Send + Sync {
     async fn get_tip_info(&mut self) -> Result<BaseLayerMetadata, DigitalAssetError>;
 
     async fn get_current_checkpoint(

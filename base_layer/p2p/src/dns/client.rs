@@ -74,7 +74,9 @@ impl DnsClient {
     }
 
     pub async fn lookup(&mut self, query: Query) -> Result<DnsResponse, DnsClientError> {
-        use DnsClient::*;
+        #[cfg(test)]
+        use DnsClient::Mock;
+        use DnsClient::{Normal, Secure};
         match self {
             Secure(ref mut client) => client.lookup(query).await,
             Normal(ref mut client) => client.lookup(query).await,

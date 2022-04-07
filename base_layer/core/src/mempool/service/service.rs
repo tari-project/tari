@@ -103,7 +103,7 @@ impl MempoolService {
                 // Requests sent from the handle
                 Some(request) = request_receiver.next() => {
                     let (request, reply) = request.split();
-                    let _ = reply.send(self.handle_request(request).await);
+                    let _result = reply.send(self.handle_request(request).await);
                 },
 
                 // Outbound tx messages from the OutboundMempoolServiceInterface
@@ -246,7 +246,7 @@ async fn handle_outbound_tx(
             OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
-                TariMessageType::NewTransaction,
+                &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).map_err(MempoolServiceError::ConversionError)?,
             ),
         )

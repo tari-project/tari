@@ -36,7 +36,7 @@ impl TryFrom<NewBlockTemplate> for grpc::NewBlockTemplate {
 
     fn try_from(block: NewBlockTemplate) -> Result<Self, Self::Error> {
         let header = grpc::NewBlockHeaderTemplate {
-            version: block.header.version as u32,
+            version: u32::from(block.header.version),
             height: block.header.height,
             prev_hash: block.header.prev_hash.clone(),
             total_kernel_offset: Vec::from(block.header.total_kernel_offset.as_bytes()),

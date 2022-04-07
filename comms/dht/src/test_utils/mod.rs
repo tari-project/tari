@@ -24,7 +24,7 @@ macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
         match $var {
             crate::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
-                let _ = reply_tx.send($reply_value);
+                let _result = reply_tx.send($reply_value);
                 (*boxed, body)
             },
         }

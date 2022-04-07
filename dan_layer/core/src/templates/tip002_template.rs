@@ -67,7 +67,7 @@ fn init<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfWork)
         source: e,
         message_type: "tip002::InitRequest".to_string(),
     })?;
-    dbg!(&params);
+    println!("{:?}", params);
     state_db.set_value(
         "owners".to_string(),
         state_db.context().asset_public_key().to_vec(),
@@ -114,7 +114,7 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
         message_type: "tip002::TransferRequest".to_string(),
     })?;
 
-    dbg!(&request);
+    println!("{:?}", request);
     let data = state_db.get_value("owners", &request.from)?;
     match data {
         Some(data) => {
@@ -125,7 +125,7 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
                 return Err(DigitalAssetError::NotEnoughFunds);
             }
             let new_balance = balance - request.amount;
-            dbg!(new_balance);
+            println!("{:?}", new_balance);
             state_db.set_value(
                 "owners".to_string(),
                 request.from.clone(),
@@ -141,11 +141,11 @@ fn transfer<TUnitOfWork: StateDbUnitOfWork>(args: &[u8], state_db: &mut TUnitOfW
                 },
                 None => 0,
             };
-            dbg!(receiver_balance);
+            println!("{:?}", receiver_balance);
             receiver_balance = receiver_balance
                 .checked_add(request.amount)
                 .ok_or(DigitalAssetError::Overflow)?;
-            dbg!(receiver_balance);
+            println!("{:?}", receiver_balance);
             state_db.set_value(
                 "owners".to_string(),
                 request.to,

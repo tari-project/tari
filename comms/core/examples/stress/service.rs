@@ -207,7 +207,7 @@ impl StressTestService {
     }
 
     async fn handle_request(&mut self, request: StressTestServiceRequest) -> Result<(), Error> {
-        use StressTestServiceRequest::*;
+        use StressTestServiceRequest::{BeginProtocol, Shutdown};
         match request {
             BeginProtocol(peer, protocol, reply) => self.begin_protocol(peer, protocol, reply).await?,
             Shutdown => {
@@ -233,7 +233,7 @@ impl StressTestService {
         let outbound_tx = self.outbound_tx.clone();
         let inbound_rx = self.inbound_rx.clone();
         task::spawn(async move {
-            let _ = reply.send(start_initiator_protocol(conn, protocol, inbound_rx, outbound_tx).await);
+            let _result = reply.send(start_initiator_protocol(conn, protocol, inbound_rx, outbound_tx).await);
         });
 
         Ok(())
@@ -324,7 +324,7 @@ async fn start_initiator_protocol(
                 for _ in 0..100usize {
                     counter += 1;
                     let msg = framed.next().await.ok_or(Error::UnexpectedEof)??;
-                    received.push(decode_msg(msg));
+                    received.push(decode_msg(&msg));
                 }
             }
             println!("Received {} messages ", received.len());
@@ -367,7 +367,7 @@ async fn start_responder_protocol(
             let start = Instant::now();
 
             while let Some(Ok(msg)) = stream.next().await {
-                received.push(decode_msg(msg));
+                received.push(decode_msg(&msg));
             }
 
             println!(
@@ -405,7 +405,7 @@ async fn start_responder_protocol(
                 for _ in 0..100usize {
                     counter += 1;
                     let msg = stream.next().await.ok_or(Error::UnexpectedEof)??;
-                    received.push(decode_msg(msg));
+                    received.push(decode_msg(&msg));
                 }
 
                 // Send 100
@@ -421,7 +421,7 @@ async fn start_responder_protocol(
             }
 
             // Wait for the stream to close
-            let _ = stream.next().await;
+            let _result = stream.next().await;
 
             println!(
                 "Protocol complete in {:.2?}. {} messages received, {} sent",
@@ -472,7 +472,7 @@ async fn messaging_flood(
         let mut inbound_rx = inbound_rx.write().await;
         let mut msgs = vec![];
         while let Some(msg) = inbound_rx.recv().await {
-            let msg_id = decode_msg(msg.body);
+            let msg_id = decode_msg(&msg.body);
             if msgs.len() == protocol.num_messages as usize {
                 // msg_id == 0 {
                 break;
@@ -503,7 +503,7 @@ fn generate_message(n: u32, size: usize) -> Bytes {
     bytes.freeze()
 }
 
-fn decode_msg<T: prost::bytes::Buf>(msg: T) -> u32 {
+fn decode_msg<T: prost::bytes::Buf>(msg: &T) -> u32 {
     let mut buf = [0u8; 4];
     msg.chunk().copy_to_slice(&mut buf);
     u32::from_be_bytes(buf)

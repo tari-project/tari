@@ -20,15 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
-#![deny(clippy::needless_borrow)]
-
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣶⣿⣿⣿⣿⣶⣦⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⣾⣿⡿⠋⠀⠀⠀⠀⠉⠛⠿⣿⣿⣶⣤⣀⠀⠀⠀⠀⠀⠀⢰⣿⣾⣾⣾⣾⣾⣾⣾⣾⣾⣿⠀⠀⠀⣾⣾⣾⡀⠀⠀⠀⠀⢰⣾⣾⣾⣾⣿⣶⣶⡀⠀⠀⠀⢸⣾⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
 /// ⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿⣶⣶⣤⣄⡀⠀⠀⠀⠀⠀⠉⠛⣿⣿⠀⠀⠀⠀⠀⠈⠉⠉⠉⠉⣿⣿⡏⠉⠉⠉⠉⠀⠀⣰⣿⣿⣿⣿⠀⠀⠀⠀⢸⣿⣿⠉⠉⠉⠛⣿⣿⡆⠀⠀⢸⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀
@@ -113,13 +104,7 @@ use tari_common::{
     ConfigBootstrap,
     GlobalConfig,
 };
-use tari_comms::{
-    peer_manager::PeerFeatures,
-    tor::HiddenServiceControllerError,
-    utils::multiaddr::multiaddr_to_socketaddr,
-    NodeIdentity,
-};
-use tari_core::chain_storage::ChainStorageError;
+use tari_comms::{peer_manager::PeerFeatures, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -134,7 +119,11 @@ fn main() {
     if let Err(err) = main_inner() {
         eprintln!("{:?}", err);
         let exit_code = err.exit_code;
-        eprintln!("{}", exit_code.hint());
+        if let Some(hint) = exit_code.hint() {
+            eprintln!();
+            eprintln!("{}", hint);
+            eprintln!();
+        }
         error!(
             target: LOG_TARGET,
             "Exiting with code ({}): {:?}", exit_code as i32, err
@@ -151,7 +140,7 @@ fn main_inner() -> Result<(), ExitError> {
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node_identity_file,
-        &config.comms_public_address,
+        config.comms_public_address.as_ref(),
         bootstrap.create_id,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
@@ -229,7 +218,7 @@ async fn run_node(
         recovery::initiate_recover_db(&config)?;
         recovery::run_recovery(&config)
             .await
-            .map_err(|e| ExitError::new(ExitCode::RecoveryError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::RecoveryError, &e))?;
         return Ok(());
     };
 
@@ -240,33 +229,14 @@ async fn run_node(
         shutdown.to_signal(),
         bootstrap.clean_orphans_db,
     )
-    .await
-    .map_err(|err| {
-        for boxed_error in err.chain() {
-            if let Some(HiddenServiceControllerError::TorControlPortOffline) = boxed_error.downcast_ref() {
-                return ExitCode::TorOffline.into();
-            }
-            if let Some(ChainStorageError::DatabaseResyncRequired(reason)) = boxed_error.downcast_ref() {
-                return ExitError::new(
-                    ExitCode::DbInconsistentState,
-                    format!("You may need to resync your database because {}", reason),
-                );
-            }
-
-            // todo: find a better way to do this
-            if boxed_error.to_string().contains("Invalid force sync peer") {
-                println!("Please check your force sync peers configuration");
-                return ExitError::new(ExitCode::ConfigError, boxed_error);
-            }
-        }
-        ExitError::new(ExitCode::UnknownError, err)
-    })?;
+    .await?;
 
     if let Some(ref base_node_config) = config.base_node_config {
         if let Some(ref address) = base_node_config.grpc_address {
             // Go, GRPC, go go
             let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr = multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, e))?;
+            let socket_addr =
+                multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
             task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
         }
     }

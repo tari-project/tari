@@ -63,7 +63,7 @@ impl From<TransactionKernel> for grpc::TransactionKernel {
         let hash = kernel.hash();
 
         grpc::TransactionKernel {
-            features: kernel.features.bits() as u32,
+            features: u32::from(kernel.features.bits()),
             fee: kernel.fee.0,
             lock_height: kernel.lock_height,
             excess: Vec::from(kernel.excess.as_bytes()),

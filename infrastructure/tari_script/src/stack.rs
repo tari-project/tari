@@ -304,7 +304,7 @@ impl Hex for ExecutionStack {
 #[allow(clippy::many_single_char_names)]
 fn counter(values: [u8; 5], item: &StackItem) -> [u8; 5] {
     let [n, h, c, p, s] = values;
-    use StackItem::*;
+    use StackItem::{Commitment, Hash, Number, PublicKey, Signature};
     match item {
         Number(_) => {
             let n = n + 1;
@@ -343,7 +343,7 @@ mod test {
 
     #[test]
     fn as_bytes_roundtrip() {
-        use crate::StackItem::*;
+        use crate::StackItem::{Number, PublicKey, Signature};
         let k = RistrettoSecretKey::random(&mut rand::thread_rng());
         let SignatureSet {
             signature: s,

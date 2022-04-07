@@ -55,7 +55,7 @@ pub enum DbStateOperation {
 
 impl DbStateOperation {
     pub fn as_op_str(&self) -> &str {
-        use DbStateOperation::*;
+        use DbStateOperation::{Delete, Set};
         match self {
             Set => "S",
             Delete => "D",
@@ -67,7 +67,7 @@ impl FromStr for DbStateOperation {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        use DbStateOperation::*;
+        use DbStateOperation::{Delete, Set};
         match s {
             "S" => Ok(Set),
             "D" => Ok(Delete),

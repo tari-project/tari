@@ -58,7 +58,7 @@ use crate::{
 
 /// Returns the genesis block for the selected network.
 pub fn get_genesis_block(network: Network) -> ChainBlock {
-    use Network::*;
+    use Network::{Dibbler, Igor, LocalNet, MainNet, Ridcully, Stibbons, Weatherwax};
     match network {
         MainNet => get_mainnet_genesis_block(),
         Dibbler => get_dibbler_genesis_block(),
@@ -317,6 +317,7 @@ mod test {
     };
 
     #[test]
+    #[allow(clippy::similar_names)]
     fn dibbler_genesis_sanity_check() {
         let block = get_dibbler_genesis_block();
         assert_eq!(block.block().body.outputs().len(), 4001);

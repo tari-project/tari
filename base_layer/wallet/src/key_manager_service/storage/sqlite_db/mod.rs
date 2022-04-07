@@ -219,7 +219,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let mut key_manager_states = KeyManagerStateSql::index(&conn)?;
-        for key_manager_state in key_manager_states.iter_mut() {
+        for key_manager_state in &mut key_manager_states {
             key_manager_state
                 .encrypt(&cipher)
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
@@ -252,7 +252,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
         let mut key_manager_states = KeyManagerStateSql::index(&conn)?;
 
-        for key_manager_state in key_manager_states.iter_mut() {
+        for key_manager_state in &mut key_manager_states {
             key_manager_state
                 .decrypt(&cipher)
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;

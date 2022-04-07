@@ -118,6 +118,7 @@ impl LivenessMock {
     }
 
     async fn handle_request(&self, req: RequestContext<LivenessRequest, Result<LivenessResponse, LivenessError>>) {
+        #[allow(clippy::enum_glob_use)]
         use LivenessRequest::*;
         let (req, reply) = req.split();
         trace!(target: LOG_TARGET, "LivenessMock received request {:?}", req);

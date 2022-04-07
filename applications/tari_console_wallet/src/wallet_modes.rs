@@ -96,19 +96,19 @@ impl PeerConfig {
             Ok(self
                 .base_node_peers
                 .first()
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Configured base node peer has no address!"))?
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Configured base node peer has no address!"))?
                 .clone())
         } else if !self.peer_seeds.is_empty() {
             // pick a random peer seed
             Ok(self
                 .peer_seeds
                 .choose(&mut OsRng)
-                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, "Peer seeds was empty."))?
+                .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Peer seeds was empty."))?
                 .clone())
         } else {
             Err(ExitError::new(
                 ExitCode::ConfigError,
-                "No peer seeds or base node peer defined in config!",
+                &"No peer seeds or base node peer defined in config!",
             ))
         }
     }
@@ -162,10 +162,10 @@ pub fn script_mode(config: WalletModeConfig, wallet: WalletSqlite, path: PathBuf
     } = config.clone();
     info!(target: LOG_TARGET, "Starting wallet script mode");
     println!("Starting wallet script mode");
-    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, e))?;
+    let script = fs::read_to_string(path).map_err(|e| ExitError::new(ExitCode::InputError, &e))?;
 
     if script.is_empty() {
-        return Err(ExitError::new(ExitCode::InputError, "Input file is empty!"));
+        return Err(ExitError::new(ExitCode::InputError, &"Input file is empty!"));
     };
 
     let mut commands = Vec::new();
@@ -212,7 +212,7 @@ fn wallet_or_exit(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), 
         let mut buf = String::new();
         std::io::stdin()
             .read_line(&mut buf)
-            .map_err(|e| ExitError::new(ExitCode::IOError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::IOError, &e))?;
 
         match buf.as_str().trim() {
             "quit" | "q" | "exit" => {
@@ -253,6 +253,7 @@ pub fn tui_mode(config: WalletModeConfig, mut wallet: WalletSqlite) -> Result<()
         base_node_selected = peer;
     } else if let Some(peer) = handle.block_on(wallet.get_base_node_peer()) {
         base_node_selected = peer;
+    } else {
     }
 
     let app = App::<CrosstermBackend<Stdout>>::new(
@@ -325,7 +326,7 @@ pub fn recovery_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(
         WalletMode::RecoveryTui => tui_mode(config, wallet),
         _ => Err(ExitError::new(
             ExitCode::RecoveryError,
-            "Unsupported post recovery mode",
+            &"Unsupported post recovery mode",
         )),
     }
 }
@@ -339,7 +340,7 @@ pub fn grpc_mode(config: WalletModeConfig, wallet: WalletSqlite) -> Result<(), E
         let grpc = WalletGrpcServer::new(wallet);
         handle
             .block_on(run_grpc(grpc, grpc_address))
-            .map_err(|e| ExitError::new(ExitCode::GrpcError, e))?;
+            .map_err(|e| ExitError::new(ExitCode::GrpcError, &e))?;
     } else {
         println!("No grpc address specified");
     }

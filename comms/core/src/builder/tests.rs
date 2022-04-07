@@ -120,14 +120,14 @@ async fn peer_to_peer_custom_protocols() {
     let (another_test_sender, mut another_test_protocol_rx1) = mpsc::channel(10);
     let mut protocols1 = Protocols::new();
     protocols1
-        .add(&[TEST_PROTOCOL.clone()], test_sender)
-        .add(&[ANOTHER_TEST_PROTOCOL.clone()], another_test_sender);
+        .add(&[TEST_PROTOCOL.clone()], &test_sender)
+        .add(&[ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
     let (test_sender, mut test_protocol_rx2) = mpsc::channel(10);
     let (another_test_sender, _another_test_protocol_rx2) = mpsc::channel(10);
     let mut protocols2 = Protocols::new();
     protocols2
-        .add(&[TEST_PROTOCOL.clone()], test_sender)
-        .add(&[ANOTHER_TEST_PROTOCOL.clone()], another_test_sender);
+        .add(&[TEST_PROTOCOL.clone()], &test_sender)
+        .add(&[ANOTHER_TEST_PROTOCOL.clone()], &another_test_sender);
 
     let mut shutdown = Shutdown::new();
     let (comms_node1, _, _, _) = spawn_node(protocols1, shutdown.to_signal()).await;

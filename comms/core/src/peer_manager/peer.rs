@@ -22,6 +22,7 @@
 
 use std::{
     collections::HashMap,
+    convert::TryFrom,
     fmt::Display,
     hash::{Hash, Hasher},
     time::Duration,
@@ -160,7 +161,7 @@ impl Peer {
     pub fn offline_since(&self) -> Option<Duration> {
         self.offline_at
             .map(|offline_at| Utc::now().naive_utc() - offline_at)
-            .map(|since| Duration::from_millis(since.num_milliseconds() as u64))
+            .map(|since| Duration::from_millis(u64::try_from(since.num_milliseconds()).unwrap()))
     }
 
     /// TODO: Remove once we don't have to sync wallet and base node db

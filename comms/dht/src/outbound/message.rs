@@ -62,7 +62,7 @@ impl OutboundEncryption {
 
     /// Returns true if encryption is turned on, otherwise false
     pub fn is_encrypt(&self) -> bool {
-        use OutboundEncryption::*;
+        use OutboundEncryption::{ClearText, EncryptFor};
         match self {
             ClearText => false,
             EncryptFor(_) => true,
@@ -121,7 +121,7 @@ impl SendMessageResponse {
     /// `Err(SendFailure)`. If DHT discovery is initiated, this will resolve once discovery has completed, either
     /// succeeding or failing.
     pub async fn resolve(self) -> Result<MessageSendStates, SendFailure> {
-        use SendMessageResponse::*;
+        use SendMessageResponse::{Failed, PendingDiscovery, Queued};
         match self {
             Queued(send_states) if !send_states.is_empty() => Ok(send_states),
             Queued(_) => Err(SendFailure::NoMessagesQueued),
@@ -131,7 +131,7 @@ impl SendMessageResponse {
     }
 
     fn queued_or_failed(self) -> Result<MessageSendStates, SendFailure> {
-        use SendMessageResponse::*;
+        use SendMessageResponse::{Failed, PendingDiscovery, Queued};
         match self {
             Queued(send_states) if !send_states.is_empty() => Ok(send_states),
             Queued(_) => Err(SendFailure::NoMessagesQueued),

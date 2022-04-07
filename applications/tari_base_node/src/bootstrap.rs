@@ -22,10 +22,13 @@
 
 use std::{cmp, fs, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::anyhow;
 use log::*;
 use tari_app_utilities::{consts, identity_management, utilities::create_transport_type};
-use tari_common::{configuration::bootstrap::ApplicationType, GlobalConfig};
+use tari_common::{
+    configuration::bootstrap::ApplicationType,
+    exit_codes::{ExitCode, ExitError},
+    GlobalConfig,
+};
 use tari_comms::{peer_manager::Peer, protocol::rpc::RpcServer, NodeIdentity, UnspawnedCommsNode};
 use tari_comms_dht::{store_forward::SafConfig, DbConnectionUrl, Dht, DhtConfig, DhtConnectivityConfig};
 use tari_core::{
@@ -80,7 +83,7 @@ pub struct BaseNodeBootstrapper<'a, B> {
 impl<B> BaseNodeBootstrapper<'_, B>
 where B: BlockchainBackend + 'static
 {
-    pub async fn bootstrap(self) -> Result<ServiceHandles, anyhow::Error> {
+    pub async fn bootstrap(self) -> Result<ServiceHandles, ExitError> {
         let config = self.config;
 
         fs::create_dir_all(&config.comms_peer_db_path)?;
@@ -106,7 +109,7 @@ where B: BlockchainBackend + 'static
             .map(|s| SeedPeer::from_str(s))
             .map(|r| r.map(Peer::from).map(|p| p.node_id))
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| anyhow!("Invalid force sync peer: {:?}", e))?;
+            .map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
 
         debug!(target: LOG_TARGET, "{} sync peer(s) configured", sync_peers.len());
 
@@ -177,31 +180,21 @@ where B: BlockchainBackend + 'static
 
         let comms = comms.add_protocol_extension(mempool_protocol);
         let comms = Self::setup_rpc_services(comms, &handles, self.db.into(), config);
-        let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone()).await?;
+        let comms = initialization::spawn_comms_using_transport(comms, transport_type.clone())
+            .await
+            .map_err(|e| e.into_exit_error())?;
         // Save final node identity after comms has initialized. This is required because the public_address can be
         // changed by comms during initialization when using tor.
         match transport_type {
             TransportType::Tcp { .. } => {}, // Do not overwrite TCP public_address in the base_node_id!
             _ => {
-                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity()).map_err(
-                    |e| {
-                        anyhow!(
-                            "Failed to save node identity - {:?}: {:?}",
-                            config.base_node_identity_file,
-                            e
-                        )
-                    },
-                )?;
+                identity_management::save_as_json(&config.base_node_identity_file, &*comms.node_identity())
+                    .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
             },
         };
         if let Some(hs) = comms.hidden_service() {
-            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity()).map_err(|e| {
-                anyhow!(
-                    "Failed to save tor identity - {:?}: {:?}",
-                    config.base_node_tor_identity_file,
-                    e
-                )
-            })?;
+            identity_management::save_as_json(&config.base_node_tor_identity_file, hs.tor_identity())
+                .map_err(|e| ExitError::new(ExitCode::IdentityError, &e))?;
         }
 
         handles.register(comms);
