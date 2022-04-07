@@ -23,7 +23,6 @@
 use std::{convert::TryInto, sync::Arc};
 
 use chrono::{DateTime, NaiveDateTime, Utc};
-use digest::Digest;
 use futures::{future, stream, StreamExt};
 use log::*;
 use prost::Message;
@@ -41,6 +40,7 @@ use tower::{Service, ServiceExt};
 use crate::{
     actor::DhtRequester,
     crypt,
+    dedup,
     envelope::{timestamp_to_datetime, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     inbound::{DecryptedDhtMessage, DhtInboundMessage},
     outbound::{OutboundMessageRequester, SendMessageParams},
@@ -445,6 +445,15 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
             return Err(StoreAndForwardError::StoredAtWasInFuture);
         }
 
+        let msg_hash = dedup::create_message_hash(
+            message
+                .dht_header
+                .as_ref()
+                .map(|h| h.origin_mac.as_slice())
+                .unwrap_or(&[]),
+            &message.body,
+        );
+
         let dht_header: DhtMessageHeader = message
             .dht_header
             .expect("previously checked")
@@ -478,12 +487,18 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
         // Check that the destination is either undisclosed, for us or for our network region
         Self::check_destination(config, peer_manager, node_identity, &dht_header).await?;
-        // Check that the message has not already been received.
-        Self::check_duplicate(&mut self.dht_requester, &message.body, source_peer.public_key.clone()).await?;
 
         // Attempt to decrypt the message (if applicable), and deserialize it
         let (authenticated_pk, decrypted_body) =
             Self::authenticate_and_decrypt_if_required(node_identity, &dht_header, &message.body)?;
+
+        // Check that the message has not already been received.
+        Self::check_duplicate(
+            &mut self.dht_requester,
+            msg_hash.to_vec(),
+            source_peer.public_key.clone(),
+        )
+        .await?;
 
         let mut inbound_msg =
             DhtInboundMessage::new(MessageTag::new(), dht_header, Arc::clone(&source_peer), message.body);
@@ -497,10 +512,9 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
 
     async fn check_duplicate(
         dht_requester: &mut DhtRequester,
-        body: &[u8],
+        msg_hash: Vec<u8>,
         public_key: CommsPublicKey,
     ) -> Result<(), StoreAndForwardError> {
-        let msg_hash = Challenge::new().chain(body).finalize().to_vec();
         let hit_count = dht_requester.add_message_to_dedup_cache(msg_hash, public_key).await?;
         if hit_count > 1 {
             Err(StoreAndForwardError::DuplicateMessage)
@@ -642,8 +656,8 @@ mod test {
         dht_header: DhtMessageHeader,
         stored_at: NaiveDateTime,
     ) -> StoredMessage {
+        let msg_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.origin_mac, message.as_bytes()));
         let body = message.into_bytes();
-        let body_hash = hex::to_hex(&Challenge::new().chain(&body).finalize());
         StoredMessage {
             id: 1,
             version: 0,
@@ -656,7 +670,7 @@ mod test {
             is_encrypted: false,
             priority: StoredMessagePriority::High as i32,
             stored_at,
-            body_hash,
+            body_hash: msg_hash,
         }
     }
 

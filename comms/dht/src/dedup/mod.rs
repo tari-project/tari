@@ -25,15 +25,27 @@ mod dedup_cache;
 use std::task::Poll;
 
 pub use dedup_cache::DedupCacheDatabase;
+use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::pipeline::PipelineError;
+use tari_comms::{pipeline::PipelineError, types::Challenge};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
-use crate::{actor::DhtRequester, inbound::DecryptedDhtMessage};
+use crate::{
+    actor::DhtRequester,
+    inbound::{DecryptedDhtMessage, DhtInboundMessage},
+};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
+
+pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
+    create_message_hash(&msg.dht_header.origin_mac, &msg.body)
+}
+
+pub fn create_message_hash(origin_mac: &[u8], body: &[u8]) -> [u8; 32] {
+    Challenge::new().chain(origin_mac).chain(&body).finalize().into()
+}
 
 /// # DHT Deduplication middleware
 ///
