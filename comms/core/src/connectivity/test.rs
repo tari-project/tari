@@ -381,7 +381,7 @@ async fn pool_management() {
     }
 
     // Wait for all peers to be connected (i.e. for the connection manager events to be received)
-    let _result = collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
+    collect_try_recv!(event_stream, take = 11, timeout = Duration::from_secs(10));
 
     let mut important_connection = connectivity
         .get_connection(connections[0].peer_node_id().clone())
@@ -392,7 +392,7 @@ async fn pool_management() {
     // Drop all connections references
     for mut conn in connections {
         if conn != important_connection {
-            assert_eq!(conn.handle_count(), 3);
+            assert_eq!(conn.handle_count(), 2);
             // The peer connection mock does not "automatically" publish event to connectivity manager
             conn.disconnect().await.unwrap();
             cm_mock_state.publish_event(ConnectionManagerEvent::PeerDisconnected(
@@ -402,14 +402,14 @@ async fn pool_management() {
         }
     }
 
-    assert_eq!(important_connection.handle_count(), 3);
+    assert_eq!(important_connection.handle_count(), 2);
 
     let events = collect_try_recv!(event_stream, take = 9, timeout = Duration::from_secs(10));
     for event in events {
         unpack_enum!(ConnectivityEvent::PeerDisconnected(_) = event);
     }
 
-    assert_eq!(important_connection.handle_count(), 3);
+    assert_eq!(important_connection.handle_count(), 2);
 
     let conns = connectivity.get_active_connections().await.unwrap();
 
