@@ -27,7 +27,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::utils::{deserialize_string_or_struct, serialize_string},
+    configuration::{
+        utils::{deserialize_string_or_struct, serialize_string},
+        StringList,
+    },
     DnsNameServer,
     SubConfigPath,
 };
@@ -42,10 +45,10 @@ use crate::transport::TransportConfig;
 pub struct PeerSeedsConfig {
     pub override_from: Option<String>,
     /// Unparsed peer seeds
-    pub peer_seeds: Vec<String>,
+    pub peer_seeds: StringList,
     /// DNS seeds hosts. The DNS TXT records are queried from these hosts and the resulting peers added to the comms
     /// peer list.
-    pub dns_seeds: Vec<String>,
+    pub dns_seeds: StringList,
     #[serde(
         deserialize_with = "deserialize_string_or_struct",
         serialize_with = "serialize_string"
@@ -60,8 +63,8 @@ impl Default for PeerSeedsConfig {
     fn default() -> Self {
         Self {
             override_from: None,
-            peer_seeds: vec![],
-            dns_seeds: vec![],
+            peer_seeds: StringList::default(),
+            dns_seeds: StringList::default(),
             dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
             dns_seeds_use_dnssec: false,
         }
@@ -108,7 +111,7 @@ pub struct P2pConfig {
     /// A value of 0 will disallow any liveness sessions.
     pub listener_liveness_max_sessions: usize,
     /// CIDR for addresses allowed to enter into liveness check mode on the listener.
-    pub listener_liveness_allowlist_cidrs: Vec<String>,
+    pub listener_liveness_allowlist_cidrs: StringList,
     /// User agent string for this node
     pub user_agent: String,
     /// The address to bind on using the TCP transport _in addition to_ the primary transport. This is typically useful
@@ -134,7 +137,7 @@ impl Default for P2pConfig {
             dht: Default::default(),
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
-            listener_liveness_allowlist_cidrs: vec![],
+            listener_liveness_allowlist_cidrs: StringList::default(),
             user_agent: "".to_string(),
             auxiliary_tcp_listener_address: None,
             rpc_max_simultaneous_sessions: 100,

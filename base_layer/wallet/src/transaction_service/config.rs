@@ -24,23 +24,34 @@ use std::{fmt, time::Duration};
 
 use log::*;
 use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
+
 const LOG_TARGET: &str = "wallet::transaction_service::config";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TransactionServiceConfig {
+    #[serde(with = "serializers::seconds")]
     pub broadcast_monitoring_timeout: Duration,
+    #[serde(with = "serializers::seconds")]
     pub chain_monitoring_timeout: Duration,
+    #[serde(with = "serializers::seconds")]
     pub direct_send_timeout: Duration,
+    #[serde(with = "serializers::seconds")]
     pub broadcast_send_timeout: Duration,
+    #[serde(with = "serializers::seconds")]
     pub low_power_polling_timeout: Duration,
+    #[serde(with = "serializers::seconds")]
     pub transaction_resend_period: Duration,
+    #[serde(with = "serializers::seconds")]
     pub resend_response_cooldown: Duration,
+    #[serde(with = "serializers::seconds")]
     pub pending_transaction_cancellation_timeout: Duration,
     pub num_confirmations_required: u64,
     pub max_tx_query_batch_size: usize,
     pub transaction_routing_mechanism: TransactionRoutingMechanism,
     pub transaction_event_channel_size: usize,
+    #[serde(with = "serializers::seconds")]
     pub transaction_mempool_resubmission_window: Duration,
 }
 

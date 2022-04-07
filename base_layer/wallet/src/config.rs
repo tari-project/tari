@@ -27,7 +27,10 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use tari_common::{configuration::Network, SubConfigPath};
+use tari_common::{
+    configuration::{serializers, Network, StringList},
+    SubConfigPath,
+};
 use tari_comms::multiaddr::Multiaddr;
 use tari_p2p::{auto_update::AutoUpdateConfig, P2pConfig};
 
@@ -51,23 +54,26 @@ pub struct WalletConfig {
     pub rate_limit: usize,
     pub network: Network,
     pub base_node_service_config: BaseNodeServiceConfig,
-    pub updater_config: AutoUpdateConfig,
+    pub auto_update: AutoUpdateConfig,
     pub data_dir: PathBuf,
     pub db_file: PathBuf,
     pub connection_manager_pool_size: usize,
     pub password: Option<String>, // TODO: Make clear on drop
+    #[serde(with = "serializers::seconds")]
     pub contacts_auto_ping_interval: Duration,
     pub contacts_online_ping_window: usize,
+    #[serde(with = "serializers::seconds")]
     pub command_send_wait_timeout: Duration,
     pub command_send_wait_stage: String,
     pub notify_file: Option<PathBuf>,
     pub grpc_address: Option<Multiaddr>,
     pub custom_base_node: Option<String>,
-    pub base_node_service_peers: Vec<String>,
+    pub base_node_service_peers: StringList,
     pub recovery_retry_limit: usize,
     pub fee_per_gram: u64,
     pub num_required_confirmations: u64,
     pub use_libtor: bool,
+    pub identity_file: Option<PathBuf>,
 }
 
 impl Default for WalletConfig {
@@ -81,7 +87,7 @@ impl Default for WalletConfig {
             rate_limit: 10,
             network: Default::default(),
             base_node_service_config: Default::default(),
-            updater_config: Default::default(),
+            auto_update: Default::default(),
             data_dir: PathBuf::from_str("data/wallet").unwrap(),
             db_file: PathBuf::from_str("console_wallet").unwrap(),
             connection_manager_pool_size: 5, // TODO: get actual default
@@ -93,11 +99,12 @@ impl Default for WalletConfig {
             notify_file: None,
             grpc_address: None,
             custom_base_node: None,
-            base_node_service_peers: vec![],
+            base_node_service_peers: StringList::default(),
             recovery_retry_limit: 3,
             fee_per_gram: 5,
             num_required_confirmations: 3,
             use_libtor: false,
+            identity_file: None,
         }
     }
 }

@@ -66,7 +66,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let cli = Cli::parse();
 
     let config_path = cli.common.config_path();
-    let cfg = load_configuration(&config_path, true, &cli.common.config_property_overrides)?;
+    let cfg = load_configuration(&config_path, true, &cli.config_property_overrides())?;
     initialize_logging(
         &cli.common.log_config_path("proxy"),
         include_str!("../log4rs_sample.yml"),
@@ -74,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let config = MergeMiningProxyConfig::load_from(&cfg)?;
 
-    debug!(target: LOG_TARGET, "Configuration: {:?}", config);
+    error!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
@@ -82,11 +82,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .build()
         .map_err(MmProxyError::ReqwestError)?;
 
-    let base_node = multiaddr_to_socketaddr(&config.grpc_base_node_address)?;
+    let base_node = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
     info!(target: LOG_TARGET, "Connecting to base node at {}", base_node);
     println!("Connecting to base node at {}", base_node);
     let base_node_client = grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
-    let wallet = multiaddr_to_socketaddr(&config.grpc_console_wallet_address)?;
+    let wallet = multiaddr_to_socketaddr(&config.console_wallet_grpc_address)?;
     info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet);
     println!("Connecting to wallet at {}", wallet);
     let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;

@@ -101,7 +101,7 @@ async fn main_inner() -> Result<(), ExitError> {
             )
         })?;
         if !config.mining_worker_name.is_empty() {
-            miner_address += &format!("{}{}", ".", &config.mining_worker_name);
+            miner_address += &format!("{}{}", ".", config.mining_worker_name);
         }
         let mut mc = Controller::new(config.num_mining_threads).unwrap_or_else(|e| {
             debug!(target: LOG_TARGET_FILE, "Error loading mining controller: {}", e);
@@ -129,9 +129,12 @@ async fn main_inner() -> Result<(), ExitError> {
 
         Ok(())
     } else {
-        let (mut node_conn, mut wallet_conn) = connect(&config)
-            .await
-            .map_err(|e| ExitError::new(ExitCode::GrpcError, &format!("Could not connect to wallet:{}", e)))?;
+        let (mut node_conn, mut wallet_conn) = connect(&config).await.map_err(|e| {
+            ExitError::new(
+                ExitCode::GrpcError,
+                &format!("Could not connect to wallet or base node: {}", e),
+            )
+        })?;
 
         let mut blocks_found: u64 = 0;
         loop {
@@ -191,10 +194,12 @@ async fn main_inner() -> Result<(), ExitError> {
 
 async fn connect(config: &MinerConfig) -> Result<(BaseNodeClient<Channel>, WalletClient<Channel>), MinerError> {
     let base_node_addr = multiaddr_to_socketaddr(&config.base_node_addr)?;
-    info!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
+    println!("Connecting to base node at {}", base_node_addr);
+    error!(target: LOG_TARGET, "Connecting to base node at {}", base_node_addr);
     let node_conn = BaseNodeClient::connect(format!("http://{}", base_node_addr)).await?;
     let wallet_addr = multiaddr_to_socketaddr(&config.wallet_addr)?;
-    info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
+    println!("Connecting to wallet at {}", config.wallet_addr);
+    error!(target: LOG_TARGET, "Connecting to wallet at {}", wallet_addr);
     let wallet_conn = WalletClient::connect(format!("http://{}", wallet_addr)).await?;
 
     Ok((node_conn, wallet_conn))

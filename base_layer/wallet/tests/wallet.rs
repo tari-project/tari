@@ -46,6 +46,7 @@ use std::{panic, path::Path, sync::Arc, time::Duration};
 
 use rand::{rngs::OsRng, Rng};
 use support::{comms_and_services::get_next_memory_address, utils::make_input};
+use tari_common::configuration::StringList;
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     transaction::TransactionStatus,
@@ -158,7 +159,7 @@ async fn create_wallet(
             ..Default::default()
         },
         allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,
@@ -721,7 +722,7 @@ async fn test_import_utxo() {
         outbound_buffer_size: 10,
         dht: Default::default(),
         allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
         auxiliary_tcp_listener_address: None,

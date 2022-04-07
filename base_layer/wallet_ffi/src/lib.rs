@@ -100,6 +100,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use rand::rngs::OsRng;
+use tari_common::configuration::StringList;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -3327,7 +3328,7 @@ pub unsafe extern "C" fn comms_config_create(
                 // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
                 //       docstring for more info. #LOGGED
                 allow_test_addresses: true,
-                listener_liveness_allowlist_cidrs: Vec::new(),
+                listener_liveness_allowlist_cidrs: StringList::new(),
                 listener_liveness_max_sessions: 0,
                 user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
                 rpc_max_simultaneous_sessions: 0,

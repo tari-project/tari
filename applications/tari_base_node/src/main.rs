@@ -85,7 +85,7 @@ mod metrics;
 mod recovery;
 mod utils;
 
-use std::{env, process, sync::Arc};
+use std::{env, process, str::FromStr, sync::Arc};
 
 use clap::Parser;
 use commands::{cli_loop::CliLoop, command::CommandContext};
@@ -94,7 +94,7 @@ use log::*;
 use opentelemetry::{self, global, KeyValue};
 use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, Network},
     exit_codes::{ExitCode, ExitError},
     initialize_logging,
     load_configuration,
@@ -146,13 +146,14 @@ fn main_inner() -> Result<(), ExitError> {
 
     #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
     let mut config = ApplicationConfig::load_from(&cfg)?;
+    config.base_node.network = Network::from_str(&cli.network)?;
     debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,
         config.base_node.p2p.public_address.as_ref(),
-        cli.create_id,
+        cli.create_id || cli.non_interactive_mode,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
 
@@ -304,7 +305,7 @@ async fn run_grpc(
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {:?}", err);
             err
         })?;
 

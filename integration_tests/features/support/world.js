@@ -644,9 +644,9 @@ BeforeAll({ timeout: 2400000 }, async function () {
 
   const mmProxy = new MergeMiningProxyProcess(
     "compile",
-    "127.0.0.1:9999",
+    "/ip4/127.0.0.1/tcp/9999",
     null,
-    "127.0.0.1:9998"
+    "/ip4/127.0.0.1/tcp/9998"
   );
 
   console.log("Compiling mmproxy...");
@@ -655,9 +655,9 @@ BeforeAll({ timeout: 2400000 }, async function () {
 
   const miningNode = new MiningNodeProcess(
     "compile",
-    "127.0.0.1:9999",
+    "/ip4/127.0.0.1/tcp/9999",
     null,
-    "127.0.0.1:9998"
+    "/ip4/127.0.0.1/tcp/9998"
     // this.logFilePathMiningNode
   );
 
@@ -666,10 +666,10 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.compile();
 
   console.log("Compiling wallet FFI...");
-  await InterfaceFFI.compile();
+  // await InterfaceFFI.compile();
   console.log("Finished compilation.");
   console.log("Loading FFI interface..");
-  await InterfaceFFI.init();
+  // await InterfaceFFI.init();
   console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");

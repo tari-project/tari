@@ -28,7 +28,7 @@ use std::{
 use config::Config;
 use serde::{Deserialize, Serialize};
 use tari_common::{
-    configuration::{CommonConfig, Network},
+    configuration::{serializers, CommonConfig, Network, StringList},
     ConfigurationError,
     DefaultConfigLoader,
     SubConfigPath,
@@ -93,14 +93,16 @@ pub struct BaseNodeConfig {
     pub orphan_db_clean_out_threshold: usize,
     pub cleanup_orphans_at_startup: bool,
     pub p2p: P2pConfig,
-    pub force_sync_peers: Vec<String>,
+    pub force_sync_peers: StringList,
     /// The maximum amount of time to wait for remote base node responses for messaging-based requests.
+    #[serde(with = "serializers::seconds")]
     pub messaging_request_timeout: Duration,
     pub storage: BlockchainDatabaseConfig,
     pub mempool: MempoolConfig,
     pub status_line_interval: Duration,
     pub buffer_size: usize,
     pub buffer_rate_limit: usize,
+    #[serde(with = "serializers::seconds")]
     pub metadata_auto_ping_interval: Duration,
     pub state_machine: BaseNodeStateMachineConfig,
     pub resize_terminal_on_startup: bool,
@@ -124,7 +126,7 @@ impl Default for BaseNodeConfig {
             bypass_range_proof_verification: false,
             orphan_db_clean_out_threshold: 0,
             cleanup_orphans_at_startup: false,
-            force_sync_peers: vec![],
+            force_sync_peers: StringList::default(),
             messaging_request_timeout: Duration::from_secs(60),
             storage: Default::default(),
             mempool: Default::default(),
@@ -160,6 +162,7 @@ impl BaseNodeConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DatabaseType {
     Lmdb,
 }

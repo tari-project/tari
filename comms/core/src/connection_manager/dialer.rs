@@ -527,10 +527,12 @@ where
                     );
 
                     let dial_fut = async move {
-                        let mut socket = transport
-                            .dial(address.clone())
-                            .await
-                            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))?;
+                        let mut socket = transport.dial(address.clone()).await.map_err(|err| {
+                            ConnectionManagerError::TransportError {
+                                address: address.to_string(),
+                                details: err.to_string(),
+                            }
+                        })?;
                         debug!(
                             target: LOG_TARGET,
                             "Socket established on '{}'. Performing noise upgrade protocol", address

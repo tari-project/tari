@@ -75,7 +75,6 @@ pub struct DhtConfig {
     /// Default: 10 minutes
     pub join_cooldown_interval: Duration,
     pub connectivity: DhtConnectivityConfig,
-
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.

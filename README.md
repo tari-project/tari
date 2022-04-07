@@ -609,8 +609,7 @@ they are not enabled already:
   [base_node.weatherwax]
   transpo*_r_*t = "tor"
   allow_test_addresses = false
-  grpc_enabled = true
-  grpc_base_node_address = "127.0.0.1:18142"
+  base_node_grpc_address = "127.0.0.1:18142"
   ```
 
 And then depending on if you are using solo mining or self-select mining you will use one of the following:

@@ -72,9 +72,9 @@ class WalletProcess {
       let envs = {};
       const network =
         this.options && this.options.network
-          ? this.options.network.toUpperCase()
-          : "LOCALNET";
-      envs[`TARI_BASE_NODE__COMMON__NETWORK`] = network;
+          ? this.options.network.toLowerCase()
+          : "localnet";
+      envs[`base_node.network`] = network;
       if (!this.excludeTestEnvars) {
         envs = createEnv({
           isWallet: true,
@@ -83,7 +83,7 @@ class WalletProcess {
           peerSeeds: this.peerSeeds,
         });
       } else if (this.options["grpc_console_wallet_address"]) {
-        envs[`TARI_WALLET__GRPC_ADDRESS`] =
+        envs[`wallet.grpc_address`] =
           this.options["grpc_console_wallet_address"];
         let regexMatch =
           this.options["grpc_console_wallet_address"].match(/tcp\/(\d+)/);
@@ -138,7 +138,7 @@ class WalletProcess {
       ps.on("close", (code) => {
         const ps = this.ps;
         this.ps = null;
-        if (code == 112) {
+        if (code === 112) {
           reject("Incorrect password");
         } else if (code) {
           console.log(`child process exited with code ${code}`);
@@ -158,9 +158,19 @@ class WalletProcess {
     return await this.start();
   }
 
+  getOverrides() {
+    return createEnv({
+      network: "localnet",
+      walletGrpcAddress: this.getGrpcAddress(),
+      isWallet: true,
+      walletPort: this.port,
+      peerSeeds: this.peerSeeds,
+    });
+  }
+
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
+      let args = [
         "build",
         "--release",
         "--bin",
@@ -169,7 +179,9 @@ class WalletProcess {
         "unstable-options",
         "--out-dir",
         process.cwd() + "/temp/out",
-      ]);
+      ];
+
+      await this.run("cargo", args);
       outputProcess = process.cwd() + "/temp/out/tari_console_wallet";
     }
     return outputProcess;
@@ -195,13 +207,13 @@ class WalletProcess {
     const args = [
       "--base-path",
       ".",
-      "--init",
-      "--create_id",
       "--password",
       `${password ? password : "kensentme"}`,
       "--seed-words-file-name",
       this.seedWordsFile,
       "--non-interactive",
+      "--network",
+      "localnet",
     ];
     if (this.recoverWallet) {
       args.push("--recover", "--seed-words", this.seedWords);
@@ -209,6 +221,11 @@ class WalletProcess {
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    const overrides = this.getOverrides();
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
     return await this.run(await this.compile(), args, true);
   }
 
@@ -219,10 +236,17 @@ class WalletProcess {
       "--password",
       oldPassword,
       "--update-password",
+      "--network",
+      "localnet",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    const overrides = this.getOverrides();
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
     // Set input_buffer to double confirmation of the new password
     return await this.run(
       await this.compile(),
@@ -243,10 +267,17 @@ class WalletProcess {
       "--command",
       command,
       "--non-interactive",
+      "--network",
+      "localnet",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
+    const overrides = this.getOverrides();
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
     let output = { buffer: "" };
     // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
     await this.run(await this.compile(), args, true, "\n", output, true);
@@ -256,15 +287,21 @@ class WalletProcess {
   async exportSpentOutputs() {
     await this.stop();
     const args = [
-      "--init",
       "--base-path",
       ".",
       "--auto-exit",
       "--password",
       "kensentme",
+      "--network",
+      "localnet",
       "--command",
       "export-spent-utxos --csv-file exported_outputs.csv",
     ];
+    const overrides = this.getOverrides();
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
     let output = { buffer: "" };
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
     await this.run(outputProcess, args, true, "\n", output, true);
@@ -273,15 +310,21 @@ class WalletProcess {
   async exportUnspentOutputs() {
     await this.stop();
     const args = [
-      "--init",
       "--base-path",
       ".",
       "--auto-exit",
       "--password",
       "kensentme",
+      "--network",
+      "localnet",
       "--command",
       "export-utxos --csv-file exported_outputs.csv",
     ];
+    const overrides = this.getOverrides();
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
     let output = { buffer: "" };
     outputProcess = __dirname + "/../temp/out/tari_console_wallet";
     await this.run(outputProcess, args, true, "\n", output, true);

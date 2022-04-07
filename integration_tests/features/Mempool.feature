@@ -41,7 +41,6 @@ Feature: Mempool
     Then SENDER has TX1 in MINED state
     Then TX1 is in the MINED of all nodes
 
-  @doit
   @critical
   Scenario: Clear out mempool
     Given I have 1 seed nodes

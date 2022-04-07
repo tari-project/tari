@@ -58,10 +58,12 @@ where
     U: std::str::FromStr,
     U::Err: Error + Send + Sync + 'static,
 {
-    let pos = s
-        .find('=')
-        .ok_or_else(|| format!("invalid KEY=value: no `=` found in `{}`", s))?;
-    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+    let mut parts = s.split("=").map(|s| s.trim());
+    let k = parts.next().ok_or_else(|| "invalid override: string empty`")?;
+    let v = parts
+        .next()
+        .ok_or_else(|| format!("invalid override: expected key=value: no `=` found in `{}`", s))?;
+    Ok((k.parse()?, v.parse()?))
 }
 
 impl CommonCliArgs {

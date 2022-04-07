@@ -34,7 +34,7 @@ public_address = "/ip4/172.2.3.4/tcp/18189"
 # - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
 # - multiple P2P addresses, one public over DNS and one private over TOR
 # - a "bridge" between TOR and TCP-only nodes
-auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
+# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
 [base_node.p2p.transport]
 # -------------- Transport configuration --------------
@@ -86,5 +86,7 @@ allow_test_addresses = false
 #resize_threshold_bytes = 1600000
 
 [base_node.storage]
+# Sets the pruning horizon.
+#pruning_horizon = 0
 # Set to true to record all reorgs. Recorded reorgs can be viewed using the list-reorgs command.
 track_reorgs = true

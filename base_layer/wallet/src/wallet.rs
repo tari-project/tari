@@ -217,14 +217,14 @@ where
             .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
-        let stack = if config.updater_config.is_update_enabled() {
+        let stack = if config.auto_update.is_update_enabled() {
             stack.add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::ConsoleWallet,
                 env!("CARGO_PKG_VERSION")
                     .to_string()
                     .parse()
                     .expect("Unable to parse console wallet version."),
-                config.updater_config.clone(),
+                config.auto_update.clone(),
             ))
         } else {
             stack
@@ -249,7 +249,7 @@ where
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
         let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
-        let updater_handle = if config.updater_config.is_update_enabled() {
+        let updater_handle = if config.auto_update.is_update_enabled() {
             Some(handles.expect_handle::<SoftwareUpdaterHandle>())
         } else {
             None

@@ -45,12 +45,14 @@ pub use network::Network;
 mod common_config;
 pub mod name_server;
 pub mod serializers;
+mod string_list;
 pub mod utils;
 
 use std::{iter::FromIterator, net::SocketAddr};
 
 pub use common_config::CommonConfig;
 use multiaddr::{Error, Multiaddr, Protocol};
+pub use string_list::StringList;
 
 /// Interpret a string as either a socket address (first) or a multiaddr format string.
 /// If the former, it gets converted into a MultiAddr before being returned.

@@ -38,16 +38,17 @@ class MergeMiningProxyProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
-    // console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
+    console.log(
+      "MergeMiningProxyProcess init - assign server GRPC:",
+      this.port
+    );
+    if (!fs.existsSync(this.baseDir)) {
+      fs.mkdirSync(this.baseDir + "/log", { recursive: true });
+    }
   }
 
-  async run(cmd, args) {
+  run(cmd, args) {
     return new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true });
-        fs.mkdirSync(this.baseDir + "/log", { recursive: true });
-      }
-
       const proxyFullAddress = "/ip4/127.0.0.1/tcp/" + this.port;
 
       const envs = createEnv({
@@ -56,15 +57,15 @@ class MergeMiningProxyProcess {
         proxyFullAddress,
       });
       const extraEnvs = {
-        TARI_MERGE_MINING_PROXY__PROXY_SUBMIT_TO_ORIGIN: this.submitOrigin,
+        ["merge_mining_proxy.submit_to_origin"]: this.submitOrigin,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
-      console.log(completeEnvs);
-      const ps = spawn(cmd, args, {
-        cwd: this.baseDir,
-        // shell: true,
-        env: { ...process.env, ...completeEnvs },
+      Object.keys(completeEnvs).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${completeEnvs[k]}`);
       });
+      console.log(args.filter((s) => s !== "-p").join("\n"));
+      const ps = spawn(cmd, args);
 
       ps.stdout.on("data", (data) => {
         // console.log(`stdout: ${data}`);
@@ -97,7 +98,7 @@ class MergeMiningProxyProcess {
 
   async startNew() {
     await this.init();
-    const args = ["--base-path", ".", "--init"];
+    const args = ["--base-path", ".", "--network", "localnet"];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
@@ -107,7 +108,7 @@ class MergeMiningProxyProcess {
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
+      await this.runCommand("cargo", [
         "build",
         "--release",
         "--bin",
@@ -120,6 +121,38 @@ class MergeMiningProxyProcess {
       outputProcess = __dirname + "/../temp/out/tari_merge_mining_proxy";
     }
     return outputProcess;
+  }
+
+  runCommand(cmd, args, opts = { env: {} }) {
+    return new Promise((resolve, reject) => {
+      const ps = spawn(cmd, args, {
+        cwd: this.baseDir,
+        // shell: true,
+        env: { ...process.env, ...opts.env },
+      });
+
+      ps.stdout.on("data", (data) => {
+        // console.log(`stdout: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+        resolve(ps);
+      });
+
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
+
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
+        if (code) {
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
+        } else {
+          resolve(ps);
+        }
+      });
+    });
   }
 
   stop() {

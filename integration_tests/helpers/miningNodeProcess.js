@@ -55,15 +55,13 @@ class MiningNodeProcess {
         ? this.mineOnTipOnly
         : mineOnTipOnly;
     this.numMiningThreads = numMiningThreads || this.numMiningThreads;
+    if (!fs.existsSync(this.baseDir)) {
+      fs.mkdirSync(this.baseDir + "/log", { recursive: true });
+    }
   }
 
   run(cmd, args) {
     return new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true });
-        fs.mkdirSync(this.baseDir + "/log", { recursive: true });
-      }
-
       const envs = createEnv({
         walletGrpcAddress: this.walletAddress,
         baseNodeGrpcAddress: this.baseNodeAddress,
@@ -72,11 +70,15 @@ class MiningNodeProcess {
           numMiningThreads: this.numMiningThreads,
         },
       });
+      Object.keys(envs).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${envs[k]}`);
+      });
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
-        env: { ...process.env, ...envs },
+        env: { ...process.env },
       });
 
       ps.stdout.on("data", (data) => {
@@ -106,13 +108,43 @@ class MiningNodeProcess {
     });
   }
 
+  runCommand(cmd, args, opts = { env: {} }) {
+    return new Promise((resolve, reject) => {
+      const ps = spawn(cmd, args, {
+        cwd: this.baseDir,
+        // shell: true,
+        env: { ...process.env, ...opts.env },
+      });
+
+      ps.stdout.on("data", (data) => {
+        // console.log(`stdout: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+        resolve(ps);
+      });
+
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
+
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
+        if (code) {
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
+        } else {
+          resolve(ps);
+        }
+      });
+    });
+  }
+
   async startNew() {
     await this.init();
     const args = [
       "--base-path",
       ".",
-      "--init",
-      "--non-interactive",
       "--max-blocks",
       this.maxBlocks,
       "--mine-until-height",
@@ -130,7 +162,7 @@ class MiningNodeProcess {
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
+      await this.runCommand("cargo", [
         "build",
         "--release",
         "--bin",

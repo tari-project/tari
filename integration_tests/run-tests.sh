@@ -1,3 +1,4 @@
+set -e
 if [ ! -d cucumber_output ]; then
    mkdir cucumber_output
 fi

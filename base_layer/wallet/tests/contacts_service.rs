@@ -41,7 +41,7 @@ use tempfile::tempdir;
 use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
 pub mod support;
 use support::data::get_temp_sqlite_database_connection;
-use tari_common::configuration::Network;
+use tari_common::configuration::{Network, StringList};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_p2p::{
@@ -94,7 +94,7 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
             ..Default::default()
         },
         allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
         rpc_max_simultaneous_sessions: 0,

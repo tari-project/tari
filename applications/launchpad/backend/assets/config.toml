@@ -114,8 +114,8 @@ monerod_url = [ # stagenet
     "http://xmr-lux.boldsuck.org:38081",
     "http://singapore.node.xmr.pm:38081",
 ]
-grpc_base_node_address = "/dns4/base_node/tcp/18142"
-grpc_console_wallet_address = "/dns4/wallet/tcp/18143"
+base_node_grpc_address = "/dns4/base_node/tcp/18142"
+console_wallet_grpc_address = "/dns4/wallet/tcp/18143"
 proxy_host_address = "/dns4/mm_proxy/tcp/18081"
 proxy_submit_to_origin = true
 wait_for_initial_sync_at_startup = true

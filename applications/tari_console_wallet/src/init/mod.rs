@@ -25,6 +25,7 @@ use std::{fs, path::PathBuf, str::FromStr, sync::Arc};
 use log::*;
 use rpassword::prompt_password_stdout;
 use rustyline::Editor;
+use tari_app_utilities::identity_management::setup_node_identity;
 use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -40,7 +41,10 @@ use tari_p2p::{initialization::CommsInitializationError, peer_seeds::SeedPeer, T
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
-    storage::{database::WalletDatabase, sqlite_utilities::initialize_sqlite_database_backends},
+    storage::{
+        database::{WalletBackend, WalletDatabase},
+        sqlite_utilities::initialize_sqlite_database_backends,
+    },
     wallet::{derive_comms_secret_key, read_or_create_master_seed},
     Wallet,
     WalletConfig,
@@ -269,43 +273,24 @@ pub async fn init_wallet(
         },
     };
 
-    let node_features = wallet_db
-        .get_node_features()
-        .await?
-        .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
-
-    let identity_sig = wallet_db.get_comms_identity_signature().await?;
-
     let master_seed = read_or_create_master_seed(recovery_seed.clone(), &wallet_db).await?;
-    let comms_secret_key = derive_comms_secret_key(&master_seed)?;
 
-    // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig to
-    // None
-    let identity_sig = identity_sig.filter(|sig| {
-        let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
-        sig.is_valid(&comms_public_key, node_features, [&node_address])
-    });
-
-    // SAFETY: we are manually checking the validity of this signature before adding Some(..)
-    let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
-        comms_secret_key,
-        node_address,
-        node_features,
-        identity_sig,
-    ));
-    if !node_identity.is_signed() {
-        node_identity.sign();
-        // unreachable panic: signed above
-        wallet_db
-            .set_comms_identity_signature(
-                node_identity
-                    .identity_signature_read()
-                    .as_ref()
-                    .expect("unreachable panic")
-                    .clone(),
-            )
-            .await?;
-    }
+    let node_identity = match config.wallet.identity_file.as_ref() {
+        Some(identity_file) => {
+            warn!(
+                target: LOG_TARGET,
+                "Node identity overridden by file {}",
+                identity_file.to_string_lossy()
+            );
+            setup_node_identity(
+                identity_file,
+                Some(&node_address),
+                true,
+                PeerFeatures::COMMUNICATION_CLIENT,
+            )?
+        },
+        None => setup_identity_from_db(&wallet_db, &master_seed, node_address.clone()).await?,
+    };
 
     let mut wallet_config = config.wallet.clone();
     if let TransportType::Tor = config.wallet.p2p.transport.transport_type {
@@ -392,6 +377,51 @@ pub async fn init_wallet(
     };
 
     Ok(wallet)
+}
+
+async fn setup_identity_from_db<D: WalletBackend + 'static>(
+    wallet_db: &WalletDatabase<D>,
+    master_seed: &CipherSeed,
+    node_address: Multiaddr,
+) -> Result<Arc<NodeIdentity>, ExitError> {
+    let node_features = wallet_db
+        .get_node_features()
+        .await?
+        .unwrap_or(PeerFeatures::COMMUNICATION_CLIENT);
+
+    let identity_sig = wallet_db.get_comms_identity_signature().await?;
+
+    let comms_secret_key = derive_comms_secret_key(master_seed)?;
+
+    // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
+    // to None
+    let identity_sig = identity_sig.filter(|sig| {
+        let comms_public_key = CommsPublicKey::from_secret_key(&comms_secret_key);
+        sig.is_valid(&comms_public_key, node_features, [&node_address])
+    });
+
+    // SAFETY: we are manually checking the validity of this signature before adding Some(..)
+    let node_identity = Arc::new(NodeIdentity::with_signature_unchecked(
+        comms_secret_key,
+        node_address,
+        node_features,
+        identity_sig,
+    ));
+    if !node_identity.is_signed() {
+        node_identity.sign();
+        // unreachable panic: signed above
+        wallet_db
+            .set_comms_identity_signature(
+                node_identity
+                    .identity_signature_read()
+                    .as_ref()
+                    .expect("unreachable panic")
+                    .clone(),
+            )
+            .await?;
+    }
+
+    Ok(node_identity)
 }
 
 /// Starts the wallet by setting the base node peer, and restarting the transaction and broadcast protocols.

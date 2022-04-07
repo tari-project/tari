@@ -35,3 +35,4 @@ toml = { version = "0.5", optional = true }
 
 [dev-dependencies]
 tari_test_utils = { version = "^0.31", path = "../infrastructure/test_utils"}
+toml = "0.5.8"

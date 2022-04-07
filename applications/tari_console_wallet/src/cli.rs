@@ -48,7 +48,7 @@ pub(crate) struct Cli {
     #[clap(long, alias = "recover")]
     pub recovery: bool,
     /// Supply the optional wallet seed words for recovery on the command line
-    #[clap(long, alias = "seed_words")]
+    #[clap(long, alias = "seed-words")]
     pub seed_words: Option<String>,
     /// Supply the optional file name to save the wallet seed words into
     #[clap(long, aliases = &["seed_words_file_name", "seed-words-file"], parse(from_os_str))]

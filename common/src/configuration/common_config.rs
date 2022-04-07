@@ -52,7 +52,7 @@ impl SubConfigPath for CommonConfig {
 }
 
 impl CommonConfig {
-    pub fn base_path(&self) -> PathBuf {
-        self.base_path.clone()
+    pub fn base_path(&self) -> &PathBuf {
+        &self.base_path
     }
 }
