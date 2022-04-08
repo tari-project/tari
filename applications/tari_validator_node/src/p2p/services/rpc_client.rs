@@ -176,7 +176,11 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
                 },
                 Some(proto::get_sidechain_state_response::State::KeyValue(kv)) => match current_schema.as_mut() {
                     Some(schema) => {
-                        let kv = kv.try_into().map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
+                        let kv = kv
+                            .try_into()
+                            .map_err(|err: crate::p2p::proto::conversions::KeyValueError| {
+                                ValidatorNodeClientError::InvalidPeerMessage(err.to_string())
+                            })?;
                         schema.push_key_value(kv);
                     },
                     None => {
