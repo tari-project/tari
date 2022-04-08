@@ -131,9 +131,10 @@ impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPaylo
         } else {
             Some(TreeNodeHash::try_from(value.node_hash).map_err(|err| err.to_string())?)
         };
+        let message_type = u8::try_from(value.message_type).map_err(|err| err.to_string())?;
         Ok(Self::new(
             ViewId(value.view_number),
-            HotStuffMessageType::try_from(u8::try_from(value.message_type).unwrap()).map_err(|err| err.to_string())?,
+            HotStuffMessageType::try_from(message_type).map_err(|err| err.to_string())?,
             value.justify.map(|j| j.try_into()).transpose()?,
             value.node.map(|n| n.try_into()).transpose()?,
             node_hash,
@@ -148,8 +149,9 @@ impl TryFrom<proto::consensus::QuorumCertificate> for QuorumCertificate {
     type Error = String;
 
     fn try_from(value: proto::consensus::QuorumCertificate) -> Result<Self, Self::Error> {
+        let message_type = u8::try_from(value.message_type).map_err(|err| err.to_string())?;
         Ok(Self::new(
-            HotStuffMessageType::try_from(u8::try_from(value.message_type).unwrap()).map_err(|err| err.to_string())?,
+            HotStuffMessageType::try_from(message_type).map_err(|err| err.to_string())?,
             ViewId(value.view_number),
             TreeNodeHash::try_from(value.node_hash).map_err(|err| err.to_string())?,
             value.signature.map(|s| s.try_into()).transpose()?,
