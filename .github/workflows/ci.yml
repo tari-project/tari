@@ -21,7 +21,7 @@ env:
 jobs:
   checks:
     name: npm checks
-    runs-on: erbium-alpine3.15
+    runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v2

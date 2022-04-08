@@ -76,9 +76,9 @@ impl Default for MinerConfig {
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,
             validate_tip_timeout_sec: 30,
-            mining_pool_address: "".to_string(),
-            mining_wallet_address: "".to_string(),
-            mining_worker_name: "".to_string(),
+            mining_pool_address: String::new(),
+            mining_wallet_address: String::new(),
+            mining_worker_name: String::new(),
         }
     }
 }
@@ -112,7 +112,7 @@ mod test {
     #[test]
     fn miner_configuration() {
         const CONFIG: &str = r#"
-[mining_node]
+[miner]
 num_mining_threads=2
 base_node_addr = "/dns4/my_base_node/tcp/1234"
 mine_on_tip_only = false
@@ -121,7 +121,7 @@ mine_on_tip_only = false
         #[allow(deprecated)]
         cfg.merge(config::File::from_str(CONFIG, config::FileFormat::Toml))
             .unwrap();
-        let config = <MinerConfig as DefaultConfigLoader>::load_from(&cfg).expect("Failed to load config");
+        let config = MinerConfig::load_from(&cfg).expect("Failed to load config");
         assert_eq!(config.num_mining_threads, 2);
         assert_eq!(config.wallet_addr, MinerConfig::default().wallet_addr);
         assert_eq!(
