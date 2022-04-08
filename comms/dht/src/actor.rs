@@ -348,7 +348,7 @@ impl DhtActor {
             } => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    match msg_hash_cache.add_body_hash(message_hash, &received_from) {
+                    match msg_hash_cache.add_msg_hash(&message_hash, &received_from) {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
@@ -366,7 +366,7 @@ impl DhtActor {
             GetMsgHashHitCount(hash, reply_tx) => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    let hit_count = msg_hash_cache.get_hit_count(hash)?;
+                    let hit_count = msg_hash_cache.get_hit_count(&hash)?;
                     let _ = reply_tx.send(hit_count);
                     Ok(())
                 })
@@ -1043,7 +1043,7 @@ mod test {
         for key in &signatures {
             let num_hits = actor
                 .msg_hash_dedup_cache
-                .add_body_hash(key.clone(), &CommsPublicKey::default())
+                .add_msg_hash(key, &CommsPublicKey::default())
                 .unwrap();
             assert_eq!(num_hits, 1);
         }
@@ -1051,7 +1051,7 @@ mod test {
         for key in &signatures {
             let num_hits = actor
                 .msg_hash_dedup_cache
-                .add_body_hash(key.clone(), &CommsPublicKey::default())
+                .add_msg_hash(key, &CommsPublicKey::default())
                 .unwrap();
             assert_eq!(num_hits, 2);
         }

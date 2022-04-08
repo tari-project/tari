@@ -24,7 +24,6 @@ use std::{sync::Arc, task::Poll};
 
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use digest::Digest;
 use futures::{
     future,
     future::BoxFuture,
@@ -53,6 +52,7 @@ use crate::{
     actor::DhtRequester,
     broadcast_strategy::BroadcastStrategy,
     crypt,
+    dedup,
     discovery::DhtDiscoveryRequester,
     envelope::{datetime_to_epochtime, datetime_to_timestamp, DhtMessageFlags, DhtMessageHeader, NodeDestination},
     outbound::{
@@ -429,8 +429,8 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         )?;
 
         if is_broadcast {
-            self.add_to_dedup_cache(&body, self.node_identity.public_key().clone())
-                .await?;
+            let hash = dedup::create_message_hash(origin_mac.as_deref().unwrap_or(&[]), &body);
+            self.add_to_dedup_cache(hash).await?;
         }
 
         // Construct a DhtOutboundMessage for each recipient
@@ -461,8 +461,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         Ok(messages.unzip())
     }
 
-    async fn add_to_dedup_cache(&mut self, body: &[u8], public_key: CommsPublicKey) -> Result<(), DhtOutboundError> {
-        let hash = Challenge::new().chain(&body).finalize().to_vec();
+    async fn add_to_dedup_cache(&mut self, hash: [u8; 32]) -> Result<(), DhtOutboundError> {
         trace!(
             target: LOG_TARGET,
             "Dedup added message hash {} to cache for message",
@@ -472,12 +471,12 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
         // Do not count messages we've broadcast towards the total hit count
         let hit_count = self
             .dht_requester
-            .get_message_cache_hit_count(hash.clone())
+            .get_message_cache_hit_count(hash.to_vec())
             .await
             .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
         if hit_count == 0 {
             self.dht_requester
-                .add_message_to_dedup_cache(hash, public_key)
+                .add_message_to_dedup_cache(hash.to_vec(), self.node_identity.public_key().clone())
                 .await
                 .map_err(|err| DhtOutboundError::FailedToInsertMessageHash(err.to_string()))?;
         }

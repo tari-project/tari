@@ -29,11 +29,8 @@ use std::{
 };
 
 use chrono::Utc;
-use digest::Digest;
 use log::*;
 use rand::{rngs::OsRng, RngCore};
-use tari_comms::types::Challenge;
-use tari_utilities::hex;
 use tokio::{
     runtime,
     sync::{mpsc, RwLock},
@@ -150,7 +147,7 @@ impl StoreAndForwardMock {
                     is_encrypted: msg.is_encrypted,
                     priority: msg.priority,
                     stored_at: Utc::now().naive_utc(),
-                    body_hash: hex::to_hex(&Challenge::new().chain(msg.body).finalize()),
+                    body_hash: msg.body_hash,
                 });
                 reply_tx.send(Ok(false)).unwrap();
             },
