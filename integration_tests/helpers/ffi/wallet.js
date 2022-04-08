@@ -115,7 +115,8 @@ class Wallet {
     passphrase,
     seed_words_ptr,
     num_rolling_log_file = 50,
-    log_size_bytes = 102400
+    log_size_bytes = 102400,
+    network = "localnet"
   ) {
     //region Callbacks
     this.callback_received_transaction =
@@ -196,6 +197,10 @@ class Wallet {
     this.recoveryFinished = true;
     let sanitize = null;
     let words = null;
+    let sanitize_network = null;
+    if (network) {
+      sanitize_network = utf8.encode(network);
+    }
     if (passphrase) {
       sanitize = utf8.encode(passphrase);
     }
@@ -210,6 +215,7 @@ class Wallet {
       log_size_bytes,
       sanitize,
       words,
+      sanitize_network,
       this.callback_received_transaction,
       this.callback_received_transaction_reply,
       this.callback_received_finalized_transaction,

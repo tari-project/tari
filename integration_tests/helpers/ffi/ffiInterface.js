@@ -271,7 +271,6 @@ class InterfaceFFI {
           this.string,
           this.ulonglong,
           this.ulonglong,
-          this.string,
           this.intPtr,
         ],
       ],
@@ -286,6 +285,7 @@ class InterfaceFFI {
           this.uint,
           this.string,
           this.ptr,
+          this.string,
           this.ptr,
           this.ptr,
           this.ptr,
@@ -739,7 +739,6 @@ class InterfaceFFI {
       datastore_path,
       discovery_timeout_in_secs,
       saf_message_duration_in_secs,
-      network,
       error
     );
     this.checkErrorResult(error, `commsConfigCreate`);
@@ -1215,6 +1214,7 @@ class InterfaceFFI {
     size_per_log_file_bytes,
     passphrase,
     seed_words,
+    network,
     callback_received_transaction,
     callback_received_transaction_reply,
     callback_received_finalized_transaction,
@@ -1242,6 +1242,7 @@ class InterfaceFFI {
       size_per_log_file_bytes,
       passphrase,
       seed_words,
+      network,
       callback_received_transaction,
       callback_received_transaction_reply,
       callback_received_finalized_transaction,

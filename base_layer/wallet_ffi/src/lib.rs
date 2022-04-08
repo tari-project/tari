@@ -3587,6 +3587,7 @@ pub unsafe extern "C" fn wallet_create(
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
     seed_words: *const TariSeedWords,
+    network_str: *const c_char,
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -3632,6 +3633,24 @@ pub unsafe extern "C" fn wallet_create(
             .expect("A non-null passphrase should be able to be converted to string")
             .to_owned();
         Some(pf)
+    };
+
+    let network = if network_str.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        let network = CStr::from_ptr(network_str)
+            .to_str()
+            .expect("A non-null network should be able to be converted to string");
+        match Network::from_str(&*network) {
+            Ok(n) => n,
+            Err(_) => {
+                error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
     };
 
     let recovery_seed = if seed_words.is_null() {
@@ -3744,8 +3763,7 @@ pub unsafe extern "C" fn wallet_create(
             direct_send_timeout: (*config).dht.discovery_request_timeout,
             ..Default::default()
         },
-        // TODO: make configurable #testnetreset
-        network: Network::Dibbler,
+        network,
         ..Default::default()
     };
 
@@ -7102,6 +7120,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7141,6 +7160,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7245,6 +7265,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7294,6 +7315,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7327,6 +7349,7 @@ mod test {
                 0,
                 wrong_passphrase_const_str,
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7355,6 +7378,7 @@ mod test {
                 0,
                 passphrase_const_str,
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7403,6 +7427,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7459,6 +7484,8 @@ mod test {
             let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
             let alice_config = comms_config_create(
                 address_alice_str,
@@ -7477,6 +7504,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7543,6 +7571,7 @@ mod test {
             assert_eq!(found_value, ptr::null_mut());
             assert_eq!(*error_ptr, 424i32);
 
+            string_destroy(network_str as *mut c_char);
             string_destroy(k_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
@@ -7635,6 +7664,8 @@ mod test {
             let address = transport_memory_get_address(transport_type, error_ptr);
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
             let config = comms_config_create(
                 address_str,
@@ -7653,6 +7684,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7799,6 +7831,7 @@ mod test {
             let _base_node_peer_public_key = Box::from_raw(base_node_peer_public_key_ptr);
             string_destroy(base_node_peer_address_ptr as *mut c_char);
 
+            string_destroy(network_str as *mut c_char);
             string_destroy(db_name_str as *mut c_char);
             string_destroy(db_path_str as *mut c_char);
             string_destroy(address_str as *mut c_char);
@@ -7860,6 +7893,8 @@ mod test {
             let address = transport_memory_get_address(transport_type, error_ptr);
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
             let config = comms_config_create(
                 address_str,
@@ -7878,6 +7913,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7931,6 +7967,7 @@ mod test {
                 0,
                 ptr::null(),
                 seed_words,
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7959,6 +7996,7 @@ mod test {
 
             assert_eq!(*seed_words, *recovered_seed_words);
             assert_eq!(*public_key, *recovered_public_key);
+            // TODO: Clean up memory leaks please
         }
     }
 }
