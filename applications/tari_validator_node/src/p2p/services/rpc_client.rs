@@ -165,30 +165,27 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
         while let Some(resp) = stream.next().await {
             let resp = resp?;
 
-            match resp.state {
-                Some(proto::get_sidechain_state_response::State::Schema(name)) => {
+            let state = resp.state.ok_or_else(|| ValidatorNodeClientError::ProtocolViolation {
+                peer: self.address.clone(),
+                details: "get_sidechain_state: Peer sent response without state".to_string(),
+            })?;
+
+            match state {
+                proto::get_sidechain_state_response::State::Schema(name) => {
                     if let Some(schema) = current_schema.take() {
                         schemas.push(schema);
                     }
                     current_schema = Some(SchemaState::new(name, vec![]));
                 },
-                Some(proto::get_sidechain_state_response::State::KeyValue(kv)) => match current_schema.as_mut() {
-                    Some(schema) => {
-                        let kv = kv.try_into().map_err(ValidatorNodeClientError::invalid_message)?;
-                        schema.push_key_value(kv);
-                    },
-                    None => {
-                        return Err(ValidatorNodeClientError::InvalidPeerMessage(format!(
+                proto::get_sidechain_state_response::State::KeyValue(kv) => {
+                    let kv = kv.try_into().map_err(ValidatorNodeClientError::invalid_message)?;
+                    let schema = current_schema.as_mut().ok_or_else(|| {
+                        ValidatorNodeClientError::InvalidPeerMessage(format!(
                             "Peer {} sent a key value response without first defining the schema",
                             self.address
-                        )))
-                    },
-                },
-                None => {
-                    return Err(ValidatorNodeClientError::ProtocolViolation {
-                        peer: self.address.clone(),
-                        details: "get_sidechain_state: Peer sent response without state".to_string(),
-                    })
+                        ))
+                    })?;
+                    schema.push_key_value(kv);
                 },
             }
         }
