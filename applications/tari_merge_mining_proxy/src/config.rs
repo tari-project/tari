@@ -74,7 +74,7 @@ mod test {
   baz = "foo"
 [merge_mining_proxy]
   monerod_username = "cmot"
-  grpc_console_wallet_address = "/dns4/wallet/tcp/9000"
+  console_wallet_grpc_address = "/dns4/wallet/tcp/9000"
 [config_a.merge_mining_proxy]
   monerod_url = [ "http://network.a.org" ]
   monerod_password = "password_igor"

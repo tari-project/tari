@@ -355,7 +355,7 @@ const multiAddrToSocket = (string) => {
   console.log("input:", string);
   let match = string.match(/\/ip4\/(.*)\/tcp\/(.*)/);
   if (!match) {
-    console.log("no match, returning as is");
+    console.log("no match, returning as is", string);
     return string;
   }
   let res = `${match[1]}:${match[2]}`;

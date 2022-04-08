@@ -77,10 +77,15 @@ class ValidatorNodeProcess {
   }
 
   ensureNodeInfo() {
-    for (;;) {
+    for (let i = 0; i < 100; i++) {
       if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
         break;
       }
+    }
+    if (!fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
+      throw new Error(
+        `Node id file node found ${this.baseDir}/${this.nodeFile}`
+      );
     }
 
     this.nodeInfo = JSON5.parse(

@@ -197,16 +197,16 @@ class Wallet {
     this.recoveryFinished = true;
     let sanitize = null;
     let words = null;
-    let sanitize_network = null;
-    if (network) {
-      sanitize_network = utf8.encode(network);
-    }
     if (passphrase) {
       sanitize = utf8.encode(passphrase);
     }
     if (seed_words_ptr) {
       words = seed_words_ptr;
     }
+    if (!network) {
+      network = "localnet";
+    }
+
     this.log_path = log_path;
     this.ptr = InterfaceFFI.walletCreate(
       comms_config_ptr,
@@ -215,7 +215,7 @@ class Wallet {
       log_size_bytes,
       sanitize,
       words,
-      sanitize_network,
+      utf8.encode(network),
       this.callback_received_transaction,
       this.callback_received_transaction_reply,
       this.callback_received_finalized_transaction,

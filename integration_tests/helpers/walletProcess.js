@@ -38,6 +38,9 @@ class WalletProcess {
       "yyyymmddHHMM"
     )}/${this.name}`;
     this.seedWordsFile = path.resolve(this.baseDir + "/config/seed_words.log");
+    if (!fs.existsSync(this.baseDir)) {
+      fs.mkdirSync(this.baseDir + "/log", { recursive: true });
+    }
   }
 
   getGrpcAddress() {
@@ -46,7 +49,9 @@ class WalletProcess {
 
   async connectClient() {
     let client = new WalletClient(this.name);
-    await client.connect(this.getGrpcAddress());
+    let addr = this.getGrpcAddress();
+    console.log(`Connecting to ${addr} (${this.name})`);
+    await client.connect(addr);
     return client;
   }
 
@@ -63,45 +68,51 @@ class WalletProcess {
   }
 
   run(cmd, args, saveFile, input_buffer, output, waitForCommand) {
-    let thePromise = new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true });
-        fs.mkdirSync(this.baseDir + "/log", { recursive: true });
-      }
-
-      let envs = {};
+    return new Promise((resolve, reject) => {
+      let overrides = {};
       const network =
         this.options && this.options.network
           ? this.options.network.toLowerCase()
           : "localnet";
-      envs[`base_node.network`] = network;
+      overrides[`base_node.network`] = network;
       if (!this.excludeTestEnvars) {
-        envs = createEnv({
+        overrides = createEnv({
+          network: "localnet",
           isWallet: true,
           nodeFile: "cwalletid.json",
           options: this.options,
           peerSeeds: this.peerSeeds,
+          walletPort: this.port,
+          walletGrpcAddress: this.getGrpcAddress(),
         });
       } else if (this.options["grpc_console_wallet_address"]) {
-        envs[`wallet.grpc_address`] =
+        overrides[`wallet.grpc_address`] =
           this.options["grpc_console_wallet_address"];
         let regexMatch =
           this.options["grpc_console_wallet_address"].match(/tcp\/(\d+)/);
         this.grpcPort = parseInt(regexMatch[1]);
       }
-
+      console.log(`--------------------- ${this.name} ----------------------`);
+      console.log(overrides);
+      Object.keys(overrides).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${overrides[k]}`);
+      });
       if (saveFile) {
         // clear the .env file
-        fs.writeFileSync(`${this.baseDir}/.env`, "");
-        Object.keys(envs).forEach((key) => {
-          fs.appendFileSync(`${this.baseDir}/.env`, `${key}=${envs[key]}\n`);
+        fs.writeFileSync(`${this.baseDir}/.overrides`, "");
+        Object.keys(overrides).forEach((key) => {
+          fs.appendFileSync(
+            `${this.baseDir}/.overrides`,
+            `-p ${key}=${overrides[key]}`
+          );
         });
       }
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
-        env: { ...process.env, ...envs },
+        env: { ...process.env },
       });
 
       if (input_buffer) {
@@ -150,7 +161,6 @@ class WalletProcess {
       expect(ps.error).to.be.undefined;
       this.ps = ps;
     });
-    return thePromise;
   }
 
   async startNew() {
@@ -181,7 +191,7 @@ class WalletProcess {
         process.cwd() + "/temp/out",
       ];
 
-      await this.run("cargo", args);
+      await this.runShellCommand("cargo", args);
       outputProcess = process.cwd() + "/temp/out/tari_console_wallet";
     }
     return outputProcess;
@@ -267,7 +277,6 @@ class WalletProcess {
       "--command",
       command,
       "--non-interactive",
-      "--network",
       "localnet",
     ];
     if (this.logFilePath) {
@@ -282,6 +291,38 @@ class WalletProcess {
     // In case we killed the wallet fast send enter. Because it will ask for the logs again (e.g. whois test)
     await this.run(await this.compile(), args, true, "\n", output, true);
     return output;
+  }
+
+  runShellCommand(cmd, args, opts = { env: {} }) {
+    return new Promise((resolve, reject) => {
+      const ps = spawn(cmd, args, {
+        cwd: this.baseDir,
+        // shell: true,
+        env: { ...process.env, ...opts.env },
+      });
+
+      ps.stdout.on("data", (data) => {
+        // console.log(`stdout: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+        resolve(ps);
+      });
+
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
+
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
+        if (code) {
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
+        } else {
+          resolve(ps);
+        }
+      });
+    });
   }
 
   async exportSpentOutputs() {

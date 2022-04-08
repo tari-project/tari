@@ -29,7 +29,7 @@ class MiningNodeProcess {
     this.baseNodeClient = baseNodeClient;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.mineOnTipOnly = mineOnTipOnly;
-    this.numMiningThreads = 1;
+    this.numMiningThreads = 4;
   }
 
   async init(

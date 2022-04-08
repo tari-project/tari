@@ -76,7 +76,6 @@ impl Default for TransactionServiceConfig {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 pub enum TransactionRoutingMechanism {
     DirectOnly,
     StoreAndForwardOnly,

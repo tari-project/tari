@@ -3643,6 +3643,8 @@ pub unsafe extern "C" fn wallet_create(
         let network = CStr::from_ptr(network_str)
             .to_str()
             .expect("A non-null network should be able to be converted to string");
+        error!(target: LOG_TARGET, "network set to {}", network);
+        eprintln!("network set to {}", network);
         match Network::from_str(&*network) {
             Ok(n) => n,
             Err(_) => {
@@ -3713,6 +3715,7 @@ pub unsafe extern "C" fn wallet_create(
         let node_address = wallet_database
             .get_node_address()
             .await?
+            .or_else(|| comms_config.public_address.clone())
             .unwrap_or_else(Multiaddr::empty);
         let identity_sig = wallet_database.get_comms_identity_signature().await?;
 

@@ -568,10 +568,16 @@ class CustomWorld {
       5 * 1000,
       5
     );
-    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
-      this.lastResult.results[0]["transaction_id"]
+    await waitFor(
+      () =>
+        sourceClient.isTransactionAtLeastBroadcast(
+          this.lastResult.results[0]["transaction_id"]
+        ),
+      true,
+      60 * 1000,
+      5 * 1000,
+      5
     );
-    expect(transactionPending).to.equal(true);
   }
 
   async waitForWalletToHaveBalance(wallet, amount) {

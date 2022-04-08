@@ -12,13 +12,16 @@ function mapEnvs(options) {
     res["localnet.base_node.storage.pruning_horizon"] = options.pruningHorizon;
     res["localnet.base_node.storage.pruning_interval"] = 1;
   }
+  if ("numConfirmations" in options) {
+    res["wallet.num_required_confirmations"] = options.numConfirmations;
+  }
   if ("num_confirmations" in options) {
-    res["wallet.transaction_num_confirmations_required"] =
-      options.num_confirmations;
+    res["wallet.num_required_confirmations"] = options.num_confirmations;
   }
   if (options.routingMechanism) {
     // In the config toml file: `wallet.transaction_routing_mechanism`
-    res["wallet.transaction_routing_mechanism"] = options.routingMechanism;
+    res["wallet.transaction_service_config.transaction_routing_mechanism"] =
+      options.routingMechanism;
   }
   // if (options.broadcastMonitoringTimeout) {
   //   res["wallet.transaction_broadcast_monitoring_timeout"] =
@@ -27,10 +30,10 @@ function mapEnvs(options) {
   //   res["wallet.transaction_broadcast_monitoring_timeout"] = 3;
   // }
   if ("mineOnTipOnly" in options) {
-    res["mining_node.mine_on_tip_only"] = options.mineOnTipOnly.toString();
+    res["miner.mine_on_tip_only"] = options.mineOnTipOnly.toString();
   }
   if (options.numMiningThreads) {
-    res["mining_node.num_mining_threads"] = options.numMiningThreads;
+    res["miner.num_mining_threads"] = options.numMiningThreads;
   }
 
   if (options.network) {
@@ -73,15 +76,17 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     ["localnet.base_node.storage.pruning_horizon"]: "0",
     ["localnet.base_node.identity_file"]: "none.json",
     ["localnet.base_node.tor_identity_file"]: "torid.json",
-    ["localnet.base_node.p2p.allow_test_addresses"]: true,
-    ["localnet.p2p.seeds.dns_seeds_use_dnssec"]: "false",
     ["localnet.base_node.orphan_db_clean_out_threshold"]: "0",
     ["localnet.base_node.max_randomx_vms"]: "1",
     ["localnet.base_node.metadata_auto_ping_interval"]: "15",
+    ["localnet.base_node.p2p.allow_test_addresses"]: true,
     ["localnet.base_node.p2p.dht.flood_ban_max_msg_count"]: "100000",
+    ["localnet.p2p.seeds.dns_seeds_use_dnssec"]: "false",
 
     ["localnet.wallet.identity_file"]: "walletid.json",
     ["localnet.wallet.contacts_auto_ping_interval"]: "5",
+    ["localnet.wallet.p2p.allow_test_addresses"]: true,
+    ["localnet.wallet.p2p.dht.flood_ban_max_msg_count"]: "100000",
 
     ["localnet.merge_mining_proxy.monerod_url"]: [
       "http://stagenet.xmr-tw.org:38081",
@@ -126,6 +131,7 @@ let defaultOpts = {
   committee: [],
 };
 
+// TODO: We can split these per application now
 function createEnv(opts) {
   const finalOpts = { ...defaultOpts, ...opts };
   let {
@@ -156,6 +162,7 @@ function createEnv(opts) {
     [`${network}.base_node.p2p.public_address`]: `/ip4/127.0.0.1/tcp/${port}`,
 
     [`wallet.grpc_address`]: walletGrpcAddress,
+    [`${network}.wallet.grpc_address`]: walletGrpcAddress,
     [`${network}.wallet.p2p.transport.type`]: "tcp",
     [`${network}.wallet.p2p.transport.tcp.listener_address`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
     [`${network}.wallet.p2p.public_address`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
