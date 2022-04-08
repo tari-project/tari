@@ -728,8 +728,7 @@ class InterfaceFFI {
     database_name,
     datastore_path,
     discovery_timeout_in_secs,
-    saf_message_duration_in_secs,
-    network
+    saf_message_duration_in_secs
   ) {
     let error = this.initError();
     let result = this.fn.comms_config_create(

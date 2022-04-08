@@ -65,7 +65,7 @@ function mapEnvs(options) {
   return res;
 }
 
-function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
+function baseEnvs(peerSeeds = [], forceSyncPeers = [], _committee = []) {
   const envs = {
     ["base_node.network"]: "localnet",
     ["wallet.network"]: "localnet",
