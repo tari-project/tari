@@ -238,7 +238,7 @@ Given(
       this.logFilePathWallet,
       seedWords
     );
-    walletB.setPeerSeeds([this.seedAddresses()]);
+    walletB.setPeerSeeds(this.seedAddresses());
     await walletB.startNew();
     this.addWallet(walletNameB, walletB);
     let walletClient = await this.getWallet(walletNameB).connectClient();

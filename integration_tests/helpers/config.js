@@ -167,14 +167,14 @@ function createEnv(opts) {
     [`${network}.wallet.p2p.transport.tcp.listener_address`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
     [`${network}.wallet.p2p.public_address`]: `/ip4/127.0.0.1/tcp/${walletPort}`,
 
-    [`merge_mining_proxy.listener_address`]: `${proxyFullAddress}`,
+    [`merge_mining_proxy.listener_address`]: proxyFullAddress,
     [`${network}.merge_mining_proxy.base_node_grpc_address`]:
       baseNodeGrpcAddress,
     [`${network}.merge_mining_proxy.console_wallet_grpc_address`]:
       walletGrpcAddress,
 
-    [`miner.base_node_addr`]: `${baseNodeGrpcAddress}`,
-    [`miner.wallet_addr`]: `${walletGrpcAddress}`,
+    [`miner.base_node_addr`]: baseNodeGrpcAddress,
+    [`miner.wallet_addr`]: walletGrpcAddress,
   };
   let finalEnv = { ...envs, ...configEnvs, ...mapEnvs(options || {}) };
   return finalEnv;

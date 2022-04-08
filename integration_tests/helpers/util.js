@@ -78,7 +78,7 @@ async function waitFor(
   asyncTestFn,
   toBe,
   maxTimeMs,
-  timeOut = 500,
+  pollInterval = 500,
   skipLog = 50
 ) {
   const now = new Date();
@@ -86,17 +86,17 @@ async function waitFor(
   let i = 0;
   while (new Date() - now < maxTimeMs) {
     try {
-      const value = await asyncTestFn();
+      const value = await Promise.resolve(asyncTestFn());
       if (value === toBe) {
         if (i > 1) {
-          console.log("waiting for process...", timeOut, i, value);
+          console.log("waiting for process...", pollInterval, i, value);
         }
         return true;
       }
       if (i % skipLog === 0 && i > 1) {
-        console.log("waiting for process...", timeOut, i, value);
+        console.log("waiting for process...", pollInterval, i, value);
       }
-      await sleep(timeOut);
+      await sleep(pollInterval);
       i++;
     } catch (e) {
       if (i > 1) {
@@ -106,7 +106,7 @@ async function waitFor(
           console.error("Error in waitFor: ", e);
         }
       }
-      await sleep(timeOut);
+      await sleep(pollInterval);
     }
   }
   return false;
