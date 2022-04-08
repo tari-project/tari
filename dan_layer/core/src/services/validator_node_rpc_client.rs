@@ -94,3 +94,9 @@ pub enum ValidatorNodeClientError {
     #[error("Dht error: {0}")]
     DhtError(#[from] DhtActorError),
 }
+
+impl ValidatorNodeClientError {
+    pub fn invalid_message(err: impl ToString) -> Self {
+        Self::InvalidPeerMessage(err.to_string())
+    }
+}

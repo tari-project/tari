@@ -137,9 +137,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
                 let resp = result?;
                 let block: SideChainBlock = resp
                     .block
-                    .ok_or_else(|| {
-                        ValidatorNodeClientError::InvalidPeerMessage("Node returned empty block".to_string())
-                    })?
+                    .ok_or_else(|| ValidatorNodeClientError::invalid_message("Node returned empty block"))?
                     .try_into()
                     .map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
                 Ok(block)
@@ -176,11 +174,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
                 },
                 Some(proto::get_sidechain_state_response::State::KeyValue(kv)) => match current_schema.as_mut() {
                     Some(schema) => {
-                        let kv = kv
-                            .try_into()
-                            .map_err(|err: crate::p2p::proto::conversions::KeyValueError| {
-                                ValidatorNodeClientError::InvalidPeerMessage(err.to_string())
-                            })?;
+                        let kv = kv.try_into().map_err(ValidatorNodeClientError::invalid_message)?;
                         schema.push_key_value(kv);
                     },
                     None => {
