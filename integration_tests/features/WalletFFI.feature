@@ -186,7 +186,8 @@ Feature: Wallet FFI
         Then wallet RECEIVER has at least 1 transactions that are all TRANSACTION_STATUS_FAUX_CONFIRMED and not cancelled
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+    @critical @broken
+    # BROKEN: Runs fine when run by itself, but not with other tests - or maybe is flaky
     Scenario: As a client I want to receive a one-sided transaction
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
@@ -199,6 +200,7 @@ Feature: Wallet FFI
         Then I send a one-sided transaction of 1000000 uT from SENDER to FFI_RECEIVER at fee 20
         And mining node MINER mines 2 blocks
         Then all nodes are at height 12
+        #BROKEN
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_FAUX_UNCONFIRMED
         And I send 1000000 uT from wallet SENDER to wallet FFI_RECEIVER at fee 20
         Then ffi wallet FFI_RECEIVER detects AT_LEAST 1 ffi transactions to be TRANSACTION_STATUS_BROADCAST
