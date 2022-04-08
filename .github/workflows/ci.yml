@@ -4,8 +4,6 @@ on:
       - development
       - main
       - ci-*
-      - staging
-      - trying
   pull_request:
     types:
       - opened

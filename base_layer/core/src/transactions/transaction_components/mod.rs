@@ -94,7 +94,6 @@ use crate::{common::hash_writer::HashWriter, covenants::Covenant};
 /// We can exclude the range proof from this hash. The rationale for this is:
 /// a) It is a significant performance boost, since the RP is the biggest part of an output
 /// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
-/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 pub(super) fn hash_output(
     version: TransactionOutputVersion,
     features: &OutputFeatures,
