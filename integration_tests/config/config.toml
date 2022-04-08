@@ -122,7 +122,7 @@ database_url = "base_node_dht.db"
 # do we allow test addresses to be accepted like 127.0.0.1
 allow_test_addresses = false
 
-[base_node.p2p.dht.saf_config]
+[base_node.p2p.dht.saf]
 
 [base_node.lmdb]
 #init_size_bytes = 1000000

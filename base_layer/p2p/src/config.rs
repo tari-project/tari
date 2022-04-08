@@ -83,7 +83,7 @@ impl SubConfigPath for PeerSeedsConfig {
 pub struct P2pConfig {
     /// Internal field used for configuration.
     pub override_from: Option<String>,
-    /// The public address adverised to other peers by this node. If not set it will be set automatically depending on
+    /// The public address advertised to other peers by this node. If not set it will be set automatically depending on
     /// the transport type. The TCP transport is not able to determine the users public IP, so this will need to be
     /// manually set.
     pub public_address: Option<Multiaddr>,

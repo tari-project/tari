@@ -53,7 +53,7 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    pub saf_config: SafConfig,
+    pub saf: SafConfig,
     /// The max capacity of the message hash cache
     /// Default: 2,500
     pub dedup_cache_capacity: usize,
@@ -112,7 +112,7 @@ impl DhtConfig {
     pub fn default_local_test() -> Self {
         Self {
             database_url: DbConnectionUrl::Memory,
-            saf_config: SafConfig {
+            saf: SafConfig {
                 auto_request: false,
                 ..Default::default()
             },
@@ -143,7 +143,7 @@ impl Default for DhtConfig {
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
-            saf_config: Default::default(),
+            saf: Default::default(),
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             dedup_allowed_message_occurrences: 1,

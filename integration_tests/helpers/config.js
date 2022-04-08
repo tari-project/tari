@@ -87,6 +87,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], _committee = []) {
     ["localnet.wallet.contacts_auto_ping_interval"]: "5",
     ["localnet.wallet.p2p.allow_test_addresses"]: true,
     ["localnet.wallet.p2p.dht.flood_ban_max_msg_count"]: "100000",
+    ["localnet.wallet.p2p.dht.saf.auto_request"]: true,
 
     ["localnet.merge_mining_proxy.monerod_url"]: [
       "http://stagenet.xmr-tw.org:38081",
@@ -135,13 +136,12 @@ let defaultOpts = {
 function createEnv(opts) {
   const finalOpts = { ...defaultOpts, ...opts };
   let {
-    isWallet,
     nodeFile,
     walletGrpcAddress,
     walletPort,
     baseNodeGrpcAddress,
     baseNodePort,
-    network,
+    network = "localnet",
     proxyFullAddress,
     peerSeeds,
     forceSyncPeers,
@@ -150,16 +150,12 @@ function createEnv(opts) {
   } = finalOpts;
 
   const envs = baseEnvs(peerSeeds, forceSyncPeers, committee);
-  if (!network) {
-    network = "localnet";
-  }
-  let port = isWallet ? walletPort : baseNodePort;
   const configEnvs = {
     [`${network}.base_node.grpc_address`]: baseNodeGrpcAddress,
     [`${network}.base_node.identity_file`]: `${nodeFile}`,
     [`${network}.base_node.p2p.transport.type`]: "tcp",
-    [`${network}.base_node.p2p.transport.tcp.listener_address`]: `/ip4/127.0.0.1/tcp/${port}`,
-    [`${network}.base_node.p2p.public_address`]: `/ip4/127.0.0.1/tcp/${port}`,
+    [`${network}.base_node.p2p.transport.tcp.listener_address`]: `/ip4/127.0.0.1/tcp/${baseNodePort}`,
+    [`${network}.base_node.p2p.public_address`]: `/ip4/127.0.0.1/tcp/${baseNodePort}`,
 
     [`wallet.grpc_address`]: walletGrpcAddress,
     [`${network}.wallet.grpc_address`]: walletGrpcAddress,

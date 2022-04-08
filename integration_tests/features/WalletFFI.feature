@@ -137,7 +137,8 @@ Feature: Wallet FFI
         Then I want to view the transaction kernels for completed transactions in ffi wallet FFI_WALLET
         And I stop ffi wallet FFI_WALLET
 
-    @critical
+        #BROKEN: Sending via SAF works when running this test alone, but not when run with all other tests. Also works manually on dibbler
+    @critical @broken
     Scenario: As a client I want to receive Tari via my Public Key sent while I am offline when I come back online
         Given I have a seed node SEED
         And I have a base node BASE1 connected to all seed nodes
@@ -150,6 +151,7 @@ Feature: Wallet FFI
         And I stop ffi wallet FFI_WALLET
         And I send 2000000 uT without waiting for broadcast from wallet SENDER to wallet FFI_WALLET at fee 20
         And I restart ffi wallet FFI_WALLET connected to base node BASE2
+        # BROKEN
         Then I wait for ffi wallet FFI_WALLET to receive 1 transaction
         Then I wait for ffi wallet FFI_WALLET to receive 1 finalization
         Then I wait for ffi wallet FFI_WALLET to receive 1 broadcast

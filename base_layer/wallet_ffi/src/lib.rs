@@ -3317,7 +3317,7 @@ pub unsafe extern "C" fn comms_config_create(
                     discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
                     database_url: DbConnectionUrl::File(dht_database_path),
                     auto_join: true,
-                    saf_config: SafConfig {
+                    saf: SafConfig {
                         msg_validity: Duration::from_secs(saf_message_duration_in_secs),
                         // Ensure that SAF messages are requested automatically
                         auto_request: true,

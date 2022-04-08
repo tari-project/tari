@@ -99,7 +99,7 @@ database_url="base_node_dht.db"
 allow_test_addresses = false
 
 
-[base_node.p2p.dht.saf_config]
+[base_node.p2p.dht.saf]
 
 
 # Determines the method of syncing blocks when the node is lagging. If you are not struggling with syncing, then

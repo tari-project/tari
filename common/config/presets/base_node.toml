@@ -42,12 +42,12 @@ public_address = "/ip4/172.2.3.4/tcp/18189"
 # e.g. tor onion addresses will not be contactable.
 #transport = "tcp"
 # The address and port to listen for peer connections over TCP.
-tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
+#tcp.listener_address = "/ip4/0.0.0.0/tcp/18189"
 # Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
 # This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
 # only advertise an onion address.
-tcp.tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
-tcp.tor_socks_auth = "none"
+#tcp.tor_socks_address = "/ip4/127.0.0.1/tcp/9050"
+#tcp.tor_socks_auth = "none"
 
 # # Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
 # # onion v2, onion v3 and dns addresses.
@@ -78,7 +78,7 @@ database_url = "base_node_dht.db"
 # do we allow test addresses to be accepted like 127.0.0.1
 allow_test_addresses = false
 
-[base_node.p2p.dht.saf_config]
+[base_node.p2p.dht.saf]
 
 [base_node.lmdb]
 #init_size_bytes = 1000000

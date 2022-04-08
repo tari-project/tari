@@ -226,7 +226,7 @@ async fn setup_comms_dht(
 fn dht_config() -> DhtConfig {
     let mut config = DhtConfig::default_local_test();
     config.allow_test_addresses = true;
-    config.saf_config.auto_request = false;
+    config.saf.auto_request = false;
     config.discovery_request_timeout = Duration::from_secs(60);
     config.num_neighbouring_nodes = 8;
     config

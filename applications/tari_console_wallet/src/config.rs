@@ -28,7 +28,6 @@ use tari_wallet::WalletConfig;
 pub struct ApplicationConfig {
     pub common: CommonConfig,
     pub wallet: WalletConfig,
-    // pub auto_update: AutoUpdateConfig,
     pub peer_seeds: PeerSeedsConfig,
 }
 

@@ -209,45 +209,4 @@ where B: BlockchainBackend + 'static
 
         comms.add_protocol_extension(rpc_server)
     }
-
-    // fn create_comms_config(&self) -> P2pConfig {
-    //     P2pConfig {
-    //         network: self.config.network,
-    //         // node_identity: self.node_identity.clone(),
-    //         // transport_type: ,
-    //         auxilary_tcp_listener_address: self.config.auxilary_tcp_listener_address.clone(),
-    //         datastore_path: self.config.comms_peer_db_path.clone(),
-    //         peer_database_name: "peers".to_string(),
-    //         max_concurrent_inbound_tasks: 50,
-    //         max_concurrent_outbound_tasks: 100,
-    //         outbound_buffer_size: 100,
-    //         dht: DhtConfig {
-    //             database_url: DbConnectionUrl::File(self.config.data_dir.join("dht.db")),
-    //             auto_join: true,
-    //             allow_test_addresses: self.config.comms_allow_test_addresses,
-    //             flood_ban_max_msg_count: self.config.flood_ban_max_msg_count,
-    //             saf_config: SafConfig {
-    //                 msg_validity: self.config.saf_expiry_duration,
-    //                 ..Default::default()
-    //             },
-    //             dedup_cache_capacity: self.config.dht_dedup_cache_capacity,
-    //             ..Default::default()
-    //         },
-    //         allow_test_addresses: self.config.comms_allow_test_addresses,
-    //         listener_liveness_allowlist_cidrs: self.config.comms_listener_liveness_allowlist_cidrs.clone(),
-    //         listener_liveness_max_sessions: self.config.comms_listener_liveness_max_sessions,
-    //         user_agent: format!("tari/basenode/{}", env!("CARGO_PKG_VERSION")),
-    //         // Also add sync peers to the peer seed list. Duplicates are acceptable.
-    //         peer_seeds: self
-    //             .config
-    //             .peer_seeds
-    //             .iter()
-    //             .cloned()
-    //             .chain(self.config.force_sync_peers.clone())
-    //             .collect(),
-    //         dns_seeds: self.config.dns_seeds.clone(),
-    //         dns_seeds_name_server: self.config.dns_seeds_name_server.clone(),
-    //         dns_seeds_use_dnssec: self.config.dns_seeds_use_dnssec,
-    //     }
-    // }
 }

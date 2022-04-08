@@ -152,7 +152,7 @@ async fn create_wallet(
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
-            saf_config: SafConfig {
+            saf: SafConfig {
                 auto_request: true,
                 ..Default::default()
             },

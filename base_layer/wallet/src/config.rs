@@ -47,7 +47,6 @@ pub const KEY_MANAGER_COMMS_SECRET_KEY_BRANCH_KEY: &str = "comms";
 pub struct WalletConfig {
     pub override_from: Option<String>,
     pub p2p: P2pConfig,
-    // pub factories: CryptoFactories,
     pub transaction_service_config: TransactionServiceConfig,
     pub output_manager_service_config: OutputManagerServiceConfig,
     pub buffer_size: usize,
