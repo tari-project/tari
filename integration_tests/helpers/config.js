@@ -73,7 +73,7 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     ["localnet.base_node.storage.pruning_horizon"]: "0",
     ["localnet.base_node.identity_file"]: "none.json",
     ["localnet.base_node.tor_identity_file"]: "torid.json",
-    ["localnet.base_node.p2p.dht.allow_test_addresses"]: true,
+    ["localnet.base_node.p2p.allow_test_addresses"]: true,
     ["localnet.p2p.seeds.dns_seeds_use_dnssec"]: "false",
     ["localnet.base_node.orphan_db_clean_out_threshold"]: "0",
     ["localnet.base_node.max_randomx_vms"]: "1",
@@ -97,9 +97,9 @@ function baseEnvs(peerSeeds = [], forceSyncPeers = [], committee = []) {
     // ["localnet.base_node.storage.db_resize_threshold"]: 10000000,
     // ["localnet.base_node.storage.db_grow_size"]: 20000000,
     ["merge_mining_proxy.wait_for_initial_sync_at_startup"]: false,
-    ["mining_node.num_mining_threads"]: "1",
-    ["mining_node.mine_on_tip_only"]: true,
-    ["mining_node.validate_tip_timeout_sec"]: 1,
+    ["miner.num_mining_threads"]: "1",
+    ["miner.mine_on_tip_only"]: true,
+    ["miner.validate_tip_timeout_sec"]: 1,
   };
   if (forceSyncPeers.length > 0) {
     envs["localnet.base_node.force_sync_peers"] = forceSyncPeers.join(",");

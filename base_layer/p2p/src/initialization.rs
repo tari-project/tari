@@ -507,11 +507,12 @@ impl ServiceInitializer for P2pInitializer {
                 user_agent: config.user_agent.clone(),
             });
 
-        if config.allow_test_addresses {
+        if config.allow_test_addresses || config.dht.allow_test_addresses {
+            // The default is false, so ensure that both settings are true in this case
+            config.allow_test_addresses = true;
+            config.dht.allow_test_addresses = true;
             builder = builder.allow_test_addresses();
         }
-        // Ensure this setting always matches
-        config.dht.allow_test_addresses = config.allow_test_addresses;
 
         let (comms, dht) = configure_comms_and_dht(builder, &config, connector).await?;
 

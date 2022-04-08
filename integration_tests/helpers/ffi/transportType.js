@@ -79,7 +79,7 @@ class TransportType {
   destroy() {
     this.type = "None";
     if (this.ptr) {
-      InterfaceFFI.transportTypeDestroy(this.ptr);
+      InterfaceFFI.transportConfigDestroy(this.ptr);
       this.ptr = undefined; //prevent double free segfault
     }
   }

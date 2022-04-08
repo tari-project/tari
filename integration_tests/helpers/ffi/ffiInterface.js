@@ -39,7 +39,7 @@ class InterfaceFFI {
         "-Z",
         "unstable-options",
         "--out-dir",
-        process.cwd() + "/temp/out",
+        process.cwd() + "/temp/out/ffi",
       ];
       const baseDir = `./temp/base_nodes/${dateFormat(
         new Date(),
@@ -77,7 +77,7 @@ class InterfaceFFI {
 
   static async init() {
     let platform = process.platform === "win32" ? "" : "lib";
-    this.library = `${process.cwd()}/temp/out/${platform}tari_wallet_ffi`;
+    this.library = `${process.cwd()}/temp/out/ffi/${platform}tari_wallet_ffi`;
     // Load the library
     this.fn = ffi.Library(this.loaded ? null : this.library, {
       transport_memory_create: [this.ptr, []],
@@ -95,7 +95,7 @@ class InterfaceFFI {
         ],
       ],
       transport_memory_get_address: [this.stringPtr, [this.ptr, this.intPtr]],
-      transport_type_destroy: [this.void, [this.ptr]],
+      transport_config_destroy: [this.void, [this.ptr]],
       string_destroy: [this.void, [this.string]],
       byte_vector_create: [this.ptr, [this.ucharPtr, this.uint, this.intPtr]],
       byte_vector_get_at: [this.uchar, [this.ptr, this.uint, this.intPtr]],
@@ -648,8 +648,8 @@ class InterfaceFFI {
     return result;
   }
 
-  static transportTypeDestroy(transport) {
-    this.fn.transport_type_destroy(transport);
+  static transportConfigDestroy(transport) {
+    this.fn.transport_config_destroy(transport);
   }
   //endregion
 
