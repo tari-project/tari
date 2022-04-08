@@ -52,7 +52,6 @@ const LOG_TARGET: &str = "c::bn::base_node";
 pub struct BaseNodeStateMachineConfig {
     pub blockchain_sync_config: BlockchainSyncConfig,
     pub orphan_db_clean_out_threshold: usize,
-    pub pruning_horizon: u64,
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
@@ -64,7 +63,6 @@ impl Default for BaseNodeStateMachineConfig {
         Self {
             blockchain_sync_config: Default::default(),
             orphan_db_clean_out_threshold: 0,
-            pruning_horizon: 0,
             max_randomx_vms: 0,
             blocks_behind_before_considered_lagging: 0,
             bypass_range_proof_verification: false,

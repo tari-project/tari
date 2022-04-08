@@ -666,10 +666,10 @@ BeforeAll({ timeout: 2400000 }, async function () {
   await miningNode.compile();
 
   console.log("Compiling wallet FFI...");
-  await InterfaceFFI.compile();
+  // await InterfaceFFI.compile();
   console.log("Finished compilation.");
   console.log("Loading FFI interface..");
-  await InterfaceFFI.init();
+  // await InterfaceFFI.init();
   console.log("FFI interface loaded.");
 
   console.log("World ready, now lets run some tests! :)");

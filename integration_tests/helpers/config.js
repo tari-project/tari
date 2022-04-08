@@ -10,7 +10,7 @@ function mapEnvs(options) {
   if (options.pruningHorizon) {
     // In the config toml file: `base_node.network.pruning_horizon` with `network = localnet`
     res["localnet.base_node.storage.pruning_horizon"] = options.pruningHorizon;
-    res.BASE_NODE__LOCALNET__PRUNED_MODE_CLEANUP_INTERVAL = 1;
+    res["localnet.base_node.storage.pruning_interval"] = 1;
   }
   if ("num_confirmations" in options) {
     res["wallet.transaction_num_confirmations_required"] =

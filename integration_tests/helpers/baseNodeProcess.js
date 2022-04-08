@@ -130,6 +130,7 @@ class BaseNodeProcess {
       peerSeeds: this.peerSeeds,
       forceSyncPeers: this.forceSyncPeers,
       nodeFile: this.nodeFile,
+      options: this.options,
     });
   }
 
