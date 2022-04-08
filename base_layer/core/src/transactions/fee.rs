@@ -72,3 +72,51 @@ impl From<TransactionWeight> for Fee {
         Self(weight)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_crypto::ristretto::RistrettoComSig;
+    use tari_script::ExecutionStack;
+
+    use super::*;
+    use crate::transactions::transaction_components::{SpentOutput, TransactionInput};
+
+    #[test]
+    pub fn test_derive_clone() {
+        let f0 = Fee::new(TransactionWeight::latest());
+        let f1 = f0.clone();
+        assert_eq!(
+            f0.weighting().params().kernel_weight,
+            f1.weighting().params().kernel_weight
+        );
+        assert_eq!(
+            f0.weighting().params().input_weight,
+            f1.weighting().params().input_weight
+        );
+        assert_eq!(
+            f0.weighting().params().output_weight,
+            f1.weighting().params().output_weight
+        );
+        assert_eq!(
+            f0.weighting().params().metadata_bytes_per_gram,
+            f1.weighting().params().metadata_bytes_per_gram
+        );
+    }
+
+    #[test]
+    fn test_calculate_body() {
+        let hash = vec![0u8; 32];
+        let spent_output = SpentOutput::OutputHash(hash);
+        let input = TransactionInput::new_current_version(
+            spent_output,
+            ExecutionStack::new(vec![]),
+            RistrettoComSig::default(),
+        );
+        let aggregate_body = AggregateBody::new(vec![input], vec![], vec![]);
+        let fee = Fee::new(TransactionWeight::latest());
+        assert_eq!(
+            fee.calculate_body(100.into(), &aggregate_body),
+            fee.calculate(100.into(), 0, 1, 0, 0)
+        )
+    }
+}

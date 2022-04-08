@@ -60,3 +60,25 @@ impl From<CryptoFullRewindResult<BlindingFactor>> for FullRewindResult {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_crypto::ristretto::RistrettoSecretKey;
+
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let frr0 = FullRewindResult::new(
+            100.into(),
+            [1; REWIND_USER_MESSAGE_LENGTH],
+            RistrettoSecretKey::default(),
+        );
+        let frr1 = FullRewindResult {
+            committed_value: 100.into(),
+            proof_message: [1; REWIND_USER_MESSAGE_LENGTH],
+            blinding_factor: RistrettoSecretKey::default(),
+        };
+        assert_eq!(frr0, frr1);
+    }
+}

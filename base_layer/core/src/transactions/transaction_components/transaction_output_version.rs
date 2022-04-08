@@ -85,3 +85,38 @@ impl ConsensusDecoding for TransactionOutputVersion {
         Ok(version)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn test_try_from() {
+        assert_eq!(TransactionOutputVersion::try_from(0), Ok(TransactionOutputVersion::V0));
+        assert_eq!(TransactionOutputVersion::try_from(1), Ok(TransactionOutputVersion::V1));
+        assert!(TransactionOutputVersion::try_from(2).is_err());
+    }
+
+    #[test]
+    fn test_consensus() {
+        let mut buffer = Cursor::new(vec![
+            0;
+            TransactionOutputVersion::get_current_version()
+                .consensus_encode_exact_size()
+        ]);
+        assert_eq!(
+            TransactionOutputVersion::get_current_version()
+                .consensus_encode(&mut buffer)
+                .unwrap(),
+            TransactionOutputVersion::get_current_version().consensus_encode_exact_size()
+        );
+        // Reset the buffer to original position, we are going to read.
+        buffer.set_position(0);
+        assert_eq!(
+            TransactionOutputVersion::consensus_decode(&mut buffer).unwrap(),
+            TransactionOutputVersion::get_current_version()
+        );
+    }
+}
