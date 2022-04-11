@@ -153,19 +153,9 @@ fn main_inner() -> Result<(), ExitError> {
     let node_identity = setup_node_identity(
         &config.base_node.identity_file,
         config.base_node.p2p.public_address.as_ref(),
-        cli.create_id || cli.non_interactive_mode,
+        cli.non_interactive_mode || cli.init,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
-
-    // Exit if create_id or init arguments were run
-    if cli.create_id {
-        info!(
-            target: LOG_TARGET,
-            "Base node's node ID created at '{}'. Done.",
-            config.base_node.identity_file.as_path().to_string_lossy(),
-        );
-        return Ok(());
-    }
 
     if cli.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");

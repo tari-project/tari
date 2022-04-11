@@ -101,7 +101,7 @@ async fn run_node(config: &ApplicationConfig, cli: Cli) -> Result<(), ExitError>
     let node_identity = setup_node_identity(
         &config.validator_node.identity_file,
         config.validator_node.public_address.as_ref(),
-        cli.create_id,
+        true,
         PeerFeatures::NONE,
     )?;
     let db_factory = SqliteDbFactory::new(config.validator_node.data_dir.clone());

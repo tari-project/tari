@@ -39,10 +39,11 @@ const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
 /// Loads the node identity, or creates a new one if the --create-id flag was specified
 ///
 /// ## Parameters
-/// `identity_file` - Reference to file path
-/// `public_address` - Network address of the base node
-/// `create_id` - Whether an identity needs to be created or not
-/// `peer_features` - Enables features of the base node
+/// - `identity_file` - Reference to file path
+/// - `public_address` - Network address of the base node
+/// - `create_id` - Only applies if the identity_file does not exist or is malformed. If true, a new identity will be
+/// created, otherwise the user will be prompted to create a new ID
+/// - `peer_features` - Enables features of the base node
 ///
 /// # Return
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
