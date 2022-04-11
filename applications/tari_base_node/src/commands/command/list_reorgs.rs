@@ -44,7 +44,7 @@ impl HandleCommand<Args> for CommandContext {
 
 impl CommandContext {
     pub fn list_reorgs(&self) -> Result<(), Error> {
-        if self.config.blockchain_track_reorgs {
+        if self.config.base_node.storage.track_reorgs {
             let reorgs = self.blockchain_db.inner().fetch_all_reorgs()?;
             let mut table = Table::new();
             table.set_titles(vec!["#", "New Tip", "Prev Tip", "Depth", "Timestamp"]);

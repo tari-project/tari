@@ -22,7 +22,9 @@
 
 mod block_template_data;
 mod block_template_protocol;
+mod cli;
 mod common;
+mod config;
 mod error;
 mod proxy;
 
@@ -30,20 +32,29 @@ mod proxy;
 mod test;
 
 use std::{
-    convert::{Infallible, TryFrom},
+    convert::Infallible,
     io::{stdout, Write},
 };
 
+use clap::Parser;
 use crossterm::{execute, terminal::SetTitle};
 use futures::future;
 use hyper::{service::make_service_fn, Server};
-use proxy::{MergeMiningProxyConfig, MergeMiningProxyService};
+use log::*;
+use proxy::MergeMiningProxyService;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_app_utilities::{consts, initialization::init_configuration};
-use tari_common::configuration::bootstrap::ApplicationType;
+use tari_app_utilities::consts;
+use tari_common::{initialize_logging, load_configuration, DefaultConfigLoader};
+use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tokio::time::Duration;
 
-use crate::{block_template_data::BlockTemplateRepository, error::MmProxyError};
+use crate::{
+    block_template_data::BlockTemplateRepository,
+    cli::Cli,
+    config::MergeMiningProxyConfig,
+    error::MmProxyError,
+};
+const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -52,30 +63,35 @@ async fn main() -> Result<(), anyhow::Error> {
         println!("Error setting terminal title. {}", e)
     }
 
-    let (_, config, _) = init_configuration(ApplicationType::MergeMiningProxy)?;
+    let cli = Cli::parse();
 
-    let config = match MergeMiningProxyConfig::try_from(config) {
-        Ok(c) => c,
-        Err(msg) => {
-            eprintln!("Invalid config: {}", msg);
-            return Ok(());
-        },
-    };
-    println!("\n{}\n", config);
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(&config_path, true, &cli.config_property_overrides())?;
+    initialize_logging(
+        &cli.common.log_config_path("proxy"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
 
-    let addr = config.proxy_host_address;
+    let config = MergeMiningProxyConfig::load_from(&cfg)?;
+
+    error!(target: LOG_TARGET, "Configuration: {:?}", config);
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
         .pool_max_idle_per_host(25)
         .build()
         .map_err(MmProxyError::ReqwestError)?;
-    println!("Connecting to base node at {}", config.grpc_base_node_address);
-    let base_node_client =
-        grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", config.grpc_base_node_address)).await?;
-    println!("Connecting to wallet at {}", config.grpc_console_wallet_address);
-    let wallet_client =
-        grpc::wallet_client::WalletClient::connect(format!("http://{}", config.grpc_console_wallet_address)).await?;
+
+    let base_node = multiaddr_to_socketaddr(&config.base_node_grpc_address)?;
+    info!(target: LOG_TARGET, "Connecting to base node at {}", base_node);
+    println!("Connecting to base node at {}", base_node);
+    let base_node_client = grpc::base_node_client::BaseNodeClient::connect(format!("http://{}", base_node)).await?;
+    let wallet = multiaddr_to_socketaddr(&config.console_wallet_grpc_address)?;
+    info!(target: LOG_TARGET, "Connecting to wallet at {}", wallet);
+    println!("Connecting to wallet at {}", wallet);
+    let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
+    let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
+
     let xmrig_service = MergeMiningProxyService::new(
         config,
         client,
@@ -85,14 +101,16 @@ async fn main() -> Result<(), anyhow::Error> {
     );
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 
-    match Server::try_bind(&addr) {
+    match Server::try_bind(&listen_addr) {
         Ok(builder) => {
-            println!("Listening on {}...", addr);
+            info!(target: LOG_TARGET, "Listening on {}...", listen_addr);
+            println!("Listening on {}...", listen_addr);
             builder.serve(service).await?;
             Ok(())
         },
         Err(err) => {
-            println!("Fatal: Cannot bind to '{}'.", addr);
+            error!(target: LOG_TARGET, "Fatal: Cannot bind to '{}'.", listen_addr);
+            println!("Fatal: Cannot bind to '{}'.", listen_addr);
             println!("It may be part of a Port Exclusion Range. Please try to use another port for the");
             println!("'proxy_host_address' in 'config/config.toml' and for the applicable XMRig '[pools][url]' or");
             println!("[pools][self-select]' config setting that can be found  in 'config/xmrig_config_***.json' or");

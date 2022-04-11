@@ -63,7 +63,6 @@ use anyhow::Error;
 use async_trait::async_trait;
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use strum::{EnumVariantNames, VariantNames};
-use tari_common::GlobalConfig;
 use tari_comms::{
     connectivity::ConnectivityRequester,
     peer_manager::{Peer, PeerManager, PeerManagerError, PeerQuery},
@@ -86,6 +85,7 @@ pub use watch_command::WatchCommand;
 use crate::{
     builder::BaseNodeContext,
     commands::{nom_parser::ParsedCommand, parser::FromHex},
+    ApplicationConfig,
 };
 
 #[derive(Debug, Parser)]
@@ -146,7 +146,7 @@ pub trait HandleCommand<T> {
 }
 
 pub struct CommandContext {
-    pub config: Arc<GlobalConfig>,
+    pub config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: AsyncBlockchainDb<LMDBDatabase>,
     discovery_service: DhtDiscoveryRequester,

@@ -115,7 +115,8 @@ class Wallet {
     passphrase,
     seed_words_ptr,
     num_rolling_log_file = 50,
-    log_size_bytes = 102400
+    log_size_bytes = 102400,
+    network = "localnet"
   ) {
     //region Callbacks
     this.callback_received_transaction =
@@ -202,6 +203,10 @@ class Wallet {
     if (seed_words_ptr) {
       words = seed_words_ptr;
     }
+    if (!network) {
+      network = "localnet";
+    }
+
     this.log_path = log_path;
     this.ptr = InterfaceFFI.walletCreate(
       comms_config_ptr,
@@ -210,6 +215,7 @@ class Wallet {
       log_size_bytes,
       sanitize,
       words,
+      utf8.encode(network),
       this.callback_received_transaction,
       this.callback_received_transaction_reply,
       this.callback_received_finalized_transaction,

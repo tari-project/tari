@@ -6,7 +6,7 @@
   "build": {
     "distDir": "../gui-vue/dist",
     "devPath": "http://localhost:8080",
-    "beforeDevCommand": "cp assets/* ../../../target/debug/assets/ && cd ../gui-vue && npm run serve",
+    "beforeDevCommand": " cd ../gui-vue && npm run serve",
     "beforeBuildCommand": "cd ../gui-vue && npm run build"
   },
   "tauri": {
@@ -68,7 +68,7 @@
       {
         "title": "Tari Launchpad",
         "width": 1600,
-        "height": 2400,
+        "height": 800,
         "resizable": true,
         "fullscreen": false
       }

@@ -27,7 +27,6 @@ pub use initializer::BaseNodeServiceInitializer;
 
 #[allow(clippy::module_inception)]
 mod service;
-pub use service::BaseNodeServiceConfig;
 pub use service_request::BaseNodeServiceRequest;
 pub use service_response::BaseNodeServiceResponse;
 

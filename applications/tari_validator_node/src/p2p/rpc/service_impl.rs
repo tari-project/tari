@@ -71,9 +71,8 @@ where
 {
     async fn get_token_data(
         &self,
-        request: Request<proto::GetTokenDataRequest>,
+        _request: Request<proto::GetTokenDataRequest>,
     ) -> Result<Response<proto::GetTokenDataResponse>, RpcStatus> {
-        println!("{:?}", request);
         Err(RpcStatus::general("Not implemented"))
     }
 

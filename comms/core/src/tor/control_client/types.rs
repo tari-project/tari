@@ -102,30 +102,39 @@ impl Drop for PrivateKey {
 
 /// Represents a mapping between an onion port and a proxied address (usually 127.0.0.1:xxxx).
 /// If the proxied_address is not specified, the default `127.0.0.1:[onion_port]` will be used.
-#[derive(Debug, Clone, Copy)]
-pub struct PortMapping(u16, SocketAddr);
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct PortMapping {
+    onion_port: u16,
+    proxied_address: SocketAddr,
+}
 
 impl PortMapping {
     /// Returns a new `PortMapping` with the proxied address set to 127.0.0.1:{onion_port}
     pub fn from_port(onion_port: u16) -> Self {
-        Self(onion_port, ([127, 0, 0, 1], onion_port).into())
+        Self {
+            onion_port,
+            proxied_address: ([127, 0, 0, 1], onion_port).into(),
+        }
     }
 
     /// Returns a new `PortMapping` with the specified proxied address
     pub fn new(onion_port: u16, proxied_address: SocketAddr) -> Self {
-        Self(onion_port, proxied_address)
+        Self {
+            onion_port,
+            proxied_address,
+        }
     }
 
     pub fn onion_port(&self) -> u16 {
-        self.0
+        self.onion_port
     }
 
     pub fn proxied_address(&self) -> &SocketAddr {
-        &self.1
+        &self.proxied_address
     }
 
     pub fn set_proxied_addr(&mut self, proxied_addr: SocketAddr) {
-        self.1 = proxied_addr
+        self.proxied_address = proxied_addr
     }
 }
 
@@ -137,12 +146,15 @@ impl From<u16> for PortMapping {
 
 impl<T: Into<u16>, U: Into<SocketAddr>> From<(T, U)> for PortMapping {
     fn from((port, addr): (T, U)) -> Self {
-        Self(port.into(), addr.into())
+        Self {
+            onion_port: port.into(),
+            proxied_address: addr.into(),
+        }
     }
 }
 
 impl fmt::Display for PortMapping {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "PortMapping [{} -> {}]", self.0, self.1)
+        write!(f, "PortMapping [{} -> {}]", self.onion_port, self.proxied_address)
     }
 }

@@ -76,35 +76,35 @@ mod table;
 
 mod bootstrap;
 mod builder;
+mod cli;
 mod commands;
+mod config;
 mod grpc;
+#[cfg(feature = "metrics")]
+mod metrics;
 mod recovery;
 mod utils;
 
-#[cfg(feature = "metrics")]
-mod metrics;
+use std::{env, process, str::FromStr, sync::Arc};
 
-use std::{env, net::SocketAddr, process, sync::Arc};
-
+use clap::Parser;
 use commands::{cli_loop::CliLoop, command::CommandContext};
 use futures::FutureExt;
 use log::*;
 use opentelemetry::{self, global, KeyValue};
-use tari_app_utilities::{
-    consts,
-    identity_management::setup_node_identity,
-    initialization::init_configuration,
-    utilities::setup_runtime,
-};
-#[cfg(all(unix, feature = "libtor"))]
-use tari_common::CommsTransport;
+use tari_app_utilities::{consts, identity_management::setup_node_identity, utilities::setup_runtime};
 use tari_common::{
-    configuration::bootstrap::ApplicationType,
+    configuration::{bootstrap::ApplicationType, Network},
     exit_codes::{ExitCode, ExitError},
-    ConfigBootstrap,
-    GlobalConfig,
+    initialize_logging,
+    load_configuration,
 };
-use tari_comms::{peer_manager::PeerFeatures, utils::multiaddr::multiaddr_to_socketaddr, NodeIdentity};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    peer_manager::PeerFeatures,
+    utils::multiaddr::multiaddr_to_socketaddr,
+    NodeIdentity,
+};
 #[cfg(all(unix, feature = "libtor"))]
 use tari_libtor::tor::Tor;
 use tari_shutdown::{Shutdown, ShutdownSignal};
@@ -112,7 +112,9 @@ use tokio::task;
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, Registry};
 
-const LOG_TARGET: &str = "base_node::app";
+use crate::{cli::Cli, config::ApplicationConfig};
+
+const LOG_TARGET: &str = "tari::base_node::app";
 
 /// Application entry point
 fn main() {
@@ -133,29 +135,39 @@ fn main() {
 }
 
 fn main_inner() -> Result<(), ExitError> {
-    #[allow(unused_mut)] // config isn't mutated on windows
-    let (bootstrap, mut config, _) = init_configuration(ApplicationType::BaseNode)?;
-    debug!(target: LOG_TARGET, "Using configuration: {:?}", config);
+    let cli = Cli::parse();
+
+    let config_path = cli.common.config_path();
+    let cfg = load_configuration(config_path, true, &cli.config_property_overrides())?;
+    initialize_logging(
+        &cli.common.log_config_path("base_node"),
+        include_str!("../log4rs_sample.yml"),
+    )?;
+
+    #[cfg_attr(not(all(unix, feature = "libtor")), allow(unused_mut))]
+    let mut config = ApplicationConfig::load_from(&cfg)?;
+    config.base_node.network = Network::from_str(&cli.network)?;
+    debug!(target: LOG_TARGET, "Using base node configuration: {:?}", config);
 
     // Load or create the Node identity
     let node_identity = setup_node_identity(
-        &config.base_node_identity_file,
-        config.comms_public_address.as_ref(),
-        bootstrap.create_id,
+        &config.base_node.identity_file,
+        config.base_node.p2p.public_address.as_ref(),
+        cli.create_id || cli.non_interactive_mode,
         PeerFeatures::COMMUNICATION_NODE,
     )?;
 
     // Exit if create_id or init arguments were run
-    if bootstrap.create_id {
+    if cli.create_id {
         info!(
             target: LOG_TARGET,
             "Base node's node ID created at '{}'. Done.",
-            config.base_node_identity_file.to_string_lossy(),
+            config.base_node.identity_file.as_path().to_string_lossy(),
         );
         return Ok(());
     }
 
-    if bootstrap.init {
+    if cli.init {
         info!(target: LOG_TARGET, "Default configuration created. Done.");
         return Ok(());
     }
@@ -164,23 +176,23 @@ fn main_inner() -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
 
     // Set up the Tokio runtime
-    let runtime = setup_runtime(&config)?;
+    let runtime = setup_runtime()?;
 
     // Run our own Tor instance, if configured
     // This is currently only possible on linux/macos
     #[cfg(all(unix, feature = "libtor"))]
-    if config.base_node_use_libtor && matches!(config.comms_transport, CommsTransport::TorHiddenService { .. }) {
+    if config.base_node.use_libtor && config.base_node.p2p.transport.is_tor() {
         let tor = Tor::initialize()?;
-        config.comms_transport = tor.update_comms_transport(config.comms_transport)?;
+        tor.update_comms_transport(&mut config.base_node.p2p.transport)?;
         runtime.spawn(tor.run(shutdown.to_signal()));
         debug!(
             target: LOG_TARGET,
-            "Updated Tor comms transport: {:?}", config.comms_transport
+            "Updated Tor comms transport: {:?}", config.base_node.p2p.transport
         );
     }
 
     // Run the base node
-    runtime.block_on(run_node(node_identity, config.into(), bootstrap, shutdown))?;
+    runtime.block_on(run_node(node_identity, Arc::new(config), cli, shutdown))?;
 
     // Shutdown and send any traces
     global::shutdown_tracer_provider();
@@ -191,11 +203,11 @@ fn main_inner() -> Result<(), ExitError> {
 /// Sets up the base node and runs the cli_loop
 async fn run_node(
     node_identity: Arc<NodeIdentity>,
-    config: Arc<GlobalConfig>,
-    bootstrap: ConfigBootstrap,
+    config: Arc<ApplicationConfig>,
+    cli: Cli,
     shutdown: Shutdown,
 ) -> Result<(), ExitError> {
-    if bootstrap.tracing_enabled {
+    if cli.tracing_enabled {
         enable_tracing();
     }
 
@@ -204,8 +216,7 @@ async fn run_node(
         metrics::install(
             ApplicationType::BaseNode,
             &node_identity,
-            &config,
-            &bootstrap,
+            &config.metrics,
             shutdown.to_signal(),
         );
     }
@@ -213,38 +224,28 @@ async fn run_node(
     log_mdc::insert("node-public-key", node_identity.public_key().to_string());
     log_mdc::insert("node-id", node_identity.node_id().to_string());
 
-    if bootstrap.rebuild_db {
+    if cli.rebuild_db {
         info!(target: LOG_TARGET, "Node is in recovery mode, entering recovery");
-        recovery::initiate_recover_db(&config)?;
-        recovery::run_recovery(&config)
+        recovery::initiate_recover_db(&config.base_node)?;
+        recovery::run_recovery(&config.base_node)
             .await
             .map_err(|e| ExitError::new(ExitCode::RecoveryError, &e))?;
         return Ok(());
     };
 
     // Build, node, build!
-    let ctx = builder::configure_and_initialize_node(
-        config.clone(),
-        node_identity,
-        shutdown.to_signal(),
-        bootstrap.clean_orphans_db,
-    )
-    .await?;
+    let ctx = builder::configure_and_initialize_node(config.clone(), node_identity, shutdown.to_signal()).await?;
 
-    if let Some(ref base_node_config) = config.base_node_config {
-        if let Some(ref address) = base_node_config.grpc_address {
-            // Go, GRPC, go go
-            let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
-            let socket_addr =
-                multiaddr_to_socketaddr(address).map_err(|e| ExitError::new(ExitCode::ConfigError, &e))?;
-            task::spawn(run_grpc(grpc, socket_addr, shutdown.to_signal()));
-        }
+    if let Some(address) = config.base_node.grpc_address.clone() {
+        // Go, GRPC, go go
+        let grpc = crate::grpc::base_node_grpc_server::BaseNodeGrpcServer::from_base_node_context(&ctx);
+        task::spawn(run_grpc(grpc, address, shutdown.to_signal()));
     }
 
     // Run, node, run!
     let context = CommandContext::new(&ctx, shutdown);
-    let main_loop = CliLoop::new(context, bootstrap.watch, bootstrap.non_interactive_mode);
-    if bootstrap.non_interactive_mode {
+    let main_loop = CliLoop::new(context, cli.watch, cli.non_interactive_mode);
+    if cli.non_interactive_mode {
         println!("Node started in non-interactive mode (pid = {})", process::id());
     } else {
         info!(
@@ -252,8 +253,8 @@ async fn run_node(
             "Node has been successfully configured and initialized. Starting CLI loop."
         );
     }
-    task::spawn(main_loop.cli_loop(config.base_node_resize_terminal_on_startup));
-    if !config.force_sync_peers.is_empty() {
+    task::spawn(main_loop.cli_loop(config.base_node.resize_terminal_on_startup));
+    if !config.base_node.force_sync_peers.is_empty() {
         warn!(
             target: LOG_TARGET,
             "Force Sync Peers have been set! This node will only sync to the nodes in this set."
@@ -293,17 +294,18 @@ fn enable_tracing() {
 /// Runs the gRPC server
 async fn run_grpc(
     grpc: crate::grpc::base_node_grpc_server::BaseNodeGrpcServer,
-    grpc_address: SocketAddr,
+    grpc_address: Multiaddr,
     interrupt_signal: ShutdownSignal,
 ) -> Result<(), anyhow::Error> {
     info!(target: LOG_TARGET, "Starting GRPC on {}", grpc_address);
 
+    let grpc_address = multiaddr_to_socketaddr(&grpc_address)?;
     Server::builder()
         .add_service(tari_app_grpc::tari_rpc::base_node_server::BaseNodeServer::new(grpc))
         .serve_with_shutdown(grpc_address, interrupt_signal.map(|_| ()))
         .await
         .map_err(|err| {
-            error!(target: LOG_TARGET, "GRPC encountered an error: {}", err);
+            error!(target: LOG_TARGET, "GRPC encountered an error: {:?}", err);
             err
         })?;
 

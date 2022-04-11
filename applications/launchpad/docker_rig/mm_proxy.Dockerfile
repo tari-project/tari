@@ -3,17 +3,7 @@ WORKDIR /tari
 
 # Adding only necessary things up front and copying the entrypoint script last
 # to take advantage of layer caching in docker
-ADD Cargo.toml .
-ADD applications applications
-ADD base_layer base_layer
-ADD clients clients
-ADD common common
-ADD common_sqlite common_sqlite
-ADD comms comms
-ADD infrastructure infrastructure
-ADD dan_layer dan_layer
-ADD meta meta
-ADD Cargo.lock .
+ADD Cargo.lock applications/deps_only/Cargo.lock
 ADD rust-toolchain.toml .
 
 ARG ARCH=native
@@ -23,7 +13,23 @@ ENV ROARING_ARCH=$ARCH
 ENV CARGO_HTTP_MULTIPLEXING=false
 
 # Caches downloads across docker builds
+ADD applications/deps_only applications/deps_only
+WORKDIR applications/deps_only
 RUN cargo build --bin deps_only --release
+
+WORKDIR /tari
+
+ADD Cargo.toml .
+ADD Cargo.lock .
+ADD applications applications
+ADD base_layer base_layer
+ADD clients clients
+ADD common common
+ADD common_sqlite common_sqlite
+ADD comms comms
+ADD infrastructure infrastructure
+ADD dan_layer dan_layer
+ADD meta meta
 
 # Cusomised build
 RUN cargo build --bin tari_merge_mining_proxy --release --locked --features "$FEATURES"

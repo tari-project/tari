@@ -49,7 +49,7 @@ impl CommandContext {
             self.base_node_identity.public_key().to_hex(),
             self.base_node_identity.public_address()
         );
-        let network = self.config.network;
+        let network = self.config.network();
         let qr_link = format!(
             "tari://{}/base_nodes/add?name={}&peer={}",
             network,

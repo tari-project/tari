@@ -75,6 +75,7 @@ use core::ptr;
 use std::{
     boxed::Box,
     ffi::{CStr, CString},
+    num::NonZeroU16,
     path::PathBuf,
     slice,
     str::FromStr,
@@ -99,6 +100,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 use rand::rngs::OsRng;
+use tari_common::configuration::StringList;
 use tari_common_types::{
     emoji::{emoji_set, EmojiId, EmojiIdError},
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -107,8 +109,6 @@ use tari_common_types::{
 use tari_comms::{
     multiaddr::Multiaddr,
     peer_manager::{NodeIdentity, PeerFeatures},
-    socks,
-    tor,
     transports::MemoryTransport,
     types::{CommsPublicKey, CommsSecretKey},
 };
@@ -120,8 +120,15 @@ use tari_crypto::{
 };
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
 use tari_p2p::{
-    transport::{TorConfig, TransportType, TransportType::Tor},
+    transport::MemoryTransportConfig,
     Network,
+    PeerSeedsConfig,
+    SocksAuthentication,
+    TcpTransportConfig,
+    TorControlAuthentication,
+    TorTransportConfig,
+    TransportConfig,
+    TransportType,
     DEFAULT_DNS_NAME_SERVER,
 };
 use tari_script::{inputs, script};
@@ -170,12 +177,12 @@ mod tasks;
 
 const LOG_TARGET: &str = "wallet_ffi";
 
-pub type TariTransportType = tari_p2p::transport::TransportType;
+pub type TariTransportConfig = tari_p2p::TransportConfig;
 pub type TariPublicKey = tari_common_types::types::PublicKey;
 pub type TariNodeId = tari_comms::peer_manager::NodeId;
 pub type TariPrivateKey = tari_common_types::types::PrivateKey;
 pub type TariOutputFeatures = tari_core::transactions::transaction_components::OutputFeatures;
-pub type TariCommsConfig = tari_p2p::initialization::P2pConfig;
+pub type TariCommsConfig = tari_p2p::P2pConfig;
 pub type TariCommitmentSignature = tari_common_types::types::ComSignature;
 pub type TariTransactionKernel = tari_core::transactions::transaction_components::TransactionKernel;
 pub type TariCovenant = tari_core::covenants::Covenant;
@@ -2907,18 +2914,22 @@ pub unsafe extern "C" fn transaction_send_status_destroy(status: *mut TariTransa
 /// `()` - Does not take any arguments
 ///
 /// ## Returns
-/// `*mut TariTransportType` - Returns a pointer to a memory TariTransportType
+/// `*mut TariTransportConfig` - Returns a pointer to a memory TariTransportConfig
 ///
 /// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportType to prevent a memory
+/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
 /// leak
 #[no_mangle]
-pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
+pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportConfig {
     let port = MemoryTransport::acquire_next_memsocket_port();
     let listener_address: Multiaddr = format!("/memory/{}", port)
         .parse()
         .expect("Should be able to create memory address");
-    let transport = TariTransportType::Memory { listener_address };
+    let transport = TransportConfig {
+        transport_type: TransportType::Memory,
+        memory: MemoryTransportConfig { listener_address },
+        ..Default::default()
+    };
     Box::into_raw(Box::new(transport))
 }
 
@@ -2930,16 +2941,16 @@ pub unsafe extern "C" fn transport_memory_create() -> *mut TariTransportType {
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariTransportType` - Returns a pointer to a tcp TariTransportType, null on error.
+/// `*mut TariTransportConfig` - Returns a pointer to a tcp TariTransportConfig, null on error.
 ///
 /// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportType to prevent a memory
+/// The ```transport_type_destroy``` method must be called when finished with a TariTransportConfig to prevent a memory
 /// leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_tcp_create(
     listener_address: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariTransportType {
+) -> *mut TariTransportConfig {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -2961,11 +2972,15 @@ pub unsafe extern "C" fn transport_tcp_create(
         }
     }
 
-    match listener_address_str.parse::<Multiaddr>() {
+    match listener_address_str.parse() {
         Ok(v) => {
-            let transport = TariTransportType::Tcp {
-                listener_address: v,
-                tor_socks_config: None,
+            let transport = TariTransportConfig {
+                transport_type: TransportType::Tcp,
+                tcp: TcpTransportConfig {
+                    listener_address: v,
+                    ..Default::default()
+                },
+                ..Default::default()
             };
             Box::into_raw(Box::new(transport))
         },
@@ -2990,11 +3005,11 @@ pub unsafe extern "C" fn transport_tcp_create(
 /// as an out parameter.
 ///
 /// ## Returns
-/// `*mut TariTransportType` - Returns a pointer to a tor TariTransportType, null on error.
+/// `*mut TariTransportConfig` - Returns a pointer to a tor TariTransportConfig, null on error.
 ///
 /// # Safety
-/// The ```transport_type_destroy``` method must be called when finished with a TariTransportType to prevent a memory
-/// leak
+/// The ```transport_config_destroy``` method must be called when finished with a TariTransportConfig to prevent a
+/// memory leak
 #[no_mangle]
 pub unsafe extern "C" fn transport_tor_create(
     control_server_address: *const c_char,
@@ -3004,7 +3019,7 @@ pub unsafe extern "C" fn transport_tor_create(
     socks_username: *const c_char,
     socks_password: *const c_char,
     error_out: *mut c_int,
-) -> *mut TariTransportType {
+) -> *mut TariTransportConfig {
     let mut error = 0;
     ptr::swap(error_out, &mut error as *mut c_int);
 
@@ -3028,7 +3043,7 @@ pub unsafe extern "C" fn transport_tor_create(
 
     let username_str;
     let password_str;
-    let authentication = if !socks_username.is_null() && !socks_password.is_null() {
+    let socks_authentication = if !socks_username.is_null() && !socks_password.is_null() {
         match CStr::from_ptr(socks_username).to_str() {
             Ok(v) => {
                 username_str = v.to_owned();
@@ -3049,34 +3064,49 @@ pub unsafe extern "C" fn transport_tor_create(
                 return ptr::null_mut();
             },
         };
-        socks::Authentication::Password(username_str, password_str)
+        SocksAuthentication::UsernamePassword {
+            username: username_str,
+            password: password_str,
+        }
     } else {
-        socks::Authentication::None
+        SocksAuthentication::None
     };
 
     let tor_authentication = if tor_cookie.is_null() {
-        tor::Authentication::None
+        TorControlAuthentication::None
     } else {
         let cookie_hex = hex::to_hex((*tor_cookie).0.as_slice());
-        tor::Authentication::Cookie(cookie_hex)
+        TorControlAuthentication::Cookie(cookie_hex)
     };
 
-    let identity = None;
+    let onion_port = match NonZeroU16::new(tor_port) {
+        Some(p) => p,
+        None => {
+            error = LibWalletError::from(InterfaceError::InvalidArgument(
+                "onion_port must be greater than 0".to_string(),
+            ))
+            .code;
+            ptr::swap(error_out, &mut error as *mut c_int);
+            return ptr::null_mut();
+        },
+    };
 
-    match control_address_str.parse::<Multiaddr>() {
+    match control_address_str.parse() {
         Ok(v) => {
-            let tor_config = TorConfig {
-                control_server_addr: v,
-                control_server_auth: tor_authentication,
-                identity,
-                // Proxy the onion address to an OS-assigned local port
-                port_mapping: tor::PortMapping::new(tor_port, "127.0.0.1:0".parse().expect("Will not fail parsing")),
-                socks_address_override: None,
-                socks_auth: authentication,
-                tor_proxy_bypass_addresses: vec![],
-                tor_proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
+            let transport = TariTransportConfig {
+                transport_type: TransportType::Tor,
+                tor: TorTransportConfig {
+                    control_address: v,
+                    control_auth: tor_authentication,
+                    // The wallet will populate this from the db
+                    identity: None,
+                    onion_port,
+                    socks_auth: socks_authentication,
+                    proxy_bypass_for_outbound_tcp: tor_proxy_bypass_for_outbound,
+                    ..Default::default()
+                },
+                ..Default::default()
             };
-            let transport = TariTransportType::Tor(tor_config);
 
             Box::into_raw(Box::new(transport))
         },
@@ -3091,7 +3121,7 @@ pub unsafe extern "C" fn transport_tor_create(
 /// Gets the address for a memory transport type
 ///
 /// ## Arguments
-/// `transport` - Pointer to a TariTransportType
+/// `transport` - Pointer to a TariTransportConfig
 /// `error_out` - Pointer to an int which will be modified to an error code should one occur, may not be null. Functions
 /// as an out parameter.
 ///
@@ -3102,7 +3132,7 @@ pub unsafe extern "C" fn transport_tor_create(
 /// Can only be used with a memory transport type, will crash otherwise
 #[no_mangle]
 pub unsafe extern "C" fn transport_memory_get_address(
-    transport: *const TariTransportType,
+    transport: *const TariTransportConfig,
     error_out: *mut c_int,
 ) -> *mut c_char {
     let mut error = 0;
@@ -3110,10 +3140,10 @@ pub unsafe extern "C" fn transport_memory_get_address(
     let mut address = CString::new("").expect("Blank CString will not fail.");
     if transport.is_null() {
         error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
+        ptr::swap(error_out, &mut error as *mut c_int)
     } else {
-        match &*transport {
-            TransportType::Memory { listener_address } => match CString::new(listener_address.to_string()) {
+        match (*transport).transport_type {
+            TransportType::Memory => match CString::new((*transport).memory.listener_address.to_string()) {
                 Ok(v) => address = v,
                 _ => {
                     error = LibWalletError::from(InterfaceError::PointerError("transport".to_string())).code;
@@ -3124,23 +3154,38 @@ pub unsafe extern "C" fn transport_memory_get_address(
                 error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
                 ptr::swap(error_out, &mut error as *mut c_int);
             },
-        };
+        }
     }
 
     address.into_raw()
 }
 
-/// Frees memory for a TariTransportType
+/// Frees memory for a TariTransportConfig
 ///
 /// ## Arguments
-/// `transport` - The pointer to a TariTransportType
+/// `transport` - The pointer to a TariTransportConfig
 ///
 /// ## Returns
 /// `()` - Does not return a value, equivalent to void in C
 ///
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportType) {
+#[deprecated(note = "use transport_config_destroy instead")]
+pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportConfig) {
+    transport_config_destroy(transport);
+}
+
+/// Frees memory for a TariTransportConfig
+///
+/// ## Arguments
+/// `transport` - The pointer to a TariTransportConfig
+///
+/// ## Returns
+/// `()` - Does not return a value, equivalent to void in C
+///
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn transport_config_destroy(transport: *mut TariTransportConfig) {
     if !transport.is_null() {
         Box::from_raw(transport);
     }
@@ -3155,7 +3200,7 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportTyp
 /// ## Arguments
 /// `public_address` - The public address char array pointer. This is the address that the wallet advertises publicly to
 /// peers
-/// `transport_type` - TariTransportType that specifies the type of comms transport to be used.
+/// `transport` - TariTransportConfig that specifies the type of comms transport to be used.
 /// connections are moved to after initial connection. Default if null is 0.0.0.0:7898 which will accept connections
 /// from all IP address on port 7898
 /// `database_name` - The database name char array pointer. This is the unique name of this
@@ -3176,12 +3221,11 @@ pub unsafe extern "C" fn transport_type_destroy(transport: *mut TariTransportTyp
 #[no_mangle]
 pub unsafe extern "C" fn comms_config_create(
     public_address: *const c_char,
-    transport_type: *const TariTransportType,
+    transport: *const TariTransportConfig,
     database_name: *const c_char,
     datastore_path: *const c_char,
     discovery_timeout_in_secs: c_ulonglong,
     saf_message_duration_in_secs: c_ulonglong,
-    network: *const c_char,
     error_out: *mut c_int,
 ) -> *mut TariCommsConfig {
     let mut error = 0;
@@ -3241,8 +3285,8 @@ pub unsafe extern "C" fn comms_config_create(
     }
     let datastore_path = PathBuf::from(datastore_path_string);
 
-    if transport_type.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("transport_type".to_string())).code;
+    if transport.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("transport".to_string())).code;
         ptr::swap(error_out, &mut error as *mut c_int);
         return ptr::null_mut();
     }
@@ -3251,83 +3295,49 @@ pub unsafe extern "C" fn comms_config_create(
 
     let public_address = public_address_str.parse::<Multiaddr>();
 
-    let network_str;
-    if network.is_null() {
-        error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
-        ptr::swap(error_out, &mut error as *mut c_int);
-        return ptr::null_mut();
-    } else {
-        match CStr::from_ptr(network).to_str() {
-            Ok(v) => {
-                network_str = v.to_owned();
-            },
-            _ => {
-                error = LibWalletError::from(InterfaceError::PointerError("network".to_string())).code;
-                ptr::swap(error_out, &mut error as *mut c_int);
-                return ptr::null_mut();
-            },
-        }
-    }
+    match public_address {
+        Ok(public_address) => {
+            let node_identity = NodeIdentity::new(
+                CommsSecretKey::default(),
+                public_address,
+                PeerFeatures::COMMUNICATION_CLIENT,
+            );
 
-    let selected_network = Network::from_str(&network_str);
-
-    match selected_network {
-        Ok(selected_network) => {
-            match public_address {
-                Ok(public_address) => {
-                    let node_identity = NodeIdentity::new(
-                        CommsSecretKey::default(),
-                        public_address,
-                        PeerFeatures::COMMUNICATION_CLIENT,
-                    );
-
-                    let config = TariCommsConfig {
-                        network: selected_network,
-                        node_identity: Arc::new(node_identity),
-                        transport_type: (*transport_type).clone(),
-                        auxiliary_tcp_listener_address: None,
-                        datastore_path,
-                        peer_database_name: database_name_string,
-                        max_concurrent_inbound_tasks: 25,
-                        max_concurrent_outbound_tasks: 50,
-                        outbound_buffer_size: 50,
-                        dht: DhtConfig {
-                            discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
-                            database_url: DbConnectionUrl::File(dht_database_path),
-                            auto_join: true,
-                            saf_config: SafConfig {
-                                msg_validity: Duration::from_secs(saf_message_duration_in_secs),
-                                // Ensure that SAF messages are requested automatically
-                                auto_request: true,
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        },
-                        // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
-                        //       docstring for more info. #LOGGED
-                        allow_test_addresses: true,
-                        listener_liveness_allowlist_cidrs: Vec::new(),
-                        listener_liveness_max_sessions: 0,
-                        user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
-                        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER
-                            .parse()
-                            .expect("Default dns name server constant should always be correct"),
-                        peer_seeds: Default::default(),
-                        dns_seeds: Default::default(),
-                        dns_seeds_use_dnssec: true,
-                    };
-
-                    Box::into_raw(Box::new(config))
+            let config = TariCommsConfig {
+                override_from: None,
+                public_address: Some(node_identity.public_address()),
+                transport: (*transport).clone(),
+                auxiliary_tcp_listener_address: None,
+                datastore_path,
+                peer_database_name: database_name_string,
+                max_concurrent_inbound_tasks: 25,
+                max_concurrent_outbound_tasks: 50,
+                outbound_buffer_size: 50,
+                dht: DhtConfig {
+                    discovery_request_timeout: Duration::from_secs(discovery_timeout_in_secs),
+                    database_url: DbConnectionUrl::File(dht_database_path),
+                    auto_join: true,
+                    saf: SafConfig {
+                        msg_validity: Duration::from_secs(saf_message_duration_in_secs),
+                        // Ensure that SAF messages are requested automatically
+                        auto_request: true,
+                        ..Default::default()
+                    },
+                    ..Default::default()
                 },
-                Err(e) => {
-                    error = LibWalletError::from(e).code;
-                    ptr::swap(error_out, &mut error as *mut c_int);
-                    ptr::null_mut()
-                },
-            }
+                // TODO: This should be set to false for non-test wallets. See the `allow_test_addresses` field
+                //       docstring for more info. #LOGGED
+                allow_test_addresses: true,
+                listener_liveness_allowlist_cidrs: StringList::new(),
+                listener_liveness_max_sessions: 0,
+                user_agent: format!("tari/mobile_wallet/{}", env!("CARGO_PKG_VERSION")),
+                rpc_max_simultaneous_sessions: 0,
+            };
+
+            Box::into_raw(Box::new(config))
         },
-        Err(_) => {
-            error = LibWalletError::from(InterfaceError::NetworkError(network_str)).code;
+        Err(e) => {
+            error = LibWalletError::from(e).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             ptr::null_mut()
         },
@@ -3577,6 +3587,7 @@ pub unsafe extern "C" fn wallet_create(
     size_per_log_file_bytes: c_uint,
     passphrase: *const c_char,
     seed_words: *const TariSeedWords,
+    network_str: *const c_char,
     callback_received_transaction: unsafe extern "C" fn(*mut TariPendingInboundTransaction),
     callback_received_transaction_reply: unsafe extern "C" fn(*mut TariCompletedTransaction),
     callback_received_finalized_transaction: unsafe extern "C" fn(*mut TariCompletedTransaction),
@@ -3624,6 +3635,26 @@ pub unsafe extern "C" fn wallet_create(
         Some(pf)
     };
 
+    let network = if network_str.is_null() {
+        error = LibWalletError::from(InterfaceError::NullError("network".to_string())).code;
+        ptr::swap(error_out, &mut error as *mut c_int);
+        return ptr::null_mut();
+    } else {
+        let network = CStr::from_ptr(network_str)
+            .to_str()
+            .expect("A non-null network should be able to be converted to string");
+        error!(target: LOG_TARGET, "network set to {}", network);
+        eprintln!("network set to {}", network);
+        match Network::from_str(&*network) {
+            Ok(n) => n,
+            Err(_) => {
+                error = LibWalletError::from(InterfaceError::InvalidArgument("network".to_string())).code;
+                ptr::swap(error_out, &mut error as *mut c_int);
+                return ptr::null_mut();
+            },
+        }
+    };
+
     let recovery_seed = if seed_words.is_null() {
         None
     } else {
@@ -3647,7 +3678,6 @@ pub unsafe extern "C" fn wallet_create(
         },
     };
     let factories = CryptoFactories::default();
-    let w;
 
     let sql_database_path = (*config)
         .datastore_path
@@ -3670,16 +3700,9 @@ pub unsafe extern "C" fn wallet_create(
 
     // If the transport type is Tor then check if there is a stored TorID, if there is update the Transport Type
     let mut comms_config = (*config).clone();
-    comms_config.transport_type = match comms_config.transport_type {
-        Tor(mut tor_config) => {
-            tor_config.identity = match runtime.block_on(wallet_database.get_tor_id()) {
-                Ok(Some(v)) => Some(Box::new(v)),
-                _ => None,
-            };
-            Tor(tor_config)
-        },
-        _ => comms_config.transport_type,
-    };
+    if let TransportType::Tor = comms_config.transport.transport_type {
+        comms_config.transport.tor.identity = runtime.block_on(wallet_database.get_tor_id()).ok().flatten();
+    }
 
     let result = runtime.block_on(async {
         let master_seed = read_or_create_master_seed(recovery_seed, &wallet_database)
@@ -3687,8 +3710,13 @@ pub unsafe extern "C" fn wallet_create(
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
         let comms_secret_key = derive_comms_secret_key(&master_seed)
             .map_err(|err| WalletStorageError::RecoverySeedError(err.to_string()))?;
-        let node_features = comms_config.node_identity.features();
-        let node_address = comms_config.node_identity.public_address();
+
+        let node_features = wallet_database.get_node_features().await?.unwrap_or_default();
+        let node_address = wallet_database
+            .get_node_address()
+            .await?
+            .or_else(|| comms_config.public_address.clone())
+            .unwrap_or_else(Multiaddr::empty);
         let identity_sig = wallet_database.get_comms_identity_signature().await?;
 
         // This checks if anything has changed by validating the previous signature and if invalid, setting identity_sig
@@ -3720,37 +3748,27 @@ pub unsafe extern "C" fn wallet_create(
         }
         Ok((master_seed, node_identity))
     });
-    let master_seed;
-    match result {
-        Ok((seed, node_identity)) => {
-            master_seed = seed;
-            comms_config.node_identity = node_identity;
-        },
+
+    let (master_seed, node_identity) = match result {
+        Ok(tuple) => tuple,
         Err(e) => {
             error = LibWalletError::from(WalletError::WalletStorageError(e)).code;
             ptr::swap(error_out, &mut error as *mut c_int);
             return ptr::null_mut();
         },
-    }
+    };
 
     let shutdown = Shutdown::new();
-    let wallet_config = WalletConfig::new(
-        comms_config,
-        factories,
-        Some(TransactionServiceConfig {
+    let wallet_config = WalletConfig {
+        override_from: None,
+        p2p: comms_config,
+        transaction_service_config: TransactionServiceConfig {
             direct_send_timeout: (*config).dht.discovery_request_timeout,
             ..Default::default()
-        }),
-        None,
-        Network::Dibbler.into(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    );
+        },
+        network,
+        ..Default::default()
+    };
 
     let mut recovery_lookup = match runtime.block_on(wallet_database.get_client_key_value(RECOVERY_KEY.to_owned())) {
         Err(_) => false,
@@ -3759,8 +3777,17 @@ pub unsafe extern "C" fn wallet_create(
     };
     ptr::swap(recovery_in_progress, &mut recovery_lookup as *mut bool);
 
-    w = runtime.block_on(Wallet::start(
+    let peer_seeds = PeerSeedsConfig {
+        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
+        dns_seeds_use_dnssec: true,
+        ..Default::default()
+    };
+
+    let w = runtime.block_on(Wallet::start(
         wallet_config,
+        peer_seeds,
+        node_identity,
+        factories,
         wallet_database,
         transaction_backend.clone(),
         output_manager_backend,
@@ -6726,7 +6753,7 @@ mod test {
             let transport = transport_memory_create();
             let _address = transport_memory_get_address(transport, error_ptr);
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
         }
     }
 
@@ -6827,7 +6854,7 @@ mod test {
             let address_listener_str: *const c_char = CString::into_raw(address_listener) as *const c_char;
             let transport = transport_tcp_create(address_listener_str, error_ptr);
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
         }
     }
 
@@ -6849,7 +6876,7 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
 
             bypass = true;
             transport = transport_tor_create(
@@ -6862,7 +6889,7 @@ mod test {
                 error_ptr,
             );
             assert_eq!(error, 0);
-            transport_type_destroy(transport);
+            transport_config_destroy(transport);
         }
     }
 
@@ -7057,8 +7084,8 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_type_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
 
@@ -7071,12 +7098,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7097,6 +7123,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7136,6 +7163,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7196,7 +7224,7 @@ mod test {
             string_destroy(original_path_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            transport_type_destroy(transport_type_alice);
+            transport_config_destroy(transport_config_alice);
             comms_config_destroy(alice_config);
         }
     }
@@ -7216,8 +7244,8 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_type_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
             let alice_network = CString::new(NETWORK_STRING).unwrap();
@@ -7225,12 +7253,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7241,6 +7268,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7274,12 +7302,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7291,6 +7318,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7324,6 +7352,7 @@ mod test {
                 0,
                 wrong_passphrase_const_str,
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7352,6 +7381,7 @@ mod test {
                 0,
                 passphrase_const_str,
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7385,12 +7415,11 @@ mod test {
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7401,6 +7430,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                alice_network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7431,7 +7461,7 @@ mod test {
             string_destroy(wrong_passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
             public_key_destroy(public_key_alice);
-            transport_type_destroy(transport_type_alice);
+            transport_config_destroy(transport_config_alice);
 
             comms_config_destroy(alice_config);
             seed_words_destroy(seed_words);
@@ -7453,22 +7483,20 @@ mod test {
             let alice_temp_dir = tempdir().unwrap();
             let db_path_alice = CString::new(alice_temp_dir.path().to_str().unwrap()).unwrap();
             let db_path_alice_str: *const c_char = CString::into_raw(db_path_alice) as *const c_char;
-            let transport_type_alice = transport_memory_create();
-            let address_alice = transport_memory_get_address(transport_type_alice, error_ptr);
+            let transport_config_alice = transport_memory_create();
+            let address_alice = transport_memory_get_address(transport_config_alice, error_ptr);
             let address_alice_str = CStr::from_ptr(address_alice).to_str().unwrap().to_owned();
             let address_alice_str: *const c_char = CString::new(address_alice_str).unwrap().into_raw() as *const c_char;
-
-            let alice_network = CString::new(NETWORK_STRING).unwrap();
-            let alice_network_str: *const c_char = CString::into_raw(alice_network) as *const c_char;
+            let network = CString::new(NETWORK_STRING).unwrap();
+            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
             let alice_config = comms_config_create(
                 address_alice_str,
-                transport_type_alice,
+                transport_config_alice,
                 db_name_alice_str,
                 db_path_alice_str,
                 20,
                 10800,
-                alice_network_str,
                 error_ptr,
             );
 
@@ -7479,6 +7507,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7545,14 +7574,14 @@ mod test {
             assert_eq!(found_value, ptr::null_mut());
             assert_eq!(*error_ptr, 424i32);
 
-            string_destroy(alice_network_str as *mut c_char);
+            string_destroy(network_str as *mut c_char);
             string_destroy(k_str as *mut c_char);
             string_destroy(db_name_alice_str as *mut c_char);
             string_destroy(db_path_alice_str as *mut c_char);
             string_destroy(address_alice_str as *mut c_char);
             string_destroy(passphrase_const_str as *mut c_char);
             private_key_destroy(secret_key_alice);
-            transport_type_destroy(transport_type_alice);
+            transport_config_destroy(transport_config_alice);
 
             comms_config_destroy(alice_config);
             wallet_destroy(alice_wallet);
@@ -7638,7 +7667,6 @@ mod test {
             let address = transport_memory_get_address(transport_type, error_ptr);
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
-
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
@@ -7649,7 +7677,6 @@ mod test {
                 db_path_str,
                 20,
                 10800,
-                network_str,
                 error_ptr,
             );
 
@@ -7660,6 +7687,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7810,7 +7838,7 @@ mod test {
             string_destroy(db_name_str as *mut c_char);
             string_destroy(db_path_str as *mut c_char);
             string_destroy(address_str as *mut c_char);
-            transport_type_destroy(transport_type);
+            transport_config_destroy(transport_type);
 
             comms_config_destroy(config);
             wallet_destroy(wallet_ptr);
@@ -7868,7 +7896,6 @@ mod test {
             let address = transport_memory_get_address(transport_type, error_ptr);
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
-
             let network = CString::new(NETWORK_STRING).unwrap();
             let network_str: *const c_char = CString::into_raw(network) as *const c_char;
 
@@ -7879,7 +7906,6 @@ mod test {
                 db_path_str,
                 20,
                 10800,
-                network_str,
                 error_ptr,
             );
 
@@ -7890,6 +7916,7 @@ mod test {
                 0,
                 ptr::null(),
                 ptr::null(),
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7926,9 +7953,6 @@ mod test {
             let address_str = CStr::from_ptr(address).to_str().unwrap().to_owned();
             let address_str = CString::new(address_str).unwrap().into_raw() as *const c_char;
 
-            let network = CString::new(NETWORK_STRING).unwrap();
-            let network_str: *const c_char = CString::into_raw(network) as *const c_char;
-
             let config = comms_config_create(
                 address_str,
                 transport_type,
@@ -7936,7 +7960,6 @@ mod test {
                 db_path_str,
                 20,
                 10800,
-                network_str,
                 error_ptr,
             );
 
@@ -7947,6 +7970,7 @@ mod test {
                 0,
                 ptr::null(),
                 seed_words,
+                network_str,
                 received_tx_callback,
                 received_tx_reply_callback,
                 received_tx_finalized_callback,
@@ -7975,6 +7999,7 @@ mod test {
 
             assert_eq!(*seed_words, *recovered_seed_words);
             assert_eq!(*public_key, *recovered_public_key);
+            // TODO: Clean up memory leaks please
         }
     }
 }

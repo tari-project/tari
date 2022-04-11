@@ -1,83 +1,221 @@
-// Copyright 2020, The Tari Project
+//  Copyright 2022. The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
-// following conditions are met:
+//  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+//  following conditions are met:
 //
-// 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
-// disclaimer.
+//  1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+//  disclaimer.
 //
-// 2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
-// following disclaimer in the documentation and/or other materials provided with the distribution.
+//  2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the
+//  following disclaimer in the documentation and/or other materials provided with the distribution.
 //
-// 3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
-// products derived from this software without specific prior written permission.
+//  3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote
+//  products derived from this software without specific prior written permission.
 //
-// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
-// INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-// DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-// SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-// SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
-// USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+//  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+//  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+//  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+//  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+//  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+use std::{num::NonZeroU16, sync::Arc};
 
-use std::fmt;
+use serde::{Deserialize, Serialize};
+use tari_comms::{
+    multiaddr::Multiaddr,
+    socks,
+    tor,
+    tor::TorIdentity,
+    transports::{predicate::FalsePredicate, SocksConfig},
+};
 
-use tari_comms::{multiaddr::Multiaddr, socks, tor, transports::SocksConfig};
+use crate::{SocksAuthentication, TorControlAuthentication};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct TransportConfig {
+    #[serde(rename = "type")]
+    pub transport_type: TransportType,
+    pub tcp: TcpTransportConfig,
+    pub tor: TorTransportConfig,
+    pub socks: Socks5TransportConfig,
+    pub memory: MemoryTransportConfig,
+}
+
+impl TransportConfig {
+    pub fn new_memory(config: MemoryTransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Memory,
+            memory: config,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_tcp(config: TcpTransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Tcp,
+            tcp: config,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_tor(config: TorTransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Tor,
+            tor: config,
+            ..Default::default()
+        }
+    }
+
+    pub fn new_socks5(forward_address: Multiaddr, config: Socks5TransportConfig) -> Self {
+        Self {
+            transport_type: TransportType::Socks5,
+            socks: config,
+            tcp: TcpTransportConfig {
+                listener_address: forward_address,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    pub fn is_tor(&self) -> bool {
+        matches!(self.transport_type, TransportType::Tor)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
 pub enum TransportType {
-    /// Use a memory transport. This transport recognises /memory addresses primarily used for local testing.
-    Memory { listener_address: Multiaddr },
-    /// Use a TcpTransport. This transport can connect to TCP/IP and DNS addresses.
-    Tcp {
-        listener_address: Multiaddr,
-        /// The optional SOCKS proxy to use when connecting to Tor onion addresses
-        tor_socks_config: Option<SocksConfig>,
-    },
-    /// This does not directly map to a transport, but will configure comms to run over a tor hidden service using the
-    /// Tor proxy. This transport can connect to TCP/IP, onion v2, onion v3 and DNS addresses.
-    Tor(TorConfig),
-    /// Use a SOCKS5 proxy transport. This transport can connect to anything that the SOCKS proxy supports.
-    Socks {
-        socks_config: SocksConfig,
-        listener_address: Multiaddr,
-    },
+    /// Memory transport. Supports a single address type in the form '/memory/x' and can only communicate in-process.
+    Memory,
+    /// Use TCP to join the Tari network. By default, this transport can only contact TCP/IP nodes, however it can be
+    /// configured to allow communication with peers using the tor transport.
+    Tcp,
+    /// Configures the node to run over a tor hidden service using the Tor proxy. This transport can connect to TCP/IP,
+    /// onion v3 and DNS addresses.
+    Tor,
+    /// Use a SOCKS5 proxy transport. This transport allows any addresses supported by the proxy.
+    Socks5,
 }
 
-#[derive(Debug, Clone)]
-pub struct TorConfig {
-    /// The Tor control server address
-    pub control_server_addr: Multiaddr,
-    /// Authentication for the Tor control server
-    pub control_server_auth: tor::Authentication,
-    /// The private key and service ID for the Tor hidden service. If not supplied, a new address and private key will
-    /// be generated
-    pub identity: Option<Box<tor::TorIdentity>>,
-    /// The onion -> local address mapping to use.
-    pub port_mapping: tor::PortMapping,
-    /// If Some, this address is used as the SOCKS5 server. If None, the address is obtained from the tor control port.
+impl Default for TransportType {
+    fn default() -> Self {
+        // The tor transport configures itself as long as it has access to the control port at
+        // `TorConfig::control_address`
+        Self::Tor
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TcpTransportConfig {
+    /// Socket to bind the TCP listener
+    pub listener_address: Multiaddr,
+    /// Optional socket address of the tor SOCKS proxy, enabling the node to communicate with Tor nodes
+    pub tor_socks_address: Option<Multiaddr>,
+    /// Optional tor SOCKS proxy authentication
+    pub tor_socks_auth: SocksAuthentication,
+}
+
+impl Default for TcpTransportConfig {
+    fn default() -> Self {
+        Self {
+            listener_address: "/ip4/0.0.0.0/tcp/18189".parse().unwrap(),
+            tor_socks_address: None,
+            tor_socks_auth: SocksAuthentication::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TorTransportConfig {
+    /// The address of the control server
+    pub control_address: Multiaddr,
+    /// SOCKS proxy auth
+    pub socks_auth: SocksAuthentication,
+    /// Use this socks address instead of getting it from the tor proxy.
     pub socks_address_override: Option<Multiaddr>,
-    /// Authentication for the Tor SOCKS5 proxy
-    pub socks_auth: socks::Authentication,
-    /// If the underlying SOCKS transport encounters these addresses, bypass the proxy and dial directly using the
-    /// TcpTransport
-    pub tor_proxy_bypass_addresses: Vec<Multiaddr>,
-    /// Use a direct TCP/IP connection if a TCP address is given instead of the tor proxy. This is worse for privacy
-    /// but can use the full available connection bandwidth
-    pub tor_proxy_bypass_for_outbound_tcp: bool,
+    pub control_auth: TorControlAuthentication,
+    pub onion_port: NonZeroU16,
+    /// When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the
+    /// connection is made directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+    pub proxy_bypass_addresses: Vec<Multiaddr>,
+    /// When set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy, setting
+    /// to true may improve network performance for TCP nodes.
+    pub proxy_bypass_for_outbound_tcp: bool,
+    /// The tor identity to use to create the hidden service. If None, a new one will be generated.
+    #[serde(skip)]
+    pub identity: Option<TorIdentity>,
 }
 
-impl fmt::Display for TorConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "control_server_addr: {}, control_server_auth: {}, {}, socks_address_override: {:?}, \
-             tor_proxy_bypass_outbound_tcp_addresses = {:?}",
-            self.control_server_addr,
-            self.control_server_auth,
-            self.port_mapping,
-            self.socks_address_override,
-            self.tor_proxy_bypass_for_outbound_tcp
-        )
+impl TorTransportConfig {
+    pub fn to_port_mapping(&self) -> tor::PortMapping {
+        tor::PortMapping::new(self.onion_port.get(), ([127, 0, 0, 1], 0).into())
+    }
+
+    pub fn to_control_auth(&self) -> tor::Authentication {
+        self.control_auth.clone().into()
+    }
+
+    pub fn to_socks_auth(&self) -> socks::Authentication {
+        self.socks_auth.clone().into()
+    }
+}
+
+impl Default for TorTransportConfig {
+    fn default() -> Self {
+        Self {
+            control_address: "/ip4/127.0.0.1/tcp/9051".parse().unwrap(),
+            socks_auth: SocksAuthentication::None,
+            socks_address_override: None,
+            control_auth: TorControlAuthentication::None,
+            onion_port: NonZeroU16::new(18141).unwrap(),
+            proxy_bypass_addresses: vec![],
+            proxy_bypass_for_outbound_tcp: false,
+            identity: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Socks5TransportConfig {
+    pub proxy_address: Multiaddr,
+    pub auth: SocksAuthentication,
+}
+
+impl From<Socks5TransportConfig> for SocksConfig {
+    fn from(config: Socks5TransportConfig) -> Self {
+        Self {
+            proxy_address: config.proxy_address,
+            authentication: config.auth.into(),
+            proxy_bypass_predicate: Arc::new(FalsePredicate::new()),
+        }
+    }
+}
+
+impl Default for Socks5TransportConfig {
+    fn default() -> Self {
+        Self {
+            proxy_address: "/ip4/127.0.0.1/tcp/8080".parse().unwrap(),
+            auth: SocksAuthentication::None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MemoryTransportConfig {
+    pub listener_address: Multiaddr,
+}
+
+impl Default for MemoryTransportConfig {
+    fn default() -> Self {
+        Self {
+            listener_address: "/memory/0".parse().unwrap(),
+        }
     }
 }

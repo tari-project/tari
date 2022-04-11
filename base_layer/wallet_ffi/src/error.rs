@@ -49,8 +49,6 @@ pub enum InterfaceError {
     PositionInvalidError,
     #[error("An error has occurred when trying to create the tokio runtime: `{0}`")]
     TokioError(String),
-    #[error("An error has occurred when trying to select network: `{0}`")]
-    NetworkError(String),
     #[error("Emoji ID is invalid")]
     InvalidEmojiId,
     #[error("An error has occurred due to an invalid argument: `{0}`")]
@@ -87,10 +85,10 @@ impl From<InterfaceError> for LibWalletError {
                 code: 4,
                 message: format!("{:?}", v),
             },
-            InterfaceError::NetworkError(_) => Self {
-                code: 5,
-                message: format!("{:?}", v),
-            },
+            // InterfaceError::NetworkError(_) => Self {
+            //     code: 5,
+            //     message: format!("{:?}", v),
+            // },
             InterfaceError::InvalidEmojiId => Self {
                 code: 6,
                 message: format!("{:?}", v),
