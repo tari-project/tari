@@ -130,6 +130,16 @@ The encoding is fixed at 64-bytes:
 | 32-byte public key | 32-byte scalar |
 ```
 
+#### Signature
+
+A signature tuple consists of a `<R, s>` where `R` is the public nonce and `s` is the signature scalar.
+
+The encoding is fixed at 64-bytes:
+
+```text
+| 32-byte commitment (R) | 32-byte scalar (s) |
+```
+
 #### Commitment Signature
 
 A commitment signature tuple consists of a `<R, u, v>` where `R` is the [Pederson commitment](./Glossary.md#commitment) \\(r_u.G + r_v.H\\)
@@ -179,23 +189,24 @@ produce the same encoding as non-null `dob`.
 The block hash pre-image is constructed by first constructing the merge mining hash. Each encoding is concatenated in order as follows:
 
 1. `version` - 1 byte
-2. `height` - varint
-3. `prev_hash` - fixed 32-bytes 
-4. `timestamp` - varint
-5. `input_mr` - fixed 32-bytes
-6. `output_mmr_size` - varint
-7. `witness_mr` - fixed 32-bytes
-8. `kernel_mr` - fixed 32-bytes
-9. `kernel_mmr_size` - `varint
-10. `total_kernel_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
-11. `total_script_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
+1. `height` - varint
+1. `prev_hash` - fixed 32-bytes 
+1. `timestamp` - varint
+1. `input_mr` - fixed 32-bytes
+1. `output_mr` - fixed 32-bytes
+1. `output_mmr_size` - varint
+1. `witness_mr` - fixed 32-bytes
+1. `kernel_mr` - fixed 32-bytes
+1. `kernel_mmr_size` - `varint
+1. `total_kernel_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
+1. `total_script_offset` - 32-byte Scalar, see [RistrettoPrivateKey]
 
 This pre-image is hashed and block hash is constructed, in order, as follows:
 
 1. `merge_mining_hash` - As above
-2. `pow_algo` - enumeration of types of PoW as a single unsigned byte, where `Monero = 0x00` and `Sha3 = 0x01`
-3. `pow_data` - raw variable bytes (no length varint)
-4. `nonce` - the PoW nonce, `u64` converted to a fixed 8-byte array (little endian)
+1. `pow_algo` - enumeration of types of PoW as a single unsigned byte, where `Monero = 0x00` and `Sha3 = 0x01`
+1. `pow_data` - raw variable bytes (no length varint)
+1. `nonce` - the PoW nonce, `u64` converted to a fixed 8-byte array (little endian)
 
 #### Output Features 
 [Output Features]: #output-metadata-and-features "Output Features"
@@ -217,14 +228,14 @@ pub struct OutputFeatures {
 Output features consensus encoding is defined as follows (in order):
 
 1. `version` - 1 unsigned byte. This should always be `0x00` but is reserved for future proofing.
-2. `maturity` - [varint]
-3. `flags` - 1 unsigned byte
-4. `metadata` - [dynamic vector]
-5. `unique_id` - [nullable] + [dynamic vector]
-6. `parent_public_key` - [nullable] + 32-byte compressed public key 
-7. `asset` - [nullable] + [AssetOutputFeatures](#assetoutputfeatures)
-8. `mint_non_fungible` - [nullable] + [MintNonFungibleFeatures](#mintnonfungiblefeatures)
-9. `sidechain_checkpoint` - [nullable] + [SideChainCheckpointFeatures](#sidechaincheckpointfeatures)
+1. `maturity` - [varint]
+1. `flags` - 1 unsigned byte
+1. `metadata` - [dynamic vector]
+1. `unique_id` - [nullable] + [dynamic vector]
+1. `parent_public_key` - [nullable] + 32-byte compressed public key 
+1. `asset` - [nullable] + [AssetOutputFeatures](#assetoutputfeatures)
+1. `mint_non_fungible` - [nullable] + [MintNonFungibleFeatures](#mintnonfungiblefeatures)
+1. `sidechain_checkpoint` - [nullable] + [SideChainCheckpointFeatures](#sidechaincheckpointfeatures)
 
 ##### AssetOutputFeatures
 
@@ -247,7 +258,7 @@ Output features consensus encoding is defined as follows (in order):
 
 ```rust,ignore
 pub struct TransactionOutput {
-    pub version: u8,
+    pub version: TransactionInputVersion,
     pub features: OutputFeatures,
     pub commitment: Commitment,
     pub proof: RangeProof,
@@ -274,7 +285,7 @@ The encoding is defined as follows:
 The witness hash is appended to the witness Merkle tree.
 
 - `proof` - Raw proof bytes encoded using [dynamic vector] encoding
-- `metadata_signature` - [CommitementSiganture]
+- `metadata_signature` - [CommitmentSignature]
 
 ##### Metadata signature challenge
 
@@ -297,7 +308,6 @@ pub struct TransactionInput {
   pub version: u8,
   pub input_data: ExecutionStack,
   pub script_signature: ComSignature,
-  // Output data
   pub output_version: TransactionOutputVersion,
   pub features: OutputFeatures,
   pub commitment: Commitment,
@@ -313,7 +323,34 @@ The transaction input canonical hash pre-image is constructed as follows:
 - `output_hash` - See [TransactionOutput]
 - `sender_offset_public_key` - [RistrettoPublicKey]
 - `input_data` - [TariScript Stack]
-- `script_signature` - [CommitementSiganture]
+- `script_signature` - [CommitmentSignature]
+
+### Transaction Kernel
+
+The following struct represents the full transaction input data for reference. The actual input struct does not duplicate the output data
+to optimise storage and transmission of the input.
+
+```rust,ignore
+pub struct TransactionKernel {
+    pub version: TransactionKernelVersion,
+    pub features: KernelFeatures,
+    pub fee: MicroTari,
+    pub lock_height: u64,
+    pub excess: Commitment,
+    pub excess_sig: Signature,
+}
+```
+
+The transaction kernel is encoded as follows:
+
+- `input_version` - 1 byte
+- `features` - [OutputFeatures]
+- `fee` - [RistrettoPublicKey]
+- `lock_height` - [TariScript Stack]
+- `excess` - [Commitment]
+- `excess_sig` - [Signature]
+
+The canonical hash pre-image is constructed from this encoding.
 
 #### Script Challenge
 
