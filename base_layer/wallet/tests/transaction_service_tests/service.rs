@@ -2111,7 +2111,6 @@ fn test_set_num_confirmations() {
 }
 
 #[test]
-#[ignore = "test is flaky"]
 fn test_transaction_cancellation() {
     let factories = CryptoFactories::default();
     let mut runtime = Runtime::new().unwrap();
@@ -2254,7 +2253,7 @@ fn test_transaction_cancellation() {
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177))
+        .with_fee_per_gram(MicroTari::from(5))
         .with_offset(PrivateKey::random(&mut OsRng))
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)
@@ -2341,7 +2340,7 @@ fn test_transaction_cancellation() {
     let amount = MicroTari::from(10_000);
     builder
         .with_lock_height(0)
-        .with_fee_per_gram(MicroTari::from(177))
+        .with_fee_per_gram(MicroTari::from(5))
         .with_offset(PrivateKey::random(&mut OsRng))
         .with_private_nonce(PrivateKey::random(&mut OsRng))
         .with_amount(0, amount)

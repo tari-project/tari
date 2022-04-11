@@ -1188,7 +1188,6 @@ fn asset_unique_id() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 #[allow(clippy::identity_op)]
 fn store_and_retrieve_blocks_from_contents() {
     let network = Network::LocalNet;
