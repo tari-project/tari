@@ -49,26 +49,6 @@
 //! Bootstrapping tari configuration files might be customized via CLI or env settings. To help with building
 //! tari-enabled CLI from scratch as easy as possible this crate exposes [ConfigBootstrap] struct which
 //! implements [structopt::StructOpt] trait and can be easily reused in any CLI.
-//!
-//! ## Example - CLI which is loading and deserializing the global config file
-//!
-//! ```edition2018
-//! # use tari_common::*;
-//! # use tari_test_utils::random::string;
-//! # use tempfile::tempdir;
-//! # use structopt::StructOpt;
-//! # use tari_common::configuration::{Network, bootstrap::ApplicationType};
-//! let mut args = ConfigBootstrap::from_args();
-//! # let temp_dir = tempdir().unwrap();
-//! # args.base_path = temp_dir.path().to_path_buf();
-//! # args.init = true;
-//! args.init_dirs(ApplicationType::BaseNode);
-//! let config = args.load_configuration().unwrap();
-//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("dibbler".into())).unwrap();
-//! assert_eq!(global.network, Network::Dibbler);
-//! assert!(global.core_threads.is_none());
-//! # std::fs::remove_dir_all(temp_dir).unwrap();
-//! ```
 
 #[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;

@@ -36,9 +36,9 @@
 //!
 //! ```
 //! # use config::Config;
-//! # use serde::{Deserialize};
-//! # use tari_common::{SubConfigPath, ConfigLoader};
-//! #[derive(Deserialize)]
+//! # use serde::{Deserialize, Serialize};
+//! # use tari_common::{SubConfigPath, DefaultConfigLoader};
+//! #[derive(Deserialize, Serialize, Default)]
 //! struct MyNodeConfig {
 //!     welcome_message: String,
 //! }
@@ -48,10 +48,10 @@
 //!     }
 //! }
 //!
-//! # let mut config = Config::new();
-//! config.set("my_node.override_from", "weatherwax");
-//! config.set("my_node.weatherwax.welcome_message", "nice to see you at unseen");
-//! let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
+//! # let mut config = Config::builder()
+//! #    .set_override("my_node.override_from", "weatherwax").unwrap()
+//! #    .set_override("weatherwax.my_node.welcome_message", "nice to see you at unseen").unwrap().build().unwrap();
+//! let my_config = MyNodeConfig::load_from(&config).unwrap();
 //! assert_eq!(my_config.welcome_message, "nice to see you at unseen");
 //! ```
 
@@ -174,15 +174,23 @@ impl<C: SubConfigPath> ConfigPath for C {
 ///
 /// ```
 /// # use config::Config;
-/// # use serde::{Deserialize};
-/// use tari_common::{ConfigLoader, SubConfigPath};
+/// # use serde::{Deserialize, Serialize};
+/// use tari_common::{DefaultConfigLoader, SubConfigPath};
 ///
-/// #[derive(Deserialize)]
+/// #[derive(Deserialize, Serialize)]
 /// struct MyNodeConfig {
 ///     #[serde(default = "welcome")]
 ///     welcome_message: String,
 ///     #[serde(default = "bye")]
 ///     goodbye_message: String,
+/// }
+/// impl Default for MyNodeConfig {
+///     fn default() -> Self {
+///         Self {
+///             welcome_message: welcome(),
+///             goodbye_message: bye(),
+///         }
+///     }
 /// }
 /// fn welcome() -> String {
 ///     "welcome to tari".into()
@@ -196,15 +204,15 @@ impl<C: SubConfigPath> ConfigPath for C {
 ///     }
 /// }
 /// // Loading preset and serde default value
-/// let mut config = Config::new();
+/// let mut config = Config::builder().build().unwrap();
 /// config.set("my_node.goodbye_message", "see you later");
-/// config.set("my_node.mainnet.goodbye_message", "see you soon");
-/// let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
+/// config.set("mainnet.my_node.goodbye_message", "see you soon");
+/// let my_config = MyNodeConfig::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, welcome());
 /// // Overloading from network subsection as we use SubConfigPath
 /// config.set("my_node.override_from", "mainnet");
-/// let my_config = <MyNodeConfig as ConfigLoader>::load_from(&config).unwrap();
+/// let my_config = MyNodeConfig::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you soon".to_string());
 /// ```
 pub trait ConfigLoader: ConfigPath + Sized {
@@ -217,14 +225,6 @@ pub trait ConfigLoader: ConfigPath + Sized {
     /// For automated inheritance of Default values use DefaultConfigLoader.
     fn load_from(config: &Config) -> Result<Self, ConfigurationError>;
 }
-// impl<C> ConfigLoader for C
-// where C: ConfigPath + for<'de> serde::de::Deserialize<'de>
-// {
-//     fn load_from(config: &Config) -> Result<Self, ConfigurationError> {
-//         let merger = Self::merge_subconfig(config)?;
-//         Ok(merger.get(Self::main_key_prefix())?)
-//     }
-// }
 
 /// Configuration loader based on ConfigPath selectors with Defaults
 ///
@@ -251,9 +251,9 @@ pub trait ConfigLoader: ConfigPath + Sized {
 ///         "my_node"
 ///     }
 /// }
-/// let mut config = Config::new();
+/// let mut config = Config::builder().build().unwrap();
 /// config.set("my_node.goodbye_message", "see you later");
-/// let my_config = <MyNodeConfig as DefaultConfigLoader>::load_from(&config).unwrap();
+/// let my_config = MyNodeConfig::load_from(&config).unwrap();
 /// assert_eq!(my_config.goodbye_message, "see you later".to_string());
 /// assert_eq!(my_config.welcome_message, MyNodeConfig::default().welcome_message);
 /// ```
