@@ -242,7 +242,6 @@ fn rewind_to_height() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_dibbler_genesis_block();
@@ -256,7 +255,7 @@ fn rewind_past_horizon_height() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruning_interval: 2,
+        pruning_interval: 1,
         ..Default::default()
     };
     let store = BlockchainDatabase::new(
@@ -275,11 +274,14 @@ fn rewind_past_horizon_height() {
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 4);
+    // we should not be able to rewind to the future
+    assert!(store.rewind_to_height(metadata.height_of_longest_chain() + 1).is_err());
     let horizon_height = metadata.pruned_height();
     assert_eq!(horizon_height, 2);
-    assert!(store.rewind_to_height(horizon_height - 1).is_err());
-    assert!(store.rewind_to_height(horizon_height).is_ok());
-    assert_eq!(store.get_height().unwrap(), horizon_height);
+    // rewinding past pruning horizon should set us to height 0 so we can resync from gen block.
+    assert!(store.rewind_to_height(horizon_height - 1).is_ok());
+    let metadata = store.get_chain_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain(), 0);
 }
 
 #[test]
