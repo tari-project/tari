@@ -90,12 +90,12 @@ fn main_inner() -> Result<(), ExitError> {
 
     let config = ApplicationConfig::load_from(&cfg)?;
     let runtime = build_runtime()?;
-    runtime.block_on(run_node(&config, cli))?;
+    runtime.block_on(run_node(&config))?;
 
     Ok(())
 }
 
-async fn run_node(config: &ApplicationConfig, cli: Cli) -> Result<(), ExitError> {
+async fn run_node(config: &ApplicationConfig) -> Result<(), ExitError> {
     let shutdown = Shutdown::new();
 
     let node_identity = setup_node_identity(
