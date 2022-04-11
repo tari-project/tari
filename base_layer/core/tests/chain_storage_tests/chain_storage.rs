@@ -351,36 +351,6 @@ fn handle_tip_reorg() {
 }
 
 #[test]
-#[ignore = "Can't create blocks on an alternate chain with a valid MMR at the moment"]
-fn blockchain_reorgs_to_stronger_chain() {
-    let mut blockchain = TestBlockchain::with_genesis("GB");
-    let blocks = blockchain.builder();
-    blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
-    blockchain.add_block(blocks.new_block("A2").child_of("A1").difficulty(3));
-    blockchain.add_block(blocks.new_block("A3").child_of("A2").difficulty(1));
-    blockchain.add_block(blocks.new_block("A4").child_of("A3").difficulty(1));
-
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
-    assert_eq!(blockchain.orphan_count(), 0);
-
-    blockchain.add_block(blocks.new_block("B2").child_of("A1").difficulty(1));
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
-    // TODO: This fails because it's difficult to create the MMR roots for a block that is not
-    // on the main chain. Will need to make it easier to generate these to solve this
-    blockchain.add_block(blocks.new_block("B3").child_of("B2").difficulty(1));
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
-    assert_eq!(blockchain.chain(), ["GB", "A1", "A2", "A3", "A4"]);
-    blockchain.add_block(blocks.new_block("B4").child_of("B3").difficulty(5));
-    // Should reorg
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("B4"));
-
-    blockchain.add_block(blocks.new_block("C4").child_of("B3").difficulty(20));
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("C4"));
-
-    assert_eq!(blockchain.chain(), ["GB", "A1", "B2", "B3", "C4"]);
-}
-
-#[test]
 #[allow(clippy::identity_op)]
 fn handle_reorg() {
     // GB --> A1 --> A2 --> A3 -----> A4(Low PoW)     [Main Chain]
