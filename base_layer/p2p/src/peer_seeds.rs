@@ -199,7 +199,6 @@ mod test {
         use super::*;
         use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
 
-        #[ignore = "This test requires network IO and is mostly useful during development"]
         #[tokio::test]
         async fn it_returns_seeds_from_real_address() {
             let mut resolver = DnsSeedResolver {
