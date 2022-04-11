@@ -184,6 +184,7 @@ async fn create_wallet(
         p2p: comms_config,
         transaction_service_config,
         network: NETWORK,
+        contacts_auto_ping_interval: Duration::from_secs(5),
         ..Default::default()
     };
 
@@ -848,132 +849,129 @@ async fn test_recovery_birthday() {
     assert_eq!(birthday, db_birthday);
 }
 
-#[test]
-fn test_contacts_service_liveness() {
+#[tokio::test]
+async fn test_contacts_service_liveness() {
     let mut shutdown_a = Shutdown::new();
     let mut shutdown_b = Shutdown::new();
     let factories = CryptoFactories::default();
     let alice_db_tempdir = tempdir().unwrap();
     let bob_db_tempdir = tempdir().unwrap();
 
-    let alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-
-    let mut alice_wallet = alice_runtime
-        .block_on(create_wallet(
-            alice_db_tempdir.path(),
-            "alice_db",
-            factories.clone(),
-            shutdown_a.to_signal(),
-            None,
-            None,
-        ))
-        .unwrap();
+    let mut alice_wallet = create_wallet(
+        alice_db_tempdir.path(),
+        "alice_db",
+        factories.clone(),
+        shutdown_a.to_signal(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let alice_identity = (*alice_wallet.comms.node_identity()).clone();
 
-    let mut bob_wallet = bob_runtime
-        .block_on(create_wallet(
-            bob_db_tempdir.path(),
-            "bob_db",
-            factories,
-            shutdown_b.to_signal(),
-            None,
-            None,
-        ))
-        .unwrap();
+    let mut bob_wallet = create_wallet(
+        bob_db_tempdir.path(),
+        "bob_db",
+        factories,
+        shutdown_b.to_signal(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     let bob_identity = (*bob_wallet.comms.node_identity()).clone();
 
-    alice_runtime
-        .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
+    alice_wallet
+        .comms
+        .peer_manager()
+        .add_peer(bob_identity.to_peer())
+        .await
         .unwrap();
     let contact_bob = Contact::new(random::string(8), bob_identity.public_key().clone(), None, None);
-    alice_runtime
-        .block_on(alice_wallet.contacts_service.upsert_contact(contact_bob))
-        .unwrap();
+    alice_wallet.contacts_service.upsert_contact(contact_bob).await.unwrap();
 
-    bob_runtime
-        .block_on(bob_wallet.comms.peer_manager().add_peer(alice_identity.to_peer()))
+    bob_wallet
+        .comms
+        .peer_manager()
+        .add_peer(alice_identity.to_peer())
+        .await
         .unwrap();
     let contact_alice = Contact::new(random::string(8), alice_identity.public_key().clone(), None, None);
-    bob_runtime
-        .block_on(bob_wallet.contacts_service.upsert_contact(contact_alice))
-        .unwrap();
+    bob_wallet.contacts_service.upsert_contact(contact_alice).await.unwrap();
 
-    alice_runtime
-        .block_on(
-            alice_wallet
-                .comms
-                .connectivity()
-                .dial_peer(bob_identity.node_id().clone()),
-        )
+    alice_wallet
+        .comms
+        .connectivity()
+        .dial_peer(bob_identity.node_id().clone())
+        .await
         .unwrap();
 
     let mut liveness_event_stream_alice = alice_wallet.contacts_service.get_contacts_liveness_event_stream();
-    alice_runtime.block_on(async {
-        let delay = sleep(Duration::from_secs(15));
-        tokio::pin!(delay);
-        let mut ping_count = 0;
-        let mut pong_count = 0;
-        loop {
-            tokio::select! {
-                event = liveness_event_stream_alice.recv() => {
-                    if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                        if data.public_key() == &bob_identity.public_key().clone(){
-                            assert_eq!(data.node_id(), &bob_identity.node_id().clone());
-                            if data.message_type() == ContactMessageType::Ping {
+    let delay = sleep(Duration::from_secs(15));
+    tokio::pin!(delay);
+    let mut ping_count = 0;
+    let mut pong_count = 0;
+    loop {
+        tokio::select! {
+            event = liveness_event_stream_alice.recv() => {
+                if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
+                    if data.public_key() == bob_identity.public_key(){
+                        assert_eq!(data.node_id(), bob_identity.node_id());
+                        match data.message_type()  {
+                            ContactMessageType::Ping  => {
                                 ping_count += 1;
-                            } else if data.message_type() == ContactMessageType::Pong {
+                            }
+                            ContactMessageType::Pong => {
                                 pong_count += 1;
-                            } else {}
-                        }
-                        if ping_count > 1 && pong_count > 1 {
-                            break;
+                            }
+                            _ => {}
                         }
                     }
-                },
-                () = &mut delay => {
-                    break;
-                },
-            }
+                    if ping_count > 1 && pong_count > 1 {
+                        break;
+                    }
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
         }
-        assert!(ping_count > 1);
-        assert!(pong_count > 1);
-    });
+    }
+    assert!(ping_count > 1);
+    assert!(pong_count > 1);
 
     let mut liveness_event_stream_bob = bob_wallet.contacts_service.get_contacts_liveness_event_stream();
-    bob_runtime.block_on(async {
-        let delay = sleep(Duration::from_secs(15));
-        tokio::pin!(delay);
-        let mut ping_count = 0;
-        let mut pong_count = 0;
-        loop {
-            tokio::select! {
-                event = liveness_event_stream_bob.recv() => {
-                    if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                        if data.public_key() == &alice_identity.public_key().clone(){
-                            assert_eq!(data.node_id(), &alice_identity.node_id().clone());
-                            if data.message_type() == ContactMessageType::Ping {
-                                ping_count += 1;
-                            } else if data.message_type() == ContactMessageType::Pong {
-                                pong_count += 1;
-                            } else {}
-                        }
-                        if ping_count > 1 && pong_count > 1 {
-                            break;
-                        }
+    let timeout = sleep(Duration::from_secs(50));
+    tokio::pin!(timeout);
+    let mut ping_count = 0;
+    let mut pong_count = 0;
+    loop {
+        tokio::select! {
+            event = liveness_event_stream_bob.recv() => {
+                if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
+                    if data.public_key() == &alice_identity.public_key().clone(){
+                        assert_eq!(data.node_id(), &alice_identity.node_id().clone());
+                        if data.message_type() == ContactMessageType::Ping {
+                            ping_count += 1;
+                        } else if data.message_type() == ContactMessageType::Pong {
+                            pong_count += 1;
+                        } else {}
                     }
-                },
-                () = &mut delay => {
-                    break;
-                },
-            }
+                    if ping_count > 1 && pong_count > 1 {
+                        break;
+                    }
+                }
+            },
+            () = &mut timeout => {
+                break;
+            },
         }
-        assert!(ping_count > 1);
-        assert!(pong_count > 1);
-    });
+    }
+    assert!(ping_count > 1);
+    assert!(pong_count > 1);
 
     shutdown_a.trigger();
     shutdown_b.trigger();
-    alice_runtime.block_on(alice_wallet.wait_until_shutdown());
-    bob_runtime.block_on(bob_wallet.wait_until_shutdown());
+    alice_wallet.wait_until_shutdown().await;
+    bob_wallet.wait_until_shutdown().await;
 }

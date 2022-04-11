@@ -58,8 +58,8 @@ where
     U: std::str::FromStr,
     U::Err: Error + Send + Sync + 'static,
 {
-    let mut parts = s.split("=").map(|s| s.trim());
-    let k = parts.next().ok_or_else(|| "invalid override: string empty`")?;
+    let mut parts = s.split('=').map(|s| s.trim());
+    let k = parts.next().ok_or("invalid override: string empty`")?;
     let v = parts
         .next()
         .ok_or_else(|| format!("invalid override: expected key=value: no `=` found in `{}`", s))?;

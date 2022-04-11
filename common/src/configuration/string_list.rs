@@ -105,7 +105,7 @@ impl<'de> Deserialize<'de> for StringList {
             fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
             where E: de::Error {
                 Ok(StringList(
-                    v.split(",")
+                    v.split(',')
                         .map(|s| s.trim())
                         .filter(|s| !s.is_empty())
                         .map(ToString::to_string)
@@ -120,10 +120,7 @@ impl<'de> Deserialize<'de> for StringList {
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where A: SeqAccess<'de> {
-                let mut buf = seq
-                    .size_hint()
-                    .map(|sz| Vec::with_capacity(sz))
-                    .unwrap_or_else(Vec::new);
+                let mut buf = seq.size_hint().map(Vec::with_capacity).unwrap_or_default();
                 while let Some(v) = seq.next_element::<String>()? {
                     buf.push(v)
                 }
