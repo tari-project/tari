@@ -264,7 +264,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             })?;
         qc.map(|qc| {
             Ok(QuorumCertificate::new(
-                HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
+                HotStuffMessageType::try_from(u8::try_from(qc.message_type)?).unwrap(),
                 ViewId::from(qc.view_number as u64),
                 qc.node_hash.try_into()?,
                 qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
@@ -326,7 +326,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
         };
 
         Ok(QuorumCertificate::new(
-            HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
+            HotStuffMessageType::try_from(u8::try_from(qc.message_type)?).unwrap(),
             ViewId::from(qc.view_number as u64),
             qc.node_hash.try_into()?,
             qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
@@ -344,7 +344,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
                 operation: "get_locked_qc".to_string(),
             })?;
         Ok(QuorumCertificate::new(
-            HotStuffMessageType::try_from(u8::try_from(qc.message_type).unwrap()).unwrap(),
+            HotStuffMessageType::try_from(u8::try_from(qc.message_type)?).unwrap(),
             ViewId::from(qc.view_number as u64),
             qc.node_hash.try_into()?,
             qc.signature.map(|s| Signature::from_bytes(s.as_slice())),
@@ -367,7 +367,7 @@ impl ChainDbBackendAdapter for SqliteChainBackendAdapter {
             Some(node) => Ok(Some((node.id, DbNode {
                 hash: node.hash.try_into()?,
                 parent: node.parent.try_into()?,
-                height: u32::try_from(node.height).unwrap(),
+                height: u32::try_from(node.height)?,
                 is_committed: node.is_committed,
             }))),
             None => Ok(None),

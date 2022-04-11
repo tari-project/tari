@@ -43,14 +43,6 @@ pub struct SqliteDbFactory {
 impl SqliteDbFactory {
     pub fn new(data_dir: PathBuf) -> Self {
         Self { data_dir }
-        // let database_url = config
-        //     .data_dir
-        //     .join("asset_data")
-        //     .into_os_string()
-        //     .into_string()
-        //     .unwrap();
-        //
-        // Self { database_url }
     }
 
     fn database_url_for(&self, asset_public_key: &PublicKey) -> String {
@@ -101,8 +93,11 @@ impl DbFactory for SqliteDbFactory {
     ) -> Result<ChainDb<Self::ChainDbBackendAdapter>, StorageError> {
         let database_url = self.database_url_for(asset_public_key);
         debug!("Loading chain database from {}", database_url);
-        create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
-            .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
+        let path_buf = PathBuf::from(&database_url);
+        let path = path_buf
+            .parent()
+            .ok_or_else(|| StorageError::FileSystemPathDoesNotExist)?;
+        create_dir_all(&path).map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection
             .execute("PRAGMA foreign_keys = ON;")
@@ -135,8 +130,11 @@ impl DbFactory for SqliteDbFactory {
     ) -> Result<StateDb<Self::StateDbBackendAdapter>, StorageError> {
         let database_url = self.database_url_for(asset_public_key);
 
-        create_dir_all(&PathBuf::from(&database_url).parent().unwrap())
-            .map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
+        let path_buf = PathBuf::from(&database_url);
+        let path = path_buf
+            .parent()
+            .ok_or_else(|| StorageError::FileSystemPathDoesNotExist)?;
+        create_dir_all(&path).map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
 
         let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection

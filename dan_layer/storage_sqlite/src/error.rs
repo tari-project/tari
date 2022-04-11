@@ -48,6 +48,8 @@ pub enum SqliteStorageError {
     MalformedDbData(String),
     #[error(transparent)]
     ModelError(#[from] ModelError),
+    #[error("Parse value error")]
+    ParseError(#[from] std::num::TryFromIntError),
 }
 
 impl From<SqliteStorageError> for StorageError {
