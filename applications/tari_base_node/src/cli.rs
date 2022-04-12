@@ -31,9 +31,6 @@ const DEFAULT_NETWORK: &str = "dibbler";
 pub(crate) struct Cli {
     #[clap(flatten)]
     pub common: CommonCliArgs,
-    /// Create and save new node identity if one doesn't exist
-    #[clap(long, alias = "create_id")]
-    pub create_id: bool,
     /// Create a default configuration file if it doesn't exist
     #[clap(long)]
     pub init: bool,

@@ -47,7 +47,7 @@ class ValidatorNodeProcess {
         break;
       }
     } while (fs.existsSync(this.baseDir));
-    const args = ["--base-path", ".", "--init", "--create-id"];
+    const args = ["--base-path", ".", "--init"];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
