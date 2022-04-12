@@ -63,7 +63,7 @@ impl HeaderValidator {
 impl<TBackend: BlockchainBackend> HeaderValidation<TBackend> for HeaderValidator {
     /// The consensus checks that are done (in order of cheapest to verify to most expensive):
     /// 1. Is the block timestamp within the Future Time Limit (FTL)?
-    /// 1. Is the Proof of Work valid?
+    /// 1. Is the Proof of Work struct valid? Note it does not check the actual PoW here
     /// 1. Is the achieved difficulty of this block >= the target difficulty for this block?
 
     fn validate(

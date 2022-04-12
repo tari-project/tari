@@ -30,7 +30,7 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::{OutputFeatures, TransactionOutput},
+    transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -111,7 +111,8 @@ impl SingleReceiverTransactionProtocol {
         );
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
-            &sender_info.amount,
+            TransactionOutputVersion::get_current_version(),
+            sender_info.amount,
             &spending_key.clone(),
             &sender_info.script,
             &sender_features,

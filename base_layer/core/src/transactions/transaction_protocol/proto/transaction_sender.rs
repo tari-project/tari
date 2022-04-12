@@ -144,3 +144,22 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_from_none() {
+        let tsm = TransactionSenderMessage::None;
+        let ptsm = proto::TransactionSenderMessage::from(tsm);
+        assert_eq!(ptsm.message, proto::TransactionSenderMessage::none().message);
+    }
+
+    #[test]
+    fn test_from_multiple() {
+        let tsm = TransactionSenderMessage::Multiple;
+        let ptsm = proto::TransactionSenderMessage::from(tsm);
+        assert_eq!(ptsm.message, proto::TransactionSenderMessage::multiple().message);
+    }
+}
