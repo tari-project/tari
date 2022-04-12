@@ -265,7 +265,8 @@ impl TryFrom<proto::common::SideChainBlock> for SideChainBlock {
         let node = block
             .node
             .ok_or_else(|| "No node provided in sidechain block".to_string())?
-            .try_into()?;
+            .try_into()
+            .map_err(|err: Error| err.to_string())?;
         let instructions = block
             .instructions
             .ok_or_else(|| "No InstructionSet provided in sidechain block".to_string())?
@@ -287,11 +288,11 @@ impl From<Node> for proto::common::Node {
 }
 
 impl TryFrom<proto::common::Node> for Node {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(node: proto::common::Node) -> Result<Self, Self::Error> {
-        let hash = TreeNodeHash::try_from(node.hash).map_err(|err| err.to_string())?;
-        let parent = TreeNodeHash::try_from(node.parent).map_err(|err| err.to_string())?;
+        let hash = TreeNodeHash::try_from(node.hash)?;
+        let parent = TreeNodeHash::try_from(node.parent)?;
         let height = node.height;
         let is_committed = node.is_committed;
 
