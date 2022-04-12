@@ -178,7 +178,8 @@ impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPay
             value
                 .payload
                 .map(|p| p.try_into())
-                .transpose()?
+                .transpose()
+                .map_err(|err: Error| err.to_string())?
                 .ok_or("payload not provided")?,
             state_root,
             value.height,
@@ -225,14 +226,15 @@ impl TryFrom<proto::common::Instruction> for Instruction {
 }
 
 impl TryFrom<proto::consensus::TariDanPayload> for TariDanPayload {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::consensus::TariDanPayload) -> Result<Self, Self::Error> {
         let instruction_set = value
             .instruction_set
-            .ok_or_else(|| "Instructions were not present".to_string())?
-            .try_into()?;
-        let checkpoint = value.checkpoint.map(|c| c.try_into()).transpose()?;
+            .ok_or_else(|| Error::msg("Instructions were not present"))?
+            .try_into()
+            .map_err(Error::msg)?;
+        let checkpoint = value.checkpoint.map(|c| c.try_into()).transpose().map_err(Error::msg)?;
 
         Ok(Self::new(instruction_set, checkpoint))
     }
