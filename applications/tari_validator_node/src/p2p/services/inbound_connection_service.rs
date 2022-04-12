@@ -26,6 +26,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use anyhow::Error;
 use async_trait::async_trait;
 use futures::{self, pin_mut, Stream, StreamExt};
 use log::*;
@@ -208,7 +209,7 @@ impl TariCommsInboundConnectionService {
         let proto_message: proto::consensus::HotStuffMessage = message.decode_message()?;
         let hot_stuff_message: HotStuffMessage<TariDanPayload> = proto_message
             .try_into()
-            .map_err(DigitalAssetError::InvalidPeerMessage)?;
+            .map_err(|err: Error| DigitalAssetError::InvalidPeerMessage(err.to_string()))?;
         if hot_stuff_message.asset_public_key() == &self.asset_public_key {
             println!("{:?}", hot_stuff_message);
             // self.sender.send((from, hot_stuff_message)).await.unwrap();

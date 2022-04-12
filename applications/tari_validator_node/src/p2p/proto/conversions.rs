@@ -125,32 +125,24 @@ impl From<&Instruction> for proto::common::Instruction {
 }
 
 impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPayload> {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::consensus::HotStuffMessage) -> Result<Self, Self::Error> {
         let node_hash = if value.node_hash.is_empty() {
             None
         } else {
-            Some(TreeNodeHash::try_from(value.node_hash).map_err(|err| err.to_string())?)
+            Some(TreeNodeHash::try_from(value.node_hash)?)
         };
-        let message_type = u8::try_from(value.message_type).map_err(|err| err.to_string())?;
+        let message_type = u8::try_from(value.message_type)?;
         Ok(Self::new(
             ViewId(value.view_number),
-            HotStuffMessageType::try_from(message_type).map_err(|err| err.to_string())?,
-            value
-                .justify
-                .map(|j| j.try_into())
-                .transpose()
-                .map_err(|err: Error| err.to_string())?,
-            value.node.map(|n| n.try_into()).transpose()?,
+            HotStuffMessageType::try_from(message_type)?,
+            value.justify.map(|j| j.try_into()).transpose()?,
+            value.node.map(|n| n.try_into()).transpose().map_err(Error::msg)?,
             node_hash,
-            value
-                .partial_sig
-                .map(|p| p.try_into())
-                .transpose()
-                .map_err(|err: Error| err.to_string())?,
+            value.partial_sig.map(|p| p.try_into()).transpose()?,
             PublicKey::from_bytes(&value.asset_public_key)
-                .map_err(|err| format!("Not a valid asset public key:{}", err))?,
+                .map_err(|err| anyhow::anyhow!("Not a valid asset public key:{}", err))?,
         ))
     }
 }
