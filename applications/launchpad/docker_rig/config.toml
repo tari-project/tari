@@ -43,7 +43,8 @@ peer_seeds = [
 [base_node]
 network = "dibbler"
 grpc_enabled = true
-grpc_address = "/ip4/0.0.0.0/tcp/18142"
+#grpc_address = "/ip4/0.0.0.0/tcp/18142"
+grpc_address = "/dns4/base_node/tcp/18142"
 track_reorgs = true
 
 [base_node.dibbler]
@@ -102,7 +103,8 @@ grpc_base_node_address = "0.0.0.0:18142"
 wallet_db_file = "wallet/igor/wallet.dat"
 console_wallet_db_file = "wallet/igor/console-wallet.dat"
 grpc_enabled = true
-grpc_address = "/ip4/127.0.0.1/tcp/18143"
+#grpc_address = "/ip4/127.0.0.1/tcp/18143"
+grpc_address = "/dns4/wallet/tcp/18143"
 
 # Console wallet password
 # Should you wish to start your console wallet without typing in your password, the following options are available:
@@ -363,6 +365,14 @@ monerod_use_auth = false
 monerod_username = ""
 monerod_password = ""
 
+base_node_grpc_address = "/dns4/base_node/tcp/18142"
+#console_wallet_grpc_address = "/dns4/wallet/tcp/18143"
+wallet_grpc_address = "/dns4/wallet/tcp/18143"
+
+# Address of the tari_merge_mining_proxy application
+proxy_host_address = "/dns4/0.0.0.0/tcp/18081"
+
+
 [validator_node]
 ########################################################################################################################
 #                                                                                                                      #
@@ -373,3 +383,6 @@ monerod_password = ""
 committee = ["2ea0df3059caf4411624d6bf5b9c02238d607d2798c586b3e6c2a054da3f205a"] # cannot be of zero size
 phase_timeout = 30
 template_id = "EditableMetadata"
+
+committee_management_polling_interval = 5
+committee_management_confirmation_time = 20

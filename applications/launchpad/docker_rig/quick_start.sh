@@ -2,6 +2,7 @@
 #
 # Docker Start Script for Tari applications
 # The docker compose environment should set the following envars
+# - DATA_FOLDER (required) - The path to store the Tari configuration files and logs. You can create multiple
 # - APP_NAME - the name of the app to run. This var is used to set the location of log files, and app-specific config
 # - APP_EXEC - the name of the application executable. Just the name is enough, since the Dockerfile will put it in /usr/bin
 # - CREATE_CONFIG - set to 1 if we should write a default config file if one is missing.
@@ -10,6 +11,14 @@
 # - WAIT_FOR_TOR - set to 1 to place a 30 second delay at the beginning of this script.
 # - TARI_NETWORK - the Tari network to configure the docker rig for
 #
+
+set -e
+
+if [[ -z "$DATA_FOLDER" ]]; then
+  echo "Env DATA_FOLDER required!"
+  echo "export DATA_FOLDER=tmp/dibbler"
+  exit 1
+fi
 
 # Export these variables to the environment
 START_TOR=${START_TOR:-1}
@@ -23,6 +32,9 @@ CREATE_CONFIG=${CREATE_CONFIG:-0}
 CREATE_ID=${CREATE_ID:-0}
 NETWORK=${TARI_NETWORK:-dibbler}
 CONFIG=$DATA_FOLDER/config
+
+# Which docker-compose command? - docker compose / docker-compose
+COMPOSE_COMMAND=${COMPOSE_COMMAND:-"docker compose"}
 
 check_data_folder() {
   if [[ ! -d "$DATA_FOLDER" ]]; then
@@ -52,30 +64,30 @@ export TARI_NETWORK=$NETWORK
 
 if [[ $SETUP == 1 ]]; then
   echo "Creating identity files and default config file"
-  docker compose run --rm base_node --init
+  ${COMPOSE_COMMAND} run --rm base_node --create-id --init
 fi
 
 if [[ $START_TOR == 1 ]]; then
-  docker compose up -d tor
+  ${COMPOSE_COMMAND} up -d tor
   WAIT_FOR_TOR=10
 fi
 
 if [[ $START_BASE_NODE == 1 ]]; then
   echo "Starting Base Node"
   export WAIT_FOR_TOR=$WAIT_FOR_TOR
-  docker compose up -d base_node
+  ${COMPOSE_COMMAND} up -d base_node
 fi
 
 if [[ $START_WALLET == 1 ]]; then
   echo "Starting Wallet"
   export WAIT_FOR_TOR=0
-  docker compose up -d wallet
+  ${COMPOSE_COMMAND} up -d wallet
 fi
 
 if [[ $START_MINER == 1 ]]; then
   echo "Starting SHA3 Miner"
   export WAIT_FOR_TOR=0
-  docker compose up -d sha3_miner
+  ${COMPOSE_COMMAND} up -d sha3_miner
 fi
 
 if [[ $USE_OWN_MONEROD == 1 ]]; then
@@ -86,5 +98,5 @@ fi
 if [[ $START_MONERO_MM == 1 ]]; then
   echo "Starting Monero Merge miner"
   export WAIT_FOR_TOR=0
-  docker compose up -d mm_proxy xmrig
+  ${COMPOSE_COMMAND} up -d mm_proxy xmrig
 fi

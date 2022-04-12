@@ -1,0 +1,9 @@
+# copy env-sample-local-build to .env
+TARI_NETWORK=dibbler
+DATA_FOLDER=tmp/dibbler
+TL_TAG_URL=local-tarilabs
+TARI_MONEROD_USERNAME=tari
+TARI_MONEROD_PASSWORD=tari
+WAIT_FOR_TOR=1
+# Leave blank for mainnet
+MONEROD_EXTRA_OPTIONS="--testnet"

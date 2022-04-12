@@ -1,18 +1,18 @@
 version: "3.9"
 services:
   tor:
-    image: quay.io/tarilabs/tor:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/tor:latest
     build:
       context: .
       dockerfile: tor.Dockerfile
-  #    volumes:
-  #      - ${DATA_FOLDER}/tor:/etc/tor/
+    volumes:
+      - "./${DATA_FOLDER:-tmp/dibbler}/tor:/etc/tor/"
   #    ports:
   #      - 9050:9050
   #      - 9051:9051
 
   base_node:
-    image: quay.io/tarilabs/tari_base_node:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/tari_base_node:latest
     build:
       context: ./../../..
       dockerfile: applications/launchpad/docker_rig/base_node.Dockerfile
@@ -23,7 +23,7 @@ services:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: base_node
       APP_EXEC: tari_base_node
-      WAIT_FOR_TOR: ${WAIT_FOR_TOR:-0}
+      WAIT_FOR_TOR: ${WAIT_FOR_TOR:-15}
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_BASE_NODE__DIBBLER__TOR_CONTROL_AUTH: "password=${TOR_CONTROL_AUTH:-tari}"
       TARI_BASE_NODE__DIBBLER__DATA_DIR: "/blockchain/dibbler"
@@ -42,13 +42,13 @@ services:
     depends_on:
       - tor
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - "./${DATA_FOLDER:-tmp/dibbler}:/var/tari/"
       - blockchain:/blockchain/${TARI_NETWORK}
     stdin_open: true
     tty: true
 
   wallet:
-    image: quay.io/tarilabs/tari_console_wallet:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/tari_console_wallet:latest
     build:
       context: ./../../..
       dockerfile: applications/launchpad/docker_rig/console_wallet.Dockerfile
@@ -59,7 +59,7 @@ services:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: wallet
       APP_EXEC: tari_console_wallet
-      WAIT_FOR_TOR: ${WAIT_FOR_TOR:-0}
+      WAIT_FOR_TOR: ${WAIT_FOR_TOR:-15}
       SHELL: "/bin/bash"
       TERM: "linux"
       TARI_WALLET_PASSWORD: ${TARI_WALLET_PASSWORD:-tari}
@@ -77,12 +77,12 @@ services:
     depends_on:
       - tor
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - "./${DATA_FOLDER:-tmp/dibbler}:/var/tari/"
     #stdin_open: true
     #tty: true
 
   sha3_miner:
-    image: quay.io/tarilabs/tari_sha3_miner:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/tari_sha3_miner:latest
     build:
       context: ./../../..
       dockerfile: applications/launchpad/docker_rig/sha3_miner.Dockerfile
@@ -93,7 +93,7 @@ services:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: sha3_miner
       APP_EXEC: tari_mining_node
-      WAIT_FOR_TOR: 0
+      WAIT_FOR_TOR: ${WAIT_FOR_TOR:-30}
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_MINING_NODE__NUM_MINING_THREADS: 2
       TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1
@@ -105,10 +105,10 @@ services:
       - base_node
       - wallet
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - "./${DATA_FOLDER:-tmp/dibbler}:/var/tari/"
 
   xmrig:
-    image: quay.io/tarilabs/xmrig:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/xmrig:latest
     build:
       context: .
       dockerfile: xmrig.Dockerfile
@@ -128,16 +128,16 @@ services:
     depends_on:
       - mm_proxy
     volumes:
-      - ${DATA_FOLDER}/xmrig:/var/xmrig/
+      - "./${DATA_FOLDER:-tmp/dibbler}/xmrig:/var/xmrig/"
 
   monerod:
-    image: quay.io/tarilabs/monerod:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/monerod:latest
     build:
       context: .
       dockerfile: monerod.Dockerfile
     volumes:
       - monero-blockchain:/home/monero/.bitmonero
-      - ${DATA_FOLDER}/monerod:/home/monerod
+      - "./${DATA_FOLDER:-tmp/dibbler}/monerod:/home/monerod"
     command:
       - "--non-interactive"
       - "--restricted-rpc"
@@ -147,10 +147,10 @@ services:
       - "--log-file=/home/monerod/monerod.log"
       - "--fast-block-sync=1"
       - "--prune-blockchain"
-      - "--${MONERO_NETWORK:-mainnet}"
+      - "${MONEROD_EXTRA_OPTIONS}"
 
   mm_proxy:
-    image: quay.io/tarilabs/tari_mm_proxy:latest
+    image: ${TL_TAG_URL:-quay.io/tarilabs}/tari_mm_proxy:latest
     build:
       context: ./../../..
       dockerfile: applications/launchpad/docker_rig/mm_proxy.Dockerfile
@@ -162,7 +162,7 @@ services:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: mm_proxy
       APP_EXEC: tari_merge_mining_proxy
-      WAIT_FOR_TOR: 0
+      WAIT_FOR_TOR: ${WAIT_FOR_TOR:-30}
       TARI_NETWORK: ${TARI_NETWORK}
       TARI_BASE_NODE__DIBBLER__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
       TARI_BASE_NODE__DIBBLER__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
@@ -177,7 +177,7 @@ services:
       - wallet
     command: []
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - "./${DATA_FOLDER:-tmp/dibbler}:/var/tari/"
 #  pool-worker:
 #  pool-operator:
 

@@ -1,0 +1,148 @@
+# [WIP] Docker deploy of TariLabs Suite
+
+copy env-sample-local-build to .env and update as needed
+
+# Tari Network
+TARI_NETWORK=dibbler
+
+# Docker data folder
+DATA_FOLDER=tmp/dibbler
+
+# Enable wait for tor network (only basic sleep)
+WAIT_FOR_TOR=1
+
+# For local image pulling and developement, set the following envs as follows - default is quay.io/tarilabs - latest images
+TL_TAG_URL=local-tarilabs
+
+```
+docker-compose build
+```
+
+# Monero Envs
+TARI_MONEROD_USERNAME=tari
+TARI_MONEROD_PASSWORD=tari
+# Leave blank for mainnet
+MONEROD_EXTRA_OPTIONS="--testnet"
+
+First run to create base_node ids
+```
+docker-compose run --rm base_node --create-id --init
+```
+
+Should then be able to do a complete start up
+```
+docker-compose up -d
+```
+
+Check the tor is running
+```
+docker-compose logs tor
+```
+
+Check that base node is running
+```
+docker-compose logs base_node
+```
+
+Might be a chance that base_node id were not create or the first step missed, and there is a problem like
+```
+Y/n
+```
+In this case, stop the base_node with 
+```
+docker-compose stop base_node
+docker-compose run --rm base_node --create-id --init
+docker-compose up -d base_node
+```
+
+Then check that the wallet is running
+```
+docker-compose logs wallet
+```
+Looking for ```Tari Console Wallet running... (gRPC mode started)```
+vs
+```
+wallet_1      | No grpc address specified
+wallet_1      |
+wallet_1      | Shutting down wallet... 2022-04-11 15:26:51.547586300 [wallet:contacts_service] INFO  Contacts service shutting down because it received the shutdown signal
+```
+
+
+Check that the sha3_miner is running
+```
+docker-compose logs sha3_miner
+```
+Looking for ```Starting sha3_miner```
+Some times the sha3_miner comes up to quick and can't find the base_node, see something like
+```
+Fatal error: ExitError { exit_code: GrpcError, details: Some("GRPC connection error: Connection error: transport error") }
+```
+Retry the image with
+```
+docker-compose up -d sha3_miner
+```
+
+MergeMined proxy run
+```
+docker-compose logs mm_proxy
+```
+```
+mm_proxy_1    |
+mm_proxy_1    |
+mm_proxy_1    | Connecting to base node at 172.24.0.5:18142
+mm_proxy_1    | Error: transport error
+mm_proxy_1    |
+mm_proxy_1    | Caused by:
+mm_proxy_1    |     0: error trying to connect: tcp connect error: Connection refused (os error 111)
+mm_proxy_1    |     1: tcp connect error: Connection refused (os error 111)
+mm_proxy_1    |     2: Connection refused (os error 111)
+```
+vs
+```
+mm_proxy_1    | Connecting to base node at 172.24.0.5:18142
+mm_proxy_1    | Connecting to wallet at 172.24.0.4:18143
+mm_proxy_1    | Listening on 0.0.0.0:18081...
+```
+
+MoneroD run
+```
+docker-compose logs monerod
+```
+XMRig run
+```
+docker-compose logs xmrig
+```
+```
+xmrig_1       |  * MEMORY       15.1/15.6 GB (96%)
+xmrig_1       |  * DONATE       1%
+xmrig_1       |  * ASSEMBLY     auto:intel
+xmrig_1       |  * POOL #1      mm_proxy:18081 coin Monero
+xmrig_1       |  * COMMANDS     hashrate, pause, resume, results, connection
+xmrig_1       | [2022-04-11 14:24:24.914]  net      use daemon mm_proxy:18081
+```
+vs
+```
+xmrig_1       | [2022-04-11 14:21:43.734]  net      mm_proxy:18081 DNS error: "temporary failure"
+xmrig_1       | [2022-04-11 14:24:12.871]  signal   SIGTERM received, exiting
+```
+do a restart
+```
+docker-compose stop xmrig
+docker-compose up -d xmrig
+```
+
+
+```
+# docker-compose ps
+         Name                        Command               State                                   Ports
+----------------------------------------------------------------------------------------------------------------------------------------
+docker_rig_base_node_1    start_tari_app.sh -c /var/ ...   Up      0.0.0.0:18142->18142/tcp,:::18142->18142/tcp,
+                                                                   0.0.0.0:18189->18189/tcp,:::18189->18189/tcp
+docker_rig_mm_proxy_1     start_tari_app.sh -c /var/ ...   Up
+docker_rig_monerod_1      ./monerod --non-interactiv ...   Up      18080/tcp, 18081/tcp
+docker_rig_sha3_miner_1   start_tari_app.sh -c /var/ ...   Up
+docker_rig_tor_1          /bin/sh -c /usr/bin/tor -f ...   Up      9050/tcp, 9051/tcp
+docker_rig_wallet_1       start_tari_app.sh -c /var/ ...   Up      0.0.0.0:18143->18143/tcp,:::18143->18143/tcp,
+                                                                   0.0.0.0:18188->18188/tcp,:::18188->18188/tcp
+docker_rig_xmrig_1        /usr/bin/xmrig --url mm_pr ...   Up
+```

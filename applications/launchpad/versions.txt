@@ -1,3 +1,8 @@
 # Version refers to the base_node, wallet, etc. version
-VERSION=0.27.3-lp2
-XMRIG_VERSION=v6.16.3
+# applications/tari_app_utilities/Cargo.toml
+TL_VERSION=0.31.1-lp1
+# https://github.com/xmrig/xmrig/releases
+XMRIG_VERSION=v6.17.0
+# https://github.com/monero-project/monero/releases
+MONERO_VERSION=0.17.3.0
+MONERO_SHA256=ac18ce3d1189410a5c175984827d5d601974733303411f6142296d647f6582ce

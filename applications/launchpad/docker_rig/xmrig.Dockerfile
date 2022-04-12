@@ -1,5 +1,6 @@
 FROM alpine:latest as build
 
+# Default version, overridden at build time with versions.txt
 ARG XMRIG_VERSION="v6.15.3"
 
 RUN apk add \

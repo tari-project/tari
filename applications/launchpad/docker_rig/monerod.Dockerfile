@@ -1,7 +1,8 @@
 # Usage: docker run --restart=always -v /var/data/blockchain-xmr:/root/.bitmonero -p 18080:18080 -p 18081:18081 --name=monerod -td kannix/monero-full-node
 FROM quay.io/bitnami/minideb:bullseye AS build
-ENV MONERO_VERSION=0.17.2.3 MONERO_SHA256=8069012ad5e7b35f79e35e6ca71c2424efc54b61f6f93238b182981ba83f2311
 
+ARG MONERO_VERSION=0.17.2.3
+ARG MONERO_SHA256=8069012ad5e7b35f79e35e6ca71c2424efc54b61f6f93238b182981ba83f2311
 
 RUN apt-get update && apt-get install -y curl bzip2
 
@@ -30,7 +31,6 @@ VOLUME /home/tari/.bitmonero
 ENV dockerfile_version=$VERSION
 
 EXPOSE 18080 18081
-
 
 ENTRYPOINT ["./monerod"]
 CMD ["--non-interactive", "--restricted-rpc", "--rpc-bind-ip=0.0.0.0", "--confirm-external-bind", "--enable-dns-blocklist", "--out-peers=16"]
