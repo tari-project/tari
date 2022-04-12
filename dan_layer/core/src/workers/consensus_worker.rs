@@ -398,6 +398,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
 
 #[cfg(test)]
 mod test {
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 
@@ -406,42 +407,84 @@ mod test {
         models::{
             Committee,
             ConsensusWorkerState::{Commit, Decide, NextView, PreCommit, Prepare},
+            TariDanPayload,
         },
         services::{
             infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
-            mocks::{mock_events_publisher, MockCommitteeManager, MockEventsPublisher},
+            mocks::{
+                mock_base_node_client,
+                mock_checkpoint_manager,
+                mock_events_publisher,
+                mock_payload_processor,
+                mock_signing_service,
+                mock_static_payload_provider,
+                MockChainStorageService,
+                MockCommitteeManager,
+                MockEventsPublisher,
+                MockServiceSpecification,
+                MockValidatorNodeClientFactory,
+            },
         },
+        storage::mocks::MockDbFactory,
     };
 
     fn start_replica(
-        _inbound: MockInboundConnectionService<&'static str, &'static str>,
-        _outbound: MockOutboundService<&'static str, &'static str>,
-        _committee_manager: MockCommitteeManager,
-        _node_id: &'static str,
-        _shutdown_signal: ShutdownSignal,
-        _events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
+        inbound: MockInboundConnectionService<RistrettoPublicKey, TariDanPayload>,
+        outbound: MockOutboundService<RistrettoPublicKey, TariDanPayload>,
+        committee_manager: MockCommitteeManager,
+        node_id: RistrettoPublicKey,
+        shutdown_signal: ShutdownSignal,
+        events_publisher: MockEventsPublisher<ConsensusWorkerDomainEvent>,
     ) -> JoinHandle<()> {
-        todo!()
-        // let mut replica_a = ConsensusWorker::new(inbound, outbound, committee_manager, node_id,
-        // mock_static_payload_provider("Hello"), events_publisher, mock_signing_service(), mock_payload_processor(),
-        // AssetDefinition::default(), mock_base_node_client(), Duration::from_secs(5),
-        // , ); tokio::spawn(async move {
-        //     let _res = replica_a.run(shutdown_signal, Some(2)).await;
-        // })
+        let payload_provider = mock_static_payload_provider();
+        let signing_service = mock_signing_service();
+        let payload_processor = mock_payload_processor();
+        let asset_definition = AssetDefinition::default();
+        let base_node_client = mock_base_node_client();
+        let timeout = Duration::from_secs(5);
+        let db_factory = MockDbFactory::default();
+        let chain_storage_service = MockChainStorageService::default();
+        let checkpoint_manager = mock_checkpoint_manager();
+        let validator_node_client_factory = MockValidatorNodeClientFactory::default();
+        let mut replica_a = ConsensusWorker::<MockServiceSpecification>::new(
+            inbound,
+            outbound,
+            committee_manager,
+            node_id,
+            payload_provider,
+            events_publisher,
+            signing_service,
+            payload_processor,
+            asset_definition,
+            base_node_client,
+            timeout,
+            db_factory,
+            chain_storage_service,
+            checkpoint_manager,
+            validator_node_client_factory,
+        );
+        tokio::spawn(async move {
+            let max_views_to_process = Some(2);
+            let stop = Arc::new(AtomicBool::default());
+            let _res = replica_a.run(shutdown_signal, max_views_to_process, stop);
+        })
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_simple_case() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
 
-        let committee = Committee::new(vec!["A", "B"]);
+        let mut rng = rand::thread_rng();
+        let (_, address_a) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_, address_b) = RistrettoPublicKey::random_keypair(&mut rng);
+
+        let committee = Committee::new(vec![address_a.clone(), address_b.clone()]);
         let mut outbound = mock_outbound(committee.members.clone());
         let committee_manager = MockCommitteeManager { committee };
 
-        let inbound_a = outbound.take_inbound(&"A").unwrap();
-        let inbound_b = outbound.take_inbound(&"B").unwrap();
+        let inbound_a = outbound.take_inbound(&address_a.clone()).unwrap();
+        let inbound_b = outbound.take_inbound(&address_b.clone()).unwrap();
         // let inbound_c = outbound.take_inbound(&"C").unwrap();
         // let inbound_d = outbound.take_inbound(&"D").unwrap();
 
@@ -456,7 +499,7 @@ mod test {
             inbound_a,
             outbound.clone(),
             committee_manager.clone(),
-            "A",
+            address_a,
             signal.clone(),
             events[0].clone(),
         );
@@ -464,7 +507,7 @@ mod test {
             inbound_b,
             outbound.clone(),
             committee_manager,
-            "B",
+            address_b,
             signal.clone(),
             events[1].clone(),
         );

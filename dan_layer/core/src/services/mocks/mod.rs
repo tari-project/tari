@@ -28,8 +28,9 @@ use std::{
 
 use async_trait::async_trait;
 use tari_common_types::types::PublicKey;
+use tari_comms::types::CommsPublicKey;
+use tari_crypto::ristretto::RistrettoPublicKey;
 
-use super::CommitteeManager;
 use crate::{
     digital_assets_error::DigitalAssetError,
     fixed_hash::FixedHash,
@@ -39,23 +40,50 @@ use crate::{
         BaseLayerOutput,
         Committee,
         Event,
+        HotStuffTreeNode,
         Instruction,
+        InstructionSet,
+        Node,
         Payload,
+        SchemaState,
+        SideChainBlock,
+        SidechainMetadata,
         Signature,
+        StateOpLogEntry,
         StateRoot,
+        TariDanPayload,
+        TemplateId,
         TreeNodeHash,
     },
     services::{
         base_node_client::BaseNodeClient,
         infrastructure_services::NodeAddressable,
         AssetProcessor,
+        CommitteeManager,
+        ConcreteCheckpointManager,
         EventsPublisher,
         MempoolService,
         PayloadProcessor,
         PayloadProvider,
         SigningService,
+        ValidatorNodeClientError,
+        ValidatorNodeClientFactory,
+        ValidatorNodeRpcClient,
+        WalletClient,
     },
-    storage::state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+    storage::{
+        chain::ChainDbUnitOfWork,
+        state::{StateDbUnitOfWork, StateDbUnitOfWorkReader},
+        ChainStorageService,
+        StorageError,
+    },
+};
+#[cfg(test)]
+use crate::{
+    models::domain_events::ConsensusWorkerDomainEvent,
+    services::infrastructure_services::mocks::{MockInboundConnectionService, MockOutboundService},
+    services::{ConcreteAssetProxy, ServiceSpecification},
+    storage::mocks::{chain_db::MockChainDbBackupAdapter, state_db::MockStateDbBackupAdapter, MockDbFactory},
 };
 
 #[derive(Debug, Clone)]
@@ -96,10 +124,12 @@ pub fn create_mempool_mock() -> MockMempoolService {
     MockMempoolService
 }
 
-pub fn mock_static_payload_provider<TPayload: Payload>(
-    static_payload: TPayload,
-) -> MockStaticPayloadProvider<TPayload> {
-    MockStaticPayloadProvider { static_payload }
+pub fn mock_static_payload_provider() -> MockStaticPayloadProvider<TariDanPayload> {
+    let instruction_set = InstructionSet::empty();
+    let payload = TariDanPayload::new(instruction_set, None);
+    MockStaticPayloadProvider {
+        static_payload: payload,
+    }
 }
 
 pub struct MockStaticPayloadProvider<TPayload: Payload> {
@@ -168,8 +198,8 @@ impl<TEvent: Event> EventsPublisher<TEvent> for MockEventsPublisher<TEvent> {
     }
 }
 
-pub fn mock_signing_service<TAddr: NodeAddressable>() -> MockSigningService<TAddr> {
-    MockSigningService::<TAddr> { p: PhantomData }
+pub fn mock_signing_service() -> MockSigningService<RistrettoPublicKey> {
+    MockSigningService::<RistrettoPublicKey> { p: PhantomData }
 }
 
 pub struct MockSigningService<TAddr: NodeAddressable> {
@@ -182,6 +212,7 @@ impl<TAddr: NodeAddressable> SigningService<TAddr> for MockSigningService<TAddr>
     }
 }
 
+#[derive(Clone)]
 pub struct MockBaseNodeClient {}
 
 #[async_trait]
@@ -228,7 +259,7 @@ pub fn mock_base_node_client() -> MockBaseNodeClient {
 
 #[derive(Clone)]
 pub struct MockCommitteeManager {
-    pub committee: Committee<&'static str>,
+    pub committee: Committee<RistrettoPublicKey>,
 }
 
 impl<TAddr: NodeAddressable> CommitteeManager<TAddr> for MockCommitteeManager {
@@ -291,4 +322,139 @@ impl AssetProcessor for MockAssetProcessor {
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
         todo!()
     }
+}
+
+#[derive(Default, Clone)]
+pub struct MockWalletClient;
+
+#[async_trait]
+impl WalletClient for MockWalletClient {
+    async fn create_new_checkpoint(
+        &mut self,
+        _asset_public_key: &PublicKey,
+        _checkpoint_unique_id: &[u8],
+        _state_root: &StateRoot,
+        _next_committee: Vec<CommsPublicKey>,
+    ) -> Result<(), DigitalAssetError> {
+        Ok(())
+    }
+}
+
+pub fn mock_wallet_client() -> MockWalletClient {
+    MockWalletClient {}
+}
+
+#[derive(Default, Clone)]
+pub struct MockValidatorNodeClientFactory;
+
+#[derive(Default, Clone)]
+pub struct MockValidatorNodeClient;
+
+#[async_trait]
+impl ValidatorNodeRpcClient for MockValidatorNodeClient {
+    async fn invoke_read_method(
+        &mut self,
+        _asset_public_key: &PublicKey,
+        _template_id: TemplateId,
+        _method: String,
+        _args: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
+        Ok(None)
+    }
+
+    async fn invoke_method(
+        &mut self,
+        _asset_public_key: &PublicKey,
+        _template_id: TemplateId,
+        _method: String,
+        _args: Vec<u8>,
+    ) -> Result<Option<Vec<u8>>, ValidatorNodeClientError> {
+        Ok(None)
+    }
+
+    async fn get_sidechain_blocks(
+        &mut self,
+        _asset_public_key: &PublicKey,
+        _start_hash: TreeNodeHash,
+        _end_hash: Option<TreeNodeHash>,
+    ) -> Result<Vec<SideChainBlock>, ValidatorNodeClientError> {
+        Ok(vec![])
+    }
+
+    async fn get_sidechain_state(
+        &mut self,
+        _asset_public_key: &PublicKey,
+    ) -> Result<Vec<SchemaState>, ValidatorNodeClientError> {
+        Ok(vec![])
+    }
+
+    async fn get_op_logs(
+        &mut self,
+        _asset_public_key: &PublicKey,
+        _height: u64,
+    ) -> Result<Vec<StateOpLogEntry>, ValidatorNodeClientError> {
+        Ok(vec![])
+    }
+
+    async fn get_tip_node(&mut self, _asset_public_key: &PublicKey) -> Result<Option<Node>, ValidatorNodeClientError> {
+        Ok(None)
+    }
+}
+
+impl ValidatorNodeClientFactory for MockValidatorNodeClientFactory {
+    type Addr = PublicKey;
+    type Client = MockValidatorNodeClient;
+
+    fn create_client(&self, _address: &Self::Addr) -> Self::Client {
+        MockValidatorNodeClient::default()
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct MockChainStorageService;
+
+#[async_trait]
+impl ChainStorageService<TariDanPayload> for MockChainStorageService {
+    async fn get_metadata(&self) -> Result<SidechainMetadata, StorageError> {
+        todo!()
+    }
+
+    async fn add_node<TUnitOfWork: ChainDbUnitOfWork>(
+        &self,
+        _node: &HotStuffTreeNode<TariDanPayload>,
+        _db: TUnitOfWork,
+    ) -> Result<(), StorageError> {
+        Ok(())
+    }
+}
+
+pub fn mock_checkpoint_manager() -> ConcreteCheckpointManager<MockWalletClient> {
+    ConcreteCheckpointManager::<MockWalletClient>::new(AssetDefinition::default(), MockWalletClient::default())
+}
+
+#[derive(Default, Clone)]
+pub struct MockServiceSpecification;
+
+#[cfg(test)]
+impl ServiceSpecification for MockServiceSpecification {
+    type Addr = RistrettoPublicKey;
+    type AssetProcessor = MockAssetProcessor;
+    type AssetProxy = ConcreteAssetProxy<Self>;
+    type BaseNodeClient = MockBaseNodeClient;
+    type ChainDbBackendAdapter = MockChainDbBackupAdapter;
+    type ChainStorageService = MockChainStorageService;
+    type CheckpointManager = ConcreteCheckpointManager<Self::WalletClient>;
+    type CommitteeManager = MockCommitteeManager;
+    type DbFactory = MockDbFactory;
+    type EventsPublisher = MockEventsPublisher<ConsensusWorkerDomainEvent>;
+    type InboundConnectionService = MockInboundConnectionService<Self::Addr, Self::Payload>;
+    type MempoolService = MockMempoolService;
+    type OutboundService = MockOutboundService<Self::Addr, Self::Payload>;
+    type Payload = TariDanPayload;
+    type PayloadProcessor = MockPayloadProcessor;
+    type PayloadProvider = MockStaticPayloadProvider<Self::Payload>;
+    type SigningService = MockSigningService<Self::Addr>;
+    type StateDbBackendAdapter = MockStateDbBackupAdapter;
+    type ValidatorNodeClientFactory = MockValidatorNodeClientFactory;
+    type WalletClient = MockWalletClient;
 }
