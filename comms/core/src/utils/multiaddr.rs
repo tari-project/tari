@@ -27,6 +27,7 @@ use std::{
 use crate::multiaddr::{Multiaddr, Protocol};
 
 /// Convert a multiaddr to a socket address required for `TcpStream`
+/// This function resolves DNS4 addresses to an ip address.
 pub fn multiaddr_to_socketaddr(addr: &Multiaddr) -> io::Result<SocketAddr> {
     let mut addr_iter = addr.iter();
     let network_proto = addr_iter

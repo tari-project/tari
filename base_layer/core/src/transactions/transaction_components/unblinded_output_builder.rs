@@ -29,7 +29,13 @@ use crate::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
+        transaction_components::{
+            OutputFeatures,
+            TransactionError,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+        },
         transaction_protocol::RewindData,
         CryptoFactories,
     },
@@ -88,7 +94,8 @@ impl UnblindedOutputBuilder {
         self.sender_offset_public_key = Some(sender_offset_public_key.clone());
 
         let metadata_partial = TransactionOutput::create_partial_metadata_signature(
-            &self.value,
+            TransactionOutputVersion::get_current_version(),
+            self.value,
             &self.spending_key,
             self.script
                 .as_ref()
@@ -105,7 +112,8 @@ impl UnblindedOutputBuilder {
 
     pub fn sign_as_sender(&mut self, sender_offset_private_key: &PrivateKey) -> Result<(), TransactionError> {
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
-            &self.value,
+            TransactionOutputVersion::get_current_version(),
+            self.value,
             &self.spending_key,
             self.script
                 .as_ref()

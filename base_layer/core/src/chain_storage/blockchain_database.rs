@@ -33,6 +33,7 @@ use std::{
 
 use croaring::Bitmap;
 use log::*;
+use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
@@ -92,12 +93,14 @@ use crate::{
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
     pub pruning_interval: u64,
     pub track_reorgs: bool,
+    pub cleanup_orphans_at_startup: bool,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -107,6 +110,7 @@ impl Default for BlockchainDatabaseConfig {
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             track_reorgs: false,
+            cleanup_orphans_at_startup: false,
         }
     }
 }
@@ -202,14 +206,13 @@ where B: BlockchainBackend
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
-        cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError> {
         debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let is_empty = db.is_empty()?;
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
-            config,
+            config: config.clone(),
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
@@ -250,7 +253,7 @@ where B: BlockchainBackend
             ));
         } else {
         }
-        if cleanup_orphans_at_startup {
+        if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
@@ -2338,7 +2341,7 @@ impl<T> Clone for BlockchainDatabase<T> {
         BlockchainDatabase {
             db: self.db.clone(),
             validators: self.validators.clone(),
-            config: self.config,
+            config: self.config.clone(),
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),

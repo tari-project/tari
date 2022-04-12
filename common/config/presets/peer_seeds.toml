@@ -1,0 +1,24 @@
+# Configuration options for dibbler testnet
+
+[dibbler.p2p.seeds]
+dns_seeds = ["seeds.dibbler.tari.com"]
+peer_seeds = [
+    # 333388d1cbe3e2bd17453d052f
+    "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
+    # 555575715a49fc242d756e52ca
+    "42fcde82b44af1de95a505d858cb31a422c56c4ac4747fbf3da47d648d4fc346::/onion3/2l3e7ysmihc23zybapdrsbcfg6omtjtfkvwj65dstnfxkwtai2fawtyd:18141",
+    # 77771f53be07fab4be5f1e1ff7
+    "50e6aa8f6c50f1b9d9b3d438dfd2a29cfe1f3e3a650bd9e6b1e10f96b6c38f4d::/onion3/7s6y3cz5bnewlj5ypm7sekhgvqjyrq4bpaj5dyvvo7vxydj7hsmyf5ad:18141",
+    # 9999016f1f3a6162dddf5a45aa
+    "36a9df45e1423b5315ffa7a91521924210c8e1d1537ad0968450f20f21e5200d::/onion3/v24qfheti2rztlwzgk6v4kdbes3ra7mo3i2fobacqkbfrk656e3uvnid:18141",
+    # bbbb8358387d81c388fadb4649
+    "be128d570e8ec7b15c101ee1a56d6c56dd7d109199f0bd02f182b71142b8675f::/onion3/ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
+    # eeeeb0a943ed143e613a135392
+    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141",
+    # 66664a0f95ce468941bb9de228
+    "b0f797e7413b39b6646fa370e8394d3993ead124b8ba24325c3c07a05e980e7e::/ip4/35.177.93.69/tcp/18189",
+    # 22221bf814d5e524fce9ba5787
+    "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189",
+    # 4444a0efd8388739d563bdd979
+    "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
+]

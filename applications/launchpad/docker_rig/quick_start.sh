@@ -52,7 +52,7 @@ export TARI_NETWORK=$NETWORK
 
 if [[ $SETUP == 1 ]]; then
   echo "Creating identity files and default config file"
-  docker compose run --rm base_node --create-id --init
+  docker compose run --rm base_node --init
 fi
 
 if [[ $START_TOR == 1 ]]; then

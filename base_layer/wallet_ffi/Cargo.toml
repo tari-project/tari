@@ -7,6 +7,7 @@ version = "0.31.1"
 edition = "2018"
 
 [dependencies]
+tari_common = {path="../../common"}
 tari_common_types = {path="../common_types"}
 tari_comms = { version = "^0.31", path = "../../comms/core", features = ["c_integration"]}
 tari_comms_dht = { version = "^0.31", path = "../../comms/dht", default-features = false }

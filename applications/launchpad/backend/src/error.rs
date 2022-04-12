@@ -39,7 +39,7 @@ pub enum LauncherError {
     #[error("Something went awry with the Tauri API")]
     TauriApiError(#[from] TauriApiError),
     #[error("A workspace configuration object is required")]
-    MisingConfig,
+    MissingConfig,
     #[error("{1} is required because we are creating a {0}")]
     ConfigVariableRequired(String, String),
 }

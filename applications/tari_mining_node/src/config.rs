@@ -40,7 +40,7 @@ use std::{str::FromStr, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tari_app_grpc::tari_rpc::{pow_algo::PowAlgos, NewBlockTemplateRequest, PowAlgo};
-use tari_common::NetworkConfigPath;
+use tari_common::SubConfigPath;
 use tari_comms::multiaddr::Multiaddr;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,9 +61,9 @@ pub enum ProofOfWork {
     Sha3,
 }
 
-impl NetworkConfigPath for MinerConfig {
+impl SubConfigPath for MinerConfig {
     fn main_key_prefix() -> &'static str {
-        "mining_node"
+        "miner"
     }
 }
 
@@ -76,9 +76,9 @@ impl Default for MinerConfig {
             mine_on_tip_only: true,
             proof_of_work_algo: ProofOfWork::Sha3,
             validate_tip_timeout_sec: 30,
-            mining_pool_address: "".to_string(),
-            mining_wallet_address: "".to_string(),
-            mining_worker_name: "".to_string(),
+            mining_pool_address: String::new(),
+            mining_wallet_address: String::new(),
+            mining_worker_name: String::new(),
         }
     }
 }
@@ -100,5 +100,34 @@ impl MinerConfig {
 
     pub fn validate_tip_interval(&self) -> Duration {
         Duration::from_secs(self.validate_tip_timeout_sec)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_common::DefaultConfigLoader;
+
+    use crate::MinerConfig;
+
+    #[test]
+    fn miner_configuration() {
+        const CONFIG: &str = r#"
+[miner]
+num_mining_threads=2
+base_node_addr = "/dns4/my_base_node/tcp/1234"
+mine_on_tip_only = false
+"#;
+        let mut cfg: config::Config = config::Config::default();
+        #[allow(deprecated)]
+        cfg.merge(config::File::from_str(CONFIG, config::FileFormat::Toml))
+            .unwrap();
+        let config = MinerConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.num_mining_threads, 2);
+        assert_eq!(config.wallet_addr, MinerConfig::default().wallet_addr);
+        assert_eq!(
+            config.base_node_addr.to_string(),
+            "/dns4/my_base_node/tcp/1234".to_string()
+        );
+        assert!(!config.mine_on_tip_only);
     }
 }

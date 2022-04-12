@@ -48,8 +48,10 @@ pub enum ConnectionManagerError {
     YamuxConnectionError(String),
     #[error("Failed to perform yamux upgrade on socket: {0}")]
     YamuxUpgradeFailure(String),
-    #[error("Transport error: {0}")]
-    TransportError(String),
+    #[error("Failed to listen on {address}: {details}")]
+    ListenerError { address: String, details: String },
+    #[error("Transport error for {address}: {details}")]
+    TransportError { address: String, details: String },
     #[error("The peer authenticated to a public key which did not match the dialed peer's public key")]
     DialedPublicKeyMismatch,
     #[error("The noise transport failed to provide a valid static public key for the peer")]

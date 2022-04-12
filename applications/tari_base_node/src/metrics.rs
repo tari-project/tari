@@ -20,9 +20,10 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, net::SocketAddr};
 
-use tari_common::{configuration::bootstrap::ApplicationType, ConfigBootstrap, GlobalConfig};
+use serde::{Deserialize, Serialize};
+use tari_common::{configuration::bootstrap::ApplicationType, SubConfigPath};
 use tari_comms::NodeIdentity;
 use tari_metrics::{server::MetricsServerBuilder, Registry};
 use tari_shutdown::ShutdownSignal;
@@ -31,8 +32,7 @@ use tokio::task;
 pub fn install(
     application: ApplicationType,
     identity: &NodeIdentity,
-    config: &GlobalConfig,
-    bootstrap: &ConfigBootstrap,
+    config: &MetricsConfig,
     shutdown: ShutdownSignal,
 ) {
     let metrics_registry = create_metrics_registry(application, identity);
@@ -40,19 +40,11 @@ pub fn install(
 
     let mut metrics = MetricsServerBuilder::new();
 
-    if let Some(addr) = bootstrap
-        .metrics_server_bind_addr
-        .as_ref()
-        .or_else(|| config.metrics.prometheus_scraper_bind_addr.as_ref())
-    {
+    if let Some(addr) = config.server_bind_address.as_ref() {
         metrics = metrics.with_scrape_server(addr);
     }
 
-    if let Some(endpoint) = bootstrap
-        .metrics_push_endpoint
-        .as_ref()
-        .or_else(|| config.metrics.prometheus_push_endpoint.as_ref())
-    {
+    if let Some(endpoint) = config.push_endpoint.as_ref() {
         // http://localhost:9091/metrics/job/base-node
         metrics = metrics.with_push_gateway(endpoint);
     }
@@ -67,4 +59,18 @@ fn create_metrics_registry(application: ApplicationType, identity: &NodeIdentity
     labels.insert("node_id".to_string(), identity.node_id().to_string());
     labels.insert("node_public_key".to_string(), identity.public_key().to_string());
     Registry::new_custom(Some("tari".to_string()), Some(labels)).unwrap()
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MetricsConfig {
+    override_from: Option<String>,
+    pub server_bind_address: Option<SocketAddr>,
+    pub push_endpoint: Option<String>,
+}
+
+impl SubConfigPath for MetricsConfig {
+    fn main_key_prefix() -> &'static str {
+        "metrics"
+    }
 }

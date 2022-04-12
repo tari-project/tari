@@ -783,7 +783,13 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
+            transaction_components::{
+                KernelFeatures,
+                OutputFeatures,
+                TransactionError,
+                TransactionOutput,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
                 sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
@@ -894,7 +900,8 @@ mod test {
         let covenant = Covenant::default();
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
-            &value.into(),
+            TransactionOutputVersion::get_current_version(),
+            value.into(),
             &spending_key,
             &script,
             &output_features,

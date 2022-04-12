@@ -90,7 +90,6 @@ fn test_genesis_block() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let block = rules.get_genesis_block();
@@ -278,7 +277,6 @@ fn test_orphan_validator() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -398,7 +396,6 @@ fn test_orphan_body_validation() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -594,7 +591,6 @@ fn test_header_validation() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -704,7 +700,6 @@ async fn test_block_sync_body_validator() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let validator = BlockValidator::new(db.clone().into(), rules.clone(), factories.clone(), false, 2);

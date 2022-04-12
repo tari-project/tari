@@ -204,6 +204,7 @@ where
         );
 
         let aux_listener = config.auxiliary_tcp_listener_address.take().map(|addr| {
+            info!(target: LOG_TARGET, "Starting auxiliary listener on {}", addr);
             PeerListener::new(
                 config.clone(),
                 addr,

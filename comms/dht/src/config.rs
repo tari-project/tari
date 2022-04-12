@@ -20,7 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{path::Path, time::Duration};
+
+use serde::{Deserialize, Serialize};
 
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
@@ -29,7 +31,8 @@ use crate::{
     version::DhtProtocolVersion,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConfig {
     /// The major protocol version to use. Default: DhtProtocolVersion::latest()
     pub protocol_version: DhtProtocolVersion,
@@ -50,7 +53,7 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    pub saf_config: SafConfig,
+    pub saf: SafConfig,
     /// The max capacity of the message hash cache
     /// Default: 2,500
     pub dedup_cache_capacity: usize,
@@ -72,7 +75,6 @@ pub struct DhtConfig {
     /// Default: 10 minutes
     pub join_cooldown_interval: Duration,
     pub connectivity: DhtConnectivityConfig,
-
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
@@ -110,7 +112,7 @@ impl DhtConfig {
     pub fn default_local_test() -> Self {
         Self {
             database_url: DbConnectionUrl::Memory,
-            saf_config: SafConfig {
+            saf: SafConfig {
                 auto_request: false,
                 ..Default::default()
             },
@@ -124,6 +126,11 @@ impl DhtConfig {
             ..Default::default()
         }
     }
+
+    /// Sets relative paths to use a common base path
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
+        self.database_url.set_base_path(base_path);
+    }
 }
 
 impl Default for DhtConfig {
@@ -136,7 +143,7 @@ impl Default for DhtConfig {
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
-            saf_config: Default::default(),
+            saf: Default::default(),
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             dedup_allowed_message_occurrences: 1,
@@ -156,7 +163,8 @@ impl Default for DhtConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConnectivityConfig {
     /// The interval to update the neighbouring and random pools, if necessary.
     /// Default: 2 minutes

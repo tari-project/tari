@@ -55,7 +55,7 @@ impl CommandContext {
 
         let mut status_line = StatusLine::new();
         status_line.add_field("", format!("v{}", consts::APP_VERSION_NUMBER));
-        status_line.add_field("", self.config.network);
+        status_line.add_field("", self.config.network());
         status_line.add_field("State", self.state_machine_info.borrow().state_info.short_desc());
 
         let metadata = self.node_service.get_metadata().await?;
@@ -109,12 +109,7 @@ impl CommandContext {
             "Rpc",
             format!(
                 "{}/{}",
-                num_active_rpc_sessions,
-                self.config
-                    .comms_rpc_max_simultaneous_sessions
-                    .as_ref()
-                    .map(ToString::to_string)
-                    .unwrap_or_else(|| "∞".to_string()),
+                num_active_rpc_sessions, self.config.base_node.p2p.rpc_max_simultaneous_sessions
             ),
         );
         if full_log {

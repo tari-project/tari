@@ -1,4 +1,4 @@
-//  Copyright 2021. The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,20 +20,32 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use derivative::Derivative;
 use multiaddr::Multiaddr;
+use serde::{Deserialize, Serialize};
+use tari_common::SubConfigPath;
 
-#[derive(Derivative, Clone)]
-#[derivative(Debug)]
-pub struct MergeMiningConfig {
-    pub monerod_url: Vec<String>,
-    pub monerod_use_auth: bool,
-    pub monerod_username: String,
-    #[derivative(Debug = "ignore")]
-    pub monerod_password: String,
-    pub proxy_host_address: Multiaddr,
-    pub base_node_grpc_address: Multiaddr,
-    pub wallet_grpc_address: Multiaddr,
-    pub proxy_submit_to_origin: bool,
-    pub wait_for_initial_sync_at_startup: bool,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CollectiblesConfig {
+  override_from: Option<String>,
+  pub validator_node_grpc_address: Multiaddr,
+  pub base_node_grpc_address: Multiaddr,
+  pub wallet_grpc_address: Multiaddr,
+}
+
+impl Default for CollectiblesConfig {
+  fn default() -> Self {
+    Self {
+      override_from: None,
+      validator_node_grpc_address: "/ip4/127.0.0.1/tcp/18144".parse().unwrap(),
+      base_node_grpc_address: "/ip4/127.0.0.1/18142".parse().unwrap(),
+      wallet_grpc_address: "/ip4/127.0.0.1/tpc/18143".parse().unwrap(),
+    }
+  }
+}
+
+impl SubConfigPath for CollectiblesConfig {
+  fn main_key_prefix() -> &'static str {
+    "collectibles"
+  }
 }

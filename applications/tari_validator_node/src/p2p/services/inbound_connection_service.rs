@@ -134,11 +134,9 @@ impl TariCommsInboundConnectionService {
                     self.forward_message(message).await?;
                 },
                 // complete => {
-                //     dbg!("Tari inbound connector shutting down");
                 //     return Ok(());
                 // }
                 // _ = shutdown_signal => {
-                //     dbg!("Shutdown received");
                 //     return Ok(())
                 // }
             }
@@ -230,7 +228,6 @@ impl TariCommsInboundConnectionService {
         debug!(target: LOG_TARGET, "Inbound message received:{} {:?}", from, message);
 
         // Loop until we have sent to a waiting call, or buffer the message
-        // dbg!(&self.waiters);
         loop {
             // Check for waiters
             let mut waiter_index = None;
