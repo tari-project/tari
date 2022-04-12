@@ -178,7 +178,8 @@ impl TestParams {
             OutputFeatures::features_with_updated_recovery_byte(&commitment, rewind_data, &params.features);
 
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
-            &params.value,
+            TransactionOutputVersion::get_current_version(),
+            params.value,
             &self.spend_key,
             &params.script,
             &updated_features,
@@ -212,7 +213,8 @@ impl TestParams {
         updated_features: OutputFeatures,
     ) -> UnblindedOutput {
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
-            &uo.value,
+            TransactionOutputVersion::get_current_version(),
+            uo.value,
             &uo.spending_key,
             &uo.script,
             &updated_features,
@@ -607,6 +609,7 @@ pub fn spend_utxos(schema: TransactionSchema) -> (Transaction, Vec<UnblindedOutp
 pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProtocol, Vec<UnblindedOutput>) {
     let factories = CryptoFactories::default();
     let test_params_change_and_txn = TestParams::new();
+    let output_version = TransactionOutputVersion::get_current_version();
     let constants = ConsensusManager::builder(Network::LocalNet)
         .build()
         .consensus_constants(0)
@@ -660,7 +663,8 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
         utxo.features.set_recovery_byte(recovery_byte);
         utxo.metadata_signature = TransactionOutput::create_final_metadata_signature(
-            &utxo.value,
+            output_version,
+            utxo.value,
             &utxo.spending_key,
             &utxo.script,
             &utxo.features,
@@ -691,7 +695,8 @@ pub fn create_stx_protocol(schema: TransactionSchema) -> (SenderTransactionProto
         ..Default::default()
     };
     let change_metadata_sig = TransactionOutput::create_final_metadata_signature(
-        &change,
+        output_version,
+        change,
         &test_params_change_and_txn.change_spend_key,
         &script,
         &change_features,
@@ -746,7 +751,8 @@ pub fn create_utxo(
     let updated_features = OutputFeatures::features_with_updated_recovery_byte(&commitment, None, features);
 
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
-        &value,
+        TransactionOutputVersion::get_current_version(),
+        value,
         &keys.k,
         script,
         &updated_features,

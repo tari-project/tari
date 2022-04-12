@@ -46,6 +46,7 @@ use tari_app_grpc::tari_rpc as grpc;
 use tari_app_utilities::consts;
 use tari_common::{initialize_logging, load_configuration, DefaultConfigLoader};
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
+use tari_core::proof_of_work::randomx_factory::RandomXFactory;
 use tokio::time::Duration;
 
 use crate::{
@@ -91,13 +92,14 @@ async fn main() -> Result<(), anyhow::Error> {
     println!("Connecting to wallet at {}", wallet);
     let wallet_client = grpc::wallet_client::WalletClient::connect(format!("http://{}", wallet)).await?;
     let listen_addr = multiaddr_to_socketaddr(&config.listener_address)?;
-
+    let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
     let xmrig_service = MergeMiningProxyService::new(
         config,
         client,
         base_node_client,
         wallet_client,
         BlockTemplateRepository::new(),
+        randomx_factory,
     );
     let service = make_service_fn(|_conn| future::ready(Result::<_, Infallible>::Ok(xmrig_service.clone())));
 

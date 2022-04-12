@@ -37,6 +37,8 @@ pub struct MergeMiningProxyConfig {
     pub listener_address: Multiaddr,
     pub submit_to_origin: bool,
     pub wait_for_initial_sync_at_startup: bool,
+    pub check_tari_difficulty_before_submit: bool,
+    pub max_randomx_vms: usize,
 }
 
 impl Default for MergeMiningProxyConfig {
@@ -52,6 +54,8 @@ impl Default for MergeMiningProxyConfig {
             listener_address: "/ip4/127.0.0.1/tcp/18081".parse().unwrap(),
             submit_to_origin: true,
             wait_for_initial_sync_at_startup: true,
+            check_tari_difficulty_before_submit: true,
+            max_randomx_vms: 5,
         }
     }
 }

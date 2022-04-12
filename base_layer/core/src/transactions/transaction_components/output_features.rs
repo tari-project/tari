@@ -429,6 +429,8 @@ impl Display for OutputFeatures {
 mod test {
     use std::{io::ErrorKind, iter};
 
+    use tari_common_types::types::BLOCK_HASH_LENGTH;
+
     use super::*;
     use crate::consensus::check_consensus_encoding_correctness;
 
@@ -508,5 +510,166 @@ mod test {
 
         let err = check_consensus_encoding_correctness(subject).unwrap_err();
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn test_add_recovery_byte_to_serialized_data_if_needed() {
+        assert_eq!(
+            OutputFeatures::add_recovery_byte_to_serialized_data_if_needed("N/A".to_string()),
+            "N/A"
+        );
+        let version_v0_identifier = format!("\"version\":\"{}\"", OutputFeaturesVersion::V0);
+        let flag_identifier = String::from("\"flags\":{\"bits\":");
+        let metadata_identifier = String::from("\"metadata\":[");
+        let unique_id_identifier = String::from("\"unique_id\":");
+        let mint_non_fungible_identifier = String::from("\"mint_non_fungible\":");
+        let sidechain_checkpoint_identifier = String::from("\"sidechain_checkpoint\":");
+        let protocol = version_v0_identifier +
+            flag_identifier.as_str() +
+            metadata_identifier.as_str() +
+            unique_id_identifier.as_str() +
+            mint_non_fungible_identifier.as_str() +
+            sidechain_checkpoint_identifier.as_str();
+        assert!(!protocol.contains("\"recovery_byte\""));
+        assert!(OutputFeatures::add_recovery_byte_to_serialized_data_if_needed(protocol).contains("\"recovery_byte\""));
+    }
+
+    #[test]
+    fn test_for_asset_registration() {
+        let metadata = vec![1, 2, 3, 4];
+        let template_ids_implemented = vec![1, 1, 2, 3];
+        let tp = TemplateParameter {
+            template_id: 2,
+            template_data_version: 3,
+            template_data: vec![3, 2, 1],
+        };
+        assert_eq!(
+            OutputFeatures {
+                flags: OutputFlags::ASSET_REGISTRATION,
+                maturity: 0,
+                metadata: metadata.clone(),
+                asset: Some(AssetOutputFeatures {
+                    public_key: PublicKey::default(),
+                    template_ids_implemented: template_ids_implemented.clone(),
+                    template_parameters: vec![tp.clone()]
+                }),
+                unique_id: Some(PublicKey::default().as_bytes().to_vec()),
+                ..Default::default()
+            },
+            OutputFeatures::for_asset_registration(metadata, PublicKey::default(), template_ids_implemented, vec![tp])
+        );
+    }
+
+    #[test]
+    fn test_for_minting() {
+        let metadata = vec![1, 2, 3, 4];
+        let template_ids_implemented = vec![1, 1, 2, 3];
+        let tp = TemplateParameter {
+            template_id: 2,
+            template_data_version: 3,
+            template_data: vec![3, 2, 1],
+        };
+        let other_features =
+            OutputFeatures::for_asset_registration(metadata, PublicKey::default(), template_ids_implemented, vec![tp]);
+        let unique_id = vec![7, 2, 3, 4];
+        assert_eq!(
+            OutputFeatures {
+                flags: OutputFlags::MINT_NON_FUNGIBLE | other_features.flags,
+                mint_non_fungible: Some(MintNonFungibleFeatures {
+                    asset_public_key: PublicKey::default(),
+                    asset_owner_commitment: Commitment::from_public_key(&PublicKey::default())
+                }),
+                parent_public_key: Some(PublicKey::default()),
+                unique_id: Some(unique_id.clone()),
+                ..other_features.clone()
+            },
+            OutputFeatures::for_minting(
+                PublicKey::default(),
+                Commitment::from_public_key(&PublicKey::default()),
+                unique_id,
+                Some(other_features)
+            )
+        );
+    }
+
+    #[test]
+    fn test_for_checkpoint() {
+        let unique_id = vec![7, 2, 3, 4];
+        let hash = [13; BLOCK_HASH_LENGTH];
+        let committee = vec![PublicKey::default()];
+        // Initial
+        assert_eq!(
+            OutputFeatures {
+                flags: OutputFlags::SIDECHAIN_CHECKPOINT | OutputFlags::MINT_NON_FUNGIBLE,
+                sidechain_checkpoint: Some(SideChainCheckpointFeatures {
+                    merkle_root: hash,
+                    committee: committee.clone()
+                }),
+                parent_public_key: Some(PublicKey::default()),
+                unique_id: Some(unique_id.clone()),
+                ..Default::default()
+            },
+            OutputFeatures::for_checkpoint(PublicKey::default(), unique_id.clone(), hash, committee.clone(), true)
+        );
+
+        // Not initial
+        assert_eq!(
+            OutputFeatures {
+                flags: OutputFlags::SIDECHAIN_CHECKPOINT,
+                sidechain_checkpoint: Some(SideChainCheckpointFeatures {
+                    merkle_root: hash,
+                    committee: committee.clone()
+                }),
+                parent_public_key: Some(PublicKey::default()),
+                unique_id: Some(unique_id.clone()),
+                ..Default::default()
+            },
+            OutputFeatures::for_checkpoint(PublicKey::default(), unique_id, hash, committee, false)
+        );
+    }
+
+    #[test]
+    fn test_for_committee() {
+        let unique_id = vec![7, 2, 3, 4];
+        let committee = vec![PublicKey::default()];
+        let effective_sidechain_height = 123;
+        assert_eq!(
+            OutputFeatures {
+                flags: OutputFlags::COMMITTEE_DEFINITION | OutputFlags::MINT_NON_FUNGIBLE,
+                committee_definition: Some(CommitteeDefinitionFeatures {
+                    committee: committee.clone(),
+                    effective_sidechain_height
+                }),
+                parent_public_key: Some(PublicKey::default()),
+                unique_id: Some(unique_id.clone()),
+                ..Default::default()
+            },
+            OutputFeatures::for_committee(
+                PublicKey::default(),
+                unique_id.clone(),
+                committee.clone(),
+                effective_sidechain_height,
+                true
+            )
+        );
+        assert_eq!(
+            OutputFeatures {
+                flags: OutputFlags::COMMITTEE_DEFINITION,
+                committee_definition: Some(CommitteeDefinitionFeatures {
+                    committee: committee.clone(),
+                    effective_sidechain_height
+                }),
+                parent_public_key: Some(PublicKey::default()),
+                unique_id: Some(unique_id.clone()),
+                ..Default::default()
+            },
+            OutputFeatures::for_committee(
+                PublicKey::default(),
+                unique_id,
+                committee,
+                effective_sidechain_height,
+                false
+            )
+        );
     }
 }

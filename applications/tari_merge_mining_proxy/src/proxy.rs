@@ -22,6 +22,7 @@
 
 use std::{
     cmp,
+    convert::TryInto,
     future::Future,
     pin::Pin,
     sync::{
@@ -40,7 +41,12 @@ use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
+use tari_core::proof_of_work::{
+    monero_difficulty,
+    monero_rx,
+    monero_rx::FixedByteArray,
+    randomx_factory::RandomXFactory,
+};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -70,6 +76,7 @@ impl MergeMiningProxyService {
         base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
         wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
         block_templates: BlockTemplateRepository,
+        randomx_factory: RandomXFactory,
     ) -> Self {
         debug!(target: LOG_TARGET, "Config: {:?}", config);
         Self {
@@ -82,6 +89,7 @@ impl MergeMiningProxyService {
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
                 last_assigned_monerod_server: Arc::new(RwLock::new(None)),
+                randomx_factory,
             },
         }
     }
@@ -152,6 +160,7 @@ struct InnerService {
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
+    randomx_factory: RandomXFactory,
 }
 
 impl InnerService {
@@ -260,59 +269,71 @@ impl InnerService {
             let height = header_mut.height;
             header_mut.pow.as_mut().unwrap().pow_data = monero_rx::serialize(&monero_data);
 
+            let tari_header = header_mut.clone().try_into().map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
-            match base_node_client.submit_block(block_data.tari_block).await {
-                Ok(resp) => {
-                    if self.config.submit_to_origin {
-                        json_resp = json_rpc::success_response(
-                            request["id"].as_i64(),
-                            json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
-                        );
-                        let resp = resp.into_inner();
-                        json_resp = append_aux_chain_data(
-                            json_resp,
-                            json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
-                        );
+            let achieved_target = if self.config.check_tari_difficulty_before_submit {
+                trace!(target: LOG_TARGET, "Starting calculate achieved tari difficultly");
+                let diff = monero_difficulty(&tari_header, &self.randomx_factory)?;
+                trace!(target: LOG_TARGET, "Finished calculate achieved tari difficultly");
+                diff.as_u64()
+            } else {
+                block_data.tari_difficulty
+            };
+
+            if achieved_target >= block_data.tari_difficulty {
+                match base_node_client.submit_block(block_data.tari_block).await {
+                    Ok(resp) => {
+                        if self.config.submit_to_origin {
+                            json_resp = json_rpc::success_response(
+                                request["id"].as_i64(),
+                                json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
+                            );
+                            let resp = resp.into_inner();
+                            json_resp = append_aux_chain_data(
+                                json_resp,
+                                json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
+                            );
+                            debug!(
+                                target: LOG_TARGET,
+                                "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                                height,
+                                start.elapsed()
+                            );
+                        } else {
+                            // self-select related, do not change.
+                            json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
+                            trace!(
+                                target: LOG_TARGET,
+                                "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
+                                self.config.submit_to_origin,
+                                json_resp
+                            );
+                        }
+                        self.block_templates.remove(&hash).await;
+                    },
+                    Err(err) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                            "Problem submitting block #{} to Tari node, responded in  {:.0?} (SubmitBlock): {}",
                             height,
-                            start.elapsed()
+                            start.elapsed(),
+                            err
                         );
-                    } else {
-                        // self-select related, do not change.
-                        json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
-                        trace!(
-                            target: LOG_TARGET,
-                            "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
-                            self.config.submit_to_origin,
-                            json_resp
-                        );
-                    }
-                    self.block_templates.remove(&hash).await;
-                },
-                Err(err) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Problem submitting block #{} to Tari node, responded in  {:.0?} (SubmitBlock): {}",
-                        height,
-                        start.elapsed(),
-                        err
-                    );
 
-                    if !self.config.submit_to_origin {
-                        // When "submit to origin" is turned off the block is never submitted to monerod, and so we need
-                        // to construct an error message here.
-                        json_resp = json_rpc::error_response(
-                            request["id"].as_i64(),
-                            CoreRpcErrorCode::BlockNotAccepted.into(),
-                            "Block not accepted",
-                            None,
-                        );
-                    }
-                },
-            }
+                        if !self.config.submit_to_origin {
+                            // When "submit to origin" is turned off the block is never submitted to monerod, and so we
+                            // need to construct an error message here.
+                            json_resp = json_rpc::error_response(
+                                request["id"].as_i64(),
+                                CoreRpcErrorCode::BlockNotAccepted.into(),
+                                "Block not accepted",
+                                None,
+                            );
+                        }
+                    },
+                }
+            };
             self.block_templates.remove_outdated().await;
         }
 

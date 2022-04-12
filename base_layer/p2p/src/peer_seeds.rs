@@ -234,14 +234,11 @@ mod test {
         use super::*;
         use crate::{dns::mock, DEFAULT_DNS_NAME_SERVER};
 
-        #[ignore = "This test requires network IO and is mostly useful during development"]
         #[tokio::test]
         async fn it_returns_seeds_from_real_address() {
-            let mut resolver = DnsSeedResolver {
-                client: DnsClient::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
-                    .await
-                    .unwrap(),
-            };
+            let mut resolver = DnsSeedResolver::connect(DEFAULT_DNS_NAME_SERVER.parse().unwrap())
+                .await
+                .unwrap();
             let seeds = resolver.resolve("seeds.weatherwax.tari.com").await.unwrap();
             println!("{:?}", seeds);
             assert!(!seeds.is_empty());

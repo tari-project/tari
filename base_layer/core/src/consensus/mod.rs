@@ -36,6 +36,7 @@ pub use consensus_encoding::{
     ConsensusDecoding,
     ConsensusEncoding,
     ConsensusEncodingSized,
+    ConsensusHashWriter,
     MaxSizeBytes,
     MaxSizeVec,
     ToConsensusBytes,
