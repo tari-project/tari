@@ -196,14 +196,14 @@ impl TryFrom<proto::consensus::Signature> for Signature {
 }
 
 impl TryFrom<proto::common::InstructionSet> for InstructionSet {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::common::InstructionSet) -> Result<Self, Self::Error> {
         let instructions: Vec<Instruction> = value
             .instructions
             .into_iter()
-            .map(|i| i.try_into().map_err(|err: Error| err.to_string()))
-            .collect::<Result<_, String>>()?;
+            .map(|i| i.try_into())
+            .collect::<Result<_, _>>()?;
         Ok(Self::from_vec(instructions))
     }
 }
@@ -241,7 +241,7 @@ impl TryFrom<proto::consensus::TariDanPayload> for TariDanPayload {
 }
 
 impl TryFrom<proto::consensus::CheckpointData> for CheckpointData {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(_value: proto::consensus::CheckpointData) -> Result<Self, Self::Error> {
         Ok(Self::default())
@@ -269,7 +269,8 @@ impl TryFrom<proto::common::SideChainBlock> for SideChainBlock {
         let instructions = block
             .instructions
             .map(TryInto::try_into)
-            .ok_or_else(|| "No InstructionSet provided in sidechain block".to_string())??;
+            .ok_or_else(|| "No InstructionSet provided in sidechain block".to_string())?
+            .map_err(|err: Error| err.to_string())?;
         Ok(Self::new(node, instructions))
     }
 }
