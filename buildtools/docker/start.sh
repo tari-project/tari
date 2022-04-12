@@ -11,7 +11,7 @@ sleep 15
 
 TARI_CONFIG=~/.tari/config/config.toml
 if [[ ! -f $TARI_CONFIG ]]; then
-  tari_base_node --init --create-id
+  tari_base_node --init
   # fix for docker, bind grpc to 0.0.0.0 instead of loopback
   sed -i -e 's/127.0.0.1:18142/0.0.0.0:18142/' $TARI_CONFIG
 fi
