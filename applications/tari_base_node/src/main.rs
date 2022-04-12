@@ -44,7 +44,7 @@
 /// ```
 ///
 /// For the first run
-/// `cargo run tari_base_node -- --create-id`
+/// `cargo run tari_base_node -- --init
 ///
 /// Subsequent runs
 /// `cargo run tari_base_node`

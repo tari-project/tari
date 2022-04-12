@@ -61,7 +61,7 @@ if exist "%my_exe_path%\%my_exe%" (
 
 rem First time run
 if not exist "%config_path%\base_node_id.json" (
-    "%base_node%" --create-id --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
+    "%base_node%" --init --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_base_node.yml" --base-path "%base_path%"
     echo.
     echo.
     echo Created "%config_path%\base_node_id.json".
