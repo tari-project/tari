@@ -35,7 +35,7 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 
 use crate::transport::TransportConfig;
 
@@ -134,7 +134,10 @@ impl Default for P2pConfig {
             max_concurrent_inbound_tasks: 50,
             max_concurrent_outbound_tasks: 100,
             outbound_buffer_size: 100,
-            dht: Default::default(),
+            dht: DhtConfig {
+                database_url: DbConnectionUrl::file("dht.sqlite"),
+                ..Default::default()
+            },
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
             listener_liveness_allowlist_cidrs: StringList::default(),
