@@ -98,7 +98,7 @@ mod lazy_pool {
         let _rpc_client_lease = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(pool.refresh_num_active_connections(), 1);
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 1);
-        let _rpc_client_lease = pool.get_least_used_or_connect().await.unwrap();
+        let _second_lease = pool.get_least_used_or_connect().await.unwrap();
         assert_eq!(pool.refresh_num_active_connections(), 2);
         async_assert_eventually!(mock_state.num_open_substreams(), expect = 2);
     }

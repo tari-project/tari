@@ -58,7 +58,7 @@ impl DecideNextSync {
             self.sync_peers.len()
         );
 
-        if shared.config.pruning_horizon > 0 {
+        if local_metadata.pruning_horizon() > 0 {
             let last_header = match shared.db.fetch_last_header().await {
                 Ok(h) => h,
                 Err(err) => return err.into(),

@@ -23,10 +23,11 @@
 use std::time::Duration;
 
 use log::*;
+use serde::{Deserialize, Serialize};
 
 const LOG_TARGET: &str = "wallet::base_node_service::config";
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct BaseNodeServiceConfig {
     pub base_node_monitor_refresh_interval: Duration,
     pub base_node_rpc_pool_size: usize,

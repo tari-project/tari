@@ -37,6 +37,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 #[repr(u8)]
 pub enum TransactionOutputVersion {
     V0 = 0,
+    /// Currently only used in tests, this can be used as the next version
     V1 = 1,
 }
 

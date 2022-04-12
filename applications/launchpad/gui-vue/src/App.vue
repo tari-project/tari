@@ -1,6 +1,3 @@
-// Copyright 2022 The Tari Project
-// SPDX-License-Identifier: BSD-3-Clause
-
 <template>
 
   <h1>Tari Launchpad</h1>
@@ -15,7 +12,7 @@
 </template>
 
 <script>
-import containers from './components/Containers.vue';
+import containers from './components/Containers';
 import launchDocker from "./components/LaunchDocker";
 
 export default {

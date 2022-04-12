@@ -20,9 +20,14 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::str::FromStr;
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
 use anyhow::anyhow;
+use serde::{Deserialize, Serialize};
 use tari_common::DnsNameServer;
 use tari_comms::{
     multiaddr::Multiaddr,
@@ -73,7 +78,8 @@ impl DnsSeedResolver {
 }
 
 /// Parsed information from a DNS seed record
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub struct SeedPeer {
     pub public_key: CommsPublicKey,
     pub addresses: Vec<Multiaddr>,
@@ -83,6 +89,14 @@ impl SeedPeer {
     #[inline]
     pub fn derive_node_id(&self) -> NodeId {
         NodeId::from_public_key(&self.public_key)
+    }
+}
+
+impl TryFrom<String> for SeedPeer {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(value.as_str())
     }
 }
 
@@ -100,6 +114,27 @@ impl FromStr for SeedPeer {
             return Err(anyhow!("Empty or invalid address in seed peer string"));
         }
         Ok(SeedPeer { public_key, addresses })
+    }
+}
+
+impl Display for SeedPeer {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}::{}",
+            self.public_key.to_hex(),
+            self.addresses
+                .iter()
+                .map(|ma| ma.to_string())
+                .collect::<Vec<_>>()
+                .join("::")
+        )
+    }
+}
+
+impl From<SeedPeer> for String {
+    fn from(s: SeedPeer) -> Self {
+        s.to_string()
     }
 }
 

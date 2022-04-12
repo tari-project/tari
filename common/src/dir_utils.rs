@@ -55,7 +55,9 @@ pub fn default_path(filename: &str, base_path: Option<&PathBuf>) -> PathBuf {
         .iter()
         .collect()
     });
-    home.push(filename);
+    for component in PathBuf::from(filename).components() {
+        home.push(component);
+    }
     home
 }
 

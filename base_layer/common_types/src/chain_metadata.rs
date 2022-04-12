@@ -33,8 +33,10 @@ pub struct ChainMetadata {
     height_of_longest_chain: u64,
     /// The block hash of the current tip of the longest valid chain
     best_block: BlockHash,
-    /// The number of blocks back from the tip that this database tracks. A value of 0 indicates that all blocks are
-    /// tracked (i.e. the database is in full archival mode).
+    /// The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
+    /// pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
+    /// was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
+    /// are preserved from genesis (i.e. the database is in full archival mode).
     pruning_horizon: u64,
     /// The height of the pruning horizon. This indicates from what height a full block can be provided
     /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
@@ -91,6 +93,10 @@ impl ChainMetadata {
         self.pruning_horizon = pruning_horizon;
     }
 
+    /// The configured number of blocks back from the tip that this database tracks. A value of 0 indicates that
+    /// pruning mode is disabled and the node will keep full blocks from the time it was set. If pruning horizon
+    /// was previously enabled, previously pruned blocks will remain pruned. If set from initial sync, full blocks
+    /// are preserved from genesis (i.e. the database is in full archival mode).
     pub fn pruning_horizon(&self) -> u64 {
         self.pruning_horizon
     }
@@ -110,6 +116,9 @@ impl ChainMetadata {
         self.height_of_longest_chain
     }
 
+    /// The height of the pruning horizon. This indicates from what height a full block can be provided
+    /// (exclusive). If `pruned_height` is equal to the `height_of_longest_chain` no blocks can be
+    /// provided. Archival nodes wil always have an `pruned_height` of zero.
     pub fn pruned_height(&self) -> u64 {
         self.pruned_height
     }

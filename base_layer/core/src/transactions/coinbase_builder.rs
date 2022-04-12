@@ -46,6 +46,7 @@ use crate::{
             Transaction,
             TransactionBuilder,
             TransactionOutput,
+            TransactionOutputVersion,
             UnblindedOutput,
         },
         transaction_protocol::{build_challenge, RewindData, TransactionMetadata},
@@ -205,7 +206,8 @@ impl CoinbaseBuilder {
         let covenant = self.covenant;
 
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
-            &total_reward,
+            TransactionOutputVersion::get_current_version(),
+            total_reward,
             &spending_key,
             &script,
             &output_features,

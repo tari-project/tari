@@ -23,6 +23,7 @@
 use std::{borrow::Cow, fmt, fmt::Display, num::NonZeroU16};
 
 use log::*;
+use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncRead, AsyncWrite},
     sync::{broadcast, mpsc},
@@ -243,7 +244,7 @@ impl TorControlPortClient {
 }
 
 /// Represents tor control port authentication mechanisms
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Authentication {
     /// No control port authentication required
     None,

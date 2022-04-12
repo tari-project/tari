@@ -31,7 +31,13 @@ peer_seeds = [
     # bbbb8358387d81c388fadb4649
     "be128d570e8ec7b15c101ee1a56d6c56dd7d109199f0bd02f182b71142b8675f::/onion3/ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
     # eeeeb0a943ed143e613a135392
-    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
+    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141",
+    # 66664a0f95ce468941bb9de228
+    "b0f797e7413b39b6646fa370e8394d3993ead124b8ba24325c3c07a05e980e7e::/ip4/35.177.93.69/tcp/18189",
+    # 22221bf814d5e524fce9ba5787
+    "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189",
+    # 4444a0efd8388739d563bdd979
+    "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
 ]
 
 [base_node]
@@ -231,8 +237,8 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 # tor_proxy_bypass_for_outbound_tcp = false
@@ -265,8 +271,8 @@ tor_onion_port = 18141
 # - a "bridge" between TOR and TCP-only nodes
 # auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
 
-# When these addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# direcly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
+# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
+# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
 # tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
 # When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
 # tor_proxy_bypass_for_outbound_tcp = false;
@@ -330,7 +336,7 @@ monerod_url = [ # stagenet
 #]
 
 # Address of the tari_merge_mining_proxy application
-proxy_host_address = "127.0.0.1:7878"
+proxy_host_address = "127.0.0.1:18081"
 
 # In sole merged mining, the block solution is usually submitted to the Monero blockchain
 # (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool

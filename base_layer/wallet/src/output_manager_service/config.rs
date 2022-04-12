@@ -22,13 +22,17 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
+use tari_common::configuration::serializers;
 use tari_key_manager::mnemonic::MnemonicLanguage;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct OutputManagerServiceConfig {
+    #[serde(with = "serializers::seconds")]
     pub base_node_query_timeout: Duration,
     pub max_utxo_query_size: usize,
     pub prevent_fee_gt_amount: bool,
+    #[serde(with = "serializers::seconds")]
     pub peer_dial_retry_timeout: Duration,
     pub seed_word_language: MnemonicLanguage,
     pub event_channel_size: usize,

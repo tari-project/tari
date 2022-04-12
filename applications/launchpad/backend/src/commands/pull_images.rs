@@ -23,6 +23,7 @@
 
 use bollard::models::CreateImageInfo;
 use futures::{future::join_all, stream::StreamExt, TryFutureExt};
+use log::{debug, error};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Wry};
 
@@ -31,6 +32,8 @@ use crate::{
     docker::{ImageType, TariWorkspace},
     error::LauncherError,
 };
+
+const LOG_TARGET: &str = "tari::launchpad::commands::pull_images";
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Payload {
@@ -62,6 +65,7 @@ pub fn image_list() -> Vec<String> {
 /// Pulls all the images concurrently using the docker API.
 #[tauri::command]
 pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
+    debug!("Command pull_images invoked");
     let futures = DEFAULT_IMAGES
         .iter()
         .map(|image| pull_image(*image, app.clone()).map_err(|e| e.chained_message()));
@@ -72,6 +76,7 @@ pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
         .map(|e| e.unwrap_err())
         .collect::<Vec<String>>();
     if !errors.is_empty() {
+        error!("Error pulling images:{}", errors.join("\n"));
         return Err(errors.join("\n"));
     }
     Ok(())
@@ -90,6 +95,7 @@ async fn pull_image(image: ImageType, app: AppHandle<Wry>) -> Result<(), Launche
                     name: image.image_name().to_string(),
                     info: progress,
                 };
+                debug!("Image pull progress:{:?}", payload);
                 app.emit_all("image-pull-progress", payload)?
             },
             Err(err) => return Err(err.into()),

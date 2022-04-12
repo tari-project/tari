@@ -20,14 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+pub mod common_cli_args;
 pub mod identity_management;
-pub mod initialization;
 pub mod utilities;
 
 pub mod consts {
     // Import the auto-generated const values from the Manifest and Git
     include!(concat!(env!("OUT_DIR"), "/consts.rs"));
 }
-
-// Alias to common crate
-pub use tari_common as common;

@@ -42,7 +42,7 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
@@ -359,7 +359,8 @@ async fn inbound_fetch_blocks_before_horizon_height() {
         &Covenant::default(),
     );
     let metadata_signature = TransactionOutput::create_final_metadata_signature(
-        &MicroTari(10_000),
+        TransactionOutputVersion::get_current_version(),
+        MicroTari(10_000),
         &key,
         &script,
         &OutputFeatures::default(),

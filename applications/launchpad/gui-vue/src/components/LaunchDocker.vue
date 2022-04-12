@@ -86,7 +86,7 @@ const imageNames = [
 
 async function getWorkspaceFolder(fn) {
   const options = {
-    defaultPath: "/tmp",
+    //defaultPath: "/tmp",
     directory: true,
     multiple: false
   }
@@ -148,7 +148,7 @@ export default {
   },
   data() {
     const options = {
-      root_folder: "/tmp/tari",
+      root_folder: null,
       tari_network: "dibbler",
       has_base_node: true,
       has_wallet: false,

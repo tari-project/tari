@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{env::consts, time::Duration};
+use std::env::consts;
 
 use futures::{future::Either, stream, StreamExt};
 use log::*;
@@ -71,21 +71,14 @@ pub struct SoftwareUpdaterService {
     application: ApplicationType,
     current_version: Version,
     config: AutoUpdateConfig,
-    check_interval: Option<Duration>,
 }
 
 impl SoftwareUpdaterService {
-    pub fn new(
-        application: ApplicationType,
-        current_version: Version,
-        config: AutoUpdateConfig,
-        check_interval: Option<Duration>,
-    ) -> Self {
+    pub fn new(application: ApplicationType, current_version: Version, config: AutoUpdateConfig) -> Self {
         Self {
             application,
             current_version,
             config,
-            check_interval,
         }
     }
 
@@ -95,7 +88,7 @@ impl SoftwareUpdaterService {
         notifier: watch::Sender<Option<SoftwareUpdate>>,
         new_update_notification: watch::Receiver<Option<SoftwareUpdate>>,
     ) {
-        let mut interval_or_never = match self.check_interval {
+        let mut interval_or_never = match self.config.check_interval {
             Some(interval) => {
                 let mut interval = time::interval(interval);
                 interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -177,6 +170,7 @@ impl SoftwareUpdaterService {
 #[async_trait]
 impl ServiceInitializer for SoftwareUpdaterService {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing Software Update Service");
         let service = self.clone();
 
         let (notifier, new_update_notif) = watch::channel(None);
@@ -187,6 +181,7 @@ impl ServiceInitializer for SoftwareUpdaterService {
             request_tx,
         });
         context.spawn_until_shutdown(move |_| service.run(request_rx, notifier, new_update_notif));
+        debug!(target: LOG_TARGET, "Software Update Service Initialized");
         Ok(())
     }
 }
