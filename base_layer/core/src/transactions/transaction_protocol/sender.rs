@@ -775,6 +775,7 @@ mod test {
     };
     use tari_script::{script, ExecutionStack, TariScript};
 
+    use super::SenderState;
     use crate::{
         covenants::Covenant,
         test_helpers::create_consensus_constants,
@@ -782,15 +783,92 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
+            transaction_components::{
+                KernelFeatures,
+                OutputFeatures,
+                TransactionError,
+                TransactionOutput,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
-                sender::SenderTransactionProtocol,
+                sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
                 RewindData,
                 TransactionProtocolError,
             },
         },
     };
+
+    #[test]
+    fn test_not_single() {
+        assert_eq!(TransactionSenderMessage::None.single(), None);
+        assert_eq!(TransactionSenderMessage::Multiple.single(), None);
+    }
+
+    #[test]
+    fn test_errors() {
+        let stp = SenderTransactionProtocol {
+            state: SenderState::Failed(TransactionProtocolError::InvalidStateError),
+        };
+        assert_eq!(
+            stp.clone().get_transaction(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().take_transaction(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(stp.clone().check_tx_id(0.into()), false);
+        assert_eq!(
+            stp.clone().get_tx_id(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_total_amount(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_amount_to_self(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_amount(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_unblinded_output(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_output_metadata_signature(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_sender_offset_public_key(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_recipient_sender_offset_private_key(0),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_fee_amount(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().build_single_round_message(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().revert_sender_state_to_single_round_message_ready(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_single_round_message(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(stp.clone().sign(), Err(TransactionProtocolError::InvalidStateError));
+    }
 
     #[test]
     fn test_metadata_signature_finalize() {
@@ -822,7 +900,8 @@ mod test {
         let covenant = Covenant::default();
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
-            &value.into(),
+            TransactionOutputVersion::get_current_version(),
+            value.into(),
             &spending_key,
             &script,
             &output_features,

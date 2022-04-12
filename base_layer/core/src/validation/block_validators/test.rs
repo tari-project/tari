@@ -19,7 +19,6 @@
 //  SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
 use std::sync::Arc;
 
 use tari_common::configuration::Network;
@@ -27,6 +26,7 @@ use tari_script::script;
 use tari_test_utils::unpack_enum;
 
 use crate::{
+    block_spec,
     blocks::ChainBlock,
     consensus::{ConsensusConstantsBuilder, ConsensusManager},
     test_helpers::{
@@ -42,7 +42,7 @@ use crate::{
         CryptoFactories,
     },
     txn_schema,
-    validation::{block_validators::BlockValidator, ValidationError},
+    validation::{block_validators::BlockValidator, BlockSyncBodyValidation, ValidationError},
 };
 
 fn setup_with_rules(rules: ConsensusManager) -> (TestBlockchain, BlockValidator<TempDatabase>) {
@@ -232,6 +232,32 @@ async fn it_rejects_invalid_input_metadata() {
     assert!(matches!(err, ValidationError::UnknownInputs(_)));
 }
 
+#[tokio::test]
+async fn it_rejects_zero_conf_double_spends() {
+    let (mut blockchain, validator) = setup();
+    let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB"));
+
+    let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
+    let (initial_tx, outputs) = schema_to_transaction(&[schema]);
+
+    let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![200 * T]);
+    let (first_spend, _) = schema_to_transaction(&[schema]);
+
+    let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![150 * T]);
+    let (double_spend, _) = schema_to_transaction(&[schema]);
+
+    let transactions = initial_tx
+        .into_iter()
+        .chain(first_spend)
+        .chain(double_spend)
+        .map(|b| Arc::try_unwrap(b).unwrap())
+        .collect::<Vec<_>>();
+
+    let (unmined, _) = blockchain.create_unmined_block("1", block_spec!("2", transactions: transactions));
+    let err = validator.validate_body(unmined).await.unwrap_err();
+    assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
+}
+
 mod unique_id {
     use tari_common_types::types::PublicKey;
 
@@ -383,6 +409,7 @@ mod unique_id {
 }
 
 mod body_only {
+
     use super::*;
     use crate::validation::{block_validators::BodyOnlyValidator, PostOrphanBodyValidation};
 
@@ -413,5 +440,44 @@ mod body_only {
             .validate_body_for_valid_orphan(&*db, &block, &metadata)
             .unwrap_err();
         assert!(matches!(err, ValidationError::UnknownInputs(_)));
+    }
+}
+
+mod orphan_validator {
+    use super::*;
+    use crate::validation::{block_validators::OrphanBlockValidator, OrphanValidation};
+
+    #[test]
+    fn it_rejects_zero_conf_double_spends() {
+        let rules = ConsensusManager::builder(Network::LocalNet)
+            .add_consensus_constants(
+                ConsensusConstantsBuilder::new(Network::LocalNet)
+                    .with_coinbase_lockheight(0)
+                    .build(),
+            )
+            .build();
+        let mut blockchain = TestBlockchain::create(rules.clone());
+        let validator = OrphanBlockValidator::new(rules, false, CryptoFactories::default());
+        let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB"));
+
+        let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
+        let (initial_tx, outputs) = schema_to_transaction(&[schema]);
+
+        let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![200 * T]);
+        let (first_spend, _) = schema_to_transaction(&[schema]);
+
+        let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![150 * T]);
+        let (double_spend, _) = schema_to_transaction(&[schema]);
+
+        let transactions = initial_tx
+            .into_iter()
+            .chain(first_spend)
+            .chain(double_spend)
+            .map(|b| Arc::try_unwrap(b).unwrap())
+            .collect::<Vec<_>>();
+
+        let (unmined, _) = blockchain.create_unmined_block("1", block_spec!("2", transactions: transactions));
+        let err = validator.validate(&unmined).unwrap_err();
+        assert!(matches!(err, ValidationError::UnsortedOrDuplicateInput));
     }
 }

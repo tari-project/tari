@@ -97,8 +97,12 @@ macro_rules! block_spec {
         $spec = $spec.with_reward($reward.into());
         $crate::block_spec!(@ { spec } $($tail)*)
     };
+    (@ { $spec: ident } parent: $parent:expr, $($tail:tt)*) => {
+        $spec = $spec.with_prev_block($parent);
+        $crate::block_spec!(@ { spec } $($tail)*)
+    };
     (@ { $spec: ident } transactions: $transactions:expr, $($tail:tt)*) => {
-        $spec = $spec.with_transactions($transactions.into());
+        $spec = $spec.with_transactions($transactions);
         $crate::block_spec!(@ { spec } $($tail)*)
     };
 

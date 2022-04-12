@@ -99,10 +99,10 @@ pub enum CommsInitializationError {
 }
 
 /// Initialize Tari Comms configured for tests
-pub async fn initialize_local_test_comms(
+pub async fn initialize_local_test_comms<P: AsRef<Path>>(
     node_identity: Arc<NodeIdentity>,
     connector: InboundDomainConnector,
-    data_path: &str,
+    data_path: P,
     discovery_request_timeout: Duration,
     seed_peers: Vec<Peer>,
     shutdown_signal: ShutdownSignal,
@@ -114,9 +114,9 @@ pub async fn initialize_local_test_comms(
             .take(8)
             .collect::<String>()
     };
-    std::fs::create_dir_all(data_path).unwrap();
+    std::fs::create_dir_all(&data_path).unwrap();
     let datastore = LMDBBuilder::new()
-        .set_path(data_path)
+        .set_path(&data_path)
         .set_env_flags(open::NOLOCK)
         .set_env_config(LMDBConfig::default())
         .set_max_number_of_databases(1)
@@ -137,6 +137,7 @@ pub async fn initialize_local_test_comms(
         .with_peer_storage(peer_database, None)
         .with_dial_backoff(ConstantBackoff::new(Duration::from_millis(500)))
         .with_min_connectivity(1)
+        .with_network_byte(Network::LocalNet.as_byte())
         .with_shutdown_signal(shutdown_signal)
         .build()?;
 
@@ -176,6 +177,10 @@ pub async fn initialize_local_test_comms(
         .add_protocol_extension(MessagingProtocolExtension::new(event_sender.clone(), pipeline))
         .spawn_with_transport(MemoryTransport)
         .await?;
+
+    comms
+        .node_identity()
+        .set_public_address(comms.listening_address().clone());
 
     Ok((comms, dht, event_sender))
 }

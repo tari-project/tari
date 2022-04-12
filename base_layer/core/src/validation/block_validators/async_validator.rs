@@ -91,7 +91,7 @@ impl<B: BlockchainBackend + 'static> BlockValidator<B> {
         Ok(block)
     }
 
-    pub async fn validate_block_body(&self, block: Block) -> Result<Block, ValidationError> {
+    pub(super) async fn validate_block_body(&self, block: Block) -> Result<Block, ValidationError> {
         let (valid_header, inputs, outputs, kernels) = block.dissolve();
 
         // Start all validation tasks concurrently

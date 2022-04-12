@@ -64,8 +64,7 @@ use thiserror::Error;
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::{ConsensusDecoding, ConsensusEncoding},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
     proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
 };
 
@@ -235,7 +234,7 @@ impl BlockHeader {
                 .finalize()
                 .to_vec()
         } else {
-            HashWriter::new(HashDigest::new())
+            ConsensusHashWriter::default()
                 .chain(&self.version)
                 .chain(&self.height)
                 .chain(&self.prev_hash)
@@ -297,7 +296,7 @@ impl Hashable for BlockHeader {
                 .finalize()
                 .to_vec()
         } else {
-            HashWriter::new(HashDigest::new())
+            ConsensusHashWriter::default()
                 // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
                 //       up if we decide to migrate to a fixed 32-byte type
                 .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
