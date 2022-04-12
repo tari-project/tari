@@ -144,7 +144,11 @@ impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPaylo
                 .map_err(|err: Error| err.to_string())?,
             value.node.map(|n| n.try_into()).transpose()?,
             node_hash,
-            value.partial_sig.map(|p| p.try_into()).transpose()?,
+            value
+                .partial_sig
+                .map(|p| p.try_into())
+                .transpose()
+                .map_err(|err: Error| err.to_string())?,
             PublicKey::from_bytes(&value.asset_public_key)
                 .map_err(|err| format!("Not a valid asset public key:{}", err))?,
         ))
@@ -191,7 +195,7 @@ impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPay
 }
 
 impl TryFrom<proto::consensus::Signature> for Signature {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(_value: proto::consensus::Signature) -> Result<Self, Self::Error> {
         Ok(Self {})
