@@ -264,12 +264,12 @@ impl TryFrom<proto::common::SideChainBlock> for SideChainBlock {
     fn try_from(block: proto::common::SideChainBlock) -> Result<Self, Self::Error> {
         let node = block
             .node
-            .map(TryInto::try_into)
-            .ok_or_else(|| "No node provided in sidechain block".to_string())??;
+            .ok_or_else(|| "No node provided in sidechain block".to_string())?
+            .try_into()?;
         let instructions = block
             .instructions
-            .map(TryInto::try_into)
             .ok_or_else(|| "No InstructionSet provided in sidechain block".to_string())?
+            .try_into()
             .map_err(|err: Error| err.to_string())?;
         Ok(Self::new(node, instructions))
     }
