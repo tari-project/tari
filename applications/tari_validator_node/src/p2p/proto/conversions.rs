@@ -47,7 +47,6 @@ use tari_dan_core::{
     },
     storage::state::DbStateOpLogEntry,
 };
-use thiserror::Error;
 
 use crate::p2p::proto;
 
@@ -302,18 +301,12 @@ impl From<KeyValue> for proto::validator_node::KeyValue {
     }
 }
 
-#[derive(Debug, Error)]
-pub enum KeyValueError {
-    #[error("KeyValue: key cannot be empty")]
-    Empty,
-}
-
 impl TryFrom<proto::validator_node::KeyValue> for KeyValue {
-    type Error = KeyValueError;
+    type Error = Error;
 
     fn try_from(kv: proto::validator_node::KeyValue) -> Result<Self, Self::Error> {
         if kv.key.is_empty() {
-            Err(KeyValueError::Empty)
+            Err(Error::msg("KeyValue: key cannot be empty"))
         } else {
             Ok(Self {
                 key: kv.key,
@@ -347,12 +340,11 @@ impl TryFrom<proto::validator_node::StateOpLog> for StateOpLogEntry {
     type Error = Error;
 
     fn try_from(value: proto::validator_node::StateOpLog) -> Result<Self, Self::Error> {
+        let mr = value.merkle_root;
+        let merkle_root = if !mr.is_empty() { Some(mr.try_into()?) } else { None };
         Ok(DbStateOpLogEntry {
             height: value.height,
-            merkle_root: Some(value.merkle_root)
-                .filter(|r| !r.is_empty())
-                .map(TryInto::try_into)
-                .transpose()?,
+            merkle_root,
             operation: value
                 .operation
                 .parse()
