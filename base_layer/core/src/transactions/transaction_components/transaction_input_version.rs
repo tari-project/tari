@@ -15,6 +15,7 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 #[repr(u8)]
 pub enum TransactionInputVersion {
     V0 = 0,
+    /// Currently only used in tests, this can be used as the next version
     V1 = 1,
 }
 
@@ -61,5 +62,52 @@ impl ConsensusDecoding for TransactionInputVersion {
             .try_into()
             .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
         Ok(version)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn test_as_u8() {
+        assert_eq!(TransactionInputVersion::V0.as_u8(), 0);
+        assert_eq!(TransactionInputVersion::V1.as_u8(), 1);
+    }
+
+    #[test]
+    fn test_try_from() {
+        assert_eq!(TransactionInputVersion::try_from(0), Ok(TransactionInputVersion::V0));
+        assert_eq!(TransactionInputVersion::try_from(1), Ok(TransactionInputVersion::V1));
+        assert!(TransactionInputVersion::try_from(2).is_err());
+    }
+
+    #[test]
+    fn test_encode_exact_size() {
+        assert_eq!(TransactionInputVersion::V0.consensus_encode_exact_size(), 1);
+        assert_eq!(TransactionInputVersion::V1.consensus_encode_exact_size(), 1);
+    }
+
+    #[test]
+    fn test_decode_encode() {
+        let mut buffer = Cursor::new(vec![
+            0;
+            TransactionInputVersion::get_current_version()
+                .consensus_encode_exact_size()
+        ]);
+        assert_eq!(
+            TransactionInputVersion::get_current_version()
+                .consensus_encode(&mut buffer)
+                .unwrap(),
+            TransactionInputVersion::get_current_version().consensus_encode_exact_size()
+        );
+        // Reset the buffer to original position, we are going to read.
+        buffer.set_position(0);
+        assert_eq!(
+            TransactionInputVersion::consensus_decode(&mut buffer).unwrap(),
+            TransactionInputVersion::get_current_version()
+        );
     }
 }
