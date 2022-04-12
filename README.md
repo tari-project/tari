@@ -242,7 +242,7 @@ start Tor service `~/tari/applications/tari_base_node/osx/start_tor` (on Mac),
 
 To run from any directory of your choice, where the executable is visible in the path (first time use):
 
-    tari_base_node --init --create-id
+    tari_base_node --init 
     tari_base_node
 
     tari_console_wallet --init
@@ -264,7 +264,7 @@ Consecutive runs:
 Alternatively, you can run the Tari applications from your source directory using `cargo`, and just omit the `--release`
 flag if you want to run in debug mode (first time use):
 
-    cargo run --bin tari_base_node --release --  --init --create-id
+    cargo run --bin tari_base_node --release --  --init 
     cargo run --bin tari_base_node --release
 
     cargo run --bin tari_merge_mining_proxy --release
