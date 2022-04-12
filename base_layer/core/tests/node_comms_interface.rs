@@ -315,7 +315,6 @@ async fn inbound_fetch_blocks() {
 }
 
 #[tokio::test]
-#[ignore = "broken after validator node merge"]
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
