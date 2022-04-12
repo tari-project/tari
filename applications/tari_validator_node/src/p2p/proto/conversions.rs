@@ -168,13 +168,9 @@ impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPay
         if value.parent.is_empty() {
             return Err(Error::msg("parent not provided"));
         }
-        let state_root = value
-            .state_root
-            .try_into()
-            .map(StateRoot::new)
-            .map_err(|_| Error::msg("Incorrect length for state_root"))?;
+        let state_root = value.state_root.try_into().map(StateRoot::new)?;
         Ok(Self::new(
-            TreeNodeHash::try_from(value.parent).map_err(|_| Error::msg("Incorrect length for parent"))?,
+            TreeNodeHash::try_from(value.parent)?,
             value
                 .payload
                 .map(|p| p.try_into())
@@ -356,12 +352,11 @@ impl TryFrom<proto::validator_node::StateOpLog> for StateOpLogEntry {
             merkle_root: Some(value.merkle_root)
                 .filter(|r| !r.is_empty())
                 .map(TryInto::try_into)
-                .transpose()
-                .map_err(|_| Error::msg("Invalid merkle root value"))?,
+                .transpose()?,
             operation: value
                 .operation
                 .parse()
-                .map_err(|_| Error::msg("Invalid oplog operation string"))?,
+                .map_err(|()| Error::msg("Invalid oplog operation string"))?,
             schema: value.schema,
             key: value.key,
             value: Some(value.value).filter(|v| !v.is_empty()),
