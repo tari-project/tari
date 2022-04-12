@@ -9,7 +9,7 @@ TARI_NETWORK=dibbler
 DATA_FOLDER=tmp/dibbler
 
 # Enable wait for tor network (only basic sleep)
-WAIT_FOR_TOR=1
+WAIT_FOR_TOR=15
 
 # For local image pulling and developement, set the following envs as follows - default is quay.io/tarilabs - latest images
 TL_TAG_URL=local-tarilabs
@@ -23,6 +23,22 @@ TARI_MONEROD_USERNAME=tari
 TARI_MONEROD_PASSWORD=tari
 # Leave blank for mainnet
 MONEROD_EXTRA_OPTIONS="--testnet"
+
+# Preperation folders and Tor
+```
+export DATA_FOLDER=tmp/dibbler
+
+mkdir -p "$DATA_FOLDER/tor"
+cp torrc "$DATA_FOLDER/tor"
+
+mkdir -p "$DATA_FOLDER/config"
+cp log4rs.yml config.toml "$DATA_FOLDER/config/"
+
+mkdir -p "$DATA_FOLDER/base_node"
+mkdir -p "$DATA_FOLDER/xmrig"
+mkdir -p "$DATA_FOLDER/monerod"
+mkdir -p "$DATA_FOLDER/mm_proxy"
+```
 
 First run to create base_node ids
 ```
