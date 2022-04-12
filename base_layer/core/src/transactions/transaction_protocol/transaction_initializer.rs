@@ -52,6 +52,7 @@ use crate::{
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
+            TransactionOutputVersion,
             UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
@@ -227,6 +228,7 @@ impl SenderTransactionInitializer {
             );
         }
         let e = TransactionOutput::build_metadata_signature_challenge(
+            output.version,
             &output.script,
             &output.features,
             &output.sender_offset_public_key,
@@ -391,8 +393,9 @@ impl SenderTransactionInitializer {
                         let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
                         output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
-                            &v,
-                            &change_key.clone(),
+                            TransactionOutputVersion::get_current_version(),
+                            v,
+                            change_key,
                             &change_script,
                             &output_features,
                             &change_sender_offset_private_key,

@@ -44,6 +44,7 @@ use tari_core::{
             OutputFeatures,
             Transaction,
             TransactionOutput,
+            TransactionOutputVersion,
             UnblindedOutput,
             UnblindedOutputBuilder,
         },
@@ -764,7 +765,8 @@ where
                 single_round_sender_data.sender_offset_public_key.clone(),
                 // Note: The commitment signature at this time is only partially built
                 TransactionOutput::create_partial_metadata_signature(
-                    &single_round_sender_data.amount,
+                    TransactionOutputVersion::get_current_version(),
+                    single_round_sender_data.amount,
                     &spending_key,
                     &single_round_sender_data.script,
                     &updated_features,
@@ -1300,7 +1302,8 @@ where
             ..Default::default()
         };
         let metadata_signature = TransactionOutput::create_final_metadata_signature(
-            &amount,
+            TransactionOutputVersion::get_current_version(),
+            amount,
             &spending_key.clone(),
             &script,
             &output_features,
@@ -1646,8 +1649,9 @@ where
             let sender_offset_private_key = PrivateKey::random(&mut OsRng);
             let sender_offset_public_key = PublicKey::from_secret_key(&sender_offset_private_key);
             let metadata_signature = TransactionOutput::create_final_metadata_signature(
-                &output_amount,
-                &spending_key.clone(),
+                TransactionOutputVersion::get_current_version(),
+                output_amount,
+                &spending_key,
                 &script,
                 &output_features,
                 &sender_offset_private_key,
@@ -1656,8 +1660,8 @@ where
             let utxo = DbUnblindedOutput::rewindable_from_unblinded_output(
                 UnblindedOutput::new_current_version(
                     output_amount,
-                    spending_key.clone(),
-                    output_features.clone(),
+                    spending_key,
+                    output_features,
                     script.clone(),
                     inputs!(PublicKey::from_secret_key(&script_private_key)),
                     script_private_key,
