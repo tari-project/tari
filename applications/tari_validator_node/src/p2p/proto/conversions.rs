@@ -349,7 +349,7 @@ impl From<StateOpLogEntry> for proto::validator_node::StateOpLog {
     }
 }
 impl TryFrom<proto::validator_node::StateOpLog> for StateOpLogEntry {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::validator_node::StateOpLog) -> Result<Self, Self::Error> {
         Ok(DbStateOpLogEntry {
@@ -358,11 +358,11 @@ impl TryFrom<proto::validator_node::StateOpLog> for StateOpLogEntry {
                 .filter(|r| !r.is_empty())
                 .map(TryInto::try_into)
                 .transpose()
-                .map_err(|_| "Invalid merkle root value".to_string())?,
+                .map_err(|_| Error::msg("Invalid merkle root value"))?,
             operation: value
                 .operation
                 .parse()
-                .map_err(|_| "Invalid oplog operation string".to_string())?,
+                .map_err(|_| Error::msg("Invalid oplog operation string"))?,
             schema: value.schema,
             key: value.key,
             value: Some(value.value).filter(|v| !v.is_empty()),

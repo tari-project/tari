@@ -216,7 +216,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
             .into_iter()
             .map(TryInto::try_into)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
+            .map_err(|err: Error| ValidatorNodeClientError::InvalidPeerMessage(err.to_string()))?;
 
         Ok(op_logs)
     }
