@@ -36,7 +36,11 @@ pub fn load_configuration<P: AsRef<Path>>(
         .ok_or_else(|| ConfigError::new("Invalid config file path", None))?;
     let mut cfg = Config::builder()
         .add_source(config::File::with_name(filename))
-        .add_source(config::Environment::with_prefix("TARI"));
+        .add_source(
+            config::Environment::with_prefix("TARI")
+                .prefix_separator("_")
+                .separator("__"),
+        );
 
     for (key, value) in overrides {
         cfg = cfg
