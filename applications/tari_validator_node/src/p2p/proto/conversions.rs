@@ -162,25 +162,24 @@ impl TryFrom<proto::consensus::QuorumCertificate> for QuorumCertificate {
 }
 
 impl TryFrom<proto::consensus::HotStuffTreeNode> for HotStuffTreeNode<TariDanPayload> {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::consensus::HotStuffTreeNode) -> Result<Self, Self::Error> {
         if value.parent.is_empty() {
-            return Err("parent not provided".to_string());
+            return Err(Error::msg("parent not provided"));
         }
         let state_root = value
             .state_root
             .try_into()
             .map(StateRoot::new)
-            .map_err(|_| "Incorrect length for state_root")?;
+            .map_err(|_| Error::msg("Incorrect length for state_root"))?;
         Ok(Self::new(
-            TreeNodeHash::try_from(value.parent).map_err(|_| "Incorrect length for parent")?,
+            TreeNodeHash::try_from(value.parent).map_err(|_| Error::msg("Incorrect length for parent"))?,
             value
                 .payload
                 .map(|p| p.try_into())
-                .transpose()
-                .map_err(|err: Error| err.to_string())?
-                .ok_or("payload not provided")?,
+                .transpose()?
+                .ok_or_else(|| Error::msg("payload not provided"))?,
             state_root,
             value.height,
         ))
