@@ -201,7 +201,7 @@ impl TryFrom<proto::common::InstructionSet> for InstructionSet {
         let instructions: Vec<Instruction> = value
             .instructions
             .into_iter()
-            .map(|i| i.try_into())
+            .map(|i| i.try_into().map_err(|err: Error| err.to_string()))
             .collect::<Result<_, String>>()?;
         Ok(Self::from_vec(instructions))
     }
@@ -216,10 +216,10 @@ impl From<InstructionSet> for proto::common::InstructionSet {
 }
 
 impl TryFrom<proto::common::Instruction> for Instruction {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::common::Instruction) -> Result<Self, Self::Error> {
-        let template_id = TemplateId::try_from(value.template_id).map_err(|err| err.to_string())?;
+        let template_id = TemplateId::try_from(value.template_id)?;
         Ok(Self::new(template_id, value.method, value.args))
     }
 }
