@@ -446,7 +446,17 @@ impl P2pInitializer {
             return Ok(Vec::new());
         }
 
-        debug!(target: LOG_TARGET, "Resolving DNS seeds...");
+        debug!(
+            target: LOG_TARGET,
+            "Resolving DNS seeds (NS:{}, addresses: {})...",
+            config.dns_seeds_name_server,
+            config
+                .dns_seeds
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<String>>()
+                .join(",")
+        );
         let start = Instant::now();
 
         let resolver = if config.dns_seeds_use_dnssec {
