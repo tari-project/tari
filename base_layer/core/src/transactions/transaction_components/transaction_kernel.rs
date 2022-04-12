@@ -30,15 +30,13 @@ use std::{
     io::{Read, Write},
 };
 
-use blake2::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashDigest, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_common_types::types::{Commitment, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 
 use super::TransactionKernelVersion;
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::{ConsensusDecoding, ConsensusEncoding},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -128,18 +126,9 @@ impl TransactionKernel {
 }
 
 impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel. The hash is given by
-    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
+    /// Produce a canonical hash for a transaction kernel.
     fn hash(&self) -> Vec<u8> {
-        HashWriter::new(HashDigest::new())
-            .chain(&self.version)
-            .chain(&self.features)
-            .chain(&self.fee)
-            .chain(&self.lock_height)
-            .chain(&self.excess)
-            .chain(&self.excess_sig)
-            .finalize()
-            .to_vec()
+        ConsensusHashWriter::default().chain(self).finalize().to_vec()
     }
 }
 

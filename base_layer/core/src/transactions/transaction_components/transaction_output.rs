@@ -30,7 +30,7 @@ use std::{
     io::{Read, Write},
 };
 
-use digest::{Digest, FixedOutput};
+use digest::FixedOutput;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -39,7 +39,6 @@ use tari_common_types::types::{
     ComSignature,
     Commitment,
     CommitmentFactory,
-    HashDigest,
     PrivateKey,
     PublicKey,
     RangeProof,
@@ -56,8 +55,7 @@ use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -167,6 +165,7 @@ impl TransactionOutput {
     /// Verify that the metadata signature is valid
     pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
+            self.version,
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
@@ -234,6 +233,7 @@ impl TransactionOutput {
             Some(partial_nonce) => self.metadata_signature.public_nonce() + partial_nonce,
         };
         TransactionOutput::build_metadata_signature_challenge(
+            self.version,
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
@@ -245,6 +245,7 @@ impl TransactionOutput {
 
     /// Convenience function that calculates the challenge for the metadata commitment signature
     pub fn build_metadata_signature_challenge(
+        version: TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
@@ -252,19 +253,22 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
     ) -> Challenge {
-        HashWriter::new(Challenge::new())
-            .chain(public_commitment_nonce)
-            .chain(script)
-            .chain(features)
-            .chain(sender_offset_public_key)
-            .chain(commitment)
-            .chain(covenant)
-            .into_digest()
+        match version {
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
+                .chain(public_commitment_nonce)
+                .chain(script)
+                .chain(features)
+                .chain(sender_offset_public_key)
+                .chain(commitment)
+                .chain(covenant)
+                .into_digest(),
+        }
     }
 
     // Create commitment signature for the metadata
 
     fn create_metadata_signature(
+        version: TransactionOutputVersion,
         value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
@@ -284,6 +288,7 @@ impl TransactionOutput {
         let value = PrivateKey::from(value.as_u64());
         let commitment = PedersenCommitmentFactory::default().commit(spending_key, &value);
         let e = TransactionOutput::build_metadata_signature_challenge(
+            version,
             script,
             output_features,
             sender_offset_public_key,
@@ -307,7 +312,8 @@ impl TransactionOutput {
 
     /// Create partial commitment signature for the metadata, usually done by the receiver
     pub fn create_partial_metadata_signature(
-        value: &MicroTari,
+        version: TransactionOutputVersion,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -316,7 +322,8 @@ impl TransactionOutput {
         covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
-            *value,
+            version,
+            value,
             spending_key,
             script,
             output_features,
@@ -329,7 +336,8 @@ impl TransactionOutput {
 
     /// Create final commitment signature for the metadata, signing with both keys
     pub fn create_final_metadata_signature(
-        value: &MicroTari,
+        version: TransactionOutputVersion,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -338,7 +346,8 @@ impl TransactionOutput {
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
-            *value,
+            version,
+            value,
             spending_key,
             script,
             output_features,
@@ -350,7 +359,7 @@ impl TransactionOutput {
     }
 
     pub fn witness_hash(&self) -> Vec<u8> {
-        HashWriter::new(HashDigest::new())
+        ConsensusHashWriter::default()
             .chain(&self.proof)
             .chain(&self.metadata_signature)
             .finalize()

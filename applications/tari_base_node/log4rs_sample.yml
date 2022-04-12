@@ -36,7 +36,7 @@ appenders:
         count: 5
         pattern: "log/base-node/network.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L}"
 
   # An appender named "base_layer" that writes to a file with a custom pattern encoder
   base_layer:
@@ -53,7 +53,7 @@ appenders:
         count: 5
         pattern: "log/base-node/base_layer.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] [{X(node-public-key)},{X(node-id)}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [{X(node-public-key)},{X(node-id)}] {l:5} {m}{n} // {f}:{L} "
 
   # An appender named "other" that writes to a file with a custom pattern encoder
   other:
@@ -70,7 +70,7 @@ appenders:
         count: 5
         pattern: "log/base-node/other.{}.log"
     encoder:
-      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n}"
+      pattern: "{d(%Y-%m-%d %H:%M:%S.%f)} [{t}] [Thread:{I}] {l:5} {m}{n} // {f}:{L} "
 
 # Set the default logging level to "info"
 root:
@@ -105,12 +105,12 @@ loggers:
       - base_layer
   # Route log events sent to the "comms" logger to the "network" appender
   comms:
-    level: info
+    level: debug
     appenders:
       - network
   # Route log events sent to the "p2p" logger to the "network" appender
   p2p:
-    level: info
+    level: debug
     appenders:
       - network
 

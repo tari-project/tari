@@ -25,20 +25,19 @@ use std::{sync::Arc, time::Duration};
 use helpers::{
     block_builders::{append_block, chain_block, create_genesis_block, create_genesis_block_with_utxos},
     event_stream::event_stream_next,
-    nodes::{create_network_with_2_base_nodes_with_config, random_node_identity, wait_until_online, BaseNodeBuilder},
+    nodes::{random_node_identity, wait_until_online, BaseNodeBuilder},
 };
 use randomx_rs::RandomXFlag;
 use tari_common::configuration::Network;
 use tari_comms::{connectivity::ConnectivityEvent, protocol::messaging::MessagingEvent};
 use tari_core::{
     base_node::{
-        comms_interface::{BlockEvent, CommsInterfaceError},
-        service::BaseNodeServiceConfig,
+        comms_interface::BlockEvent,
         state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     },
     blocks::{ChainBlock, NewBlock},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, ConsensusManagerBuilder, NetworkConsensus},
-    mempool::{MempoolServiceConfig, TxStorageResponse},
+    mempool::TxStorageResponse,
     proof_of_work::PowAlgorithm,
     transactions::{
         tari_amount::{uT, T},
@@ -54,7 +53,6 @@ use tari_core::{
     },
 };
 use tari_crypto::tari_utilities::Hashable;
-use tari_p2p::services::liveness::LivenessConfig;
 use tari_test_utils::unpack_enum;
 use tempfile::tempdir;
 
@@ -415,39 +413,6 @@ async fn propagate_and_forward_invalid_block() {
     bob_node.shutdown().await;
     carol_node.shutdown().await;
     dan_node.shutdown().await;
-}
-
-#[tokio::test]
-async fn service_request_timeout() {
-    let network = Network::LocalNet;
-    let consensus_manager = ConsensusManager::builder(network).build();
-    let base_node_service_config = BaseNodeServiceConfig {
-        service_request_timeout: Duration::from_millis(1),
-        fetch_blocks_timeout: Default::default(),
-        fetch_utxos_timeout: Default::default(),
-        desired_response_fraction: Default::default(),
-    };
-    let temp_dir = tempdir().unwrap();
-    let (mut alice_node, bob_node, _consensus_manager) = create_network_with_2_base_nodes_with_config(
-        base_node_service_config,
-        MempoolServiceConfig::default(),
-        LivenessConfig::default(),
-        consensus_manager,
-        temp_dir.path().to_str().unwrap(),
-    )
-    .await;
-
-    let bob_node_id = bob_node.node_identity.node_id().clone();
-    // Bob should not be reachable
-    bob_node.shutdown().await;
-    unpack_enum!(
-        CommsInterfaceError::RequestTimedOut = alice_node
-            .outbound_nci
-            .request_blocks_by_hashes_from_peer(vec![], Some(bob_node_id))
-            .await
-            .unwrap_err()
-    );
-    alice_node.shutdown().await;
 }
 
 #[tokio::test]

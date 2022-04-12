@@ -20,11 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    fs::File,
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{fs::File, path::Path, time::Duration};
 
 use fs2::FileExt;
 use log::*;
@@ -127,8 +123,8 @@ pub fn acquire_exclusive_file_lock(db_path: &Path) -> Result<File, WalletStorage
     Ok(file)
 }
 
-pub fn initialize_sqlite_database_backends(
-    db_path: PathBuf,
+pub fn initialize_sqlite_database_backends<P: AsRef<Path>>(
+    db_path: P,
     passphrase: Option<String>,
     sqlite_pool_size: usize,
 ) -> Result<
@@ -141,7 +137,7 @@ pub fn initialize_sqlite_database_backends(
     ),
     WalletStorageError,
 > {
-    let connection = run_migration_and_create_sqlite_connection(&db_path, sqlite_pool_size).map_err(|e| {
+    let connection = run_migration_and_create_sqlite_connection(db_path, sqlite_pool_size).map_err(|e| {
         error!(
             target: LOG_TARGET,
             "Error creating Sqlite Connection in Wallet: {:?}", e

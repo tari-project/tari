@@ -149,7 +149,7 @@ pub enum TariNetwork {
 }
 
 impl TariNetwork {
-    pub fn lower_case(&self) -> &'static str {
+    pub fn lower_case(self) -> &'static str {
         match self {
             Self::Dibbler => "dibbler",
             Self::Igor => "igor",
@@ -157,7 +157,7 @@ impl TariNetwork {
         }
     }
 
-    pub fn upper_case(&self) -> &'static str {
+    pub fn upper_case(self) -> &'static str {
         match self {
             Self::Dibbler => "DIBBLER",
             Self::Igor => "IGOR",
@@ -188,7 +188,7 @@ impl TryFrom<&str> for TariNetwork {
 
 //-------------------------------------------     ImageType      ----------------------------------------------
 
-#[derive(Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
+#[derive(Debug, Clone, Copy, EnumIter, PartialEq, Eq, Hash, Serialize)]
 pub enum ImageType {
     Tor,
     BaseNode,

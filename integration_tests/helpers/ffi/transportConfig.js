@@ -4,7 +4,7 @@
 const InterfaceFFI = require("./ffiInterface");
 const utf8 = require("utf8");
 
-class TransportType {
+class TransportConfig {
   ptr;
   type = "None";
 
@@ -29,14 +29,14 @@ class TransportType {
   }
 
   static createMemory() {
-    let result = new TransportType();
+    let result = new TransportConfig();
     result.pointerAssign(InterfaceFFI.transportMemoryCreate(), "Memory");
     return result;
   }
 
   static createTCP(listener_address) {
     let sanitize = utf8.encode(listener_address); // Make sure it's not UTF-16 encoded (JS default)
-    let result = new TransportType();
+    let result = new TransportConfig();
     result.pointerAssign(InterfaceFFI.transportTcpCreate(sanitize), "TCP");
     return result;
   }
@@ -51,7 +51,7 @@ class TransportType {
     let sanitize_address = utf8.encode(control_server_address);
     let sanitize_username = utf8.encode(socks_username);
     let sanitize_password = utf8.encode(socks_password);
-    let result = new TransportType();
+    let result = new TransportConfig();
     result.pointerAssign(
       InterfaceFFI.transportTorCreate(
         sanitize_address,
@@ -79,10 +79,10 @@ class TransportType {
   destroy() {
     this.type = "None";
     if (this.ptr) {
-      InterfaceFFI.transportTypeDestroy(this.ptr);
+      InterfaceFFI.transportConfigDestroy(this.ptr);
       this.ptr = undefined; //prevent double free segfault
     }
   }
 }
 
-module.exports = TransportType;
+module.exports = TransportConfig;
