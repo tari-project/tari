@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
@@ -37,7 +34,7 @@ use tari_common::{
 use tari_comms::multiaddr::Multiaddr;
 use tari_comms_dht::DhtConfig;
 
-use crate::transport::TransportConfig;
+use crate::{transport::TransportConfig, DEFAULT_DNS_NAME_SERVER};
 
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,7 +62,7 @@ impl Default for PeerSeedsConfig {
             override_from: None,
             peer_seeds: StringList::default(),
             dns_seeds: StringList::default(),
-            dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
+            dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
             dns_seeds_use_dnssec: false,
         }
     }
