@@ -140,7 +140,7 @@ impl ValidatorNodeRpcClient for TariCommsValidatorNodeRpcClient {
                     .block
                     .ok_or_else(|| ValidatorNodeClientError::invalid_message("Node returned empty block"))?
                     .try_into()
-                    .map_err(ValidatorNodeClientError::InvalidPeerMessage)?;
+                    .map_err(|err: Error| ValidatorNodeClientError::InvalidPeerMessage(err.to_string()))?;
                 Ok(block)
             })
             .collect::<Result<_, ValidatorNodeClientError>>()

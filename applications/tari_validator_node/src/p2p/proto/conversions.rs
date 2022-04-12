@@ -259,19 +259,17 @@ impl From<SideChainBlock> for proto::common::SideChainBlock {
 }
 
 impl TryFrom<proto::common::SideChainBlock> for SideChainBlock {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(block: proto::common::SideChainBlock) -> Result<Self, Self::Error> {
         let node = block
             .node
-            .ok_or_else(|| "No node provided in sidechain block".to_string())?
-            .try_into()
-            .map_err(|err: Error| err.to_string())?;
+            .ok_or_else(|| Error::msg("No node provided in sidechain block"))?
+            .try_into()?;
         let instructions = block
             .instructions
-            .ok_or_else(|| "No InstructionSet provided in sidechain block".to_string())?
-            .try_into()
-            .map_err(|err: Error| err.to_string())?;
+            .ok_or_else(|| Error::msg("No InstructionSet provided in sidechain block"))?
+            .try_into()?;
         Ok(Self::new(node, instructions))
     }
 }
