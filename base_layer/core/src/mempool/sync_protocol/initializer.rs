@@ -72,7 +72,8 @@ impl MempoolSyncInitializer {
 #[async_trait]
 impl ServiceInitializer for MempoolSyncInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let config = self.config;
+        debug!(target: LOG_TARGET, "Initializing Mempool Sync Service");
+        let config = self.config.clone();
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
@@ -108,6 +109,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                 .await;
         });
 
+        debug!(target: LOG_TARGET, "Mempool sync service initialized");
         Ok(())
     }
 }

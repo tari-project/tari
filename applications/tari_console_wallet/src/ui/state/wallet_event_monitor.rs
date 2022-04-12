@@ -73,13 +73,13 @@ impl WalletEventMonitor {
         let mut base_node_changed = wallet_connectivity.get_current_base_node_watcher();
 
         let mut base_node_events = self.app_state_inner.read().await.get_base_node_event_stream();
-        let mut software_update_notif = self
-            .app_state_inner
-            .read()
-            .await
-            .get_software_updater()
-            .new_update_notifier()
-            .clone();
+        // let mut software_update_notif = self
+        //     .app_state_inner
+        //     .read()
+        //     .await
+        //     .get_software_updater()
+        //     .new_update_notifier()
+        //     .clone();
 
         let mut contacts_liveness_events = self.app_state_inner.read().await.get_contacts_liveness_event_stream();
 
@@ -186,26 +186,23 @@ impl WalletEventMonitor {
                     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity status changed");
                     self.trigger_peer_state_refresh().await;
                 },
-                Ok(_) = software_update_notif.changed() => {
-                    trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
-                    let update = software_update_notif.borrow().as_ref().cloned();
-                    if let Some(update) = update {
-                        self.add_notification(format!(
-                            "Version {} of the {} is available: {} (sha: {})",
-                            update.version(),
-                            update.app(),
-                            update.download_url(),
-                            update.to_hash_hex()
-                        )).await;
-                    }
-                },
-                result = connectivity_events.recv() => {
-                    match result {
-                        Ok(msg) => {
-                            trace!(
-                                target: LOG_TARGET,
-                                "Wallet Event Monitor received wallet connectivity event {:?}",
-                                msg
+                // Ok(_) = software_update_notif.changed() => {
+                    //     trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet auto update status changed");
+                    //     let update = software_update_notif.borrow().as_ref().cloned();
+                    //     if let Some(update) = update {
+                    //         self.add_notification(format!(
+                    //             "Version {} of the {} is available: {} (sha: {})",
+                    //             update.version(),
+                    //             update.app(),
+                    //             update.download_url(),
+                    //             update.to_hash_hex()
+                    //         )).await;
+                    //     }
+                    // },
+                    result = connectivity_events.recv() => {
+                        match result {
+                            Ok(msg) => {
+                                trace!(target: LOG_TARGET, "Wallet Event Monitor received wallet connectivity event {:?}", msg
                             );
                             match msg {
                                 ConnectivityEvent::PeerConnected(_) |

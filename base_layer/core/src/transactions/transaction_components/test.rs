@@ -155,7 +155,8 @@ fn range_proof_verification() {
         script.clone(),
         test_params_2.sender_offset_public_key,
         TransactionOutput::create_final_metadata_signature(
-            &value.into(),
+            TransactionOutputVersion::get_current_version(),
+            value.into(),
             &test_params_2.spend_key,
             &script,
             &output_features,

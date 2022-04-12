@@ -923,7 +923,7 @@ async fn setup_comms_dht(
         .with_config(DhtConfig {
             // Use MemoryShared because a Memory connection only seems to work on MacOs
             database_url: DbConnectionUrl::MemoryShared(db_name),
-            saf_config: SafConfig {
+            saf: SafConfig {
                 auto_request: saf_auto_request,
                 ..Default::default()
             },

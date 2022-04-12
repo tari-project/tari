@@ -429,8 +429,11 @@ where
         let bind_address = self.bind_address.clone();
         debug!(target: LOG_TARGET, "Attempting to listen on {}", bind_address);
         self.transport
-            .listen(bind_address)
+            .listen(bind_address.clone())
             .await
-            .map_err(|err| ConnectionManagerError::TransportError(err.to_string()))
+            .map_err(|err| ConnectionManagerError::ListenerError {
+                address: bind_address.to_string(),
+                details: err.to_string(),
+            })
     }
 }

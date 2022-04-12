@@ -1,4 +1,4 @@
-//  Copyright 2021, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -20,6 +20,26 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-pub mod json_rpc;
-pub mod mining;
-pub mod proxy;
+use config::Config;
+use tari_common::{configuration::CommonConfig, ConfigurationError, DefaultConfigLoader};
+use tari_p2p::PeerSeedsConfig;
+use tari_wallet::WalletConfig;
+
+pub struct ApplicationConfig {
+    pub common: CommonConfig,
+    pub wallet: WalletConfig,
+    pub peer_seeds: PeerSeedsConfig,
+}
+
+impl ApplicationConfig {
+    pub fn load_from(cfg: &Config) -> Result<Self, ConfigurationError> {
+        let mut config = Self {
+            common: CommonConfig::load_from(cfg)?,
+            wallet: WalletConfig::load_from(cfg)?,
+            peer_seeds: PeerSeedsConfig::load_from(cfg)?,
+        };
+
+        config.wallet.set_base_path(config.common.base_path());
+        Ok(config)
+    }
+}

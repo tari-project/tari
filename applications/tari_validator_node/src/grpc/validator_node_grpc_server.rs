@@ -73,9 +73,8 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
 
     async fn get_token_data(
         &self,
-        request: tonic::Request<rpc::GetTokenDataRequest>,
+        _request: tonic::Request<rpc::GetTokenDataRequest>,
     ) -> Result<tonic::Response<rpc::GetTokenDataResponse>, tonic::Status> {
-        println!("{:?}", request);
         Err(Status::internal("Oh noes"))
     }
 
@@ -83,7 +82,6 @@ impl<TServiceSpecification: ServiceSpecification + 'static> rpc::validator_node_
         &self,
         request: Request<rpc::InvokeMethodRequest>,
     ) -> Result<Response<rpc::InvokeMethodResponse>, Status> {
-        println!("{:?}", request);
         let request = request.into_inner();
         let asset_public_key = PublicKey::from_bytes(&request.asset_public_key)
             .map_err(|_err| Status::invalid_argument("asset_public_key was not a valid public key"))?;

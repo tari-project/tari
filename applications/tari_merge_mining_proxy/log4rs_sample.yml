@@ -8,6 +8,16 @@
 #  timestamp [target] LEVEL message
 refresh_rate: 30 seconds
 appenders:
+  # An appender named "stdout" that writes to stdout
+  stdout:
+    kind: console
+
+    encoder:
+      pattern: "{d(%H:%M)} {h({l}):5} {m}{n}"
+    filters:
+      - kind: threshold
+        level: warn
+
   # An appender named "proxy" that writes to a file with a custom pattern encoder
   proxy:
     kind: rolling_file
@@ -29,17 +39,20 @@ appenders:
 root:
   level: debug
   appenders:
+    - stdout
     - proxy
 
 loggers:
   h2:
     level: info
     appenders:
+      - stdout
       - proxy
     additive: false
   hyper:
     level: info
     appenders:
+      - stdout
       - proxy
     additive: false
   

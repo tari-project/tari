@@ -95,12 +95,12 @@ loggers:
       - core
     additive: false
   tari_mining_node:
-    level: info
+    level: debug
     appenders:
       - core
     additive: false
   tari_mm_proxy:
-    level: info
+    level: debug
     appenders:
       - core
     additive: false

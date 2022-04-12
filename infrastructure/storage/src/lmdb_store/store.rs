@@ -33,7 +33,7 @@ use lmdb_zero::{
     WriteTransaction,
 };
 use log::*;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::{
     key_val_store::{error::KeyValStoreError, key_val_store::IterationResult},
@@ -46,7 +46,8 @@ const BYTES_PER_MB: usize = 1024 * 1024;
 /// An atomic pointer to an LMDB database instance
 pub type DatabaseRef = Arc<Database<'static>>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LMDBConfig {
     init_size_bytes: usize,
     grow_size_bytes: usize,

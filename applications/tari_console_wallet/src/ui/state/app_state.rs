@@ -30,7 +30,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use tari_common::{configuration::Network, GlobalConfig};
+use tari_common::configuration::Network;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -48,7 +48,6 @@ use tari_core::transactions::{
     weight::TransactionWeight,
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     assets::Asset,
@@ -61,6 +60,7 @@ use tari_wallet::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
+    WalletConfig,
     WalletSqlite,
 };
 use tokio::{
@@ -91,8 +91,8 @@ pub struct AppState {
     cached_data: AppStateData,
     cache_update_cooldown: Option<Instant>,
     completed_tx_filter: TransactionFilter,
-    node_config: GlobalConfig,
     config: AppStateConfig,
+    wallet_config: WalletConfig,
     wallet_connectivity: WalletConnectivityHandle,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
@@ -104,7 +104,7 @@ impl AppState {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-        node_config: GlobalConfig,
+        wallet_config: WalletConfig,
     ) -> Self {
         let wallet_connectivity = wallet.wallet_connectivity.clone();
         let output_manager_service = wallet.output_manager_service.clone();
@@ -117,14 +117,14 @@ impl AppState {
             cached_data,
             cache_update_cooldown: None,
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
-            node_config: node_config.clone(),
             config: AppStateConfig::default(),
             wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
-                Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
+                Duration::from_secs(5),
                 output_manager_service,
             ),
+            wallet_config,
         }
     }
 
@@ -510,7 +510,8 @@ impl AppState {
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
-        (&self.node_config.transaction_num_confirmations_required).to_owned()
+        // TODO: this is not guaranteed to be correct
+        self.wallet_config.num_required_confirmations
     }
 
     pub fn toggle_abandoned_coinbase_filter(&mut self) {
@@ -542,16 +543,11 @@ impl AppState {
     }
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
-        // this should not be empty as we this should have been created, but lets just be safe and use the default value
-        // from the config
-        match self.node_config.wallet_config.as_ref() {
-            Some(config) => config.fee_per_gram.into(),
-            _ => MicroTari::from(5),
-        }
+        self.wallet_config.fee_per_gram.into()
     }
 
-    pub fn get_network(&self) -> Network {
-        self.node_config.network
+    pub async fn get_network(&self) -> Network {
+        self.inner.read().await.get_network()
     }
 }
 pub struct AppStateInner {
@@ -575,6 +571,10 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn get_network(&self) -> Network {
+        self.wallet.network.as_network()
     }
 
     pub fn add_event(&mut self, event: EventListItem) {
@@ -1000,9 +1000,9 @@ impl AppStateInner {
         self.updated = true;
     }
 
-    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
-        self.wallet.get_software_updater()
-    }
+    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+    //     self.wallet.get_software_updater()
+    // }
 }
 
 #[derive(Clone)]

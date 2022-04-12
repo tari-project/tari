@@ -41,15 +41,18 @@ use tempfile::tempdir;
 use tokio::{runtime::Runtime, sync::broadcast::error::TryRecvError};
 pub mod support;
 use support::data::get_temp_sqlite_database_connection;
-use tari_common::configuration::Network;
+use tari_common::configuration::{Network, StringList};
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 use tari_comms_dht::{store_forward::SafConfig, DhtConfig};
 use tari_p2p::{
     comms_connector::pubsub_connector,
-    initialization::{P2pConfig, P2pInitializer},
+    initialization::P2pInitializer,
     services::liveness::{LivenessConfig, LivenessInitializer},
-    transport::TransportType,
-    DEFAULT_DNS_NAME_SERVER,
+    transport::MemoryTransportConfig,
+    P2pConfig,
+    PeerSeedsConfig,
+    TransportConfig,
+    TransportType,
 };
 
 use crate::support::comms_and_services::get_next_memory_address;
@@ -57,16 +60,23 @@ use crate::support::comms_and_services::get_next_memory_address;
 pub fn setup_contacts_service<T: ContactsBackend + 'static>(
     runtime: &mut Runtime,
     backend: T,
-) -> (ContactsServiceHandle, NodeIdentity, Shutdown) {
+) -> (ContactsServiceHandle, Arc<NodeIdentity>, Shutdown) {
     let _enter = runtime.enter();
     let (publisher, subscription_factory) = pubsub_connector(100, 50);
-    const NETWORK: Network = Network::Weatherwax;
-    let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
+    let node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        get_next_memory_address(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
     let comms_config = P2pConfig {
-        network: NETWORK,
-        node_identity: Arc::new(node_identity.clone()),
-        transport_type: TransportType::Memory {
-            listener_address: node_identity.public_address(),
+        override_from: None,
+        public_address: None,
+        transport: TransportConfig {
+            transport_type: TransportType::Memory,
+            memory: MemoryTransportConfig {
+                listener_address: node_identity.public_address(),
+            },
+            ..Default::default()
         },
         auxiliary_tcp_listener_address: None,
         datastore_path: tempdir().unwrap().into_path(),
@@ -77,25 +87,28 @@ pub fn setup_contacts_service<T: ContactsBackend + 'static>(
         dht: DhtConfig {
             discovery_request_timeout: Duration::from_secs(1),
             auto_join: true,
-            saf_config: SafConfig {
+            saf: SafConfig {
                 auto_request: true,
                 ..Default::default()
             },
             ..Default::default()
         },
         allow_test_addresses: true,
-        listener_liveness_allowlist_cidrs: Vec::new(),
+        listener_liveness_allowlist_cidrs: StringList::new(),
         listener_liveness_max_sessions: 0,
         user_agent: "tari/test-wallet".to_string(),
-        dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
-        peer_seeds: Default::default(),
-        dns_seeds: Default::default(),
-        dns_seeds_use_dnssec: false,
+        rpc_max_simultaneous_sessions: 0,
     };
     let peer_message_subscription_factory = Arc::new(subscription_factory);
     let shutdown = Shutdown::new();
     let fut = StackBuilder::new(shutdown.to_signal())
-        .add_initializer(P2pInitializer::new(comms_config, publisher))
+        .add_initializer(P2pInitializer::new(
+            comms_config,
+            PeerSeedsConfig::default(),
+            Network::LocalNet,
+            node_identity.clone(),
+            publisher,
+        ))
         .add_initializer(LivenessInitializer::new(
             LivenessConfig {
                 auto_ping_interval: Some(Duration::from_secs(1)),

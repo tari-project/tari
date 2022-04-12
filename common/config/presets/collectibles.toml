@@ -6,10 +6,10 @@
 
 [collectibles]
 # GRPC address of validator node
-#validator_node_grpc_address = 127.0.0.1:18144
+#validator_node_grpc_address = "/ip4/127.0.0.1/tcp/18144"
 
 # GRPC address of base node
-#base_node_grpc_address = 127.0.0.1:18142
+#base_node_grpc_address = "/ip4/127.0.0.1/tcp/18142"
 
 # GRPC address of wallet
-#wallet_grpc_address = 127.0.0.1:18143
+#wallet_grpc_address = "/ip4/127.0.0.1/tcp/18143"
