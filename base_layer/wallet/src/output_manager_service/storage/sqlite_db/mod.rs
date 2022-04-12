@@ -322,6 +322,19 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         o.try_into()
     }
 
+    fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let conn = self.database_connection.get_pooled_connection()?;
+        let mut outputs = OutputSql::index_unspent(&conn)?;
+        for output in &mut outputs {
+            self.decrypt_if_necessary(output)?;
+        }
+
+        outputs
+            .into_iter()
+            .map(DbUnblindedOutput::try_from)
+            .collect::<Result<Vec<_>, _>>()
+    }
+
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let start = Instant::now();
         let conn = self.database_connection.get_pooled_connection()?;
