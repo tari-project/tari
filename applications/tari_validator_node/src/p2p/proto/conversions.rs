@@ -22,6 +22,7 @@
 
 use std::convert::{TryFrom, TryInto};
 
+use anyhow::Error;
 use tari_common_types::types::PublicKey;
 use tari_crypto::tari_utilities::ByteArray;
 use tari_dan_core::{
@@ -136,7 +137,11 @@ impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPaylo
         Ok(Self::new(
             ViewId(value.view_number),
             HotStuffMessageType::try_from(message_type).map_err(|err| err.to_string())?,
-            value.justify.map(|j| j.try_into()).transpose()?,
+            value
+                .justify
+                .map(|j| j.try_into())
+                .transpose()
+                .map_err(|err: Error| err.to_string())?,
             value.node.map(|n| n.try_into()).transpose()?,
             node_hash,
             value.partial_sig.map(|p| p.try_into()).transpose()?,
@@ -147,15 +152,15 @@ impl TryFrom<proto::consensus::HotStuffMessage> for HotStuffMessage<TariDanPaylo
 }
 
 impl TryFrom<proto::consensus::QuorumCertificate> for QuorumCertificate {
-    type Error = String;
+    type Error = Error;
 
     fn try_from(value: proto::consensus::QuorumCertificate) -> Result<Self, Self::Error> {
-        let message_type = u8::try_from(value.message_type).map_err(|err| err.to_string())?;
+        let message_type = u8::try_from(value.message_type)?;
         Ok(Self::new(
-            HotStuffMessageType::try_from(message_type).map_err(|err| err.to_string())?,
+            HotStuffMessageType::try_from(message_type)?,
             ViewId(value.view_number),
-            TreeNodeHash::try_from(value.node_hash).map_err(|err| err.to_string())?,
-            value.signature.map(|s| s.try_into()).transpose()?,
+            TreeNodeHash::try_from(value.node_hash)?,
+            value.signature.map(|s| s.try_into()).transpose().map_err(Error::msg)?,
         ))
     }
 }
