@@ -94,9 +94,7 @@ impl DbFactory for SqliteDbFactory {
         let database_url = self.database_url_for(asset_public_key);
         debug!("Loading chain database from {}", database_url);
         let path_buf = PathBuf::from(&database_url);
-        let path = path_buf
-            .parent()
-            .ok_or_else(|| StorageError::FileSystemPathDoesNotExist)?;
+        let path = path_buf.parent().ok_or(StorageError::FileSystemPathDoesNotExist)?;
         create_dir_all(&path).map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
         let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
         connection
@@ -131,9 +129,7 @@ impl DbFactory for SqliteDbFactory {
         let database_url = self.database_url_for(asset_public_key);
 
         let path_buf = PathBuf::from(&database_url);
-        let path = path_buf
-            .parent()
-            .ok_or_else(|| StorageError::FileSystemPathDoesNotExist)?;
+        let path = path_buf.parent().ok_or(StorageError::FileSystemPathDoesNotExist)?;
         create_dir_all(&path).map_err(|_| StorageError::FileSystemPathDoesNotExist)?;
 
         let connection = SqliteConnection::establish(database_url.as_str()).map_err(SqliteStorageError::from)?;
