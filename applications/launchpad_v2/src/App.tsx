@@ -1,11 +1,11 @@
-import {useEffect, useState} from 'react';
-import {invoke} from '@tauri-apps/api/tauri';
+import {useEffect, useState} from 'react'
+import {invoke} from '@tauri-apps/api/tauri'
 
-import logo from './logo.svg';
-import './App.css';
+import logo from './logo.svg'
+import './App.css'
 
 function App() {
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<string[]>([])
   useEffect(() => {
     const getFromBackend = async () => {
       const imagesFromBackend = await invoke<string[]>('image_list')
@@ -36,7 +36,7 @@ function App() {
         </p>
       </header>
     </div>
-  );
+  )
 }
 
-export default App;
+export default App
