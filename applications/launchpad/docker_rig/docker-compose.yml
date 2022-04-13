@@ -92,11 +92,11 @@ services:
     environment:
       TARI_LOG_CONFIGURATION: "/var/tari/config/log4rs.yml"
       APP_NAME: sha3_miner
-      APP_EXEC: tari_mining_node
+      APP_EXEC: tari_miner
       WAIT_FOR_TOR: 0
       TARI_NETWORK: ${TARI_NETWORK}
-      TARI_MINING_NODE__NUM_MINING_THREADS: 2
-      TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1
+      TARI_MINER__NUM_MINING_THREADS: 2
+      TARI_MINER__MINE_ON_TIP_ONLY: 1
       TARI_BASE_NODE__DIBBLER__GRPC_BASE_NODE_ADDRESS: "/dns4/base_node/tcp/18142"
       TARI_BASE_NODE__DIBBLER__GRPC_CONSOLE_WALLET_ADDRESS: "/dns4/wallet/tcp/18143"
       TARI_WALLET__GRPC_ADDRESS: "/dns4/wallet/tcp/18143"

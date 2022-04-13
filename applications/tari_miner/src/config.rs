@@ -33,7 +33,7 @@
 //! - mine_on_tip_only - will start mining only when node is reporting bootstrapped state
 //! - validate_tip_timeout_sec - will check tip with node every N seconds to validate that still
 //! mining on a tip
-//! All miner options configured under `[mining_node]` section of
+//! All miner options configured under `[miner]` section of
 //! Tari's `config.toml`.
 
 use std::{str::FromStr, time::Duration};

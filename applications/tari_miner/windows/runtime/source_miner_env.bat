@@ -1,5 +1,5 @@
 @echo off
-title Tari Mining Node
+title Tari Miner
 
 rem Verify arguments
 if ["%config_path%"]==[""] (
@@ -28,15 +28,15 @@ if ["%my_exe%"]==[""] (
     exit /b 10101
 )
 
-rem Find the mining node executable
+rem Find the miner executable
 if exist "%my_exe_path%\%my_exe%" (
-    set mining_node=%my_exe_path%\%my_exe%
+    set miner=%my_exe_path%\%my_exe%
     echo.
     echo Using "%my_exe%" found in %my_exe_path%
     echo.
 ) else (
     if exist "%base_path%\%my_exe%" (
-        set mining_node=%base_path%\%my_exe%
+        set miner=%base_path%\%my_exe%
         echo.
         echo Using "%my_exe%" found in base_path
         echo.
@@ -44,7 +44,7 @@ if exist "%my_exe_path%\%my_exe%" (
         set FOUND=
         for %%X in (%my_exe%) do (set FOUND=%%~$PATH:X)
         if defined FOUND (
-            set mining_node=%my_exe%
+            set miner=%my_exe%
             echo.
             echo Using "%my_exe%" found in system path:
             where "%my_exe%"
@@ -61,14 +61,14 @@ if exist "%my_exe_path%\%my_exe%" (
 
 echo.
 echo.
-if not exist "%config_path%\log4rs_mining_node.yml" (
-    echo Creating new "%config_path%\log4rs_mining_node.yml".
+if not exist "%config_path%\log4rs_miner.yml" (
+    echo Creating new "%config_path%\log4rs_miner.yml".
     set INIT_FLAG=--init
 ) else (
-    echo Using existing "%config_path%\log4rs_mining_node.yml"
+    echo Using existing "%config_path%\log4rs_miner.yml"
     set INIT_FLAG=
 )
 echo.
 
 cd "%base_path%"
-"%mining_node%" %INIT_FLAG% --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_mining_node.yml" --base-path "%base_path%"
+"%miner%" %INIT_FLAG% --config "%config_path%\config.toml" --log_config "%config_path%\log4rs_miner.yml" --base-path "%base_path%"
