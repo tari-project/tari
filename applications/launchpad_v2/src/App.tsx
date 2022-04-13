@@ -1,8 +1,20 @@
-import React from 'react';
+import {useEffect, useState} from 'react';
+import {invoke} from '@tauri-apps/api/tauri';
+
 import logo from './logo.svg';
 import './App.css';
 
 function App() {
+  const [images, setImages] = useState<string[]>([]);
+  useEffect(() => {
+    const getFromBackend = async () => {
+      const imagesFromBackend = await invoke<string[]>('image_list')
+      setImages(imagesFromBackend)
+    }
+
+    getFromBackend()
+  }, [])
+
   return (
     <div className="App">
       <header className="App-header">
@@ -18,6 +30,10 @@ function App() {
         >
           Learn React
         </a>
+
+        <p>available docker images:<br/>
+          {images.map(img => <em key={img}>{img}{', '}</em>)}
+        </p>
       </header>
     </div>
   );
