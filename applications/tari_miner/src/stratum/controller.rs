@@ -32,8 +32,8 @@ use log::*;
 
 use crate::stratum::{error::Error, stratum_types as types, stream::Stream};
 
-pub const LOG_TARGET: &str = "tari_mining_node::miner::stratum::controller";
-pub const LOG_TARGET_FILE: &str = "tari_mining_node::logging::miner::stratum::controller";
+pub const LOG_TARGET: &str = "tari_miner::miner::stratum::controller";
+pub const LOG_TARGET_FILE: &str = "tari_miner::logging::miner::stratum::controller";
 
 pub struct Controller {
     server_url: String,

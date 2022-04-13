@@ -527,11 +527,11 @@ tor_control_address = "/ip4/127.0.0.1/tcp/9051"
 
 ########################################################################################################################
 #                                                                                                                      #
-#                                             Mining Node Configuration Options                                        #
+#                                                Miner Configuration Options                                           #
 #                                                                                                                      #
 ########################################################################################################################
 
-[mining_node]
+[miner]
 # Number of mining threads
 # Default: number of logical CPU cores
 #num_mining_threads=8

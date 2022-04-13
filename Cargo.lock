@@ -7157,7 +7157,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_mining_node"
+name = "tari_miner"
 version = "0.31.1"
 dependencies = [
  "base64 0.13.0",

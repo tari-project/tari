@@ -19,7 +19,7 @@ class MiningNodeProcess {
     logFilePath,
     mineOnTipOnly = true
   ) {
-    this.name = `MiningNode-${name}`;
+    this.name = `Miner-${name}`;
     this.maxBlocks = 1;
     this.mineTillHeight = 1000000;
     this.walletAddress = walletAddress;
@@ -166,13 +166,13 @@ class MiningNodeProcess {
         "build",
         "--release",
         "--bin",
-        "tari_mining_node",
+        "tari_miner",
         "-Z",
         "unstable-options",
         "--out-dir",
         __dirname + "/../temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_mining_node";
+      outputProcess = __dirname + "/../temp/out/tari_miner";
     }
     return outputProcess;
   }
