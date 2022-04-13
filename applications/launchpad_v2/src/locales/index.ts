@@ -11,8 +11,8 @@ import commonI18n from './common'
 import miningI18n from './mining'
 
 const transalations = {
-	common: commonI18n,
-	mining: miningI18n,
+  common: commonI18n,
+  mining: miningI18n,
 }
 
 export default transalations
