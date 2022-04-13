@@ -1178,7 +1178,7 @@ fn store_and_retrieve_blocks_from_contents() {
             generate_new_block(&mut db, &mut blocks, &mut outputs, schema, &consensus_manager).unwrap()
     );
     let kernel_sig = blocks[1].block().body.kernels()[0].clone().excess_sig;
-    let utxo_commit = blocks[1].block().body.outputs()[0].clone().commitment;
+    let utxo_commit = blocks.last().unwrap().block().body.outputs()[0].clone().commitment;
     assert_eq!(
         db.fetch_block_with_kernel(kernel_sig)
             .unwrap()
@@ -1194,7 +1194,7 @@ fn store_and_retrieve_blocks_from_contents() {
             .unwrap()
             .try_into_chain_block()
             .unwrap(),
-        blocks[1]
+        blocks[2]
     );
 }
 
