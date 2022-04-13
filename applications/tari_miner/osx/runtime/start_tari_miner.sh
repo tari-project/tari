@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 echo
-echo "Starting Mining Node"
+echo "Starting Miner"
 echo
 
 # Initialize

@@ -64,7 +64,7 @@ mod utils;
 /// Application entry point
 fn main() {
     let rt = Runtime::new().expect("Failed to start tokio runtime");
-    let terminal_title = format!("Tari Mining Node - Version {}", consts::APP_VERSION);
+    let terminal_title = format!("Tari Miner - Version {}", consts::APP_VERSION);
     if let Err(e) = execute!(stdout(), SetTitle(terminal_title.as_str())) {
         println!("Error setting terminal title. {}", e)
     }
@@ -85,7 +85,7 @@ async fn main_inner() -> Result<(), ExitError> {
     let config_path = cli.common.config_path();
     let cfg = load_configuration(config_path.as_path(), true, &cli.common.config_property_overrides)?;
     initialize_logging(
-        &cli.common.log_config_path("mining_node"),
+        &cli.common.log_config_path("miner"),
         include_str!("../log4rs_sample.yml"),
     )?;
     let config = MinerConfig::load_from(&cfg).expect("Failed to load config");

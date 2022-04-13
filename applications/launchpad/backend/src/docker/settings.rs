@@ -495,7 +495,7 @@ impl LaunchpadConfig {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
                 "APP_NAME: sha3_miner".to_string(),
-                "APP_EXEC: tari_mining_node".to_string(),
+                "APP_EXEC: tari_miner".to_string(),
                 format!("TARI_MINER__NUM_MINING_THREADS: {}", config.num_mining_threads),
                 "TARI_MINER__MINE_ON_TIP_ONLY: 1".to_string(),
                 // This setting should be made obsolete soon:

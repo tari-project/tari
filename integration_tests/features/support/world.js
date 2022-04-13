@@ -657,7 +657,7 @@ BeforeAll({ timeout: 2400000 }, async function () {
     // this.logFilePathMiningNode
   );
 
-  console.log("Compiling mining node...");
+  console.log("Compiling miner...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 

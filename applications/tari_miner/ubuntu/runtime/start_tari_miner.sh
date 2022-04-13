@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 echo
-echo "Starting Mining Node"
+echo "Starting Miner"
 echo
 
 # Initialize
@@ -24,6 +24,6 @@ fi
 echo
 
 # Run
-echo Spawning Mining Node into new terminal..
+echo Spawning Miner into new terminal..
 echo
 gnome-terminal --working-directory="$PWD" -- "${exe_path}/tari_miner" ${init_flag} --config "${config_path}/config.toml" --log_config "${config_path}/log4rs_miner.yml" --base-path ${base_path}
