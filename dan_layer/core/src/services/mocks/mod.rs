@@ -432,6 +432,12 @@ pub fn mock_checkpoint_manager() -> ConcreteCheckpointManager<MockWalletClient> 
     ConcreteCheckpointManager::<MockWalletClient>::new(AssetDefinition::default(), MockWalletClient::default())
 }
 
+pub fn create_public_key() -> RistrettoPublicKey {
+    let mut rng = rand::thread_rng();
+    let (_, address) = <RistrettoPublicKey as tari_crypto::keys::PublicKey>::random_keypair(&mut rng);
+    address
+}
+
 #[derive(Default, Clone)]
 pub struct MockServiceSpecification;
 

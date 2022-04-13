@@ -398,7 +398,7 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
 
 #[cfg(test)]
 mod test {
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+    use tari_crypto::ristretto::RistrettoPublicKey;
     use tari_shutdown::Shutdown;
     use tokio::task::JoinHandle;
 
@@ -412,6 +412,7 @@ mod test {
         services::{
             infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
             mocks::{
+                create_public_key,
                 mock_base_node_client,
                 mock_checkpoint_manager,
                 mock_events_publisher,
@@ -466,18 +467,18 @@ mod test {
         tokio::spawn(async move {
             let max_views_to_process = Some(2);
             let stop = Arc::new(AtomicBool::default());
-            let _res = replica_a.run(shutdown_signal, max_views_to_process, stop);
+            let _res = replica_a.run(shutdown_signal, max_views_to_process, stop).await;
         })
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_simple_case() {
         let mut shutdown = Shutdown::new();
         let signal = shutdown.to_signal();
 
-        let mut rng = rand::thread_rng();
-        let (_, address_a) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (_, address_b) = RistrettoPublicKey::random_keypair(&mut rng);
+        let address_a = create_public_key();
+        let address_b = create_public_key();
 
         let committee = Committee::new(vec![address_a.clone(), address_b.clone()]);
         let mut outbound = mock_outbound(committee.members.clone());

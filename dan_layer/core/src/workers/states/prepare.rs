@@ -395,13 +395,12 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
 mod test {
     use std::time::Duration;
 
-    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
-
     use crate::{
         models::{AssetDefinition, Committee, HotStuffMessage, QuorumCertificate, TreeNodeHash, View, ViewId},
         services::{
             infrastructure_services::{mocks::mock_outbound, OutboundService},
             mocks::{
+                create_public_key,
                 mock_payload_processor,
                 mock_signing_service,
                 mock_static_payload_provider,
@@ -419,12 +418,11 @@ mod test {
         // let mut inbound = mock_inbound();
         // let mut sender = inbound.create_sender();
         let locked_qc = QuorumCertificate::genesis(TreeNodeHash::zero());
-        let mut rng = rand::thread_rng();
-        let (_, asset_public_key) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (_, address_a) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (_, address_b) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (_, address_c) = RistrettoPublicKey::random_keypair(&mut rng);
-        let (_, address_d) = RistrettoPublicKey::random_keypair(&mut rng);
+        let asset_public_key = create_public_key();
+        let address_a = create_public_key();
+        let address_b = create_public_key();
+        let address_c = create_public_key();
+        let address_d = create_public_key();
 
         let mut state = Prepare::<MockServiceSpecification>::new(address_b.clone(), asset_public_key.clone());
         let current_view = View {
