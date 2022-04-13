@@ -52,6 +52,10 @@ pub enum DbConnectionUrl {
 }
 
 impl DbConnectionUrl {
+    pub fn file<P: AsRef<Path>>(path: P) -> Self {
+        DbConnectionUrl::File(path.as_ref().to_path_buf())
+    }
+
     pub fn to_url_string(&self) -> String {
         use DbConnectionUrl::{File, Memory, MemoryShared};
         match self {

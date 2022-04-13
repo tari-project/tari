@@ -1,30 +1,9 @@
 # Config for launchpad v0.0.2
 [common]
-config = "dibbler"
-message_cache_size = 10
-message_cache_ttl = 1440
-denylist_ban_period = 1440
-buffer_rate_limit_console_wallet = 1000
-dedup_cache_capacity = 25000
-rpc_max_simultaneous_sessions = 1000
 
-[common.igor]
-network = "igor"
-peer_seeds = [
-    # igor
-    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
-    "00b35047a341401bcd336b2a3d564280a72f6dc72ec4c739d30c502acce4e803::/onion3/ojhxd7z6ga7qrvjlr3px66u7eiwasmffnuklscbh5o7g6wrbysj45vid:18141",
-    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
-    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
-]
-dns_seeds = ["seeds.igor.tari.com"]
-dns_seeds_use_dnssec = false
-
-[common.dibbler]
-network = "dibbler"
+[dibbler.p2p.seeds]
 dns_seeds = ["seeds.dibbler.tari.com"]
 peer_seeds = [
-    "721e9da488302e69523bca1a9cdcbd2419dddda11698a1e8c6c7bd619659ff21::/onion3/qw4ymrzbanbcr3wwlesxbot72iayd7xdjcrtnacbwgk637vfon47hqad:18141",
     # 333388d1cbe3e2bd17453d052f
     "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
     # 555575715a49fc242d756e52ca
@@ -41,78 +20,62 @@ peer_seeds = [
     "b0f797e7413b39b6646fa370e8394d3993ead124b8ba24325c3c07a05e980e7e::/ip4/35.177.93.69/tcp/18189",
     # 22221bf814d5e524fce9ba5787
     "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189",
-    # 4444a0efd8388739d563bdd979
+    # 4444a0efd8388739d563bdd979
     "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
 ]
 
 [base_node]
-config = "dibbler"
-grpc_enabled = true
+network = "dibbler"
 grpc_address = "/ip4/0.0.0.0/tcp/18142"
+
+[base_node.storage]
 track_reorgs = true
 
-[base_node.dibbler]
-network = "dibbler"
-db_type = "lmdb"
-flood_ban_max_msg_count = 100_000
-allow_test_addresses = false
-base_node_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
-base_node_tor_identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_tor.json"
-# -------------- Transport configuration --------------
-transport = "tor"
-tor_control_auth = "password=tari"
-tor_forward_address = "/dns4/base_node/tcp/18189"
-tcp_listener_address = "/dns4/base_node/tcp/18189"
-tor_socks_address_override = "/dns4/tor/tcp/9050"
-tor_control_address = "/dns4/tor/tcp/9051"
+[dibbler.base_node]
+identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
 
-
-[base_node.igor]
+[igor.base_node]
 network = "igor"
-db_type = "lmdb"
-flood_ban_max_msg_count = 100_000
-allow_test_addresses = false
-use_libtor = false
 base_node_identity_file = "/var/tari/base_node/config/igor/base_node_id.json"
-base_node_tor_identity_file = "/var/tari/base_node/config/igor/tari_base_node_tor.json"
+
+[base_node.p2p.transport]
+tor.control_auth = "password=tari"
+#tcp.listener_address = "/dns4/base_node/tcp/18189"
+tor.socks_address_override = "/dns4/tor/tcp/9050"
+tor.control_address = "/dns4/tor/tcp/9051"
+
 
 [wallet]
-config = "dibbler"
-wallet_db_file = "wallet/wallet.dat"
-console_wallet_db_file = "wallet/console-wallet.dat"
-grpc_enabled = true
+override_from = "dibbler"
+db_file = "wallet/wallet.dat"
 grpc_address = "/ip4/0.0.0.0/tcp/18143"
 password = "tari"
-# The following are overridden in Tauri environment variables for ALL networks - so just here for informational purposes
-transport = "tor"
-tor_control_auth = "password=tari"
-tor_control_address = "/dns4/tor/tcp/9051"
-tor_socks_address_override = ""
-tor_forward_address = ""
-tcp_listener_address = ""
 
-[wallet.dibbler]
+[wallet.p2p]
+
+[wallet.p2p.transport]
+type = "tor"
+tor.control_auth = "password=tari"
+tor.control_address = "/dns4/tor/tcp/9051"
+tor.socks_address_override = "/dns4/tor/tcp/9050"
+
+[dibbler.wallet]
 network = "dibbler"
-use_libtor = false
-tor_onion_port = 18141
+#use_libtor = false
+#tor_onion_port = 18141
 
-[wallet.igor]
+[igor.wallet]
 network = "igor"
-use_libtor = false
-tor_onion_port = 18141
+#use_libtor = false
+#tor_onion_port = 18141
 
-[mining_node]
-num_mining_threads = 1
+[miner]
 base_node_grpc_address = "/dns4/base_node/tcp/18142"
 wallet_grpc_address = "/dns4/wallet/tcp/18143"
-base_node_addr = "/dns4/base_node/tcp/18142"
-wallet_addr = "/dns4/wallet/tcp/18143"
 mine_on_tip_only = true
 
 [merge_mining_proxy]
-config = "dibbler"
-
-[merge_mining_proxy.dibbler]
+#config = "dibbler"
 monerod_url = [ # stagenet
     "http://stagenet.xmr-tw.org:38081",
     "http://stagenet.community.xmr.to:38081",
@@ -122,21 +85,10 @@ monerod_url = [ # stagenet
 ]
 base_node_grpc_address = "/dns4/base_node/tcp/18142"
 console_wallet_grpc_address = "/dns4/wallet/tcp/18143"
-proxy_host_address = "/dns4/mm_proxy/tcp/18081"
-proxy_submit_to_origin = true
-wait_for_initial_sync_at_startup = true
+listener_address = "/dns4/mm_proxy/tcp/18081"
+submit_to_origin = true
 monerod_username = ""
 monerod_password = ""
 monerod_use_auth = false
 
-[merge_mining_proxy.local]
-grpc_base_node_address = "/ip4/127.0.0.1/tcp/18142"
-grpc_console_wallet_address = "/ip4/127.0.0.1/tcp/18143"
-proxy_host_address = "/ip4/127.0.0.1/tcp/18081"
-proxy_submit_to_origin = false
-wait_for_initial_sync_at_startup = true
 
-[validator_node]
-committee = ["2ea0df3059caf4411624d6bf5b9c02238d607d2798c586b3e6c2a054da3f205a"] # cannot be of zero size
-phase_timeout = 30
-template_id = "EditableMetadata"

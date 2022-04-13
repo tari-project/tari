@@ -20,10 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::{
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use tari_common::{
@@ -35,9 +32,9 @@ use tari_common::{
     SubConfigPath,
 };
 use tari_comms::multiaddr::Multiaddr;
-use tari_comms_dht::DhtConfig;
+use tari_comms_dht::{DbConnectionUrl, DhtConfig};
 
-use crate::transport::TransportConfig;
+use crate::{transport::TransportConfig, DEFAULT_DNS_NAME_SERVER};
 
 /// Peer seed configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -65,7 +62,7 @@ impl Default for PeerSeedsConfig {
             override_from: None,
             peer_seeds: StringList::default(),
             dns_seeds: StringList::default(),
-            dns_seeds_name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
+            dns_seeds_name_server: DEFAULT_DNS_NAME_SERVER.parse().unwrap(),
             dns_seeds_use_dnssec: false,
         }
     }
@@ -134,7 +131,10 @@ impl Default for P2pConfig {
             max_concurrent_inbound_tasks: 50,
             max_concurrent_outbound_tasks: 100,
             outbound_buffer_size: 100,
-            dht: Default::default(),
+            dht: DhtConfig {
+                database_url: DbConnectionUrl::file("dht.sqlite"),
+                ..Default::default()
+            },
             allow_test_addresses: false,
             listener_liveness_max_sessions: 0,
             listener_liveness_allowlist_cidrs: StringList::default(),
