@@ -1,0 +1,7 @@
+# Standard config for the tor client - /etc/tor/torrc
+SocksPort 0.0.0.0:9050
+ControlPort 0.0.0.0:9051
+CookieAuthentication 0
+ClientOnly 1
+ClientUseIPv6 1
+HashedControlPassword 16:29AAD7BADA64895D604EE18A5549712C9DADAF373B72D7DEF0D4AE97AE

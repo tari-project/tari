@@ -6,10 +6,22 @@
   "build": {
     "distDir": "../build",
     "devPath": "http://localhost:3000",
-    "beforeDevCommand": "yarn start",
-    "beforeBuildCommand": "yarn build"
+    "beforeDevCommand": "cd ../ && yarn start",
+    "beforeBuildCommand": "cd ../ && yarn build"
   },
   "tauri": {
+    "cli": {
+      "description": "A simple single-click UI to launch a Tari node, wallet and miner",
+      "args": [
+        {
+          "short": "c",
+          "name": "config-file",
+          "description": "The path to the configuration file to use for the launcher",
+          "takesValue": true
+        }
+      ],
+      "subcommands": {}
+    },
     "bundle": {
       "active": true,
       "targets": "all",
@@ -21,9 +33,9 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "resources": [],
+      "resources": ["assets/*"],
       "externalBin": [],
-      "copyright": "",
+      "copyright": "(c) The Tari Development community 2021",
       "category": "DeveloperTool",
       "shortDescription": "",
       "longDescription": "",
@@ -49,19 +61,22 @@
       "active": false
     },
     "allowlist": {
+      "dialog": {
+        "open": true
+      },
       "all": true
     },
     "windows": [
       {
         "title": "Tari Launchpad",
-        "width": 800,
-        "height": 600,
+        "width": 1600,
+        "height": 800,
         "resizable": true,
         "fullscreen": false
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-eval' 'unsafe-inline' 'self' img-src: 'self'"
     }
   }
 }
