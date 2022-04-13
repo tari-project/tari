@@ -1442,7 +1442,6 @@ fn orphan_cleanup_on_block_add() {
 }
 
 #[test]
-#[ignore = "take a look at orphan cleanup, seems not to be implemented anymore in add block"]
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_dibbler_genesis_block();
