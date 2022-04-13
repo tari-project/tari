@@ -65,3 +65,25 @@ impl ConsensusDecoding for KernelFeatures {
         Ok(KernelFeatures { bits: buf[0] })
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn test_consensus() {
+        let mut buffer = Cursor::new(vec![0; KernelFeatures::create_coinbase().consensus_encode_exact_size()]);
+        assert_eq!(
+            KernelFeatures::create_coinbase().consensus_encode(&mut buffer).unwrap(),
+            KernelFeatures::create_coinbase().consensus_encode_exact_size()
+        );
+        // Reset the buffer to original position, we are going to read.
+        buffer.set_position(0);
+        assert_eq!(
+            KernelFeatures::consensus_decode(&mut buffer).unwrap(),
+            KernelFeatures::create_coinbase()
+        );
+    }
+}

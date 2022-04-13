@@ -178,3 +178,36 @@ impl UnblindedOutputBuilder {
         self
     }
 }
+
+#[cfg(test)]
+mod test {
+    use tari_crypto::ristretto::RistrettoSecretKey;
+
+    use super::*;
+
+    #[test]
+    fn test_try_build() {
+        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
+        assert!(uob
+            .sign_as_receiver(PublicKey::default(), PublicKey::default())
+            .is_err());
+        assert!(uob.sign_as_sender(&PrivateKey::default()).is_err());
+        let mut uob = uob.with_script(TariScript::new(vec![]));
+        assert!(uob.clone().try_build().is_err());
+        assert!(uob.sign_as_receiver(PublicKey::default(), PublicKey::default()).is_ok());
+        assert!(uob.clone().try_build().is_err());
+        assert!(uob.sign_as_sender(&PrivateKey::default()).is_ok());
+        let uob = uob.with_input_data(ExecutionStack::new(vec![]));
+        let uob = uob.with_script_private_key(RistrettoSecretKey::default());
+        let uob = uob.with_features(OutputFeatures::default());
+        assert!(uob.try_build().is_ok());
+    }
+
+    #[test]
+    fn test_update_recovery_byte_if_required() {
+        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
+        assert!(uob
+            .update_recovery_byte_if_required(&CryptoFactories::default(), None)
+            .is_ok());
+    }
+}

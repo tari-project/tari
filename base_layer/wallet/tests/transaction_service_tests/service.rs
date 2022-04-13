@@ -466,7 +466,6 @@ fn try_decode_transaction_cancelled_message(bytes: Vec<u8>) -> Option<proto::Tra
 }
 
 #[test]
-#[ignore = "broken since validator node merge"]
 fn manage_single_transaction() {
     let mut runtime = create_runtime();
 

@@ -180,7 +180,7 @@ impl ConsensusDecoding for TransactionKernel {
         let lock_height = u64::consensus_decode(reader)?;
         let excess = Commitment::consensus_decode(reader)?;
         let excess_sig = Signature::consensus_decode(reader)?;
-        let input = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig);
-        Ok(input)
+        let kernel = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig);
+        Ok(kernel)
     }
 }
