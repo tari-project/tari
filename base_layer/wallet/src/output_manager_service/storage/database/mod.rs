@@ -249,6 +249,12 @@ where T: OutputManagerBackend + 'static
         Ok(utxos)
     }
 
+    pub fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let mut utxos = self.db.fetch_sorted_unspent_outputs()?;
+        utxos.sort();
+        Ok(utxos)
+    }
+
     pub fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let utxos = self.db.fetch_mined_unspent_outputs()?;
         Ok(utxos)

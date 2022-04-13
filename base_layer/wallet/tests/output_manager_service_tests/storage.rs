@@ -80,7 +80,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     unspent_outputs.sort();
 
-    let outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let outputs = db.fetch_sorted_unspent_outputs().unwrap();
     assert_eq!(unspent_outputs, outputs);
 
     // Add some sent transactions with outputs to be spent and received
@@ -284,7 +284,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(mined_unspent_outputs.len(), 3);
 
-    let unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let unspent_outputs = db.fetch_sorted_unspent_outputs().unwrap();
     assert_eq!(unspent_outputs.len(), 6);
 
     let last_mined_output = db.get_last_mined_output().unwrap().unwrap();
@@ -309,12 +309,11 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Test cancelling a pending transaction
     db.cancel_pending_transaction_outputs(pending_txs[2].tx_id).unwrap();
 
-    let unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
+    let unspent_outputs = db.fetch_sorted_unspent_outputs().unwrap();
     assert_eq!(unspent_outputs.len(), 10);
 }
 
 #[test]
-#[ignore = "to be fixed"]
 pub fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
@@ -322,7 +321,6 @@ pub fn test_output_manager_sqlite_db() {
 }
 
 #[test]
-#[ignore = "to be fixed"]
 pub fn test_output_manager_sqlite_db_encrypted() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
