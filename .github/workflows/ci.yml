@@ -27,9 +27,9 @@ jobs:
     steps:
       - name: checkout
         uses: actions/checkout@v2
-      - name: npm audit launchpad gui
+      - name: npm audit launchpad_v2 gui
         run: |
-          cd applications/launchpad/gui-vue
+          cd applications/launchpad_v2
           npm audit
       - name: npm audit collectibles
         run: |
