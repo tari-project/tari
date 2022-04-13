@@ -43,20 +43,24 @@ macro_rules! wrap_in_envelope_body {
 }
 
 impl EnvelopeBody {
+    /// New empty envelope body.
     pub fn new() -> Self {
         Self {
             parts: Default::default(),
         }
     }
 
+    /// Number of parts contained within this envelope.
     pub fn len(&self) -> usize {
         self.parts.len()
     }
 
+    /// Total size of all parts contained within this envelope.
     pub fn total_size(&self) -> usize {
         self.parts.iter().fold(0, |acc, b| acc + b.len())
     }
 
+    /// Returns true if the envelope is empty, otherwise false.
     pub fn is_empty(&self) -> bool {
         self.parts.is_empty()
     }
@@ -69,10 +73,12 @@ impl EnvelopeBody {
             .map(|i| self.parts.remove(i))
     }
 
+    /// Push a new part to the end of the envelope.
     pub fn push_part(&mut self, part: Vec<u8>) {
         self.parts.push(part)
     }
 
+    /// Returns a Vec of message blobs.
     pub fn into_inner(self) -> Vec<Vec<u8>> {
         self.parts
     }

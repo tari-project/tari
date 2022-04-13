@@ -28,8 +28,10 @@ use std::{
 
 use super::{node_id::NodeIdError, NodeId};
 
+/// The distance metric used by the [PeerManager](super::PeerManager).
 pub type NodeDistance = XorDistance;
 
+/// The XOR distance metric.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct XorDistance(u128);
 
@@ -69,10 +71,12 @@ impl XorDistance {
             .saturating_sub(1)
     }
 
+    /// Byte representation of the distance value.
     pub fn to_bytes(&self) -> [u8; Self::byte_size()] {
         self.0.to_be_bytes()
     }
 
+    /// Distance represented as a 128-bit unsigned integer.
     pub fn as_u128(&self) -> u128 {
         self.0
     }

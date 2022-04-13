@@ -28,6 +28,7 @@ use crate::stream_id::{Id, StreamId};
 /// Tari comms canonical framing
 pub type CanonicalFraming<T> = Framed<T, LengthDelimitedCodec>;
 
+/// Create a length-delimited frame around the given stream reader/writer with the given maximum frame length.
 pub fn canonical<T>(stream: T, max_frame_len: usize) -> CanonicalFraming<T>
 where T: AsyncRead + AsyncWrite + Unpin {
     Framed::new(

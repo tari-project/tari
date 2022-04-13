@@ -61,13 +61,8 @@ const LOG_TARGET: &str = "comms::connectivity::manager";
 /// # Connectivity Manager
 ///
 /// The ConnectivityManager actor is responsible for tracking the state of all peer
-/// connections in the system and maintaining a _managed pool_ of peer connections.
-/// It provides a simple interface to fetch active peer connections.
-/// Selection includes selecting a single peer, random selection and selecting connections
-/// closer to a `NodeId`.
+/// connections in the system and maintaining a _pool_ of peer connections.
 ///
-/// Additionally, set of managed peers can be provided. ConnectivityManager actor will
-/// attempt to ensure that all provided peers have active peer connections.
 /// It emits [ConnectivityEvent](crate::connectivity::ConnectivityEvent)s that can keep client components
 /// in the loop with the state of the node's connectivity.
 pub struct ConnectivityManager {
@@ -101,11 +96,16 @@ impl ConnectivityManager {
     }
 }
 
+/// Node connectivity status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectivityStatus {
+    /// Initial connectivity status before the Connectivity actor has initialized.
     Initializing,
+    /// Connectivity is online.
     Online(usize),
+    /// Connectivity is less than the required minimum, but some connections are still active.
     Degraded(usize),
+    /// There are no active connections.
     Offline,
 }
 
