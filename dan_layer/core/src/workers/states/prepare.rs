@@ -393,65 +393,111 @@ impl<TSpecification: ServiceSpecification> Prepare<TSpecification> {
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use tari_crypto::{keys::PublicKey, ristretto::RistrettoPublicKey};
+
+    use crate::{
+        models::{AssetDefinition, Committee, HotStuffMessage, QuorumCertificate, TreeNodeHash, View, ViewId},
+        services::{
+            infrastructure_services::{mocks::mock_outbound, OutboundService},
+            mocks::{
+                mock_payload_processor,
+                mock_signing_service,
+                mock_static_payload_provider,
+                MockChainStorageService,
+                MockServiceSpecification,
+            },
+        },
+        storage::{mocks::MockDbFactory, DbFactory},
+        workers::states::{ConsensusWorkerStateEvent, Prepare},
+    };
 
     #[tokio::test(flavor = "multi_thread")]
-    #[ignore = "missing implementations"]
+    #[ignore]
     async fn basic_test_as_leader() {
-        todo!()
-        // // let mut inbound = mock_inbound();
-        // // let mut sender = inbound.create_sender();
-        // let locked_qc = QuorumCertificate::genesis("Hello world");
-        // let mut state = Prepare::new("B", Arc::new(locked_qc));
-        // let view = View {
-        //     view_id: ViewId(1),
-        //     is_leader: true,
-        // };
-        // let committee = Committee::new(vec!["A", "B", "C", "D"]);
-        // let mut outbound = mock_outbound(committee.members.clone());
-        // let mut outbound2 = outbound.clone();
-        // let mut inbound = outbound.take_inbound(&"B").unwrap();
-        // let payload_provider = mock_payload_provider();
-        // let mut payload_processor = mock_payload_processor();
-        // let signing = mock_signing_service();
-        // let task = state.next_event(
-        //     &view,
-        //     Duration::from_secs(10),
-        //     &committee,
-        //     &mut inbound,
-        //     &mut outbound,
-        //     &payload_provider,
-        //     &signing,
-        //     &mut payload_processor,
-        // );
-        //
-        // outbound2
-        //     .send(
-        //         "A",
-        //         "B",
-        //         HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-        //     )
-        //     .await
-        //     .unwrap();
-        //
-        // outbound2
-        //     .send(
-        //         "C",
-        //         "B",
-        //         HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-        //     )
-        //     .await
-        //     .unwrap();
-        //
-        // outbound2
-        //     .send(
-        //         "D",
-        //         "B",
-        //         HotStuffMessage::new_view(QuorumCertificate::genesis("empty"), ViewId(0)),
-        //     )
-        //     .await
-        //     .unwrap();
-        //
-        // let event = task.await.unwrap();
-        // assert_eq!(event, ConsensusWorkerStateEvent::Prepared);
+        // let mut inbound = mock_inbound();
+        // let mut sender = inbound.create_sender();
+        let locked_qc = QuorumCertificate::genesis(TreeNodeHash::zero());
+        let mut rng = rand::thread_rng();
+        let (_, asset_public_key) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_, address_a) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_, address_b) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_, address_c) = RistrettoPublicKey::random_keypair(&mut rng);
+        let (_, address_d) = RistrettoPublicKey::random_keypair(&mut rng);
+
+        let mut state = Prepare::<MockServiceSpecification>::new(address_b.clone(), asset_public_key.clone());
+        let current_view = View {
+            view_id: ViewId(1),
+            is_leader: true,
+        };
+        let timeout = Duration::from_secs(10);
+        let asset_definition = AssetDefinition::default();
+        let committee = Committee::new(vec![
+            address_a.clone(),
+            address_b.clone(),
+            address_c.clone(),
+            address_d.clone(),
+        ]);
+        let mut outbound = mock_outbound(committee.members.clone());
+        let mut outbound2 = outbound.clone();
+        let inbound = outbound.take_inbound(&address_b).unwrap();
+        let mut payload_provider = mock_static_payload_provider();
+        let signing_service = mock_signing_service();
+        let mut payload_processor = mock_payload_processor();
+        let chain_storage_service = MockChainStorageService::default();
+        let db_factory = MockDbFactory::default();
+        let chain_db = db_factory.get_or_create_chain_db(&asset_public_key.clone()).unwrap();
+        let chain_tx = chain_db.new_unit_of_work();
+        let mut state_tx = db_factory
+            .get_or_create_state_db(&asset_public_key)
+            .unwrap()
+            .new_unit_of_work(current_view.view_id.as_u64());
+
+        let task = state.next_event(
+            &current_view,
+            timeout,
+            &asset_definition,
+            &committee,
+            &inbound,
+            &mut outbound,
+            &mut payload_provider,
+            &signing_service,
+            &mut payload_processor,
+            &chain_storage_service,
+            chain_tx,
+            &mut state_tx,
+            &db_factory,
+        );
+
+        outbound2
+            .send(
+                address_a.clone(),
+                address_b.clone(),
+                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), asset_public_key.clone()),
+            )
+            .await
+            .unwrap();
+
+        outbound2
+            .send(
+                address_c.clone(),
+                address_b.clone(),
+                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), asset_public_key.clone()),
+            )
+            .await
+            .unwrap();
+
+        outbound2
+            .send(
+                address_d.clone(),
+                address_b.clone(),
+                HotStuffMessage::new_view(locked_qc.clone(), ViewId(0), asset_public_key.clone()),
+            )
+            .await
+            .unwrap();
+
+        let event = task.await.unwrap();
+        assert_eq!(event, ConsensusWorkerStateEvent::Prepared);
     }
 }
