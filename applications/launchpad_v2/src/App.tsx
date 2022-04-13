@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import {useEffect, useState} from 'react';
 import {invoke} from '@tauri-apps/api/tauri';
 
 import logo from './logo.svg';
