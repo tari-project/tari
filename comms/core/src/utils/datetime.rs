@@ -48,7 +48,7 @@ pub fn format_duration(duration: Duration) -> String {
 
 pub fn format_local_datetime(datetime: &NaiveDateTime) -> String {
     let local_datetime = DateTime::<Local>::from_utc(*datetime, Local::now().offset().to_owned());
-    format!("{}", local_datetime.format("%Y-%m-%d %H:%M:%S"))
+    local_datetime.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
 pub fn is_max_datetime(datetime: &NaiveDateTime) -> bool {
