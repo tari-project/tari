@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgFolder = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -15,6 +15,6 @@ const SvgFolder = (props: SVGProps<SVGSVGElement>) => (
       fill="currentColor"
     />
   </svg>
-);
+)
 
-export default SvgFolder;
+export default SvgFolder

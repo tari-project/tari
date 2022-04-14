@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgShieldVulnerable = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -22,6 +22,6 @@ const SvgShieldVulnerable = (props: SVGProps<SVGSVGElement>) => (
       strokeLinecap="round"
     />
   </svg>
-);
+)
 
-export default SvgShieldVulnerable;
+export default SvgShieldVulnerable

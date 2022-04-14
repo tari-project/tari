@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgCharge = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -15,6 +15,6 @@ const SvgCharge = (props: SVGProps<SVGSVGElement>) => (
       fill="currentColor"
     />
   </svg>
-);
+)
 
-export default SvgCharge;
+export default SvgCharge

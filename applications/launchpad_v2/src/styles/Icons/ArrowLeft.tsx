@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgArrowLeft = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -18,6 +18,6 @@ const SvgArrowLeft = (props: SVGProps<SVGSVGElement>) => (
       strokeLinejoin="round"
     />
   </svg>
-);
+)
 
-export default SvgArrowLeft;
+export default SvgArrowLeft

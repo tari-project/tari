@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgDollar = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -22,6 +22,6 @@ const SvgDollar = (props: SVGProps<SVGSVGElement>) => (
       fill="currentColor"
     />
   </svg>
-);
+)
 
-export default SvgDollar;
+export default SvgDollar

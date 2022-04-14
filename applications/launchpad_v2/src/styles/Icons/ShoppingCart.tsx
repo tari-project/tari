@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgShoppingCart = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -21,6 +21,6 @@ const SvgShoppingCart = (props: SVGProps<SVGSVGElement>) => (
       strokeLinecap="round"
     />
   </svg>
-);
+)
 
-export default SvgShoppingCart;
+export default SvgShoppingCart

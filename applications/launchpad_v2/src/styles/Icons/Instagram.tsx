@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgInstagram = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -26,6 +26,6 @@ const SvgInstagram = (props: SVGProps<SVGSVGElement>) => (
     />
     <circle cx={16} cy={7} r={1} fill="currentColor" />
   </svg>
-);
+)
 
-export default SvgInstagram;
+export default SvgInstagram

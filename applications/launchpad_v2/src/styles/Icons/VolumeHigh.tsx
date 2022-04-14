@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgVolumeHigh = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -30,6 +30,6 @@ const SvgVolumeHigh = (props: SVGProps<SVGSVGElement>) => (
       strokeLinejoin="round"
     />
   </svg>
-);
+)
 
-export default SvgVolumeHigh;
+export default SvgVolumeHigh

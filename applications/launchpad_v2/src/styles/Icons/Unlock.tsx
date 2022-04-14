@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgUnlock = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -21,6 +21,6 @@ const SvgUnlock = (props: SVGProps<SVGSVGElement>) => (
       strokeLinecap="round"
     />
   </svg>
-);
+)
 
-export default SvgUnlock;
+export default SvgUnlock

@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgGrid3 = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -16,6 +16,6 @@ const SvgGrid3 = (props: SVGProps<SVGSVGElement>) => (
       strokeWidth={1.5}
     />
   </svg>
-);
+)
 
-export default SvgGrid3;
+export default SvgGrid3

@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgPhone = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -16,6 +16,6 @@ const SvgPhone = (props: SVGProps<SVGSVGElement>) => (
       strokeWidth={1.5}
     />
   </svg>
-);
+)
 
-export default SvgPhone;
+export default SvgPhone
