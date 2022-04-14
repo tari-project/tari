@@ -23,10 +23,10 @@ The Tari Launchpad is dedicated for beginners in Blockchain world, as well as fo
 
 ```bash
 # Installation
-$ yarn install
+$ npm install
 
 # Run the application
-$ yarn tauri dev
+$ npm run tauri dev
 ```
 
 ### Other scripts
@@ -34,10 +34,10 @@ $ yarn tauri dev
 #### ESlint
 
 ```bash
-$ yarn lint
+$ npm run lint
 
 # With auto-fix
-$ yarn lint:fix
+$ npm run lint:fix
 ```
 
 ## Development notes
