@@ -29,16 +29,19 @@ use crate::{
     storage::{dht_setting_entry::NewDhtMetadataEntry, DhtMetadataKey},
 };
 
+/// DHT database containing DHT key/value metadata
 #[derive(Clone)]
 pub struct DhtDatabase {
     connection: DbConnection,
 }
 
 impl DhtDatabase {
+    /// Create a new DHT database using the provided connection
     pub fn new(connection: DbConnection) -> Self {
         Self { connection }
     }
 
+    /// Get a value for the given key, or None if that value has not been set.
     pub fn get_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey) -> Result<Option<T>, StorageError> {
         match self.get_metadata_value_bytes(key)? {
             Some(bytes) => T::from_binary(&bytes).map(Some).map_err(Into::into),
@@ -46,7 +49,8 @@ impl DhtDatabase {
         }
     }
 
-    pub fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
+    /// Get the raw bytes for the given key, or None if that value has not been set.
+    fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         dht_metadata::table
             .filter(dht_metadata::key.eq(key.to_string()))
@@ -58,12 +62,14 @@ impl DhtDatabase {
             })
     }
 
+    /// Set the value for the given key
     pub fn set_metadata_value<T: MessageFormat>(&self, key: DhtMetadataKey, value: &T) -> Result<(), StorageError> {
         let bytes = value.to_binary()?;
         self.set_metadata_value_bytes(key, bytes)
     }
 
-    pub fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
+    /// Set the raw bytes for the given key
+    fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         diesel::replace_into(dht_metadata::table)
             .values(NewDhtMetadataEntry {

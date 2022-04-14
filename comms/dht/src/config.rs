@@ -101,14 +101,17 @@ pub struct DhtConfig {
 }
 
 impl DhtConfig {
+    /// Default testnet configuration
     pub fn default_testnet() -> Self {
         Default::default()
     }
 
+    /// Default mainnet configuration
     pub fn default_mainnet() -> Self {
         Default::default()
     }
 
+    /// Default local test configuration
     pub fn default_local_test() -> Self {
         Self {
             database_url: DbConnectionUrl::Memory,
@@ -171,7 +174,7 @@ pub struct DhtConnectivityConfig {
     pub update_interval: Duration,
     /// The interval to change the random pool peers.
     /// Default: 2 hours
-    pub random_pool_refresh: Duration,
+    pub random_pool_refresh_interval: Duration,
     /// Length of cooldown when high connection failure rates are encountered. Default: 45s
     pub high_failure_rate_cooldown: Duration,
     /// The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
@@ -185,7 +188,7 @@ impl Default for DhtConnectivityConfig {
     fn default() -> Self {
         Self {
             update_interval: Duration::from_secs(2 * 60),
-            random_pool_refresh: Duration::from_secs(2 * 60 * 60),
+            random_pool_refresh_interval: Duration::from_secs(2 * 60 * 60),
             high_failure_rate_cooldown: Duration::from_secs(45),
             minimum_desired_tcpv4_node_ratio: 0.1,
         }
