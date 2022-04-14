@@ -1,46 +1,67 @@
-# Getting Started with Create React App
+# Tari Launchpad
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+GUI to manage Tari Docker containers.
 
-## Available Scripts
+The Tari Launchpad is dedicated for beginners in Blockchain world, as well as for experienced users. The application helps the user to download Tari Docker images, run specific containers, and give the insight into the running containers.
 
-In the project directory, you can run:
+## Getting started
 
-### `yarn start`
+**Minimal requirements**
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+* Rust (`> 1.58`)
+* Node (`> 16.*`)
+* Docker Engine & Docker Compose installed
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+**Techs**
 
-### `yarn test`
+* Tauri
+* React
+* Typescript
+* Rust
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+**Steps**
 
-### `yarn build`
+```bash
+# Installation
+$ yarn install
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+# Run the application
+$ yarn tauri dev
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Other scripts
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+#### ESlint
 
-### `yarn eject`
+```bash
+$ yarn lint
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+# With auto-fix
+$ yarn lint:fix
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Development notes
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+### Locales
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+The project doesn't support i18n, and doesn't use any i18n package. However, all texts are located in `./src/locales/*`. It's recommended to place any static text in the `./src/locales/*` and import into the component from there.
 
-## Learn More
+Recommendations:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+1. Common words and phrases add to the `common.ts` file.
+2. Use dedicated files for specific feature/view, ie. 'baseNode.ts` would contain texts from the Base Node view.
+3. Avoid duplications
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+### GUI directory structure
+
+- `assets`
+- `components` - contains only basic UI elements, ie. buttons, cards, etc. The component should not be connected to the Redux store.
+- `containers` - implements the logic and can be connected to the Redux.
+- `layouts`
+- `locales` - for now, we do not add any i18n package to manage this. Just use simple Context API
+- `modules` - add things that could be worth to export to other projects
+- `pages` - aka. routes. In our case, it will be probably just one page here.
+- `store` - redux related code
+- `styles` - Design system
+- `types` - (?) not sure if we need this. It should contain common types used across the application. we keep it for now and remove at the end if not needed.
+- `utils` - helpers etc.
