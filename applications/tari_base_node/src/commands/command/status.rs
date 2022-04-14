@@ -94,7 +94,8 @@ impl CommandContext {
         );
 
         let conns = self.connectivity.get_active_connections().await?;
-        status_line.add_field("Connections", conns.len());
+        let base_node_conns_count = conns.into_iter().filter(|conn| conn.peer_features().is_node()).count();
+        status_line.add_field("Connections", base_node_conns_count);
         let banned_peers = self.fetch_banned_peers().await?;
         status_line.add_field("Banned", banned_peers.len());
 
