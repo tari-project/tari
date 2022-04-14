@@ -27,6 +27,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::consts;
+use tari_comms::connectivity::ConnectivitySelection;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::status_line::{StatusLine, StatusLineOutput};
@@ -93,9 +94,11 @@ impl CommandContext {
             ),
         );
 
-        let conns = self.connectivity.get_active_connections().await?;
-        let base_node_conns_count = conns.into_iter().filter(|conn| conn.peer_features().is_node()).count();
-        status_line.add_field("Connections", base_node_conns_count);
+        let conns = self
+            .connectivity
+            .select_connections(ConnectivitySelection::all_nodes(vec![]))
+            .await?;
+        status_line.add_field("Connections", conns.len());
         let banned_peers = self.fetch_banned_peers().await?;
         status_line.add_field("Banned", banned_peers.len());
 
