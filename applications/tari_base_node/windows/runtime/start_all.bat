@@ -38,7 +38,7 @@ start cmd /k "%my_exe_path%\start_tari_base_node.bat"
 ping -n 20 localhost>nul
 start cmd /k "%my_exe_path%\start_tari_console_wallet.bat"
 ping -n 7 localhost>nul
-start cmd /k "%my_exe_path%\start_tari_mining_node.bat"
+start cmd /k "%my_exe_path%\start_tari_miner.bat"
 goto :end
 
 :MERGED_MINING
