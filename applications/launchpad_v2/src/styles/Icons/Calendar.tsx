@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgCalendar = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -28,6 +28,6 @@ const SvgCalendar = (props: SVGProps<SVGSVGElement>) => (
     <rect x={13} y={10.5} width={3} height={3} rx={1} fill="#716A78" />
     <rect x={13} y={15} width={3} height={3} rx={1} fill="#716A78" />
   </svg>
-);
+)
 
-export default SvgCalendar;
+export default SvgCalendar
