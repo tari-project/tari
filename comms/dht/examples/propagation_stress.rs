@@ -75,6 +75,9 @@ async fn main() -> anyhow::Result<()> {
          ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
         "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/\
          sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141",
+        "b0f797e7413b39b6646fa370e8394d3993ead124b8ba24325c3c07a05e980e7e::/ip4/35.177.93.69/tcp/18189",
+        "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189",
+        "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189",
     ];
     let (node, dht, msg_in) = node::create(
         Some(node_identity),

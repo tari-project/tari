@@ -3,6 +3,7 @@
 
 use std::{
     collections::HashMap,
+    fmt,
     sync::{Arc, RwLock},
     time::Instant,
 };
@@ -78,7 +79,7 @@ unsafe impl Send for RandomXVMInstance {}
 unsafe impl Sync for RandomXVMInstance {}
 
 // Thread safe impl of the inner impl
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RandomXFactory {
     inner: Arc<RwLock<RandomXFactoryInner>>,
 }
@@ -115,7 +116,6 @@ impl RandomXFactory {
         inner.get_flags()
     }
 }
-
 struct RandomXFactoryInner {
     flags: RandomXFlag,
     vms: HashMap<Vec<u8>, (Instant, RandomXVMInstance)>,
@@ -170,6 +170,15 @@ impl RandomXFactoryInner {
 
     pub fn get_flags(&self) -> RandomXFlag {
         self.flags
+    }
+}
+
+impl fmt::Debug for RandomXFactoryInner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RandomXFactory")
+            .field("flags", &self.flags)
+            .field("max_vms", &self.max_vms)
+            .finish()
     }
 }
 

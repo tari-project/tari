@@ -31,6 +31,8 @@ pub trait OutputManagerBackend: Send + Sync + Clone {
         &self,
         public_key: PublicKey,
     ) -> Result<DbUnblindedOutput, OutputManagerStorageError>;
+    /// Retrieve unspent outputs.
+    fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have been mined but not spent yet (have not been deleted)
     fn fetch_mined_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError>;
     /// Retrieve outputs that have not been found or confirmed in the block chain yet
