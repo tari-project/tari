@@ -197,7 +197,7 @@ if [ ! -f "$DATA_DIR/config.toml" ]; then
 #  cp log4rs_sample_base_node.yml $DATA_DIR/log4rs_base_node.yml
 
   # Configure Base Node
-  tari_base_node --init --create-id
+  tari_base_node --init
 
   echo "Configuration complete."
 fi

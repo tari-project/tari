@@ -51,3 +51,18 @@ impl From<CryptoRewindResult> for RewindResult {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_new() {
+        let rr0 = RewindResult::new(100.into(), [1; REWIND_USER_MESSAGE_LENGTH]);
+        let rr1 = RewindResult {
+            committed_value: 100.into(),
+            proof_message: [1; REWIND_USER_MESSAGE_LENGTH],
+        };
+        assert_eq!(rr0, rr1);
+    }
+}

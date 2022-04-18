@@ -69,7 +69,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --bin tari_mining_node
+          args: --release --bin tari_miner
       - name: build validator node
         uses: actions-rs/cargo@v1
         with:

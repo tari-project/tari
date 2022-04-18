@@ -32,9 +32,9 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Language
 
-The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", 
-"NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in 
-[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as 
+The keywords "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED",
+"NOT RECOMMENDED", "MAY" and "OPTIONAL" in this document are to be interpreted as described in
+[BCP 14](https://tools.ietf.org/html/bcp14) (covering RFC2119 and RFC8174) when, and only when, they appear in all capitals, as
 shown here.
 
 ## Disclaimer
@@ -52,34 +52,33 @@ The aim of this Request for Comment (RFC) is to describe the major software comp
 
 ## Related Requests for Comment
 
-* [RFC-0001: Overview](RFC-0001_overview.md)
-* [RFC-0110: Base Nodes](./RFC-0110_BaseNodes.md)
-* [RFC-0120: Consensus rules](./RFC-0120_Consensus.md)
-* [RFC-0130: Mining](./RFC-0130_Mining.md)
-* [RFC-0150: Wallets](./RFC-0150_Wallets.md)
-
+- [RFC-0001: Overview](RFC-0001_overview.md)
+- [RFC-0110: Base Nodes](./RFC-0110_BaseNodes.md)
+- [RFC-0120: Consensus rules](./RFC-0120_Consensus.md)
+- [RFC-0130: Mining](./RFC-0130_Mining.md)
+- [RFC-0150: Wallets](./RFC-0150_Wallets.md)
 
 ## Description
 
 The Tari Base Layer network comprises the following major pieces of software:
 
-* Base Layer full node implementation. The base layer full nodes are the consensus-critical pieces of software for the
+- Base Layer full node implementation. The base layer full nodes are the consensus-critical pieces of software for the
   Tari base layer and cryptocurrency. The base nodes validate and transmit transactions and blocks, and maintain
   consensus about the longest valid proof-of-work blockchain.
-* Mining software. Mining nodes perform proof-of-work to secure the base layer and compete to submit the
-  next valid block into the Tari blockchain. Tari uses two Proof of Work (PoW) algorithms, the first is merge-mined with Monero and a second native SHA3 PoW. 
+- Mining software. Miners perform proof-of-work to secure the base layer and compete to submit the
+  next valid block into the Tari blockchain. Tari uses two Proof of Work (PoW) algorithms, the first is merge-mined with Monero and a second native SHA3 PoW.
   The Tari source provides three alternatives for Tari miners:
-  * A standalone miner for SHA3 mining
-  * A merge-mining proxy to be used with XMRig to merge mine Tari with Monero
-  * A stratum-compatible pool miner.
-* Wallet software. Client software and Application Programming Interfaces (APIs) offering means to construct transactions, query nodes for information and
+  - A standalone miner for SHA3 mining
+  - A merge-mining proxy to be used with XMRig to merge mine Tari with Monero
+  - A stratum-compatible pool miner.
+- Wallet software. Client software and Application Programming Interfaces (APIs) offering means to construct transactions, query nodes for information and
   maintain personal private keys.
 
 These three major pieces of software make use of common functionality provided by the following libraries within the Tari
 project source code:
 
-* Local data storage
-* Cryptography services
-* Peer-to-peer networking and messaging services
+- Local data storage
+- Cryptography services
+- Peer-to-peer networking and messaging services
 
 [RFC-0010](RFC-0010_CodeStructure.md) provides more detail on how the source code is structured within the Tari codebase.

@@ -17,7 +17,7 @@ call_base_node() {
 }
 
 call_mining() {
-    "${exe_path}/start_tari_mining_node.sh"
+    "${exe_path}/start_tari_miner.sh"
 }
 
 call_console_wallet() {

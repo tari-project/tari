@@ -70,6 +70,8 @@ use tari_core::{
 use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey};
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_p2p::{
+    comms_connector::InboundDomainConnector,
+    initialization::initialize_local_test_comms,
     transport::MemoryTransportConfig,
     Network,
     P2pConfig,
@@ -79,7 +81,7 @@ use tari_p2p::{
 };
 use tari_script::{inputs, script};
 use tari_shutdown::{Shutdown, ShutdownSignal};
-use tari_test_utils::random;
+use tari_test_utils::{collect_recv, random};
 use tari_utilities::Hashable;
 use tari_wallet::{
     contacts_service::{
@@ -111,7 +113,7 @@ use tari_wallet::{
     WalletSqlite,
 };
 use tempfile::tempdir;
-use tokio::{runtime::Runtime, time::sleep};
+use tokio::{sync::mpsc, time::sleep};
 
 pub mod support;
 use tari_wallet::output_manager_service::storage::database::OutputManagerDatabase;
@@ -136,7 +138,7 @@ async fn create_wallet(
     passphrase: Option<String>,
     recovery_seed: Option<CipherSeed>,
 ) -> Result<WalletSqlite, WalletError> {
-    const NETWORK: Network = Network::Weatherwax;
+    const NETWORK: Network = Network::LocalNet;
     let node_identity = NodeIdentity::random(&mut OsRng, get_next_memory_address(), PeerFeatures::COMMUNICATION_NODE);
     let comms_config = P2pConfig {
         override_from: None,
@@ -287,7 +289,7 @@ async fn test_wallet() {
         .send_transaction(
             bob_identity.public_key().clone(),
             value,
-            MicroTari::from(20),
+            MicroTari::from(5),
             "".to_string(),
         )
         .await
@@ -520,176 +522,141 @@ async fn test_sign_message() {
 }
 
 #[test]
-#[ignore = "Useful for debugging, ignored because it takes over 30 minutes to run"]
-#[allow(clippy::redundant_closure)]
-fn test_20_store_and_forward_send_tx() {
-    let mut fails = 0;
-    for _n in 1..=20 {
-        let hook = panic::take_hook();
-        panic::set_hook(Box::new(|_| {}));
-        let result = panic::catch_unwind(move || test_store_and_forward_send_tx());
-        panic::set_hook(hook);
-        match result {
-            Ok(_) => {},
-            Err(_) => {
-                fails += 1;
-            },
-        }
+fn test_many_iterations_store_and_forward_send_tx() {
+    for _n in 1..=10 {
+        test_store_and_forward_send_tx();
     }
-    assert_eq!(fails, 0);
 }
 
-#[test]
-#[ignore = "Flakey on CI, theory is that it is due to SAF neighbourhoods. Retry after Kademlia style neighbourhoods \
-            are included"]
-fn test_store_and_forward_send_tx() {
-    let mut shutdown_a = Shutdown::new();
-    let mut shutdown_b = Shutdown::new();
-    let mut shutdown_c = Shutdown::new();
-    let mut shutdown_c2 = Shutdown::new();
+#[tokio::test]
+async fn test_store_and_forward_send_tx() {
+    let shutdown_a = Shutdown::new();
+    let shutdown_c = Shutdown::new();
     let factories = CryptoFactories::default();
     let alice_db_tempdir = tempdir().unwrap();
-    let bob_db_tempdir = tempdir().unwrap();
     let carol_db_tempdir = tempdir().unwrap();
+    let base_node_tempdir = tempdir().unwrap();
 
-    let alice_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let bob_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
-    let carol_runtime = Runtime::new().expect("Failed to initialize tokio runtime");
+    let mut alice_wallet = create_wallet(
+        alice_db_tempdir.path(),
+        "alice_db",
+        factories.clone(),
+        shutdown_a.to_signal(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
 
-    let mut alice_wallet = alice_runtime
-        .block_on(create_wallet(
-            alice_db_tempdir.path(),
-            "alice_db",
-            factories.clone(),
-            shutdown_a.to_signal(),
-            None,
-            None,
-        ))
+    let base_node_identity = Arc::new(NodeIdentity::random(
+        &mut OsRng,
+        "/memory/0".parse().unwrap(),
+        PeerFeatures::COMMUNICATION_NODE,
+    ));
+    let (tx, _rx) = mpsc::channel(100);
+    let (base_node, _dht, _msg_sender) = initialize_local_test_comms(
+        base_node_identity,
+        InboundDomainConnector::new(tx),
+        &base_node_tempdir,
+        Duration::from_secs(5),
+        vec![],
+        shutdown_a.to_signal(),
+    )
+    .await
+    .unwrap();
+
+    let carol_wallet = create_wallet(
+        carol_db_tempdir.path(),
+        "carol_db",
+        factories.clone(),
+        shutdown_c.to_signal(),
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let carol_identity = carol_wallet.comms.node_identity();
+    let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
+
+    alice_wallet
+        .comms
+        .peer_manager()
+        .add_peer(base_node.node_identity_ref().to_peer())
+        .await
         .unwrap();
 
-    let bob_wallet = bob_runtime
-        .block_on(create_wallet(
-            bob_db_tempdir.path(),
-            "bob_db",
-            factories.clone(),
-            shutdown_b.to_signal(),
-            None,
-            None,
-        ))
-        .unwrap();
-    let bob_identity = (*bob_wallet.comms.node_identity()).clone();
-
-    let carol_wallet = carol_runtime
-        .block_on(create_wallet(
-            carol_db_tempdir.path(),
-            "carol_db",
-            factories.clone(),
-            shutdown_c.to_signal(),
-            None,
-            None,
-        ))
-        .unwrap();
-    let carol_identity = (*carol_wallet.comms.node_identity()).clone();
-    shutdown_c.trigger();
-    carol_runtime.block_on(carol_wallet.wait_until_shutdown());
-
-    alice_runtime
-        .block_on(alice_wallet.comms.peer_manager().add_peer(bob_identity.to_peer()))
-        .unwrap();
-
-    bob_runtime
-        .block_on(bob_wallet.comms.peer_manager().add_peer(carol_identity.to_peer()))
-        .unwrap();
-
-    alice_runtime
-        .block_on(
-            alice_wallet
-                .comms
-                .connectivity()
-                .dial_peer(bob_identity.node_id().clone()),
-        )
+    alice_wallet
+        .comms
+        .connectivity()
+        .dial_peer(base_node.node_identity_ref().node_id().clone())
+        .await
         .unwrap();
 
     let value = MicroTari::from(1000);
-    let (_utxo, uo1) = alice_runtime.block_on(make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None));
+    let (_utxo, uo1) = make_input(&mut OsRng, MicroTari(2500), &factories.commitment, None).await;
 
-    alice_runtime
-        .block_on(alice_wallet.output_manager_service.add_output(uo1, None))
-        .unwrap();
+    alice_wallet.output_manager_service.add_output(uo1, None).await.unwrap();
 
-    let tx_id = alice_runtime
-        .block_on(alice_wallet.transaction_service.send_transaction(
+    let mut alice_events = alice_wallet.transaction_service.get_event_stream();
+    alice_wallet
+        .transaction_service
+        .send_transaction(
             carol_identity.public_key().clone(),
             value,
-            MicroTari::from(20),
+            MicroTari::from(3),
             "Store and Forward!".to_string(),
-        ))
+        )
+        .await
         .unwrap();
 
-    // Waiting here for a while to make sure the discovery retry is over
-    alice_runtime.block_on(async { sleep(Duration::from_secs(60)).await });
-
-    alice_runtime
-        .block_on(alice_wallet.transaction_service.cancel_transaction(tx_id))
-        .unwrap();
-
-    alice_runtime.block_on(async { sleep(Duration::from_secs(60)).await });
-
-    let carol_wallet = carol_runtime
-        .block_on(create_wallet(
-            carol_db_tempdir.path(),
-            "carol_db",
-            factories,
-            shutdown_c2.to_signal(),
-            None,
-            None,
-        ))
-        .unwrap();
-
-    let mut carol_event_stream = carol_wallet.transaction_service.get_event_stream();
-
-    carol_runtime
-        .block_on(carol_wallet.comms.peer_manager().add_peer(create_peer(
-            bob_identity.public_key().clone(),
-            bob_identity.public_address(),
-        )))
-        .unwrap();
-    carol_runtime
-        .block_on(carol_wallet.dht_service.dht_requester().send_join())
-        .unwrap();
-
-    carol_runtime.block_on(async {
-        let delay = sleep(Duration::from_secs(60));
-        tokio::pin!(delay);
-
-        let mut tx_recv = false;
-        let mut tx_cancelled = false;
-        loop {
-            tokio::select! {
-                event = carol_event_stream.recv() => {
-                    match &*event.unwrap() {
-                        TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
-                        TransactionEvent::TransactionCancelled(..) => tx_cancelled = true,
-                        _ => (),
-                    }
-                    if tx_recv && tx_cancelled {
-                        break;
-                    }
-                },
-                () = &mut delay => {
-                    break;
-                },
-            }
+    let events = collect_recv!(alice_events, take = 2, timeout = Duration::from_secs(10));
+    for evt in events {
+        match &*evt {
+            TransactionEvent::TransactionSendResult(_, result) => {
+                assert!(result.store_and_forward_send_result);
+            },
+            _ => {},
         }
-        assert!(tx_recv, "Must have received a tx from alice");
-        assert!(tx_cancelled, "Must have received a cancel tx from alice");
-    });
-    shutdown_a.trigger();
-    shutdown_b.trigger();
-    shutdown_c2.trigger();
-    alice_runtime.block_on(alice_wallet.wait_until_shutdown());
-    bob_runtime.block_on(bob_wallet.wait_until_shutdown());
-    carol_runtime.block_on(carol_wallet.wait_until_shutdown());
+    }
+
+    // Carol makes herself known to the network after discovery/the transaction has been sent
+    carol_wallet
+        .comms
+        .peer_manager()
+        .add_peer(base_node.node_identity_ref().to_peer())
+        .await
+        .unwrap();
+    carol_wallet
+        .comms
+        .connectivity()
+        .dial_peer(base_node.node_identity_ref().node_id().clone())
+        .await
+        .unwrap();
+
+    carol_wallet.dht_service.dht_requester().send_join().await.unwrap();
+
+    let delay = sleep(Duration::from_secs(60));
+    tokio::pin!(delay);
+
+    let mut tx_recv = false;
+    loop {
+        tokio::select! {
+            event = carol_event_stream.recv() => {
+                match &*event.unwrap() {
+                    TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
+                    _ => (),
+                }
+                if tx_recv {
+                    break;
+                }
+            },
+            () = &mut delay => {
+                break;
+            },
+        }
+    }
+    assert!(tx_recv, "Must have received a tx from alice");
 }
 
 #[tokio::test]
@@ -826,7 +793,6 @@ async fn test_recovery_birthday() {
         "whisper", "decorate", "narrow", "oxygen", "remember", "minor", "among", "happy", "cricket", "embark", "blue",
         "ship", "sick",
     ]
-    .to_vec()
     .iter()
     .map(|w| w.to_string())
     .collect();
@@ -867,7 +833,7 @@ async fn test_contacts_service_liveness() {
     )
     .await
     .unwrap();
-    let alice_identity = (*alice_wallet.comms.node_identity()).clone();
+    let alice_identity = alice_wallet.comms.node_identity();
 
     let mut bob_wallet = create_wallet(
         bob_db_tempdir.path(),
@@ -949,8 +915,8 @@ async fn test_contacts_service_liveness() {
         tokio::select! {
             event = liveness_event_stream_bob.recv() => {
                 if let ContactsLivenessEvent::StatusUpdated(data) = &*event.unwrap() {
-                    if data.public_key() == &alice_identity.public_key().clone(){
-                        assert_eq!(data.node_id(), &alice_identity.node_id().clone());
+                    if data.public_key() == alice_identity.public_key(){
+                        assert_eq!(data.node_id(), alice_identity.node_id());
                         if data.message_type() == ContactMessageType::Ping {
                             ping_count += 1;
                         } else if data.message_type() == ContactMessageType::Pong {

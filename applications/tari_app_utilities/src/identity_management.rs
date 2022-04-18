@@ -36,13 +36,14 @@ pub const LOG_TARGET: &str = "tari_application";
 
 const REQUIRED_IDENTITY_PERMS: u32 = 0o100600;
 
-/// Loads the node identity, or creates a new one if the --create-id flag was specified
+/// Loads the node identity, or creates a new one if create_id is true
 ///
 /// ## Parameters
-/// `identity_file` - Reference to file path
-/// `public_address` - Network address of the base node
-/// `create_id` - Whether an identity needs to be created or not
-/// `peer_features` - Enables features of the base node
+/// - `identity_file` - Reference to file path
+/// - `public_address` - Network address of the base node
+/// - `create_id` - Only applies if the identity_file does not exist or is malformed. If true, a new identity will be
+/// created, otherwise the user will be prompted to create a new ID
+/// - `peer_features` - Enables features of the base node
 ///
 /// # Return
 /// A NodeIdentity wrapped in an atomic reference counter on success, the exit code indicating the reason on failure
@@ -64,7 +65,7 @@ pub fn setup_node_identity<P: AsRef<Path>>(
             ExitCode::ConfigError,
             &format!(
                 "{path} has incorrect permissions. You can update the identity file with the correct permissions \
-                 using 'chmod 600 {path}', or delete the identity file and re-run the node with the --create-id flag.",
+                 using 'chmod 600 {path}', or delete the identity file and a new one will be created on next start",
                 path = identity_file.as_ref().to_string_lossy()
             ),
         )),
@@ -75,17 +76,15 @@ pub fn setup_node_identity<P: AsRef<Path>>(
                 if !prompt {
                     error!(
                         target: LOG_TARGET,
-                        "Node identity information not found. {}. You can update the configuration file to point to a \
-                         valid node identity file, or re-run the node with the --create-id flag to create a new \
-                         identity.",
+                        "Node identity not found. {}. You can update the configuration file to point to a valid node \
+                         identity file, or re-run the node and create a new one.",
                         e
                     );
                     return Err(ExitError::new(
                         ExitCode::ConfigError,
                         &format!(
                             "Node identity information not found. {}. You can update the configuration file to point \
-                             to a valid node identity file, or re-run the node with the --create-id flag to create a \
-                             new identity.",
+                             to a valid node identity file, or re-run the node to create a new one",
                             e
                         ),
                     ));

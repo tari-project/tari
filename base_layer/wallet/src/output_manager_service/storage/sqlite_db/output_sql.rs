@@ -196,6 +196,13 @@ impl OutputSql {
         Ok(res)
     }
 
+    pub fn index_unspent(conn: &SqliteConnection) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
+        Ok(outputs::table
+            .filter(outputs::status.eq(OutputStatus::Unspent as i32))
+            .order(outputs::id.asc())
+            .load(conn)?)
+    }
+
     pub fn index_marked_deleted_in_block_is_null(
         conn: &SqliteConnection,
     ) -> Result<Vec<OutputSql>, OutputManagerStorageError> {
