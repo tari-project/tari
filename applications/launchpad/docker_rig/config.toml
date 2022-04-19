@@ -1,24 +1,7 @@
 [common]
-network = "dibbler"
-buffer_rate_limit_console_wallet = 1000
-dedup_cache_capacity = 25000
-rpc_max_simultaneous_sessions = 10000
 
-[common.igor]
-peer_seeds = [
-    # igor
-    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
-    "00b35047a341401bcd336b2a3d564280a72f6dc72ec4c739d30c502acce4e803::/onion3/ojhxd7z6ga7qrvjlr3px66u7eiwasmffnuklscbh5o7g6wrbysj45vid:18141",
-    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
-    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
-]
-
-dns_seeds =["seeds.igor.tari.com"]
-# dns_seeds_name_server = "1.1.1.1:853/cloudfare-dns.com"
-dns_seeds_use_dnssec = false
-
-[common.dibbler]
-dns_seeds =["seeds.dibbler.tari.com"]
+[dibbler.p2p.seeds]
+dns_seeds = ["seeds.dibbler.tari.com"]
 peer_seeds = [
     # 333388d1cbe3e2bd17453d052f
     "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
@@ -31,290 +14,58 @@ peer_seeds = [
     # bbbb8358387d81c388fadb4649
     "be128d570e8ec7b15c101ee1a56d6c56dd7d109199f0bd02f182b71142b8675f::/onion3/ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
     # eeeeb0a943ed143e613a135392
-    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
+    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141",
+    # 66664a0f95ce468941bb9de228
+    "b0f797e7413b39b6646fa370e8394d3993ead124b8ba24325c3c07a05e980e7e::/ip4/35.177.93.69/tcp/18189",
+    # 22221bf814d5e524fce9ba5787
+    "0eefb45a4de9484eca74846a4f47d2c8d38e76be1fec63b0112bd00d297c0928::/ip4/13.40.98.39/tcp/18189",
+    # 4444a0efd8388739d563bdd979
+    "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
 ]
+
 
 [base_node]
 network = "dibbler"
-grpc_enabled = true
 grpc_address = "/ip4/0.0.0.0/tcp/18142"
+
+[base_node.storage]
 track_reorgs = true
 
-[base_node.dibbler]
-db_type = "lmdb"
-flood_ban_max_msg_count = 100_000
+[dibbler.base_node]
 data_dir = "/blockchain/dibbler"
-force_sync_peers = []
-allow_test_addresses = false
-transport = "tor"
-use_libtor = false
-tor_control_address = "/dns4/tor/tcp/9051"
+#identity_file = "/var/tari/base_node/config/dibbler/tari_base_node_id.json"
 
-# Overridden by the docker environment variables
-tor_control_auth = "password=tari"
-tor_onion_port = 18141
-tor_forward_address = "/dns4/base_node/tcp/18189"
-tor_socks_address_override="/dns4/tor/tcp/9050"
-console_wallet_identity_file = "config/dibbler/console_wallet_id.json"
-base_node_identity_file = "config/dibbler/base_node_id.json"
-base_node_tor_identity_file = "config/dibbler/base_node_tor.json"
-console_wallet_tor_identity_file = "config/dibbler/console_wallet_tor.json"
-
-[mempool.dibbler]
-
-[base_node.igor]
-db_type = "lmdb"
-flood_ban_max_msg_count = 100_000
+[igor.base_node]
+network = "igor"
 data_dir = "/blockchain/igor"
-force_sync_peers = []
-allow_test_addresses = false
-transport = "tor"
-use_libtor = false
-tor_control_address = "/ip4/tor/tcp/9051"
 
-# Overridden by the docker environment variables
-tor_control_auth = "password=tari"
-tor_onion_port = 18141
-tor_forward_address = "/dns4/base_node/tcp/18189"
-tor_socks_address_override="/dns4/tor/tcp/9050"
-
-console_wallet_identity_file = "config/igor/console_wallet_id.json"
-base_node_identity_file = "config/igor/base_node_id.json"
-base_node_tor_identity_file = "config/igor/base_node_tor.json"
-console_wallet_tor_identity_file = "config/igor/console_wallet_tor.json"
-
-# Do these go here or in common?
-grpc_enabled = true
-grpc_base_node_address = "0.0.0.0:18142"
+[base_node.p2p.transport]
+tor.control_auth = "password=tari"
+#tcp.listener_address = "/dns4/base_node/tcp/18189"
+tor.socks_address_override = "/dns4/tor/tcp/9050"
+tor.control_address = "/dns4/tor/tcp/9051"
 
 
-[mempool.igor]
 [wallet]
-# Override common.network for wallet
-# network = "dibbler"
+override_from = "dibbler"
+grpc_address = "/ip4/0.0.0.0/tcp/18143"
+password = "tari"
 
-wallet_db_file = "wallet/igor/wallet.dat"
-console_wallet_db_file = "wallet/igor/console-wallet.dat"
-grpc_enabled = true
-grpc_address = "/ip4/127.0.0.1/tcp/18143"
+[dibbler.wallet]
+network = "dibbler"
+db_file = "wallet/dibbler/wallet.dat"
 
-# Console wallet password
-# Should you wish to start your console wallet without typing in your password, the following options are available:
-# 1. Start the console wallet with the --password=secret argument, or
-# 2. Set the environment variable TARI_WALLET_PASSWORD=secret before starting the console wallet, or
-# 3. Set the "password" key in this [wallet] section of the config
-# password = "secret"
+[igor.wallet]
+network = "igor"
+db_file = "wallet/igor/wallet.dat"
 
-# WalletNotify
-# Allows you to execute a script or program when these transaction events are received by the console wallet:
-# - transaction received
-# - transaction sent
-# - transaction cancelled
-# - transaction mined but unconfirmed
-# - transaction mined and confirmed
-# An example script is available here: applications/tari_console_wallet/src/notifier/notify_example.sh
-# notify = "/path/to/script"
+[miner]
+base_node_grpc_address = "/dns4/base_node/tcp/18142"
+wallet_grpc_address = "/dns4/wallet/tcp/18143"
+mine_on_tip_only = true
 
-# This is the timeout period that will be used to monitor TXO queries to the base node (default = 60). Larger values
-# are needed for wallets with many (>1000) TXOs to be validated.
-base_node_query_timeout = 180
-# The amount of seconds added to the current time (Utc) which will then be used to check if the message has
-# expired or not when processing the message (default = 10800).
-#saf_expiry_duration = 10800
-# This is the number of block confirmations required for a transaction to be considered completely mined and
-# confirmed. (default = 3)
-#transaction_num_confirmations_required = 3
-# This is the timeout period that will be used for base node broadcast monitoring tasks (default = 60)
-transaction_broadcast_monitoring_timeout = 180
-# This is the timeout period that will be used for chain monitoring tasks (default = 60)
-#transaction_chain_monitoring_timeout = 60
-# This is the timeout period that will be used for sending transactions directly (default = 20)
-transaction_direct_send_timeout = 180
-# This is the timeout period that will be used for sending transactions via broadcast mode (default = 60)
-transaction_broadcast_send_timeout = 180
-# This is the size of the event channel used to communicate transaction status events to the wallet's UI. A busy console
-# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>10000) (default = 1000).
-transaction_event_channel_size = 25000
-# This is the size of the event channel used to communicate base node events to the wallet. A busy console
-# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
-base_node_event_channel_size = 3500
-# This is the size of the event channel used to communicate output manager events to the wallet. A busy console
-# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>3000) (default = 250).
-output_manager_event_channel_size = 3500
-# This is the size of the event channel used to communicate base node update events to the wallet. A busy console
-# wallet doing thousands of bulk payments or used for stress testing needs a fairly big size (>300) (default = 50).
-base_node_update_publisher_channel_size = 500
-# If a large amount of tiny valued uT UTXOs are used as inputs to a transaction, the fee may be larger than
-# the transaction amount. Set this value to `false` to allow spending of "dust" UTXOs for small valued
-# transactions (default = true).
-#prevent_fee_gt_amount = false
-# This option specifies the transaction routing mechanism as being directly between wallets, making
-# use of store and forward or using any combination of these.
-# (options: "DirectOnly", "StoreAndForwardOnly", DirectAndStoreAndForward". default: "DirectAndStoreAndForward").
-#transaction_routing_mechanism = "DirectAndStoreAndForward"
-
-# When running the console wallet in command mode, use these values to determine what "stage" and timeout to wait
-# for sent transactions.
-# The stages are:
-# - "DirectSendOrSaf" - The transaction was initiated and was accepted via Direct Send or Store And Forward.
-# - "Negotiated" - The recipient replied and the transaction was negotiated.
-# - "Broadcast" - The transaction was broadcast to the base node mempool.
-# - "MinedUnconfirmed" - The transaction was successfully detected as mined but unconfirmed on the blockchain.
-# - "Mined" - The transaction was successfully detected as mined and confirmed on the blockchain.
-
-# The default values are: "Broadcast", 300
-#command_send_wait_stage = "Broadcast"
-#command_send_wait_timeout = 300
-
-# The base nodes that the wallet should use for service requests and tracking chain state.
-# base_node_service_peers = ["public_key::net_address", ...]
-# base_node_service_peers = ["e856839057aac496b9e25f10821116d02b58f20129e9b9ba681b830568e47c4d::/onion3/exe2zgehnw3tvrbef3ep6taiacr6sdyeb54be2s25fpru357r4skhtad:18141"]
-
-# Configuration for the wallet's base node service
-# The refresh interval, defaults to 10 seconds
-base_node_service_refresh_interval = 30
-# The maximum age of service requests in seconds, requests older than this are discarded
-base_node_service_request_max_age = 180
-
-#[base_node.transport.tor]
-#control_address = "/ip4/127.0.0.1/tcp/9051"
-#control_auth_type = "none" # or "password"
-# Required for control_auth_type = "password"
-#control_auth_password = "super-secure-password"
-
-# Wallet configuration options for dibbler
-[wallet.dibbler]
-# -------------- Transport configuration --------------
-# Use TCP to connect to the Tari network. This transport can only communicate with TCP/IP addresses, so peers with
-# e.g. tor onion addresses will not be contactable.
-#transport = "tcp"
-# The address and port to listen for peer connections over TCP.
-#tcp_listener_address = "/ip4/0.0.0.0/tcp/18188"
-# Configures a tor proxy used to connect to onion addresses. All other traffic uses direct TCP connections.
-# This setting is optional however, if it is not specified, this node will not be able to connect to nodes that
-# only advertise an onion address.
-#tcp_tor_socks_address = "/ip4/127.0.0.1/tcp/36050"
-#tcp_tor_socks_auth = "none"
-
-# Configures the node to run over a tor hidden service using the Tor proxy. This transport recognises ip/tcp,
-# onion v2, onion v3 and dns addresses.
-transport = "tor"
-
-# Spin up and use a built-in Tor instance. This only works on macos/linux and you must comment out tor_control_address below.
-# This requires that the wallet was built with the optional "libtor" feature flag.
-#use_libtor = true
-
-# Address of the tor control server
-tor_control_address = "/ip4/127.0.0.1/tcp/9051"
-# Authentication to use for the tor control server
-#tor_control_auth = "none" # or "password=xxxxxx"
-# The onion port to use.
-#tor_onion_port = 18141
-# The address to which traffic on the node's onion address will be forwarded
-# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
-# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
-# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
-#tor_socks_address_override=
-
-# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
-#transport = "socks5"
-# The address of the SOCKS5 proxy
-#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
-# The address to which traffic will be forwarded
-#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
-#socks5_auth = "none" # or "username_password=username:xxxxxxx"
-
-# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
-# Use cases include:
-# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
-# - multiple P2P addresses, one public over DNS and one private over TOR
-# - a "bridge" between TOR and TCP-only nodes
-# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
-
-# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false
-
-# Wallet configuration options for igor
-[wallet.igor]
-transport = "tor"
-use_libtor = false
-tor_control_address = "/ip4/tor/tcp/9051"
-tor_control_auth = "password=tari"
-tor_onion_port = 18141
-# The address to which traffic on the node's onion address will be forwarded
-# tor_forward_address = "/ip4/127.0.0.1/tcp/0"
-# Instead of attemping to get the SOCKS5 address from the tor control port, use this one. The default is to
-# use the first address returned by the tor control port (GETINFO /net/listeners/socks).
-#tor_socks_address_override=
-
-# Use a SOCKS5 proxy transport. This transport recognises any addresses supported by the proxy.
-#transport = "socks5"
-# The address of the SOCKS5 proxy
-#socks5_proxy_address = "/ip4/127.0.0.1/tcp/9050"
-# The address to which traffic will be forwarded
-#socks5_listener_address = "/ip4/127.0.0.1/tcp/18188"
-#socks5_auth = "none" # or "username_password=username:xxxxxxx"
-
-# Optionally bind an additional TCP socket for inbound Tari P2P protocol commms.
-# Use cases include:
-# - allowing wallets to locally connect to their base node, rather than through tor, when used in conjunction with `tor_proxy_bypass_addresses`
-# - multiple P2P addresses, one public over DNS and one private over TOR
-# - a "bridge" between TOR and TCP-only nodes
-# auxiliary_tcp_listener_address = "/ip4/127.0.0.1/tcp/9998"
-
-# When these peer addresses are encountered when dialing another peer, the tor proxy is bypassed and the connection is made
-# directly over TCP. /ip4, /ip6, /dns, /dns4 and /dns6 are supported.
-# tor_proxy_bypass_addresses = ["/dns4/my-foo-base-node/tcp/9998"]
-# When using the tor transport and set to true, outbound TCP connections bypass the tor proxy. Defaults to false for better privacy
-# tor_proxy_bypass_for_outbound_tcp = false;
-
-########################################################################################################################
-#                                                                                                                      #
-#                                             Mining Node Configuration Options                                        #
-#                                                                                                                      #
-########################################################################################################################
-
-[mining_node]
-# Number of mining threads
-# Default: number of logical CPU cores
-#num_mining_threads=8
-
-# GRPC address of base node
-# Default: value from `base_node.grpc_base_node_address`
-#base_node_grpc_address = "127.0.0.1:18142"
-
-# GRPC address of console wallet
-# Default: value from `wallet.grpc_address`
-#wallet_grpc_address = "127.0.0.1:18143"
-
-# Start mining only when base node is bootstrapped
-# and current block height is on the tip of network
-# Default: true
-#mine_on_tip_only=true
-
-# Will check tip with node every N seconds and restart mining
-# if height already taken and option `mine_on_tip_only` is set
-# to true
-# Default: 30 seconds
-#validate_tip_timeout_sec=30
-
-# Stratum Mode configuration
-# mining_pool_address = "miningcore.tari.com:3052"
-# mining_wallet_address = "YOUR_WALLET_PUBLIC_KEY"
-# mining_worker_name = "worker1"
-
-########################################################################################################################
-#                                                                                                                      #
-#                                             Merge Mining Configuration Options                                      #
-#                                                                                                                      #
-########################################################################################################################
-
-[merge_mining_proxy.dibbler]
-
-# URL to monerod
+[merge_mining_proxy]
+#config = "dibbler"
 monerod_url = [ # stagenet
     "http://stagenet.xmr-tw.org:38081",
     "http://stagenet.community.xmr.to:38081",
@@ -322,48 +73,11 @@ monerod_url = [ # stagenet
     "http://xmr-lux.boldsuck.org:38081",
     "http://singapore.node.xmr.pm:38081",
 ]
-#monerod_url = [ # mainnet
-#    "http://18.132.124.81:18081",
-#    "http://xmr.support:18081",
-#    "http://node1.xmr-tw.org:18081",
-#    "http://xmr.nthrow.nyc:18081",
-#]
-
-# Address of the tari_merge_mining_proxy application
-proxy_host_address = "127.0.0.1:18081"
-
-# In sole merged mining, the block solution is usually submitted to the Monero blockchain
-# (monerod) as well as to the Tari blockchain, then this setting should be "true". With pool
-# merged mining, there is no sense in submitting the solution to the Monero blockchain as the
-# pool does that, then this setting should be "false". (default = true).
-proxy_submit_to_origin = true
-
-# If authentication is being used for curl
-monerod_use_auth = false
-
-# Username for curl
-monerod_username = ""
-
-# Password for curl
-monerod_password = ""
-
-# The merge mining proxy can either wait for the base node to achieve initial sync at startup before it enables mining,
-# or not. If merge mining starts before the base node has achieved initial sync, those Tari mined blocks will not be
-# accepted. (Default value = true; will wait for base node initial sync).
-#wait_for_initial_sync_at_startup = true
-
-[merge_mining_proxy]
-monerod_use_auth = false
+base_node_grpc_address = "/dns4/base_node/tcp/18142"
+console_wallet_grpc_address = "/dns4/wallet/tcp/18143"
+listener_address = "/dns4/mm_proxy/tcp/18081"
+submit_to_origin = true
 monerod_username = ""
 monerod_password = ""
+monerod_use_auth = false
 
-[validator_node]
-########################################################################################################################
-#                                                                                                                      #
-#                                         Validator Node Configuration Options                                         #
-#                                                                                                                      #
-########################################################################################################################
-
-committee = ["2ea0df3059caf4411624d6bf5b9c02238d607d2798c586b3e6c2a054da3f205a"] # cannot be of zero size
-phase_timeout = 30
-template_id = "EditableMetadata"

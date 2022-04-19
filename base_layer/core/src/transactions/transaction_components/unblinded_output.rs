@@ -61,6 +61,7 @@ use crate::{
             transaction_output::TransactionOutput,
             OutputFeatures,
             TransactionError,
+            TransactionInputVersion,
         },
         transaction_protocol::RewindData,
         CryptoFactories,
@@ -154,6 +155,7 @@ impl UnblindedOutput {
         let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
 
         let challenge = TransactionInput::build_script_challenge(
+            TransactionInputVersion::get_current_version(),
             &nonce_commitment,
             &self.script,
             &self.input_data,

@@ -31,7 +31,7 @@ members = [
     "applications/test_faucet",
     "applications/tari_app_utilities",
     "applications/tari_merge_mining_proxy",
-    "applications/tari_mining_node",
+    "applications/tari_miner",
     "applications/tari_validator_node",
 
 ]

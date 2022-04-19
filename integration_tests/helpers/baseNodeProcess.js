@@ -49,14 +49,7 @@ class BaseNodeProcess {
         break;
       }
     } while (fs.existsSync(this.baseDir));
-    const args = [
-      "--base-path",
-      ".",
-      "--init",
-      "--create-id",
-      "--network",
-      "localnet",
-    ];
+    const args = ["--base-path", ".", "--init", "--network", "localnet"];
     const overrides = this.getOverrides();
     Object.keys(overrides).forEach((k) => {
       args.push("-p");

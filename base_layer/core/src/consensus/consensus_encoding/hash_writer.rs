@@ -1,4 +1,4 @@
-//  Copyright 2022, The Tari Project
+//  Copyright 2022. The Tari Project
 //
 //  Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
 //  following conditions are met:
@@ -23,21 +23,22 @@
 use std::io::Write;
 
 use digest::{consts::U32, Digest, FixedOutput, Update};
+use tari_common_types::types::HashDigest;
 
 use crate::consensus::ConsensusEncoding;
 
-#[derive(Clone, Default)]
-pub struct HashWriter<H> {
+#[derive(Clone)]
+pub struct ConsensusHashWriter<H> {
     digest: H,
 }
 
-impl<H: Digest> HashWriter<H> {
+impl<H: Digest> ConsensusHashWriter<H> {
     pub fn new(digest: H) -> Self {
         Self { digest }
     }
 }
 
-impl<H> HashWriter<H>
+impl<H> ConsensusHashWriter<H>
 where H: FixedOutput<OutputSize = U32> + Update
 {
     pub fn finalize(self) -> [u8; 32] {
@@ -60,7 +61,7 @@ where H: FixedOutput<OutputSize = U32> + Update
     }
 }
 
-impl<H: Update> Write for HashWriter<H> {
+impl<H: Update> Write for ConsensusHashWriter<H> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         self.digest.update(buf);
         Ok(buf.len())
@@ -68,6 +69,12 @@ impl<H: Update> Write for HashWriter<H> {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+impl Default for ConsensusHashWriter<HashDigest> {
+    fn default() -> Self {
+        ConsensusHashWriter::new(HashDigest::new())
     }
 }
 
@@ -80,7 +87,7 @@ mod test {
 
     #[test]
     fn it_updates_the_digest_state() {
-        let mut writer = HashWriter::new(HashDigest::new());
+        let mut writer = ConsensusHashWriter::default();
         let mut data = [0u8; 1024];
         OsRng.fill_bytes(&mut data);
 
@@ -92,7 +99,7 @@ mod test {
         let empty: [u8; 32] = Update::chain(HashDigest::new(), [0u8; 1024]).finalize_fixed().into();
         assert_ne!(hash, empty);
 
-        let mut writer = HashWriter::new(HashDigest::new());
+        let mut writer = ConsensusHashWriter::default();
         writer.write_all(&data).unwrap();
         assert_eq!(writer.finalize(), hash);
     }

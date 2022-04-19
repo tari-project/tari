@@ -56,9 +56,6 @@ pub(crate) struct Cli {
     /// Enable tracing
     #[clap(long, aliases = &["tracing", "enable-tracing"])]
     pub tracing_enabled: bool,
-    /// Create and save new node identity if one doesn't exist
-    #[clap(long, alias = "create_id")]
-    pub create_id: bool,
     /// Supply a network (overrides existing configuration)
     #[clap(long, alias = "network", default_value = DEFAULT_NETWORK)]
     pub network: String,

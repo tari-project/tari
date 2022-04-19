@@ -195,7 +195,7 @@ jobs:
           cp -v "$GITHUB_WORKSPACE/target/release/tari_base_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_console_wallet${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
-          cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_miner${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_validator_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_collectibles${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_launchpad${TBN_EXT}" .
@@ -230,7 +230,7 @@ jobs:
           FILES=(
             "tari_base_node"
             "tari_console_wallet"
-            "tari_mining_node"
+            "tari_miner"
             "tari_merge_mining_proxy"
             "tari_validator_node"
             "tari_collectibles"
@@ -339,8 +339,8 @@ jobs:
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v2
         with:
-          name: tari_mining_node-${{ matrix.os }}-${{ matrix.target_cpu }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_mining_node${{ env.TBN_EXT}}"
+          name: tari_miner-${{ matrix.os }}-${{ matrix.target_cpu }}
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}"
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails
