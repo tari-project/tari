@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@headlessui/react": "^1.5.0",
+    "@reduxjs/toolkit": "^1.8.1",
     "@tauri-apps/api": "^1.0.0-rc.3",
     "@types/jest": "^27.0.1",
     "@types/node": "^16.7.13",
@@ -61,8 +63,14 @@
     "@typescript-eslint/parser": "^5.19.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.13.0",
+    "eslint-config-prettier": "^8.5.0",
+    "eslint-plugin-prettier": "^4.0.0",
     "eslint-plugin-react": "^7.29.4",
     "jest-junit": "^13.1.0",
+    "prettier": "^2.6.2",
     "ts-jest": "^27.1.4"
+  },
+  "optionalDependencies": {
+    "@tauri-apps/cli-linux-x64-gnu": "1.0.0-rc.8"
   }
 }

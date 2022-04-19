@@ -9,6 +9,12 @@ const lightTheme = {
   accentDark: styles.colors.tari.purpleDark,
   disabledText: styles.colors.dark.placeholder,
   tariGradient: styles.gradients.tari,
+
+  titleBar: styles.colors.light.background,
+
+  borderColor: styles.colors.dark.borders,
+  selected: styles.colors.light.backgroundImage,
+  borderRadius: (count = 1) => `${count * 10}px`,
 }
 
 export default lightTheme
