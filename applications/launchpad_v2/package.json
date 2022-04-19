@@ -4,13 +4,10 @@
   "private": true,
   "dependencies": {
     "@tauri-apps/api": "^1.0.0-rc.3",
-    "@testing-library/jest-dom": "^5.14.1",
-    "@testing-library/react": "^12.0.0",
-    "@testing-library/user-event": "^13.2.1",
     "@types/jest": "^27.0.1",
     "@types/node": "^16.7.13",
     "@types/react": "^17.0.20",
-    "@types/react-dom": "^17.0.9",
+    "@types/react-dom": "^18.0.0",
     "react": "^18.0.0",
     "react-dom": "^18.0.0",
     "react-scripts": "5.0.0",
@@ -21,17 +18,26 @@
   "scripts": {
     "start": "cross-env BROWSER=none react-scripts start",
     "build": "react-scripts build",
-    "test": "react-scripts test",
+    "test": "jest --reporters=default --reporters=jest-junit",
+    "test:ci": "jest --ci --runInBand --reporters=default --reporters=jest-junit",
     "eject": "react-scripts eject",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "tauri": "tauri"
+    "lint:test": "mkdir -p temp/reports && eslint . --format junit --output-file temp/reports/launchpad_eslint.xml",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "bundle": "tauri build"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest"
     ]
+  },
+  "jest-junit": {
+    "outputDirectory": "temp/reports/junit",
+    "outputName": "junit.xml",
+    "uniqueOutputName": "false"
   },
   "browserslist": {
     "production": [
@@ -48,10 +54,15 @@
   "devDependencies": {
     "@tauri-apps/cli": "^1.0.0-rc.8",
     "@types/styled-components": "^5.1.25",
+    "@testing-library/jest-dom": "^5.16.4",
+    "@testing-library/react": "^13.0.1",
+    "@testing-library/user-event": "^14.1.0",
     "@typescript-eslint/eslint-plugin": "^5.19.0",
     "@typescript-eslint/parser": "^5.19.0",
     "cross-env": "^7.0.3",
     "eslint": "^8.13.0",
-    "eslint-plugin-react": "^7.29.4"
+    "eslint-plugin-react": "^7.29.4",
+    "jest-junit": "^13.1.0",
+    "ts-jest": "^27.1.4"
   }
 }
