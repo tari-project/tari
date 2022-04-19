@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgCloudLightning = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -24,6 +24,6 @@ const SvgCloudLightning = (props: SVGProps<SVGSVGElement>) => (
       strokeLinejoin="round"
     />
   </svg>
-);
+)
 
-export default SvgCloudLightning;
+export default SvgCloudLightning

@@ -1,5 +1,5 @@
-import * as React from "react";
-import { SVGProps } from "react";
+import * as React from 'react'
+import { SVGProps } from 'react'
 
 const SvgMobile = (props: SVGProps<SVGSVGElement>) => (
   <svg
@@ -27,6 +27,6 @@ const SvgMobile = (props: SVGProps<SVGSVGElement>) => (
       fill="currentColor"
     />
   </svg>
-);
+)
 
-export default SvgMobile;
+export default SvgMobile
