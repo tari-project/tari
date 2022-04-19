@@ -1,5 +1,5 @@
 import colors from './colors'
-import { gradients } from './gradients'
+import gradients from './gradients'
 
 const styles = {
   colors,
