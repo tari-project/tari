@@ -6,8 +6,8 @@
   "build": {
     "distDir": "../build",
     "devPath": "http://localhost:3000",
-    "beforeDevCommand": "cd ../ && yarn start",
-    "beforeBuildCommand": "cd ../ && yarn build"
+    "beforeDevCommand": "cd ../ && npm run start",
+    "beforeBuildCommand": "cd ../ && npm run build"
   },
   "tauri": {
     "cli": {
@@ -25,7 +25,7 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.tauri.dev",
+      "identifier": "com.tari.launchpad",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",

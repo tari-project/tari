@@ -26,7 +26,7 @@ The Tari Launchpad is dedicated for beginners in Blockchain world, as well as fo
 $ npm install
 
 # Run the application
-$ npm run tauri dev
+$ npm run dev
 ```
 
 ### Other scripts
@@ -38,6 +38,21 @@ $ npm run lint
 
 # With auto-fix
 $ npm run lint:fix
+
+# Run Lint test - it produces report in temp/reports folder
+$ npm run lint:test
+```
+
+#### Tests
+
+```bash
+$ npm run test
+```
+
+#### Build
+
+```bash
+$ npm run bundle
 ```
 
 ## Development notes
@@ -65,3 +80,7 @@ Recommendations:
 - `styles` - Design system
 - `types` - (?) not sure if we need this. It should contain common types used across the application. we keep it for now and remove at the end if not needed.
 - `utils` - helpers etc.
+
+### CI with CircleCI
+
+The CircleCI runs tests and eslint check for branches that name starts with `launchpad`.
