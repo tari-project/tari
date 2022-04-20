@@ -21,7 +21,7 @@ export const SelectButton = withTheme(styled(Listbox.Button)`
   position: relative;
   width: ${({ fullWidth }: any) => fullWidth ? '100%' : 'auto'};
   appearance: none;
-  background-color: ${({ onDark }: any) => onDark ? 'rgba(255,255,255,.2)' : 'transparent'} ;
+  background-color: ${({ theme, onDark }: any) => onDark ? theme.transparentBackground : 'transparent'} ;
   padding: 0;
   padding: ${({ theme }) => `${theme.spacingVertical()} ${theme.spacingHorizontal()}`};
   padding-right: ${({ theme }: any) => theme.spacingHorizontal()};
@@ -35,7 +35,7 @@ export const SelectButton = withTheme(styled(Listbox.Button)`
 `)
 
 const FloatingOptions = withTheme(styled.ul`
-  color: ${({ theme, onDark }: any) => onDark ? theme.background : theme.primary};
+  color: ${({ theme }) => theme.primary};
   position: absolute;
   margin: 0;
   padding: 0;

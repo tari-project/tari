@@ -13,10 +13,11 @@ const lightTheme = {
   titleBar: styles.colors.light.background,
 
   borderColor: styles.colors.dark.borders,
-  selected: styles.colors.light.backgroundImage,
   borderRadius: (count = 1) => `${count * 10}px`,
+  selected: styles.colors.light.backgroundImage,
   spacingVertical: (count = 1) => `${count * 0.7}em`,
   spacingHorizontal: (count = 1) => `${count * 1.3}em`,
+  transparentBackground: 'rgba(255,255,255,.2)',
 }
 
 export default lightTheme
