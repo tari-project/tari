@@ -1,9 +1,9 @@
 import styled from 'styled-components'
 import { Listbox } from '@headlessui/react'
 
-import { WithTheme } from '../../styles'
+import { withTheme } from '../../styles'
 
-export const SelectorIcon = WithTheme(styled.div`
+export const SelectorIcon = withTheme(styled.div`
   position: absolute;
   top: 0;
   right: ${({ theme }) => theme.spacingHorizontal(0.5)};
@@ -15,7 +15,7 @@ export const SelectorIcon = WithTheme(styled.div`
   color: ${({onDark, theme}: any) => onDark ? theme.background : theme.primary};
 `)
 
-export const SelectButton = WithTheme(styled(Listbox.Button)`
+export const SelectButton = withTheme(styled(Listbox.Button)`
   font-size: 1em;
   color: ${({ theme, onDark }: any) => onDark ? theme.background : theme.primary};
   position: relative;
@@ -34,7 +34,7 @@ export const SelectButton = WithTheme(styled(Listbox.Button)`
   text-align: left;
 `)
 
-const FloatingOptions = WithTheme(styled.ul`
+const FloatingOptions = withTheme(styled.ul`
   color: ${({ theme, onDark }: any) => onDark ? theme.background : theme.primary};
   position: absolute;
   margin: 0;
@@ -46,7 +46,7 @@ const FloatingOptions = WithTheme(styled.ul`
   background-color: ${({ theme }) => theme.background};
 `)
 
-const Options = WithTheme(styled(Listbox.Options)`
+const Options = withTheme(styled(Listbox.Options)`
   position: relative;
   margin: 0;
   margin-top: ${({ theme }) => theme.spacingVertical()};
@@ -59,7 +59,7 @@ export const OptionsContainer = (props: any) => <Options {...props}>
   <FloatingOptions {...props}/>
 </Options>
 
-export const Option = WithTheme(styled.li`
+export const Option = withTheme(styled.li`
   list-style-type: none;
   position: relative;
   padding: ${({ theme }) => `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
@@ -74,7 +74,7 @@ export const Option = WithTheme(styled.li`
   }
 `)
 
-export const Label = WithTheme(styled(Listbox.Label)`
+export const Label = withTheme(styled(Listbox.Label)`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
