@@ -1,12 +1,7 @@
-import {ReactNode} from 'react'
 import styled from 'styled-components'
 import { Listbox } from '@headlessui/react'
 
-type SelectInternalProps = {
-  inverted?: boolean;
-  children?: ReactNode;
-  open?: boolean;
-}
+import { SelectInternalProps } from './types'
 
 export const SelectorIcon = styled.div<SelectInternalProps>`
   position: absolute;
