@@ -29,15 +29,16 @@ display: flex;
 flex-direction: column;
 justify-content: center;
 font-size: 1.5em;
-color: ${({ theme }) => theme.primary};
+color: ${({ theme, onDark }) => onDark ? theme.background : theme.primary};
 `)
 
 const SelectButton = WithTheme(styled(Listbox.Button)`
-color: ${({ theme }) => theme.primary};
+font-size: 1em;
+color: ${({ theme, onDark }) => onDark ? theme.background : theme.primary};
 position: relative;
 width: ${({ fullWidth }) => fullWidth ? '100%' : 'auto'};
 appearance: none;
-background-color: transparent;
+background-color: ${({ onDark }) => onDark ? 'rgba(255,255,255,.2)' : 'transparent'} ;
 padding: 0;
 padding: .7em 1.3em;
 padding-right: 2em;
@@ -46,11 +47,12 @@ outline: none;
 border: none;
 border: 1px solid;
 border-radius: ${({ theme }) => theme.borderRadius()};
-border-color: ${({ theme, open }) => open ? theme.accent : theme.borderColor};
+border-color: ${({ theme, onDark, open }) => open ? (onDark ? theme.background : theme.accent) : theme.borderColor};
 text-align: left;
 `)
 
 const Options = WithTheme(styled(Listbox.Options)`
+color: ${({ theme, onDark }) => onDark ? theme.background : theme.primary};
 margin: 0;
 margin-top: .5em;
 padding: 0;
@@ -66,32 +68,40 @@ list-style-type: none;
 margin: .35em 0.65em;
 padding: .35em 0.65em;
 border-radius: ${({ theme }) => theme.borderRadius(.5)};
-background-color: ${({ theme, selected, active }) => selected || active ? theme.selected : 'transparent'};
+background-color: ${({ theme, selected, active, onDark }) => selected || active ? (onDark ? 'rgba(255,255,255,.2)' : theme.selected) : 'transparent'};
 outline: none;
 cursor: default;
 
 &:hover {
-  background-color: ${({ theme }) => theme.selected};
+  background-color: ${({ theme, onDark }) => onDark ? 'rgba(255,255,255,.2)' : theme.selected};
 }
 `)
 
-function MyListbox({ fullWidth }: { fullWidth?: boolean }) {
+const Label = WithTheme(styled(Listbox.Label)`
+font-size: 1em;
+display: inline-block;
+margin-bottom: .7em;
+color: ${({ theme, onDark }) => onDark ? theme.background : theme.primary};
+`)
+
+function MyListbox({ fullWidth, onDark, label }: { fullWidth?: boolean; onDark?: boolean; label: string }) {
   const [selectedPerson, setSelectedPerson] = useState(people[0])
 
   return (
     <Listbox value={selectedPerson} onChange={setSelectedPerson}>
       {({ open }) => <>
-        <SelectButton open={open} fullWidth={fullWidth}>
+        <Label onDark={onDark}>{label}</Label>
+        <SelectButton open={open} fullWidth={fullWidth} onDark={onDark}>
           <span>{selectedPerson.name}</span>
-          <SelectorIcon>
+          <SelectorIcon onDark={onDark}>
             <ArrowBottom />
           </SelectorIcon>
         </SelectButton>
-        <Options fullWidth={fullWidth}>
+        <Options fullWidth={fullWidth} onDark={onDark}>
           {people.map((person) => (
             <Listbox.Option key={person.id} value={person} as={Fragment}>
               {({ active, selected }) => (
-                <Option selected={selected} active={active}>
+                <Option selected={selected} active={active} onDark={onDark}>
                   {person.name}
                 </Option>
               )}
@@ -118,7 +128,7 @@ const BaseNodeContainer = () => {
   }, [])
 
   return (
-    <div>
+    <div style={{backgroundColor: '#662FA1', padding: '2em'}}>
       <h2>Base Node</h2>
       <p>
         available docker images:
@@ -130,7 +140,7 @@ const BaseNodeContainer = () => {
           </em>
         ))}
         <br/>
-        <MyListbox fullWidth/>
+        <MyListbox label="Tari network" fullWidth onDark/>
       </p>
     </div>
   )
