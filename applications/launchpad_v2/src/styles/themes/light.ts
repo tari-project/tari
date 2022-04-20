@@ -15,6 +15,8 @@ const lightTheme = {
   borderColor: styles.colors.dark.borders,
   selected: styles.colors.light.backgroundImage,
   borderRadius: (count = 1) => `${count * 10}px`,
+  spacingVertical: (count = 1) => `${count * 0.7}em`,
+  spacingHorizontal: (count = 1) => `${count * 1.3}em`,
 }
 
 export default lightTheme
