@@ -1,28 +1,7 @@
-import { createGlobalStyle } from 'styled-components'
-
-import { AvenirRegular, AvenirMedium, AvenirHeavy } from '../../assets/fonts/fonts'
-
+import { StyledText } from './styles' 
 import { TextProps } from './types'
-
 import styles from '../../styles/styles'
 
-/**
- * Global style rule to make fonts files accessible
- */
-const GlobalFonts = createGlobalStyle`
-  @font-face {
-    src: url(${AvenirRegular});
-    font-family: 'AvenirRegular'
-  }
-  @font-face {
-    src: url(${AvenirMedium});
-    font-family: 'AvenirMedium'
-  }
-  @font-face {
-    src: url(${AvenirHeavy});
-    font-family: 'AvenirHeavy'
-  }
-`
 /**
  * @name Text
  * 
@@ -36,7 +15,7 @@ const GlobalFonts = createGlobalStyle`
  */
 
 const Text = ({
-  type,
+  type = 'defaultMedium',
   color,
   children,
 }: TextProps) => {
@@ -46,8 +25,7 @@ const Text = ({
   }
   return (
     <>
-      <GlobalFonts />
-      <p style={textStyles}>{children}</p>
+      <StyledText style={textStyles}>{children}</StyledText>
     </>
   )
 }
