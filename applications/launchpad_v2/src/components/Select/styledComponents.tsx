@@ -1,9 +1,10 @@
+import {ReactNode} from 'react'
 import styled from 'styled-components'
 import { Listbox } from '@headlessui/react'
 
 type SelectInternalProps = {
   darkBackground?: boolean;
-  children?: any;
+  children?: ReactNode;
   open?: boolean;
 }
 

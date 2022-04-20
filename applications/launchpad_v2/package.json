@@ -21,6 +21,7 @@
     "start": "cross-env BROWSER=none react-scripts start",
     "build": "react-scripts build",
     "test": "jest --reporters=default --reporters=jest-junit",
+    "test:watch": "npm run test -- --watch",
     "test:ci": "jest --ci --runInBand --reporters=default --reporters=jest-junit",
     "eject": "react-scripts eject",
     "lint": "eslint .",
