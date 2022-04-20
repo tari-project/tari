@@ -1,9 +1,10 @@
-import {useEffect, useState} from 'react'
-import {invoke} from '@tauri-apps/api/tauri'
+import { useEffect, useState } from 'react'
+import { invoke } from '@tauri-apps/api/tauri'
 
 import logo from './logo.svg'
 import './App.css'
 import { ThemeProvider } from 'styled-components'
+import themes from './styles/themes'
 
 function App() {
   const [images, setImages] = useState<string[]>([])
@@ -17,7 +18,7 @@ function App() {
   }, [])
 
   return (
-    <ThemeProvider theme={{}}>
+    <ThemeProvider theme={themes.lightTheme}>
       <div className="App">
         <header className="App-header">
           <img src={logo} className="App-logo" alt="logo" />
