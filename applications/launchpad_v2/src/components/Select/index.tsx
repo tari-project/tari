@@ -3,10 +3,8 @@ import { Listbox } from '@headlessui/react'
 
 import ArrowBottom from '../../styles/Icons/ArrowBottom1'
 
-import {Label, SelectButton, SelectorIcon, OptionsContainer, Option} from './styledComponents'
-
-type Option = { value: string; label: string; key: string; }
-type MyListboxProps = { inverted?: boolean; label: string; value: Option; options: Option[]; onChange: (option: Option) => void }
+import { Label, SelectButton, SelectorIcon, OptionsContainer, Option } from './styledComponents'
+import { MyListboxProps } from './types'
 
 const Select = ({ value, options, onChange, inverted, label }: MyListboxProps) => {
   return (
