@@ -7,4 +7,10 @@ export type SelectInternalProps = {
 }
 
 type Option = { value: string; label: string; key: string; }
-export type MyListboxProps = { inverted?: boolean; label: string; value: Option; options: Option[]; onChange: (option: Option) => void }
+export type MyListboxProps = {
+  invertedStyle?: boolean;
+  label: string;
+  value: Option;
+  options: Option[];
+  onChange: (option: Option) => void;
+}

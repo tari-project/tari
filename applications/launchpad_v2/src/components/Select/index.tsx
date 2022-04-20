@@ -3,25 +3,40 @@ import { Listbox } from '@headlessui/react'
 
 import ArrowBottom from '../../styles/Icons/ArrowBottom1'
 
-import { Label, SelectButton, SelectorIcon, OptionsContainer, Option } from './styledComponents'
+import { Label, SelectButton, SelectorIcon, OptionsContainer, Option } from './styles'
 import { MyListboxProps } from './types'
 
-const Select = ({ value, options, onChange, inverted, label }: MyListboxProps) => {
+/**
+ * @name Select
+ *
+ * @typedef MyListboxProps
+ * @prop {boolean?} invertedStyle - whether component should display inverted styles on dark background
+ * @prop {string} label - label used for component
+ * @prop {Option[]} options - options shown in the select dropdown
+ * @prop {Option} value - selected value
+ * @prop {function} onChange - called when selected value changes
+ *
+ * @typedef Option
+ * @prop {string} value - value of the option
+ * @prop {string} label - label shown in option
+ * @prop {string} key - key to be used in react map
+ */
+const Select = ({ value, options, onChange, invertedStyle, label }: MyListboxProps) => {
   return (
     <Listbox value={value} onChange={onChange}>
       {({ open }) => <>
-        <Label darkBackground={inverted}>{label}</Label>
-        <SelectButton open={open} inverted={inverted}>
+        <Label darkBackground={invertedStyle}>{label}</Label>
+        <SelectButton open={open} inverted={invertedStyle}>
           <span>{value?.label || ''}</span>
-          <SelectorIcon inverted={inverted}>
+          <SelectorIcon inverted={invertedStyle}>
             <ArrowBottom />
           </SelectorIcon>
         </SelectButton>
-        <OptionsContainer inverted={inverted}>
+        <OptionsContainer inverted={invertedStyle}>
           {options.map((option) => (
             <Listbox.Option key={option.key} value={option} as={Fragment}>
               {({ active, selected }) => (
-                <Option selected={selected} active={active} inverted={inverted}>
+                <Option selected={selected} active={active} inverted={invertedStyle}>
                   {option.label}
                 </Option>
               )}
