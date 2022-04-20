@@ -8,7 +8,7 @@ import {Label, SelectButton, SelectorIcon, OptionsContainer, Option} from './sty
 type Option = { value: string; label: string; key: string; }
 type MyListboxProps = { inverted?: boolean; label: string; value: Option; options: Option[]; onChange: (option: Option) => void }
 
-export function Select({ value, options, onChange, inverted, label }: MyListboxProps) {
+const Select = ({ value, options, onChange, inverted, label }: MyListboxProps) => {
   return (
     <Listbox value={value} onChange={onChange}>
       {({ open }) => <>
@@ -34,3 +34,5 @@ export function Select({ value, options, onChange, inverted, label }: MyListboxP
     </Listbox>
   )
 }
+
+export default Select
