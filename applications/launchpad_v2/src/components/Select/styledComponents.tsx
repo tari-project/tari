@@ -3,7 +3,7 @@ import styled from 'styled-components'
 import { Listbox } from '@headlessui/react'
 
 type SelectInternalProps = {
-  darkBackground?: boolean;
+  inverted?: boolean;
   children?: ReactNode;
   open?: boolean;
 }
@@ -17,16 +17,16 @@ export const SelectorIcon = styled.div<SelectInternalProps>`
   flex-direction: column;
   justify-content: center;
   font-size: 1.5em;
-  color: ${({darkBackground, theme}) => darkBackground ? theme.background : theme.primary};
+  color: ${({inverted, theme}) => inverted ? theme.background : theme.primary};
 `
 
 export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
   font-size: 1em;
-  color: ${({ theme, darkBackground }) => darkBackground ? theme.background : theme.primary};
+  color: ${({ theme, inverted }) => inverted ? theme.background : theme.primary};
   position: relative;
   width: 100%;
   appearance: none;
-  background-color: ${({ theme, darkBackground }) => darkBackground ? theme.transparentBackground : 'transparent'} ;
+  background-color: ${({ theme, inverted }) => inverted ? theme.transparentBackground : 'transparent'} ;
   padding: 0;
   padding: ${({ theme }) => `${theme.spacingVertical()} ${theme.spacingHorizontal()}`};
   padding-right: ${({ theme }) => theme.spacingHorizontal()};
@@ -35,7 +35,7 @@ export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
   border: none;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.borderRadius()};
-  border-color: ${({ theme, darkBackground, open }) => open ? (darkBackground ? theme.background : theme.accent) : theme.borderColor};
+  border-color: ${({ theme, inverted, open }) => open ? (inverted ? theme.background : theme.accent) : theme.borderColor};
   text-align: left;
 `
 
