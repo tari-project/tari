@@ -1,9 +1,13 @@
 import styled from 'styled-components'
 import { Listbox } from '@headlessui/react'
 
-import { withTheme } from '../../styles'
+type SelectInternalProps = {
+  darkBackground?: boolean;
+  children?: any;
+  open?: boolean;
+}
 
-export const SelectorIcon = withTheme(styled.div`
+export const SelectorIcon = styled.div<SelectInternalProps>`
   position: absolute;
   top: 0;
   right: ${({ theme }) => theme.spacingHorizontal(0.5)};
@@ -12,29 +16,29 @@ export const SelectorIcon = withTheme(styled.div`
   flex-direction: column;
   justify-content: center;
   font-size: 1.5em;
-  color: ${({onDark, theme}: any) => onDark ? theme.background : theme.primary};
-`)
+  color: ${({darkBackground, theme}) => darkBackground ? theme.background : theme.primary};
+`
 
-export const SelectButton = withTheme(styled(Listbox.Button)`
+export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
   font-size: 1em;
-  color: ${({ theme, onDark }: any) => onDark ? theme.background : theme.primary};
+  color: ${({ theme, darkBackground }) => darkBackground ? theme.background : theme.primary};
   position: relative;
-  width: ${({ fullWidth }: any) => fullWidth ? '100%' : 'auto'};
+  width: 100%;
   appearance: none;
-  background-color: ${({ theme, onDark }: any) => onDark ? theme.transparentBackground : 'transparent'} ;
+  background-color: ${({ theme, darkBackground }) => darkBackground ? theme.transparentBackground : 'transparent'} ;
   padding: 0;
   padding: ${({ theme }) => `${theme.spacingVertical()} ${theme.spacingHorizontal()}`};
-  padding-right: ${({ theme }: any) => theme.spacingHorizontal()};
+  padding-right: ${({ theme }) => theme.spacingHorizontal()};
   margin: 0;
   outline: none;
   border: none;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.borderRadius()};
-  border-color: ${({ theme, onDark, open }: any) => open ? (onDark ? theme.background : theme.accent) : theme.borderColor};
+  border-color: ${({ theme, darkBackground, open }) => open ? (darkBackground ? theme.background : theme.accent) : theme.borderColor};
   text-align: left;
-`)
+`
 
-const FloatingOptions = withTheme(styled.ul`
+const FloatingOptions = styled.ul<SelectInternalProps>`
   color: ${({ theme }) => theme.primary};
   position: absolute;
   margin: 0;
@@ -42,41 +46,41 @@ const FloatingOptions = withTheme(styled.ul`
   width: 100%;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.borderRadius()};
-  border-color: ${({ theme, open }: any) => open ? theme.accent : theme.borderColor};
+  border-color: ${({ theme, open }) => open ? theme.accent : theme.borderColor};
   background-color: ${({ theme }) => theme.background};
-`)
+`
 
-const Options = withTheme(styled(Listbox.Options)`
+const Options = styled(Listbox.Options)`
   position: relative;
   margin: 0;
   margin-top: ${({ theme }) => theme.spacingVertical()};
   padding: 0;
-  width: ${({ fullWidth }: any) => fullWidth ? '100%' : 'auto'};
+  width: 100%;
   outline: none;
-`)
+`
 
-export const OptionsContainer = (props: any) => <Options {...props}>
+export const OptionsContainer = (props: SelectInternalProps) => <Options {...props}>
   <FloatingOptions {...props}/>
 </Options>
 
-export const Option = withTheme(styled.li`
+export const Option = styled.li<SelectInternalProps & {selected?: boolean; active?: boolean;}>`
   list-style-type: none;
   position: relative;
   padding: ${({ theme }) => `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
   margin: ${({ theme }) => `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
   border-radius: ${({ theme }) => theme.borderRadius(.5)};
-  background-color: ${({ theme, selected, active }: any) => selected || active ? theme.selected : 'transparent'};
+  background-color: ${({ theme, selected, active }) => selected || active ? theme.selected : 'transparent'};
   outline: none;
   cursor: default;
 
   &:hover {
     background-color: ${({ theme }) => theme.selected};
   }
-`)
+`
 
-export const Label = withTheme(styled(Listbox.Label)`
+export const Label = styled(Listbox.Label)`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
-  color: ${({ theme, onDark }) => onDark ? theme.background : theme.primary};
-`)
+  color: ${({ theme, darkBackground }) => darkBackground ? theme.background : theme.primary};
+`
