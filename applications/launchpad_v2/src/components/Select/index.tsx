@@ -9,7 +9,8 @@ import { MyListboxProps } from './types'
 /**
  * @name Select
  *
- * @typedef MyListboxProps
+ * Renders a tari-styled single select
+ *
  * @prop {boolean?} invertedStyle - whether component should display inverted styles on dark background
  * @prop {string} label - label used for component
  * @prop {Option[]} options - options shown in the select dropdown
