@@ -111,6 +111,9 @@ commands:
           name: npm -v
           command: npm -v
       - run:
+          name: Remove package-lock.json
+          command: cd applications/launchpad_v2 && rm package-lock.json
+      - run:
           name: npm install
           command: cd applications/launchpad_v2 && npm install
       - run:
