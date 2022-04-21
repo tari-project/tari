@@ -1,9 +1,10 @@
-import { useEffect, useState, ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
-import styled, { useTheme } from 'styled-components'
+import { useTheme } from 'styled-components'
 
 import Select from '../../components/Select'
 import Text from '../../components/Text'
+import Box from '../../components/Box'
 
 const networks = ['mainnet', 'testnet']
 const networkOptions = networks.map(network => ({
@@ -11,44 +12,6 @@ const networkOptions = networks.map(network => ({
   value: network,
   key: network,
 }))
-
-const StyledBox = styled.div`
-  padding: ${({ theme }) => theme.spacing()};
-  margin: ${({ theme }) => theme.spacing()} 0;
-  border-radius: ${({ theme }) => theme.borderRadius()};
-  border: 1px solid ${({ theme }) => theme.borderColor};
-  min-width: 416px;
-  width: 416px;
-`
-
-type Gradient = {
-  start: string
-  end: string
-}
-
-type BoxProps = {
-  children: ReactNode
-  border?: boolean
-  style?: React.CSSProperties
-  gradient?: Gradient
-}
-
-const Box = ({ children, gradient, border, style: inlineStyle }: BoxProps) => {
-  const style = {
-    border: border === false ? 'none' : undefined,
-    background:
-      gradient &&
-      `
-      linear-gradient(
-      45deg,
-      ${gradient.start} 0%,
-      ${gradient.end} 100%
-    )`,
-    ...inlineStyle,
-  }
-
-  return <StyledBox style={style}>{children}</StyledBox>
-}
 
 /**
  * @TODO move user-facing text to i18n file when implementing
