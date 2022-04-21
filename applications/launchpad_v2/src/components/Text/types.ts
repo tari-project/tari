@@ -23,5 +23,3 @@ export interface TextProps {
   children: ReactNode
   color?: string
 }
-
-
