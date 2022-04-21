@@ -26,6 +26,10 @@ module.exports = {
     'no-console': 1,
     quotes: ['error', 'single'],
     'react/react-in-jsx-scope': 'off',
-    semi: ['error', 'never'],
-  },
+    'semi': [
+      'error',
+      'never'
+    ],
+    'object-curly-spacing': ['error', 'always', { 'objectsInObjects': true }]
+  }
 }
