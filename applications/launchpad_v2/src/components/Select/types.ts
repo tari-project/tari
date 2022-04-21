@@ -7,7 +7,7 @@ export type SelectInternalProps = {
 }
 
 type Option = { value: string; label: string; key: string }
-export type MyListboxProps = {
+export type SelectProps = {
   inverted?: boolean
   label: string
   value: Option

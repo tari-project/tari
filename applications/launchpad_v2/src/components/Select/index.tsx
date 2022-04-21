@@ -10,7 +10,7 @@ import {
   OptionsContainer,
   Option,
 } from './styles'
-import { MyListboxProps } from './types'
+import { SelectProps } from './types'
 
 /**
  * @name Select
@@ -28,13 +28,7 @@ import { MyListboxProps } from './types'
  * @prop {string} label - label shown in option
  * @prop {string} key - key to be used in react map
  */
-const Select = ({
-  value,
-  options,
-  onChange,
-  inverted,
-  label,
-}: MyListboxProps) => {
+const Select = ({ value, options, onChange, inverted, label }: SelectProps) => {
   return (
     <Listbox value={value} onChange={onChange}>
       {({ open }) => (
