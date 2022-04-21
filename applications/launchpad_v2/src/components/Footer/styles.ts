@@ -1,3 +1,4 @@
+import { animated } from 'react-spring'
 import styled from 'styled-components'
 
 export const StyledFooter = styled.footer`
@@ -7,6 +8,6 @@ export const StyledFooter = styled.footer`
   align-items: center;
 `
 
-export const FooterCommand = styled.span`
+export const FooterTextWrapper = styled(animated.div)`
   text-align: center;
 `

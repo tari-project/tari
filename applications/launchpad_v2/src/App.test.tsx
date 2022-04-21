@@ -1,11 +1,12 @@
-import React from 'react'
 import { act, render } from '@testing-library/react'
 import { randomFillSync } from 'crypto'
-import { mockIPC, clearMocks } from '@tauri-apps/api/mocks'
+import { clearMocks } from '@tauri-apps/api/mocks'
 import { ThemeProvider } from 'styled-components'
+import { Provider } from 'react-redux'
 
 import App from './App'
-import { Provider } from 'react-redux'
+
+import { tauriIPCMock } from '../__tests__/mocks/mockTauriIPC'
 
 import { store } from './store'
 import themes from './styles/themes'
@@ -23,11 +24,14 @@ afterEach(() => {
 })
 
 test('renders without crashing', async () => {
-  render(
-    <Provider store={store}>
-      <ThemeProvider theme={themes.light}>
-        <App />
-      </ThemeProvider>
-    </Provider>,
-  )
+  tauriIPCMock()
+  await act(async () => {
+    render(
+      <Provider store={store}>
+        <ThemeProvider theme={themes.light}>
+          <App />
+        </ThemeProvider>
+      </Provider>,
+    )
+  })
 })
