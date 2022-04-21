@@ -26,6 +26,7 @@ module.exports = {
     'indent': [
       'error',
       2,
+      { 'SwitchCase': 1 }
     ],
     'linebreak-style': [
       'error',
@@ -40,6 +41,7 @@ module.exports = {
     'semi': [
       'error',
       'never'
-    ]
+    ],
+    'object-curly-spacing': ['error', 'always', { 'objectsInObjects': true }]
   }
 }

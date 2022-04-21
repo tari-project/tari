@@ -26,7 +26,7 @@ The Tari Launchpad is dedicated for beginners in Blockchain world, as well as fo
 $ npm install
 
 # Run the application
-$ npm run tauri dev
+$ npm run dev
 ```
 
 ### Other scripts
@@ -38,9 +38,57 @@ $ npm run lint
 
 # With auto-fix
 $ npm run lint:fix
+
+# Run Lint test - it produces report in temp/reports folder
+$ npm run lint:test
+```
+
+#### Tests
+
+```bash
+$ npm run test
+```
+
+#### Build
+
+```bash
+$ npm run bundle
 ```
 
 ## Development notes
+
+### Contribution practices
+
+1. Place test files next to tested component
+1. Put components in directories with main implementation being in `index.tsx`
+1. Prefer default export
+1. Put types and interface in co-located `types.ts` file
+
+component JSDoc examples:
+```js
+/**
+ * renders tari button
+ *
+ * @prop {() => void} onClick - event handler for click event
+ * @prop {string} color - text color of the button text
+ */
+const TariButton = ({ onClick, color }: TariButtonProps) => { ... }
+```
+
+```js
+/**
+ * renders tari button
+ *
+ * @prop {TariButtonProps} props - tari button props
+ */
+const TariButton = ({ onClick }: TariButtonProps) => { ... }
+```
+
+### Definition of done
+
+- _must have_: a minimal test that tries to render a given component
+- _nice to have_: test that covers state changes and user interactions
+- _nice to have_: brief JSDoc to anything that has `export` label
 
 ### Locales
 
@@ -65,3 +113,7 @@ Recommendations:
 - `styles` - Design system
 - `types` - (?) not sure if we need this. It should contain common types used across the application. we keep it for now and remove at the end if not needed.
 - `utils` - helpers etc.
+
+### CI with CircleCI
+
+The CircleCI runs tests and eslint check for branches that name starts with `launchpad`.
