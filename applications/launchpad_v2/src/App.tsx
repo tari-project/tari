@@ -6,7 +6,6 @@ import { selectThemeConfig } from './store/app/selectors'
 import HomePage from './pages/home'
 
 import './styles/App.css'
-import GlobalStyle from './styles/globalStyles'
 
 const AppContainer = styled.div`
   background: ${({ theme }) => theme.background};
@@ -21,7 +20,6 @@ const App = () => {
 
   return (
     <ThemeProvider theme={themeConfig}>
-      <GlobalStyle />
       <AppContainer>
         <HomePage />
       </AppContainer>

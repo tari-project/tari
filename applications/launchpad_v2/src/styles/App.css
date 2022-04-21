@@ -20,3 +20,18 @@ div#root {
   overflow: hidden;
   background: transparent;
 }
+
+@font-face {
+  src: url('../assets/fonts/AvenirLTStd-Book.otf');
+  font-family: 'AvenirRegular'
+}
+
+@font-face {
+  src: url('../assets/fonts/AvenirLTStd-Medium.otf');
+  font-family: 'AvenirMedium'
+}
+
+@font-face {
+  src: url('../assets/fonts/AvenirLTStd-Heavy.otf');
+  font-family: 'AvenirHeavy'
+}
