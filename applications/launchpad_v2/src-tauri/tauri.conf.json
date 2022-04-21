@@ -69,14 +69,19 @@
     "windows": [
       {
         "title": "Tari Launchpad",
-        "width": 1600,
+        "width": 1200,
+        "minWidth": 700,
         "height": 800,
+        "minHeight": 400,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": false,
+        "transparent": true
       }
     ],
     "security": {
       "csp": "default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-eval' 'unsafe-inline' 'self' img-src: 'self'"
-    }
+    },
+    "macOSPrivateApi": true
   }
 }

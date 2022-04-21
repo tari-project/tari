@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { invoke } from '@tauri-apps/api/tauri'
 
-import { Select } from '../../components/Select'
+import Select from '../../components/Select'
 
 const networks = ['mainnet', 'testnet']
 const networkOptions = networks.map(network => ({
@@ -10,6 +10,9 @@ const networkOptions = networks.map(network => ({
   key: network,
 }))
 
+/**
+ * @TODO move user-facing text to i18n file when implementing
+ */
 const BaseNodeContainer = () => {
   const [images, setImages] = useState<string[]>([])
   const [tariNetwork, setTariNetwork] = useState(networkOptions[0])
@@ -31,8 +34,8 @@ const BaseNodeContainer = () => {
         options={networkOptions}
         onChange={setTariNetwork}
         label="Tari network"
-        fullWidth
       />
+
       <p>
         available docker images:
         <br />

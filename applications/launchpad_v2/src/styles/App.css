@@ -1,0 +1,22 @@
+html {
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  width: 100%;
+  height: 100vh;
+  border-radius: 10px;
+  display: flex;
+  overflow: hidden;
+  background: #fff;
+}
+
+div#root {
+  display: flex;
+  flex: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: transparent;
+}
