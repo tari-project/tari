@@ -16,6 +16,7 @@ const colors = {
     overlay: '#FFFFFF22',
     backgroundImage: '#F6F5F8',
     background: '#FAFAFA',
+    gray: '#E5E5E5',
   },
   tari: {
     purpleDark: '#662FA1',

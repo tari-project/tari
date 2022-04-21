@@ -1,7 +1,9 @@
+import darkTheme from './dark'
 import lightTheme from './light'
 
 const themes = {
-  lightTheme
+  light: lightTheme,
+  dark: darkTheme,
 }
 
 export default themes
