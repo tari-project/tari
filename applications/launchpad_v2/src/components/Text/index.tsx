@@ -19,11 +19,8 @@ const Text = ({ type = 'defaultMedium', color, children }: TextProps) => {
     color: color,
     ...styles.typography[type],
   }
-  return (
-    <>
-      <StyledText style={textStyles}>{children}</StyledText>
-    </>
-  )
+
+  return <StyledText style={textStyles}>{children}</StyledText>
 }
 
 export default Text

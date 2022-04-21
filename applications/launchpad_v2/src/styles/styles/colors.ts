@@ -1,7 +1,3 @@
-/**
- * Color palette
- */
-
 const colors = {
   dark: {
     primary: '#20053D',
@@ -36,6 +32,7 @@ const colors = {
     infoText: '#4D6FE8',
     warning: '#FFEED3',
     warningText: '#D18A18',
+    actionBackground: '#76A59D',
   },
   darkMode: {
     modalBackground: '#141414',

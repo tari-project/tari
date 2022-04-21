@@ -1,3 +1,5 @@
+import 'styled-components'
+
 declare module '*.svg' {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: any
@@ -5,3 +7,13 @@ declare module '*.svg' {
 }
 
 declare module '*.otf'
+
+declare module 'styled-components' {
+  export interface DefaultTheme {
+    spacing: (count?: number) => string
+    borderRadius: (count?: number) => string
+    borderColor: string
+    actionBackground: string
+    accent: string
+  }
+}
