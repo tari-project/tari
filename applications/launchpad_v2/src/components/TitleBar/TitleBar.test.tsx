@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { randomFillSync } from 'crypto'
 import { mockIPC, clearMocks } from '@tauri-apps/api/mocks'

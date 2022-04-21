@@ -15,7 +15,7 @@ test('renders label with select', async () => {
 
   // when
   await act(async () => {
-    render(<ThemeProvider theme={themes.lightTheme}><Select label="Test select label" value={options[0]} options={options} onChange={() => null} /></ThemeProvider>)
+    render(<ThemeProvider theme={themes.light}><Select label="Test select label" value={options[0]} options={options} onChange={() => null} /></ThemeProvider>)
   })
 
   // then
@@ -33,7 +33,7 @@ test('render selected option', async () => {
 
   // when
   await act(async () => {
-    render(<ThemeProvider theme={themes.lightTheme}><Select label="Test select label" value={options[0]} options={options} onChange={() => null} /></ThemeProvider>)
+    render(<ThemeProvider theme={themes.light}><Select label="Test select label" value={options[0]} options={options} onChange={() => null} /></ThemeProvider>)
   })
 
   // then
