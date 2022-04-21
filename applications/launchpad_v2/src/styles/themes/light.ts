@@ -11,6 +11,7 @@ const lightTheme = {
   disabledText: styles.colors.dark.placeholder,
   tariGradient: styles.gradients.tari,
   borderColor: styles.colors.dark.borders,
+  actionBackground: styles.colors.secondary.actionBackground,
 
   titleBar: styles.colors.light.background,
 
