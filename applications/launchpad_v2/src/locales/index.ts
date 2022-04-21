@@ -1,9 +1,9 @@
 /**
  * I18n
- * 
+ *
  * @example
  * import t from './locales'
- * 
+ *
  * <p>{t.common.nouns.wallet}</p>
  */
 import commonI18n from './common'

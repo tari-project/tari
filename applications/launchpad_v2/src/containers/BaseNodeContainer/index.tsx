@@ -20,22 +20,21 @@ const BaseNodeContainer = () => {
   return (
     <div>
       <h2>Base Node</h2>
-      <div style={{padding: '16px'}}>
+      <div style={{ padding: '16px' }}>
         <Select
           value={tariNetwork}
           options={networkOptions}
           onChange={setTariNetwork}
-          label="Tari network"
+          label='Tari network'
         />
       </div>
 
-
-      <div style={{backgroundColor: '#662FA1', padding: '16px'}}>
+      <div style={{ backgroundColor: '#662FA1', padding: '16px' }}>
         <Select
           value={tariNetwork}
           options={networkOptions}
           onChange={setTariNetwork}
-          label="Tari network"
+          label='Tari network'
           inverted
         />
       </div>

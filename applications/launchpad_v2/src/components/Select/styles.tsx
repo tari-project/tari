@@ -12,25 +12,34 @@ export const SelectorIcon = styled.div<SelectInternalProps>`
   flex-direction: column;
   justify-content: center;
   font-size: 1.5em;
-  color: ${({inverted, theme}) => inverted ? theme.inverted.primary : theme.primary};
+  color: ${({ inverted, theme }) =>
+    inverted ? theme.inverted.primary : theme.primary};
 `
 
 export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
   font-size: 1em;
-  color: ${({ theme, inverted }) => inverted ? theme.inverted.primary : theme.primary};
+  color: ${({ theme, inverted }) =>
+    inverted ? theme.inverted.primary : theme.primary};
   position: relative;
   width: 100%;
   appearance: none;
-  background-color: ${({ theme, inverted }) => inverted ? theme.inverted.controlBackground : theme.controlBackground} ;
+  background-color: ${({ theme, inverted }) =>
+    inverted ? theme.inverted.controlBackground : theme.controlBackground};
   padding: 0;
-  padding: ${({ theme }) => `${theme.spacingVertical()} ${theme.spacingHorizontal()}`};
+  padding: ${({ theme }) =>
+    `${theme.spacingVertical()} ${theme.spacingHorizontal()}`};
   padding-right: ${({ theme }) => theme.spacingHorizontal()};
   margin: 0;
   outline: none;
   border: none;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.borderRadius()};
-  border-color: ${({ theme, inverted, open }) => open ? (inverted ? theme.inverted.accent : theme.accent) : theme.borderColor};
+  border-color: ${({ theme, inverted, open }) =>
+    open
+      ? inverted
+        ? theme.inverted.accent
+        : theme.accent
+      : theme.borderColor};
   text-align: left;
 `
 
@@ -43,7 +52,8 @@ const FloatingOptions = styled.ul<SelectInternalProps>`
   width: 100%;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.borderRadius()};
-  border-color: ${({ theme, open }) => open ? theme.accent : theme.borderColor};
+  border-color: ${({ theme, open }) =>
+    open ? theme.accent : theme.borderColor};
   background-color: ${({ theme }) => theme.background};
   z-index: 9001;
 `
@@ -56,17 +66,24 @@ const Options = styled(Listbox.Options)`
   outline: none;
 `
 
-export const OptionsContainer = (props: SelectInternalProps) => <Options {...props}>
-  <FloatingOptions {...props}/>
-</Options>
+export const OptionsContainer = (props: SelectInternalProps) => (
+  <Options {...props}>
+    <FloatingOptions {...props} />
+  </Options>
+)
 
-export const Option = styled.li<SelectInternalProps & {selected?: boolean; active?: boolean;}>`
+export const Option = styled.li<
+  SelectInternalProps & { selected?: boolean; active?: boolean }
+>`
   list-style-type: none;
   position: relative;
-  padding: ${({ theme }) => `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
-  margin: ${({ theme }) => `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
-  border-radius: ${({ theme }) => theme.borderRadius(.5)};
-  background-color: ${({ theme, selected, active }) => selected || active ? theme.backgroundImage : 'transparent'};
+  padding: ${({ theme }) =>
+    `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
+  margin: ${({ theme }) =>
+    `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
+  border-radius: ${({ theme }) => theme.borderRadius(0.5)};
+  background-color: ${({ theme, selected, active }) =>
+    selected || active ? theme.backgroundImage : 'transparent'};
   outline: none;
   cursor: default;
 
@@ -79,5 +96,6 @@ export const Label = styled(Listbox.Label)`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
-  color: ${({ theme, inverted }) => inverted ? theme.inverted.primary : theme.primary};
+  color: ${({ theme, inverted }) =>
+    inverted ? theme.inverted.primary : theme.primary};
 `

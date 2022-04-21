@@ -7,15 +7,26 @@ import Select from './'
 
 test('renders label with select', async () => {
   // given
-  const options = [{
-    value: 'Test value',
-    key: 'test',
-    label: 'Test label',
-  }]
+  const options = [
+    {
+      value: 'Test value',
+      key: 'test',
+      label: 'Test label',
+    },
+  ]
 
   // when
   await act(async () => {
-    render(<ThemeProvider theme={themes.light}><Select label="Test select label" value={options[0]} options={options} onChange={() => null} /></ThemeProvider>)
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Select
+          label='Test select label'
+          value={options[0]}
+          options={options}
+          onChange={() => null}
+        />
+      </ThemeProvider>,
+    )
   })
 
   // then
@@ -25,15 +36,26 @@ test('renders label with select', async () => {
 
 test('render selected option', async () => {
   // given
-  const options = [{
-    value: 'Test value',
-    key: 'test',
-    label: 'Test label',
-  }]
+  const options = [
+    {
+      value: 'Test value',
+      key: 'test',
+      label: 'Test label',
+    },
+  ]
 
   // when
   await act(async () => {
-    render(<ThemeProvider theme={themes.light}><Select label="Test select label" value={options[0]} options={options} onChange={() => null} /></ThemeProvider>)
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Select
+          label='Test select label'
+          value={options[0]}
+          options={options}
+          onChange={() => null}
+        />
+      </ThemeProvider>,
+    )
   })
 
   // then
