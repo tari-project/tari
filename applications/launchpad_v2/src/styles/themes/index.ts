@@ -5,7 +5,7 @@ import lightTheme from './light'
 
 const SPACING = 24
 
-const withShared = theme => ({
+const withShared = (theme: DefaultTheme): DefaultTheme => ({
   ...theme,
   borderRadius: (count = 1) => `${count * 12}px`,
   spacing: (count = 1) => `${count * SPACING}px`,
@@ -13,7 +13,7 @@ const withShared = theme => ({
   spacingHorizontal: (count = 1) => `${count * SPACING}px`,
 })
 
-const themes: { light: DefaultTheme; dark: DefaultTheme } = {
+const themes = {
   light: withShared(lightTheme),
   dark: withShared(darkTheme),
 }
