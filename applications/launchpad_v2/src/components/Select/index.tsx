@@ -28,7 +28,7 @@ const Select = ({ value, options, onChange, inverted, label }: MyListboxProps) =
       {({ open }) => <>
         <Label inverted={inverted}>{label}</Label>
         <SelectButton open={open} inverted={inverted}>
-          <span>{value?.label || ''}</span>
+          <span>{(value || {}).label || ''}</span>
           <SelectorIcon inverted={inverted}>
             <ArrowBottom />
           </SelectorIcon>
