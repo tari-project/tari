@@ -1,7 +1,7 @@
 import React from 'react'
-import { act, render } from '@testing-library/react'
+import { render } from '@testing-library/react'
 import { randomFillSync } from 'crypto'
-import { mockIPC, clearMocks } from '@tauri-apps/api/mocks'
+import { clearMocks } from '@tauri-apps/api/mocks'
 import { ThemeProvider } from 'styled-components'
 
 import App from './App'
