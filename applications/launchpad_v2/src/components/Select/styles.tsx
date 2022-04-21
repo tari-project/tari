@@ -79,5 +79,5 @@ export const Label = styled(Listbox.Label)`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};
-  color: ${({ theme, darkBackground }) => darkBackground ? theme.background : theme.primary};
+  color: ${({ theme, inverted }) => inverted ? theme.inverted.primary : theme.primary};
 `
