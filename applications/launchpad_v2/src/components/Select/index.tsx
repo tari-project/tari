@@ -11,7 +11,7 @@ import { MyListboxProps } from './types'
  *
  * Renders a tari-styled single select
  *
- * @prop {boolean?} invertedStyle - whether component should display inverted styles on dark background
+ * @prop {boolean?} inverted - whether component should display inverted styles on dark background
  * @prop {string} label - label used for component
  * @prop {Option[]} options - options shown in the select dropdown
  * @prop {Option} value - selected value
@@ -22,22 +22,22 @@ import { MyListboxProps } from './types'
  * @prop {string} label - label shown in option
  * @prop {string} key - key to be used in react map
  */
-const Select = ({ value, options, onChange, invertedStyle, label }: MyListboxProps) => {
+const Select = ({ value, options, onChange, inverted, label }: MyListboxProps) => {
   return (
     <Listbox value={value} onChange={onChange}>
       {({ open }) => <>
-        <Label darkBackground={invertedStyle}>{label}</Label>
-        <SelectButton open={open} inverted={invertedStyle}>
+        <Label darkBackground={inverted}>{label}</Label>
+        <SelectButton open={open} inverted={inverted}>
           <span>{value?.label || ''}</span>
-          <SelectorIcon inverted={invertedStyle}>
+          <SelectorIcon inverted={inverted}>
             <ArrowBottom />
           </SelectorIcon>
         </SelectButton>
-        <OptionsContainer inverted={invertedStyle}>
+        <OptionsContainer inverted={inverted}>
           {options.map((option) => (
             <Listbox.Option key={option.key} value={option} as={Fragment}>
               {({ active, selected }) => (
-                <Option selected={selected} active={active} inverted={invertedStyle}>
+                <Option selected={selected} active={active} inverted={inverted}>
                   {option.label}
                 </Option>
               )}

@@ -29,12 +29,25 @@ const BaseNodeContainer = () => {
   return (
     <div>
       <h2>Base Node</h2>
-      <Select
-        value={tariNetwork}
-        options={networkOptions}
-        onChange={setTariNetwork}
-        label="Tari network"
-      />
+      <div style={{padding: '16px'}}>
+        <Select
+          value={tariNetwork}
+          options={networkOptions}
+          onChange={setTariNetwork}
+          label="Tari network"
+        />
+      </div>
+
+
+      <div style={{backgroundColor: '#662FA1', padding: '16px'}}>
+        <Select
+          value={tariNetwork}
+          options={networkOptions}
+          onChange={setTariNetwork}
+          label="Tari network"
+          inverted
+        />
+      </div>
 
       <p>
         available docker images:

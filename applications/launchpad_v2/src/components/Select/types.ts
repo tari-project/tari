@@ -8,7 +8,7 @@ export type SelectInternalProps = {
 
 type Option = { value: string; label: string; key: string; }
 export type MyListboxProps = {
-  invertedStyle?: boolean;
+  inverted?: boolean;
   label: string;
   value: Option;
   options: Option[];
