@@ -35,7 +35,7 @@ const ExpertViewUtils = {
    * Animate the Expert View drawer
    * @param size
    */
-  useDrawerAnim: (size: string) => useSpring({ width: size })
+  useDrawerAnim: (size: string) => useSpring({ width: size }),
 }
 
 export default ExpertViewUtils

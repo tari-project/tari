@@ -17,13 +17,9 @@ module.exports = {
     '\\.(svg|png|jpg)$': '<rootDir>/__tests__/mocks/mockImages.js',
     '\\.(css|scss)$': '<rootDir>/__tests__/mocks/mockStyles.js',
   },
-  setupFilesAfterEnv: [
-    '<rootDir>/src/setupTests.ts'
-  ],
+  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   collectCoverage: true,
   reporters: ['jest-junit'],
   coverageDirectory: 'temp/reports/tests',
-  collectCoverageFrom: [
-    'src/**/*.{ts,tsx}',
-  ]
+  collectCoverageFrom: ['src/**/*.{ts,tsx}'],
 }

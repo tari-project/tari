@@ -14,7 +14,7 @@ export const MainLayoutContainer = styled.div`
   flex: 1;
   top: 0;
   bottom: 0;
-  borderRadius: 10px;
+  borderradius: 10px;
   overflow: hidden;
 `
 

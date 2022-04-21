@@ -21,7 +21,7 @@ const appSlice = createSlice({
     },
     setPage(state, { payload }: { payload: ViewType }) {
       state.view = payload
-    }
+    },
   },
 })
 

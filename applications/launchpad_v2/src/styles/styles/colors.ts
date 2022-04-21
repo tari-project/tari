@@ -35,7 +35,7 @@ const colors = {
     info: '#ECF0FE',
     infoText: '#4D6FE8',
     warning: '#FFEED3',
-    warningText: '#D18A18'
+    warningText: '#D18A18',
   },
   darkMode: {
     modalBackground: '#141414',
@@ -45,9 +45,8 @@ const colors = {
     tags: '#00000040',
     logoCard: '#00000030',
     darkLogoCard: '#00000060',
-    disabledText: '#47434A'
-  }
+    disabledText: '#47434A',
+  },
 }
 
 export default colors
-
