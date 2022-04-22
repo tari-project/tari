@@ -10,6 +10,7 @@ const colors = {
     primary: '#FFFFFF',
     textSecondary: '#FFFFFF64',
     overlay: '#FFFFFF22',
+    overlayDark: '#FFFFFF44',
     backgroundImage: '#F6F5F8',
     background: '#FAFAFA',
     gray: '#E5E5E5',

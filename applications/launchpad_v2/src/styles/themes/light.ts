@@ -12,6 +12,8 @@ const lightTheme = {
   tariGradient: styles.gradients.tari,
   borderColor: styles.colors.dark.borders,
   actionBackground: styles.colors.secondary.actionBackground,
+  resetBackground: styles.colors.light.overlay,
+  resetBackgroundDark: styles.colors.light.overlayDark,
 
   titleBar: styles.colors.light.background,
 

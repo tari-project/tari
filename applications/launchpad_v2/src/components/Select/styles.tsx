@@ -17,6 +17,7 @@ export const SelectorIcon = styled.div<SelectInternalProps>`
 `
 
 export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
+  cursor: pointer;
   font-size: 1em;
   color: ${({ theme, inverted }) =>
     inverted ? theme.inverted.primary : theme.primary};
