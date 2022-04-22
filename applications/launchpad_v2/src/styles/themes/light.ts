@@ -12,10 +12,17 @@ const lightTheme = {
   tariGradient: styles.gradients.tari,
   borderColor: styles.colors.dark.borders,
   actionBackground: styles.colors.secondary.actionBackground,
-
   titleBar: styles.colors.light.background,
-
   controlBackground: 'transparent',
+  info: styles.colors.secondary.info,
+  infoText: styles.colors.secondary.infoText,
+  on: styles.colors.secondary.on,
+  onText: styles.colors.secondary.onText,
+  onTextLight: styles.colors.secondary.onTextLight,
+  warning: styles.colors.secondary.warning,
+  warningText: styles.colors.secondary.warningText,
+  expert: 'rgba(147, 48, 255, 0.05)',
+  expertText: styles.gradients.tari,
 
   inverted: {
     controlBackground: 'rgba(255,255,255,.2)',
@@ -28,6 +35,15 @@ const lightTheme = {
     accentDark: styles.colors.tari.purpleDark,
     disabledText: styles.colors.dark.placeholder,
     tariGradient: styles.gradients.tari,
+    info: styles.colors.secondary.info,
+    infoText: styles.colors.secondary.infoText,
+    on: styles.colors.secondary.on,
+    onText: styles.colors.secondary.onText,
+    onTextLight: styles.colors.secondary.onTextLight,
+    warning: styles.colors.secondary.warning,
+    warningText: styles.colors.secondary.warningText,
+    expert: 'rgba(147, 48, 255, 0.05)',
+    expertText: styles.gradients.tari,
   },
 }
 
