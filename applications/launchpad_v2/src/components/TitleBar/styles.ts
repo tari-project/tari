@@ -25,21 +25,23 @@ export const LeftCol = styled.div`
   z-index: 2;
   width: 100%;
   height: 100%;
-  justifyContent: space-between;
+  justifycontent: space-between;
   align-items: center;
   padding-left: 16px;
   padding-right: 16px;
 `
 
-export const RightCol = styled.div`
-`
+export const RightCol = styled.div``
 
 export const WindowButtons = styled.div`
   display: flex;
   align-items: center;
 `
 
-export const TitleBarButton = styled.button<{ borderColor: string, background: string }>`
+export const TitleBarButton = styled.button<{
+  borderColor: string
+  background: string
+}>`
   margin: 0px;
   padding: 3px;
   width: 14px;
@@ -56,7 +58,7 @@ export const TitleBarButton = styled.button<{ borderColor: string, background: s
   margin-right: 4px;
   margin-left: 4px;
   cursor: pointer;
-  
+
   ${WindowButtons}:hover & {
     svg {
       opacity: 1 !important;

@@ -13,7 +13,7 @@ const ThemeUtils = {
 
     const themeConfig = themes[name]
     return themeConfig || themes.light
-  }
+  },
 }
 
 export default ThemeUtils

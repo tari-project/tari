@@ -10,7 +10,7 @@ const gradients = {
   monero: 'linear-gradient(239.91deg, #ED695E 0%, #D24F43 131%)',
   merged: 'linear-gradient(238.06deg, #6838B4 0%, #DA574B 99.74%)',
   baseNodeDark: 'linear-gradient(238.06deg, #55208E 0%, #455E5B 99.74%)',
-  warning: `linear-gradient(264.94deg, #D87740 21.86%, ${colors.secondary.warningText} 80.58%)`
+  warning: `linear-gradient(264.94deg, #D87740 21.86%, ${colors.secondary.warningText} 80.58%)`,
 }
 
 export default gradients

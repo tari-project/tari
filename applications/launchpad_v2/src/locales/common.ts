@@ -5,8 +5,8 @@ const translations = {
   },
   nouns: {
     settings: 'Settings',
-    wallet: 'Wallet'
-  }
+    wallet: 'Wallet',
+  },
 }
 
 export default translations

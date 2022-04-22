@@ -6,8 +6,7 @@ export const StyledButton = styled.button`
   border-width: 0;
 `
 
-export const StyledLink = styled.a`
-`
+export const StyledLink = styled.a``
 
 export const ButtonText = styled.span``
 

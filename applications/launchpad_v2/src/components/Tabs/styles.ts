@@ -9,7 +9,8 @@ export const TabsContainer = styled.div`
 export const Tab = styled.div<{ selected?: boolean }>`
   display: flex;
   padding: 12px;
-  border-bottom: ${({ selected }) => selected ? '4px solid #9330FF' : '4px solid #fff'}
+  border-bottom: ${({ selected }) =>
+    selected ? '4px solid #9330FF' : '4px solid #fff'};
 `
 
 export const TabOptions = styled.div`

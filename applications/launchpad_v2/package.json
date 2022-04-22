@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@headlessui/react": "^1.5.0",
     "@reduxjs/toolkit": "^1.8.1",
     "@tauri-apps/api": "^1.0.0-rc.3",
     "@types/jest": "^27.0.1",
@@ -22,6 +23,7 @@
     "start": "cross-env BROWSER=none react-scripts start",
     "build": "react-scripts build",
     "test": "jest --reporters=default --reporters=jest-junit",
+    "test:watch": "npm run test -- --watch",
     "test:ci": "jest --ci --runInBand --reporters=default --reporters=jest-junit",
     "eject": "react-scripts eject",
     "lint": "eslint .",
@@ -83,5 +85,8 @@
     "jest-junit": "^13.1.0",
     "prettier": "^2.6.2",
     "ts-jest": "^27.1.4"
+  },
+  "optionalDependencies": {
+    "@tauri-apps/cli-linux-x64-gnu": "1.0.0-rc.8"
   }
 }

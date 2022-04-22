@@ -5,7 +5,7 @@
 export const font = {
   400: 'AvenirRegular',
   500: 'AvenirMedium',
-  800: 'AvenirHeavy'
+  800: 'AvenirHeavy',
 }
 
 const typography = {
@@ -65,7 +65,7 @@ const typography = {
     fontSize: 12,
     lineHeight: '18px',
     fontFamily: 'AvenirRegular',
-    fontStyle: 'italic'
+    fontStyle: 'italic',
   },
 }
 
