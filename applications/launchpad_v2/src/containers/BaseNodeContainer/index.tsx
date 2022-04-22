@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react'
-import { invoke } from '@tauri-apps/api/tauri'
+import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
 import Select from '../../components/Select'
 import Text from '../../components/Text'
 import Box from '../../components/Box'
+import Button from '../../components/Button'
+import t from '../../locales'
 
 const networks = ['mainnet', 'testnet']
 const networkOptions = networks.map(network => ({
@@ -13,64 +14,35 @@ const networkOptions = networks.map(network => ({
   key: network,
 }))
 
-/**
- * @TODO move user-facing text to i18n file when implementing
- */
 const BaseNodeContainer = () => {
-  const [images, setImages] = useState<string[]>([])
-  const [tariNetwork, setTariNetwork] = useState(networkOptions[0])
   const theme = useTheme()
+  const [tariNetwork, setTariNetwork] = useState(networkOptions[0])
 
-  useEffect(() => {
-    const getFromBackend = async () => {
-      const imagesFromBackend = await invoke<string[]>('image_list')
-      setImages(imagesFromBackend)
-    }
-
-    getFromBackend()
-  }, [])
+  const startNode = () => console.log('asdf')
 
   return (
-    <>
-      <Box
-        border={false}
-        gradient={{ start: theme.actionBackground, end: theme.accent }}
-      >
-        <Text>no border</Text>
+    <Box>
+      <Text type='header' style={{ margin: 0 }}>
+        {t.baseNode.title}
+      </Text>
+      <Box border={false} style={{ padding: 0 }}>
+        <Select
+          value={tariNetwork}
+          options={networkOptions}
+          onChange={setTariNetwork}
+          label={t.baseNode.tari_network_label}
+        />
       </Box>
-      <Box>
-        <Text type='header'>Base Node</Text>
-        <div style={{ padding: '16px' }}>
-          <Select
-            value={tariNetwork}
-            options={networkOptions}
-            onChange={setTariNetwork}
-            label='Tari network'
-          />
-        </div>
-
-        <div style={{ backgroundColor: '#662FA1', padding: '16px' }}>
-          <Select
-            value={tariNetwork}
-            options={networkOptions}
-            onChange={setTariNetwork}
-            label='Tari network'
-            inverted
-          />
-        </div>
-
-        <p>
-          available docker images:
-          <br />
-          {images.map(img => (
-            <em key={img}>
-              {img}
-              {', '}
-            </em>
-          ))}
-        </p>
-      </Box>
-    </>
+      <Button variant='primary' onClick={startNode}>
+        <Text
+          type='defaultMedium'
+          color={theme.inverted.primary}
+          style={{ lineHeight: '100%' }}
+        >
+          {t.baseNode.start}
+        </Text>
+      </Button>
+    </Box>
   )
 }
 

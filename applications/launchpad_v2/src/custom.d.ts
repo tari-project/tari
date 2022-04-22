@@ -14,6 +14,7 @@ declare module 'styled-components' {
     spacingHorizontal: (count?: number) => string
     spacingVertical: (count?: number) => string
     borderRadius: (count?: number) => string
+    tightBorderRadius: (count?: number) => string
     primary: string
     secondary: string
     background: string

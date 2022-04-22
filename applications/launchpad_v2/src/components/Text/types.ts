@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import { ReactNode, CSSProperties } from 'react'
 
 /**
  * @typedef TextProps
@@ -22,4 +22,5 @@ export interface TextProps {
     | 'microOblique'
   children: ReactNode
   color?: string
+  style?: CSSProperties
 }

@@ -1,6 +1,3 @@
-import { useContext } from 'react'
-import { CSSProperties, ThemeContext } from 'styled-components'
-
 import { ButtonText, IconWrapper, StyledButton, StyledLink } from './styles'
 import { ButtonProps } from './types'
 
@@ -14,29 +11,6 @@ const Button = ({
   rightIcon,
   onClick,
 }: ButtonProps) => {
-  const theme = useContext(ThemeContext)
-
-  let baseStyle: CSSProperties = {}
-
-  switch (variant) {
-    case 'text':
-      baseStyle = {
-        background: 'transparent',
-        color: theme.secondary,
-      }
-      break
-    default:
-      baseStyle = {
-        background: theme.tariGradient,
-        color: theme.primary,
-      }
-      break
-  }
-
-  if (style) {
-    baseStyle = { ...baseStyle, ...style }
-  }
-
   const btnContent = (
     <>
       {leftIcon ? <IconWrapper>{leftIcon}</IconWrapper> : null}
@@ -47,22 +21,14 @@ const Button = ({
 
   if (type === 'link' || href) {
     return (
-      <StyledLink
-        href={href}
-        onClick={() => onClick && onClick()}
-        style={baseStyle}
-      >
+      <StyledLink href={href} onClick={onClick} style={style} variant={variant}>
         {btnContent}
       </StyledLink>
     )
   }
 
   return (
-    <StyledButton
-      type={type}
-      onClick={() => onClick && onClick()}
-      style={baseStyle}
-    >
+    <StyledButton type={type} onClick={onClick} style={style} variant={variant}>
       {btnContent}
     </StyledButton>
   )
