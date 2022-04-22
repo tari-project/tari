@@ -17,32 +17,66 @@ const networkOptions = networks.map(network => ({
 const BaseNodeContainer = () => {
   const theme = useTheme()
   const [tariNetwork, setTariNetwork] = useState(networkOptions[0])
+  const [dark, setDark] = useState(false)
+  const toggleDarkMode = () => setDark(a => !a)
 
-  const startNode = () => console.log('asdf')
+  const startNode = () => console.log('start')
+  const stopNode = () => console.log('stop')
 
   return (
-    <Box>
-      <Text type='header' style={{ margin: 0 }}>
-        {t.baseNode.title}
-      </Text>
-      <Box border={false} style={{ padding: 0 }}>
-        <Select
-          value={tariNetwork}
-          options={networkOptions}
-          onChange={setTariNetwork}
-          label={t.baseNode.tari_network_label}
-        />
-      </Box>
-      <Button variant='primary' onClick={startNode}>
+    <>
+      <button onClick={toggleDarkMode}>toggle dark mode</button>
+      <Box
+        border={!dark}
+        gradient={
+          dark
+            ? { start: theme.actionBackground, end: theme.accent }
+            : undefined
+        }
+      >
         <Text
-          type='defaultMedium'
-          color={theme.inverted.primary}
-          style={{ lineHeight: '100%' }}
+          type='header'
+          style={{ margin: 0 }}
+          color={dark ? theme.inverted.primary : undefined}
         >
-          {t.baseNode.start}
+          {t.baseNode.title}
         </Text>
-      </Button>
-    </Box>
+        <Box
+          border={false}
+          style={{ padding: 0, background: dark ? 'transparent' : undefined }}
+        >
+          <Select
+            inverted={dark}
+            value={tariNetwork}
+            options={networkOptions}
+            onChange={setTariNetwork}
+            label={t.baseNode.tari_network_label}
+          />
+        </Box>
+        {!dark && (
+          <Button onClick={startNode}>
+            <Text
+              type='defaultMedium'
+              color={theme.inverted.primary}
+              style={{ lineHeight: '100%' }}
+            >
+              {t.baseNode.start}
+            </Text>
+          </Button>
+        )}
+        {dark && (
+          <Button type='reset' onClick={stopNode}>
+            <Text
+              type='defaultMedium'
+              color={theme.inverted.primary}
+              style={{ lineHeight: '100%' }}
+            >
+              {t.common.verbs.stop}
+            </Text>
+          </Button>
+        )}
+      </Box>
+    </>
   )
 }
 

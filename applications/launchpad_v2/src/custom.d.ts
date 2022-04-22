@@ -26,6 +26,8 @@ declare module 'styled-components' {
     tariGradient: string
     borderColor: string
     actionBackground: string
+    resetBackground: string
+    resetBackgroundDark: string
 
     titleBar: string
 
