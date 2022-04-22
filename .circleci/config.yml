@@ -101,40 +101,6 @@ commands:
       - store_artifacts:
           path: integration_tests/temp/reports
 
-  launchpad-ci:
-    description: Run Launchpad-such-wow tests
-    steps:
-      - run:
-          name: node -v
-          command: node -v
-      - run:
-          name: npm -v
-          command: npm -v
-      - run:
-          name: Remove package-lock.json
-          command: cd applications/launchpad_v2 && rm package-lock.json
-      - run:
-          name: npm install
-          command: cd applications/launchpad_v2 && npm install
-      - run:
-          name: lint
-          command: |
-            cd applications/launchpad_v2
-            npm run lint:test
-          when: always
-      - run:
-          name: test
-          command: |
-            cd applications/launchpad_v2
-            npm run test:ci
-          environment:
-            JEST_JUNIT_OUTPUT_DIR: applications/launchpad_v2/temp/reports/junit
-      - store_test_results:
-          path: applications/launchpad_v2/temp/reports
-      - store_artifacts:
-          path: applications/launchpad_v2/temp/reports
-          destination: launchpad_reports
-
 jobs:
   run-integration-tests:
     docker:
@@ -156,15 +122,6 @@ jobs:
       - checkout
       - cucumber-js-ffi
 
-  run-launchpad-tests:
-    docker:
-      - image: *rust_image
-    environment:
-      CARGO_HTTP_MULTIPLEXING: false
-    steps:
-      - checkout
-      - launchpad-ci
-
 workflows:
   version: 2
   workflow:
@@ -181,8 +138,3 @@ workflows:
               ignore:
                 - gh-pages
                 - /launchpad.*/ # TODO: Remove this filter once the branch is merged into development
-      - run-launchpad-tests: # TODO: Remove this workflow once the branch is merged into development
-          filters:
-            branches:
-              only:
-                - /launchpad.*/

@@ -1,0 +1,65 @@
+name: Launchpad v2 CI
+
+on:
+  push:
+    branches:
+      - launchpad_such_wow
+  pull_request:
+    branches:
+      - "launchpad**"
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+jobs:
+  launchpad-v2-ci:
+    name: test launchpad_v2
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+      - name: setup node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16"
+      - name: install Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2021-11-20
+          components: rustfmt
+          override: true
+      - name: install Tauri dependencies (ubuntu only)
+        if: startsWith(runner.os,'Linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            webkit2gtk-4.0 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+      - name: check environment
+        run: |
+          node -v
+          npm -v
+          yarn -v
+          rustc --version
+          date
+      - name: install
+        run: |
+          cd applications/launchpad_v2
+          yarn install
+      - name: yarn lint
+        run: |
+          cd applications/launchpad_v2
+          yarn lint:ci
+      - name: yarn test
+        run: |
+          cd applications/launchpad_v2
+          yarn test:ci
+      - name: Upload the test coverage
+        uses: actions/upload-artifact@v2
+        with:
+          name: launchpad_v2_test_results
+          path: applications/launchpad_v2/temp/reports
