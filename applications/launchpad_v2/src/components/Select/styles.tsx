@@ -33,7 +33,7 @@ export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
   outline: none;
   border: none;
   border: 1px solid;
-  border-radius: ${({ theme }) => theme.borderRadius()};
+  border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border-color: ${({ theme, inverted, open }) =>
     open
       ? inverted
@@ -51,7 +51,7 @@ const FloatingOptions = styled.ul<SelectInternalProps>`
   padding: 0;
   width: 100%;
   border: 1px solid;
-  border-radius: ${({ theme }) => theme.borderRadius()};
+  border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border-color: ${({ theme, open }) =>
     open ? theme.accent : theme.borderColor};
   background-color: ${({ theme }) => theme.background};
