@@ -1,3 +1,4 @@
+import { CSSProperties } from 'styled-components'
 import { ReactNode } from 'react'
 
 /**
@@ -5,6 +6,7 @@ import { ReactNode } from 'react'
  * @prop {'header' | 'subheader' | 'defaultHeavy' | 'defaultMedium' | 'defaultUnder' | 'smallHeavy' | 'smallMedium' | 'smallUnder' | 'microHeavy' | 'microRegular'  | 'microOblique' } [type] - text styles
  * @prop {ReactNode} children - text content to display
  * @prop {string} [color] - font color
+ * @prop {CSSProperties} [style] - optional component styles
  */
 
 export interface TextProps {
@@ -18,8 +20,10 @@ export interface TextProps {
     | 'smallMedium'
     | 'smallUnder'
     | 'microHeavy'
+    | 'microMedium'
     | 'microRegular'
     | 'microOblique'
   children: ReactNode
   color?: string
+  style?: CSSProperties
 }

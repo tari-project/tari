@@ -14,9 +14,15 @@ import styles from '../../styles/styles'
  * <Text type='defaultMedium' color={styles.colors.dark.primary}>...text goes here...</Text>
  */
 
-const Text = ({ type = 'defaultMedium', color, children }: TextProps) => {
+const Text = ({
+  type = 'defaultMedium',
+  color,
+  children,
+  style,
+}: TextProps) => {
   const textStyles = {
-    color: color,
+    color,
+    ...style,
     ...styles.typography[type],
   }
 
