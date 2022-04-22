@@ -8,16 +8,16 @@ The Tari Launchpad is dedicated for beginners in Blockchain world, as well as fo
 
 **Minimal requirements**
 
-* Rust (`> 1.58`)
-* Node (`> 16.*`)
-* Docker Engine & Docker Compose installed
+- Rust (`> 1.58`)
+- Node (`> 16.*`)
+- Docker Engine & Docker Compose installed
 
 **Techs**
 
-* Tauri
-* React
-* Typescript
-* Rust
+- Tauri
+- React
+- Typescript
+- Rust
 
 **Steps**
 
@@ -65,6 +65,7 @@ $ npm run bundle
 1. Put types and interface in co-located `types.ts` file
 
 component JSDoc examples:
+
 ```js
 /**
  * renders tari button
@@ -114,6 +115,8 @@ Recommendations:
 - `types` - (?) not sure if we need this. It should contain common types used across the application. we keep it for now and remove at the end if not needed.
 - `utils` - helpers etc.
 
-### CI with CircleCI
+### CI with GitHub actions
 
-The CircleCI runs tests and eslint check for branches that name starts with `launchpad`.
+1. For every pull request when branch name starts with `launchpad`. It runs lint and tests. (`.github/workflows/launchpad_v2.yml`)
+
+1. Daily NPM audit (`.github/workflows/launchpad_v2_audit.yml`)
