@@ -329,9 +329,9 @@ impl TransactionInput {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
                 ref version,
-                ref features,
                 ref commitment,
                 ref script,
+                ref features,
                 ref sender_offset_public_key,
                 ref covenant,
             } => {
