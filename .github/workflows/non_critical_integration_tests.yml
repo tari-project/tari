@@ -69,7 +69,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --release --bin tari_mining_node
+          args: --release --bin tari_miner
       - name: build validator node
         uses: actions-rs/cargo@v1
         with:
@@ -80,9 +80,11 @@ jobs:
       - name: Run integration tests
         run: cd integration_tests && mkdir -p cucumber_output && node_modules/.bin/cucumber-js --profile "non-critical" --tags "not @wallet-ffi"  --format json:cucumber_output/tests.cucumber --exit --retry 2 --retry-tag-filter "@flaky and not @broken"
       - name: Generate report
+        if: always()
         run: cd integration_tests && node ./generate_report.js
       - name: Store test results
         uses: actions/upload-artifact@v3
+        if: always()
         with:
           name: test results
           path: |

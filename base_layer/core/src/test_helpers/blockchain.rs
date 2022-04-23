@@ -128,7 +128,6 @@ pub fn create_store_with_consensus_and_validators_and_config(
         validators,
         config,
         DifficultyCalculator::new(rules, Default::default()),
-        false,
     )
     .unwrap()
 }
@@ -570,7 +569,10 @@ impl TestBlockchain {
         parent_name: &'static str,
         block_spec: BlockSpec,
     ) -> (Arc<ChainBlock>, UnblindedOutput) {
-        let parent = self.get_block_by_name(parent_name).unwrap();
+        let parent = self
+            .get_block_by_name(parent_name)
+            .ok_or_else(|| format!("Parent block not found with name '{}'", parent_name))
+            .unwrap();
         let difficulty = block_spec.difficulty;
         let (block, coinbase) = create_block(&self.rules, parent.block(), block_spec);
         let block = mine_block(block, parent.accumulated_data(), difficulty);
@@ -578,8 +580,13 @@ impl TestBlockchain {
     }
 
     pub fn create_unmined_block(&self, parent_name: &'static str, block_spec: BlockSpec) -> (Block, UnblindedOutput) {
-        let parent = self.get_block_by_name(parent_name).unwrap();
-        create_block(&self.rules, parent.block(), block_spec)
+        let parent = self
+            .get_block_by_name(parent_name)
+            .ok_or_else(|| format!("Parent block not found with name '{}'", parent_name))
+            .unwrap();
+        let (mut block, outputs) = create_block(&self.rules, parent.block(), block_spec);
+        block.body.sort();
+        (block, outputs)
     }
 
     pub fn mine_block(&self, parent_name: &'static str, block: Block, difficulty: Difficulty) -> Arc<ChainBlock> {
@@ -590,6 +597,13 @@ impl TestBlockchain {
     pub fn create_next_tip(&self, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
         let (name, _) = self.get_tip_block();
         self.create_chained_block(name, spec)
+    }
+
+    pub fn append(&mut self, spec: BlockSpec) -> (Arc<ChainBlock>, UnblindedOutput) {
+        let name = spec.name;
+        let (block, outputs) = self.create_chained_block(spec.prev_block, spec);
+        self.append_block(name, block.clone());
+        (block, outputs)
     }
 
     pub fn get_genesis_block(&self) -> Arc<ChainBlock> {

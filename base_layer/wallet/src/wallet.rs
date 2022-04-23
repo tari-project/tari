@@ -63,7 +63,8 @@ use tari_p2p::{
     comms_connector::pubsub_connector,
     initialization,
     initialization::P2pInitializer,
-    services::liveness::{LivenessConfig, LivenessInitializer},
+    services::liveness::{config::LivenessConfig, LivenessInitializer},
+    PeerSeedsConfig,
 };
 use tari_script::{script, ExecutionStack, TariScript};
 use tari_service_framework::StackBuilder;
@@ -136,6 +137,9 @@ where
 {
     pub async fn start(
         config: WalletConfig,
+        peer_seeds: PeerSeedsConfig,
+        node_identity: Arc<NodeIdentity>,
+        factories: CryptoFactories,
         wallet_database: WalletDatabase<T>,
         transaction_backend: U,
         output_manager_backend: V,
@@ -144,21 +148,13 @@ where
         shutdown_signal: ShutdownSignal,
         master_seed: CipherSeed,
     ) -> Result<Self, WalletError> {
-        let factories = config.factories.clone();
         let (publisher, subscription_factory) = pubsub_connector(config.buffer_size, config.rate_limit);
         let peer_message_subscription_factory = Arc::new(subscription_factory);
-        let transport_type = config.comms_config.transport_type.clone();
-        let node_identity = config.comms_config.node_identity.clone();
 
         debug!(target: LOG_TARGET, "Wallet Initializing");
         info!(
             target: LOG_TARGET,
-            "Transaction sending mechanism is {}",
-            config
-                .clone()
-                .transaction_service_config
-                .unwrap_or_default()
-                .transaction_routing_mechanism
+            "Transaction sending mechanism is {}", config.transaction_service_config.transaction_routing_mechanism
         );
         trace!(
             target: LOG_TARGET,
@@ -170,17 +166,23 @@ where
             config.rate_limit
         );
         let stack = StackBuilder::new(shutdown_signal)
-            .add_initializer(P2pInitializer::new(config.comms_config.clone(), publisher))
+            .add_initializer(P2pInitializer::new(
+                config.p2p.clone(),
+                peer_seeds,
+                config.network,
+                node_identity.clone(),
+                publisher,
+            ))
             .add_initializer(OutputManagerServiceInitializer::<V, X>::new(
-                config.output_manager_service_config.unwrap_or_default(),
+                config.output_manager_service_config,
                 output_manager_backend.clone(),
                 factories.clone(),
-                config.network,
+                config.network.into(),
                 node_identity.clone(),
             ))
             .add_initializer(KeyManagerInitializer::new(key_manager_backend, master_seed))
             .add_initializer(TransactionServiceInitializer::new(
-                config.transaction_service_config.unwrap_or_default(),
+                config.transaction_service_config,
                 peer_message_subscription_factory.clone(),
                 transaction_backend,
                 node_identity.clone(),
@@ -215,17 +217,17 @@ where
             .add_initializer(TokenManagerServiceInitializer::new(output_manager_backend));
 
         // Check if we have update config. FFI wallets don't do this, the update on mobile is done differently.
-        let stack = match config.updater_config {
-            Some(ref updater_config) => stack.add_initializer(SoftwareUpdaterService::new(
+        let stack = if config.auto_update.is_update_enabled() {
+            stack.add_initializer(SoftwareUpdaterService::new(
                 ApplicationType::ConsoleWallet,
                 env!("CARGO_PKG_VERSION")
                     .to_string()
                     .parse()
                     .expect("Unable to parse console wallet version."),
-                updater_config.clone(),
-                config.autoupdate_check_interval,
-            )),
-            _ => stack,
+                config.auto_update.clone(),
+            ))
+        } else {
+            stack
         };
 
         let mut handles = stack.build().await?;
@@ -233,7 +235,7 @@ where
         let comms = handles
             .take_handle::<UnspawnedCommsNode>()
             .expect("P2pInitializer was not added to the stack");
-        let comms = initialization::spawn_comms_using_transport(comms, transport_type).await?;
+        let comms = initialization::spawn_comms_using_transport(comms, config.p2p.transport).await?;
 
         let mut output_manager_handle = handles.expect_handle::<OutputManagerHandle>();
         let key_manager_handle = handles.expect_handle::<KeyManagerHandle<X>>();
@@ -247,9 +249,11 @@ where
         let asset_manager_handle = handles.expect_handle::<AssetManagerHandle>();
         let token_manager_handle = handles.expect_handle::<TokenManagerHandle>();
         let wallet_connectivity = handles.expect_handle::<WalletConnectivityHandle>();
-        let updater_handle = config
-            .updater_config
-            .map(|_updater_config| handles.expect_handle::<SoftwareUpdaterHandle>());
+        let updater_handle = if config.auto_update.is_update_enabled() {
+            Some(handles.expect_handle::<SoftwareUpdaterHandle>())
+        } else {
+            None
+        };
 
         persist_one_sided_payment_script_for_node_identity(&mut output_manager_handle, comms.node_identity())
             .await
@@ -271,7 +275,7 @@ where
         }
 
         Ok(Self {
-            network: config.network,
+            network: config.network.into(),
             comms,
             dht_service: dht,
             store_and_forward_requester,
@@ -394,8 +398,8 @@ where
         }
     }
 
-    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
-        self.updater_service.clone().unwrap()
+    pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+        self.updater_service.as_ref().cloned()
     }
 
     /// Import an external spendable UTXO into the wallet as a non-rewindable/non-recoverable UTXO. The output will be

@@ -6,7 +6,7 @@
     "pools": [
         {
             "coin": "monero",
-            "url": "127.0.0.1:7878",
+            "url": "127.0.0.1:18081",
             "user": "YOUR MONERO WALLET ADDRESS HERE",
             "tls": false,
             "daemon": true

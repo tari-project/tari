@@ -78,7 +78,7 @@ async function waitFor(
   asyncTestFn,
   toBe,
   maxTimeMs,
-  timeOut = 500,
+  pollInterval = 500,
   skipLog = 50
 ) {
   const now = new Date();
@@ -86,17 +86,17 @@ async function waitFor(
   let i = 0;
   while (new Date() - now < maxTimeMs) {
     try {
-      const value = await asyncTestFn();
+      const value = await Promise.resolve(asyncTestFn());
       if (value === toBe) {
         if (i > 1) {
-          console.log("waiting for process...", timeOut, i, value);
+          console.log("waiting for process...", pollInterval, i, value);
         }
         return true;
       }
       if (i % skipLog === 0 && i > 1) {
-        console.log("waiting for process...", timeOut, i, value);
+        console.log("waiting for process...", pollInterval, i, value);
       }
-      await sleep(timeOut);
+      await sleep(pollInterval);
       i++;
     } catch (e) {
       if (i > 1) {
@@ -106,7 +106,7 @@ async function waitFor(
           console.error("Error in waitFor: ", e);
         }
       }
-      await sleep(timeOut);
+      await sleep(pollInterval);
     }
   }
   return false;
@@ -351,6 +351,18 @@ function combineTwoTariKeys(key1, key2) {
   return total_key;
 }
 
+const multiAddrToSocket = (string) => {
+  console.log("input:", string);
+  let match = string.match(/\/ip4\/(.*)\/tcp\/(.*)/);
+  if (!match) {
+    console.log("no match, returning as is", string);
+    return string;
+  }
+  let res = `${match[1]}:${match[2]}`;
+  console.log("returning: ", res);
+  return res;
+};
+
 const byteArrayToHex = (bytes) =>
   bytes.reduce((str, byte) => str + byte.toString(16).padStart(2, "0"), "");
 
@@ -383,4 +395,5 @@ module.exports = {
   waitForPredicate,
   waitForIterate,
   NO_CONNECTION,
+  multiAddrToSocket,
 };

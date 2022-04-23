@@ -50,7 +50,7 @@ class CustomWorld {
       parameters.logFilePathBaseNode || "./log4rs/base_node.yml";
     this.logFilePathProxy = parameters.logFilePathProxy || "./log4rs/proxy.yml";
     this.logFilePathMiningNode =
-      parameters.logFilePathMiningNode || "./log4rs/mining_node.yml";
+      parameters.logFilePathMiningNode || "./log4rs/miner.yml";
     this.logFilePathWallet =
       parameters.logFilePathWallet || "./log4rs/wallet.yml";
     this.lastResult = {};
@@ -568,10 +568,6 @@ class CustomWorld {
       5 * 1000,
       5
     );
-    let transactionPending = await sourceClient.isTransactionAtLeastBroadcast(
-      this.lastResult.results[0]["transaction_id"]
-    );
-    expect(transactionPending).to.equal(true);
   }
 
   async waitForWalletToHaveBalance(wallet, amount) {
@@ -582,7 +578,7 @@ class CustomWorld {
     );
 
     await waitFor(
-      async () => walletClient.isBalanceAtLeast(amount),
+      async () => await walletClient.isBalanceAtLeast(amount),
       true,
       115 * 1000,
       5 * 1000,
@@ -644,9 +640,9 @@ BeforeAll({ timeout: 2400000 }, async function () {
 
   const mmProxy = new MergeMiningProxyProcess(
     "compile",
-    "127.0.0.1:9999",
+    "/ip4/127.0.0.1/tcp/9999",
     null,
-    "127.0.0.1:9998"
+    "/ip4/127.0.0.1/tcp/9998"
   );
 
   console.log("Compiling mmproxy...");
@@ -655,13 +651,13 @@ BeforeAll({ timeout: 2400000 }, async function () {
 
   const miningNode = new MiningNodeProcess(
     "compile",
-    "127.0.0.1:9999",
+    "/ip4/127.0.0.1/tcp/9999",
     null,
-    "127.0.0.1:9998"
+    "/ip4/127.0.0.1/tcp/9998"
     // this.logFilePathMiningNode
   );
 
-  console.log("Compiling mining node...");
+  console.log("Compiling miner...");
   await miningNode.init(1, 1, 1, 1, true, 1);
   await miningNode.compile();
 

@@ -24,11 +24,9 @@ class MergeMiningProxyProcess {
     submitOrigin = true
   ) {
     this.name = name;
-    this.nodeAddress = baseNodeAddress.split(":")[0];
-    this.nodeGrpcPort = baseNodeAddress.split(":")[1];
+    this.baseNodeAddress = baseNodeAddress;
     this.baseNodeClient = baseNodeClient;
-    this.walletAddress = walletAddress.split(":")[0];
-    this.walletGrpcPort = walletAddress.split(":")[1];
+    this.walletAddress = walletAddress;
     this.submitOrigin = submitOrigin;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
   }
@@ -40,43 +38,34 @@ class MergeMiningProxyProcess {
       new Date(),
       "yyyymmddHHMM"
     )}/${this.name}`;
-    // console.log("MergeMiningProxyProcess init - assign server GRPC:", this.grpcPort);
+    console.log(
+      "MergeMiningProxyProcess init - assign server GRPC:",
+      this.port
+    );
+    if (!fs.existsSync(this.baseDir)) {
+      fs.mkdirSync(this.baseDir + "/log", { recursive: true });
+    }
   }
 
-  async run(cmd, args) {
+  run(cmd, args) {
     return new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true });
-        fs.mkdirSync(this.baseDir + "/log", { recursive: true });
-      }
+      const proxyFullAddress = "/ip4/127.0.0.1/tcp/" + this.port;
 
-      const proxyAddress = "/ip4/127.0.0.1/tcp/" + this.port;
-
-      const envs = createEnv(
-        this.name,
-        false,
-        "nodeid.json",
-        this.walletAddress,
-        this.walletGrpcPort,
-        this.port,
-        this.nodeAddress,
-        this.nodeGrpcPort,
-        this.baseNodePort,
-        proxyAddress,
-        "127.0.0.1:8085",
-        [],
-        []
-      );
+      const envs = createEnv({
+        walletGrpcAddress: this.walletAddress,
+        baseNodeGrpcAddress: this.baseNodeAddress,
+        proxyFullAddress,
+      });
       const extraEnvs = {
-        TARI_MERGE_MINING_PROXY__PROXY_SUBMIT_TO_ORIGIN: this.submitOrigin,
+        ["merge_mining_proxy.submit_to_origin"]: this.submitOrigin,
       };
       const completeEnvs = { ...envs, ...extraEnvs };
-      console.log(completeEnvs);
-      const ps = spawn(cmd, args, {
-        cwd: this.baseDir,
-        // shell: true,
-        env: { ...process.env, ...completeEnvs },
+      Object.keys(completeEnvs).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${completeEnvs[k]}`);
       });
+      console.log(args.filter((s) => s !== "-p").join("\n"));
+      const ps = spawn(cmd, args);
 
       ps.stdout.on("data", (data) => {
         // console.log(`stdout: ${data}`);
@@ -109,7 +98,7 @@ class MergeMiningProxyProcess {
 
   async startNew() {
     await this.init();
-    const args = ["--base-path", ".", "--init"];
+    const args = ["--base-path", ".", "--network", "localnet"];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
@@ -119,7 +108,7 @@ class MergeMiningProxyProcess {
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
+      await this.runCommand("cargo", [
         "build",
         "--release",
         "--bin",
@@ -132,6 +121,38 @@ class MergeMiningProxyProcess {
       outputProcess = __dirname + "/../temp/out/tari_merge_mining_proxy";
     }
     return outputProcess;
+  }
+
+  runCommand(cmd, args, opts = { env: {} }) {
+    return new Promise((resolve, reject) => {
+      const ps = spawn(cmd, args, {
+        cwd: this.baseDir,
+        // shell: true,
+        env: { ...process.env, ...opts.env },
+      });
+
+      ps.stdout.on("data", (data) => {
+        // console.log(`stdout: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+        resolve(ps);
+      });
+
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
+
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
+        if (code) {
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
+        } else {
+          resolve(ps);
+        }
+      });
+    });
   }
 
   stop() {

@@ -6,7 +6,7 @@
     "pools": [
         {
             "coin": "monero",
-            "url": "127.0.0.1:7878",
+            "url": "127.0.0.1:18081",
             "user": "55LTR8KniP4LQGJSPtbYDacR7dz8RBFnsfAKMaMuwUNYX6aQbBcovzDPyrQF9KXF9tVU6Xk3K8no1BywnJX6GvZX8yJsXvt",
             "pass": "MyWallet",
             "tls": false,

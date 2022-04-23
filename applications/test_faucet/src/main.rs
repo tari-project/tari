@@ -14,7 +14,13 @@ use tari_core::{
         tari_amount::{MicroTari, T},
         test_helpers,
         test_helpers::generate_keys,
-        transaction_components::{KernelFeatures, OutputFeatures, TransactionKernel, TransactionOutput},
+        transaction_components::{
+            KernelFeatures,
+            OutputFeatures,
+            TransactionKernel,
+            TransactionOutput,
+            TransactionOutputVersion,
+        },
         CryptoFactories,
     },
 };
@@ -155,7 +161,8 @@ fn create_utxo(
     let commitment = factories.commitment.commit_value(&keys.k, value.into());
     let proof = factories.range_proof.construct_proof(&keys.k, value.into()).unwrap();
     let metadata_sig = TransactionOutput::create_final_metadata_signature(
-        &value,
+        TransactionOutputVersion::get_current_version(),
+        value,
         &keys.k,
         &script,
         &features,

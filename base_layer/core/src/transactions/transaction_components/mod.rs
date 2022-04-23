@@ -24,7 +24,6 @@
 // Version 2.0, available at http://www.apache.org/licenses/LICENSE-2.0.
 
 pub use asset_output_features::AssetOutputFeatures;
-use blake2::Digest;
 pub use committee_definition_features::CommitteeDefinitionFeatures;
 pub use error::TransactionError;
 pub use full_rewind_result::FullRewindResult;
@@ -37,7 +36,7 @@ pub use output_features_version::OutputFeaturesVersion;
 pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
-use tari_common_types::types::{Commitment, HashDigest};
+use tari_common_types::types::Commitment;
 use tari_script::TariScript;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
@@ -86,7 +85,7 @@ pub const MAX_TRANSACTION_RECIPIENTS: usize = 15;
 
 //----------------------------------------     Crate functions   ----------------------------------------------------//
 
-use crate::{common::hash_writer::HashWriter, covenants::Covenant};
+use crate::{consensus::ConsensusHashWriter, covenants::Covenant};
 
 /// Implement the canonical hashing function for TransactionOutput and UnblindedOutput for use in
 /// ordering as well as for the output hash calculation for TransactionInput.
@@ -94,7 +93,6 @@ use crate::{common::hash_writer::HashWriter, covenants::Covenant};
 /// We can exclude the range proof from this hash. The rationale for this is:
 /// a) It is a significant performance boost, since the RP is the biggest part of an output
 /// b) Range proofs are committed to elsewhere and so we'd be hashing them twice (and as mentioned, this is slow)
-/// c) TransactionInputs will now have the same hash as UTXOs, which makes locating STXOs easier when doing reorgs
 pub(super) fn hash_output(
     version: TransactionOutputVersion,
     features: &OutputFeatures,
@@ -102,11 +100,13 @@ pub(super) fn hash_output(
     script: &TariScript,
     covenant: &Covenant,
 ) -> [u8; 32] {
-    HashWriter::new(HashDigest::new())
-        .chain(&version)
-        .chain(features)
-        .chain(commitment)
-        .chain(script)
-        .chain(covenant)
-        .finalize()
+    match version {
+        TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
+            .chain(&version)
+            .chain(features)
+            .chain(commitment)
+            .chain(script)
+            .chain(covenant)
+            .finalize(),
+    }
 }

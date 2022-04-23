@@ -26,11 +26,7 @@ use std::{
 };
 
 use log::*;
-use tari_common::{
-    configuration::ValidatorNodeConfig,
-    exit_codes::{ExitCode, ExitError},
-    GlobalConfig,
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
 use tari_common_types::types::PublicKey;
 use tari_comms::{types::CommsPublicKey, NodeIdentity};
 use tari_comms_dht::Dht;
@@ -57,6 +53,7 @@ use tari_shutdown::ShutdownSignal;
 use tokio::{task, time};
 
 use crate::{
+    config::ValidatorNodeConfig,
     default_service_specification::DefaultServiceSpecification,
     grpc::services::{base_node_client::GrpcBaseNodeClient, wallet_client::GrpcWalletClient},
     monitoring::Monitoring,
@@ -70,11 +67,11 @@ use crate::{
 const LOG_TARGET: &str = "tari::validator_node::app";
 
 pub struct DanNode {
-    config: GlobalConfig,
+    config: ValidatorNodeConfig,
 }
 
 impl DanNode {
-    pub fn new(config: GlobalConfig) -> Self {
+    pub fn new(config: ValidatorNodeConfig) -> Self {
         Self { config }
     }
 
@@ -87,16 +84,10 @@ impl DanNode {
         handles: ServiceHandles,
         subscription_factory: SubscriptionFactory,
     ) -> Result<(), ExitError> {
-        let dan_config = self
-            .config
-            .validator_node
-            .as_ref()
-            .ok_or_else(|| ExitError::new(ExitCode::ConfigError, &"Missing dan section"))?;
-
-        let mut base_node_client = GrpcBaseNodeClient::new(dan_config.base_node_grpc_address);
+        let mut base_node_client = GrpcBaseNodeClient::new(self.config.base_node_grpc_address);
         let mut next_scanned_height = 0u64;
         let mut last_tip = 0u64;
-        let mut monitoring = Monitoring::new(dan_config.committee_management_confirmation_time);
+        let mut monitoring = Monitoring::new(self.config.committee_management_confirmation_time);
         loop {
             let tip = base_node_client
                 .get_tip_info()
@@ -107,9 +98,9 @@ impl DanNode {
                     target: LOG_TARGET,
                     "Scanning base layer (tip : {}) for new assets", tip.height_of_longest_chain
                 );
-                if dan_config.scan_for_assets {
+                if self.config.scan_for_assets {
                     next_scanned_height =
-                        tip.height_of_longest_chain + dan_config.committee_management_polling_interval;
+                        tip.height_of_longest_chain + self.config.committee_management_polling_interval;
                     info!(target: LOG_TARGET, "Next scanning height {}", next_scanned_height);
                 } else {
                     next_scanned_height = u64::MAX; // Never run again.
@@ -123,7 +114,7 @@ impl DanNode {
                     "Base node returned {} asset(s) to process",
                     assets.len()
                 );
-                if let Some(allow_list) = &dan_config.assets_allow_list {
+                if let Some(allow_list) = &self.config.assets_allow_list {
                     assets.retain(|(asset, _)| allow_list.contains(&asset.public_key.to_hex()));
                 }
                 for (asset, mined_height) in assets.clone() {
@@ -161,7 +152,7 @@ impl DanNode {
                     let shutdown = shutdown.clone();
                     // Create a kill signal for each asset
                     let kill = Arc::new(AtomicBool::new(false));
-                    let dan_config = dan_config.clone();
+                    let dan_config = self.config.clone();
                     let db_factory = db_factory.clone();
                     task::spawn(DanNode::start_asset_worker(
                         asset,

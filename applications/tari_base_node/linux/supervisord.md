@@ -20,7 +20,7 @@ sudo cp -v /home/vagrant/src/tari/target/release/tari_base_node  /usr/local/tari
 ```
 Create your tari_base_node configs
 ```
-sudo /usr/local/tari/bin/tari_base_node --base-path /usr/local/tari --init --create-id
+sudo /usr/local/tari/bin/tari_base_node --base-path /usr/local/tari --init 
 ```
 Setup ```tari_base_node``` services in supervisord -
 ```/etc/supervisor/conf.d/tari_base_node.conf```

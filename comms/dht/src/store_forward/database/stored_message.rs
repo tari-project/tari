@@ -23,11 +23,11 @@
 use std::convert::TryInto;
 
 use chrono::NaiveDateTime;
-use digest::Digest;
-use tari_comms::{message::MessageExt, types::Challenge};
+use tari_comms::message::MessageExt;
 use tari_utilities::{hex, hex::Hex};
 
 use crate::{
+    dedup,
     inbound::DecryptedDhtMessage,
     proto::envelope::DhtHeader,
     schema::stored_messages,
@@ -62,6 +62,7 @@ impl NewStoredMessage {
             Ok(envelope_body) => envelope_body.to_encoded_bytes(),
             Err(encrypted_body) => encrypted_body,
         };
+        let body_hash = hex::to_hex(&dedup::create_message_hash(&dht_header.origin_mac, &body));
 
         Some(Self {
             version: dht_header.version.as_major().try_into().ok()?,
@@ -75,7 +76,7 @@ impl NewStoredMessage {
                 let dht_header: DhtHeader = dht_header.into();
                 dht_header.to_encoded_bytes()
             },
-            body_hash: hex::to_hex(&Challenge::new().chain(body.clone()).finalize()),
+            body_hash,
             body,
         })
     }

@@ -94,13 +94,13 @@ loggers:
     appenders:
       - core
     additive: false
-  tari_mining_node:
-    level: info
+  tari_miner:
+    level: debug
     appenders:
       - core
     additive: false
   tari_mm_proxy:
-    level: info
+    level: debug
     appenders:
       - core
     additive: false
@@ -110,7 +110,6 @@ loggers:
     appenders:
       - other
     additive: false
-
 
   # Comms messages get logged to the 'network' log
   comms:

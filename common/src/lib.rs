@@ -49,26 +49,6 @@
 //! Bootstrapping tari configuration files might be customized via CLI or env settings. To help with building
 //! tari-enabled CLI from scratch as easy as possible this crate exposes [ConfigBootstrap] struct which
 //! implements [structopt::StructOpt] trait and can be easily reused in any CLI.
-//!
-//! ## Example - CLI which is loading and deserializing the global config file
-//!
-//! ```edition2018
-//! # use tari_common::*;
-//! # use tari_test_utils::random::string;
-//! # use tempfile::tempdir;
-//! # use structopt::StructOpt;
-//! # use tari_common::configuration::{Network, bootstrap::ApplicationType};
-//! let mut args = ConfigBootstrap::from_args();
-//! # let temp_dir = tempdir().unwrap();
-//! # args.base_path = temp_dir.path().to_path_buf();
-//! # args.init = true;
-//! args.init_dirs(ApplicationType::BaseNode);
-//! let config = args.load_configuration().unwrap();
-//! let global = GlobalConfig::convert_from(ApplicationType::BaseNode, config, Some("dibbler".into())).unwrap();
-//! assert_eq!(global.network, Network::Dibbler);
-//! assert!(global.core_threads.is_none());
-//! # std::fs::remove_dir_all(temp_dir).unwrap();
-//! ```
 
 #[cfg(any(feature = "build", feature = "static-application-info"))]
 pub mod build;
@@ -77,12 +57,11 @@ pub mod exit_codes;
 mod logging;
 pub mod configuration;
 pub use configuration::{
-    bootstrap::{install_configuration, ConfigBootstrap},
+    bootstrap::install_configuration,
     error::ConfigError,
-    global::{CommsTransport, DatabaseType, GlobalConfig, SocksAuthentication, TorControlAuthentication},
-    loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, NetworkConfigPath},
+    loader::{ConfigLoader, ConfigPath, ConfigurationError, DefaultConfigLoader, SubConfigPath},
     name_server::DnsNameServer,
-    utils::{config_installer, default_config, load_configuration},
+    utils::load_configuration,
 };
 pub mod dir_utils;
 pub use logging::initialize_logging;
@@ -93,7 +72,7 @@ pub const DEFAULT_BASE_NODE_LOG_CONFIG: &str = "config/log4rs_base_node.yml";
 pub const DEFAULT_WALLET_LOG_CONFIG: &str = "config/log4rs_console_wallet.yml";
 pub const DEFAULT_MERGE_MINING_PROXY_LOG_CONFIG: &str = "config/log4rs_merge_mining_proxy.yml";
 pub const DEFAULT_STRATUM_TRANSCODER_LOG_CONFIG: &str = "config/log4rs_miningcore_transcoder.yml";
-pub const DEFAULT_MINING_NODE_LOG_CONFIG: &str = "config/log4rs_mining_node.yml";
+pub const DEFAULT_MINER_LOG_CONFIG: &str = "config/log4rs_miner.yml";
 pub const DEFAULT_COLLECTIBLES_LOG_CONFIG: &str = "config/log4rs_collectibles.yml";
 
 pub(crate) const LOG_TARGET: &str = "common::config";

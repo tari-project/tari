@@ -30,9 +30,8 @@ use std::{
     io::{ErrorKind, Read, Write},
 };
 
-use blake2::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashDigest, HashOutput, PublicKey};
+use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashOutput, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
@@ -41,8 +40,7 @@ use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter, MaxSizeBytes},
     covenants::Covenant,
     transactions::{
         transaction_components,
@@ -154,20 +152,22 @@ impl TransactionInput {
     }
 
     pub(super) fn build_script_challenge(
+        version: TransactionInputVersion,
         nonce_commitment: &Commitment,
         script: &TariScript,
         input_data: &ExecutionStack,
         script_public_key: &PublicKey,
         commitment: &Commitment,
-    ) -> Vec<u8> {
-        HashWriter::new(HashDigest::new())
-            .chain(nonce_commitment)
-            .chain(script)
-            .chain(input_data)
-            .chain(script_public_key)
-            .chain(commitment)
-            .finalize()
-            .to_vec()
+    ) -> [u8; 32] {
+        match version {
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => ConsensusHashWriter::default()
+                .chain(nonce_commitment)
+                .chain(script)
+                .chain(input_data)
+                .chain(script_public_key)
+                .chain(commitment)
+                .finalize(),
+        }
     }
 
     pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
@@ -262,6 +262,7 @@ impl TransactionInput {
                 ..
             } => {
                 let challenge = TransactionInput::build_script_challenge(
+                    self.version,
                     self.script_signature.public_nonce(),
                     script,
                     &self.input_data,
@@ -335,7 +336,7 @@ impl TransactionInput {
                 ref covenant,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let writer = HashWriter::new(HashDigest::new())
+                let writer = ConsensusHashWriter::default()
                     .chain(version)
                     .chain(features)
                     .chain(commitment)

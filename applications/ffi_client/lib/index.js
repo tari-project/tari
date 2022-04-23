@@ -55,6 +55,7 @@ const libWallet = ffi.Library("./libtari_wallet_ffi.dylib", {
       u32,
       "string",
       "string",
+      "string",
       fn,
       fn,
       fn,

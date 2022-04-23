@@ -21,25 +21,29 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use serde::{Deserialize, Serialize};
-use tari_common::NetworkConfigPath;
+use tari_common::SubConfigPath;
 
 use crate::mempool::{reorg_pool::ReorgPoolConfig, unconfirmed_pool::UnconfirmedPoolConfig};
 
 /// Configuration for the Mempool.
-#[derive(Clone, Copy, Deserialize, Serialize, Default)]
+#[derive(Clone, Deserialize, Serialize, Default, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolConfig {
+    override_from: Option<String>,
     pub unconfirmed_pool: UnconfirmedPoolConfig,
     pub reorg_pool: ReorgPoolConfig,
+    pub service: MempoolServiceConfig,
 }
 
-impl NetworkConfigPath for MempoolConfig {
+impl SubConfigPath for MempoolConfig {
     fn main_key_prefix() -> &'static str {
         "mempool"
     }
 }
 
 /// Configuration for the MempoolService.
-#[derive(Clone, Copy, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct MempoolServiceConfig {
     /// Number of peers from which to initiate a sync. Once this many peers have successfully synced, this node will
     /// not initiate any more mempool syncs. Default: 2
@@ -57,14 +61,11 @@ impl Default for MempoolServiceConfig {
     }
 }
 
-impl NetworkConfigPath for MempoolServiceConfig {
-    fn main_key_prefix() -> &'static str {
-        "mempool_service"
-    }
-}
-
 #[cfg(test)]
 mod test {
+    // TODO: Use new Config api - seems that you need to use the builder each time you want to change a value which
+    //       isn't great, there must be a better way.
+    #![allow(deprecated)]
     use config::Config;
     use tari_common::DefaultConfigLoader;
 
@@ -72,8 +73,8 @@ mod test {
     use crate::mempool::reorg_pool::ReorgPoolConfig;
 
     #[test]
-    pub fn test_mempool() {
-        let mut config = Config::new();
+    pub fn test_mempool_config() {
+        let mut config = Config::builder().build().unwrap();
 
         config
             .set("mempool.unconfirmed_pool.storage_capacity", 3)
@@ -89,12 +90,12 @@ mod test {
         );
 
         config
-            .set("mempool.mainnet.unconfirmed_pool.storage_capacity", 20)
+            .set("mainnet.mempool.unconfirmed_pool.storage_capacity", 20)
             .expect("Could not set ''");
 
         config
-            .set("mempool.network", "mainnet")
-            .expect("Could not set 'network'");
+            .set("mempool.override_from", "mainnet")
+            .expect("Could not set 'override_from'");
         // use_network = mainnet
         let my_config = MempoolConfig::load_from(&config).expect("Could not load configuration");
         // [ ] mempool.mainnet, [X]  mempool = 3, [X] Default
@@ -104,10 +105,5 @@ mod test {
             my_config.reorg_pool.expiry_height,
             ReorgPoolConfig::default().expiry_height
         );
-
-        config
-            .set("mempool.network", "wrong_network")
-            .expect("Could not set 'network'");
-        assert!(MempoolConfig::load_from(&config).is_err());
     }
 }

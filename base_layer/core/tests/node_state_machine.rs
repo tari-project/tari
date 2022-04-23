@@ -30,7 +30,6 @@ use helpers::{
 use tari_common::configuration::Network;
 use tari_core::{
     base_node::{
-        service::BaseNodeServiceConfig,
         state_machine_service::{
             states::{Listening, StateEvent, StatusInfo},
             BaseNodeStateMachine,
@@ -45,7 +44,7 @@ use tari_core::{
     transactions::CryptoFactories,
     validation::mocks::MockValidator,
 };
-use tari_p2p::services::liveness::LivenessConfig;
+use tari_p2p::services::liveness::config::LivenessConfig;
 use tari_shutdown::Shutdown;
 use tempfile::tempdir;
 use tokio::{
@@ -72,7 +71,6 @@ async fn test_listening_lagging() {
         .with_block(prev_block.clone())
         .build();
     let (alice_node, bob_node, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig {
             auto_ping_interval: Some(Duration::from_millis(100)),

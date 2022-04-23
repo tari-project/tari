@@ -20,6 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use log::*;
 use tari_comms::connectivity::ConnectivityRequester;
 use tari_p2p::services::liveness::LivenessHandle;
 use tari_service_framework::{async_trait, ServiceInitializationError, ServiceInitializer, ServiceInitializerContext};
@@ -28,11 +29,14 @@ use tokio::sync::broadcast;
 use super::service::ChainMetadataService;
 use crate::base_node::{chain_metadata_service::handle::ChainMetadataHandle, comms_interface::LocalNodeCommsInterface};
 
+const LOG_TARGET: &str = "c::bn::chain_metadata_service::initializer";
+
 pub struct ChainMetadataServiceInitializer;
 
 #[async_trait]
 impl ServiceInitializer for ChainMetadataServiceInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
+        debug!(target: LOG_TARGET, "Initializing Chain Metadata Service");
         // Buffer size set to 1 because only the most recent metadata is applicable
         let (publisher, _) = broadcast::channel(1);
 
@@ -47,6 +51,7 @@ impl ServiceInitializer for ChainMetadataServiceInitializer {
             ChainMetadataService::new(liveness, base_node, connectivity, publisher).run()
         });
 
+        debug!(target: LOG_TARGET, "Chain Metadata Service initialized");
         Ok(())
     }
 }

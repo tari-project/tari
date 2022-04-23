@@ -47,7 +47,7 @@ class ValidatorNodeProcess {
         break;
       }
     } while (fs.existsSync(this.baseDir));
-    const args = ["--base-path", ".", "--init", "--create-id"];
+    const args = ["--base-path", ".", "--init"];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
@@ -77,10 +77,15 @@ class ValidatorNodeProcess {
   }
 
   ensureNodeInfo() {
-    for (;;) {
+    for (let i = 0; i < 100; i++) {
       if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
         break;
       }
+    }
+    if (!fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
+      throw new Error(
+        `Node id file node found ${this.baseDir}/${this.nodeFile}`
+      );
     }
 
     this.nodeInfo = JSON5.parse(
@@ -125,24 +130,12 @@ class ValidatorNodeProcess {
 
       let envs = [];
       if (!this.excludeTestEnvars) {
-        envs = createEnv(
-          this.name,
-          false,
-          this.nodeFile,
-          "127.0.0.1",
-          "8082",
-          "8081",
-          "127.0.0.1",
-          this.grpcPort,
-          this.port,
-          "/ip4/127.0.0.1/tcp/8080",
-          "127.0.0.1:8085",
-          this.options,
-          this.peerSeeds,
-          "DirectAndStoreAndForward",
-          this.forceSyncPeers,
-          this.committee
-        );
+        envs = createEnv({
+          nodeFile: this.nodeFile,
+          options: this.options,
+          peerSeeds: this.peerSeeds,
+          forceSyncPeers: this.forceSyncPeers,
+        });
       }
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,

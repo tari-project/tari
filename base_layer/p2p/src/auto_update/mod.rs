@@ -31,6 +31,8 @@ use std::{
     fmt,
     fmt::{Display, Formatter},
     io,
+    str::FromStr,
+    time::Duration,
 };
 
 pub use error::AutoUpdateError;
@@ -39,7 +41,16 @@ use pgp::Deserializable;
 use reqwest::IntoUrl;
 // Re-exports of foreign types used in public interface
 pub use semver::Version;
-use tari_common::{configuration::bootstrap::ApplicationType, DnsNameServer};
+use serde::{Deserialize, Serialize};
+use tari_common::{
+    configuration::{
+        bootstrap::ApplicationType,
+        serializers::optional_seconds,
+        utils::{deserialize_string_or_struct, serialize_string},
+    },
+    DnsNameServer,
+    SubConfigPath,
+};
 use tari_utilities::hex::Hex;
 pub use trust_dns_client::rr::dnssec::TrustAnchor;
 
@@ -47,14 +58,43 @@ use crate::auto_update::{dns::UpdateSpec, signature::SignedMessageVerifier};
 
 const LOG_TARGET: &str = "p2p::auto_update";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AutoUpdateConfig {
+    override_from: Option<String>,
+    #[serde(
+        deserialize_with = "deserialize_string_or_struct",
+        serialize_with = "serialize_string"
+    )]
     pub name_server: DnsNameServer,
     pub update_uris: Vec<String>,
     pub use_dnssec: bool,
     pub download_base_url: String,
     pub hashes_url: String,
     pub hashes_sig_url: String,
+    #[serde(with = "optional_seconds")]
+    pub check_interval: Option<Duration>,
+}
+
+impl Default for AutoUpdateConfig {
+    fn default() -> Self {
+        Self {
+            override_from: None,
+            name_server: DnsNameServer::from_str("1.1.1.1:53/cloudflare.net").unwrap(),
+            update_uris: vec![],
+            use_dnssec: false,
+            download_base_url: String::new(),
+            hashes_url: String::new(),
+            hashes_sig_url: String::new(),
+            check_interval: None,
+        }
+    }
+}
+
+impl SubConfigPath for AutoUpdateConfig {
+    fn main_key_prefix() -> &'static str {
+        "auto_update"
+    }
 }
 
 impl AutoUpdateConfig {
@@ -180,10 +220,100 @@ fn maintainers() -> impl Iterator<Item = pgp::SignedPublicKey> {
 
 #[cfg(test)]
 mod test {
+    use config;
+    use tari_common::DefaultConfigLoader;
+
     use super::*;
 
     #[test]
     fn all_maintainers_well_formed() {
         assert_eq!(maintainers().count(), MAINTAINERS.len());
+    }
+
+    fn get_config(config_name: Option<&str>) -> config::Config {
+        let s = match config_name {
+            Some(o) => {
+                format!(
+                    r#"
+[auto_update]
+override_from="{}"
+check_interval=31
+name_server="127.0.0.1:80/localtest"
+update_uris = ["http://none", "http://local"]
+[config_a.auto_update]
+check_interval=33
+name_server="127.0.0.1:80/localtest2"
+use_dnssec=true
+[config_b.auto_update]
+# spelling error in name
+use_dns_sec=true
+"#,
+                    o
+                )
+            },
+            None => r#"
+[auto_update]
+check_interval=31
+name_server="127.0.0.1:80/localtest"
+download_base_url ="http://test.com"
+"#
+            .to_string(),
+        };
+
+        config::Config::builder()
+            .add_source(config::File::from_str(s.as_str(), config::FileFormat::Toml))
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_no_overrides_config() {
+        let cfg = get_config(None);
+        let config = AutoUpdateConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.check_interval, Some(Duration::from_secs(31)));
+        assert_eq!(
+            config.name_server,
+            DnsNameServer::from_str("127.0.0.1:80/localtest").unwrap(),
+        );
+        assert_eq!(config.update_uris, Vec::<String>::new());
+        assert_eq!(config.download_base_url, "http://test.com");
+        // update_uris =
+        // pub update_uris: Vec<String>,
+        // pub download_base_url: String,
+        // pub hashes_url: String,
+        // pub hashes_sig_url: String,
+        // #[serde(with = "optional_seconds")]
+        // pub check_interval: Option<Duration>,
+    }
+
+    #[test]
+    fn test_with_overrides() {
+        let cfg = get_config(Some("config_a"));
+        let config = AutoUpdateConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.check_interval, Some(Duration::from_secs(33)));
+        assert_eq!(
+            config.name_server,
+            DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
+        );
+        assert_eq!(config.update_uris, vec!["http://none", "http://local"]);
+        assert!(config.use_dnssec);
+    }
+    #[test]
+    fn test_wit() {
+        let cfg = get_config(Some("config_a"));
+        let config = AutoUpdateConfig::load_from(&cfg).expect("Failed to load config");
+        assert_eq!(config.check_interval, Some(Duration::from_secs(33)));
+        assert_eq!(
+            config.name_server,
+            DnsNameServer::from_str("127.0.0.1:80/localtest2").unwrap(),
+        );
+        assert_eq!(config.update_uris, vec!["http://none", "http://local"]);
+        assert!(config.use_dnssec);
+    }
+
+    #[test]
+    fn test_incorrect_spelling() {
+        let cfg = get_config(Some("config_b"));
+        assert!(AutoUpdateConfig::load_from(&cfg).is_err());
     }
 }

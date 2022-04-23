@@ -9,14 +9,14 @@
 use std::error::Error;
 use tauri::{Menu, MenuItem, Submenu};
 
-use tari_app_utilities::initialization::init_configuration;
+use clap::Parser;
 use tari_common::{
-  configuration::bootstrap::ApplicationType,
   exit_codes::{ExitCode, ExitError},
+  load_configuration, DefaultConfigLoader,
 };
 use uuid::Uuid;
 
-use crate::app_state::ConcurrentAppState;
+use crate::{app_state::ConcurrentAppState, cli::Cli, config::CollectiblesConfig};
 
 #[macro_use]
 extern crate diesel;
@@ -25,8 +25,10 @@ extern crate diesel;
 extern crate diesel_migrations;
 
 mod app_state;
+mod cli;
 mod clients;
 mod commands;
+mod config;
 mod error;
 mod models;
 mod providers;
@@ -75,8 +77,8 @@ fn parse_make_it_rain(src: &[&str]) -> Result<Command, ExitError> {
   })
 }
 
-fn parse_command(src: String) -> Result<Command, ExitError> {
-  let args: Vec<&str> = src.split(' ').collect();
+fn parse_command(src: &str) -> Result<Command, ExitError> {
+  let args: Vec<_> = src.split(' ').collect();
   if args.is_empty() {
     return Err(ExitError::new(ExitCode::CommandError, &"Empty command"));
   }
@@ -165,13 +167,17 @@ pub fn process_command(command: Command, state: &ConcurrentAppState) -> Result<(
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-  let (bootstrap, config, _) = init_configuration(ApplicationType::Collectibles)?;
-  let state = ConcurrentAppState::new(
-    bootstrap.base_path,
-    config.collectibles_config.unwrap_or_default(),
-  );
+  let cli = Cli::parse();
+  let cfg = load_configuration(
+    cli.common.config_path(),
+    true,
+    &cli.config_property_overrides(),
+  )?;
 
-  if let Some(command) = bootstrap.command {
+  let config = CollectiblesConfig::load_from(&cfg)?;
+  let state = ConcurrentAppState::new(cli.common.get_base_path(), config);
+
+  if let Some(ref command) = cli.command {
     let command = parse_command(command)?;
     process_command(command, &state)?;
     return Ok(());

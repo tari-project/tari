@@ -134,7 +134,7 @@ Given(
   async function (walletName, balance, nodeName) {
     await this.createAndAddWallet(
       walletName,
-      this.nodes[nodeName].peerAddress()
+      this.getNode(nodeName).peerAddress()
     );
     let numberOfBlocks = Math.ceil(balance / BLOCK_REWARD);
     console.log("Creating miner");
@@ -150,6 +150,7 @@ Given(
     await this.mineBlocks(nodeName, CONFIRMATION_PERIOD);
     let walletClient = await this.getWallet(walletName).connectClient();
     await waitFor(
+      // TODO: 1T == 1000000ut
       async () => walletClient.isBalanceAtLeast(balance * 1000),
       true,
       120 * 1000,
@@ -238,7 +239,7 @@ Given(
       this.logFilePathWallet,
       seedWords
     );
-    walletB.setPeerSeeds([this.seedAddresses()]);
+    walletB.setPeerSeeds(this.seedAddresses());
     await walletB.startNew();
     this.addWallet(walletNameB, walletB);
     let walletClient = await this.getWallet(walletNameB).connectClient();
@@ -426,6 +427,7 @@ Then(
   "wallet {word} has {int}T",
   { timeout: 120 * 1000 },
   async function (wallet, amount) {
+    // TODO: 1T == 1000000ut
     await this.waitForWalletToHaveBalance(wallet, amount * 1000);
   }
 );
