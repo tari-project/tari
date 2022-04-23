@@ -72,8 +72,7 @@ use crate::helpers::{
         generate_new_block_with_coinbase,
     },
     database::create_orphan_block,
-    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb},
-    test_blockchain::TestBlockchain,
+    sample_blockchains::{create_new_blockchain, create_new_blockchain_lmdb}
 };
 
 #[test]
