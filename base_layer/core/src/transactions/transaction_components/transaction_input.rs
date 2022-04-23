@@ -312,18 +312,9 @@ impl TransactionInput {
                 ref features,
                 ref commitment,
                 ref script,
-                ref sender_offset_public_key,
                 ref covenant,
                 ..
-            } => transaction_components::hash_output(
-                version,
-                features,
-                commitment,
-                script,
-                sender_offset_public_key,
-                covenant,
-            )
-            .to_vec(),
+            } => transaction_components::hash_output(version, features, commitment, script, covenant).to_vec(),
         }
     }
 
@@ -344,7 +335,7 @@ impl TransactionInput {
                 ref covenant,
             } => {
                 // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
-                let mut writer = HashWriter::new(HashDigest::new())
+                let writer = HashWriter::new(HashDigest::new())
                     .chain(version)
                     .chain(features)
                     .chain(commitment)
@@ -353,12 +344,6 @@ impl TransactionInput {
                     .chain(&self.script_signature)
                     .chain(&self.input_data)
                     .chain(covenant);
-
-                // previous versions were incorrectly ignoring the input "version" in the hash
-                // so to maintain backwards compatibility we include it from a new "V2" version onwards
-                if self.version >= TransactionInputVersion::V2 {
-                    writer = writer.chain(&self.version);
-                }
 
                 Ok(writer.finalize().to_vec())
             },

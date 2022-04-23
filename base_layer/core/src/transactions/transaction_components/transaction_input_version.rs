@@ -16,7 +16,6 @@ use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSi
 pub enum TransactionInputVersion {
     V0 = 0,
     V1 = 1,
-    V2 = 2,
 }
 
 impl TransactionInputVersion {

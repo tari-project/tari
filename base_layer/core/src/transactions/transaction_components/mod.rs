@@ -38,7 +38,6 @@ pub use output_flags::OutputFlags;
 pub use rewind_result::RewindResult;
 pub use side_chain_checkpoint_features::SideChainCheckpointFeatures;
 use tari_common_types::types::{Commitment, HashDigest};
-use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_script::TariScript;
 pub use template_parameter::TemplateParameter;
 pub use transaction::Transaction;
@@ -101,21 +100,13 @@ pub(super) fn hash_output(
     features: &OutputFeatures,
     commitment: &Commitment,
     script: &TariScript,
-    sender_offset_public_key: &RistrettoPublicKey,
     covenant: &Covenant,
 ) -> [u8; 32] {
-    let mut hash_writer = HashWriter::new(HashDigest::new())
+    HashWriter::new(HashDigest::new())
         .chain(&version)
         .chain(features)
         .chain(commitment)
         .chain(script)
-        .chain(covenant);
-
-    // previous versions were incorrectly ignoring the "sender_offset_public_key" in the hash
-    // so to maintain backwards compatibility we include it from a new "V2" version onwards
-    if version >= TransactionOutputVersion::V2 {
-        hash_writer = hash_writer.chain(sender_offset_public_key);
-    }
-
-    hash_writer.finalize()
+        .chain(covenant)
+        .finalize()
 }

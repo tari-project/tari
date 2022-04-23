@@ -74,8 +74,8 @@ fn check_block_changes_are_detected(field: MerkleMountainRangeField, block_mod_f
     let (txs, _) = schema_to_transaction(&[txn_schema!(
         from: vec![output],
         to: vec![50 * T],
-        input_version: TransactionInputVersion::V2,
-        output_version: TransactionOutputVersion::V2
+        input_version: TransactionInputVersion::V1,
+        output_version: TransactionOutputVersion::V1
     )]);
     blockchain.add_block(
         blocks
