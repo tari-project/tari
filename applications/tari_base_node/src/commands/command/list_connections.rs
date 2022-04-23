@@ -81,7 +81,7 @@ impl CommandContext {
                     conn.direction(),
                     format_duration_basic(conn.age()),
                     {
-                        if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                        if peer.features.is_client() {
                             "Wallet"
                         } else {
                             "Base node"
