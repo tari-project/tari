@@ -4,6 +4,7 @@ import { Listbox } from '@headlessui/react'
 import ArrowBottom from '../../styles/Icons/ArrowBottom1'
 
 import {
+  StyledListbox,
   Label,
   SelectButton,
   SelectorIcon,
@@ -22,23 +23,33 @@ import { SelectProps } from './types'
  * @prop {Option[]} options - options shown in the select dropdown
  * @prop {Option} value - selected value
  * @prop {function} onChange - called when selected value changes
+ * @prop {boolean?} disabled - disables the the control
  *
  * @typedef Option
  * @prop {string} value - value of the option
  * @prop {string} label - label shown in option
  * @prop {string} key - key to be used in react map
  */
-const Select = ({ value, options, onChange, inverted, label }: SelectProps) => {
+const Select = ({
+  value,
+  options,
+  onChange,
+  inverted,
+  label,
+  disabled,
+}: SelectProps) => {
   return (
-    <Listbox value={value} onChange={onChange}>
+    <StyledListbox value={value} onChange={onChange} disabled={disabled}>
       {({ open }) => (
         <>
           <Label inverted={inverted}>{label}</Label>
-          <SelectButton open={open} inverted={inverted}>
+          <SelectButton open={open} inverted={inverted} disabled={disabled}>
             <span>{(value || {}).label || ''}</span>
-            <SelectorIcon inverted={inverted}>
-              <ArrowBottom />
-            </SelectorIcon>
+            {!disabled && (
+              <SelectorIcon inverted={inverted}>
+                <ArrowBottom />
+              </SelectorIcon>
+            )}
           </SelectButton>
           <OptionsContainer inverted={inverted}>
             {options.map(option => (
@@ -57,7 +68,7 @@ const Select = ({ value, options, onChange, inverted, label }: SelectProps) => {
           </OptionsContainer>
         </>
       )}
-    </Listbox>
+    </StyledListbox>
   )
 }
 

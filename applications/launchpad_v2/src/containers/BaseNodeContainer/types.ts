@@ -6,4 +6,11 @@ export interface BaseNodeProps {
   tariNetwork: Network
   setTariNetwork: (selected: Network) => void
   running: boolean
+  pending: boolean
+}
+
+export type BaseNodeState = {
+  network: Network
+  running: boolean
+  pending: boolean
 }

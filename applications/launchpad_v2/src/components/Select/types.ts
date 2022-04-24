@@ -1,6 +1,7 @@
 import { ReactNode } from 'react'
 
 export type SelectInternalProps = {
+  disabled?: boolean
   inverted?: boolean
   children?: ReactNode
   open?: boolean
@@ -8,9 +9,10 @@ export type SelectInternalProps = {
 
 type Option = { value: string; label: string; key: string }
 export type SelectProps = {
+  disabled?: boolean
   inverted?: boolean
   label: string
-  value: Option
+  value?: Option
   options: Option[]
   onChange: (option: Option) => void
 }

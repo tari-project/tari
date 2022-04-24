@@ -5,6 +5,9 @@ import { ButtonProps } from './types'
 export const StyledButton = styled.button<
   Pick<ButtonProps, 'variant' | 'type'>
 >`
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border: ${({ theme, variant, type }) => {
     if (variant === 'text') {
@@ -32,6 +35,10 @@ export const StyledButton = styled.button<
     variant === 'text' ? theme.secondary : theme.primary};
   outline: none;
 
+  & * {
+    color: inherit;
+  }
+
   &:hover {
     background: ${({ variant, theme, type }) => {
       if (variant === 'text') {
@@ -56,4 +63,18 @@ export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
 
 export const ButtonText = styled.span``
 
-export const IconWrapper = styled.span``
+export const IconWrapper = styled.span`
+  color: inherit;
+  width: 0;
+  height: 1em;
+  position: relative;
+  & > * {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    width: ${({ theme }) => theme.spacing(0.66)};
+    height: ${({ theme }) => theme.spacing(0.66)};
+    transform: translateY(-50%);
+    color: inherit;
+  }
+`
