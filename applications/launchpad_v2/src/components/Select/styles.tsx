@@ -3,6 +3,8 @@ import { Listbox } from '@headlessui/react'
 
 import { SelectInternalProps } from './types'
 
+export const StyledListbox = styled(Listbox)``
+
 export const SelectorIcon = styled.div<SelectInternalProps>`
   position: absolute;
   top: 0;
@@ -17,7 +19,7 @@ export const SelectorIcon = styled.div<SelectInternalProps>`
 `
 
 export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
-  cursor: pointer;
+  cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
   font-size: 1em;
   color: ${({ theme, inverted }) =>
     inverted ? theme.inverted.primary : theme.primary};
@@ -93,7 +95,7 @@ export const Option = styled.li<
   }
 `
 
-export const Label = styled(Listbox.Label)`
+export const Label = styled(Listbox.Label)<SelectInternalProps>`
   font-size: 1em;
   display: inline-block;
   margin-bottom: ${({ theme }) => theme.spacingVertical()};

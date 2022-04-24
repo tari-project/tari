@@ -1,27 +1,21 @@
-import { useState } from 'react'
-
+import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import BaseNode from './BaseNode'
-import { Network } from './types'
+import { selectState } from './slice/selectors'
+import { actions } from './slice'
 
 const BaseNodeContainer = () => {
-  const [tariNetwork, setTariNetwork] = useState<Network>('mainnet')
-  const [dark, setDark] = useState(false)
-  const toggleDarkMode = () => setDark(a => !a)
-
-  const startNode = () => console.log('start')
-  const stopNode = () => console.log('stop')
+  const { network, running, pending } = useAppSelector(selectState)
+  const dispatch = useAppDispatch()
 
   return (
-    <>
-      <button onClick={toggleDarkMode}>toggle dark mode</button>
-      <BaseNode
-        running={dark}
-        startNode={startNode}
-        stopNode={stopNode}
-        tariNetwork={tariNetwork}
-        setTariNetwork={setTariNetwork}
-      />
-    </>
+    <BaseNode
+      running={running}
+      pending={pending}
+      startNode={() => dispatch(actions.startNode())}
+      stopNode={() => dispatch(actions.stopNode())}
+      tariNetwork={network}
+      setTariNetwork={network => dispatch(actions.setTariNetwork(network))}
+    />
   )
 }
 

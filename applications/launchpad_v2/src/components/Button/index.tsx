@@ -3,6 +3,7 @@ import { ButtonProps } from './types'
 
 const Button = ({
   children,
+  disabled,
   style,
   variant,
   type = 'button',
@@ -28,7 +29,13 @@ const Button = ({
   }
 
   return (
-    <StyledButton type={type} onClick={onClick} style={style} variant={variant}>
+    <StyledButton
+      disabled={disabled}
+      type={type}
+      onClick={onClick}
+      style={style}
+      variant={variant}
+    >
       {btnContent}
     </StyledButton>
   )
