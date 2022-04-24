@@ -8,7 +8,7 @@ const initialState: BaseNodeState = {
   pending: false,
 }
 
-const startNode = createAsyncThunk('startNode', async (payload, thunkAPI) => {
+const startNode = createAsyncThunk('startNode', async (_, thunkAPI) => {
   const {
     baseNode: { network },
   } = thunkAPI.getState()
@@ -17,7 +17,7 @@ const startNode = createAsyncThunk('startNode', async (payload, thunkAPI) => {
   await new Promise(resolve => setTimeout(resolve, 2000))
 })
 
-const stopNode = createAsyncThunk('stopNode', async (payload, thunkAPI) => {
+const stopNode = createAsyncThunk('stopNode', async (_, thunkAPI) => {
   const {
     baseNode: { network },
   } = thunkAPI.getState()
