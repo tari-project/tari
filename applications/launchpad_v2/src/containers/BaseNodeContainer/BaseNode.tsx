@@ -41,6 +41,16 @@ const BaseNode = ({
         color={running ? theme.inverted.primary : undefined}
       >
         {t.baseNode.title}
+        {/* TODO change to tag after https://github.com/Altalogy/tari/pull/90 */}
+        {running && (
+          <Text
+            style={{ float: 'right' }}
+            type='smallMedium'
+            color={theme.inverted.primary}
+          >
+            running
+          </Text>
+        )}
       </Text>
       <Box
         border={false}
