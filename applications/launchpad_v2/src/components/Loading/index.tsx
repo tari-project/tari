@@ -1,20 +1,14 @@
 import LoadingIcon from '../../styles/Icons/Loading'
-import styled, { keyframes } from 'styled-components'
 
-const spinKeyframes = keyframes`
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-`
+import { StyledSpan } from './styles'
 
-const StyledSpan = styled.span`
-  animation: ${spinKeyframes} infinite 2s linear;
-`
-
-const Loading = ({ loading }: { loading: boolean }) =>
+/**
+ * Loading
+ * renders a spinning loading indicator
+ *
+ * @prop {boolean} loading - controls whether the indicator should be shown or not
+ */
+const Loading = ({ loading }: { loading?: boolean }) =>
   loading ? (
     <StyledSpan>
       <LoadingIcon />
