@@ -53,7 +53,7 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     /// Decrypts the key manager state using the provided cipher. An error is returned if the state is not encrypted.
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError>;
 
-    /// Gets the next key from the branch. This will auto increment the key index by 1
+    /// Gets the next key from the branch. This will auto-increment the branch key index by 1
     async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError>;
 
     /// Gets the key at the specified index
