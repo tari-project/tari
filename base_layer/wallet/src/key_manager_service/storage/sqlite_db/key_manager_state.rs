@@ -35,7 +35,7 @@ use crate::{
     },
 };
 
-/// Struct used to map directly to database
+/// Represents a row in the key_manager_states table.
 #[derive(Clone, Debug, Queryable, Identifiable)]
 #[table_name = "key_manager_states"]
 #[primary_key(id)]
