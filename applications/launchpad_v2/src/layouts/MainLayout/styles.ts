@@ -25,16 +25,13 @@ export const MainContainer = styled(animated.div)`
   padding-top: 60px;
 `
 
-/**
- * @TODO move background color to the theme
- */
 export const ExpertViewBackgroundOverlay = styled(animated.div)`
   position: absolute;
   top: 0;
   bottom: 0;
   right: 0;
   overflow: hidden;
-  background: #1a1a1a;
+  background: ${({ theme }) => theme.inverted.background};
 `
 
 export const ExpertViewDrawer = styled(animated.div)`
