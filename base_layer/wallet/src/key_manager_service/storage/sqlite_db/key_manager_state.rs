@@ -89,7 +89,7 @@ impl NewKeyManagerStateSql {
 
 impl KeyManagerStateSql {
     /// Retrieve every key manager branch currently in the database.
-    /// Will always return a vec of [KeyManagerStateSql], if none are found, it will return an empty vec
+    /// Returns a `Vec` of [KeyManagerStateSql], if none are found, it will return an empty `Vec`.
     pub fn index(conn: &SqliteConnection) -> Result<Vec<KeyManagerStateSql>, KeyManagerStorageError> {
         Ok(key_manager_states::table.load::<KeyManagerStateSql>(conn)?)
     }
