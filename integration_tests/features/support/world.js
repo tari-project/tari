@@ -426,7 +426,7 @@ class CustomWorld {
 
   async startNode(name, args) {
     const node = this.seeds[name] || this.nodes[name];
-    await node.start(args);
+    await node.start({ args });
     console.log("\n", name, "started\n");
   }
 
