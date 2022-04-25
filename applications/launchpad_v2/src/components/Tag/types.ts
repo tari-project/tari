@@ -8,7 +8,7 @@ export type TagVariantType = 'small' | 'large'
  *
  * @prop {ReactNode} [children] - text content to display
  * @prop {CSSProperties} [style] - optional component styles
- * @prop {'blue' | 'running' | 'warning' | 'expert'} [type] - tag types to determine color settings
+ * @prop {'info' | 'running' | 'warning' | 'expert'} [type] - tag types to determine color settings
  * @prop {ReactNode} [icon] - optional SVG icon
  * @prop {ReactNode} [subText] - optional additional tag text
  * @prop {TagVariantType} [variant] - small or large size tag
@@ -17,7 +17,7 @@ export type TagVariantType = 'small' | 'large'
 export interface TagProps {
   children?: ReactNode
   style?: CSSProperties
-  type?: 'blue' | 'running' | 'warning' | 'expert'
+  type?: 'info' | 'running' | 'warning' | 'expert'
   variant?: TagVariantType
   icon?: ReactNode
   subText?: ReactNode

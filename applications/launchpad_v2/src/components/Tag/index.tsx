@@ -1,5 +1,4 @@
-import { useContext } from 'react'
-import { ThemeContext, CSSProperties } from 'styled-components'
+import { CSSProperties, useTheme } from 'styled-components'
 
 import Text from '../Text'
 
@@ -31,27 +30,25 @@ const Tag = ({
   icon,
   subText,
 }: TagProps) => {
-  const theme = useContext(ThemeContext)
+  const theme = useTheme()
 
   let baseStyle: CSSProperties = {}
   let textStyle: CSSProperties = {}
 
   switch (type) {
-    case 'blue':
-      baseStyle = {
-        backgroundColor: theme.info,
-        color: theme.infoText,
-      }
-      break
     case 'running':
       baseStyle = {
         backgroundColor: theme.on,
+      }
+      textStyle = {
         color: theme.onText,
       }
       break
     case 'warning':
       baseStyle = {
         backgroundColor: theme.warning,
+      }
+      textStyle = {
         color: theme.warningText,
       }
       break
@@ -64,6 +61,16 @@ const Tag = ({
         WebkitBackgroundClip: 'text',
         color: 'transparent',
       }
+      break
+    // info tag type is default
+    default:
+      baseStyle = {
+        backgroundColor: theme.info,
+      }
+      textStyle = {
+        color: theme.infoText,
+      }
+      break
   }
 
   if (style) {
@@ -93,7 +100,11 @@ const Tag = ({
     </>
   )
   return (
-    <TagContainer style={baseStyle} variant={variant}>
+    <TagContainer
+      style={baseStyle}
+      variant={variant}
+      data-testid='tag-component'
+    >
       {tagContent}
     </TagContainer>
   )
