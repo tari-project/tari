@@ -2,16 +2,22 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { ThemeProvider } from 'styled-components'
 
 import Switch from '.'
-import themes from '../../../styles/themes'
+import themes from '../../styles/themes'
 
 describe('Switch', () => {
   it('should render without crash', () => {
     const onClick = jest.fn()
     const testLabel = 'Test label for the switch component'
+    const anotherTestLabel = 'Test label for the switch component'
     const val = false
     render(
       <ThemeProvider theme={themes.light}>
-        <Switch value={val} label={testLabel} onClick={onClick} />
+        <Switch
+          value={val}
+          leftLabel={testLabel}
+          rightLabel={anotherTestLabel}
+          onClick={onClick}
+        />
       </ThemeProvider>,
     )
 

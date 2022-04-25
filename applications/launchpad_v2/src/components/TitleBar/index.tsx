@@ -1,12 +1,11 @@
-import { useContext } from 'react'
-import { ThemeContext } from 'styled-components'
+import { useTheme } from 'styled-components'
 import { useDispatch, useSelector } from 'react-redux'
 import { animated, useSpring } from 'react-spring'
 import { appWindow } from '@tauri-apps/api/window'
 
 import Button from '../Button'
 import Logo from '../Logo'
-import Switch from '../Inputs/Switch'
+import Switch from '../Switch'
 
 import { selectExpertView } from '../../store/app/selectors'
 import { setExpertView } from '../../store/app'
@@ -30,7 +29,7 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
   const dispatch = useDispatch()
 
   const expertView = useSelector(selectExpertView)
-  const theme = useContext(ThemeContext)
+  const theme = useTheme()
 
   const [expertViewSize] = ExpertViewUtils.convertExpertViewModeToValue(
     expertView,
@@ -196,10 +195,10 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
         </Button>
         <Switch
           value={expertView !== 'hidden'}
-          label='Expert view'
+          rightLabel='Expert view'
           onClick={onExpertViewClick}
           testId={'titlebar-expert-view-btn'}
-          invertedStyle={expertView !== 'hidden'}
+          inverted={expertView !== 'hidden'}
         />
       </animated.div>
     </StyledTitleBar>
