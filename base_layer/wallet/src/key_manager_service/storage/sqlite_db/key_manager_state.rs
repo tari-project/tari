@@ -103,7 +103,7 @@ impl KeyManagerStateSql {
             .map_err(|_| KeyManagerStorageError::KeyManagerNotInitialized)
     }
 
-    /// Update the key manager in the database to the one in memory
+    /// Creates or updates the database with the key manager state in this instance.
     pub fn set_state(&self, conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
         match KeyManagerStateSql::get_state(&self.branch_seed, conn) {
             Ok(km) => {
