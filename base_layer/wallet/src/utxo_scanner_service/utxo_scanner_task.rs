@@ -85,7 +85,6 @@ where TBackend: WalletBackend + 'static
                 "Scanning round aborted as a Recovery is in progress"
             );
             return Ok(());
-        } else {
         }
 
         loop {
