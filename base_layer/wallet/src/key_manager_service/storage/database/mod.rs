@@ -103,7 +103,7 @@ where T: KeyManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
-    /// Decrypts the entite key manager.
+    /// Decrypts the entire key manager.
     pub async fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.remove_encryption())
