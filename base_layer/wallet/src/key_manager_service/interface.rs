@@ -25,7 +25,7 @@ use tari_common_types::types::PrivateKey;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
-/// Wrapper struct to return results of adding a new branch to track
+/// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created, otherwise `NewEntry` is returned.
 #[derive(Debug, PartialEq)]
 pub enum AddResult {
     NewEntry,
