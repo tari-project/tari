@@ -56,6 +56,11 @@ const typography = {
     lineHeight: '18px',
     fontFamily: 'AvenirHeavy',
   },
+  microMedium: {
+    fontSize: 12,
+    lineHeight: '18px',
+    fontFamily: 'AvenirMedium',
+  },
   microRegular: {
     fontSize: 12,
     lineHeight: '18px',

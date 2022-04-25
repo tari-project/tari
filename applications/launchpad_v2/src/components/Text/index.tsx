@@ -16,13 +16,15 @@ import styles from '../../styles/styles'
 
 const Text = ({
   type = 'defaultMedium',
+  style,
   as = 'p',
   color,
   children,
   testId,
 }: TextProps) => {
   const textStyles = {
-    color: color,
+    color,
+    ...style,
     ...styles.typography[type],
   }
 

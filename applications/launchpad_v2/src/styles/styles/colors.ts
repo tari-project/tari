@@ -27,7 +27,7 @@ const colors = {
   },
   secondary: {
     onText: '#094E41',
-    onTextLight: '#5F9CF1',
+    onTextLight: '#5F9C91',
     on: '#E6FAF6',
     info: '#ECF0FE',
     infoText: '#4D6FE8',
