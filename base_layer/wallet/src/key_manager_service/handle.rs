@@ -35,7 +35,7 @@ use crate::key_manager_service::{
     KeyManagerInner,
     KeyManagerInterface,
 };
-
+/// Struct used to create an easily and cheaply cloneable handle to the Key manager services that can be safely shared across multiple threads.
 #[derive(Clone)]
 pub struct KeyManagerHandle<TBackend> {
     key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,
@@ -44,6 +44,9 @@ pub struct KeyManagerHandle<TBackend> {
 impl<TBackend> KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
+    /// Creates a new Key manager and wrap this inside of the handle
+    /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexs
+    /// * `db` is the key manager backed to be used for persistent storage of branches and indices.
     pub fn new(master_seed: CipherSeed, db: KeyManagerDatabase<TBackend>) -> Self {
         KeyManagerHandle {
             key_manager_inner: Arc::new(RwLock::new(KeyManagerInner::new(master_seed, db))),

@@ -25,6 +25,7 @@ use tari_common_types::types::PrivateKey;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
+/// Wrapper struct to return results of adding a new branch to track
 #[derive(Debug, PartialEq)]
 pub enum AddResult {
     NewEntry,
@@ -36,28 +37,39 @@ pub struct NextKeyResult {
     pub index: u64,
 }
 
+/// Behaviour required for the Key manager service
 #[async_trait::async_trait]
 pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
+    /// Creates a new branch for the key manager service to track
+    /// If this is an existing branch, that is not yet tracked in memory, the key manager service will load the key manager from the backend to track in memory, will return `Ok(AddResult::NewEntry)`.
+    /// If the branch is already tracked in memory the result will be `Ok(AddResult::AlreadyExists)`.
+    /// If the branch does not exist in memory or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
+    /// Encrypts the sensitive data in the backend using the provided cipher
     async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError>;
 
+    /// Decrypts the backend data.
     async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError>;
 
+    /// Gets the next key from the branch. This will auto increment the key index by 1
     async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError>;
 
+    /// Gets the key at the specified index
     async fn get_key_at_index<T: Into<String> + Send>(
         &self,
         branch: T,
         index: u64,
     ) -> Result<PrivateKey, KeyManagerServiceError>;
 
+    /// Searches the branch to find the index used to generated the key, O(N) where N = index used.
     async fn find_key_index<T: Into<String> + Send>(
         &self,
         branch: T,
         key: &PrivateKey,
     ) -> Result<u64, KeyManagerServiceError>;
 
+    /// Will update the index of the branch if the index given is higher than the current saved index
     async fn update_current_key_index_if_higher<T: Into<String> + Send>(
         &self,
         branch: T,
