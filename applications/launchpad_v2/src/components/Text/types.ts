@@ -1,5 +1,6 @@
 import { CSSProperties } from 'styled-components'
 import { ReactNode } from 'react'
+import { AnimatedComponent } from 'react-spring'
 
 /**
  * @typedef TextProps
@@ -25,6 +26,19 @@ export interface TextProps {
     | 'microOblique'
   children: ReactNode
   color?: string
-  as?: 'h1' | 'h2' | 'h3' | 'h4' | 'h4' | 'h5' | 'h6' | 'h7' | 'p' | 'span'
+  style?: CSSProperties
+  as?:
+    | 'h1'
+    | 'h2'
+    | 'h3'
+    | 'h4'
+    | 'h4'
+    | 'h5'
+    | 'h6'
+    | 'p'
+    | 'span'
+    | AnimatedComponent<
+        'h1' | 'h2' | 'h3' | 'h4' | 'h4' | 'h5' | 'h6' | 'p' | 'span'
+      >
   testId?: string
 }
