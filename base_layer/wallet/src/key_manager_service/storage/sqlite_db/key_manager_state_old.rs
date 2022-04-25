@@ -45,7 +45,8 @@ impl KeyManagerStateSqlOld {
     }
 
     /// Deletes all the stored key manager states in the database.
-    pub fn delete(conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {        diesel::delete(key_manager_states_old::dsl::key_manager_states_old).execute(conn)?;
+    pub fn delete(conn: &SqliteConnection) -> Result<(), KeyManagerStorageError> {
+        diesel::delete(key_manager_states_old::dsl::key_manager_states_old).execute(conn)?;
         Ok(())
     }
 }

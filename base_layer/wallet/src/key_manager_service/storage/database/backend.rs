@@ -25,7 +25,8 @@ use crate::key_manager_service::{error::KeyManagerStorageError, storage::databas
 
 /// This trait defines the required behaviour that a storage backend must provide for the Key Manager service.
 pub trait KeyManagerBackend: Send + Sync + Clone {
-    /// This will retrieve the key manager spesified by the branch string, None is returned if no key manager is found for the branch.
+    /// This will retrieve the key manager spesified by the branch string, None is returned if no key manager is found
+    /// for the branch.
     fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError>;
     /// This will add an additional branch for the key manager to track.
     fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError>;

@@ -82,6 +82,7 @@ where T: KeyManagerBackend + 'static
             .map_err(|err| KeyManagerStorageError::BlockingTaskSpawnError(err.to_string()))??;
         Ok(())
     }
+
     /// Sets the key index of the provided branch of the key manager.
     /// Will error if the branch does not exist.
     pub async fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {

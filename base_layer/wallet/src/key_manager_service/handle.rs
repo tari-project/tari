@@ -35,7 +35,8 @@ use crate::key_manager_service::{
     KeyManagerInner,
     KeyManagerInterface,
 };
-/// Struct used to create an easily and cheaply cloneable handle to the Key manager services that can be safely shared across multiple threads.
+/// Struct used to create an easily and cheaply cloneable handle to the Key manager services that can be safely shared
+/// across multiple threads.
 #[derive(Clone)]
 pub struct KeyManagerHandle<TBackend> {
     key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,

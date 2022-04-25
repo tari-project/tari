@@ -41,9 +41,10 @@ pub struct NextKeyResult {
 #[async_trait::async_trait]
 pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     /// Creates a new branch for the key manager service to track
-    /// If this is an existing branch, that is not yet tracked in memory, the key manager service will load the key manager from the backend to track in memory, will return `Ok(AddResult::NewEntry)`.
-    /// If the branch is already tracked in memory the result will be `Ok(AddResult::AlreadyExists)`.
-    /// If the branch does not exist in memory or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
+    /// If this is an existing branch, that is not yet tracked in memory, the key manager service will load the key
+    /// manager from the backend to track in memory, will return `Ok(AddResult::NewEntry)`. If the branch is already
+    /// tracked in memory the result will be `Ok(AddResult::AlreadyExists)`. If the branch does not exist in memory
+    /// or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
     /// Encrypts the sensitive data in the backend using the provided cipher
