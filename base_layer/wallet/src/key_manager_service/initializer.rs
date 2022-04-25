@@ -36,7 +36,7 @@ use crate::key_manager_service::{
     KeyManagerHandle,
 };
 
-/// Struct used to initialize the Key manager service using the [ServiceInitializer]
+/// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct KeyManagerInitializer<T>
 where T: KeyManagerBackend
 {
