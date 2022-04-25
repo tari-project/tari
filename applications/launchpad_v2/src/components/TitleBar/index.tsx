@@ -171,7 +171,7 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
             top: 0,
             bottom: 0,
             right: 0,
-            background: '#2a2a2a',
+            background: theme.inverted.backgroundSecondary,
             borderTopRightRadius: 10,
             borderTopLeftRadius: expertViewSize === '100%' ? 10 : 0,
             ...drawerContainerStyle,

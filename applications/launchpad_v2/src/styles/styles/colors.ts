@@ -1,8 +1,9 @@
 const colors = {
   dark: {
     primary: '#20053D',
-    borders: '#EDECEE',
     secondary: '#716A78',
+    tertiary: '#837A8B',
+    borders: '#EDECEE',
     placeholder: '#D6D4D9',
     input: '#000000',
   },
@@ -33,9 +34,11 @@ const colors = {
     warning: '#FFEED3',
     warningText: '#D18A18',
     actionBackground: '#76A59D',
+    borderLight: '#DBDBDD',
   },
   darkMode: {
     modalBackground: '#141414',
+    modalBackgroundSecondary: '#000000',
     borders: '#222222',
     dashboard: '#0A0A0A',
     input: '#000000',
