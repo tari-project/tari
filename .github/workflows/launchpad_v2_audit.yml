@@ -2,13 +2,15 @@
 name: Launchpad v2 NPM audit
 on:
   schedule:
-    - cron: "0 8 * * *"
+    - cron: "0 6 * * *"
 jobs:
   launchpad_v2_audit:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
         uses: actions/checkout@v3
+        with:
+          ref: "launchpad_such_wow"
       - name: check environment
         run: |
           node -v
@@ -17,4 +19,4 @@ jobs:
       - name: npm audit launchpad_v2
         run: |
           cd applications/launchpad_v2
-          npm audit
+          yarn audit

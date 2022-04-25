@@ -3,7 +3,8 @@ import styles from '../styles'
 const darkTheme = {
   primary: styles.colors.light.primary,
   secondary: styles.colors.dark.secondary,
-  background: styles.colors.dark.primary,
+  tertiary: styles.colors.dark.tertiary,
+  background: styles.colors.darkMode.modalBackgroundSecondary,
   backgroundSecondary: styles.colors.darkMode.modalBackground,
   backgroundImage: styles.colors.light.backgroundImage,
   accent: styles.colors.tari.purple,
@@ -11,8 +12,7 @@ const darkTheme = {
   disabledText: styles.colors.dark.placeholder,
   tariGradient: styles.gradients.tari,
   borderColor: styles.colors.light.backgroundImage,
-
-  titleBar: styles.colors.dark.primary,
+  borderColorLight: styles.colors.secondary.borderLight,
   controlBackground: 'rgba(255,255,255,.2)',
   info: styles.colors.secondary.info,
   infoText: styles.colors.secondary.infoText,
@@ -25,10 +25,10 @@ const darkTheme = {
   expertText: styles.gradients.tari,
 
   inverted: {
-    controlBackground: 'transparent',
     primary: styles.colors.light.primary,
     secondary: styles.colors.dark.secondary,
-    background: styles.colors.light.primary,
+    tertiary: styles.colors.dark.tertiary,
+    background: styles.colors.darkMode.modalBackgroundSecondary,
     backgroundSecondary: styles.colors.darkMode.modalBackground,
     backgroundImage: styles.colors.light.backgroundImage,
     accent: styles.colors.tari.purple,
@@ -44,6 +44,9 @@ const darkTheme = {
     warningText: styles.colors.secondary.warningText,
     expert: 'rgba(147, 48, 255, 0.05)',
     expertText: styles.gradients.tari,
+    borderColor: styles.colors.light.backgroundImage,
+    borderColorLight: styles.colors.secondary.borderLight,
+    controlBackground: 'transparent',
   },
 }
 
