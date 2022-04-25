@@ -460,7 +460,7 @@ mod orphan_validator {
         let validator = OrphanBlockValidator::new(rules, false, CryptoFactories::default());
         let (_, coinbase) = blockchain.append(block_spec!("1", parent: "GB"));
 
-        let schema = txn_schema!(from: vec![coinbase.clone()], to: vec![201 * T]);
+        let schema = txn_schema!(from: vec![coinbase], to: vec![201 * T]);
         let (initial_tx, outputs) = schema_to_transaction(&[schema]);
 
         let schema = txn_schema!(from: vec![outputs[0].clone()], to: vec![200 * T]);
