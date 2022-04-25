@@ -46,9 +46,9 @@ pub struct KeyManagerHandle<TBackend> {
 impl<TBackend> KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
-    /// Creates a new Key manager and wrap this inside of the handle
-    /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexs
-    /// * `db` is the key manager backed to be used for persistent storage of branches and indices.
+    /// Creates a new key manager.
+    /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
+    /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
     pub fn new(master_seed: CipherSeed, db: KeyManagerDatabase<TBackend>) -> Self {
         KeyManagerHandle {
             key_manager_inner: Arc::new(RwLock::new(KeyManagerInner::new(master_seed, db))),
