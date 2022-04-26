@@ -1,30 +1,13 @@
-import { createAsyncThunk, createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-import { BaseNodeState, Network } from '../types'
+import { BaseNodeState, Network } from './types'
+import { startNode, stopNode } from './thunks'
 
 const initialState: BaseNodeState = {
   network: 'mainnet',
   running: false,
   pending: false,
 }
-
-const startNode = createAsyncThunk('startNode', async (_, thunkAPI) => {
-  const {
-    baseNode: { network },
-  } = thunkAPI.getState()
-
-  console.log(`starting base node on network ${network}`)
-  await new Promise(resolve => setTimeout(resolve, 2000))
-})
-
-const stopNode = createAsyncThunk('stopNode', async (_, thunkAPI) => {
-  const {
-    baseNode: { network },
-  } = thunkAPI.getState()
-
-  console.log(`stopping base node on network ${network}`)
-  await new Promise(resolve => setTimeout(resolve, 2000))
-})
 
 const baseNodeSlice = createSlice({
   name: 'app',
