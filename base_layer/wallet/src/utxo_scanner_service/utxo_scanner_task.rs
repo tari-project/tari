@@ -79,12 +79,15 @@ where TBackend: WalletBackend + 'static
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
             self.set_recovery_mode().await?;
-        } else if self.check_recovery_mode().await? {
-            warn!(
-                target: LOG_TARGET,
-                "Scanning round aborted as a Recovery is in progress"
-            );
-            return Ok(());
+        } else {
+            let in_progress = self.check_recovery_mode().await?;
+            if in_progress {
+                warn!(
+                    target: LOG_TARGET,
+                    "Scanning round aborted as a Recovery is in progress"
+                );
+                return Ok(());
+            }
         }
 
         loop {
