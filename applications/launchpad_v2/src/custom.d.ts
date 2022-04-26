@@ -32,6 +32,15 @@ declare module 'styled-components' {
     titleBar: string
 
     controlBackground: string
+    info: string
+    infoText: string
+    on: string
+    onText: string
+    onTextLight: string
+    warning: string
+    warningText: string
+    expert: string
+    expertText: string
 
     inverted: {
       controlBackground: string
@@ -44,6 +53,15 @@ declare module 'styled-components' {
       accentDark: string
       disabledText: string
       tariGradient: string
+      info: string
+      infoText: string
+      on: string
+      onText: string
+      onTextLight: string
+      warning: string
+      warningText: string
+      expert: string
+      expertText: string
     }
   }
 }

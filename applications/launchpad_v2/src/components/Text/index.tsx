@@ -18,17 +18,24 @@ import { TextProps } from './types'
 
 const Text = ({
   type = 'defaultMedium',
+  style,
+  as = 'p',
   color,
   children,
-  style,
+  testId,
 }: TextProps) => {
   const textStyles = {
-    color: color,
+    color,
+    ...style,
     ...styles.typography[type],
     ...style,
   }
 
-  return <StyledText style={textStyles}>{children}</StyledText>
+  return (
+    <StyledText as={as} style={textStyles} data-testid={testId || 'text-cmp'}>
+      {children}
+    </StyledText>
+  )
 }
 
 export default Text

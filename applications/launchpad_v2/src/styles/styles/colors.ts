@@ -1,8 +1,9 @@
 const colors = {
   dark: {
     primary: '#20053D',
-    borders: '#EDECEE',
     secondary: '#716A78',
+    tertiary: '#837A8B',
+    borders: '#EDECEE',
     placeholder: '#D6D4D9',
     input: '#000000',
   },
@@ -27,16 +28,18 @@ const colors = {
   },
   secondary: {
     onText: '#094E41',
-    onTextLight: '#5F9CF1',
+    onTextLight: '#5F9C91',
     on: '#E6FAF6',
     info: '#ECF0FE',
     infoText: '#4D6FE8',
     warning: '#FFEED3',
     warningText: '#D18A18',
     actionBackground: '#76A59D',
+    borderLight: '#DBDBDD',
   },
   darkMode: {
     modalBackground: '#141414',
+    modalBackgroundSecondary: '#000000',
     borders: '#222222',
     dashboard: '#0A0A0A',
     input: '#000000',
