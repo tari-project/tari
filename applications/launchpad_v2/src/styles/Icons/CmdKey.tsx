@@ -8,6 +8,7 @@ const SvgCmdKey = (props: SVGProps<SVGSVGElement>) => (
     height='10'
     viewBox='0 0 10 10'
     fill='none'
+    data-testid='svg-cmdkey'
     {...props}
   >
     <path
