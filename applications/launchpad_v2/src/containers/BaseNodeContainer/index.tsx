@@ -1,7 +1,8 @@
 import { useAppSelector, useAppDispatch } from '../../store/hooks'
+import { selectState } from '../../store/baseNode/selectors'
+import { actions } from '../../store/baseNode'
+
 import BaseNode from './BaseNode'
-import { selectState } from './slice/selectors'
-import { actions } from './slice'
 
 const BaseNodeContainer = () => {
   const { network, running, pending } = useAppSelector(selectState)
