@@ -3,7 +3,7 @@ import { SVGProps } from 'react'
 
 const SvgTariSignet = (props: SVGProps<SVGSVGElement>) => (
   <svg
-    data-testid='svg-logo-signet'
+    data-testid='svg-tarisignet'
     xmlns='http://www.w3.org/2000/svg'
     width='28'
     height='28'

@@ -21,5 +21,11 @@ module.exports = {
   collectCoverage: true,
   reporters: ['jest-junit'],
   coverageDirectory: 'temp/reports/tests',
-  collectCoverageFrom: ['src/**/*.{ts,tsx}'],
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/reportWebVitals.ts',
+    '!src/custom.d.ts',
+    '!src/react-app-env.d.ts',
+    '!src/index.tsx',
+  ],
 }

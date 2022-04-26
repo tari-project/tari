@@ -12,7 +12,7 @@ describe('KeyboardKeys', () => {
     const rTile = screen.getByText('R')
     expect(rTile).toBeInTheDocument()
 
-    const winTile = screen.getByTestId('svg-win-key')
+    const winTile = screen.getByTestId('svg-winkey')
     expect(winTile).toBeInTheDocument()
   })
 })

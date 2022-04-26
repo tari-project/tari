@@ -3,7 +3,7 @@ import { SVGProps } from 'react'
 
 const SvgTariLaunchpadLogo = (props: SVGProps<SVGSVGElement>) => (
   <svg
-    data-testid='svg-logo-full'
+    data-testid='svg-tarilaunchpadlogo'
     xmlns='http://www.w3.org/2000/svg'
     width='150'
     height='28'
