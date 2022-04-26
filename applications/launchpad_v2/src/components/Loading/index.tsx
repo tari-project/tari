@@ -7,10 +7,12 @@ import { StyledSpan } from './styles'
  * renders a spinning loading indicator
  *
  * @prop {boolean} loading - controls whether the indicator should be shown or not
+ * @prop {string} [testId] - optional testId to assign for testing purposes
  */
-const Loading = ({ loading }: { loading?: boolean }) =>
+
+const Loading = ({ loading, testId }: { loading?: boolean; testId?: string }) =>
   loading ? (
-    <StyledSpan>
+    <StyledSpan data-testid={testId || 'loading-indicator'}>
       <LoadingIcon />
     </StyledSpan>
   ) : null
