@@ -573,15 +573,12 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
-        let value: Option<String> = self
-            .resources
+        self.resources
             .db
-            .get_client_key_from_str(RECOVERY_KEY.to_owned())
-            .await?;
-        match value {
-            None => Ok(false),
-            Some(_v) => Ok(true),
-        }
+            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
+            .await
+            .map(|x| x.is_some())
+            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
     async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {
