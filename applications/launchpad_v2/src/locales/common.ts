@@ -8,6 +8,9 @@ const translations = {
     settings: 'Settings',
     wallet: 'Wallet',
   },
+  adjectives: {
+    running: 'Running',
+  },
 }
 
 export default translations
