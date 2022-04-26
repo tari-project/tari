@@ -1,5 +1,4 @@
-import { CSSProperties } from 'styled-components'
-import { ReactNode } from 'react'
+import { ReactNode, CSSProperties } from 'react'
 import { AnimatedComponent } from 'react-spring'
 
 /**
@@ -8,6 +7,7 @@ import { AnimatedComponent } from 'react-spring'
  * @prop {ReactNode} children - text content to display
  * @prop {string} [color] - font color
  * @prop {CSSProperties} [style] - optional component styles
+ * @prop {'h1' | 'h2' | 'h3' | 'h4' | 'h4' | 'h5' | 'h6' | 'p' | 'span' | AnimatedComponent<'h1' | 'h2' | 'h3' | 'h4' | 'h4' | 'h5' | 'h6' | 'p' | 'span'> } [as] - prop controlling what component to use for text
  */
 
 export interface TextProps {

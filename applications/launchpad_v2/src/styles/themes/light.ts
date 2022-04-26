@@ -14,6 +14,11 @@ const lightTheme = {
   borderColor: styles.colors.dark.borders,
   borderColorLight: styles.colors.secondary.borderLight,
   actionBackground: styles.colors.secondary.actionBackground,
+  resetBackground: styles.colors.light.overlay,
+  resetBackgroundDark: styles.colors.light.overlayDark,
+
+  titleBar: styles.colors.light.background,
+
   controlBackground: 'transparent',
   info: styles.colors.secondary.info,
   infoText: styles.colors.secondary.infoText,
