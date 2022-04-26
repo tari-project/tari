@@ -1,4 +1,4 @@
-import type { Network } from '../../store/baseNode/types'
+export type Network = 'mainnet' | 'testnet'
 
 export interface BaseNodeProps {
   startNode: () => void
