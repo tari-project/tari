@@ -5,6 +5,7 @@ import Text from '../../components/Text'
 import Box from '../../components/Box'
 import Button from '../../components/Button'
 import Loading from '../../components/Loading'
+import Tag from '../../components/Tag'
 import t from '../../locales'
 
 import { BaseNodeProps, Network } from './types'
@@ -37,20 +38,16 @@ const BaseNode = ({
     >
       <Text
         type='header'
-        style={{ margin: 0 }}
+        style={{
+          margin: 0,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
         color={running ? theme.inverted.primary : undefined}
       >
         {t.baseNode.title}
-        {/* TODO change to tag after https://github.com/Altalogy/tari/pull/90 */}
-        {running && (
-          <Text
-            style={{ float: 'right' }}
-            type='smallMedium'
-            color={theme.inverted.primary}
-          >
-            running
-          </Text>
-        )}
+        {running && <Tag type='running'>{t.common.adjectives.running}</Tag>}
       </Text>
       <Box
         border={false}

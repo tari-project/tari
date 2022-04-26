@@ -12,7 +12,7 @@ import { TagContainer, IconWrapper } from './styles'
  *
  * @prop {ReactNode} [children] - text content to display
  * @prop {CSSProperties} [style] - optional component styles
- * @prop {'blue' | 'running' | 'warning' | 'expert'} [type] - tag types to determine color settings
+ * @prop {'info' | 'running' | 'warning' | 'expert'} [type] - tag types to determine color settings
  * @prop {ReactNode} [icon] - optional SVG icon
  * @prop {ReactNode} [subText] - optional additional tag text
  *
