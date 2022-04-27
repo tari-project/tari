@@ -44,7 +44,7 @@ export const FontWeightCompensation = styled.div`
   }
 `
 
-export const TabContent = styled.div<{ selected?: boolean }>`
+export const TabContent = styled.div`
   position: absolute;
   top: 0;
   left: 0;
