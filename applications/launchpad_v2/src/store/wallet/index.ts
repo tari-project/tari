@@ -1,4 +1,4 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit'
+import { createSlice } from '@reduxjs/toolkit'
 
 import { WalletState } from './types'
 import { unlockWallet } from './thunks'
@@ -23,9 +23,9 @@ const walletSlice = createSlice({
       state.pending = true
     })
     builder.addCase(unlockWallet.fulfilled, (state, action) => {
-      console.log({ action })
       state.pending = false
       state.unlocked = true
+      state.running = true
     })
   },
 })
