@@ -44,7 +44,7 @@ const Button = ({
 
   return (
     <StyledButton
-      disabled={loading || disabled}
+      disabled={disabled}
       type={type}
       onClick={onClick}
       style={style}
