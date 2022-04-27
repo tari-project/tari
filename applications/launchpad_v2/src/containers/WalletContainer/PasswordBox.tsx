@@ -3,19 +3,19 @@ import { useTheme } from 'styled-components'
 import Box from '../../components/Box'
 import Text from '../../components/Text'
 import Button from '../../components/Button'
-import Loading from '../../components/Loading'
 
 import { TariBackgroundSignet } from './styles'
 
 const PasswordBox = ({
+  pending,
   onSubmit,
 }: {
+  pending: boolean
   onSubmit: (password: string) => void
 }) => {
   const theme = useTheme()
   const password = 'placeholderPassword'
   const disabled = false
-  const loading = false
 
   return (
     <Box style={{ position: 'relative' }}>
@@ -28,9 +28,8 @@ const PasswordBox = ({
         placeholder for input
       </Box>
       <Button
-        disabled={disabled}
-        variant={disabled ? 'disabled' : undefined}
-        rightIcon={<Loading loading={loading} />}
+        disabled={pending}
+        loading={pending}
         onClick={() => onSubmit(password)}
       >
         <Text type='defaultMedium' style={{ lineHeight: '100%' }}>

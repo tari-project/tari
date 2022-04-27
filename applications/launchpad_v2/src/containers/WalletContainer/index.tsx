@@ -1,6 +1,11 @@
-import { useState } from 'react'
-
-import { useAppSelector } from '../../store/hooks'
+import { useAppSelector, useAppDispatch } from '../../store/hooks'
+import { actions } from '../../store/wallet'
+import {
+  selectIsUnlocked,
+  selectWalletAddress,
+  selectTariAmount,
+  selectIsPending,
+} from '../../store/wallet/selectors'
 import { selectExpertView } from '../../store/app/selectors'
 
 import { CenteredLayout, ToTheLeftLayout } from './styles'
@@ -9,15 +14,20 @@ import TariWallet from './TariWallet'
 import WalletBalance from './WalletBalance'
 
 const WalletContainer = () => {
-  const [unlocked, setUnlocked] = useState(false)
+  const dispatch = useAppDispatch()
   const expertView = useAppSelector(selectExpertView)
-
-  const walletAddress = 'your tari wallet address'
+  const unlocked = useAppSelector(selectIsUnlocked)
+  const walletAddress = useAppSelector(selectWalletAddress)
+  const { balance, available } = useAppSelector(selectTariAmount)
+  const pending = useAppSelector(selectIsPending)
 
   if (!unlocked) {
     return (
       <CenteredLayout>
-        <PasswordBox onSubmit={() => setUnlocked(true)} />
+        <PasswordBox
+          pending={pending}
+          onSubmit={password => dispatch(actions.unlockWallet(password))}
+        />
       </CenteredLayout>
     )
   }
@@ -25,7 +35,7 @@ const WalletContainer = () => {
   return (
     <ToTheLeftLayout expertView={expertView}>
       <TariWallet address={walletAddress} />
-      <WalletBalance balance={11350057} available={11349009} />
+      <WalletBalance balance={balance} available={available} />
     </ToTheLeftLayout>
   )
 }

@@ -11,7 +11,7 @@ const initialState: BaseNodeState = {
 }
 
 const baseNodeSlice = createSlice({
-  name: 'app',
+  name: 'baseNode',
   initialState,
   reducers: {
     setTariNetwork(state, action: PayloadAction<Network>) {
