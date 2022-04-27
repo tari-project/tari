@@ -23,7 +23,6 @@
   },
   "include": [
     "src",
-    "./node_modules/**/*",
     "./src/custom.d.ts"
   ]
 }

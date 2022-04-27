@@ -1,14 +1,20 @@
 import { ReactNode } from 'react'
 
-export type SelectInternalProps = {
+export interface SelectInternalProps {
   disabled?: boolean
   inverted?: boolean
   children?: ReactNode
   open?: boolean
 }
 
-type Option = { value: string; label: string; key: string }
-export type SelectProps = {
+export interface Option {
+  value: string
+  label: string
+  key: string
+}
+
+export interface SelectProps {
+  keys: string[]
   disabled?: boolean
   inverted?: boolean
   label: string
