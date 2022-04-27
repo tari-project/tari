@@ -1,7 +1,10 @@
+import Loading from '../Loading'
+
 import {
   DisabledButton,
   ButtonText,
   IconWrapper,
+  LoadingIconWrapper,
   StyledButton,
   StyledLink,
 } from './styles'
@@ -17,12 +20,18 @@ const Button = ({
   leftIcon,
   rightIcon,
   onClick,
+  loading,
 }: ButtonProps) => {
   const btnContent = (
     <>
       {leftIcon ? <IconWrapper>{leftIcon}</IconWrapper> : null}
       <ButtonText>{children}</ButtonText>
-      {rightIcon ? <IconWrapper>{rightIcon}</IconWrapper> : null}
+      {loading ? (
+        <LoadingIconWrapper>
+          <Loading loading />
+        </LoadingIconWrapper>
+      ) : null}
+      {!loading && rightIcon ? <IconWrapper>{rightIcon}</IconWrapper> : null}
     </>
   )
 
@@ -37,7 +46,7 @@ const Button = ({
   if (variant === 'disabled') {
     return (
       <DisabledButton
-        disabled={disabled}
+        disabled={loading || disabled}
         type={type}
         onClick={onClick}
         style={style}
@@ -50,7 +59,7 @@ const Button = ({
 
   return (
     <StyledButton
-      disabled={disabled}
+      disabled={loading || disabled}
       type={type}
       onClick={onClick}
       style={style}

@@ -94,3 +94,8 @@ export const IconWrapper = styled.span`
     color: inherit;
   }
 `
+
+export const LoadingIconWrapper = styled(IconWrapper)`
+  top: 6px;
+  right: -1px;
+`
