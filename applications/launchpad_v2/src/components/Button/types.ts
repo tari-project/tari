@@ -12,4 +12,5 @@ export interface ButtonProps {
   leftIcon?: ReactNode
   rightIcon?: ReactNode
   onClick?: () => void
+  loading?: boolean
 }
