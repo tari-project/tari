@@ -26,6 +26,13 @@ const walletSlice = createSlice({
       state.pending = false
       state.unlocked = true
       state.running = true
+      const {
+        address,
+        tari: { balance, available },
+      } = action.payload
+      state.address = address
+      state.tari.balance = balance
+      state.tari.available = available
     })
   },
 })
