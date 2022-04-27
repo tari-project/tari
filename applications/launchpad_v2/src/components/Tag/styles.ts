@@ -6,7 +6,7 @@ export const TagContainer = styled.div<{ variant?: string }>`
   justify-content: center;
   align-items: center;
   border-radius: 64px;
-  height: ${({ variant }) => (variant === 'large' ? '30px' : '26px')};
+  height: 26px;
   border: 0;
   width: fit-content;
   padding-left: 12px;

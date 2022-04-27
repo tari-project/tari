@@ -47,7 +47,11 @@ const BaseNode = ({
         color={running ? theme.inverted.primary : undefined}
       >
         {t.baseNode.title}
-        {running && <Tag type='running'>{t.common.adjectives.running}</Tag>}
+        {running && (
+          <Tag type='running' variant='large'>
+            {t.common.adjectives.running}
+          </Tag>
+        )}
       </Text>
       <Box
         border={false}

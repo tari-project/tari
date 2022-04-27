@@ -24,7 +24,6 @@ const Text = ({
 }: TextProps) => {
   const textStyles = {
     color,
-    ...style,
     ...styles.typography[type],
     ...style,
   }
