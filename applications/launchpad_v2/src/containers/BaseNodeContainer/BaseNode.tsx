@@ -73,10 +73,7 @@ const BaseNode = ({
           loading={pending}
           style={{ color: theme.inverted.primary }}
         >
-          <Text
-            type='defaultMedium'
-            style={{ lineHeight: '100%', color: theme.inverted.primary }}
-          >
+          <Text type='defaultMedium' style={{ color: theme.inverted.primary }}>
             {t.baseNode.start}
           </Text>
         </Button>
@@ -89,11 +86,7 @@ const BaseNode = ({
           loading={pending}
           style={{ color: theme.inverted.primary }}
         >
-          <Text
-            type='defaultMedium'
-            color={theme.inverted.primary}
-            style={{ lineHeight: '100%' }}
-          >
+          <Text type='defaultMedium' color={theme.inverted.primary}>
             {t.common.verbs.stop}
           </Text>
         </Button>

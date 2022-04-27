@@ -7,6 +7,7 @@ export const StyledButton = styled.button<
   Pick<ButtonProps, 'variant' | 'type'>
 >`
   display: flex;
+  position: relative;
   justify-content: space-between;
   align-items: baseline;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
@@ -79,23 +80,9 @@ export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
 
 export const ButtonText = styled.span``
 
-export const IconWrapper = styled.span`
-  color: inherit;
-  width: 0;
-  height: 1em;
-  position: relative;
-  & > * {
-    position: absolute;
-    top: 0;
-    left: 100%;
-    width: ${({ theme }) => theme.spacing(0.66)};
-    height: ${({ theme }) => theme.spacing(0.66)};
-    transform: translateY(-50%);
-    color: inherit;
-  }
-`
+export const IconWrapper = styled.span``
 
-export const LoadingIconWrapper = styled(IconWrapper)`
-  top: 6px;
-  right: -1px;
+export const LoadingIconWrapper = styled.span`
+  margin-left: 0.25em;
+  transform: translateY(0.25em);
 `
