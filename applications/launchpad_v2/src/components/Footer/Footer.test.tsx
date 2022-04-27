@@ -7,7 +7,9 @@ import { tauriIPCMock } from '../../../__tests__/mocks/mockTauriIPC'
 
 beforeAll(() => {
   window.crypto = {
+    // @ts-expect-error: ignore this
     getRandomValues: function (buffer) {
+      // @ts-expect-error: ignore this
       return randomFillSync(buffer)
     },
   }

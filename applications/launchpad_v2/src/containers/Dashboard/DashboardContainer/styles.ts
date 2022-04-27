@@ -9,5 +9,6 @@ export const DashboardLayout = styled.div`
 
 export const DashboardContent = styled.div`
   flex: 1;
-  padding: 40px 100px;
+  padding-top: 60px;
+  padding-bottom: 60px;
 `

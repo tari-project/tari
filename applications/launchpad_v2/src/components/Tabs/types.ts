@@ -1,10 +1,12 @@
 import { ReactNode } from 'react'
 
+export interface TabProp {
+  id: string
+  content: ReactNode
+}
+
 export interface TabsProps {
-  tabs: {
-    id: string
-    content: ReactNode
-  }[]
+  tabs: TabProp[]
   selected: string
   onSelect: (id: string) => void
 }

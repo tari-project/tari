@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { CSSProperties } from 'styled-components'
 
 export type TagVariantType = 'small' | 'large'
+export type TagType = 'info' | 'running' | 'warning' | 'expert'
 
 /**
  * @typedef TagProps
@@ -17,7 +18,7 @@ export type TagVariantType = 'small' | 'large'
 export interface TagProps {
   children?: ReactNode
   style?: CSSProperties
-  type?: 'info' | 'running' | 'warning' | 'expert'
+  type?: TagType
   variant?: TagVariantType
   icon?: ReactNode
   subText?: ReactNode

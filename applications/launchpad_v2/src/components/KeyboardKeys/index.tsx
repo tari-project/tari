@@ -1,5 +1,8 @@
+import { ReactNode } from 'react'
+
 import { IconsWrapper, KeyTile, LetterKey } from './styles'
 import { KeyboardKeysProps } from './types'
+
 import SvgCmdKey from '../../styles/Icons/CmdKey'
 import SvgWinKey from '../../styles/Icons/WinKey'
 
@@ -15,7 +18,7 @@ import SvgWinKey from '../../styles/Icons/WinKey'
  * <KeyboardKeys keys={['Ctrl', 'Alt', 'win']} />
  */
 const KeyboardKeys = ({ keys }: KeyboardKeysProps) => {
-  const result = []
+  const result: ReactNode[] = []
 
   keys.forEach((key, idx) => {
     let symbol

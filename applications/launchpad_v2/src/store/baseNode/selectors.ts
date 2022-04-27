@@ -1,3 +1,3 @@
-import { RootState } from '../../../store'
+import { RootState } from '../'
 
 export const selectState = (state: RootState) => state.baseNode

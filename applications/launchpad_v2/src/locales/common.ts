@@ -5,6 +5,8 @@ const translations = {
     stop: 'Stop',
   },
   nouns: {
+    baseNode: 'Base Node',
+    mining: 'Mining',
     settings: 'Settings',
     wallet: 'Wallet',
   },

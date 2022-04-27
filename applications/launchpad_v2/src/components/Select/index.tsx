@@ -11,7 +11,11 @@ import {
   OptionsContainer,
   Option,
 } from './styles'
-import { SelectProps } from './types'
+import { Option as OptionProp } from './types'
+
+/**
+ * @TODO go back to import SelectProps - it was switched, because eslint was giving some react/prop-types error
+ */
 
 /**
  * @name Select
@@ -37,10 +41,17 @@ const Select = ({
   inverted,
   label,
   disabled,
-}: SelectProps) => {
+}: {
+  disabled?: boolean
+  inverted?: boolean
+  label: string
+  value?: OptionProp
+  options: OptionProp[]
+  onChange: (option: OptionProp) => void
+}) => {
   return (
     <StyledListbox value={value} onChange={onChange} disabled={disabled}>
-      {({ open }) => (
+      {({ open }: { open: boolean }) => (
         <>
           <Label inverted={inverted}>{label}</Label>
           <SelectButton open={open} inverted={inverted} disabled={disabled}>
