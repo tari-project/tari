@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 
 import Loading from '../../../../../components/Loading'
@@ -123,23 +123,15 @@ const DashboardTabs = () => {
   const baseNodeState = useSelector(selectBaseNodeState)
   const walletState = useSelector(selectWalletState)
 
-  const [tabs, setTabs] = useState(
-    composeNodeTabs({
-      miningNodeState: undefined,
-      baseNodeState,
-      walletState,
-    }),
-  )
-
-  useEffect(() => {
-    setTabs(
+  const tabs = useMemo(
+    () =>
       composeNodeTabs({
         miningNodeState: undefined,
         baseNodeState,
         walletState,
       }),
-    )
-  }, [baseNodeState, currentPage])
+    [walletState, baseNodeState],
+  )
 
   const setPageTab = (tabId: string) => {
     dispatch(setPage(tabId as ViewType))
