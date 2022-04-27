@@ -3,7 +3,7 @@ import { createSlice } from '@reduxjs/toolkit'
 import { WalletState } from './types'
 import { unlockWallet } from './thunks'
 
-const initialState: WalletState = {
+export const initialState: WalletState = {
   running: false,
   pending: false,
   unlocked: false,
