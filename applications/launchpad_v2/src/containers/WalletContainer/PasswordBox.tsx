@@ -3,6 +3,7 @@ import { useTheme } from 'styled-components'
 import Box from '../../components/Box'
 import Text from '../../components/Text'
 import Button from '../../components/Button'
+import t from '../../locales'
 
 import { TariBackgroundSignet } from './styles'
 
@@ -15,15 +16,14 @@ const PasswordBox = ({
 }) => {
   const theme = useTheme()
   const password = 'placeholderPassword'
-  const disabled = false
 
   return (
     <Box style={{ position: 'relative' }}>
       <TariBackgroundSignet />
       <Text type='header' style={{ marginBottom: theme.spacing() }}>
-        Enter Password
+        {t.wallet.password.title}
       </Text>
-      <Text>to access your wallet:</Text>
+      <Text>{t.wallet.password.cta}</Text>
       <Box border={false} style={{ padding: 0 }}>
         placeholder for input
       </Box>
@@ -33,7 +33,7 @@ const PasswordBox = ({
         onClick={() => onSubmit(password)}
       >
         <Text type='defaultMedium' style={{ lineHeight: '100%' }}>
-          Continue
+          {t.common.verbs.continue}
         </Text>
       </Button>
     </Box>
