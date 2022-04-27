@@ -22,6 +22,7 @@ export const MainContainer = styled(animated.div)`
   width: 100%;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   padding-top: 60px;
 `
 
