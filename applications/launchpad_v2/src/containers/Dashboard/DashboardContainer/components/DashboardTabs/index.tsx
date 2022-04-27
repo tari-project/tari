@@ -10,6 +10,8 @@ import { ViewType } from '../../../../../store/app/types'
 import { selectView } from '../../../../../store/app/selectors'
 import { selectState as selectBaseNodeState } from '../../../../../store/baseNode/selectors'
 import { BaseNodeState } from '../../../../../store/baseNode/types'
+import { selectState as selectWalletState } from '../../../../../store/wallet/selectors'
+import { WalletState } from '../../../../../store/wallet/types'
 
 import t from '../../../../../locales'
 
@@ -65,11 +67,11 @@ const TabContent = ({
 const composeNodeTabs = ({
   miningNodeState,
   baseNodeState,
-  walletNodeState,
+  walletState,
 }: {
   miningNodeState?: unknown
   baseNodeState?: BaseNodeState
-  walletNodeState?: unknown
+  walletState?: WalletState
 }) => {
   const miningContent = <TabContent text={t.common.nouns.mining} />
 
@@ -87,7 +89,14 @@ const composeNodeTabs = ({
     />
   )
 
-  const walletContent = <TabContent text={t.common.nouns.wallet} />
+  const walletContent = (
+    <TabContent
+      text={t.common.nouns.wallet}
+      running={walletState?.running}
+      pending={walletState?.pending}
+    />
+  )
+
   return [
     {
       id: 'MINING',
@@ -112,12 +121,13 @@ const DashboardTabs = () => {
 
   const currentPage = useSelector(selectView)
   const baseNodeState = useSelector(selectBaseNodeState)
+  const walletState = useSelector(selectWalletState)
 
   const [tabs, setTabs] = useState(
     composeNodeTabs({
       miningNodeState: undefined,
       baseNodeState,
-      walletNodeState: undefined,
+      walletState,
     }),
   )
 
@@ -126,7 +136,7 @@ const DashboardTabs = () => {
       composeNodeTabs({
         miningNodeState: undefined,
         baseNodeState,
-        walletNodeState: undefined,
+        walletState,
       }),
     )
   }, [baseNodeState, currentPage])

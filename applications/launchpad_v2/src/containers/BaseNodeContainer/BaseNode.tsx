@@ -4,7 +4,6 @@ import Select from '../../components/Select'
 import Text from '../../components/Text'
 import Box from '../../components/Box'
 import Button from '../../components/Button'
-import Loading from '../../components/Loading'
 import Tag from '../../components/Tag'
 import t from '../../locales'
 
@@ -66,7 +65,7 @@ const BaseNode = ({
         <Button
           disabled={pending}
           onClick={startNode}
-          rightIcon={<Loading loading={pending} />}
+          loading={pending}
           style={{ color: theme.inverted.primary }}
         >
           <Text
@@ -82,7 +81,7 @@ const BaseNode = ({
           type='reset'
           onClick={stopNode}
           disabled={pending}
-          rightIcon={<Loading loading={pending} />}
+          loading={pending}
           style={{ color: theme.inverted.primary }}
         >
           <Text
