@@ -54,12 +54,7 @@ const PasswordBox = ({
             width: '100%',
           }}
         />
-        <Button
-          disabled={disableSubmit}
-          loading={pending}
-          type='submit'
-          variant={disableSubmit ? 'disabled' : undefined}
-        >
+        <Button disabled={disableSubmit} loading={pending} type='submit'>
           <Text type='defaultMedium' style={{ lineHeight: '100%' }}>
             {t.common.verbs.continue}
           </Text>

@@ -1,7 +1,6 @@
 import Loading from '../Loading'
 
 import {
-  DisabledButton,
   ButtonText,
   IconWrapper,
   LoadingIconWrapper,
@@ -40,20 +39,6 @@ const Button = ({
       <StyledLink href={href} onClick={onClick} style={style} variant={variant}>
         {btnContent}
       </StyledLink>
-    )
-  }
-
-  if (variant === 'disabled') {
-    return (
-      <DisabledButton
-        disabled={loading || disabled}
-        type={type}
-        onClick={onClick}
-        style={style}
-        variant={variant}
-      >
-        {btnContent}
-      </DisabledButton>
     )
   }
 
