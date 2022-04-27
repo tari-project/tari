@@ -32,7 +32,7 @@ export const StyledButton = styled.button<
     return variant === 'text' ? 'transparent' : theme.tariGradient
   }};
   color: ${({ variant, theme }) =>
-    variant === 'text' ? theme.secondary : theme.primary};
+    variant === 'text' ? theme.secondary : theme.inverted.primary};
   outline: none;
 
   & * {
@@ -51,6 +51,21 @@ export const StyledButton = styled.button<
 
       return theme.accent
     }};
+  }
+`
+
+export const DisabledButton = styled(StyledButton)<
+  Pick<ButtonProps, 'variant' | 'type'>
+>`
+  cursor: default;
+  color: ${({ theme }) => theme.disabledText};
+  background: ${({ theme }) => theme.backgroundImage};
+  border-color: transparent;
+
+  &:hover {
+    color: ${({ theme }) => theme.disabledText};
+    background: ${({ theme }) => theme.backgroundImage};
+    border-color: transparent;
   }
 `
 

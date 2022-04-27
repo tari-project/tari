@@ -1,4 +1,10 @@
-import { ButtonText, IconWrapper, StyledButton, StyledLink } from './styles'
+import {
+  DisabledButton,
+  ButtonText,
+  IconWrapper,
+  StyledButton,
+  StyledLink,
+} from './styles'
 import { ButtonProps } from './types'
 
 const Button = ({
@@ -25,6 +31,20 @@ const Button = ({
       <StyledLink href={href} onClick={onClick} style={style} variant={variant}>
         {btnContent}
       </StyledLink>
+    )
+  }
+
+  if (variant === 'disabled') {
+    return (
+      <DisabledButton
+        disabled={disabled}
+        type={type}
+        onClick={onClick}
+        style={style}
+        variant={variant}
+      >
+        {btnContent}
+      </DisabledButton>
     )
   }
 
