@@ -96,7 +96,7 @@ const Tabs = ({ tabs, selected, onSelect }: TabsProps) => {
                 {tab.content}
               </Text>
             </FontWeightCompensation>
-            <TabContent selected={selected === tab.id}>
+            <TabContent>
               <Text
                 as={'span'}
                 type={selected === tab.id ? 'defaultHeavy' : 'defaultMedium'}

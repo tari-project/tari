@@ -1,5 +1,5 @@
 import { ReactNode, CSSProperties } from 'react'
-import { AnimatedComponent, SpringValue, SpringValues } from 'react-spring'
+import { AnimatedComponent, SpringValue } from 'react-spring'
 
 /**
  * @typedef TextProps
