@@ -4,26 +4,24 @@ import Text from '../../components/Text'
 import Button from '../../components/Button'
 import Loading from '../../components/Loading'
 
+import { Container, TariSignet } from './styles'
+
 const WalletContainer = () => {
   const theme = useTheme()
   const disabled = false
   const loading = false
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        height: '100%',
-      }}
-    >
-      <Box>
+    <Container>
+      <Box style={{ position: 'relative' }}>
+        <TariSignet />
         <Text type='header' style={{ marginBottom: theme.spacing() }}>
           Enter Password
         </Text>
         <Text>to access your wallet:</Text>
-        <Box border={false}>placeholder for input</Box>
+        <Box border={false} style={{ padding: 0 }}>
+          placeholder for input
+        </Box>
         <Button
           disabled={disabled}
           variant={disabled ? 'disabled' : undefined}
@@ -34,7 +32,7 @@ const WalletContainer = () => {
           </Text>
         </Button>
       </Box>
-    </div>
+    </Container>
   )
 }
 
