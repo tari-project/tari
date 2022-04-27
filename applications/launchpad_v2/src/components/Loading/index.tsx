@@ -10,10 +10,18 @@ import { StyledSpan } from './styles'
  * @prop {string} [testId] - optional testId to assign for testing purposes
  */
 
-const Loading = ({ loading, testId }: { loading?: boolean; testId?: string }) =>
+const Loading = ({
+  loading,
+  size = '20px',
+  testId,
+}: {
+  loading?: boolean
+  size?: string
+  testId?: string
+}) =>
   loading ? (
     <StyledSpan data-testid={testId || 'loading-indicator'}>
-      <LoadingIcon />
+      <LoadingIcon width={size} height={size} />
     </StyledSpan>
   ) : null
 

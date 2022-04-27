@@ -11,7 +11,9 @@ import themes from '../../styles/themes'
 
 beforeAll(() => {
   window.crypto = {
+    // @ts-expect-error: ignore this
     getRandomValues: function (buffer) {
+      // @ts-expect-error: ignore this
       return randomFillSync(buffer)
     },
   }

@@ -17,6 +17,7 @@ declare module 'styled-components' {
     tightBorderRadius: (count?: number) => string
     primary: string
     secondary: string
+    tertiary: string
     background: string
     backgroundSecondary: string
     backgroundImage: string
@@ -25,6 +26,7 @@ declare module 'styled-components' {
     disabledText: string
     tariGradient: string
     borderColor: string
+    borderColorLight: string
     actionBackground: string
     resetBackground: string
     resetBackgroundDark: string

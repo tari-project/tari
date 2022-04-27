@@ -6,7 +6,7 @@
     "@headlessui/react": "^1.5.0",
     "@reduxjs/toolkit": "^1.8.1",
     "@tauri-apps/api": "^1.0.0-rc.3",
-    "@types/jest": "^27.0.1",
+    "@types/jest": "^27.4.1",
     "@types/node": "^16.7.13",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
@@ -32,6 +32,11 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "bundle": "tauri build"
+  },
+  "fork-ts-checker": {
+    "typescript": {
+      "memoryLimit": 8192
+    }
   },
   "eslintConfig": {
     "extends": [

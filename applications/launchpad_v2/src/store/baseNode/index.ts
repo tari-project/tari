@@ -1,7 +1,8 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit'
 
-import { BaseNodeState, Network } from './types'
+import { BaseNodeState } from './types'
 import { startNode, stopNode } from './thunks'
+import { Network } from '../../containers/BaseNodeContainer/types'
 
 const initialState: BaseNodeState = {
   network: 'mainnet',
@@ -18,17 +19,17 @@ const baseNodeSlice = createSlice({
     },
   },
   extraReducers: {
-    [startNode.pending]: state => {
+    [`${startNode.pending}`]: (state: BaseNodeState) => {
       state.pending = true
     },
-    [startNode.fulfilled]: state => {
+    [`${startNode.fulfilled}`]: (state: BaseNodeState) => {
       state.running = true
       state.pending = false
     },
-    [stopNode.pending]: state => {
+    [`${stopNode.pending}`]: (state: BaseNodeState) => {
       state.pending = true
     },
-    [stopNode.fulfilled]: state => {
+    [`${stopNode.fulfilled}`]: (state: BaseNodeState) => {
       state.running = false
       state.pending = false
     },
