@@ -1,7 +1,6 @@
-import * as React from 'react'
 import { SVGProps } from 'react'
 
-const SvgReport = (props: SVGProps<SVGSVGElement>) => (
+const Chart = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width='66'
     height='44'
@@ -44,4 +43,4 @@ const SvgReport = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-export default SvgReport
+export default Chart
