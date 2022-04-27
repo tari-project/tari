@@ -1,7 +1,19 @@
 /* eslint-disable indent */
-import styled from 'styled-components'
+import styled, { DefaultTheme } from 'styled-components'
 
 import { ButtonProps } from './types'
+
+const getButtonBackgroundColor = ({
+  disabled,
+  variant,
+  theme,
+}: Pick<ButtonProps, 'variant' | 'disabled'> & { theme: DefaultTheme }) => {
+  if (disabled) {
+    return theme.backgroundImage
+  }
+
+  return variant === 'text' ? 'transparent' : theme.tariGradient
+}
 
 export const StyledButton = styled.button<
   Pick<ButtonProps, 'variant' | 'type'>
@@ -13,8 +25,16 @@ export const StyledButton = styled.button<
   margin: 0;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border: ${({ disabled, theme, variant }) => {
-    if (disabled || variant === 'text') {
+    if (variant === 'text') {
       return 'none'
+    }
+
+    if (disabled) {
+      return `1px solid ${getButtonBackgroundColor({
+        disabled,
+        theme,
+        variant,
+      })}`
     }
 
     return `1px solid ${theme.accent}`
@@ -23,13 +43,7 @@ export const StyledButton = styled.button<
   padding: ${({ theme }) => theme.spacingVertical()}
     ${({ theme }) => theme.spacingHorizontal()};
   cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
-  background: ${({ disabled, variant, theme }) => {
-    if (disabled) {
-      return theme.backgroundImage
-    }
-
-    return variant === 'text' ? 'transparent' : theme.tariGradient
-  }};
+  background: ${getButtonBackgroundColor};
   color: ${({ disabled, variant, theme }) => {
     if (disabled) {
       return theme.disabledText
