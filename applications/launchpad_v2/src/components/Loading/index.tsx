@@ -1,3 +1,5 @@
+import { CSSProperties } from 'react'
+
 import LoadingIcon from '../../styles/Icons/Loading'
 
 import { StyledSpan } from './styles'
@@ -14,13 +16,15 @@ const Loading = ({
   loading,
   size = '20px',
   testId,
+  style,
 }: {
   loading?: boolean
   size?: string
   testId?: string
+  style?: CSSProperties
 }) =>
   loading ? (
-    <StyledSpan data-testid={testId || 'loading-indicator'}>
+    <StyledSpan data-testid={testId || 'loading-indicator'} style={style}>
       <LoadingIcon width={size} height={size} />
     </StyledSpan>
   ) : null

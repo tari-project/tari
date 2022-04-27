@@ -26,12 +26,12 @@ const Button = ({
     <>
       {leftIcon ? <IconWrapper>{leftIcon}</IconWrapper> : null}
       <ButtonText>{children}</ButtonText>
+      {rightIcon ? <IconWrapper>{rightIcon}</IconWrapper> : null}
       {loading ? (
         <LoadingIconWrapper>
-          <Loading loading />
+          <Loading loading size='1em' />
         </LoadingIconWrapper>
       ) : null}
-      {!loading && rightIcon ? <IconWrapper>{rightIcon}</IconWrapper> : null}
     </>
   )
 
