@@ -7,6 +7,7 @@ export const StyledBox = styled.div`
   margin: ${({ theme }) => theme.spacing()} 0;
   border-radius: ${({ theme }) => theme.borderRadius()};
   border: 1px solid ${({ theme }) => theme.borderColor};
-  min-width: 366px;
-  width: 366px;
+  min-width: 416px;
+  width: 416px;
+  box-sizing: border-box;
 `

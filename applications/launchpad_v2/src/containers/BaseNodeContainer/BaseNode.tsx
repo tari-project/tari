@@ -54,7 +54,12 @@ const BaseNode = ({
       </Text>
       <Box
         border={false}
-        style={{ padding: 0, background: running ? 'transparent' : undefined }}
+        style={{
+          minWidth: 0,
+          width: 'auto',
+          padding: 0,
+          background: running ? 'transparent' : undefined,
+        }}
       >
         <Select
           inverted={running}
