@@ -71,28 +71,22 @@ const BaseNode = ({
         />
       </Box>
       {!running && (
-        <Button
-          disabled={pending}
-          onClick={startNode}
-          loading={pending}
-          style={{ color: theme.inverted.primary }}
-        >
-          <Text type='defaultMedium' style={{ color: theme.inverted.primary }}>
-            {t.baseNode.start}
-          </Text>
+        <Button disabled={pending} onClick={startNode} loading={pending}>
+          <Text type='defaultMedium'>{t.baseNode.start}</Text>
         </Button>
       )}
       {running && (
         <Button
-          type='reset'
           onClick={stopNode}
           disabled={pending}
           loading={pending}
-          style={{ color: theme.inverted.primary }}
+          style={{
+            color: theme.inverted.primary,
+            background: theme.resetBackground,
+            border: 'none',
+          }}
         >
-          <Text type='defaultMedium' color={theme.inverted.primary}>
-            {t.common.verbs.stop}
-          </Text>
+          <Text type='defaultMedium'>{t.common.verbs.stop}</Text>
         </Button>
       )}
     </Box>

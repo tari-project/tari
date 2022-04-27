@@ -15,7 +15,6 @@ const lightTheme = {
   borderColorLight: styles.colors.secondary.borderLight,
   actionBackground: styles.colors.secondary.actionBackground,
   resetBackground: styles.colors.light.overlay,
-  resetBackgroundDark: styles.colors.light.overlayDark,
 
   titleBar: styles.colors.light.background,
 

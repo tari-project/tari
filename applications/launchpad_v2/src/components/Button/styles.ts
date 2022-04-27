@@ -10,14 +10,11 @@ export const StyledButton = styled.button<
   position: relative;
   justify-content: space-between;
   align-items: baseline;
+  margin: 0;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
-  border: ${({ theme, variant, type }) => {
-    if (variant === 'text') {
+  border: ${({ disabled, theme, variant }) => {
+    if (disabled || variant === 'text') {
       return 'none'
-    }
-
-    if (type === 'reset') {
-      return '1px solid transparent'
     }
 
     return `1px solid ${theme.accent}`
@@ -25,16 +22,21 @@ export const StyledButton = styled.button<
   box-shadow: none;
   padding: ${({ theme }) => theme.spacingVertical()}
     ${({ theme }) => theme.spacingHorizontal()};
-  cursor: pointer;
-  background: ${({ variant, type, theme }) => {
-    if (type === 'reset') {
-      return theme.resetBackground
+  cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
+  background: ${({ disabled, variant, theme }) => {
+    if (disabled) {
+      return theme.backgroundImage
     }
 
     return variant === 'text' ? 'transparent' : theme.tariGradient
   }};
-  color: ${({ variant, theme }) =>
-    variant === 'text' ? theme.secondary : theme.inverted.primary};
+  color: ${({ disabled, variant, theme }) => {
+    if (disabled) {
+      return theme.disabledText
+    }
+
+    return variant === 'text' ? theme.secondary : theme.inverted.primary
+  }};
   outline: none;
 
   & * {
@@ -42,32 +44,13 @@ export const StyledButton = styled.button<
   }
 
   &:hover {
-    background: ${({ variant, theme, type }) => {
-      if (variant === 'text') {
+    background: ${({ disabled, variant, theme }) => {
+      if (disabled || variant === 'text') {
         return 'auto'
-      }
-
-      if (type === 'reset') {
-        return theme.resetBackgroundDark
       }
 
       return theme.accent
     }};
-  }
-`
-
-export const DisabledButton = styled(StyledButton)<
-  Pick<ButtonProps, 'variant' | 'type'>
->`
-  cursor: default;
-  color: ${({ theme }) => theme.disabledText};
-  background: ${({ theme }) => theme.backgroundImage};
-  border-color: transparent;
-
-  &:hover {
-    color: ${({ theme }) => theme.disabledText};
-    background: ${({ theme }) => theme.backgroundImage};
-    border-color: transparent;
   }
 `
 
@@ -84,5 +67,4 @@ export const IconWrapper = styled.span``
 
 export const LoadingIconWrapper = styled.span`
   margin-left: 0.25em;
-  transform: translateY(0.25em);
 `

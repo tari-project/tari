@@ -29,7 +29,6 @@ declare module 'styled-components' {
     borderColorLight: string
     actionBackground: string
     resetBackground: string
-    resetBackgroundDark: string
 
     titleBar: string
 
