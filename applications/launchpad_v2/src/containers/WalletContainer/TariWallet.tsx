@@ -30,7 +30,7 @@ const TariWallet = ({ address }: { address: string }) => {
           marginTop: theme.spacing(0.5),
         }}
       >
-        Tari Wallet
+        {t.wallet.wallet.title}
       </Text>
       <span>{address}</span>
     </Box>

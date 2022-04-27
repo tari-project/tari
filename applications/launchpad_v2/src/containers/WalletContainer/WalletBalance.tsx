@@ -5,6 +5,7 @@ import Text from '../../components/Text'
 import Button from '../../components/Button'
 import * as FormatUtils from '../../utils/Format'
 import Arrow from '../../styles/Icons/ArrowTop2'
+import t from '../../locales'
 
 import Chart from './Chart'
 
@@ -28,7 +29,7 @@ const WalletBalance = ({
 
   return (
     <Box>
-      <Text>Balance</Text>
+      <Text>{t.wallet.balance.title}</Text>
       <TariAmountContainer>
         <Text type='header'>
           <TariSignet
@@ -43,7 +44,7 @@ const WalletBalance = ({
         <Chart />
       </TariAmountContainer>
       <Text type='defaultMedium' style={{ display: 'inline-block' }}>
-        Available to send
+        {t.wallet.balance.available}
       </Text>{' '}
       <Text type='defaultHeavy' style={{ display: 'inline-block' }}>
         {FormatUtils.amount(available)}
@@ -63,7 +64,7 @@ const WalletBalance = ({
             alignItems: 'center',
           }}
         >
-          Send funds
+          {t.wallet.balance.sendCta}
         </Text>
       </Button>
     </Box>
