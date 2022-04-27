@@ -1,38 +1,32 @@
-import { useTheme } from 'styled-components'
-import Box from '../../components/Box'
-import Text from '../../components/Text'
-import Button from '../../components/Button'
-import Loading from '../../components/Loading'
+import { useState } from 'react'
 
-import { Container, TariSignet } from './styles'
+import { useAppSelector } from '../../store/hooks'
+import { selectExpertView } from '../../store/app/selectors'
+
+import { CenteredLayout, ToTheLeftLayout } from './styles'
+import PasswordBox from './PasswordBox'
+import TariWallet from './TariWallet'
+import WalletBalance from './WalletBalance'
 
 const WalletContainer = () => {
-  const theme = useTheme()
-  const disabled = false
-  const loading = false
+  const [unlocked, setUnlocked] = useState(false)
+  const expertView = useAppSelector(selectExpertView)
+
+  const walletAddress = 'your tari wallet address'
+
+  if (!unlocked) {
+    return (
+      <CenteredLayout>
+        <PasswordBox onSubmit={() => setUnlocked(true)} />
+      </CenteredLayout>
+    )
+  }
 
   return (
-    <Container>
-      <Box style={{ position: 'relative' }}>
-        <TariSignet />
-        <Text type='header' style={{ marginBottom: theme.spacing() }}>
-          Enter Password
-        </Text>
-        <Text>to access your wallet:</Text>
-        <Box border={false} style={{ padding: 0 }}>
-          placeholder for input
-        </Box>
-        <Button
-          disabled={disabled}
-          variant={disabled ? 'disabled' : undefined}
-          rightIcon={<Loading loading={loading} />}
-        >
-          <Text type='defaultMedium' style={{ lineHeight: '100%' }}>
-            Continue
-          </Text>
-        </Button>
-      </Box>
-    </Container>
+    <ToTheLeftLayout expertView={expertView}>
+      <TariWallet address={walletAddress} />
+      <WalletBalance balance={11350057} available={11349009} />
+    </ToTheLeftLayout>
   )
 }
 
