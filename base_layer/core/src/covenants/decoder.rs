@@ -139,7 +139,6 @@ mod test {
     fn it_immediately_ends_iterator_given_empty_bytes() {
         let buf = &[] as &[u8; 0];
         assert!(CovenantTokenDecoder::new(&mut &buf[..]).next().is_none());
-        assert!(CovenantTokenDecoder::new(&mut &buf[..]).next().is_none());
     }
 
     #[test]

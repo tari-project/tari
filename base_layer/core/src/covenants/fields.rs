@@ -332,16 +332,19 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
-    use tari_common_types::types::PublicKey;
+    use rand::rngs::OsRng;
+    use tari_common_types::types::{Commitment, PublicKey};
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
     use tari_script::script;
 
     use super::*;
     use crate::{
+        consensus::ConsensusEncoding,
         covenant,
         covenants::test::{create_input, create_outputs},
         transactions::{
             test_helpers::UtxoTestParams,
-            transaction_components::{OutputFeatures, OutputFlags},
+            transaction_components::{OutputFeatures, OutputFlags, SpentOutput},
         },
     };
 
@@ -349,7 +352,6 @@ mod test {
         use super::*;
 
         mod is_eq {
-            use tari_common_types::types::Commitment;
 
             use super::*;
 
@@ -392,9 +394,10 @@ mod test {
 
             #[test]
             fn it_returns_false_if_not_eq() {
+                let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
                 let output = create_outputs(1, UtxoTestParams {
                     features: OutputFeatures {
-                        parent_public_key: Some(Default::default()),
+                        parent_public_key: Some(parent_pk),
                         unique_id: Some(b"1234".to_vec()),
                         ..Default::default()
                     },
@@ -418,8 +421,8 @@ mod test {
                 assert!(!OutputField::FeaturesParentPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
-                assert!(!OutputField::FeaturesMetadata.is_eq(&output, &[123u8]).unwrap());
-                assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &[123u8]).unwrap());
+                assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
+                assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &vec![123u8]).unwrap());
                 assert!(!OutputField::SenderOffsetPublicKey
                     .is_eq(&output, &PublicKey::default())
                     .unwrap());
@@ -428,7 +431,6 @@ mod test {
 
         mod is_eq_input {
             use super::*;
-            use crate::transactions::transaction_components::SpentOutput;
 
             #[test]
             fn it_returns_true_if_eq_input() {
@@ -496,7 +498,6 @@ mod test {
 
         mod construct_challenge_from {
             use super::*;
-            use crate::consensus::ConsensusEncoding;
 
             #[test]
             fn it_constructs_challenge_using_consensus_encoding() {
