@@ -3,6 +3,7 @@ const translations = {
     accept: 'Accept',
     cancel: 'Cancel',
     stop: 'Stop',
+    continue: 'Continue',
   },
   nouns: {
     baseNode: 'Base Node',

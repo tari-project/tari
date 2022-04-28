@@ -1,4 +1,12 @@
-import { ButtonText, IconWrapper, StyledButton, StyledLink } from './styles'
+import Loading from '../Loading'
+
+import {
+  ButtonText,
+  IconWrapper,
+  LoadingIconWrapper,
+  StyledButton,
+  StyledLink,
+} from './styles'
 import { ButtonProps } from './types'
 
 const Button = ({
@@ -11,12 +19,18 @@ const Button = ({
   leftIcon,
   rightIcon,
   onClick,
+  loading,
 }: ButtonProps) => {
   const btnContent = (
     <>
       {leftIcon ? <IconWrapper>{leftIcon}</IconWrapper> : null}
       <ButtonText>{children}</ButtonText>
       {rightIcon ? <IconWrapper>{rightIcon}</IconWrapper> : null}
+      {loading ? (
+        <LoadingIconWrapper>
+          <Loading loading size='1em' />
+        </LoadingIconWrapper>
+      ) : null}
     </>
   )
 

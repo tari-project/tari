@@ -1,22 +1,40 @@
 /* eslint-disable indent */
-import styled from 'styled-components'
+import styled, { DefaultTheme } from 'styled-components'
 
 import { ButtonProps } from './types'
+
+const getButtonBackgroundColor = ({
+  disabled,
+  variant,
+  theme,
+}: Pick<ButtonProps, 'variant' | 'disabled'> & { theme: DefaultTheme }) => {
+  if (disabled) {
+    return theme.backgroundImage
+  }
+
+  return variant === 'text' ? 'transparent' : theme.tariGradient
+}
 
 export const StyledButton = styled.button<
   Pick<ButtonProps, 'variant' | 'type'>
 >`
   display: flex;
+  position: relative;
   justify-content: space-between;
   align-items: baseline;
+  margin: 0;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
-  border: ${({ theme, variant, type }) => {
+  border: ${({ disabled, theme, variant }) => {
     if (variant === 'text') {
       return 'none'
     }
 
-    if (type === 'reset') {
-      return '1px solid transparent'
+    if (disabled) {
+      return `1px solid ${getButtonBackgroundColor({
+        disabled,
+        theme,
+        variant,
+      })}`
     }
 
     return `1px solid ${theme.accent}`
@@ -24,16 +42,15 @@ export const StyledButton = styled.button<
   box-shadow: none;
   padding: ${({ theme }) => theme.spacingVertical()}
     ${({ theme }) => theme.spacingHorizontal()};
-  cursor: pointer;
-  background: ${({ variant, type, theme }) => {
-    if (type === 'reset') {
-      return theme.resetBackground
+  cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
+  background: ${getButtonBackgroundColor};
+  color: ${({ disabled, variant, theme }) => {
+    if (disabled) {
+      return theme.disabledText
     }
 
-    return variant === 'text' ? 'transparent' : theme.tariGradient
+    return variant === 'text' ? theme.secondary : theme.inverted.primary
   }};
-  color: ${({ variant, theme }) =>
-    variant === 'text' ? theme.secondary : theme.primary};
   outline: none;
 
   & * {
@@ -41,13 +58,9 @@ export const StyledButton = styled.button<
   }
 
   &:hover {
-    background: ${({ variant, theme, type }) => {
-      if (variant === 'text') {
+    background: ${({ disabled, variant, theme }) => {
+      if (disabled || variant === 'text') {
         return 'auto'
-      }
-
-      if (type === 'reset') {
-        return theme.resetBackgroundDark
       }
 
       return theme.accent
@@ -64,18 +77,8 @@ export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
 
 export const ButtonText = styled.span``
 
-export const IconWrapper = styled.span`
-  color: inherit;
-  width: 0;
-  height: 1em;
-  position: relative;
-  & > * {
-    position: absolute;
-    top: 0;
-    left: 100%;
-    width: ${({ theme }) => theme.spacing(0.66)};
-    height: ${({ theme }) => theme.spacing(0.66)};
-    transform: translateY(-50%);
-    color: inherit;
-  }
+export const IconWrapper = styled.span``
+
+export const LoadingIconWrapper = styled.span`
+  margin-left: 0.25em;
 `

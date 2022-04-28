@@ -9,4 +9,5 @@ export const StyledBox = styled.div`
   border: 1px solid ${({ theme }) => theme.borderColor};
   min-width: 416px;
   width: 416px;
+  box-sizing: border-box;
 `

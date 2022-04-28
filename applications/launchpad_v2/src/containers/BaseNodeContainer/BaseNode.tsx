@@ -4,7 +4,6 @@ import Select from '../../components/Select'
 import Text from '../../components/Text'
 import Box from '../../components/Box'
 import Button from '../../components/Button'
-import Loading from '../../components/Loading'
 import Tag from '../../components/Tag'
 import t from '../../locales'
 
@@ -55,7 +54,12 @@ const BaseNode = ({
       </Text>
       <Box
         border={false}
-        style={{ padding: 0, background: running ? 'transparent' : undefined }}
+        style={{
+          minWidth: 0,
+          width: 'auto',
+          padding: 0,
+          background: running ? 'transparent' : undefined,
+        }}
       >
         <Select
           inverted={running}
@@ -67,35 +71,22 @@ const BaseNode = ({
         />
       </Box>
       {!running && (
-        <Button
-          disabled={pending}
-          onClick={startNode}
-          rightIcon={<Loading loading={pending} />}
-          style={{ color: theme.inverted.primary }}
-        >
-          <Text
-            type='defaultMedium'
-            style={{ lineHeight: '100%', color: theme.inverted.primary }}
-          >
-            {t.baseNode.start}
-          </Text>
+        <Button disabled={pending} onClick={startNode} loading={pending}>
+          <Text type='defaultMedium'>{t.baseNode.start}</Text>
         </Button>
       )}
       {running && (
         <Button
-          type='reset'
           onClick={stopNode}
           disabled={pending}
-          rightIcon={<Loading loading={pending} />}
-          style={{ color: theme.inverted.primary }}
+          loading={pending}
+          style={{
+            color: theme.inverted.primary,
+            background: theme.resetBackground,
+            border: 'none',
+          }}
         >
-          <Text
-            type='defaultMedium'
-            color={theme.inverted.primary}
-            style={{ lineHeight: '100%' }}
-          >
-            {t.common.verbs.stop}
-          </Text>
+          <Text type='defaultMedium'>{t.common.verbs.stop}</Text>
         </Button>
       )}
     </Box>

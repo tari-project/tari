@@ -1,6 +1,6 @@
 import styled from 'styled-components'
 
 export const StyledText = styled.p`
-  color: ${({ theme }) => theme.primary};
+  color: inherit;
   margin: 0;
 `
