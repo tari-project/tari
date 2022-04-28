@@ -5,6 +5,7 @@ import {
   selectWalletAddress,
   selectTariAmount,
   selectIsPending,
+  selectWalletEmojiAddress,
 } from '../../store/wallet/selectors'
 import { selectExpertView } from '../../store/app/selectors'
 
@@ -18,6 +19,7 @@ const WalletContainer = () => {
   const expertView = useAppSelector(selectExpertView)
   const unlocked = useAppSelector(selectIsUnlocked)
   const walletAddress = useAppSelector(selectWalletAddress)
+  const emojiId = useAppSelector(selectWalletEmojiAddress)
   const { balance, available } = useAppSelector(selectTariAmount)
   const pending = useAppSelector(selectIsPending)
 
@@ -34,7 +36,7 @@ const WalletContainer = () => {
 
   return (
     <ToTheLeftLayout expertView={expertView}>
-      <TariWallet address={walletAddress} />
+      <TariWallet address={walletAddress} emojiId={emojiId} />
       <WalletBalance balance={balance} available={available} />
     </ToTheLeftLayout>
   )
