@@ -8,7 +8,7 @@ const Modal = ({ open, children, onClose, size }: ModalProps) => {
 
   return (
     <ModalContainer>
-      <Backdrop onClick={onClose} />
+      <Backdrop onClick={onClose} data-testid='modal-backdrop' />
       <ModalContent size={size}> {children}</ModalContent>
     </ModalContainer>
   )
