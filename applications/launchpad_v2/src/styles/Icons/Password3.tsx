@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { SVGProps } from 'react'
 
-const SvgPassword4 = (props: SVGProps<SVGSVGElement>) => (
+const SvgPassword3 = (props: SVGProps<SVGSVGElement>) => (
   <svg
     width='1em'
     height='1em'
@@ -17,4 +17,4 @@ const SvgPassword4 = (props: SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-export default SvgPassword4
+export default SvgPassword3
