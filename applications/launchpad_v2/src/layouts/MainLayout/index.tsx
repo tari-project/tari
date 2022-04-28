@@ -1,5 +1,13 @@
+import { useLayoutEffect, useRef, useState } from 'react'
 import { useSpring } from 'react-spring'
 import { useSelector } from 'react-redux'
+
+import { selectExpertView } from '../../store/app/selectors'
+import ExpertViewUtils from '../../utils/ExpertViewUtils'
+import TitleBar from '../../components/TitleBar'
+import DashboardContainer from '../../containers/Dashboard/DashboardContainer'
+import ExpertView from '../../containers/Dashboard/ExpertView'
+import SettingsContainer from '../../containers/SettingsContainer'
 
 import { MainLayoutProps } from './types'
 import {
@@ -9,13 +17,6 @@ import {
   MainLayoutContainer,
   ScreenContainer,
 } from './styles'
-
-import { selectExpertView } from '../../store/app/selectors'
-import ExpertViewUtils from '../../utils/ExpertViewUtils'
-import TitleBar from '../../components/TitleBar'
-import DashboardContainer from '../../containers/Dashboard/DashboardContainer'
-import ExpertView from '../../containers/Dashboard/ExpertView'
-import { useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * Main Layout
@@ -27,6 +28,8 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
 
   // Decrease the padding when the main container becomes 'small'
   const [tightSpace, setTightSpace] = useState(false)
+
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const [expertViewSize, invertedExpertViewSize] =
     ExpertViewUtils.convertExpertViewModeToValue(expertView, drawerViewWidth)
@@ -68,7 +71,10 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
 
   return (
     <ScreenContainer>
-      <TitleBar drawerViewWidth={drawerViewWidth} />
+      <TitleBar
+        drawerViewWidth={drawerViewWidth}
+        openSettings={() => setSettingsOpen(true)}
+      />
 
       <MainLayoutContainer>
         <MainContainer
@@ -98,6 +104,10 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
           <ExpertView />
         </ExpertViewDrawer>
       </MainLayoutContainer>
+      <SettingsContainer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </ScreenContainer>
   )
 }

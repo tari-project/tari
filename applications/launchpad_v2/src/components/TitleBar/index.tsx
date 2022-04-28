@@ -25,7 +25,7 @@ import {
 } from './styles'
 import { TitleBarProps } from './types'
 
-const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
+const TitleBar = ({ drawerViewWidth = '50%', openSettings }: TitleBarProps) => {
   const dispatch = useDispatch()
 
   const expertView = useSelector(selectExpertView)
@@ -190,7 +190,7 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
           boxSizing: 'border-box',
         }}
       >
-        <Button variant='text' leftIcon={<SvgSetting />}>
+        <Button variant='text' leftIcon={<SvgSetting />} onClick={openSettings}>
           {t.common.nouns.settings}
         </Button>
         <Switch
