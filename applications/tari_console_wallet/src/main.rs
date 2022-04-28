@@ -119,10 +119,13 @@ fn main_inner() -> Result<(), ExitError> {
         consts::APP_VERSION
     );
 
-    // get command line password if provided
-    let arg_password = cli.password.clone();
+    let password = cli
+        .password
+        .as_ref()
+        .or(config.wallet.password.as_ref())
+        .map(|s| s.to_owned());
 
-    if arg_password.is_none() {
+    if password.is_none() {
         tari_splash_screen("Console Wallet");
     }
 
@@ -132,7 +135,6 @@ fn main_inner() -> Result<(), ExitError> {
     let recovery_seed = get_recovery_seed(boot_mode, &cli)?;
 
     // get command line password if provided
-    let arg_password = cli.password.clone();
     let seed_words_file_name = cli.seed_words_file_name.clone();
 
     let mut shutdown = Shutdown::new();
@@ -140,7 +142,7 @@ fn main_inner() -> Result<(), ExitError> {
 
     if cli.change_password {
         info!(target: LOG_TARGET, "Change password requested.");
-        return runtime.block_on(change_password(&config, arg_password, shutdown_signal));
+        return runtime.block_on(change_password(&config, password, shutdown_signal));
     }
 
     // Run our own Tor instance, if configured
@@ -159,7 +161,7 @@ fn main_inner() -> Result<(), ExitError> {
     // initialize wallet
     let mut wallet = runtime.block_on(init_wallet(
         &config,
-        arg_password,
+        password,
         seed_words_file_name,
         recovery_seed,
         shutdown_signal,
