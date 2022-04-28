@@ -11,4 +11,5 @@ export interface TextInputProps {
   inputUnits?: string
   onIconClick?: () => void
   onChangeText?: (value: string) => void
+  testId?: string
 }

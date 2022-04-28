@@ -26,8 +26,6 @@ export const StyledInput = styled.input<{
     type === 'disabled' ? theme.backgroundImage : theme.background};
   border: none;
   border-radius: 8px;
-  box-shadow: 0px 0px 0px 2px
-    ${({ type }) => (type === 'highlighted' ? '#F5EBFF' : 'transparent')};
   ::placeholder {
     color: ${({ theme }) => theme.placeholderText};
   }
@@ -51,11 +49,11 @@ export const InputContainer = styled.div<{ type?: string }>`
   background-color: ${({ theme, type }) =>
     type === 'disabled' ? theme.backgroundImage : theme.background};
   border: 1px solid;
-  border-color: ${({ theme, type }) =>
-    type === 'highlighted' ? theme.accent : theme.borderColor};
+  border-color: ${({ theme }) => theme.borderColor};
   border-radius: 8px;
-  box-shadow: 0px 0px 0px 2px
-    ${({ type }) => (type === 'highlighted' ? '#F5EBFF' : 'transparent')};
+  /* @TODO: "highlighted vs. active input states from designs to be looked at again" */
+  /* box-shadow: 0px 0px 0px 2px
+    ${({ type }) => (type === 'highlighted' ? '#F5EBFF' : 'transparent')}; */
   font-family: 'AvenirMedium';
   :focus-within {
     outline: none;
