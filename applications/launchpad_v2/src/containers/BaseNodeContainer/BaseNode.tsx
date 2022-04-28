@@ -5,6 +5,7 @@ import Text from '../../components/Text'
 import Box from '../../components/Box'
 import Button from '../../components/Button'
 import Tag from '../../components/Tag'
+import CenteredLayout from '../../components/CenteredLayout'
 import t from '../../locales'
 
 import { BaseNodeProps, Network } from './types'
@@ -27,7 +28,7 @@ const BaseNode = ({
   const theme = useTheme()
 
   return (
-    <div style={{ display: 'flex', alignContent: 'center' }}>
+    <CenteredLayout horizontally>
       <Box
         border={!running}
         gradient={
@@ -91,7 +92,7 @@ const BaseNode = ({
           </Button>
         )}
       </Box>
-    </div>
+    </CenteredLayout>
   )
 }
 
