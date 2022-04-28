@@ -116,6 +116,7 @@ router.get("/", async function (req, res) {
       moneroTimes: getBlockTimes(last100Headers, "0"),
       shaTimes: getBlockTimes(last100Headers, "1"),
       currentHashRate: totalHashRates[totalHashRates.length - 1],
+      totalHashRates,
       currentShaHashRate: shaHashRates[shaHashRates.length - 1],
       shaHashRates,
       currentMoneroHashRate: moneroHashRates[moneroHashRates.length - 1],
