@@ -21,45 +21,63 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use futures::StreamExt;
+use std::collections::HashMap;
+
+use bollard::{models::SystemEventsResponse, system::EventsOptions, Docker};
+use futures::{Stream, StreamExt, TryStreamExt};
 use log::*;
 use tauri::{AppHandle, Manager, Wry};
 
-use crate::commands::AppState;
+use crate::{
+    commands::{pull_images::DOCKER, AppState},
+    docker::DockerWrapperError,
+    error::LauncherError,
+};
 
-/// Subscribe to system-level docker events, such as container creation, volume, network events etc.
-/// This function does not actually return a result, but async commands have a [bug](https://github.com/tauri-apps/tauri/issues/2533)
-/// which is avoided by returning a `Result`.
-///
-/// A side effect of this command is that events are emitted to the `tari://docker-system-event` channel. Front-ends
-/// can listen to this event stream to read in the event messages.
-#[tauri::command]
-pub async fn events(app: AppHandle<Wry>) -> Result<(), ()> {
+pub async fn stream_docker_events<F>(fun: F) -> Result<(), LauncherError>
+where F: Fn(SystemEventsResponse) -> Result<(), tauri::Error> + Copy {
+    let mut streams = stream_events(&DOCKER).await;
+    docker_events(fun, streams).await?;
+    Ok(())
+}
+
+pub async fn docker_events<F>(
+    f: F,
+    mut stream: impl Stream<Item = Result<SystemEventsResponse, bollard::errors::Error>> + Unpin,
+) -> Result<(), LauncherError>
+where
+    F: Fn(SystemEventsResponse) -> Result<(), tauri::Error> + Copy,
+{
     info!("Setting up event stream");
-    let state = app.state::<AppState>();
-    let docker = state.docker.read().await;
-    let mut stream = docker.events().await;
-    let app_clone = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while let Some(event_result) = stream.next().await {
-            match event_result {
-                Ok(event) => {
-                    debug!("Event received: {:?}", event);
-                    if let Err(err) = app_clone.emit_all(event_name(), event) {
-                        warn!("Could not emit event to front-end, {:?}", err);
-                    }
-                },
-                Err(err) => {
-                    warn!("Error in event stream: {:#?}", err)
-                },
-            };
-        }
-        info!("Event stream has closed.");
-    });
+    while let Some(event_result) = stream.next().await {
+        match event_result {
+            Ok(event) => f(event)?,
+            Err(err) => {
+                warn!("Error in event stream: {:#?}", err)
+            },
+        };
+    }
+    info!("Event stream has closed.");
     Ok(())
 }
 
 /// Extract data from the event object so we know which channel to emit the payload to
 pub fn event_name() -> &'static str {
     "tari://docker-system-event"
+}
+
+async fn stream_events(docker: &Docker) -> impl Stream<Item = Result<SystemEventsResponse, bollard::errors::Error>> {
+    let mut type_filter = HashMap::new();
+    type_filter.insert("type".to_string(), vec![
+        "container".to_string(),
+        "image".to_string(),
+        "network".to_string(),
+        "volume".to_string(),
+    ]);
+    let options = EventsOptions {
+        since: None,
+        until: None,
+        filters: type_filter,
+    };
+    docker.events(Some(options))
 }

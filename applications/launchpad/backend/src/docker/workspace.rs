@@ -220,7 +220,7 @@ impl TariWorkspace {
     ///
     /// This is an MVP / PoC version that starts everything in one go, but TODO, should really take some sort of recipe
     /// object to allow us to build up different recipes (wallet only, full miner, SHA3-mining only etc)
-    pub async fn start_recipe(&mut self, docker: Docker) -> Result<(), DockerWrapperError> {
+    pub async fn start_recipe(&mut self, docker: &Docker) -> Result<(), DockerWrapperError> {
         // Create or load identities
         let _ids = self.create_or_load_identities()?;
         // Set up the local network

@@ -23,7 +23,7 @@
 
 use std::{
     convert::TryFrom,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
 };
 
 use bollard::{container::LogOutput, models::ContainerCreateResponse};
@@ -257,5 +257,17 @@ impl TryFrom<&str> for ImageType {
             "frontail" => Ok(Self::Frontail),
             _ => Err(DockerWrapperError::InvalidImageType),
         }
+    }
+}
+
+impl fmt::Display for TariNetwork {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl fmt::Display for ImageType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }

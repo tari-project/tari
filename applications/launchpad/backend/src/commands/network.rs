@@ -1,6 +1,6 @@
 // Copyright 2021. The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// Redistribution and use in source and binary forms, with or without modification, a&re permitted provided that the
 // following conditions are met:
 //
 // 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
@@ -21,25 +21,21 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-mod api;
-/// ! This module defines all the Tauri commands we expose to the front-end.
-/// ! These are generally constructed as wrappers around the lower-level methods in the `docker` module.
-/// ! All the commands follow roughly the same pattern:
-/// ! - handle input parameters
-/// ! - call the the underlying function
-/// ! - Map results to JSON and errors to String.
-mod create_workspace;
-mod events;
-mod health_check;
-mod launch_docker;
-mod network;
-mod pull_images;
-mod service;
-mod shutdown;
-mod state;
+use log::*;
+use tari_common::configuration::Network;
+use tauri::{AppHandle, Manager, Wry};
 
-pub use api::{events, image_list, launch_docker, network_list, pull_images};
-pub use create_workspace::create_new_workspace;
-pub use service::{create_default_workspace, start_service, stop_service};
-pub use shutdown::shutdown;
-pub use state::AppState;
+use super::pull_images::DEFAULT_IMAGES;
+use crate::{commands::AppState, docker::TariNetwork};
+
+pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
+
+pub fn enum_to_list<T: Sized + ToString + Clone>(enums: &[T]) -> Vec<String> {
+    enums.into_iter().map(|enum_value| enum_value.to_string()).collect()
+}
+
+#[test]
+fn network_list_test() {
+    let networks = ["dibbler".to_string(), "igor".to_string(), "mainnet".to_string()].to_vec();
+    assert_eq!(networks, enum_to_list(&TARI_NETWORKS));
+}

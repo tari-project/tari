@@ -5,7 +5,10 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#[macro_use]
+extern crate lazy_static;
 use log::*;
+mod cli;
 mod commands;
 mod docker;
 mod error;
@@ -18,6 +21,7 @@ use crate::commands::{
     events,
     image_list,
     launch_docker,
+    network_list,
     pull_images,
     shutdown,
     start_service,
@@ -27,6 +31,10 @@ use crate::commands::{
 
 fn main() {
     env_logger::init();
+    error!("[!]  error");
+    warn!("[!]   warn");
+    info!("[!]   info");
+    debug!("[!]  debug");
     let context = tauri::generate_context!();
     let cli_config = context.config().tauri.cli.clone().unwrap();
 
@@ -51,6 +59,7 @@ fn main() {
         .manage(AppState::new(docker, workspaces, package_info))
         .invoke_handler(tauri::generate_handler![
             image_list,
+            network_list,
             pull_images,
             create_new_workspace,
             create_default_workspace,

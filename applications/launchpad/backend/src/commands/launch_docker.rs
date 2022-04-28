@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::{
-    commands::AppState,
+    commands::{pull_images::DOCKER, AppState},
     docker::{
         helpers::create_password,
         BaseNodeConfig,
@@ -153,23 +153,13 @@ impl TryFrom<WorkspaceLaunchOptions> for LaunchpadConfig {
     }
 }
 
-/// This is an example of how we might launch a recipe. It's not currently used in the front-end, but essentially it
-/// launches all the containers in a choreographed fashion to stand up the entire mining infra.
-#[tauri::command]
-pub async fn launch_docker(app: AppHandle<Wry>, name: String, config: WorkspaceLaunchOptions) -> Result<(), String> {
-    launch_docker_impl(app, name, config)
-        .await
-        .map_err(|e| e.chained_message())
-}
-
-async fn launch_docker_impl(
+pub async fn launch_docker_impl(
     app: AppHandle<Wry>,
     name: String,
     config: WorkspaceLaunchOptions,
 ) -> Result<(), LauncherError> {
     debug!("Starting docker launch sequence");
     let state = app.state::<AppState>();
-    let docker = state.docker_handle().await;
     let should_create_workspace = {
         let wrapper = state.workspaces.read().await;
         !wrapper.workspace_exists(name.as_str())
@@ -190,7 +180,7 @@ async fn launch_docker_impl(
             .get_workspace_mut(name.as_str())
             .ok_or(DockerWrapperError::UnexpectedError)?;
         // Pipe docker container logs to Tauri using namespaced events
-        workspace.start_recipe(docker.clone()).await?;
+        workspace.start_recipe(&DOCKER).await?;
     } // Drop write lock
     info!("Tari system, {} has launched", name);
     Ok(())

@@ -62,13 +62,14 @@ impl DockerWrapper {
     /// to build a default full-qualified image name.
     pub async fn pull_image(
         &self,
+        docker: &Docker,
         image_name: String,
     ) -> impl Stream<Item = Result<CreateImageInfo, DockerWrapperError>> {
         let opts = Some(CreateImageOptions {
             from_image: image_name,
             ..Default::default()
         });
-        let stream = self.handle.create_image(opts, None, None);
+        let stream = docker.create_image(opts, None, None);
         stream.map_err(DockerWrapperError::from)
     }
 
@@ -90,4 +91,16 @@ impl DockerWrapper {
         };
         docker.events(Some(options)).map_err(DockerWrapperError::from)
     }
+}
+
+pub async fn pull_docker_image(
+    docker: &Docker,
+    image_name: String,
+) -> impl Stream<Item = Result<CreateImageInfo, DockerWrapperError>> {
+    let opts = Some(CreateImageOptions {
+        from_image: image_name,
+        ..Default::default()
+    });
+    let stream = docker.create_image(opts, None, None);
+    stream.map_err(DockerWrapperError::from)
 }

@@ -21,11 +21,11 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::{convert::TryFrom, path::PathBuf, time::Duration};
+use std::{convert::TryFrom, fmt::Debug, path::PathBuf, time::Duration};
 
-use bollard::Docker;
+use bollard::{container::Stats, Docker};
 use derivative::Derivative;
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
@@ -40,6 +40,7 @@ use crate::{
         DockerWrapperError,
         ImageType,
         LaunchpadConfig,
+        LogMessage,
         MmProxyConfig,
         Sha3MinerConfig,
         TariNetwork,
@@ -319,16 +320,9 @@ fn container_stats(
     if let Some(mut stream) = workspace.resource_stats(container_name, docker) {
         let event_name = event_name.to_string();
         tauri::async_runtime::spawn(async move {
-            while let Some(message) = stream.next().await {
-                trace!("log event: {:?}", message);
-                let emit_result = match message {
-                    Ok(payload) => app.emit_all(event_name.as_str(), payload),
-                    Err(err) => app.emit_all(format!("{}_error", event_name).as_str(), err.chained_message()),
-                };
-                if let Err(err) = emit_result {
-                    warn!("Error emitting event: {}", err.to_string());
-                }
-            }
+            let send_message = |event: String, payload: Stats| send_tauri_message::<Stats>(app.clone(), event, payload);
+            let send_error = |event: String, payload: String| send_tauri_message::<String>(app.clone(), event, payload);
+            let _ = process_stream(send_message, send_error, event_name.clone(), stream);
             info!("Resource stats stream for {} has closed.", event_name);
         });
         info!("Resource stats events configured.");
@@ -350,4 +344,87 @@ async fn stop_service_impl(state: State<'_, AppState>, service_name: String) -> 
         .ok_or_else(|| DockerWrapperError::WorkspaceDoesNotExist("default".into()))?;
     workspace.stop_container(service_name.as_str(), true, &docker).await;
     Ok(())
+}
+
+async fn process_stream<FM, FE, T: Debug + Clone + Serialize>(
+    send_message: FM,
+    send_error: FE,
+    event_name: String,
+    mut stream: impl Stream<Item = Result<T, DockerWrapperError>> + Unpin,
+) where
+    FM: Fn(String, T) -> Result<(), tauri::Error> + Copy,
+    FE: Fn(String, String) -> Result<(), tauri::Error> + Copy,
+{
+    while let Some(message) = stream.next().await {
+        trace!("log event: {:?}", message);
+        let emit_result = match message {
+            Ok(payload) => send_message(event_name.clone(), payload),
+            Err(err) => send_error(format!("{}_error", event_name), err.chained_message()),
+        };
+        if let Err(err) = emit_result {
+            warn!("Error emitting event: {}", err.to_string());
+        }
+    }
+}
+
+fn send_tauri_message<P: Debug + Clone + Serialize>(
+    app: AppHandle<Wry>,
+    event: String,
+    payload: P,
+) -> Result<(), tauri::Error> {
+    app.emit_all(event.as_str(), payload)
+}
+
+fn container_statistic<FM: 'static, FE: 'static>(
+    send_message: FM,
+    send_error: FE,
+    event_name: &str,
+    container_name: &str,
+    docker: Docker,
+    workspace: &mut TariWorkspace,
+) where
+    FM: Fn(String, Stats) -> Result<(), tauri::Error> + Copy + std::marker::Send,
+    FE: Fn(String, String) -> Result<(), tauri::Error> + Copy + std::marker::Send,
+{
+    info!("Setting up Resource stats events for {}", container_name);
+    if let Some(mut stream) = workspace.resource_stats(container_name, docker) {
+        let event_name = event_name.to_string();
+        tauri::async_runtime::spawn(async move {
+            let _ = process_stream(send_message, send_error, event_name.clone(), stream);
+            info!("Resource stats stream for {} has closed.", event_name);
+        });
+        info!("Resource stats events configured.");
+    } else {
+        info!(
+            "Resource stats events could not be configured: {} is not a running container",
+            container_name
+        );
+    }
+}
+
+fn container_loggs<FM: 'static, FE: 'static>(
+    send_message: FM,
+    send_error: FE,
+    event_name: &str,
+    container_name: &str,
+    docker: Docker,
+    workspace: &mut TariWorkspace,
+) where
+    FM: Fn(String, LogMessage) -> Result<(), tauri::Error> + Copy + std::marker::Send,
+    FE: Fn(String, String) -> Result<(), tauri::Error> + Copy + std::marker::Send,
+{
+    info!("Setting up log events for {}", container_name);
+    if let Some(mut stream) = workspace.logs(container_name, docker) {
+        let event_name = event_name.to_string();
+        tauri::async_runtime::spawn(async move {
+            let _ = process_stream(send_message, send_error, event_name.clone(), stream);
+            info!("Resource stats stream for {} has closed.", event_name);
+        });
+        info!("Resource stats events configured.");
+    } else {
+        info!(
+            "Log events could not be configured: {} is not a running container",
+            container_name
+        );
+    }
 }

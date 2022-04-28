@@ -21,25 +21,29 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use bollard::models::CreateImageInfo;
-use futures::{future::join_all, stream::StreamExt, TryFutureExt};
+use bollard::{image::CreateImageOptions, models::CreateImageInfo, Docker};
+use futures::{future::join_all, stream::StreamExt, Stream, TryFutureExt, TryStreamExt};
 use log::{debug, error};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::{
     commands::AppState,
-    docker::{ImageType, TariWorkspace},
+    docker::{DockerWrapperError, ImageType, TariWorkspace},
     error::LauncherError,
 };
 
 const LOG_TARGET: &str = "tari::launchpad::commands::pull_images";
 
+lazy_static! {
+    pub static ref DOCKER: Docker = Docker::connect_with_local_defaults().unwrap();
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Payload {
-    image: String,
-    name: String,
-    info: CreateImageInfo,
+    pub image: String,
+    pub name: String,
+    pub info: CreateImageInfo,
 }
 
 pub static DEFAULT_IMAGES: [ImageType; 8] = [
@@ -53,22 +57,13 @@ pub static DEFAULT_IMAGES: [ImageType; 8] = [
     ImageType::Frontail,
 ];
 
-/// Provide a list of image names in the Tari "ecosystem"
-#[tauri::command]
-pub fn image_list() -> Vec<String> {
-    DEFAULT_IMAGES
-        .iter()
-        .map(|&image| image.image_name().to_string())
-        .collect()
-}
-
 /// Pulls all the images concurrently using the docker API.
-#[tauri::command]
-pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
+pub async fn pull_all_images<F>(f: F) -> Result<(), String>
+where F: Fn(Payload) -> Result<(), tauri::Error> + Copy {
     debug!("Command pull_images invoked");
     let futures = DEFAULT_IMAGES
         .iter()
-        .map(|image| pull_image(*image, app.clone()).map_err(|e| e.chained_message()));
+        .map(|image| pull_image(*image, f).map_err(|e| e.chained_message()));
     let results: Vec<Result<_, String>> = join_all(futures).await;
     let errors = results
         .into_iter()
@@ -82,11 +77,10 @@ pub async fn pull_images(app: AppHandle<Wry>) -> Result<(), String> {
     Ok(())
 }
 
-async fn pull_image(image: ImageType, app: AppHandle<Wry>) -> Result<(), LauncherError> {
-    let state = app.state::<AppState>().clone();
-    let docker = state.docker.read().await;
+async fn pull_image<F>(image: ImageType, f: F) -> Result<(), LauncherError>
+where F: Fn(Payload) -> Result<(), tauri::Error> + Copy {
     let image_name = TariWorkspace::fully_qualified_image(image, None, None);
-    let mut stream = docker.pull_image(image_name.clone()).await;
+    let mut stream = pull_docker_image(&DOCKER, image_name.clone()).await;
     while let Some(update) = stream.next().await {
         match update {
             Ok(progress) => {
@@ -96,10 +90,22 @@ async fn pull_image(image: ImageType, app: AppHandle<Wry>) -> Result<(), Launche
                     info: progress,
                 };
                 debug!("Image pull progress:{:?}", payload);
-                app.emit_all("image-pull-progress", payload)?
+                f(payload)?;
             },
             Err(err) => return Err(err.into()),
         };
     }
     Ok(())
+}
+
+pub async fn pull_docker_image(
+    docker: &Docker,
+    image_name: String,
+) -> impl Stream<Item = Result<CreateImageInfo, DockerWrapperError>> {
+    let opts = Some(CreateImageOptions {
+        from_image: image_name,
+        ..Default::default()
+    });
+    let stream = docker.create_image(opts, None, None);
+    stream.map_err(DockerWrapperError::from)
 }
