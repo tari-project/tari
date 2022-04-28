@@ -1,6 +1,8 @@
 import { Fragment } from 'react'
 import { Listbox } from '@headlessui/react'
 
+import Text from '../Text'
+
 import ArrowBottom from '../../styles/Icons/ArrowBottom1'
 
 import {
@@ -55,7 +57,9 @@ const Select = ({
         <>
           <Label inverted={inverted}>{label}</Label>
           <SelectButton open={open} inverted={inverted} disabled={disabled}>
-            <span>{(value || {}).label || ''}</span>
+            <Text as='span' type='smallMedium' color='inherit'>
+              {(value || {}).label || ''}
+            </Text>
             {!disabled && (
               <SelectorIcon inverted={inverted}>
                 <ArrowBottom />
@@ -71,7 +75,9 @@ const Select = ({
                     active={active}
                     inverted={inverted}
                   >
-                    {option.label}
+                    <Text as='span' type='smallMedium' color='inherit'>
+                      {option.label}
+                    </Text>
                   </Option>
                 )}
               </Listbox.Option>
