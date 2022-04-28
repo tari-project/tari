@@ -22,15 +22,14 @@ export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
   cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
   font-size: 1em;
   color: ${({ theme, inverted }) =>
-    inverted ? theme.inverted.primary : theme.primary};
+    inverted ? theme.inverted.primary : theme.secondary};
   position: relative;
   width: 100%;
   appearance: none;
   background-color: ${({ theme, inverted }) =>
     inverted ? theme.inverted.controlBackground : theme.controlBackground};
-  padding: 0;
   padding: ${({ theme }) =>
-    `${theme.spacingVertical()} ${theme.spacingHorizontal()}`};
+    `${theme.spacingVertical(0.78)} ${theme.spacingHorizontal(0.67)}`};
   padding-right: ${({ theme }) => theme.spacingHorizontal()};
   margin: 0;
   outline: none;
@@ -47,11 +46,13 @@ export const SelectButton = styled(Listbox.Button)<SelectInternalProps>`
 `
 
 const FloatingOptions = styled.ul<SelectInternalProps>`
-  color: ${({ theme }) => theme.primary};
+  color: ${({ theme }) => theme.secondary};
   position: absolute;
   margin: 0;
-  margin-top: ${({ theme }) => theme.spacingVertical()};
+  margin-top: ${({ theme }) => theme.spacingVertical(0.5)};
   padding: 0;
+  padding-top: ${({ theme }) => theme.spacingVertical(0.4)};
+  padding-bottom: ${({ theme }) => theme.spacingVertical(0.4)};
   width: 100%;
   border: 1px solid;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
@@ -81,14 +82,14 @@ export const Option = styled.li<
   list-style-type: none;
   position: relative;
   padding: ${({ theme }) =>
-    `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
+    `${theme.spacingVertical(0.4)} ${theme.spacingHorizontal(0.4)}`};
   margin: ${({ theme }) =>
-    `${theme.spacingVertical(0.5)} ${theme.spacingHorizontal(0.5)}`};
+    `${theme.spacingVertical(0.4)} ${theme.spacingHorizontal(0.4)}`};
   border-radius: ${({ theme }) => theme.borderRadius(0.5)};
   background-color: ${({ theme, selected, active }) =>
     selected || active ? theme.backgroundImage : 'transparent'};
   outline: none;
-  cursor: default;
+  cursor: pointer;
 
   &:hover {
     background-color: ${({ theme }) => theme.backgroundImage};
