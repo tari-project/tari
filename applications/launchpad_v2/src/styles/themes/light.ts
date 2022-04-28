@@ -15,6 +15,7 @@ const lightTheme = {
   borderColorLight: styles.colors.secondary.borderLight,
   actionBackground: styles.colors.secondary.actionBackground,
   resetBackground: styles.colors.light.overlay,
+  shadow: '0 0 40px #00000011',
 
   titleBar: styles.colors.light.background,
 

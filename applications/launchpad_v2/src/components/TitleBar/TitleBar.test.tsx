@@ -28,7 +28,7 @@ describe('TitleBar', () => {
     render(
       <Provider store={store}>
         <ThemeProvider theme={themes.light}>
-          <TitleBar />
+          <TitleBar openSettings={() => null} />
         </ThemeProvider>
       </Provider>,
     )
