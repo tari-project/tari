@@ -18,6 +18,7 @@ const TextInput = ({
   inputUnits,
   onIconClick,
   onChangeText,
+  testId,
 }: TextInputProps) => {
   const onChangeTextLocal = (event: ChangeEvent<HTMLInputElement>) => {
     if (onChangeText) {
@@ -34,12 +35,19 @@ const TextInput = ({
         value={value}
         hideText={hideText}
         spellCheck={false}
+        data-testid={testId || 'input-cmp'}
       />
       <IconUnitsContainer>
         {inputIcon && (
-          <IconWrapper onClick={onIconClick}>{inputIcon}</IconWrapper>
+          <IconWrapper onClick={onIconClick} data-testid='icon-test'>
+            {inputIcon}
+          </IconWrapper>
         )}{' '}
-        {inputUnits && <UnitsText type='smallMedium'>{inputUnits}</UnitsText>}
+        {inputUnits && (
+          <UnitsText type='smallMedium' data-testid='units-test'>
+            {inputUnits}
+          </UnitsText>
+        )}
       </IconUnitsContainer>
     </InputContainer>
   )
