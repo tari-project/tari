@@ -8,6 +8,7 @@ const SvgPassword2 = (props: SVGProps<SVGSVGElement>) => (
     viewBox='0 0 22 22'
     fill='none'
     xmlns='http://www.w3.org/2000/svg'
+    data-testid='svg-password2'
     {...props}
   >
     <path
