@@ -65,17 +65,6 @@ DAN layer.
 This scheme is inspired by [Macaroons] in that it allows the bearer of a token to delegate a more restrictive token to
 another bearer. 
 
-## Quick Example: Invoking an instruction
-
-When calling a transfer, Alice creates a token for Dexter. 
-
-| Field | Value |
-| ---| --- |
-| Bearer | List<AuthToken> |
-| Instruction | Instruction(...) |
-| Sig | Sig with last AuthToken `granted_to` and challenge = Hash(Bearer + Instruction) |
-
-> TODO: Does the Bearer also need to be in the instruction? I think so?
 
 ## Structure
 
@@ -84,12 +73,13 @@ When calling a transfer, Alice creates a token for Dexter.
 | Field | Type | Description |
 | --- | --- | --- |
 | root_nonce | bytes(32) (optional) | a base ID used to revoke permissions(see below)  | 
-| expires_at_height | u64 | the sidechain height at which this token expires. Timestamps are not reliable in blockchains, so height is used in this case |
+| expires_at_height | u64 (optional) | the sidechain height at which this token expires. Timestamps are not reliable in blockchains, so height is used in this case |
 | granted_to | pubkey | the public key of the grantee. Any bearer using this token will need to prove knowledge of the private key |
 | scopes | string[] | A list of scopes granted to this scope |
 | caveats | CaveatExpression[] | An ordered list of caveats |
+| based_on | Token (optional) | If this token is derived from another token, it should be present here |
 | issuer | PubKey | the issuer of this token |
-| issuer_sig | Signature | a signature of the challenge `Hash(base_id + expires_at_height + token + issuer)` |
+| issuer_sig | Signature | a signature of the challenge `Hash(base_id + granted_to + scopes + caveats + expires_at_height + based_on + issuer )` |
 
 ### Caveat Expression
 
@@ -128,3 +118,91 @@ For example, if a function requires a scope `transfer`, the most specific AuthTo
 ## Revoking Tokens
 Each contract SHOULD store a root nonce for each identity in the contract. To revoke a set of tokens, an identity owner
 may change their root nonce. This will revoke all tokens based on this root.
+
+### Example 1: Invoking an instruction
+
+In this example, Alice wants to allow Bob to spend 100 of a fungible asset called `WARI` from her account.
+
+Let's assume the transfer function looks like this:
+
+
+```
+fn transfer(amount: u64, from: PublicKey, to: PublicKey) 
+{
+   requires_scope("transfer", from);
+   ...
+}
+```
+
+Alice creates a token:
+```json
+/* bob's token */
+{
+   "scopes": ["transfer"],
+   "granted_to": "<Bob's Public Key>",
+   "caveats": [
+      "amount le 100"
+   ],
+   "issuer": "<Alice's Public Key>",
+   "issuer_sig": "<sig>"
+}
+```
+
+> Note: The `root_nonce` and `expires_at_height` are missing here, but it would have been better for Alice to include these.
+> Also, this token allows Bob to spend up to 100 at a time, but does not restrict Bob from using this token again
+
+Bob can now create the instruction and submit it to the validator node. The validator node checks that the signature
+matches the public key in `granted_to` and also checks that the `amount` parameter is less than or equal to 100. Finally, the
+validator node checks that the scope includes 'transfer' and that Alice's public key is set in `from`.
+
+### Example 2: Delegation
+Let's continue the example, but in this case Bob wants to allow Carol to spend the funds, so long as Carol pays him a fee.
+
+In this case, Bob creates a token for Carol with the following:
+
+```json
+/* carol's token */
+{
+   "scopes": ["transfer"],
+   "granted_to": "<Carol's Public Key",
+   "caveats": [
+      "amount le 90",
+      "amount eq 10 and to eq <Bob's Public Key>"
+   ],
+   "issuer": "<Bob's Public Key>",
+   "issuer_sig": "<sig>",
+   "based_on": {
+      /* bob's token */
+   }
+}
+```
+
+> TODO: How to validate multiple caveats
+
+Carol can now create a set of instructions, attach the token and sign it with her public key.
+
+```json
+{
+   "instructions": [
+      {
+         "method": "transfer",
+         "amount": "80",
+         "from": "<alice's pub key>",
+         "to": "<carol's pub key>"
+      },
+      {
+         "method": "transfer",
+         "amount": "10",
+         "from": "<alice's pub key>",
+         "to": "<bob's pub key>"
+      }
+   ],
+   "authority": {
+      "bearer": {/* carol's token */},
+      "sig": "<sig with carol's pub key>"
+   }
+}
+```
+
+When the validator node receives a set of instructions with this token, it must process each token recursively, with respect to
+the token it is based on. 
