@@ -25,13 +25,13 @@ use std::{convert::TryFrom, fmt::Debug, path::PathBuf, time::Duration};
 
 use bollard::{container::Stats, Docker};
 use derivative::Derivative;
-use futures::{Stream, StreamExt};
+use futures::{Stream, StreamExt, TryFutureExt};
 use log::*;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, Wry};
 
 use crate::{
-    commands::{create_workspace::copy_config_file, AppState},
+    commands::{create_workspace::copy_config_file, pull_images::DOCKER_INSTANCE, AppState},
     docker::{
         create_workspace_folders,
         helpers::create_password,
@@ -160,7 +160,52 @@ pub async fn start_service(
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, String> {
     debug!("start_service called {}", service_name);
-    start_service_impl(app, service_name, settings).await.map_err(|e| {
+
+    let state = app.state::<AppState>();
+    let _ = create_default_workspace_impl(app.clone(), settings.clone())
+        .await
+        .unwrap();
+    let mut wrapper = state.workspaces.write().await;
+    // We've just checked this, so it should never fail:
+    let workspace: &mut TariWorkspace = wrapper
+        .get_workspace_mut("default")
+        .ok_or(DockerWrapperError::UnexpectedError)
+        .unwrap();
+    // Check the identity requirements for the service
+    let ids = workspace.create_or_load_identities().unwrap();
+    for id in ids.values() {
+        debug!("Identity loaded: {}", id);
+    }
+    // Check network requirements for the service
+    if !workspace.network_exists(&DOCKER_INSTANCE).await.unwrap() {
+        workspace.create_network(&DOCKER_INSTANCE).await.unwrap();
+    }
+    // Launch the container
+    let registry = workspace.config().registry.clone();
+    let tag = workspace.config().tag.clone();
+    let image = ImageType::try_from(service_name.as_str()).unwrap();
+    let container_name = workspace
+        .start_service(image, registry, tag, DOCKER_INSTANCE.clone())
+        .await
+        .unwrap();
+    let state = workspace
+        .container_mut(container_name.as_str())
+        .ok_or(DockerWrapperError::UnexpectedError)
+        .unwrap();
+    let name = state.name().to_string();
+    let container_id = state.id().to_string();
+
+    start_service_impl(
+        app.clone(),
+        &DOCKER_INSTANCE,
+        service_name,
+        settings,
+        workspace,
+        container_id,
+        name,
+    )
+    .await
+    .map_err(|e| {
         let error = e.chained_message();
         error!("{}", error);
         error
@@ -208,63 +253,108 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     Ok(should_create_workspace)
 }
 
-async fn start_service_impl(
+async fn create_tari_workspace(
     app: AppHandle<Wry>,
-    service_name: String,
     settings: ServiceSettings,
-) -> Result<StartServiceResult, LauncherError> {
-    debug!("Starting {} service", service_name);
+    service_name: String,
+) -> Result<(), LauncherError> {
     let state = app.state::<AppState>();
-    let docker = state.docker_handle().await;
-    let _ = create_default_workspace_impl(app.clone(), settings).await?;
+    let _ = create_default_workspace_impl(app.clone(), settings.clone()).await?;
     let mut wrapper = state.workspaces.write().await;
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
         .get_workspace_mut("default")
         .ok_or(DockerWrapperError::UnexpectedError)?;
+
     // Check the identity requirements for the service
     let ids = workspace.create_or_load_identities()?;
     for id in ids.values() {
         debug!("Identity loaded: {}", id);
     }
     // Check network requirements for the service
-    if !workspace.network_exists(&docker).await? {
-        workspace.create_network(&docker).await?;
+    if !workspace.network_exists(&DOCKER_INSTANCE).await? {
+        workspace.create_network(&DOCKER_INSTANCE).await?;
     }
     // Launch the container
     let registry = workspace.config().registry.clone();
     let tag = workspace.config().tag.clone();
     let image = ImageType::try_from(service_name.as_str())?;
-    let container_name = workspace.start_service(image, registry, tag, docker.clone()).await?;
+    let container_name = workspace
+        .start_service(image, registry, tag, DOCKER_INSTANCE.clone())
+        .await?;
     let state = workspace
         .container_mut(container_name.as_str())
         .ok_or(DockerWrapperError::UnexpectedError)?;
-    let id = state.id().to_string();
-    let stats_events_name = stats_event_name(state.id());
-    let log_events_name = log_event_name(state.name());
+    Ok(())
+}
+
+async fn start_service_impl(
+    app: AppHandle<Wry>,
+    docker: &Docker,
+    service_name: String,
+    settings: ServiceSettings,
+    workspace: &mut TariWorkspace,
+    container_id: String,
+    container_name: String,
+) -> Result<StartServiceResult, LauncherError> {
+    // debug!("Starting {} service", service_name);
+
+    let stats_events_name = stats_event_name(container_id.clone());
+    let log_events_name = log_event_name(&container_name);
     // Set up event streams
-    container_logs(
-        app.clone(),
+    let app1 = app.clone();
+    let app2 = app.clone();
+    let app3 = app.clone();
+    let app4 = app.clone();
+    let f1 = move |s: String, m: LogMessage| send_tauri_message::<LogMessage>(app1.clone(), s, m);
+    let f2 = move |s: String, m: String| send_tauri_message::<String>(app2.clone(), s, m);
+    let f3 = move |s: String, m: Stats| send_tauri_message::<Stats>(app3.clone(), s, m);
+    let f4 = move |s: String, m: String| send_tauri_message::<String>(app4.clone(), s, m);
+    let _ = f2(log_events_name.clone(), "Hi From Alex".to_string());
+    let _ = f1(log_events_name.clone(), LogMessage {
+        message: "Alex".to_string(),
+        source: "Console".to_string(),
+    });
+    container_loggs(
+        f1,
+        f2,
         log_events_name.as_str(),
         container_name.as_str(),
         docker.clone(),
         workspace,
     );
-    container_stats(
-        app.clone(),
+
+    // container_logs(app.clone(),
+    //     &log_events_name,
+    //     container_name.as_str(),
+    //     docker.clone(),
+    //     workspace,);
+    // container_stats(
+    //     app.clone(),
+    //     stats_events_name.as_str(),
+    //     container_name.as_str(),
+    //     docker.clone(),
+    //     workspace,
+    // );
+
+    container_statistic(
+        f3,
+        f4,
         stats_events_name.as_str(),
         container_name.as_str(),
         docker.clone(),
         workspace,
     );
+
     // Collect data for the return object
     let result = StartServiceResult {
-        name: service_name,
-        id,
+        name: service_name.clone(),
+        id: container_id,
         action: "unimplemented".to_string(),
         log_events_name,
         stats_events_name,
     };
+    let image = ImageType::try_from(service_name.as_str()).unwrap();
     info!("Tari service {} has launched", image.container_name());
     Ok(result)
 }
@@ -273,7 +363,7 @@ pub fn log_event_name(container_name: &str) -> String {
     format!("tari://docker_log_{}", container_name)
 }
 
-pub fn stats_event_name(container_id: &ContainerId) -> String {
+pub fn stats_event_name(container_id: String) -> String {
     format!("tari://docker_stats_{}", container_id.as_str())
 }
 
@@ -320,9 +410,16 @@ fn container_stats(
     if let Some(mut stream) = workspace.resource_stats(container_name, docker) {
         let event_name = event_name.to_string();
         tauri::async_runtime::spawn(async move {
-            let send_message = |event: String, payload: Stats| send_tauri_message::<Stats>(app.clone(), event, payload);
-            let send_error = |event: String, payload: String| send_tauri_message::<String>(app.clone(), event, payload);
-            let _ = process_stream(send_message, send_error, event_name.clone(), stream);
+            while let Some(message) = stream.next().await {
+                trace!("log event: {:?}", message);
+                let emit_result = match message {
+                    Ok(payload) => app.emit_all(event_name.as_str(), payload),
+                    Err(err) => app.emit_all(format!("{}_error", event_name).as_str(), err.chained_message()),
+                };
+                if let Err(err) = emit_result {
+                    warn!("Error emitting event: {}", err.to_string());
+                }
+            }
             info!("Resource stats stream for {} has closed.", event_name);
         });
         info!("Resource stats events configured.");
@@ -352,11 +449,11 @@ async fn process_stream<FM, FE, T: Debug + Clone + Serialize>(
     event_name: String,
     mut stream: impl Stream<Item = Result<T, DockerWrapperError>> + Unpin,
 ) where
-    FM: Fn(String, T) -> Result<(), tauri::Error> + Copy,
-    FE: Fn(String, String) -> Result<(), tauri::Error> + Copy,
+    FM: Fn(String, T) -> Result<(), tauri::Error>,
+    FE: Fn(String, String) -> Result<(), tauri::Error>,
 {
     while let Some(message) = stream.next().await {
-        trace!("log event: {:?}", message);
+        println!("log event: {:?}", message);
         let emit_result = match message {
             Ok(payload) => send_message(event_name.clone(), payload),
             Err(err) => send_error(format!("{}_error", event_name), err.chained_message()),
@@ -372,6 +469,7 @@ fn send_tauri_message<P: Debug + Clone + Serialize>(
     event: String,
     payload: P,
 ) -> Result<(), tauri::Error> {
+    println!("sending: {:?} to {}", payload, event.clone());
     app.emit_all(event.as_str(), payload)
 }
 
@@ -383,14 +481,14 @@ fn container_statistic<FM: 'static, FE: 'static>(
     docker: Docker,
     workspace: &mut TariWorkspace,
 ) where
-    FM: Fn(String, Stats) -> Result<(), tauri::Error> + Copy + std::marker::Send,
-    FE: Fn(String, String) -> Result<(), tauri::Error> + Copy + std::marker::Send,
+    FM: Fn(String, Stats) -> Result<(), tauri::Error> + std::marker::Send,
+    FE: Fn(String, String) -> Result<(), tauri::Error> + std::marker::Send,
 {
     info!("Setting up Resource stats events for {}", container_name);
     if let Some(mut stream) = workspace.resource_stats(container_name, docker) {
         let event_name = event_name.to_string();
         tauri::async_runtime::spawn(async move {
-            let _ = process_stream(send_message, send_error, event_name.clone(), stream);
+            let _ = process_stream(send_message, send_error, event_name.clone(), stream).await;
             info!("Resource stats stream for {} has closed.", event_name);
         });
         info!("Resource stats events configured.");
@@ -410,14 +508,15 @@ fn container_loggs<FM: 'static, FE: 'static>(
     docker: Docker,
     workspace: &mut TariWorkspace,
 ) where
-    FM: Fn(String, LogMessage) -> Result<(), tauri::Error> + Copy + std::marker::Send,
-    FE: Fn(String, String) -> Result<(), tauri::Error> + Copy + std::marker::Send,
+    FM: Fn(String, LogMessage) -> Result<(), tauri::Error> + std::marker::Send,
+    FE: Fn(String, String) -> Result<(), tauri::Error> + std::marker::Send,
 {
-    info!("Setting up log events for {}", container_name);
+    println!("Setting up log events for {}", container_name);
     if let Some(mut stream) = workspace.logs(container_name, docker) {
         let event_name = event_name.to_string();
+        println!("events: {}", event_name);
         tauri::async_runtime::spawn(async move {
-            let _ = process_stream(send_message, send_error, event_name.clone(), stream);
+            let _ = process_stream(send_message, send_error, event_name.clone(), stream).await;
             info!("Resource stats stream for {} has closed.", event_name);
         });
         info!("Resource stats events configured.");

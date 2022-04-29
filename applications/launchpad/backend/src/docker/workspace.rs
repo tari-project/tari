@@ -289,6 +289,7 @@ impl TariWorkspace {
             stderr: true,
             ..Default::default()
         };
+        println!("getting docker logs");
         self.containers.get(container_name).map(move |container| {
             let id = container.id();
             docker

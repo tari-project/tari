@@ -36,7 +36,7 @@ use crate::{
 const LOG_TARGET: &str = "tari::launchpad::commands::pull_images";
 
 lazy_static! {
-    pub static ref DOCKER: Docker = Docker::connect_with_local_defaults().unwrap();
+    pub static ref DOCKER_INSTANCE: Docker = Docker::connect_with_local_defaults().unwrap();
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,7 +80,7 @@ where F: Fn(Payload) -> Result<(), tauri::Error> + Copy {
 async fn pull_image<F>(image: ImageType, f: F) -> Result<(), LauncherError>
 where F: Fn(Payload) -> Result<(), tauri::Error> + Copy {
     let image_name = TariWorkspace::fully_qualified_image(image, None, None);
-    let mut stream = pull_docker_image(&DOCKER, image_name.clone()).await;
+    let mut stream = pull_docker_image(&DOCKER_INSTANCE, image_name.clone()).await;
     while let Some(update) = stream.next().await {
         match update {
             Ok(progress) => {

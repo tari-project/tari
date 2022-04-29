@@ -69,13 +69,13 @@ fn docker_compose_test() {
 }
 
 #[tokio::test]
-async fn pull_images_test() {
+async fn show_container_stats_test() {
     let docker = Docker::connect_with_local_defaults().unwrap();
     async move {
         print!("-->>");
         let stats = &docker
             .stats(
-                "docker_rig-base_node-1",
+                "9df417fc59a9",
                 Some(StatsOptions {
                     stream: false,
                     ..Default::default()
@@ -106,7 +106,7 @@ async fn print_container_logs() {
         stderr: true,
         ..Default::default()
     };
-    let id = "docker_rig-base_node-1";
+    let id = "9df417fc59a9";
     let mut logs = docker.logs(id, Some(options.clone()));
     while let Some(Ok(msg)) = logs.next().await {
         println!("msg {:?}", msg);

@@ -29,14 +29,14 @@ use log::*;
 use tauri::{AppHandle, Manager, Wry};
 
 use crate::{
-    commands::{pull_images::DOCKER, AppState},
+    commands::{pull_images::DOCKER_INSTANCE, AppState},
     docker::DockerWrapperError,
     error::LauncherError,
 };
 
 pub async fn stream_docker_events<F>(fun: F) -> Result<(), LauncherError>
 where F: Fn(SystemEventsResponse) -> Result<(), tauri::Error> + Copy {
-    let mut streams = stream_events(&DOCKER).await;
+    let mut streams = stream_events(&DOCKER_INSTANCE).await;
     docker_events(fun, streams).await?;
     Ok(())
 }
