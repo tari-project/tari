@@ -6,6 +6,8 @@ const translations = {
   },
   wallet: {
     title: 'Tari Wallet',
+    walletId: 'Tari Wallet ID',
+    address: 'address',
   },
   balance: {
     title: 'Balance',

@@ -19,6 +19,7 @@ export const TariIdContainer = styled.div`
 `
 
 export const TariIdBox = styled.div`
+  font-size: 14px;
   flex-grow: 1;
   border: 1px solid ${({ theme }) => theme.borderColor};
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
