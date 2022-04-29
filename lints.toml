@@ -53,3 +53,11 @@ deny = [
     'clippy::cast_precision-loss',
     'clippy::cast_sign_loss'
 ]
+
+allow= [
+    # allow Default::default calls
+    'clippy::default_trait_access',
+    # Generally when developers fix this, it can lead to leaky abstractions or worse, so
+    # too many arguments is generally the lesser of two evils
+    'clippy::too_many_arguments'
+]
