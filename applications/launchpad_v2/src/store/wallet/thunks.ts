@@ -13,7 +13,7 @@ export const unlockWallet = createAsyncThunk<
   await new Promise(resolve => setTimeout(resolve, 2000))
 
   return {
-    address: password,
+    address: '7a6ffed9-4252-427e-af7d-3dcaaf2db2df',
     tari: {
       balance: 11350057,
       available: 11349009,

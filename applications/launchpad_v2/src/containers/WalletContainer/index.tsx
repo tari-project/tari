@@ -5,25 +5,25 @@ import {
   selectWalletAddress,
   selectTariAmount,
   selectIsPending,
+  selectWalletEmojiAddress,
 } from '../../store/wallet/selectors'
-import { selectExpertView } from '../../store/app/selectors'
+import CenteredLayout from '../../components/CenteredLayout'
 
-import { CenteredLayout, ToTheLeftLayout } from './styles'
 import PasswordBox from './PasswordBox'
 import TariWallet from './TariWallet'
 import WalletBalance from './WalletBalance'
 
 const WalletContainer = () => {
   const dispatch = useAppDispatch()
-  const expertView = useAppSelector(selectExpertView)
   const unlocked = useAppSelector(selectIsUnlocked)
   const walletAddress = useAppSelector(selectWalletAddress)
+  const emojiId = useAppSelector(selectWalletEmojiAddress)
   const { balance, available } = useAppSelector(selectTariAmount)
   const pending = useAppSelector(selectIsPending)
 
   if (!unlocked) {
     return (
-      <CenteredLayout>
+      <CenteredLayout horizontally vertically>
         <PasswordBox
           pending={pending}
           onSubmit={password => dispatch(actions.unlockWallet(password))}
@@ -33,10 +33,10 @@ const WalletContainer = () => {
   }
 
   return (
-    <ToTheLeftLayout expertView={expertView}>
-      <TariWallet address={walletAddress} />
+    <CenteredLayout horizontally>
+      <TariWallet address={walletAddress} emojiId={emojiId} />
       <WalletBalance balance={balance} available={available} />
-    </ToTheLeftLayout>
+    </CenteredLayout>
   )
 }
 
