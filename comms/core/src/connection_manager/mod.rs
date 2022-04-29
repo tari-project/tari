@@ -19,6 +19,13 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+//! # ConnectionManager
+//!
+//! This component is responsible for orchestrating PeerConnections, specifically:
+//! - dialing peers,
+//! - listening for peer connections on the configured transport,
+//! - performing connection upgrades (noise protocol, identity and multiplexing),
+//! - and, notifying the connectivity manager of changes in connection state (new connections, disconnects, etc)
 
 mod dial_state;
 mod dialer;
@@ -28,14 +35,15 @@ mod metrics;
 mod common;
 pub use common::validate_peer_addresses;
 
-mod types;
-pub use types::ConnectionDirection;
+mod direction;
+pub use direction::ConnectionDirection;
 
 mod requester;
 pub use requester::{ConnectionManagerRequest, ConnectionManagerRequester};
 
 mod manager;
-pub use manager::{ConnectionManager, ConnectionManagerConfig, ConnectionManagerEvent, ListenerInfo};
+pub(crate) use manager::ConnectionManager;
+pub use manager::{ConnectionManagerConfig, ConnectionManagerEvent, ListenerInfo};
 
 mod error;
 pub use error::{ConnectionManagerError, PeerConnectionError};

@@ -45,10 +45,13 @@ pub struct KeyManagerDatabase<T> {
 impl<T> KeyManagerDatabase<T>
 where T: KeyManagerBackend + 'static
 {
+    /// Creates a new [KeyManagerDatabase] linked to the provided KeyManagerBackend
     pub fn new(db: T) -> Self {
         Self { db: Arc::new(db) }
     }
 
+    /// Retrieves the key manager state of the provided branch
+    /// Returns None if the request branch does not exist.
     pub async fn get_key_manager_state(
         &self,
         branch: String,
@@ -60,6 +63,7 @@ where T: KeyManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    /// Saves the specified key manager state to the backend database.
     pub async fn set_key_manager_state(&self, state: KeyManagerState) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.add_key_manager(state))
@@ -69,6 +73,8 @@ where T: KeyManagerBackend + 'static
         Ok(())
     }
 
+    /// Increment the key index of the provided branch of the key manager.
+    /// Will error if the branch does not exist.
     pub async fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.increment_key_index(branch))
@@ -77,6 +83,8 @@ where T: KeyManagerBackend + 'static
         Ok(())
     }
 
+    /// Sets the key index of the provided branch of the key manager.
+    /// Will error if the branch does not exist.
     pub async fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.set_key_index(branch, index))
@@ -85,6 +93,8 @@ where T: KeyManagerBackend + 'static
         Ok(())
     }
 
+    /// Encrypts the entire key manager with all branches.
+    /// This will only encrypt the index used, as the master seed phrase is not directly stored with the key manager.
     pub async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.apply_encryption(cipher))
@@ -93,6 +103,7 @@ where T: KeyManagerBackend + 'static
             .and_then(|inner_result| inner_result)
     }
 
+    /// Decrypts the entire key manager.
     pub async fn remove_encryption(&self) -> Result<(), KeyManagerStorageError> {
         let db_clone = self.db.clone();
         tokio::task::spawn_blocking(move || db_clone.remove_encryption())

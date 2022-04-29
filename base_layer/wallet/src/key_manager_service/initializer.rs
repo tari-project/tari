@@ -36,6 +36,7 @@ use crate::key_manager_service::{
     KeyManagerHandle,
 };
 
+/// Initializes the key manager service by implementing the [ServiceInitializer] trait.
 pub struct KeyManagerInitializer<T>
 where T: KeyManagerBackend
 {
@@ -46,6 +47,7 @@ where T: KeyManagerBackend
 impl<T> KeyManagerInitializer<T>
 where T: KeyManagerBackend + 'static
 {
+    /// Creates a new [KeyManagerInitializer] from the provided [KeyManagerBackend] and [CipherSeed]
     pub fn new(backend: T, master_seed: CipherSeed) -> Self {
         Self {
             backend: Some(backend),
