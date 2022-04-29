@@ -20,8 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-// TODO: Remove #[allow(dead_code)] once tests are in place
-#[allow(dead_code)]
+//! # SOCK5 client
+//!
+//! A SOCKS5 client that supports tor onion addresses.
+
 mod client;
 pub use client::{Authentication, Socks5Client};
 

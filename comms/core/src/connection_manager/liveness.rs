@@ -29,6 +29,7 @@ use tokio_util::codec::{Framed, LinesCodec, LinesCodecError};
 /// Max line length accepted by the liveness session.
 const MAX_LINE_LENGTH: usize = 50;
 
+/// Echo server for liveness checks
 pub struct LivenessSession<TSocket> {
     framed: Framed<TSocket, LinesCodec>,
 }

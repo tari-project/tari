@@ -44,9 +44,9 @@ use tracing::{span, Instrument, Level};
 
 use super::{
     common,
+    direction::ConnectionDirection,
     error::ConnectionManagerError,
     peer_connection::{self, PeerConnection},
-    types::ConnectionDirection,
     ConnectionManagerConfig,
     ConnectionManagerEvent,
 };
@@ -70,6 +70,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::connection_manager::listener";
 
+/// Listens on the given transport for peer connections and notifies when a new inbound peer connection is established.
 pub struct PeerListener<TTransport> {
     config: ConnectionManagerConfig,
     bind_address: Multiaddr,

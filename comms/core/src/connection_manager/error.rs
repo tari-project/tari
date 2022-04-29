@@ -30,6 +30,7 @@ use crate::{
     protocol::{IdentityProtocolError, ProtocolError},
 };
 
+/// Error for ConnectionManager
 #[derive(Debug, Error, Clone)]
 pub enum ConnectionManagerError {
     #[error("Peer manager error: {0}")]
@@ -100,6 +101,7 @@ impl From<PeerConnectionError> for ConnectionManagerError {
     }
 }
 
+/// Error type for PeerConnection
 #[derive(Debug, Error)]
 pub enum PeerConnectionError {
     #[error("Yamux connection error: {0}")]

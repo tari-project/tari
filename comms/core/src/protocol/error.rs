@@ -24,6 +24,7 @@ use std::io;
 
 use thiserror::Error;
 
+/// Error type for protocol module.
 #[derive(Debug, Error)]
 pub enum ProtocolError {
     #[error("IO error: {0}")]

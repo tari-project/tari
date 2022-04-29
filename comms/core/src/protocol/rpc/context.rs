@@ -58,10 +58,6 @@ impl RpcCommsBackend {
     pub fn peer_manager(&self) -> &PeerManager {
         &self.peer_manager
     }
-
-    pub fn peer_manager_owned(&self) -> Arc<PeerManager> {
-        self.peer_manager.clone()
-    }
 }
 
 #[async_trait]
@@ -88,6 +84,7 @@ impl RpcCommsProvider for RpcCommsBackend {
 
 pub struct RequestContext {
     request_id: u32,
+    #[allow(dead_code)]
     backend: Box<dyn RpcCommsProvider>,
     node_id: NodeId,
 }
@@ -109,14 +106,17 @@ impl RequestContext {
         self.request_id
     }
 
-    pub(crate) async fn fetch_peer(&self) -> Result<Peer, RpcError> {
+    #[allow(dead_code)]
+    pub async fn fetch_peer(&self) -> Result<Peer, RpcError> {
         self.backend.fetch_peer(&self.node_id).await
     }
 
+    #[allow(dead_code)]
     async fn dial_peer(&mut self, node_id: &NodeId) -> Result<PeerConnection, RpcError> {
         self.backend.dial_peer(node_id).await
     }
 
+    #[allow(dead_code)]
     async fn select_connections(&mut self, selection: ConnectivitySelection) -> Result<Vec<PeerConnection>, RpcError> {
         self.backend.select_connections(selection).await
     }

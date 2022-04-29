@@ -74,6 +74,7 @@ impl fmt::Debug for Authentication {
 
 #[repr(u8)]
 #[derive(Clone, Debug, Copy)]
+#[allow(dead_code)]
 enum Command {
     Connect = 0x01,
     Bind = 0x02,
