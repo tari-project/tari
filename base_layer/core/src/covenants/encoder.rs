@@ -52,3 +52,63 @@ impl<W: io::Write> CovenentWriteExt for W {
         Ok(1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+    use crate::{
+        covenant,
+        covenants::{
+            byte_codes::{ARG_HASH, ARG_OUTPUT_FIELD, FILTER_AND, FILTER_FIELD_EQ, FILTER_IDENTITY, FILTER_OR},
+            OutputField,
+        },
+    };
+
+    #[test]
+    fn it_encodes_empty_tokens() {
+        let encoder = CovenantTokenEncoder::new(&[]);
+        let mut buf = Vec::<u8>::new();
+        let written = encoder.write_to(&mut buf).unwrap();
+        assert_eq!(buf, [] as [u8; 0]);
+        assert_eq!(written, 0);
+    }
+
+    #[test]
+    fn it_encodes_tokens_correctly() {
+        let covenant = covenant!(and(identity(), or(identity())));
+        let encoder = CovenantTokenEncoder::new(covenant.tokens());
+        let mut buf = Vec::<u8>::new();
+        let written = encoder.write_to(&mut buf).unwrap();
+        assert_eq!(buf, [FILTER_AND, FILTER_IDENTITY, FILTER_OR, FILTER_IDENTITY]);
+        assert_eq!(written, 4);
+    }
+
+    #[test]
+    fn it_encodes_args_correctly() {
+        let dummy = [0u8; 32];
+        let covenant = covenant!(field_eq(@field::features, @hash(dummy)));
+        let encoder = CovenantTokenEncoder::new(covenant.tokens());
+        let mut buf = Vec::<u8>::new();
+        let written = encoder.write_to(&mut buf).unwrap();
+        assert_eq!(buf[..4], [
+            FILTER_FIELD_EQ,
+            ARG_OUTPUT_FIELD,
+            OutputField::Features.as_byte(),
+            ARG_HASH
+        ]);
+        assert_eq!(buf[4..], [0u8; 32]);
+        assert_eq!(written, 36);
+    }
+
+    mod covenant_write_ext {
+        use super::*;
+
+        #[test]
+        fn it_writes_a_single_byte() {
+            let mut buf = Vec::new();
+            buf.write_u8_fixed(123u8).unwrap();
+            assert_eq!(buf, vec![123u8]);
+        }
+    }
+}

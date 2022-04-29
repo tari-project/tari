@@ -165,3 +165,17 @@ impl Filter for CovenantFilter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::covenants::byte_codes::ALL_FILTERS;
+
+    #[test]
+    fn it_returns_filter_from_byte_code() {
+        ALL_FILTERS.iter().for_each(|code| {
+            let filter = CovenantFilter::try_from_byte_code(*code).unwrap();
+            assert_eq!(filter.as_byte_code(), *code);
+        })
+    }
+}

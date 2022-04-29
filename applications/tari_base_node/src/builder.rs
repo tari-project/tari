@@ -154,6 +154,10 @@ impl BaseNodeContext {
             .expect_handle::<StateMachineHandle>()
             .get_status_info_watch()
     }
+
+    pub fn get_report_grpc_error(&self) -> bool {
+        self.config.base_node.report_grpc_error
+    }
 }
 
 /// Sets up and initializes the base node, creating the context and database
