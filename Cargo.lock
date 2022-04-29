@@ -7141,23 +7141,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tari_mining_helper_ffi"
-version = "0.30.2"
-dependencies = [
- "hex",
- "libc",
- "serde",
- "serde_json",
- "tari_common",
- "tari_comms",
- "tari_core",
- "tari_crypto",
- "tari_utilities",
- "thiserror",
-]
-
-[[package]]
-name = "tari_mining_node"
+name = "tari_miner"
 version = "0.31.1"
 dependencies = [
  "base64 0.13.0",
@@ -7189,6 +7173,22 @@ dependencies = [
  "thiserror",
  "tokio 1.17.0",
  "tonic",
+]
+
+[[package]]
+name = "tari_mining_helper_ffi"
+version = "0.30.2"
+dependencies = [
+ "hex",
+ "libc",
+ "serde",
+ "serde_json",
+ "tari_common",
+ "tari_comms",
+ "tari_core",
+ "tari_crypto",
+ "tari_utilities",
+ "thiserror",
 ]
 
 [[package]]

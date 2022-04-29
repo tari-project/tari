@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 echo
-echo "Starting Mining Node"
+echo "Starting Miner"
 echo
 
 # Initialize
@@ -20,20 +20,20 @@ then
     ping -c 15 localhost > /dev/null
 fi
 
-if [ ! -f "${config_path}/log4rs_mining_node.yml" ]
+if [ ! -f "${config_path}/log4rs_miner.yml" ]
 then
-    echo Creating new "${config_path}/log4rs_mining_node.yml";
+    echo Creating new "${config_path}/log4rs_miner.yml";
     init_flag="--init"
 else
-    echo Using existing "${config_path}/log4rs_mining_node.yml";
+    echo Using existing "${config_path}/log4rs_miner.yml";
     init_flag=""
 fi
 echo
 
 # Run
 echo Spawning Console Wallet into new terminal..
-echo "${exe_path}/tari_mining_node" ${init_flag} --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_mining_node.yml" --base-path=${base_path} > $exe_path/tari_mining_node_command.sh
-chmod +x $exe_path/tari_mining_node_command.sh
+echo "${exe_path}/tari_miner" ${init_flag} --config="${config_path}/config.toml" --log_config="${config_path}/log4rs_miner.yml" --base-path=${base_path} > $exe_path/tari_miner_command.sh
+chmod +x $exe_path/tari_miner_command.sh
 
-open -a terminal $exe_path/tari_mining_node_command.sh
+open -a terminal $exe_path/tari_miner_command.sh
 echo
