@@ -42,6 +42,7 @@ declare module 'styled-components' {
     warningText: string
     expert: string
     expertText: string
+    placeholderText: string
 
     inverted: {
       controlBackground: string

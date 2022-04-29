@@ -23,6 +23,7 @@ const Text = ({
   color,
   children,
   testId,
+  className,
 }: TextProps) => {
   const textStyles = {
     color,
@@ -31,7 +32,12 @@ const Text = ({
   }
 
   return (
-    <StyledText as={as} style={textStyles} data-testid={testId || 'text-cmp'}>
+    <StyledText
+      as={as}
+      style={textStyles}
+      data-testid={testId || 'text-cmp'}
+      className={className}
+    >
       {children}
     </StyledText>
   )

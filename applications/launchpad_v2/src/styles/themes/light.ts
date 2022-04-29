@@ -28,6 +28,7 @@ const lightTheme = {
   warningText: styles.colors.secondary.warningText,
   expert: 'rgba(147, 48, 255, 0.05)',
   expertText: styles.gradients.tari,
+  placeholderText: styles.colors.dark.placeholder,
 
   inverted: {
     primary: styles.colors.light.primary,
