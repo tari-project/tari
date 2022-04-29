@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Common Tari comms types
+
 use tari_crypto::{common::Blake256, keys::PublicKey, ristretto::RistrettoPublicKey, signatures::SchnorrSignature};
 use tari_storage::lmdb_store::LMDBStore;
 #[cfg(test)]

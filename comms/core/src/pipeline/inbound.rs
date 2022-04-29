@@ -50,6 +50,7 @@ where
     TSvc::Error: Display + Send,
     TSvc::Future: Send,
 {
+    /// New inbound pipeline.
     pub fn new(
         executor: BoundedExecutor,
         stream: mpsc::Receiver<TMsg>,
@@ -65,6 +66,8 @@ where
         }
     }
 
+    /// Run the inbounde pipeline. This returns a future that resolves once the stream has ended. Typically, you would
+    /// spawn this in a new task.
     pub async fn run(mut self) {
         let mut current_id = 0;
         while let Some(item) = self.stream.recv().await {

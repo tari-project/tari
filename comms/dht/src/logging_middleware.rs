@@ -35,6 +35,7 @@ pub struct MessageLoggingLayer<'a, R> {
 }
 
 impl<'a, R> MessageLoggingLayer<'a, R> {
+    /// Creates a new logging middleware layer
     pub fn new<T: Into<Cow<'a, str>>>(prefix_msg: T) -> Self {
         Self {
             prefix_msg: prefix_msg.into(),
@@ -55,6 +56,7 @@ where
     }
 }
 
+/// [Service](https://tower-rs.github.io/tower/tower_service/) for DHT message logging.
 #[derive(Clone)]
 pub struct MessageLoggingService<'a, S> {
     prefix_msg: Cow<'a, str>,

@@ -28,6 +28,8 @@ use std::{
 
 use crate::utils::datetime::format_duration;
 
+/// Basic stats for peer connection attempts. Allows the connectivity manager to keep track of successful/failed
+/// connection attempts to allow it to mark peers as offline if necessary.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct PeerConnectionStats {
     /// The last time a connection was successfully made or, None if a successful

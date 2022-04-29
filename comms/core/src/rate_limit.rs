@@ -54,6 +54,7 @@ pub trait RateLimit: Stream {
 
 impl<T: Stream> RateLimit for T {}
 
+/// Rate limiter for a Stream
 #[pin_project]
 #[must_use = "streams do nothing unless polled"]
 pub struct RateLimiter<T> {
@@ -73,7 +74,7 @@ pub struct RateLimiter<T> {
 }
 
 impl<T: Stream> RateLimiter<T> {
-    pub fn new(stream: T, capacity: usize, restock_interval: Duration) -> Self {
+    pub(self) fn new(stream: T, capacity: usize, restock_interval: Duration) -> Self {
         let mut interval = time::interval(restock_interval);
         interval.set_missed_tick_behavior(MissedTickBehavior::Burst);
         RateLimiter {

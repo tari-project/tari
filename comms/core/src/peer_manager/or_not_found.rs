@@ -22,6 +22,7 @@
 
 use crate::peer_manager::PeerManagerError;
 
+/// Extension trait for Result<Option<T>, PeerManagerError>.
 pub trait OrNotFound {
     type Value;
     type Error;

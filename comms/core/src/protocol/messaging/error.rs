@@ -33,6 +33,7 @@ use crate::{
     protocol::ProtocolError,
 };
 
+/// Error type for inbound messages.
 #[derive(Debug, Error)]
 pub enum InboundMessagingError {
     #[error("PeerManagerError: {0}")]
@@ -41,6 +42,7 @@ pub enum InboundMessagingError {
     MessageDecodeError(#[from] prost::DecodeError),
 }
 
+/// Error type for the messaging protocol.
 #[derive(Debug, Error)]
 pub enum MessagingProtocolError {
     #[error("Failed to send message")]

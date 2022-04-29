@@ -32,6 +32,7 @@ use crate::DhtConfig;
 
 const LOG_TARGET: &str = "dht::network_discovery::peer_validator";
 
+/// Validation errors for peers shared on the network
 #[derive(Debug, thiserror::Error)]
 pub enum PeerValidatorError {
     #[error("Node ID was invalid for peer '{peer}'")]
@@ -44,12 +45,14 @@ pub enum PeerValidatorError {
     PeerManagerError(#[from] PeerManagerError),
 }
 
+/// Validator for Peers
 pub struct PeerValidator<'a> {
     peer_manager: &'a PeerManager,
     config: &'a DhtConfig,
 }
 
 impl<'a> PeerValidator<'a> {
+    /// Creates a new peer validator
     pub fn new(peer_manager: &'a PeerManager, config: &'a DhtConfig) -> Self {
         Self { peer_manager, config }
     }
