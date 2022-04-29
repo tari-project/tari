@@ -25,7 +25,8 @@ use tari_common_types::types::PrivateKey;
 
 use crate::key_manager_service::error::KeyManagerServiceError;
 
-/// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created, otherwise `NewEntry` is returned.
+/// The value returned from [add_new_branch]. `AlreadyExists` is returned if the branch was previously created,
+/// otherwise `NewEntry` is returned.
 #[derive(Debug, PartialEq)]
 pub enum AddResult {
     NewEntry,
@@ -47,7 +48,8 @@ pub trait KeyManagerInterface: Clone + Send + Sync + 'static {
     /// or in the backend, a new branch will be created and tracked the backend, `Ok(AddResult::NewEntry)`.
     async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError>;
 
-    /// Encrypts the key manager state using the provided cipher. An error is returned if the state is already encrypted.
+    /// Encrypts the key manager state using the provided cipher. An error is returned if the state is already
+    /// encrypted.
     async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError>;
 
     /// Decrypts the key manager state using the provided cipher. An error is returned if the state is not encrypted.

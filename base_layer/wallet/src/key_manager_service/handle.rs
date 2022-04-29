@@ -35,8 +35,10 @@ use crate::key_manager_service::{
     KeyManagerInner,
     KeyManagerInterface,
 };
-/// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index for each branch.
-/// 
+/// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
+/// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
+/// for each branch.
+///
 /// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
 pub struct KeyManagerHandle<TBackend> {
