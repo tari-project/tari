@@ -55,7 +55,7 @@ use serde::{
     Serializer,
 };
 use tari_common_types::{
-    array::copy_into_fixed_array,
+    array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
     types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
 };
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
@@ -241,10 +241,10 @@ impl BlockHeader {
                 .chain(&self.timestamp)
                 .chain(&self.input_mr)
                 // TODO: Cleanup if/when we migrate to fixed 32-byte array type for hashes
-                .chain(&copy_into_fixed_array::<_, 32>(&self.output_mr).unwrap())
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.output_mr))
                 .chain(&self.output_mmr_size)
-                .chain(& copy_into_fixed_array::<_, 32>(&self.witness_mr).unwrap())
-                .chain(&copy_into_fixed_array::<_, 32>(&self.kernel_mr).unwrap())
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr))
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr))
                 .chain(&self.kernel_mmr_size)
                 .chain(&self.total_kernel_offset)
                 .chain(&self.total_script_offset)
@@ -301,7 +301,7 @@ impl Hashable for BlockHeader {
                 //       up if we decide to migrate to a fixed 32-byte type
                 .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
                 .chain(&self.pow)
-                .chain(& self.nonce)
+                .chain(&self.nonce)
                 .finalize().to_vec()
         }
     }
@@ -392,49 +392,14 @@ impl ConsensusEncoding for BlockHeader {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         let mut written = self.version.consensus_encode(writer)?;
         written += self.height.consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.prev_hash)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
         written += self.timestamp.as_u64().consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.output_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.witness_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
         written += self.output_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.kernel_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
         written += self.kernel_mmr_size.consensus_encode(writer)?;
-        written += copy_into_fixed_array::<_, 32>(&self.input_mr)
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("Could not copy vec to 32 byte array: {}", e),
-                )
-            })?
-            .consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
         written += self.total_kernel_offset.consensus_encode(writer)?;
         written += self.total_script_offset.consensus_encode(writer)?;
         written += self.nonce.consensus_encode(writer)?;
