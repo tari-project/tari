@@ -24,7 +24,7 @@ use anyhow::Error;
 use async_trait::async_trait;
 use chrono::Utc;
 use clap::Parser;
-use tari_comms::peer_manager::{PeerFeatures, PeerQuery};
+use tari_comms::peer_manager::PeerQuery;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
 
 use super::{CommandContext, HandleCommand};
@@ -49,10 +49,8 @@ impl CommandContext {
         if let Some(f) = filter {
             let filter = f.to_lowercase();
             query = query.select_where(move |p| match filter.as_str() {
-                "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => {
-                    p.features == PeerFeatures::COMMUNICATION_NODE
-                },
-                "wallet" | "wallets" | "w" => p.features == PeerFeatures::COMMUNICATION_CLIENT,
+                "basenode" | "basenodes" | "base_node" | "base-node" | "bn" => p.features.is_node(),
+                "wallet" | "wallets" | "w" => p.features.is_client(),
                 _ => false,
             })
         }
@@ -116,7 +114,7 @@ impl CommandContext {
                 peer.node_id,
                 peer.public_key,
                 {
-                    if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                    if peer.features.is_client() {
                         "Wallet"
                     } else {
                         "Base node"

@@ -23,7 +23,6 @@
 use anyhow::Error;
 use async_trait::async_trait;
 use clap::Parser;
-use tari_comms::peer_manager::PeerFeatures;
 use tari_core::base_node::state_machine_service::states::PeerMetadata;
 
 use super::{CommandContext, HandleCommand};
@@ -81,7 +80,7 @@ impl CommandContext {
                     conn.direction(),
                     format_duration_basic(conn.age()),
                     {
-                        if peer.features == PeerFeatures::COMMUNICATION_CLIENT {
+                        if peer.features.is_client() {
                             "Wallet"
                         } else {
                             "Base node"
