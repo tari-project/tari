@@ -54,6 +54,7 @@ pub struct StoreLayer {
 }
 
 impl StoreLayer {
+    /// New store layer.
     pub fn new(
         config: SafConfig,
         peer_manager: Arc<PeerManager>,

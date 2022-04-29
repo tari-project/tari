@@ -37,6 +37,7 @@ serde = "1.0.90"
 serde_derive = "1.0.90"
 thiserror = "1.0.26"
 tower = { version = "0.4", features = ["full"] }
+zeroize = "1.4.0"
 
 # Uncomment for tokio tracing via tokio-console (needs "tracing" features)
 #console-subscriber = "0.1.3"
