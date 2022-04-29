@@ -1,11 +1,12 @@
 [package]
-name = "app"
+# @TODO: Find way to add space to name field
+name = "TariLaunchpad"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["The Tari Development Community"]
 license = "BSD-3-Clause"
 repository = ""
-default-run = "app"
+default-run = "TariLaunchpad"
 edition = "2021"
 rust-version = "1.57"
 build = "build.rs"
