@@ -22,8 +22,21 @@
 
 //---------------------------------- ARG byte codes --------------------------------------------//
 pub(super) fn is_valid_arg_code(code: u8) -> bool {
-    (0x01..=0x09).contains(&code)
+    ALL_ARGS.contains(&code)
 }
+
+pub(super) const ALL_ARGS: [u8; 9] = [
+    ARG_HASH,
+    ARG_PUBLIC_KEY,
+    ARG_COMMITMENT,
+    ARG_TARI_SCRIPT,
+    ARG_COVENANT,
+    ARG_UINT,
+    ARG_OUTPUT_FIELD,
+    ARG_OUTPUT_FIELDS,
+    ARG_BYTES,
+];
+
 pub const ARG_HASH: u8 = 0x01;
 pub const ARG_PUBLIC_KEY: u8 = 0x02;
 pub const ARG_COMMITMENT: u8 = 0x03;
@@ -37,8 +50,21 @@ pub const ARG_BYTES: u8 = 0x09;
 //---------------------------------- FILTER byte codes --------------------------------------------//
 
 pub(super) fn is_valid_filter_code(code: u8) -> bool {
-    (0x20..=0x24).contains(&code) || (0x30..=0x34).contains(&code)
+    ALL_FILTERS.contains(&code)
 }
+
+pub(super) const ALL_FILTERS: [u8; 10] = [
+    FILTER_IDENTITY,
+    FILTER_AND,
+    FILTER_OR,
+    FILTER_XOR,
+    FILTER_NOT,
+    FILTER_OUTPUT_HASH_EQ,
+    FILTER_FIELDS_PRESERVED,
+    FILTER_FIELDS_HASHED_EQ,
+    FILTER_FIELD_EQ,
+    FILTER_ABSOLUTE_HEIGHT,
+];
 
 pub const FILTER_IDENTITY: u8 = 0x20;
 pub const FILTER_AND: u8 = 0x21;
@@ -63,3 +89,44 @@ pub const FIELD_FEATURES_MATURITY: u8 = 0x06;
 pub const FIELD_FEATURES_UNIQUE_ID: u8 = 0x07;
 pub const FIELD_FEATURES_PARENT_PUBLIC_KEY: u8 = 0x08;
 pub const FIELD_FEATURES_METADATA: u8 = 0x09;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod is_valid_filter_code {
+        use super::*;
+
+        #[test]
+        fn it_returns_true_for_all_filter_codes() {
+            ALL_FILTERS.iter().for_each(|code| {
+                assert!(is_valid_filter_code(*code));
+            });
+        }
+
+        #[test]
+        fn it_returns_false_for_all_arg_codes() {
+            ALL_ARGS.iter().for_each(|code| {
+                assert!(!is_valid_filter_code(*code));
+            });
+        }
+    }
+
+    mod is_valid_arg_code {
+        use super::*;
+
+        #[test]
+        fn it_returns_false_for_all_filter_codes() {
+            ALL_FILTERS.iter().for_each(|code| {
+                assert!(!is_valid_arg_code(*code));
+            });
+        }
+
+        #[test]
+        fn it_returns_true_for_all_arg_codes() {
+            ALL_ARGS.iter().for_each(|code| {
+                assert!(is_valid_arg_code(*code));
+            });
+        }
+    }
+}

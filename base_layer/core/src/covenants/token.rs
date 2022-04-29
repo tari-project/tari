@@ -27,7 +27,7 @@ use tari_script::TariScript;
 
 use crate::covenants::{
     arguments::{CovenantArg, Hash},
-    decoder::{CovenantDecodeError, CovenentReadExt},
+    decoder::{CovenantDecodeError, CovenantReadExt},
     fields::OutputField,
     filters::{
         AbsoluteHeightFilter,
