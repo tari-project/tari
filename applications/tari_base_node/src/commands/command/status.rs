@@ -27,7 +27,6 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::consts;
-use tari_comms::connectivity::ConnectivitySelection;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::status_line::{StatusLine, StatusLineOutput};
