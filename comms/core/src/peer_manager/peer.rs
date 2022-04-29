@@ -45,7 +45,7 @@ use crate::{
     peer_manager::identity_signature::IdentitySignature,
     protocol::ProtocolId,
     types::CommsPublicKey,
-    utils::datetime::safe_future_datetime_from_duration,
+    utils::datetime::{format_local_datetime, is_max_datetime, safe_future_datetime_from_duration},
 };
 
 bitflags! {
@@ -336,11 +336,15 @@ impl Display for Peer {
         let status_str = {
             let mut s = Vec::new();
             if let Some(offline_at) = self.offline_at.as_ref() {
-                s.push(format!("Offline since: {}", offline_at));
+                s.push(format!("Offline since: {}", format_local_datetime(offline_at)));
             }
 
             if let Some(dt) = self.banned_until() {
-                s.push(format!("Banned until: {}", dt));
+                if is_max_datetime(dt) {
+                    s.push("Banned permanently".to_string());
+                } else {
+                    s.push(format!("Banned until: {}", format_local_datetime(dt)));
+                }
                 s.push(format!("Reason: {}", self.banned_reason))
             }
             s.join(". ")
