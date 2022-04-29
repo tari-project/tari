@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useTheme } from 'styled-components'
 
+import t from '../../../locales'
+
 import Smiley from './Smiley'
 import { Label, SemiTransparent, TariIdContainer, TariIdBox } from './styles'
 
@@ -17,7 +19,8 @@ const TariId = ({
   return (
     <>
       <Label>
-        Tari Wallet ID <SemiTransparent>(address)</SemiTransparent>
+        {t.wallet.wallet.walletId}{' '}
+        <SemiTransparent>({t.wallet.wallet.address})</SemiTransparent>
       </Label>
       <TariIdContainer>
         <TariIdBox>{showEmoji ? emojiTariId.join(' | ') : tariId}</TariIdBox>
