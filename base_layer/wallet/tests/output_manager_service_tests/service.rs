@@ -938,7 +938,7 @@ async fn cancel_transaction() {
         .await
         .unwrap();
 
-    match oms.output_manager_handle.cancel_transaction(1.into()).await {
+    match oms.output_manager_handle.cancel_transaction(1u64.into()).await {
         Err(OutputManagerError::OutputManagerStorageError(OutputManagerStorageError::ValueNotFound)) => {},
         _ => panic!("Value should not exist"),
     }
@@ -1320,7 +1320,7 @@ async fn test_txo_validation() {
         .unwrap();
 
     oms.output_manager_handle
-        .add_rewindable_output_with_tx_id(TxId::from(1), output1.clone(), None, None)
+        .add_rewindable_output_with_tx_id(TxId::from(1u64), output1.clone(), None, None)
         .await
         .unwrap();
 
@@ -1339,7 +1339,7 @@ async fn test_txo_validation() {
         .unwrap();
 
     oms.output_manager_handle
-        .add_rewindable_output_with_tx_id(TxId::from(2), output2.clone(), None, None)
+        .add_rewindable_output_with_tx_id(TxId::from(2u64), output2.clone(), None, None)
         .await
         .unwrap();
 
@@ -1353,7 +1353,7 @@ async fn test_txo_validation() {
     .await;
 
     oms.output_manager_handle
-        .add_rewindable_output_with_tx_id(TxId::from(3), output3.clone(), None, None)
+        .add_rewindable_output_with_tx_id(TxId::from(3u64), output3.clone(), None, None)
         .await
         .unwrap();
 
@@ -1420,7 +1420,7 @@ async fn test_txo_validation() {
 
     oms.output_manager_handle
         .prepare_transaction_to_send(
-            4.into(),
+            4u64.into(),
             MicroTari::from(900_000),
             None,
             None,
@@ -1871,7 +1871,7 @@ async fn test_txo_revalidation() {
     );
     let output1_tx_output = output1.as_transaction_output(&factories).unwrap();
     oms.output_manager_handle
-        .add_output_with_tx_id(TxId::from(1), output1.clone(), None)
+        .add_output_with_tx_id(TxId::from(1u64), output1.clone(), None)
         .await
         .unwrap();
 
@@ -1885,7 +1885,7 @@ async fn test_txo_revalidation() {
     let output2_tx_output = output2.as_transaction_output(&factories).unwrap();
 
     oms.output_manager_handle
-        .add_output_with_tx_id(TxId::from(2), output2.clone(), None)
+        .add_output_with_tx_id(TxId::from(2u64), output2.clone(), None)
         .await
         .unwrap();
 

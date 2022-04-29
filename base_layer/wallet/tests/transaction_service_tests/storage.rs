@@ -684,18 +684,18 @@ async fn import_tx_and_read_it_from_db() {
 
     let db_tx = sqlite_db.fetch_imported_transactions().unwrap();
     assert_eq!(db_tx.len(), 1);
-    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1));
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(1u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(5));
 
     let db_tx = sqlite_db.fetch_unconfirmed_faux_transactions().unwrap();
     assert_eq!(db_tx.len(), 1);
-    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(2));
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(2u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(6));
 
     let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(10).unwrap();
     assert_eq!(db_tx.len(), 0);
     let db_tx = sqlite_db.fetch_confirmed_faux_transactions_from_height(4).unwrap();
     assert_eq!(db_tx.len(), 1);
-    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3));
+    assert_eq!(db_tx.first().unwrap().tx_id, TxId::from(3u64));
     assert_eq!(db_tx.first().unwrap().mined_height, Some(7));
 }

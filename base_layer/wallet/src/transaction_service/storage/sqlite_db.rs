@@ -2263,9 +2263,10 @@ mod test {
         let outbound_txs = OutboundTransactionSql::index_by_cancelled(&conn, false).unwrap();
         assert_eq!(outbound_txs.len(), 2);
 
-        let returned_outbound_tx =
-            OutboundTransaction::try_from(OutboundTransactionSql::find_by_cancelled(1.into(), false, &conn).unwrap())
-                .unwrap();
+        let returned_outbound_tx = OutboundTransaction::try_from(
+            OutboundTransactionSql::find_by_cancelled(1u64.into(), false, &conn).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             OutboundTransactionSql::try_from(returned_outbound_tx).unwrap(),
             OutboundTransactionSql::try_from(outbound_tx1.clone()).unwrap()
@@ -2318,7 +2319,7 @@ mod test {
         assert_eq!(inbound_txs.len(), 2);
 
         let returned_inbound_tx =
-            InboundTransaction::try_from(InboundTransactionSql::find_by_cancelled(2.into(), false, &conn).unwrap())
+            InboundTransaction::try_from(InboundTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap())
                 .unwrap();
         assert_eq!(
             InboundTransactionSql::try_from(returned_inbound_tx).unwrap(),
@@ -2391,9 +2392,10 @@ mod test {
         let completed_txs = CompletedTransactionSql::index_by_cancelled(&conn, false).unwrap();
         assert_eq!(completed_txs.len(), 2);
 
-        let returned_completed_tx =
-            CompletedTransaction::try_from(CompletedTransactionSql::find_by_cancelled(2.into(), false, &conn).unwrap())
-                .unwrap();
+        let returned_completed_tx = CompletedTransaction::try_from(
+            CompletedTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
             CompletedTransactionSql::try_from(returned_completed_tx).unwrap(),
             CompletedTransactionSql::try_from(completed_tx1.clone()).unwrap()
@@ -2600,7 +2602,7 @@ mod test {
         inbound_tx_sql.commit(&conn).unwrap();
         inbound_tx_sql.encrypt(&cipher).unwrap();
         inbound_tx_sql.update_encryption(&conn).unwrap();
-        let mut db_inbound_tx = InboundTransactionSql::find_by_cancelled(1.into(), false, &conn).unwrap();
+        let mut db_inbound_tx = InboundTransactionSql::find_by_cancelled(1u64.into(), false, &conn).unwrap();
         db_inbound_tx.decrypt(&cipher).unwrap();
         let decrypted_inbound_tx = InboundTransaction::try_from(db_inbound_tx).unwrap();
         assert_eq!(inbound_tx, decrypted_inbound_tx);
@@ -2624,7 +2626,7 @@ mod test {
         outbound_tx_sql.commit(&conn).unwrap();
         outbound_tx_sql.encrypt(&cipher).unwrap();
         outbound_tx_sql.update_encryption(&conn).unwrap();
-        let mut db_outbound_tx = OutboundTransactionSql::find_by_cancelled(2.into(), false, &conn).unwrap();
+        let mut db_outbound_tx = OutboundTransactionSql::find_by_cancelled(2u64.into(), false, &conn).unwrap();
         db_outbound_tx.decrypt(&cipher).unwrap();
         let decrypted_outbound_tx = OutboundTransaction::try_from(db_outbound_tx).unwrap();
         assert_eq!(outbound_tx, decrypted_outbound_tx);
@@ -2660,7 +2662,7 @@ mod test {
         completed_tx_sql.commit(&conn).unwrap();
         completed_tx_sql.encrypt(&cipher).unwrap();
         completed_tx_sql.update_encryption(&conn).unwrap();
-        let mut db_completed_tx = CompletedTransactionSql::find_by_cancelled(3.into(), false, &conn).unwrap();
+        let mut db_completed_tx = CompletedTransactionSql::find_by_cancelled(3u64.into(), false, &conn).unwrap();
         db_completed_tx.decrypt(&cipher).unwrap();
         let decrypted_completed_tx = CompletedTransaction::try_from(db_completed_tx).unwrap();
         assert_eq!(completed_tx, decrypted_completed_tx);

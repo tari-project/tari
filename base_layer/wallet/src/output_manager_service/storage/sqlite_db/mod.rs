@@ -864,7 +864,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
         }
 
         for output in &outputs {
-            if output.received_in_tx_id == Some(i64::from(tx_id)) {
+            if output.received_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                 info!(
                     target: LOG_TARGET,
                     "Cancelling pending inbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
@@ -879,7 +879,7 @@ impl OutputManagerBackend for OutputManagerSqliteDatabase {
                     },
                     &conn,
                 )?;
-            } else if output.spent_in_tx_id == Some(i64::from(tx_id)) {
+            } else if output.spent_in_tx_id == Some(tx_id.as_i64_wrapped()) {
                 info!(
                     target: LOG_TARGET,
                     "Cancelling pending outbound output with Commitment: {} - MMR Position: {:?} from TxId: {}",
@@ -1272,8 +1272,8 @@ impl From<UpdateOutput> for UpdateOutputSql {
             script_private_key: u.script_private_key,
             metadata_signature_nonce: u.metadata_signature_nonce,
             metadata_signature_u_key: u.metadata_signature_u_key,
-            received_in_tx_id: u.received_in_tx_id.map(|o| o.map(i64::from)),
-            spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(i64::from)),
+            received_in_tx_id: u.received_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
+            spent_in_tx_id: u.spent_in_tx_id.map(|o| o.map(TxId::as_i64_wrapped)),
             mined_in_block: u.mined_in_block,
         }
     }
@@ -1578,7 +1578,7 @@ mod test {
             .update(
                 UpdateOutput {
                     status: Some(OutputStatus::Unspent),
-                    received_in_tx_id: Some(Some(44.into())),
+                    received_in_tx_id: Some(Some(44u64.into())),
                     ..Default::default()
                 },
                 &conn,
@@ -1590,14 +1590,14 @@ mod test {
             .update(
                 UpdateOutput {
                     status: Some(OutputStatus::EncumberedToBeReceived),
-                    received_in_tx_id: Some(Some(44.into())),
+                    received_in_tx_id: Some(Some(44u64.into())),
                     ..Default::default()
                 },
                 &conn,
             )
             .unwrap();
 
-        let result = OutputSql::find_by_tx_id_and_encumbered(44.into(), &conn).unwrap();
+        let result = OutputSql::find_by_tx_id_and_encumbered(44u64.into(), &conn).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].spending_key, outputs[1].spending_key);
     }

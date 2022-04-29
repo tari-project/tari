@@ -807,54 +807,42 @@ mod test {
 
     #[test]
     fn test_errors() {
-        let stp = SenderTransactionProtocol {
+        let mut stp = SenderTransactionProtocol {
             state: SenderState::Failed(TransactionProtocolError::InvalidStateError),
         };
-        assert_eq!(
-            stp.clone().get_transaction(),
-            Err(TransactionProtocolError::InvalidStateError)
-        );
+        assert_eq!(stp.get_transaction(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(
             stp.clone().take_transaction(),
             Err(TransactionProtocolError::InvalidStateError)
         );
-        assert_eq!(stp.clone().check_tx_id(0.into()), false);
+        assert!(!stp.check_tx_id(0.into()));
+        assert_eq!(stp.get_tx_id(), Err(TransactionProtocolError::InvalidStateError));
+        assert_eq!(stp.get_total_amount(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(
-            stp.clone().get_tx_id(),
+            stp.get_amount_to_self(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.clone().get_total_amount(),
+            stp.get_change_amount(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.clone().get_amount_to_self(),
+            stp.get_change_unblinded_output(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.clone().get_change_amount(),
+            stp.get_change_output_metadata_signature(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.clone().get_change_unblinded_output(),
+            stp.get_change_sender_offset_public_key(),
             Err(TransactionProtocolError::InvalidStateError)
         );
         assert_eq!(
-            stp.clone().get_change_output_metadata_signature(),
+            stp.get_recipient_sender_offset_private_key(0),
             Err(TransactionProtocolError::InvalidStateError)
         );
-        assert_eq!(
-            stp.clone().get_change_sender_offset_public_key(),
-            Err(TransactionProtocolError::InvalidStateError)
-        );
-        assert_eq!(
-            stp.clone().get_recipient_sender_offset_private_key(0),
-            Err(TransactionProtocolError::InvalidStateError)
-        );
-        assert_eq!(
-            stp.clone().get_fee_amount(),
-            Err(TransactionProtocolError::InvalidStateError)
-        );
+        assert_eq!(stp.get_fee_amount(), Err(TransactionProtocolError::InvalidStateError));
         assert_eq!(
             stp.clone().build_single_round_message(),
             Err(TransactionProtocolError::InvalidStateError)
@@ -867,7 +855,7 @@ mod test {
             stp.clone().get_single_round_message(),
             Err(TransactionProtocolError::InvalidStateError)
         );
-        assert_eq!(stp.clone().sign(), Err(TransactionProtocolError::InvalidStateError));
+        assert_eq!(stp.sign(), Err(TransactionProtocolError::InvalidStateError));
     }
 
     #[test]

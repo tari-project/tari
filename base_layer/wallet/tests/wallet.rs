@@ -612,11 +612,8 @@ async fn test_store_and_forward_send_tx() {
 
     let events = collect_recv!(alice_events, take = 2, timeout = Duration::from_secs(10));
     for evt in events {
-        match &*evt {
-            TransactionEvent::TransactionSendResult(_, result) => {
-                assert!(result.store_and_forward_send_result);
-            },
-            _ => {},
+        if let TransactionEvent::TransactionSendResult(_, result) = &*evt {
+            assert!(result.store_and_forward_send_result);
         }
     }
 
@@ -643,9 +640,8 @@ async fn test_store_and_forward_send_tx() {
     loop {
         tokio::select! {
             event = carol_event_stream.recv() => {
-                match &*event.unwrap() {
-                    TransactionEvent::ReceivedTransaction(_) => tx_recv = true,
-                    _ => (),
+                if let TransactionEvent::ReceivedTransaction(_) = &*event.unwrap() {
+                    tx_recv = true;
                 }
                 if tx_recv {
                     break;

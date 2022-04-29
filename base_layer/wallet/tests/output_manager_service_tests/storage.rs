@@ -252,7 +252,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         None,
     ));
     let output_to_be_received = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
-    db.add_output_to_be_received(TxId::from(11), output_to_be_received.clone(), None)
+    db.add_output_to_be_received(TxId::from(11u64), output_to_be_received.clone(), None)
         .unwrap();
     pending_incoming_balance += output_to_be_received.unblinded_output.value;
 
@@ -352,7 +352,7 @@ pub async fn test_short_term_encumberance() {
         unspent_outputs.push(uo);
     }
 
-    db.encumber_outputs(1.into(), unspent_outputs[0..=2].to_vec(), vec![])
+    db.encumber_outputs(1u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
         .unwrap();
 
     let balance = db.get_balance(None).unwrap();
@@ -373,10 +373,10 @@ pub async fn test_short_term_encumberance() {
             .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value)
     );
 
-    db.encumber_outputs(2.into(), unspent_outputs[0..=2].to_vec(), vec![])
+    db.encumber_outputs(2u64.into(), unspent_outputs[0..=2].to_vec(), vec![])
         .unwrap();
 
-    db.confirm_encumbered_outputs(TxId::from(2)).unwrap();
+    db.confirm_encumbered_outputs(TxId::from(2u64)).unwrap();
     db.clear_short_term_encumberances().unwrap();
 
     let balance = db.get_balance(None).unwrap();
@@ -415,7 +415,7 @@ pub async fn test_no_duplicate_outputs() {
 
     // add a pending transaction with the same duplicate output
 
-    assert!(db.encumber_outputs(2.into(), vec![], vec![uo]).is_err());
+    assert!(db.encumber_outputs(2u64.into(), vec![], vec![uo]).is_err());
 
     // we should still only have 1 unspent output
     let outputs = db.fetch_mined_unspent_outputs().unwrap();

@@ -244,8 +244,8 @@ impl OutputSql {
         Ok(outputs::table
             .filter(
                 outputs::received_in_tx_id
-                    .eq(i64::from(tx_id))
-                    .or(outputs::spent_in_tx_id.eq(i64::from(tx_id))),
+                    .eq(tx_id.as_i64_wrapped())
+                    .or(outputs::spent_in_tx_id.eq(tx_id.as_i64_wrapped())),
             )
             .load(conn)?)
     }

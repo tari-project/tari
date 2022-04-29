@@ -132,6 +132,8 @@ impl ChunkedResponseIter {
 
     fn exceeded_message_size(&self) -> proto::rpc::RpcResponse {
         const BYTES_PER_MB: f32 = 1024.0 * 1024.0;
+        // Precision loss is acceptable because this is for display purposes only
+        #[allow(clippy::cast_precision_loss)]
         let msg = format!(
             "The response size exceeded the maximum allowed payload size. Max = {:.4} MiB, Got = {:.4} MiB",
             rpc::max_response_payload_size() as f32 / BYTES_PER_MB,

@@ -85,7 +85,6 @@ where
     }
 
     /// Return the number of nodes in the full Merkle Mountain range, excluding bagged hashes
-    #[inline(always)]
     pub fn len(&self) -> Result<usize, MerkleMountainRangeError> {
         self.hashes
             .len()

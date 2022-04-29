@@ -40,6 +40,22 @@ impl TxId {
     pub fn as_u64(self) -> u64 {
         self.0
     }
+
+    /// Returns a cast to i64. This number may be negative.
+    /// Although this is usually a bad idea, in this case TxId is never used in calculations and
+    /// the data within TxId is not lost when converting to i64.
+    ///
+    /// Use this function to say explicitly that this is acceptable.
+    ///
+    /// ```rust
+    /// let a = u64::MAX;
+    /// let b = a as i64; // -1
+    /// assert_eq!(a, b as u64);
+    /// ```
+    #[allow(clippy::cast_possible_wrap)]
+    pub fn as_i64_wrapped(self) -> i64 {
+        self.0 as i64
+    }
 }
 
 impl Hash for TxId {
@@ -80,21 +96,9 @@ impl From<usize> for TxId {
     }
 }
 
-impl From<i32> for TxId {
-    fn from(s: i32) -> Self {
-        Self(s as u64)
-    }
-}
-
 impl From<TxId> for u64 {
     fn from(s: TxId) -> Self {
         s.0
-    }
-}
-
-impl From<TxId> for i64 {
-    fn from(s: TxId) -> Self {
-        s.0 as i64
     }
 }
 
