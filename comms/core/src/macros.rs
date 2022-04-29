@@ -66,6 +66,7 @@ macro_rules! setter_mut {
     };
 }
 
+/// Internal macro used to recover locks
 macro_rules! recover_lock {
     ($e:expr) => {
         match $e {
@@ -78,6 +79,8 @@ macro_rules! recover_lock {
     };
 }
 
+/// Used to acquire a lock from a sync resource. If that resource is poisoned, the lock
+/// returned contains the state prior to it being poisoned.
 macro_rules! acquire_lock {
     ($e:expr, $m:ident) => {
         recover_lock!($e.$m())
@@ -87,12 +90,16 @@ macro_rules! acquire_lock {
     };
 }
 
+/// Acquires a read lock from a RwLock. If the lock is poisoned, the returned lock contains
+/// the state prior to it being poisoned. This provides semantics similar to a DB transaction.
 macro_rules! acquire_read_lock {
     ($e:expr) => {
         acquire_lock!($e, read)
     };
 }
 
+/// Acquires an exclusive write lock from a RwLock. If the lock is poisoned, the returned lock contains
+/// the state prior to it being poisoned. This provides semantics similar to a DB transaction.
 macro_rules! acquire_write_lock {
     ($e:expr) => {
         acquire_lock!($e, write)
@@ -164,6 +171,7 @@ macro_rules! cfg_test {
     }
 }
 
+/// Generates an `is_xx` function for an enum variant.
 macro_rules! is_fn {
     (
         $(#[$outer:meta])*
@@ -184,6 +192,7 @@ macro_rules! is_fn {
     };
 }
 
+/// Includes code from the OUT_DIR
 #[macro_export]
 macro_rules! outdir_include {
     ($name: expr) => {

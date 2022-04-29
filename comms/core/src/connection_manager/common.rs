@@ -42,7 +42,8 @@ const LOG_TARGET: &str = "comms::connection_manager::common";
 /// The maximum size of the peer's user agent string. If the peer sends a longer string it is truncated.
 const MAX_USER_AGENT_LEN: usize = 100;
 
-pub async fn perform_identity_exchange<
+/// Performs the identity exchange protocol on the given socket.
+pub(super) async fn perform_identity_exchange<
     'p,
     P: IntoIterator<Item = &'p ProtocolId>,
     TSocket: AsyncRead + AsyncWrite + Unpin,
@@ -68,7 +69,7 @@ pub async fn perform_identity_exchange<
 ///
 /// If the `allow_test_addrs` parameter is true, loopback, local link and other addresses normally not considered valid
 /// for p2p comms will be accepted.
-pub async fn validate_and_add_peer_from_peer_identity(
+pub(super) async fn validate_and_add_peer_from_peer_identity(
     peer_manager: &PeerManager,
     known_peer: Option<Peer>,
     authenticated_public_key: CommsPublicKey,
@@ -171,7 +172,7 @@ fn add_valid_identity_signature_to_peer(
     Ok(())
 }
 
-pub async fn find_unbanned_peer(
+pub(super) async fn find_unbanned_peer(
     peer_manager: &PeerManager,
     authenticated_public_key: &CommsPublicKey,
 ) -> Result<Option<Peer>, ConnectionManagerError> {
@@ -182,6 +183,8 @@ pub async fn find_unbanned_peer(
     }
 }
 
+/// Checks that the given peer addresses are well-formed and valid. If allow_test_addrs is false, all localhost and
+/// memory addresses will be rejected.
 pub fn validate_peer_addresses<'a, A: IntoIterator<Item = &'a Multiaddr>>(
     addresses: A,
     allow_test_addrs: bool,

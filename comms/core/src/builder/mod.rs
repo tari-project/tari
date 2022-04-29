@@ -20,12 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-//! # CommsBuilder
-//!
-//! The [CommsBuilder] provides a simple builder API for getting Tari comms p2p messaging up and running.
-//!
-//! [CommsBuilder]: ./builder/struct.CommsBuilder.html
-
 mod comms_node;
 pub use comms_node::{CommsNode, UnspawnedCommsNode};
 
@@ -41,13 +35,13 @@ mod placeholder;
 #[cfg(test)]
 mod tests;
 
-use std::{fs::File, sync::Arc};
+use std::{fs::File, sync::Arc, time::Duration};
 
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::{
-    backoff::{Backoff, BoxedBackoff, ExponentialBackoff},
+    backoff::{Backoff, BoxedBackoff, ConstantBackoff},
     connection_manager::{ConnectionManagerConfig, ConnectionManagerRequester},
     connectivity::{ConnectivityConfig, ConnectivityRequester},
     multiaddr::Multiaddr,
@@ -57,7 +51,70 @@ use crate::{
     types::CommsDatabase,
 };
 
-/// The `CommsBuilder` provides a simple builder API for getting Tari comms p2p messaging up and running.
+/// # CommsBuilder
+///
+/// [CommsBuilder] is used to customize and spawn Tari comms core.
+///
+/// The following example will get a node customized for your own network up and running.
+///
+/// ```rust
+/// # use std::{sync::Arc, time::Duration};
+/// # use rand::rngs::OsRng;
+/// # use tari_shutdown::Shutdown;
+/// # use tari_comms::{
+/// #     {CommsBuilder, NodeIdentity},
+/// #    peer_manager::{PeerStorage, PeerFeatures},
+/// #    transports::TcpTransport,
+/// # };
+/// use tari_storage::{
+///     lmdb_store::{LMDBBuilder, LMDBConfig},
+///     LMDBWrapper,
+/// };
+///
+/// # #[tokio::main]
+/// # async fn main() {
+/// let node_identity = Arc::new(NodeIdentity::random(
+///     &mut OsRng,
+///     "/dns4/basenodezforhire.com/tcp/18000".parse().unwrap(),
+///     PeerFeatures::COMMUNICATION_NODE,
+/// ));
+/// node_identity.sign();
+/// let mut shutdown = Shutdown::new();
+/// let datastore = LMDBBuilder::new()
+///     .set_path("/tmp")
+///     .set_env_config(LMDBConfig::default())
+///     .set_max_number_of_databases(1)
+///     .add_database("peers", lmdb_zero::db::CREATE)
+///     .build()
+///     .unwrap();
+///
+/// let peer_database = datastore.get_handle("peers").unwrap();
+/// let peer_database = LMDBWrapper::new(Arc::new(peer_database));
+///
+/// let unspawned_node = CommsBuilder::new()
+///   // .with_listener_address("/ip4/0.0.0.0/tcp/18000".parse().unwrap())
+///   .with_node_identity(node_identity)
+///   .with_peer_storage(peer_database, None)
+///   .with_shutdown_signal(shutdown.to_signal())
+///   .build()
+///   .unwrap();
+/// // This is your chance to add customizations that may require comms components for e.g. PeerManager.
+/// // let my_peer = Peer::new(...);
+/// // unspawned_node.peer_manager().add_peer(my_peer.clone());
+/// // Add custom extensions implementing `ProtocolExtension`
+/// // unspawned_node = unspawned_node.add_protocol_extension(MyCustomProtocol::new(unspawned_node.peer_manager()));
+///
+/// let transport = TcpTransport::new();
+/// let node = unspawned_node.spawn_with_transport(transport).await.unwrap();
+/// // Node is alive for 2 seconds
+/// tokio::time::sleep(Duration::from_secs(2)).await;
+/// shutdown.trigger();
+/// node.wait_until_shutdown().await;
+/// // let peer_conn = node.connectivity().dial_peer(my_peer.node_id).await.unwrap();
+/// # }
+/// ```
+///
+/// [CommsBuilder]: crate::CommsBuilder
 pub struct CommsBuilder {
     peer_storage: Option<CommsDatabase>,
     peer_storage_file_lock: Option<File>,
@@ -76,7 +133,7 @@ impl Default for CommsBuilder {
             peer_storage: None,
             peer_storage_file_lock: None,
             node_identity: None,
-            dial_backoff: Box::new(ExponentialBackoff::default()),
+            dial_backoff: Box::new(ConstantBackoff::new(Duration::from_millis(500))),
             hidden_service_ctl: None,
             connection_manager_config: ConnectionManagerConfig::default(),
             connectivity_config: ConnectivityConfig::default(),
@@ -141,21 +198,26 @@ impl CommsBuilder {
         self
     }
 
+    /// Sets the address that the transport will listen on. The address must be compatible with the transport.
     pub fn with_listener_address(mut self, listener_address: Multiaddr) -> Self {
         self.connection_manager_config.listener_address = listener_address;
         self
     }
 
+    /// Sets an auxiliary TCP listener address that can accept peer connections. This is optional.
     pub fn with_auxiliary_tcp_listener_address(mut self, listener_address: Multiaddr) -> Self {
         self.connection_manager_config.auxiliary_tcp_listener_address = Some(listener_address);
         self
     }
 
+    /// Sets the maximum allowed liveness sessions. Liveness is typically used by tools like docker or kubernetes to
+    /// detect that the node is live. Defaults to 0 (disabled)
     pub fn with_listener_liveness_max_sessions(mut self, max_sessions: usize) -> Self {
         self.connection_manager_config.liveness_max_sessions = max_sessions;
         self
     }
 
+    /// Restrict liveness sessions to certain address ranges (CIDR format).
     pub fn with_listener_liveness_allowlist_cidrs(mut self, cidrs: Vec<cidr::AnyIpCidr>) -> Self {
         self.connection_manager_config.liveness_cidr_allowlist = cidrs;
         self
@@ -194,8 +256,8 @@ impl CommsBuilder {
         self
     }
 
-    /// Set the backoff that [ConnectionManager] uses when dialing peers. This is optional. If omitted the default
-    /// ExponentialBackoff is used. [ConnectionManager]: crate::connection_manager::next::ConnectionManager
+    /// Set the backoff to use when a dial to a remote peer fails. This is optional. If omitted the default
+    /// [ConstantBackoff](crate::backoff::ConstantBackoff) of 500ms is used.
     pub fn with_dial_backoff<T>(mut self, backoff: T) -> Self
     where T: Backoff + Send + Sync + 'static {
         self.dial_backoff = Box::new(backoff);
