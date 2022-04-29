@@ -29,7 +29,6 @@ const PasswordBox = ({
     event.preventDefault()
 
     onSubmit(password)
-    setPassword('')
   }
 
   const disableSubmit = pending || password.length < MINIMAL_PASSWORD_LENGTH
