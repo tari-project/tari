@@ -26,7 +26,7 @@ use tari_script::ScriptError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
 use crate::error::WalletStorageError;
-
+/// Error enum for the [KeyManagerService]
 #[derive(Debug, thiserror::Error)]
 pub enum KeyManagerServiceError {
     #[error("Branch does not exist")]
@@ -42,7 +42,7 @@ pub enum KeyManagerServiceError {
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
 }
-
+/// Error enum for the [KeyManagerStorage]
 #[derive(Debug, thiserror::Error)]
 pub enum KeyManagerStorageError {
     #[error("Value not found")]

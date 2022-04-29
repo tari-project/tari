@@ -30,3 +30,23 @@ impl Filter for IdentityFilter {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        covenant,
+        covenants::{filters::test::setup_filter_test, test::create_input},
+    };
+
+    #[test]
+    fn it_returns_the_outputset_unchanged() {
+        let covenant = covenant!(identity());
+        let input = create_input();
+        let (mut context, outputs) = setup_filter_test(&covenant, &input, 0, |_| {});
+        let mut output_set = OutputSet::new(&outputs);
+        let previous_len = output_set.len();
+        IdentityFilter.filter(&mut context, &mut output_set).unwrap();
+        assert_eq!(output_set.len(), previous_len);
+    }
+}

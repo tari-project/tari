@@ -24,14 +24,15 @@ use aes_gcm::Aes256Gcm;
 use crate::key_manager_service::{error::KeyManagerStorageError, storage::database::KeyManagerState};
 
 /// This trait defines the required behaviour that a storage backend must provide for the Key Manager service.
-/// Data is passed to and from the backend via the [DbKey], [DbValue], and [DbValueKey] enums. If new data types are
-/// required to be supported by the backends then these enums can be updated to reflect this requirement and the trait
-/// will remain the same
 pub trait KeyManagerBackend: Send + Sync + Clone {
+    /// This will retrieve the key manager specified by the branch string, None is returned if the key manager is not
+    /// found for the branch.
     fn get_key_manager(&self, branch: String) -> Result<Option<KeyManagerState>, KeyManagerStorageError>;
+    /// This will add an additional branch for the key manager to track.
     fn add_key_manager(&self, key_manager: KeyManagerState) -> Result<(), KeyManagerStorageError>;
+    /// This will increase the key index of the specified branch, and returns an error if the branch does not exist.
     fn increment_key_index(&self, branch: String) -> Result<(), KeyManagerStorageError>;
-    /// This method will set the currently stored key index for the key manager
+    /// This method will set the currently stored key index for the key manager.
     fn set_key_index(&self, branch: String, index: u64) -> Result<(), KeyManagerStorageError>;
     /// Apply encryption to the backend.
     fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerStorageError>;
