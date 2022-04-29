@@ -69,7 +69,7 @@ impl DhtDatabase {
     }
 
     /// Set the raw bytes for the given key
-    fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
+    pub fn set_metadata_value_bytes(&self, key: DhtMetadataKey, value: Vec<u8>) -> Result<(), StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         diesel::replace_into(dht_metadata::table)
             .values(NewDhtMetadataEntry {
