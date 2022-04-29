@@ -50,7 +50,7 @@ impl DhtDatabase {
     }
 
     /// Get the raw bytes for the given key, or None if that value has not been set.
-    fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
+    pub fn get_metadata_value_bytes(&self, key: DhtMetadataKey) -> Result<Option<Vec<u8>>, StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         dht_metadata::table
             .filter(dht_metadata::key.eq(key.to_string()))
