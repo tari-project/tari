@@ -35,7 +35,11 @@ use crate::key_manager_service::{
     KeyManagerInner,
     KeyManagerInterface,
 };
-
+/// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
+/// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
+/// for each branch.
+///
+/// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
 pub struct KeyManagerHandle<TBackend> {
     key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,
@@ -44,6 +48,9 @@ pub struct KeyManagerHandle<TBackend> {
 impl<TBackend> KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
+    /// Creates a new key manager.
+    /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
+    /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
     pub fn new(master_seed: CipherSeed, db: KeyManagerDatabase<TBackend>) -> Self {
         KeyManagerHandle {
             key_manager_inner: Arc::new(RwLock::new(KeyManagerInner::new(master_seed, db))),
