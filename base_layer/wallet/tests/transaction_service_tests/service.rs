@@ -546,7 +546,7 @@ fn manage_single_transaction() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value,
-            MicroTari::from(20),
+            MicroTari::from(4),
             "".to_string()
         ))
         .is_err());
@@ -557,7 +557,7 @@ fn manage_single_transaction() {
         .block_on(alice_ts.send_transaction(
             bob_node_identity.public_key().clone(),
             value,
-            MicroTari::from(20),
+            MicroTari::from(4),
             message,
         ))
         .expect("Alice sending tx");
