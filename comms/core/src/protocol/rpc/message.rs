@@ -119,6 +119,7 @@ impl<T> BaseRequest<T> {
         Self { method, message }
     }
 
+    #[allow(dead_code)]
     pub fn method(&self) -> RpcMethod {
         self.method
     }
@@ -127,13 +128,14 @@ impl<T> BaseRequest<T> {
         self.message
     }
 
-    pub fn map<F, U>(self, mut f: F) -> BaseRequest<U>
-    where F: FnMut(T) -> U {
-        BaseRequest {
-            method: self.method,
-            message: f(self.message),
-        }
-    }
+    // #[allow(dead_code)]
+    // pub fn map<F, U>(self, mut f: F) -> BaseRequest<U>
+    // where F: FnMut(T) -> U {
+    //     BaseRequest {
+    //         method: self.method,
+    //         message: f(self.message),
+    //     }
+    // }
 
     pub fn get_ref(&self) -> &T {
         &self.message

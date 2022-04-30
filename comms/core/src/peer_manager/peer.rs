@@ -49,16 +49,11 @@ use crate::{
 };
 
 bitflags! {
+    /// Miscellaneous Peer flags
     #[derive(Default, Deserialize, Serialize)]
     pub struct PeerFlags: u8 {
         const NONE = 0x00;
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerIdentity {
-    pub node_id: NodeId,
-    pub public_key: CommsPublicKey,
 }
 
 /// A Peer represents a communication peer that is identified by a Public Key and NodeId. The Peer struct maintains a

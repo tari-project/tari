@@ -323,8 +323,6 @@ async fn configure_comms_and_dht(
     }
 
     // Hook up DHT messaging middlewares
-    // TODO: messaging events should be optional
-    let (messaging_events_sender, _) = broadcast::channel(1);
     let messaging_pipeline = pipeline::Builder::new()
         .outbound_buffer_size(config.outbound_buffer_size)
         .with_outbound_pipeline(outbound_rx, |sink| {
@@ -339,6 +337,8 @@ async fn configure_comms_and_dht(
         )
         .build();
 
+    // TODO: messaging events should be optional
+    let (messaging_events_sender, _) = broadcast::channel(1);
     comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
         messaging_events_sender,
         messaging_pipeline,

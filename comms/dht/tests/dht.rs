@@ -892,7 +892,7 @@ async fn dht_repropagate() {
             .unwrap();
     }
 
-    // This relies on the DHT being set with .with_dedup_discard_hit_count(3)
+    // This relies on the DHT being set with dedup_allowed_message_occurrences = 3
     receive_and_repropagate(&mut node_B, &out_msg).await;
     receive_and_repropagate(&mut node_C, &out_msg).await;
     receive_and_repropagate(&mut node_A, &out_msg).await;

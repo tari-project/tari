@@ -24,6 +24,7 @@ use std::cmp;
 
 use rand::{rngs::OsRng, RngCore};
 
+/// Trait that exposes conversion to a protobuf i32 enum type.
 pub trait ToProtoEnum {
     fn as_i32(&self) -> i32;
 }
@@ -34,6 +35,7 @@ impl ToProtoEnum for i32 {
     }
 }
 
+/// Domain message to be sent to another peer.
 #[derive(Debug, Clone)]
 pub struct OutboundDomainMessage<T> {
     inner: T,
@@ -41,6 +43,7 @@ pub struct OutboundDomainMessage<T> {
 }
 
 impl<T> OutboundDomainMessage<T> {
+    /// Create a new outbound domain message
     pub fn new<M: ToProtoEnum>(message_type: &M, message: T) -> Self {
         Self {
             inner: message,
@@ -48,15 +51,18 @@ impl<T> OutboundDomainMessage<T> {
         }
     }
 
+    /// Consumes this instance returning the inner message.
     pub fn into_inner(self) -> T {
         self.inner
     }
 
-    pub fn to_propagation_header(&self) -> MessageHeader {
+    /// Returns a propagation message header
+    pub(crate) fn to_propagation_header(&self) -> MessageHeader {
         MessageHeader::for_propagation(self.message_type)
     }
 
-    pub fn to_header(&self) -> MessageHeader {
+    /// Creates a MessageHeader for this outbound message
+    pub(crate) fn to_header(&self) -> MessageHeader {
         MessageHeader::new(self.message_type)
     }
 }
@@ -64,6 +70,7 @@ impl<T> OutboundDomainMessage<T> {
 pub use crate::proto::message_header::MessageHeader;
 
 impl MessageHeader {
+    /// Creates a new message header with the given message type and random nonce.
     pub fn new(message_type: i32) -> Self {
         Self {
             message_type,
@@ -73,7 +80,8 @@ impl MessageHeader {
         }
     }
 
-    pub fn for_propagation(message_type: i32) -> Self {
+    /// Creates a new message header with the given message type and a fixed nonce.
+    pub(crate) fn for_propagation(message_type: i32) -> Self {
         const PROPAGATION_NONCE: u64 = 0;
         Self {
             message_type,

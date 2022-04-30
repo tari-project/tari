@@ -46,6 +46,7 @@ pub struct IdentitySignature {
 }
 
 impl IdentitySignature {
+    /// The latest version of the Identity Signature.
     pub const LATEST_VERSION: u8 = 0;
 
     pub fn new(version: u8, signature: Signature, updated_at: DateTime<Utc>) -> Self {

@@ -271,15 +271,18 @@ pub enum NodeDestination {
 }
 
 impl NodeDestination {
-    pub fn to_inner_bytes(&self) -> Vec<u8> {
+    /// Returns the slice of bytes of the `CommsPublicKey` or `NodeId`. Returns an empty slice if the destination is
+    /// `Unknown`.
+    pub fn as_inner_bytes(&self) -> &[u8] {
         use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
-            Unknown => Vec::default(),
-            PublicKey(pk) => pk.to_vec(),
-            NodeId(node_id) => node_id.to_vec(),
+            Unknown => &[],
+            PublicKey(pk) => pk.as_bytes(),
+            NodeId(node_id) => node_id.as_bytes(),
         }
     }
 
+    /// Returns a reference to the `CommsPublicKey` if the destination is `CommsPublicKey`.
     pub fn public_key(&self) -> Option<&CommsPublicKey> {
         use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
@@ -289,6 +292,7 @@ impl NodeDestination {
         }
     }
 
+    /// Returns a reference to the `NodeId` if the destination is `NodeId`.
     pub fn node_id(&self) -> Option<&NodeId> {
         use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
@@ -298,16 +302,20 @@ impl NodeDestination {
         }
     }
 
+    /// Returns the NodeId for this destination, deriving it from the PublicKey if necessary or returning None if the
+    /// destination is `Unknown`.
     pub fn to_derived_node_id(&self) -> Option<NodeId> {
         self.node_id()
             .cloned()
             .or_else(|| self.public_key().map(NodeId::from_public_key))
     }
 
+    /// Returns true if the destination is `Unknown`, otherwise false.
     pub fn is_unknown(&self) -> bool {
         matches!(self, NodeDestination::Unknown)
     }
 
+    /// Returns true if the NodeIdentity NodeId or PublicKey is equal to this destination.
     #[inline]
     pub fn equals_node_identity(&self, other: &NodeIdentity) -> bool {
         self == other.node_id() || self == other.public_key()

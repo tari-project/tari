@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Stores messages for a limited time for other offline peers to request later.
+
 type SafResult<T> = Result<T, StoreAndForwardError>;
 
 mod service;
@@ -33,9 +35,6 @@ pub use error::StoreAndForwardError;
 
 mod config;
 pub use config::SafConfig;
-
-mod forward;
-pub use forward::ForwardLayer;
 
 mod message;
 
