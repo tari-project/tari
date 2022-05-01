@@ -1,15 +1,5 @@
-import { ReactNode } from 'react'
+import { InputProps } from '../Input/types'
 
-export type TextInputTypes = 'static' | 'disabled'
-
-export interface TextInputProps {
-  type?: TextInputTypes
-  value?: string
+export interface TextInputProps extends Omit<InputProps, 'type'> {
   hideText?: boolean
-  placeholder?: string
-  inputIcon?: ReactNode
-  inputUnits?: string
-  onIconClick?: () => void
-  onChangeText?: (value: string) => void
-  testId?: string
 }
