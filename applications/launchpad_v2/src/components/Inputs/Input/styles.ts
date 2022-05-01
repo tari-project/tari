@@ -4,26 +4,23 @@ import Text from '../../Text'
 
 export const StyledInput = styled.input<{
   type?: string
+  disabled?: boolean
   value?: string
-  hideText?: boolean
 }>`
   height: 100%;
   width: 100%;
   padding: 0px 16px;
   font-family: 'AvenirMedium';
   font-size: 14px;
-  color: ${({ theme, type, value, hideText }) => {
-    if (type === 'disabled') {
+  color: ${({ theme, disabled }) => {
+    if (disabled) {
       return theme.placeholderText
-      // TODO: pre-filled input requires secondary text color
-    } else if (hideText && value && value !== '') {
-      return 'transparent'
     } else {
       return theme.primary
     }
   }};
-  background-color: ${({ theme, type }) =>
-    type === 'disabled' ? theme.backgroundImage : theme.background};
+  background-color: ${({ theme, disabled }) =>
+    disabled ? theme.backgroundImage : theme.background};
   border: none;
   border-radius: 8px;
   ::placeholder {
@@ -31,29 +28,22 @@ export const StyledInput = styled.input<{
   }
   &:focus {
     outline: none;
-    color: ${({ theme, hideText, value }) => {
-      if (hideText && value && value !== '') {
-        return 'transparent'
-      } else {
-        return theme.primary
-      }
+    color: ${({ theme }) => {
+      return theme.primary
     }};
   }
 `
 
-export const InputContainer = styled.div<{ type?: string }>`
+export const InputContainer = styled.div<{ disabled?: boolean }>`
   height: 42px;
   width: 369px;
   display: flex;
   align-items: center;
-  background-color: ${({ theme, type }) =>
-    type === 'disabled' ? theme.backgroundImage : theme.background};
+  background-color: ${({ theme, disabled }) =>
+    disabled ? theme.backgroundImage : theme.background};
   border: 1px solid;
   border-color: ${({ theme }) => theme.borderColor};
   border-radius: 8px;
-  /* @TODO: "highlighted vs. active input states from designs to be looked at again" */
-  /* box-shadow: 0px 0px 0px 2px
-    ${({ type }) => (type === 'highlighted' ? '#F5EBFF' : 'transparent')}; */
   font-family: 'AvenirMedium';
   :focus-within {
     outline: none;
