@@ -156,7 +156,7 @@ matches the public key in `granted_to` and also checks that the `amount` paramet
 validator node checks that the scope includes 'transfer' and that Alice's public key is set in `from`.
 
 ### Example 2: Delegation
-Let's continue the example, but in this case Bob wants to allow Carol to spend the funds, so long as Carol pays him a fee.
+Let's continue the example, but in this case Bob wants to allow Carol to spend the funds.
 
 In this case, Bob creates a token for Carol with the following:
 
@@ -166,8 +166,7 @@ In this case, Bob creates a token for Carol with the following:
    "scopes": ["transfer"],
    "granted_to": "<Carol's Public Key",
    "caveats": [
-      "amount le 90",
-      "amount eq 10 and to eq <Bob's Public Key>"
+      "amount le 90"
    ],
    "issuer": "<Bob's Public Key>",
    "issuer_sig": "<sig>",
@@ -177,7 +176,6 @@ In this case, Bob creates a token for Carol with the following:
 }
 ```
 
-> TODO: How to validate multiple caveats
 
 Carol can now create a set of instructions, attach the token and sign it with her public key.
 
