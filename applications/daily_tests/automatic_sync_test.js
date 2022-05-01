@@ -7,7 +7,7 @@ const path = require("path");
 const helpers = require("./helpers");
 const BaseNodeProcess = require("integration_tests/helpers/baseNodeProcess");
 
-const NETWORK = "DIBBLER";
+const NETWORK = "dibbler";
 
 const SyncType = {
   Archival: "Archival",
@@ -59,12 +59,14 @@ async function run(options) {
   const baseNode = new BaseNodeProcess("compile", true);
   await baseNode.init();
 
-  // Bypass tor for outbound TCP (faster but less private)
-  process.env[`TARI_BASE_NODE__${NETWORK}__TOR_PROXY_BYPASS_FOR_OUTBOUND_TCP`] =
-    "true";
+  let config = {
+    // Bypass tor for outbound TCP (faster but less private)
+    [`${NETWORK}.base_node.p2p.transport.tor.proxy_bypass_for_outbound_tcp`]: true,
+  };
+
   // Set pruning horizon in config file if `pruned` command line arg is present
   if (options.syncType === SyncType.Pruned) {
-    process.env[`TARI_BASE_NODE__${NETWORK}__PRUNING_HORIZON`] = 20;
+    config[`${NETWORK}.base_node.storage.pruning_horizon`] = 20;
   }
 
   if (options.forceSyncPeer) {
@@ -73,11 +75,10 @@ async function run(options) {
       forcedSyncPeersStr = options.forceSyncPeer.join(",");
     }
     console.log(`Force sync peer set to ${forcedSyncPeersStr}`);
-    process.env[`TARI_BASE_NODE__${NETWORK}__FORCE_SYNC_PEERS`] =
-      forcedSyncPeersStr;
+    config[`${NETWORK}.base_node.force_sync_peers`] = forcedSyncPeersStr;
   }
 
-  await baseNode.start();
+  await baseNode.start({ network: NETWORK, config });
 
   await fs.mkdir(path.dirname(options.log), { recursive: true });
   let logfile = await fs.open(options.log, "w+");
