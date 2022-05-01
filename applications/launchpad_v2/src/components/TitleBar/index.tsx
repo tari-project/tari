@@ -190,7 +190,11 @@ const TitleBar = ({ drawerViewWidth = '50%', openSettings }: TitleBarProps) => {
           boxSizing: 'border-box',
         }}
       >
-        <Button variant='text' leftIcon={<SvgSetting />} onClick={openSettings}>
+        <Button
+          variant='text'
+          leftIcon={<SvgSetting width='16px' height='16px' />}
+          onClick={openSettings}
+        >
           {t.common.nouns.settings}
         </Button>
         <Switch

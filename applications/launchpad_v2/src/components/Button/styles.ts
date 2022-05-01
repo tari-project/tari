@@ -21,7 +21,8 @@ export const StyledButton = styled.button<
   display: flex;
   position: relative;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: center;
+  column-gap: 0.25em;
   margin: 0;
   border-radius: ${({ theme }) => theme.tightBorderRadius()};
   border: ${({ disabled, theme, variant }) => {
@@ -89,8 +90,10 @@ export const StyledLink = styled.a<Pick<ButtonProps, 'variant'>>`
 
 export const ButtonText = styled.span``
 
-export const IconWrapper = styled.span``
+export const IconWrapper = styled.span`
+  display: inline-flex;
+`
 
 export const LoadingIconWrapper = styled.span`
-  margin-left: 0.25em;
+  display: inline-flex;
 `
