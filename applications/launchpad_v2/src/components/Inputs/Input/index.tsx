@@ -58,7 +58,10 @@ const Input = ({
       />
       <IconUnitsContainer>
         {inputIcon && (
-          <IconWrapper onClick={onIconClick} data-testid='icon-test'>
+          <IconWrapper
+            onClick={disabled ? undefined : onIconClick}
+            data-testid='icon-test'
+          >
             {inputIcon}
           </IconWrapper>
         )}{' '}

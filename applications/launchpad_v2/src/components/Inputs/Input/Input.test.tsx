@@ -71,4 +71,17 @@ describe('Input', () => {
     const el = screen.getByTestId('input-cmp')
     expect(el).toHaveStyle(`color: ${disabledStyle}`)
   })
+
+  it('should not call icon click handler when disabled', () => {
+    const onIconClick = jest.fn()
+    render(
+      <ThemeProvider theme={themes.light}>
+        <Input disabled onIconClick={onIconClick} inputIcon={<SvgCopy />} />
+      </ThemeProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('icon-test'))
+
+    expect(onIconClick).not.toHaveBeenCalled()
+  })
 })
