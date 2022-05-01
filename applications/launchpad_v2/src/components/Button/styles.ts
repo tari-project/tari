@@ -8,7 +8,7 @@ const getButtonBackgroundColor = ({
   variant,
   theme,
 }: Pick<ButtonProps, 'variant' | 'disabled'> & { theme: DefaultTheme }) => {
-  if (disabled) {
+  if (disabled || variant === 'secondary') {
     return theme.backgroundImage
   }
 
@@ -37,6 +37,10 @@ export const StyledButton = styled.button<
       })}`
     }
 
+    if (variant === 'secondary') {
+      return `1px solid ${theme.borderColor}`
+    }
+
     return `1px solid ${theme.accent}`
   }};
   box-shadow: none;
@@ -47,6 +51,10 @@ export const StyledButton = styled.button<
   color: ${({ disabled, variant, theme }) => {
     if (disabled) {
       return theme.disabledText
+    }
+
+    if (variant === 'secondary') {
+      return theme.primary
     }
 
     return variant === 'text' ? theme.secondary : theme.inverted.primary
@@ -61,6 +69,10 @@ export const StyledButton = styled.button<
     background: ${({ disabled, variant, theme }) => {
       if (disabled || variant === 'text') {
         return 'auto'
+      }
+
+      if (variant === 'secondary') {
+        return theme.backgroundSecondary
       }
 
       return theme.accent
