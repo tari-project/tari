@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react'
+import { useState, ReactNode, ChangeEvent } from 'react'
 import styled from 'styled-components'
 
 import Modal from '../../components/Modal'
@@ -27,7 +27,7 @@ const Sidebar = styled.aside`
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  row-gap: ${({ theme }) => theme.spacing()};
+  row-gap: ${({ theme }) => theme.spacing(0.75)};
   align-items: flex-end;
 `
 
@@ -57,6 +57,7 @@ const MenuItem = styled.button<{ active?: boolean }>`
 const Footer = styled.footer`
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   padding: ${({ theme }) => theme.spacingVertical()}
     ${({ theme }) => theme.spacingHorizontal()};
   column-gap: ${({ theme }) => theme.spacing()};
@@ -75,10 +76,23 @@ const MainContent = styled.main`
   }
 `
 
-const WalletSettings = ({ onClose }: { onClose: () => void }) => {
+const WalletSettings = ({
+  onClose,
+  onSettingsChanged,
+}: {
+  onClose: () => void
+  onSettingsChanged: (changed: boolean) => void
+}) => {
+  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target
+
+    onSettingsChanged(checked)
+  }
+
   return (
     <>
       <p>wallet settings</p>
+      <input type='checkbox' onChange={onChange} /> changed settings
       <button onClick={onClose}>close</button>
     </>
   )
@@ -88,6 +102,7 @@ const renderSettings = (
   settings: Settings,
   props: {
     onClose: () => void
+    onSettingsChanged: (changed: boolean) => void
   },
 ): ReactNode => {
   if (settings === Settings.Wallet) {
@@ -105,6 +120,7 @@ const SettingsContainer = ({
   onClose: () => void
 }) => {
   const [activeSettings, openSettings] = useState(Settings.Wallet)
+  const [settingsChanged, setSettingsChanged] = useState(false)
 
   return (
     <Modal open={open} onClose={onClose}>
@@ -134,12 +150,15 @@ const SettingsContainer = ({
           <MainContent>
             {renderSettings(activeSettings, {
               onClose,
+              onSettingsChanged: setSettingsChanged,
             })}
           </MainContent>
         </MainContentContainer>
         <Footer>
-          <Button>Cancel</Button>
-          <Button>Save changes</Button>
+          <Button variant='secondary' onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={!settingsChanged}>Save changes</Button>
         </Footer>
       </MainContainer>
     </Modal>
