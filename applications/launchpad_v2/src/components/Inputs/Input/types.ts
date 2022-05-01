@@ -11,4 +11,5 @@ export interface InputProps {
   onChange?: (value: string) => void
   testId?: string
   style?: CSSProperties
+  containerStyle?: CSSProperties
 }

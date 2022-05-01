@@ -60,8 +60,9 @@ export const IconUnitsContainer = styled.div`
   margin-right: 10px;
 `
 
-export const IconWrapper = styled.div`
+export const IconWrapper = styled.div<{ onClick?: () => void }>`
   display: flex;
+  cursor: ${({ onClick }) => (onClick ? 'pointer' : 'default')};
   font-size: 20px;
   color: ${({ theme }) => theme.secondary};
 `
