@@ -9,7 +9,7 @@ import lightTheme from '../../../styles/themes/light'
 
 afterEach(cleanup)
 
-describe('TextInput', () => {
+describe('Input', () => {
   it('should render the Text Input without crashing', () => {
     render(
       <ThemeProvider theme={themes.light}>
@@ -56,7 +56,7 @@ describe('TextInput', () => {
     const el = screen.getByTestId('input-cmp')
 
     fireEvent.change(el, { target: { value: newInputText } })
-    expect(onChangeTextMock).toHaveBeenCalled()
+    expect(onChangeTextMock).toHaveBeenCalledWith(newInputText)
   })
 
   it('should render correct styling when input is disabled', () => {

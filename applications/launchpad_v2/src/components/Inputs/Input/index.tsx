@@ -22,6 +22,8 @@ import { ChangeEvent } from 'react'
  * @prop {() => void} [onIconClick] - icon click event
  * @prop {(value: string) => void} [onChange] - text change event handler
  * @prop {string} [testId] - for testing purposes
+ * @prop {CSSProperties} [style] - styles for actual input element
+ * @prop {CSSProperties} [containerStyle] - styles for input container
  */
 
 const Input = ({
@@ -35,6 +37,7 @@ const Input = ({
   onChange,
   testId,
   style,
+  containerStyle,
 }: InputProps) => {
   const onChangeTextLocal = (event: ChangeEvent<HTMLInputElement>) => {
     if (onChange) {
@@ -42,7 +45,7 @@ const Input = ({
     }
   }
   return (
-    <InputContainer disabled={disabled}>
+    <InputContainer disabled={disabled} style={containerStyle}>
       <StyledInput
         type={type}
         placeholder={placeholder}

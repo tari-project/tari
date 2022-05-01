@@ -1,7 +1,7 @@
 import { useTheme } from 'styled-components'
 import { useState, SyntheticEvent } from 'react'
 
-import TextInput from '../../components/Inputs/TextInput'
+import PasswordInput from '../../components/Inputs/PasswordInput'
 import Box from '../../components/Box'
 import Text from '../../components/Text'
 import Button from '../../components/Button'
@@ -40,14 +40,13 @@ const PasswordBox = ({
       </Text>
       <Text>{t.wallet.password.cta}</Text>
       <form onSubmit={formSubmitHandler}>
-        <TextInput
-          type='password'
+        <PasswordInput
           onChange={updatePassword}
           value={password}
           disabled={pending}
           placeholder={t.wallet.password.placeholderCta}
-          style={{
-            width: '100%',
+          containerStyle={{
+            margin: `${theme.spacing()} 0`,
           }}
         />
         <Button disabled={disableSubmit} loading={pending} type='submit'>
