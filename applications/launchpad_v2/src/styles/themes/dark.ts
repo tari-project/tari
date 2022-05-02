@@ -23,6 +23,8 @@ const darkTheme = {
   warningText: styles.colors.secondary.warningText,
   expert: 'rgba(147, 48, 255, 0.05)',
   expertText: styles.gradients.tari,
+  lightTag: styles.colors.light.backgroundImage,
+  lightTagText: styles.colors.dark.secondary,
   placeholderText: styles.colors.dark.placeholder,
 
   inverted: {
@@ -45,6 +47,8 @@ const darkTheme = {
     warningText: styles.colors.secondary.warningText,
     expert: 'rgba(147, 48, 255, 0.05)',
     expertText: styles.gradients.tari,
+    lightTag: styles.colors.light.backgroundImage,
+    lightTagText: styles.colors.dark.secondary,
     borderColor: styles.colors.light.backgroundImage,
     borderColorLight: styles.colors.secondary.borderLight,
     controlBackground: 'transparent',

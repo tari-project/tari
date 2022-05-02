@@ -40,7 +40,7 @@ export const StyledButton = styled.button<
     return `1px solid ${theme.accent}`
   }};
   box-shadow: none;
-  padding: ${({ theme }) => theme.spacingVertical()}
+  padding: ${({ theme }) => theme.spacingVertical(0.6)}
     ${({ theme }) => theme.spacingHorizontal()};
   cursor: ${({ disabled }) => (disabled ? 'default' : 'pointer')};
   background: ${getButtonBackgroundColor};

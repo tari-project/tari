@@ -2,7 +2,7 @@ import { ReactNode } from 'react'
 import { CSSProperties } from 'styled-components'
 
 export type TagVariantType = 'small' | 'large'
-export type TagType = 'info' | 'running' | 'warning' | 'expert'
+export type TagType = 'info' | 'running' | 'warning' | 'expert' | 'light'
 
 /**
  * @typedef TagProps

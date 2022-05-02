@@ -15,7 +15,13 @@ import { BoxProps } from './types'
  * @prop {string} end - color on gradient end
  * @prop {number} rotation - gradient rotation in degress (45 by default)
  */
-const Box = ({ children, gradient, border, style: inlineStyle }: BoxProps) => {
+const Box = ({
+  children,
+  gradient,
+  border,
+  style: inlineStyle,
+  testId = 'box-cmp',
+}: BoxProps) => {
   const style = {
     border: border === false ? 'none' : undefined,
     background:
@@ -29,7 +35,11 @@ const Box = ({ children, gradient, border, style: inlineStyle }: BoxProps) => {
     ...inlineStyle,
   }
 
-  return <StyledBox style={style}>{children}</StyledBox>
+  return (
+    <StyledBox style={style} data-testid={testId}>
+      {children}
+    </StyledBox>
+  )
 }
 
 export default Box

@@ -1,4 +1,6 @@
 import { useSelector } from 'react-redux'
+import { CSSProperties } from 'styled-components'
+import { SpringValue } from 'react-spring'
 
 import { DashboardContent, DashboardLayout } from './styles'
 
@@ -14,7 +16,14 @@ import { selectView } from '../../../store/app/selectors'
 /**
  * Dashboard view containing three main tabs: Mining, Wallet and BaseNode
  */
-const DashboardContainer = () => {
+const DashboardContainer = ({
+  style,
+}: {
+  style?:
+    | CSSProperties
+    | Record<string, SpringValue<number>>
+    | Record<string, SpringValue<string>>
+}) => {
   const currentPage = useSelector(selectView)
 
   const renderPage = () => {
@@ -31,7 +40,7 @@ const DashboardContainer = () => {
   }
 
   return (
-    <DashboardLayout>
+    <DashboardLayout style={style}>
       <DashboardContent>
         <DashboardTabs />
         {renderPage()}
