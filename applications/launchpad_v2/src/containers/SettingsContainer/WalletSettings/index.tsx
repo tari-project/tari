@@ -39,6 +39,7 @@ const WalletSettings = ({
           borderRight: 'none',
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
           paddingLeft: 0,
           paddingRight: 0,
         }}
@@ -46,24 +47,27 @@ const WalletSettings = ({
         <span
           style={{
             display: 'flex',
-            alignItems: 'center',
+            alignItems: 'baseline',
             columnGap: theme.spacingVertical(),
           }}
         >
           <Text>Wallet</Text>
-          {running && !pending ? (
+          {running && (
             <Tag variant='small' type='running'>
               <span>{t.common.adjectives.running}</span>
             </Tag>
-          ) : null}
-          {pending ? <Loading loading={true} size='12px' /> : null}
+          )}
         </span>
         {running && (
-          <Button variant='secondary' onClick={stop}>
+          <Button variant='secondary' onClick={stop} loading={pending}>
             Stop
           </Button>
         )}
-        {!running && <Button onClick={start}>Start</Button>}
+        {!running && (
+          <Button onClick={start} loading={pending}>
+            Start
+          </Button>
+        )}
       </Box>
       <CopyBox label='Tari Wallet ID (address)' value={address} />
       <Text type='smallMedium' color={theme.secondary}>
