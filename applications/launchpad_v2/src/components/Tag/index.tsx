@@ -79,7 +79,11 @@ const Tag = ({
 
   const tagContent = (
     <>
-      {icon && <IconWrapper style={baseStyle}>{icon}</IconWrapper>}
+      {icon && (
+        <IconWrapper type={type} textStyle={textStyle}>
+          {icon}
+        </IconWrapper>
+      )}
 
       <Text
         type={variant === 'large' ? 'smallHeavy' : 'microMedium'}
