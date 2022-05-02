@@ -39,12 +39,10 @@
       "longDescription": "",
       "deb": {
         "depends": [],
-        "useBootstrapper": false
       },
       "macOS": {
         "frameworks": [],
         "minimumSystemVersion": "",
-        "useBootstrapper": false,
         "exceptionDomain": "",
         "signingIdentity": null,
         "entitlements": null
