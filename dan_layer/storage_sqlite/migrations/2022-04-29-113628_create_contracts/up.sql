@@ -3,9 +3,9 @@ create table templates (
     id integer primary key autoincrement not null,
 
     -- link to the source code of the template
-    source_url varchar(255) not null,
+    source_url varchar(255) unique not null,
+    source_hash blob(32) unique not null,
     source_type text check( source_type IN ('source','binary') ) not null,
-    source_hash blob(32) not null,
 
     version_info varchar(32) null,
     execution_engine_requirements varchar(32) null
@@ -24,6 +24,8 @@ create table utxos (
     -- indicates wheter this utxto was spent or not
     spent integer not null default false
 );
+
+create index utxos_block_height_index on utxos (block_height);
 
 create table contracts (
     -- contract_id, as per RFC-0312 is calculated as:
