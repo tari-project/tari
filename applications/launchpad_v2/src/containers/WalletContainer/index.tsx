@@ -5,6 +5,7 @@ import {
   selectWalletAddress,
   selectTariAmount,
   selectIsPending,
+  selectIsRunning,
   selectWalletEmojiAddress,
 } from '../../store/wallet/selectors'
 import CenteredLayout from '../../components/CenteredLayout'
@@ -20,6 +21,7 @@ const WalletContainer = () => {
   const emojiId = useAppSelector(selectWalletEmojiAddress)
   const { balance, available } = useAppSelector(selectTariAmount)
   const pending = useAppSelector(selectIsPending)
+  const running = useAppSelector(selectIsRunning)
 
   if (!unlocked) {
     return (
@@ -34,7 +36,7 @@ const WalletContainer = () => {
 
   return (
     <CenteredLayout horizontally>
-      <TariWallet address={walletAddress} emojiId={emojiId} />
+      <TariWallet address={walletAddress} emojiId={emojiId} running={running} />
       <WalletBalance balance={balance} available={available} />
     </CenteredLayout>
   )
