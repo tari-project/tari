@@ -3,6 +3,32 @@
 version = 3
 
 [[package]]
+name = "TariLaunchpad"
+version = "0.1.0"
+dependencies = [
+ "bollard",
+ "config",
+ "derivative",
+ "env_logger 0.9.0",
+ "futures 0.3.21",
+ "log",
+ "rand 0.8.5",
+ "regex",
+ "serde",
+ "serde_json",
+ "strum 0.23.0",
+ "strum_macros 0.23.1",
+ "tari_app_utilities",
+ "tari_common",
+ "tari_comms",
+ "tauri",
+ "tauri-build",
+ "thiserror",
+ "tokio 1.17.0",
+ "tor-hash-passwd",
+]
+
+[[package]]
 name = "adler"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -152,32 +178,6 @@ name = "anyhow"
 version = "1.0.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4361135be9122e0870de935d7c439aef945b9f9ddd4199a553b5270b49c82a27"
-
-[[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "bollard",
- "config",
- "derivative",
- "env_logger 0.9.0",
- "futures 0.3.21",
- "log",
- "rand 0.8.5",
- "regex",
- "serde",
- "serde_json",
- "strum 0.23.0",
- "strum_macros 0.23.1",
- "tari_app_utilities",
- "tari_common",
- "tari_comms",
- "tauri",
- "tauri-build",
- "thiserror",
- "tokio 1.17.0",
- "tor-hash-passwd",
-]
 
 [[package]]
 name = "arc-swap"

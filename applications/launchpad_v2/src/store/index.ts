@@ -1,14 +1,15 @@
 import { configureStore } from '@reduxjs/toolkit'
 
-import baseNodeReducer from './baseNode'
-import walletReducer from './wallet'
 import appReducer from './app'
-import settingsReducer from './settings'
+import baseNodeReducer from './baseNode'
+import miningReducer from './mining'
+import walletReducer from './wallet'
 
 // exported for tests
 export const rootReducer = {
   app: appReducer,
   baseNode: baseNodeReducer,
+  mining: miningReducer,
   wallet: walletReducer,
   settings: settingsReducer,
 }

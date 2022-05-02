@@ -43,6 +43,8 @@ declare module 'styled-components' {
     warningText: string
     expert: string
     expertText: string
+    lightTag: string
+    lightTagText: string
     placeholderText: string
 
     inverted: {
@@ -65,6 +67,8 @@ declare module 'styled-components' {
       warningText: string
       expert: string
       expertText: string
+      lightTag: string
+      lightTagText: string
     }
   }
 }
