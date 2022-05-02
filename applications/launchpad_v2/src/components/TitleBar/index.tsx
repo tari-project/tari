@@ -194,7 +194,7 @@ const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
         <Button
           variant='text'
           leftIcon={<SvgSetting width='16px' height='16px' />}
-          onClick={() => dispatch(settingsActions.open())}
+          onClick={() => dispatch(settingsActions.open({}))}
         >
           {t.common.nouns.settings}
         </Button>

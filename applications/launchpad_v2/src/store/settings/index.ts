@@ -15,8 +15,11 @@ const settingsSlice = createSlice({
       state.open = false
       state.which = Settings.Mining
     },
-    open(state) {
+    open(state, action: PayloadAction<{ toOpen?: Settings }>) {
       state.open = true
+      if (action.payload.toOpen) {
+        state.which = action.payload.toOpen
+      }
     },
     goTo(state, action: PayloadAction<Settings>) {
       state.which = action.payload
