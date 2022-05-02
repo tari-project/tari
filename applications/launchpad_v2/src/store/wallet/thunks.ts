@@ -9,7 +9,7 @@ export const unlockWallet = createAsyncThunk<
     tari: { balance: number; available: number }
   },
   WalletPassword
->('unlockWallet', async password => {
+>('wallet/unlock', async password => {
   await new Promise(resolve => setTimeout(resolve, 2000))
 
   return {
@@ -19,4 +19,12 @@ export const unlockWallet = createAsyncThunk<
       available: 11349009,
     },
   }
+})
+
+export const start = createAsyncThunk<void>('wallet/start', async () => {
+  await new Promise(resolve => setTimeout(resolve, 2000))
+})
+
+export const stop = createAsyncThunk<void>('wallet/stop', async () => {
+  await new Promise(resolve => setTimeout(resolve, 2000))
 })

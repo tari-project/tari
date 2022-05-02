@@ -1,7 +1,7 @@
 import { createSlice } from '@reduxjs/toolkit'
 
 import { WalletState } from './types'
-import { unlockWallet } from './thunks'
+import { unlockWallet, start, stop } from './thunks'
 
 export const initialState: WalletState = {
   running: false,
@@ -25,7 +25,7 @@ const walletSlice = createSlice({
     builder.addCase(unlockWallet.fulfilled, (state, action) => {
       state.pending = false
       state.unlocked = true
-      state.running = true
+
       const {
         address,
         tari: { balance, available },
@@ -34,11 +34,29 @@ const walletSlice = createSlice({
       state.tari.balance = balance
       state.tari.available = available
     })
+
+    builder.addCase(start.pending, state => {
+      state.pending = true
+    })
+    builder.addCase(start.fulfilled, state => {
+      state.pending = false
+      state.running = true
+    })
+
+    builder.addCase(stop.pending, state => {
+      state.pending = true
+    })
+    builder.addCase(stop.fulfilled, state => {
+      state.pending = false
+      state.running = false
+    })
   },
 })
 
 export const actions = {
   unlockWallet,
+  start,
+  stop,
 }
 
 export default walletSlice.reducer
