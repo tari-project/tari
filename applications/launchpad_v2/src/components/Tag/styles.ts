@@ -1,4 +1,4 @@
-import styled from 'styled-components'
+import styled, { CSSProperties } from 'styled-components'
 
 export const TagContainer = styled.div<{ variant?: string }>`
   display: flex;
@@ -13,10 +13,16 @@ export const TagContainer = styled.div<{ variant?: string }>`
   padding-right: 12px;
 `
 
-export const IconWrapper = styled.div`
+export const IconWrapper = styled.div<{
+  type?: string
+  textStyle?: CSSProperties
+  baseStyle?: CSSProperties
+}>`
   display: flex;
   align-items: center;
   color: white;
   height: 100%;
   margin-right: 7.5px;
+  color: ${({ theme, type, textStyle }) =>
+    type === 'expert' ? theme.accent : textStyle?.color};
 `
