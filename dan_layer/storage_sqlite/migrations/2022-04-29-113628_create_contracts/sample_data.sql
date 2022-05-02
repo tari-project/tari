@@ -16,8 +16,20 @@ values (
 );
 
 -- the VN node sees on the blockchain the contract definition transaction
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 1
+values (1340, datetime('now'), X'9e0bc0a9aa374eab9ae10383ab67c9fadb1e2aa69a1d54555a7dff0670678bda');
+
 insert into contract_definitions (
-    contract_id, name, description, asset_issuer_key, template_id, initialization_arguments, runtime_specification, stake, collateral
+    contract_id,
+    name,
+    description,
+    asset_issuer_key,
+    template_id,
+    initialization_arguments,
+    runtime_specification,
+    stake,
+    collateral,
+    utxo_id
 )
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id
@@ -28,7 +40,8 @@ values (
     X'00000000000000000000000000000001', -- initialization_arguments
     '--version 0.6.1 --some-other-param', -- runtime_especification
     1000, -- stake,
-    10 -- collateral
+    10, -- collateral
+    1 -- utxo_id
 );
 
 update contracts
@@ -48,6 +61,9 @@ insert into public_key_items (list_id, public_key) values (1, X'542ce0442b230cf1
 insert into public_key_lists default values;
 insert into public_key_items (list_id, public_key) values (2, X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539');
 
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 2
+values (1350, datetime('now'), X'cba8d3a39041d4164e60270c6281f81be92d29656bec527211d87de66571f403');
+
 insert into contract_constitutions (
     contract_id,
     vnc_key_list,
@@ -60,7 +76,8 @@ insert into contract_constitutions (
     committee_change_rules,
     checkpoint_paramenters_change,
     sidechain_metadata_change,
-    emergency_key_list
+    emergency_key_list,
+    utxo_id
 )
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
@@ -74,7 +91,8 @@ values (
     'committee_change_rules, format is not clear yet', -- committee_change_rules,
     'checkpoint_paramenters_change, format is not clear yet', -- checkpoint_paramenters_change,
     'sidechain_metadata_change, format is not clear yet', -- sidechain_metadata_change,
-    2 -- emergency_key_list
+    2, -- emergency_key_list
+    2 -- utxo_id
 );
 
 update contracts
@@ -82,74 +100,91 @@ set status = 'constituted'
 where id = X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539';
 
 -- all three members of the VNC accept the contract
-insert into contract_acceptances (contract_id, vn_public_key, stake, stake_release_timestamp)
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 3
+values (1360, datetime('now'), X'd034a904e224b629947dac2110cf9900b655e6934aa735d5144f92a3399785fc');
+
+insert into contract_acceptances (contract_id, vn_public_key, stake, stake_release_timestamp, utxo_id)
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
     X'c6fbed3bbf0472bffc9685f7e8859c3c4515b4fe526617ae88f9839862dd8c33', -- public_key 
     100, -- stake
-    datetime('now', '+2 day') -- expiry_timestamp,
+    datetime('now', '+2 day'), -- expiry_timestamp
+    3 -- utxo_id
 );
 
-insert into contract_acceptances (contract_id, vn_public_key, stake, stake_release_timestamp)
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 4
+values (1370, datetime('now'), X'07e9bba1c63a7a01f935ee06d931c453e0864fc0fcc11ec445a8af60a36cc6c8');
+
+insert into contract_acceptances (contract_id, vn_public_key, stake, stake_release_timestamp, utxo_id)
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
     X'c492fa647980867e414bcca203791325b23202c0e04de14b1c72dec55aa27e7c', -- public_key 
     100, -- stake
-    datetime('now', '+2 day') -- expiry_timestamp,
+    datetime('now', '+2 day'), -- expiry_timestamp
+    4 -- utxo_id
 );
 
-insert into contract_acceptances (contract_id, vn_public_key, stake, stake_release_timestamp)
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 5
+values (1380, datetime('now'), X'aecef364029f6f3f008b4f2b87b9a1c27e596a74062b83cad24fab73cce4f1f0');
+
+insert into contract_acceptances (contract_id, vn_public_key, stake, stake_release_timestamp, utxo_id)
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
     X'542ce0442b230cf13e1d5a6dc69fd2445e4c8b45f0e2ed208df585920cd50543', -- public_key 
     100, -- stake
-    datetime('now', '+2 day') -- expiry_timestamp,
+    datetime('now', '+2 day'), -- expiry_timestamp
+    5 -- utxo_id
 );
 
 -- the VN node sees on the blockchain the side-chain initialization transaction
 -- so it marks the contract as initialized
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 6
+values (1390, datetime('now'), X'bb4d3bd125603e48cf30c795c427afd9da53f3a70482aa98ca3b8bbe1980d021');
+
+insert into contract_initialization(contract_id, utxo_id)
+values (X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', 6);
+
 update contracts
 set status = 'initialized'
 where id = X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539';
 
 -- the VN node sees on the blockchain some checkpoint transactions
 -- so it stores them into the database
-insert into contract_checkpoints (contract_id, timestamp, contract_state_commitment, contract_state_uri, checkpoint_number)
+
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 7
+values (1400, datetime('now'), X'55fdec963805de594b61b2c1692cadc2c1dfb844d6ac10c5bfed33c842087b2e');
+
+insert into contract_checkpoints (contract_id, contract_state_commitment, contract_state_uri, checkpoint_number, utxo_id)
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
-    datetime('now'), -- timestamp, in a real system would be the timestamp of the block containing the checkpoint utxo
     X'0e3cdf292c4ed09a2351e44d62e98795baf2b1ef826798307f9609f827637902', -- contract_state_commitment
-    'http://path-to-contract-state', -- contract_state_uri
-    1 -- checkpoint_number
-);
-
--- the VN node sees on the blockchain some checkpoint transactions
--- so it stores them into the database
-insert into contract_checkpoints (contract_id, timestamp, contract_state_commitment, contract_state_uri, checkpoint_number)
-values (
-    X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
-    datetime('now'), -- timestamp, in a real system would be the timestamp of the block containing the checkpoint utxo
-    X'946a9eecef672f085cfad6665b1755def45d03e843d6d2aa8272fd637fcb2082', -- contract_state_commitment
     'http://path-to-contract-state/0', -- contract_state_uri
-    1 -- checkpoint_number
+    0, -- checkpoint_number
+    7 -- utxo_id
 );
 
-insert into contract_checkpoints (contract_id, timestamp, contract_state_commitment, contract_state_uri, checkpoint_number)
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 8
+values (1410, datetime('now'), X'4103f0a4e707b1c7bebbc42809ab0ace8dd3f56d844d7903bfe9f95a2ccc6972');
+
+insert into contract_checkpoints (contract_id, contract_state_commitment, contract_state_uri, checkpoint_number, utxo_id)
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
-    datetime('now'), -- timestamp, in a real system would be the timestamp of the block containing the checkpoint utxo
-    X'49695864b5cdf682148a9e4c239d576068831b8e17bbff760baa1fadf45afc8a', -- contract_state_commitment
+    X'946a9eecef672f085cfad6665b1755def45d03e843d6d2aa8272fd637fcb2082', -- contract_state_commitment
     'http://path-to-contract-state/1', -- contract_state_uri
-    2 -- checkpoint_number
+    1, -- checkpoint_number
+    8 -- utxo_id
 );
 
-insert into contract_checkpoints (contract_id, timestamp, contract_state_commitment, contract_state_uri, checkpoint_number)
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 9
+values (1420, datetime('now'), X'3141d9c749e88ee5550192703c3e025a9b3446ec543f17a923cb24e7b61dfece');
+
+insert into contract_checkpoints (contract_id, contract_state_commitment, contract_state_uri, checkpoint_number, utxo_id)
 values (
     X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', -- contract_id,
-    datetime('now'), -- timestamp, in a real system would be the timestamp of the block containing the checkpoint utxo
-    X'b4096a22bb41377ea5c427fc15f8c0371e84ca0443662f9971bbe6ac5094549e', -- contract_state_commitment
+    X'49695864b5cdf682148a9e4c239d576068831b8e17bbff760baa1fadf45afc8a', -- contract_state_commitment
     'http://path-to-contract-state/2', -- contract_state_uri
-    3 -- checkpoint_number
+    2, -- checkpoint_number
+    9 -- utxo_id
 );
 
 -- the VN node does not see in the blockchain the fourth checkpoint in time
@@ -160,6 +195,12 @@ where id = X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539';
 
 -- the VN node sees the quarantine transaction in the blockchain
 -- so it marks the contract as quarantined
+insert into utxos (block_height, block_timestamp, output_hash) -- utxo 10
+values (1430, datetime('now'), X'74bbcf773c82f8b9b1a44138238d135520fe7a0fb898af5c18292a6fe9d23eb8');
+
+insert into contract_quarantines (contract_id, utxo_id)
+values (X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539', 10);
+
 update contracts
 set status = 'quarantined'
 where id = X'd28a7a80c9e9f5d29fb7d1aa06e492dc04360b61b6c69743120695ce82f70539';

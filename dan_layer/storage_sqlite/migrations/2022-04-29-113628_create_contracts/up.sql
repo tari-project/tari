@@ -11,6 +11,20 @@ create table templates (
     execution_engine_requirements varchar(32) null
 );
 
+-- used to reference a transaction output
+create table utxos (
+    id integer primary key autoincrement not null,
+
+    block_height sqlite3_uint64 not null,
+    block_timestamp datetime not null,
+    output_hash blob(32) not null,
+
+    -- question: do we need to store more data about the output?
+
+    -- indicates wheter this utxto was spent or not
+    spent integer not null default false
+);
+
 create table contracts (
     -- contract_id, as per RFC-0312 is calculated as:
     -- H(contract_name || contract specification hash || Initial data hash || Runtime data hash)
@@ -58,8 +72,12 @@ create table contract_definitions (
     -- nominal amount (micro Tari) to prevent spam, and encourages de asset issuear to tidy up after a contract winds down
     collateral sqlite3_uint64 not null,
 
+    -- transaction that holds the contract definition
+    utxo_id integer not null,
+
     foreign key (contract_id) references contracts(id),
-    foreign key (template_id) references templates(id)
+    foreign key (template_id) references templates(id),
+    foreign key (utxo_id) references utxos(id)
 );
 
 -- Holds lists of public keys using One-To-Many relationship ("one" side)
@@ -108,9 +126,13 @@ create table contract_constitutions (
     -- list of emergency public keys that have signing power if the contract is abandoned
     emergency_key_list intgetr not null,
 
+    -- transaction that holds the contract constitution
+    utxo_id integer not null,
+
     foreign key (contract_id) references contracts(id),
     foreign key (vnc_key_list) references public_key_lists(id),
-    foreign key (emergency_key_list) references public_key_lists(id)
+    foreign key (emergency_key_list) references public_key_lists(id),
+    foreign key (utxo_id) references utxos(id)
 );
 
 -- represents the VN acceptance to a contract
@@ -126,19 +148,30 @@ create table contract_acceptances (
     -- the accpetance UTXO time-lock expiration
     stake_release_timestamp datetime not null,
 
+    -- transaction that hold the contract acceptance
+    utxo_id integer not null,
+
     primary key (contract_id, vn_public_key),
-    foreign key (contract_id) references contracts(id)
+    foreign key (contract_id) references contracts(id),
+    foreign key (utxo_id) references utxos(id)
 );
 
--- question: do we need to store data for the side-chain initializaiton transaction?
+-- stores the side-chain initializaiton transaction
+create table contract_initialization (
+    contract_id blob(32) primary key not null,
+
+    -- transaction that hold the initialization transaction
+    utxo_id integer not null,
+    foreign key (utxo_id) references utxos(id)
+);
 
 -- one-to-many relationship with "contracts"
 create table contract_checkpoints (
     id integer primary key autoincrement not null,
     contract_id blob(32) not null,
 
-    -- checkpoint transaction timestamp
-    timestamp datetime not null,
+    -- we don't need to store the checkpoint timestamp
+    -- as we already have the utxo block timestamp
 
     --  current contract state, let's assume it's a merkle root
     contract_state_commitment blob(32) not null,
@@ -149,17 +182,22 @@ create table contract_checkpoints (
     -- strictly increasing by 1 from the previous checkpoint of the contract
     checkpoint_number integer not null,
 
-    foreign key (contract_id) references contracts(id)
+    -- transaction that hold the checkpoint
+    utxo_id integer not null,
+
+    foreign key (contract_id) references contracts(id),
+    foreign key (utxo_id) references utxos(id)
 );
 
 -- one-to-one relantionship with "contracts"
 create table contract_quarantines (
     contract_id blob(32) primary key not null,
 
-    -- transaction timestamp of the emergency key spending the last checkpoint
-    timestamp datetime not null,
+    -- transaction that hold the quarantine
+    utxo_id integer not null,
 
-    foreign key (contract_id) references contracts(id)
+    foreign key (contract_id) references contracts(id),
+    foreign key (utxo_id) references utxos(id)
 );
 
 -- changes to the constituition
@@ -195,7 +233,12 @@ create table contract_constitution_changes (
         'executed' -- the constitution changes are in effect
     )) not null default 'initial',
 
-    foreign key (contract_id) references contracts(id)
+    -- transaction that hold the constitution change proposal
+    -- question: do we need to store the transaction for each stage?
+    utxo_id integer not null,
+
+    foreign key (contract_id) references contracts(id),
+    foreign key (utxo_id) references utxos(id)
 );
 
 -- represents the VN acceptance to a constitution change acceptance
@@ -212,7 +255,11 @@ create table contract_constitution_change_acceptances (
     -- the accpetance UTXO time-lock expiration
     stake_release_timestamp datetime not null,
 
+    -- transaction that hold the change acceptance
+    utxo_id integer not null,
+
     -- a change can only be accepted once by a VN
     primary key (change_id, vn_public_key),
-    foreign key (change_id) references contract_constitution_changes(id)
+    foreign key (change_id) references contract_constitution_changes(id),
+    foreign key (utxo_id) references utxos(id)
 );
