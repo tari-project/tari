@@ -15,6 +15,7 @@ members = [
     "comms/rpc_macros",
     "dan_layer/core",
     "dan_layer/storage_sqlite",
+    "dan_layer/dan_wallet_ffi",
     "common_sqlite",
     "infrastructure/libtor",
     "infrastructure/metrics",
