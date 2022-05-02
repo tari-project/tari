@@ -1,6 +1,9 @@
 import { ChangeEvent } from 'react'
 import { useTheme } from 'styled-components'
 
+import { useAppSelector, useAppDispatch } from '../../../store/hooks'
+import { selectState as selectWalletState } from '../../../store/wallet/selectors'
+import { actions as walletActions } from '../../../store/wallet'
 import Tag from '../../../components/Tag'
 import Box from '../../../components/Box'
 import Loading from '../../../components/Loading'
@@ -11,19 +14,20 @@ import CopyBox from '../../../components/CopyBox'
 import t from '../../../locales'
 import { SettingsProps } from '../types'
 
-const address = '7a6ffed9-4252-427e-af7d-3dcaaf2db2df'
-
-const WalletSettings = ({ onSettingsTouched }: SettingsProps) => {
+const WalletSettings = ({
+  running,
+  pending,
+  address,
+  stop,
+  start,
+}: {
+  running: boolean
+  pending: boolean
+  address: string
+  stop: () => void
+  start: () => void
+}) => {
   const theme = useTheme()
-
-  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const { checked } = event.target
-
-    onSettingsTouched(checked)
-  }
-
-  const running = true
-  const pending = false
 
   return (
     <>
@@ -54,7 +58,12 @@ const WalletSettings = ({ onSettingsTouched }: SettingsProps) => {
           ) : null}
           {pending ? <Loading loading={true} size='12px' /> : null}
         </span>
-        <Button variant='secondary'>Stop</Button>
+        {running && (
+          <Button variant='secondary' onClick={stop}>
+            Stop
+          </Button>
+        )}
+        {!running && <Button onClick={start}>Start</Button>}
       </Box>
       <CopyBox label='Tari Wallet ID (address)' value={address} />
       <Text type='smallMedium' color={theme.secondary}>
@@ -69,4 +78,29 @@ const WalletSettings = ({ onSettingsTouched }: SettingsProps) => {
   )
 }
 
-export default WalletSettings
+const WalletSettingsContainer = ({ onSettingsTouched }: SettingsProps) => {
+  const dispatch = useAppDispatch()
+  const { pending, running, address, unlocked } =
+    useAppSelector(selectWalletState)
+  const onChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const { checked } = event.target
+
+    onSettingsTouched(checked)
+  }
+
+  if (!unlocked) {
+    return <p>unlock wallet</p>
+  }
+
+  return (
+    <WalletSettings
+      running={running}
+      pending={pending}
+      stop={() => dispatch(walletActions.stop())}
+      start={() => dispatch(walletActions.start())}
+      address={address}
+    />
+  )
+}
+
+export default WalletSettingsContainer
