@@ -50,26 +50,27 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     // Add some unspent outputs
     let mut unspent_outputs = Vec::new();
     for i in 0..5 {
-        let (_ti, uo) = make_input(
+        let (_ti, uo) = runtime.block_on(make_input(
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
-        );
+            None,
+        ));
         let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
         uo.unblinded_output.features.maturity = i;
-        runtime.block_on(db.add_unspent_output(uo.clone())).unwrap();
+        db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
     }
 
-    let time_locked_outputs = runtime.block_on(db.get_timelocked_outputs(3)).unwrap();
+    let time_locked_outputs = db.get_timelocked_outputs(3).unwrap();
     assert_eq!(time_locked_outputs.len(), 1);
     assert_eq!(unspent_outputs[4], time_locked_outputs[0]);
-    let time_locked_outputs = runtime.block_on(db.get_timelocked_outputs(4)).unwrap();
+    let time_locked_outputs = db.get_timelocked_outputs(4).unwrap();
     assert_eq!(time_locked_outputs.len(), 0);
     let time_locked_balance = unspent_outputs[4].unblinded_output.value;
 
     for i in 0..4usize {
-        let balance = runtime.block_on(db.get_balance(Some(i as u64))).unwrap();
+        let balance = db.get_balance(Some(i as u64)).unwrap();
         let mut sum = MicroTari::from(0);
         for output in unspent_outputs.iter().take(5).skip(i + 1) {
             sum += output.unblinded_output.value;
@@ -79,7 +80,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     unspent_outputs.sort();
 
-    let outputs = runtime.block_on(db.fetch_mined_unspent_outputs()).unwrap();
+    let outputs = db.fetch_sorted_unspent_outputs().unwrap();
     assert_eq!(unspent_outputs, outputs);
 
     // Add some sent transactions with outputs to be spent and received
@@ -97,31 +98,32 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             outputs_to_be_received: vec![],
         };
         for _ in 0..4 {
-            let (_ti, uo) = make_input(
+            let (_ti, uo) = runtime.block_on(make_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
-            );
+                None,
+            ));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
-            runtime.block_on(db.add_unspent_output(uo.clone())).unwrap();
+            db.add_unspent_output(uo.clone()).unwrap();
             pending_tx.outputs_to_be_spent.push(uo);
         }
         for _ in 0..2 {
-            let (_ti, uo) = make_input(
+            let (_ti, uo) = runtime.block_on(make_input(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
-            );
+                None,
+            ));
             let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
             pending_tx.outputs_to_be_received.push(uo);
         }
-        runtime
-            .block_on(db.encumber_outputs(
-                pending_tx.tx_id,
-                pending_tx.outputs_to_be_spent.clone(),
-                pending_tx.outputs_to_be_received.clone(),
-            ))
-            .unwrap();
+        db.encumber_outputs(
+            pending_tx.tx_id,
+            pending_tx.outputs_to_be_spent.clone(),
+            pending_tx.outputs_to_be_received.clone(),
+        )
+        .unwrap();
         pending_txs.push(pending_tx);
     }
 
@@ -131,7 +133,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
     let mut pending_incoming_balance = MicroTari(0);
     let mut pending_outgoing_balance = MicroTari(0);
-    for v in pending_txs.iter() {
+    for v in &pending_txs {
         pending_outgoing_balance += v
             .outputs_to_be_spent
             .iter()
@@ -142,7 +144,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
             .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
     }
 
-    let balance = runtime.block_on(db.get_balance(None)).unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         time_locked_balance: None,
@@ -150,7 +152,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         pending_outgoing_balance
     });
 
-    let balance = runtime.block_on(db.get_balance(Some(3))).unwrap();
+    let balance = db.get_balance(Some(3)).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         time_locked_balance: Some(time_locked_balance),
@@ -158,11 +160,11 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         pending_outgoing_balance
     });
 
-    for v in pending_txs.iter() {
-        runtime.block_on(db.confirm_encumbered_outputs(v.tx_id)).unwrap();
+    for v in &pending_txs {
+        db.confirm_encumbered_outputs(v.tx_id).unwrap();
     }
 
-    let balance = runtime.block_on(db.get_balance(None)).unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(balance, Balance {
         available_balance,
         time_locked_balance: None,
@@ -172,20 +174,17 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
 
     // Set first pending tx to mined but unconfirmed
     let mut mmr_pos = 0;
-    for o in pending_txs[0].outputs_to_be_received.iter() {
-        runtime
-            .block_on(db.set_received_output_mined_height(o.hash.clone(), 2, vec![], mmr_pos, false))
+    for o in &pending_txs[0].outputs_to_be_received {
+        db.set_received_output_mined_height(o.hash.clone(), 2, vec![], mmr_pos, false)
             .unwrap();
         mmr_pos += 1;
     }
-    for o in pending_txs[0].outputs_to_be_spent.iter() {
-        runtime
-            .block_on(db.mark_output_as_spent(o.hash.clone(), 3, vec![], false))
-            .unwrap();
+    for o in &pending_txs[0].outputs_to_be_spent {
+        db.mark_output_as_spent(o.hash.clone(), 3, vec![], false).unwrap();
     }
 
     // Balance shouldn't change
-    let balance = runtime.block_on(db.get_balance(None)).unwrap();
+    let balance = db.get_balance(None).unwrap();
 
     assert_eq!(balance, Balance {
         available_balance,
@@ -195,16 +194,13 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     });
 
     // Set second pending tx to mined and confirmed
-    for o in pending_txs[1].outputs_to_be_received.iter() {
-        runtime
-            .block_on(db.set_received_output_mined_height(o.hash.clone(), 4, vec![], mmr_pos, true))
+    for o in &pending_txs[1].outputs_to_be_received {
+        db.set_received_output_mined_height(o.hash.clone(), 4, vec![], mmr_pos, true)
             .unwrap();
         mmr_pos += 1;
     }
-    for o in pending_txs[1].outputs_to_be_spent.iter() {
-        runtime
-            .block_on(db.mark_output_as_spent(o.hash.clone(), 5, vec![], true))
-            .unwrap();
+    for o in &pending_txs[1].outputs_to_be_spent {
+        db.mark_output_as_spent(o.hash.clone(), 5, vec![], true).unwrap();
     }
 
     // Balance with confirmed second pending tx
@@ -236,7 +232,7 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         .iter()
         .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value);
 
-    let balance = runtime.block_on(db.get_balance(None)).unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(
         balance,
         Balance {
@@ -249,18 +245,18 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
     );
 
     // Add output to be received
-    let (_ti, uo) = make_input(
+    let (_ti, uo) = runtime.block_on(make_input(
         &mut OsRng,
         MicroTari::from(100 + OsRng.next_u64() % 1000),
         &factories.commitment,
-    );
+        None,
+    ));
     let output_to_be_received = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
-    runtime
-        .block_on(db.add_output_to_be_received(11.into(), output_to_be_received.clone(), None))
+    db.add_output_to_be_received(TxId::from(11), output_to_be_received.clone(), None)
         .unwrap();
     pending_incoming_balance += output_to_be_received.unblinded_output.value;
 
-    let balance = runtime.block_on(db.get_balance(None)).unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(
         balance,
         Balance {
@@ -272,58 +268,52 @@ pub fn test_db_backend<T: OutputManagerBackend + 'static>(backend: T) {
         "Balance should reflect new output to be received"
     );
 
-    let spent_outputs = runtime.block_on(db.fetch_spent_outputs()).unwrap();
+    let spent_outputs = db.fetch_spent_outputs().unwrap();
     assert_eq!(spent_outputs.len(), 4);
 
-    let unconfirmed_outputs = runtime.block_on(db.fetch_unconfirmed_outputs()).unwrap();
+    let unconfirmed_outputs = db.fetch_unconfirmed_outputs().unwrap();
     assert_eq!(unconfirmed_outputs.len(), 22);
 
-    let mined_unspent_outputs = runtime.block_on(db.fetch_mined_unspent_outputs()).unwrap();
+    let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(mined_unspent_outputs.len(), 4);
 
     // Spend a received and confirmed output
-    runtime
-        .block_on(db.mark_output_as_spent(pending_txs[1].outputs_to_be_received[0].hash.clone(), 6, vec![], true))
+    db.mark_output_as_spent(pending_txs[1].outputs_to_be_received[0].hash.clone(), 6, vec![], true)
         .unwrap();
 
-    let mined_unspent_outputs = runtime.block_on(db.fetch_mined_unspent_outputs()).unwrap();
+    let mined_unspent_outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(mined_unspent_outputs.len(), 3);
 
-    let unspent_outputs = runtime.block_on(db.fetch_mined_unspent_outputs()).unwrap();
+    let unspent_outputs = db.fetch_sorted_unspent_outputs().unwrap();
     assert_eq!(unspent_outputs.len(), 6);
 
-    let last_mined_output = runtime.block_on(db.get_last_mined_output()).unwrap().unwrap();
+    let last_mined_output = db.get_last_mined_output().unwrap().unwrap();
     assert!(pending_txs[1]
         .outputs_to_be_received
         .iter()
         .any(|o| o.commitment == last_mined_output.commitment));
 
-    let last_spent_output = runtime.block_on(db.get_last_spent_output()).unwrap().unwrap();
+    let last_spent_output = db.get_last_spent_output().unwrap().unwrap();
     assert_eq!(
         last_spent_output.commitment,
         pending_txs[1].outputs_to_be_received[0].commitment
     );
 
-    runtime
-        .block_on(db.remove_output_by_commitment(last_spent_output.commitment))
-        .unwrap();
-    let last_spent_output = runtime.block_on(db.get_last_spent_output()).unwrap().unwrap();
+    db.remove_output_by_commitment(last_spent_output.commitment).unwrap();
+    let last_spent_output = db.get_last_spent_output().unwrap().unwrap();
     assert_ne!(
         last_spent_output.commitment,
         pending_txs[1].outputs_to_be_received[0].commitment
     );
 
     // Test cancelling a pending transaction
-    runtime
-        .block_on(db.cancel_pending_transaction_outputs(pending_txs[2].tx_id))
-        .unwrap();
+    db.cancel_pending_transaction_outputs(pending_txs[2].tx_id).unwrap();
 
-    let unspent_outputs = runtime.block_on(db.fetch_mined_unspent_outputs()).unwrap();
+    let unspent_outputs = db.fetch_sorted_unspent_outputs().unwrap();
     assert_eq!(unspent_outputs.len(), 10);
 }
 
 #[test]
-#[ignore = "to be fixed"]
 pub fn test_output_manager_sqlite_db() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
@@ -331,7 +321,6 @@ pub fn test_output_manager_sqlite_db() {
 }
 
 #[test]
-#[ignore = "to be fixed"]
 pub fn test_output_manager_sqlite_db_encrypted() {
     let (connection, _tempdir) = get_temp_sqlite_database_connection();
 
@@ -354,18 +343,19 @@ pub async fn test_short_term_encumberance() {
             &mut OsRng,
             MicroTari::from(100 + OsRng.next_u64() % 1000),
             &factories.commitment,
-        );
+            None,
+        )
+        .await;
         let mut uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
         uo.unblinded_output.features.maturity = i;
-        db.add_unspent_output(uo.clone()).await.unwrap();
+        db.add_unspent_output(uo.clone()).unwrap();
         unspent_outputs.push(uo);
     }
 
     db.encumber_outputs(1.into(), unspent_outputs[0..=2].to_vec(), vec![])
-        .await
         .unwrap();
 
-    let balance = db.get_balance(None).await.unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(
         balance.available_balance,
         unspent_outputs[3..5]
@@ -373,9 +363,9 @@ pub async fn test_short_term_encumberance() {
             .fold(MicroTari::from(0), |acc, x| acc + x.unblinded_output.value)
     );
 
-    db.clear_short_term_encumberances().await.unwrap();
+    db.clear_short_term_encumberances().unwrap();
 
-    let balance = db.get_balance(None).await.unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(
         balance.available_balance,
         unspent_outputs
@@ -384,13 +374,12 @@ pub async fn test_short_term_encumberance() {
     );
 
     db.encumber_outputs(2.into(), unspent_outputs[0..=2].to_vec(), vec![])
-        .await
         .unwrap();
 
-    db.confirm_encumbered_outputs(2.into()).await.unwrap();
-    db.clear_short_term_encumberances().await.unwrap();
+    db.confirm_encumbered_outputs(TxId::from(2)).unwrap();
+    db.clear_short_term_encumberances().unwrap();
 
-    let balance = db.get_balance(None).await.unwrap();
+    let balance = db.get_balance(None).unwrap();
     assert_eq!(
         balance.available_balance,
         unspent_outputs[3..5]
@@ -407,30 +396,28 @@ pub async fn test_no_duplicate_outputs() {
     let db = OutputManagerDatabase::new(backend);
 
     // create an output
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(1000), &factories.commitment, None).await;
     let uo = DbUnblindedOutput::from_unblinded_output(uo, &factories, None).unwrap();
 
     // add it to the database
-    let result = db.add_unspent_output(uo.clone()).await;
+    let result = db.add_unspent_output(uo.clone());
     assert!(result.is_ok());
-    let result = db
-        .set_received_output_mined_height(uo.hash.clone(), 1, Vec::new(), 1, true)
-        .await;
+    let result = db.set_received_output_mined_height(uo.hash.clone(), 1, Vec::new(), 1, true);
     assert!(result.is_ok());
-    let outputs = db.fetch_mined_unspent_outputs().await.unwrap();
+    let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
 
     // adding it again should be an error
-    let err = db.add_unspent_output(uo.clone()).await.unwrap_err();
+    let err = db.add_unspent_output(uo.clone()).unwrap_err();
     assert!(matches!(err, OutputManagerStorageError::DuplicateOutput));
-    let outputs = db.fetch_mined_unspent_outputs().await.unwrap();
+    let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
 
     // add a pending transaction with the same duplicate output
 
-    assert!(db.encumber_outputs(2.into(), vec![], vec![uo.clone()]).await.is_err());
+    assert!(db.encumber_outputs(2.into(), vec![], vec![uo]).is_err());
 
     // we should still only have 1 unspent output
-    let outputs = db.fetch_mined_unspent_outputs().await.unwrap();
+    let outputs = db.fetch_mined_unspent_outputs().unwrap();
     assert_eq!(outputs.len(), 1);
 }

@@ -44,7 +44,7 @@ pub struct DecideNextSync {
 
 impl DecideNextSync {
     pub async fn next_event<B: BlockchainBackend + 'static>(&mut self, shared: &BaseNodeStateMachine<B>) -> StateEvent {
-        use StateEvent::*;
+        use StateEvent::{Continue, FatalError, ProceedToBlockSync, ProceedToHorizonSync};
         let local_metadata = match shared.db.get_chain_metadata().await {
             Ok(m) => m,
             Err(e) => {
@@ -58,7 +58,7 @@ impl DecideNextSync {
             self.sync_peers.len()
         );
 
-        if shared.config.pruning_horizon > 0 {
+        if local_metadata.pruning_horizon() > 0 {
             let last_header = match shared.db.fetch_last_header().await {
                 Ok(h) => h,
                 Err(err) => return err.into(),

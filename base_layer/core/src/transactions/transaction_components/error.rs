@@ -26,7 +26,8 @@
 use std::io;
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::{range_proof::RangeProofError, script::ScriptError, signatures::CommitmentSignatureError};
+use tari_crypto::{range_proof::RangeProofError, signatures::CommitmentSignatureError};
+use tari_script::ScriptError;
 use thiserror::Error;
 
 use crate::covenants::CovenantError;
@@ -81,5 +82,19 @@ impl From<CovenantError> for TransactionError {
 impl From<io::Error> for TransactionError {
     fn from(err: io::Error) -> Self {
         TransactionError::ConsensusEncodingError(err.to_string())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_from_io_error() {
+        let error = io::ErrorKind::Other;
+        assert_eq!(
+            TransactionError::ConsensusEncodingError("other error".to_string()),
+            TransactionError::from(io::Error::from(error))
+        );
     }
 }

@@ -20,7 +20,6 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-const assert = require("assert");
 const { Given, When, Then } = require("@cucumber/cucumber");
 const WalletProcess = require("../../helpers/walletProcess");
 const {
@@ -135,7 +134,7 @@ Given(
   async function (walletName, balance, nodeName) {
     await this.createAndAddWallet(
       walletName,
-      this.nodes[nodeName].peerAddress()
+      this.getNode(nodeName).peerAddress()
     );
     let numberOfBlocks = Math.ceil(balance / BLOCK_REWARD);
     console.log("Creating miner");
@@ -151,6 +150,7 @@ Given(
     await this.mineBlocks(nodeName, CONFIRMATION_PERIOD);
     let walletClient = await this.getWallet(walletName).connectClient();
     await waitFor(
+      // TODO: 1T == 1000000ut
       async () => walletClient.isBalanceAtLeast(balance * 1000),
       true,
       120 * 1000,
@@ -239,7 +239,7 @@ Given(
       this.logFilePathWallet,
       seedWords
     );
-    walletB.setPeerSeeds([this.seedAddresses()]);
+    walletB.setPeerSeeds(this.seedAddresses());
     await walletB.startNew();
     this.addWallet(walletNameB, walletB);
     let walletClient = await this.getWallet(walletNameB).connectClient();
@@ -427,6 +427,7 @@ Then(
   "wallet {word} has {int}T",
   { timeout: 120 * 1000 },
   async function (wallet, amount) {
+    // TODO: 1T == 1000000ut
     await this.waitForWalletToHaveBalance(wallet, amount * 1000);
   }
 );
@@ -1125,7 +1126,7 @@ When(
       result.success,
       result.failure_message
     );
-    assert(result.success, true);
+    expect(result.success).to.be.true;
   }
 );
 
@@ -1146,7 +1147,7 @@ Then(
       const obj = resultObj[i];
       if (!obj.is_success) {
         console.log(obj.transaction_id, "failed");
-        assert(obj.is_success, true);
+        expect(obj.is_success).to.be.true;
       } else {
         console.log(
           "Transaction",
@@ -1176,7 +1177,7 @@ Then(
     console.log(
       `Number of successful transactions is ${successCount} of ${txCount}`
     );
-    assert(successCount === txCount);
+    expect(successCount).to.equal(txCount);
     console.log("All transactions found");
   }
 );
@@ -1297,6 +1298,36 @@ Then(
 
     await waitFor(
       async () => walletClient.isTransactionPending(lastTxId),
+      true,
+      115 * 1000,
+      5 * 1000,
+      5
+    );
+    const transactionPending = await walletClient.isTransactionPending(
+      lastTxId
+    );
+
+    expect(transactionPending).to.equal(true);
+  }
+);
+
+Then(
+  /wallet (.*) detects last transaction is Cancelled/,
+  { timeout: 120 * 1000 },
+  async function (walletName) {
+    const wallet = this.getWallet(walletName);
+    const walletClient = await wallet.connectClient();
+
+    let lastTxId = this.lastResult.results[0].transaction_id;
+    console.log(
+      "Waiting for Transaction ",
+      lastTxId,
+      "to be cancelled in wallet",
+      walletName
+    );
+
+    await waitFor(
+      async () => walletClient.isTransactionCancelled(lastTxId),
       true,
       115 * 1000,
       5 * 1000,

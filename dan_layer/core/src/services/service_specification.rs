@@ -43,11 +43,11 @@ use crate::{
 /// A trait to describe a specific configuration of services. This type allows other services to
 /// simply reference types.
 /// This trait is intended to only include `types` and no methods.
-pub trait ServiceSpecification: Clone {
+pub trait ServiceSpecification: Default + Clone {
     type Addr: NodeAddressable;
-    type AssetProcessor: AssetProcessor + Clone + Sync + Send + 'static;
-    type AssetProxy: AssetProxy + Clone + Sync + Send + 'static;
-    type BaseNodeClient: BaseNodeClient + Clone + Sync + Send + 'static;
+    type AssetProcessor: AssetProcessor + Clone;
+    type AssetProxy: AssetProxy + Clone;
+    type BaseNodeClient: BaseNodeClient + Clone;
     type ChainDbBackendAdapter: ChainDbBackendAdapter;
     type ChainStorageService: ChainStorageService<Self::Payload>;
     type CheckpointManager: CheckpointManager<Self::Addr>;
@@ -55,22 +55,16 @@ pub trait ServiceSpecification: Clone {
     type DbFactory: DbFactory<
             StateDbBackendAdapter = Self::StateDbBackendAdapter,
             ChainDbBackendAdapter = Self::ChainDbBackendAdapter,
-        > + Clone
-        + Sync
-        + Send
-        + 'static;
+        > + Clone;
     type EventsPublisher: EventsPublisher<ConsensusWorkerDomainEvent>;
-    type InboundConnectionService: InboundConnectionService<Addr = Self::Addr, Payload = Self::Payload>
-        + 'static
-        + Send
-        + Sync;
-    type MempoolService: MempoolService + Clone + Sync + Send + 'static;
+    type InboundConnectionService: InboundConnectionService<Addr = Self::Addr, Payload = Self::Payload>;
+    type MempoolService: MempoolService + Clone;
     type OutboundService: OutboundService<Addr = Self::Addr, Payload = Self::Payload>;
     type Payload: Payload;
     type PayloadProcessor: PayloadProcessor<Self::Payload>;
     type PayloadProvider: PayloadProvider<Self::Payload>;
     type SigningService: SigningService<Self::Addr>;
     type StateDbBackendAdapter: StateDbBackendAdapter;
-    type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone + Sync + Send + 'static;
-    type WalletClient: WalletClient + Clone + Sync + Send + 'static;
+    type ValidatorNodeClientFactory: ValidatorNodeClientFactory<Addr = Self::Addr> + Clone;
+    type WalletClient: WalletClient + Clone;
 }

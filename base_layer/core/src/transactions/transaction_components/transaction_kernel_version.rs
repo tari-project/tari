@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{
     convert::{TryFrom, TryInto},
     io,
@@ -55,5 +58,39 @@ impl ConsensusDecoding for TransactionKernelVersion {
             .try_into()
             .map_err(|_| io::Error::new(ErrorKind::InvalidInput, format!("Unknown version {}", buf[0])))?;
         Ok(version)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn test_try_from() {
+        assert_eq!(TransactionKernelVersion::try_from(0), Ok(TransactionKernelVersion::V0));
+        assert!(TransactionKernelVersion::try_from(1).is_err());
+    }
+
+    #[test]
+    fn test_consensus() {
+        let mut buffer = Cursor::new(vec![
+            0;
+            TransactionKernelVersion::get_current_version()
+                .consensus_encode_exact_size()
+        ]);
+        assert_eq!(
+            TransactionKernelVersion::get_current_version()
+                .consensus_encode(&mut buffer)
+                .unwrap(),
+            TransactionKernelVersion::get_current_version().consensus_encode_exact_size()
+        );
+        // Reset the buffer to original position, we are going to read.
+        buffer.set_position(0);
+        assert_eq!(
+            TransactionKernelVersion::consensus_decode(&mut buffer).unwrap(),
+            TransactionKernelVersion::get_current_version()
+        );
     }
 }

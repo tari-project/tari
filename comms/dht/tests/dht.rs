@@ -226,7 +226,7 @@ async fn setup_comms_dht(
 fn dht_config() -> DhtConfig {
     let mut config = DhtConfig::default_local_test();
     config.allow_test_addresses = true;
-    config.saf_config.auto_request = false;
+    config.saf.auto_request = false;
     config.discovery_request_timeout = Duration::from_secs(60);
     config.num_neighbouring_nodes = 8;
     config
@@ -564,7 +564,7 @@ async fn dht_propagate_dedup() {
         age: u32,
     }
 
-    let out_msg = OutboundDomainMessage::new(123, Person {
+    let out_msg = OutboundDomainMessage::new(&123, Person {
         name: "John Conway".into(),
         age: 82,
     });
@@ -600,9 +600,9 @@ async fn dht_propagate_dedup() {
     let node_D_id = node_D.node_identity().node_id().clone();
 
     // Ensure that the message has propagated before disconnecting everyone
-    let _ = node_B_messaging2.recv().await.unwrap();
-    let _ = node_C_messaging2.recv().await.unwrap();
-    let _ = node_D_messaging2.recv().await.unwrap();
+    let _result = node_B_messaging2.recv().await.unwrap();
+    let _result = node_C_messaging2.recv().await.unwrap();
+    let _result = node_D_messaging2.recv().await.unwrap();
 
     node_A.shutdown().await;
     node_B.shutdown().await;
@@ -700,7 +700,7 @@ async fn dht_do_not_store_invalid_message_in_dedup() {
     }
 
     // Just a message to test connectivity between Node A -> Node C, and to get the header from
-    let out_msg = OutboundDomainMessage::new(123, Person {
+    let out_msg = OutboundDomainMessage::new(&123, Person {
         name: "John Conway".into(),
         age: 82,
     });
@@ -852,7 +852,7 @@ async fn dht_repropagate() {
         age: u32,
     }
 
-    let out_msg = OutboundDomainMessage::new(123, Person {
+    let out_msg = OutboundDomainMessage::new(&123, Person {
         name: "Alan Turing".into(),
         age: 41,
     });
@@ -892,7 +892,7 @@ async fn dht_repropagate() {
             .unwrap();
     }
 
-    // This relies on the DHT being set with .with_dedup_discard_hit_count(3)
+    // This relies on the DHT being set with dedup_allowed_message_occurrences = 3
     receive_and_repropagate(&mut node_B, &out_msg).await;
     receive_and_repropagate(&mut node_C, &out_msg).await;
     receive_and_repropagate(&mut node_A, &out_msg).await;

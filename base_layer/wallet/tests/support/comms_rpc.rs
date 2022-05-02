@@ -469,15 +469,20 @@ impl BaseNodeWalletRpcMockState {
         timeout: Duration,
     ) -> Result<Vec<Vec<Vec<u8>>>, String> {
         let now = Instant::now();
+        let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.fetch_utxos_calls);
+            count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
             sleep(Duration::from_millis(100)).await;
         }
-        Err("Did not receive enough calls within the timeout period".to_string())
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 
     pub async fn wait_pop_query_deleted(
@@ -486,15 +491,20 @@ impl BaseNodeWalletRpcMockState {
         timeout: Duration,
     ) -> Result<Vec<QueryDeletedRequest>, String> {
         let now = Instant::now();
+        let mut count = 0usize;
         while now.elapsed() < timeout {
             let mut lock = acquire_lock!(self.query_deleted_calls);
+            count = (*lock).len();
             if (*lock).len() >= num_calls {
                 return Ok((*lock).drain(..num_calls).collect());
             }
             drop(lock);
             sleep(Duration::from_millis(100)).await;
         }
-        Err("Did not receive enough calls within the timeout period".to_string())
+        Err(format!(
+            "Did not receive enough calls within the timeout period, received {}, expected {}.",
+            count, num_calls
+        ))
     }
 }
 
@@ -632,7 +642,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         let mut fetch_utxos_calls = acquire_lock!(self.state.fetch_utxos_calls);
         (*fetch_utxos_calls).push(message.output_hashes.clone());
 
-        for hash in message.output_hashes.iter() {
+        for hash in &message.output_hashes {
             if let Some(output) = utxos.iter().find(|o| &o.hash() == hash) {
                 result.push(TransactionOutputProto::from(output.clone()));
             }
@@ -732,7 +742,7 @@ impl BaseNodeWalletService for BaseNodeWalletRpcMockService {
         headers.sort_by(|a, b| b.height.cmp(&a.height));
 
         let mut found_height = 0;
-        for h in headers.iter() {
+        for h in &headers {
             if h.timestamp.as_u64() < time {
                 found_height = h.height;
                 break;

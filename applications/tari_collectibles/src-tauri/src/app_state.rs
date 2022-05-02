@@ -28,10 +28,10 @@ use crate::{
     sqlite::{SqliteCollectiblesStorage, SqliteDbFactory},
     StorageError,
   },
+  CollectiblesConfig,
 };
 use std::{path::PathBuf, sync::Arc};
 
-use tari_common::configuration::CollectiblesConfig;
 use tauri::async_runtime::RwLock;
 use uuid::Uuid;
 

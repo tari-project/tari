@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const lib = require("./lib");
 const ref = require("ref-napi");
 const ffi = require("ffi-napi");
@@ -94,14 +97,9 @@ try {
         console.log("txFauxUnconfirmed: ", ptr, confirmations);
       }
   );
-  // callback_direct_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-  const directSendResult = ffi.Callback("void", [u64, bool], function (i, j) {
-    console.log("directSendResult: ", i, j);
-  });
-  // callback_store_and_forward_send_result: unsafe extern "C" fn(c_ulonglong, bool),
-  const safResult = ffi.Callback("void", [u64, bool], function (i, j) {
-    console.log("safResult: ", i, j);
-  });
+  // callback_transaction_send_result: unsafe extern "C" fn(c_ulonglong, *mut TariTransactionSendStatus),
+  const transactionSendResult = ffi.Callback("void", [u64, ["pointer"]], function (i, ptr) {
+    console.log("transactionSendResult: ", i, ptr);
   // callback_transaction_cancellation: unsafe extern "C" fn(*mut TariCompletedTransaction),
   const txCancelled = ffi.Callback("void", ["pointer"], function (ptr) {
     console.log("txCancelled: ", ptr);
@@ -125,6 +123,10 @@ try {
   // callback_saf_messages_received: unsafe extern "C" fn(),
   const safsReceived = ffi.Callback("void", [], function () {
     console.log("safsReceived");
+  });
+  // callback_connectivity_status: unsafe extern "C" fn(),
+  const connectivityStatus = ffi.Callback("void", [u64], function () {
+    console.log("connectivityStatus");
   });
 
   const recovery = ffi.Callback("void", [u64, u64], function (current, total) {
@@ -160,14 +162,14 @@ try {
     txMinedUnconfirmed,
     txFauxConfirmed,
     txFauxUnconfirmed,
-    directSendResult,
-    safResult,
+    transactionSendResult,
     txCancelled,
     txoValidation,
     contactsLivenessDataUpdated,
     balanceUpdated,
     txValidation,
     safsReceived,
+    connectivityStatus,
     recoveryInProgress,
     err
   );

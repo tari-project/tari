@@ -94,7 +94,7 @@ pub async fn send_transaction_reply_direct(
     match outbound_message_service
         .send_direct(
             inbound_transaction.source_public_key.clone(),
-            OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
+            OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, proto_message.clone()),
         )
         .await
     {
@@ -203,7 +203,7 @@ async fn send_transaction_reply_store_and_forward(
             NodeId::from_public_key(&destination_pubkey),
             OutboundEncryption::encrypt_for(destination_pubkey.clone()),
             vec![],
-            OutboundDomainMessage::new(TariMessageType::ReceiverPartialTransactionReply, msg),
+            OutboundDomainMessage::new(&TariMessageType::ReceiverPartialTransactionReply, msg),
         )
         .await
     {

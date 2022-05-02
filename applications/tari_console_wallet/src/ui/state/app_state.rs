@@ -30,7 +30,7 @@ use bitflags::bitflags;
 use chrono::{DateTime, Local, NaiveDateTime};
 use log::*;
 use qrcode::{render::unicode, QrCode};
-use tari_common::{configuration::Network, GlobalConfig};
+use tari_common::configuration::Network;
 use tari_common_types::{
     emoji::EmojiId,
     transaction::{TransactionDirection, TransactionStatus, TxId},
@@ -48,7 +48,6 @@ use tari_core::transactions::{
     weight::TransactionWeight,
 };
 use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
-use tari_p2p::auto_update::SoftwareUpdaterHandle;
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::{
     assets::Asset,
@@ -61,6 +60,7 @@ use tari_wallet::{
         handle::TransactionEventReceiver,
         storage::models::{CompletedTransaction, TxCancellationReason},
     },
+    WalletConfig,
     WalletSqlite,
 };
 use tokio::{
@@ -91,8 +91,8 @@ pub struct AppState {
     cached_data: AppStateData,
     cache_update_cooldown: Option<Instant>,
     completed_tx_filter: TransactionFilter,
-    node_config: GlobalConfig,
     config: AppStateConfig,
+    wallet_config: WalletConfig,
     wallet_connectivity: WalletConnectivityHandle,
     balance_enquiry_debouncer: BalanceEnquiryDebouncer,
 }
@@ -104,7 +104,7 @@ impl AppState {
         wallet: WalletSqlite,
         base_node_selected: Peer,
         base_node_config: PeerConfig,
-        node_config: GlobalConfig,
+        wallet_config: WalletConfig,
     ) -> Self {
         let wallet_connectivity = wallet.wallet_connectivity.clone();
         let output_manager_service = wallet.output_manager_service.clone();
@@ -117,14 +117,14 @@ impl AppState {
             cached_data,
             cache_update_cooldown: None,
             completed_tx_filter: TransactionFilter::ABANDONED_COINBASES,
-            node_config: node_config.clone(),
             config: AppStateConfig::default(),
             wallet_connectivity,
             balance_enquiry_debouncer: BalanceEnquiryDebouncer::new(
                 inner,
-                Duration::from_secs(node_config.wallet_balance_enquiry_cooldown_period),
+                Duration::from_secs(5),
                 output_manager_service,
             ),
+            wallet_config,
         }
     }
 
@@ -140,7 +140,7 @@ impl AppState {
 
     pub async fn start_balance_enquiry_debouncer(&self) -> Result<(), UiError> {
         tokio::spawn(self.balance_enquiry_debouncer.clone().run());
-        let _ = self
+        let _size = self
             .balance_enquiry_debouncer
             .clone()
             .get_sender()
@@ -356,6 +356,13 @@ impl AppState {
         Ok(())
     }
 
+    pub async fn restart_transaction_protocols(&mut self) -> Result<(), UiError> {
+        let inner = self.inner.write().await;
+        let mut tx_service = inner.wallet.transaction_service.clone();
+        tx_service.restart_transaction_protocols().await?;
+        Ok(())
+    }
+
     pub fn get_identity(&self) -> &MyIdentity {
         &self.cached_data.my_identity
     }
@@ -423,8 +430,8 @@ impl AppState {
         }
     }
 
-    pub fn get_confirmations(&self, tx_id: &TxId) -> Option<&u64> {
-        (&self.cached_data.confirmations).get(tx_id)
+    pub fn get_confirmations(&self, tx_id: TxId) -> Option<&u64> {
+        (&self.cached_data.confirmations).get(&tx_id)
     }
 
     pub fn get_completed_tx(&self, index: usize) -> Option<&CompletedTransactionInfo> {
@@ -503,7 +510,8 @@ impl AppState {
     }
 
     pub fn get_required_confirmations(&self) -> u64 {
-        (&self.node_config.transaction_num_confirmations_required).to_owned()
+        // TODO: this is not guaranteed to be correct
+        self.wallet_config.num_required_confirmations
     }
 
     pub fn toggle_abandoned_coinbase_filter(&mut self) {
@@ -535,16 +543,11 @@ impl AppState {
     }
 
     pub fn get_default_fee_per_gram(&self) -> MicroTari {
-        // this should not be empty as we this should have been created, but lets just be safe and use the default value
-        // from the config
-        match self.node_config.wallet_config.as_ref() {
-            Some(config) => config.fee_per_gram.into(),
-            _ => MicroTari::from(5),
-        }
+        self.wallet_config.fee_per_gram.into()
     }
 
-    pub fn get_network(&self) -> Network {
-        self.node_config.network
+    pub async fn get_network(&self) -> Network {
+        self.inner.read().await.get_network()
     }
 }
 pub struct AppStateInner {
@@ -568,6 +571,10 @@ impl AppStateInner {
             data,
             wallet,
         }
+    }
+
+    pub fn get_network(&self) -> Network {
+        self.wallet.network.as_network()
     }
 
     pub fn add_event(&mut self, event: EventListItem) {
@@ -680,22 +687,22 @@ impl AppStateInner {
         match found {
             None => {
                 // If it's not in the backend then remove it from AppState
-                let _: Option<CompletedTransaction> = self
+                let _completed_transaction: Option<CompletedTransaction> = self
                     .data
                     .pending_txs
                     .iter()
                     .position(|i| i.tx_id == tx_id)
                     .and_then(|index| {
-                        let _ = self.data.pending_txs.remove(index);
+                        let _completed_transaction_info = self.data.pending_txs.remove(index);
                         None
                     });
-                let _: Option<CompletedTransaction> = self
+                let _completed_transaction: Option<CompletedTransaction> = self
                     .data
                     .completed_txs
                     .iter()
                     .position(|i| i.tx_id == tx_id)
                     .and_then(|index| {
-                        let _ = self.data.pending_txs.remove(index);
+                        let _completed_transaction_info = self.data.pending_txs.remove(index);
                         None
                     });
             },
@@ -708,7 +715,7 @@ impl AppStateInner {
                         self.updated = true;
                         return Ok(());
                     } else {
-                        let _ = self.data.pending_txs.remove(index);
+                        let _completed_transaction_info = self.data.pending_txs.remove(index);
                     }
                 } else if tx.status == TransactionStatus::Pending && tx.cancelled.is_none() {
                     self.data.pending_txs.push(tx);
@@ -719,6 +726,7 @@ impl AppStateInner {
                     });
                     self.updated = true;
                     return Ok(());
+                } else {
                 }
 
                 if let Some(index) = self.data.completed_txs.iter().position(|i| i.tx_id == tx_id) {
@@ -767,7 +775,7 @@ impl AppStateInner {
         let connections = self.wallet.comms.connectivity().get_active_connections().await?;
         let peer_manager = self.wallet.comms.peer_manager();
         let mut peers = Vec::with_capacity(connections.len());
-        for c in connections.iter() {
+        for c in &connections {
             if let Ok(Some(p)) = peer_manager.find_by_node_id(c.peer_node_id()).await {
                 peers.push(p);
             }
@@ -857,6 +865,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
@@ -881,6 +890,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_previous = self.data.base_node_selected.clone();
@@ -922,6 +932,7 @@ impl AppStateInner {
             )
             .await?;
 
+        self.spawn_restart_transaction_protocols_task();
         self.spawn_transaction_revalidation_task();
 
         self.data.base_node_peer_custom = None;
@@ -956,13 +967,23 @@ impl AppStateInner {
         });
     }
 
+    pub fn spawn_restart_transaction_protocols_task(&mut self) {
+        let mut txn_service = self.wallet.transaction_service.clone();
+
+        task::spawn(async move {
+            if let Err(e) = txn_service.restart_transaction_protocols().await {
+                error!(target: LOG_TARGET, "Problem restarting transaction protocols: {}", e);
+            }
+        });
+    }
+
     pub fn add_notification(&mut self, notification: String) {
         self.data.notifications.push((Local::now(), notification));
         self.data.new_notification_count += 1;
 
         const MAX_NOTIFICATIONS: usize = 100;
         if self.data.notifications.len() > MAX_NOTIFICATIONS {
-            let _ = self.data.notifications.remove(0);
+            let _notification = self.data.notifications.remove(0);
         }
 
         self.updated = true;
@@ -979,9 +1000,9 @@ impl AppStateInner {
         self.updated = true;
     }
 
-    pub fn get_software_updater(&self) -> SoftwareUpdaterHandle {
-        self.wallet.get_software_updater()
-    }
+    // pub fn get_software_updater(&self) -> Option<SoftwareUpdaterHandle> {
+    //     self.wallet.get_software_updater()
+    // }
 }
 
 #[derive(Clone)]
@@ -1173,9 +1194,10 @@ pub struct MyIdentity {
     pub node_id: String,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum UiTransactionSendStatus {
     Initiated,
+    Queued,
     SentDirect,
     TransactionComplete,
     DiscoveryInProgress,

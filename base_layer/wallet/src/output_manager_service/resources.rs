@@ -20,8 +20,6 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::{Display, Error, Formatter};
-
 use tari_core::{
     consensus::ConsensusConstants,
     transactions::{transaction_protocol::RewindData, CryptoFactories},
@@ -56,25 +54,21 @@ pub enum OutputManagerKeyManagerBranch {
     CoinbaseScript,
     RecoveryViewOnly,
     RecoveryBlinding,
+    RecoveryByte,
 }
 
-impl Display for OutputManagerKeyManagerBranch {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        let response = match self {
-            OutputManagerKeyManagerBranch::Spend => "Spend",
-            OutputManagerKeyManagerBranch::SpendScript => "Script",
-            OutputManagerKeyManagerBranch::Coinbase => "Coinbase",
-            OutputManagerKeyManagerBranch::CoinbaseScript => "Coinbase_script",
-            OutputManagerKeyManagerBranch::RecoveryViewOnly => "Recovery_viewonly",
-            OutputManagerKeyManagerBranch::RecoveryBlinding => "Recovery_blinding",
-        };
-        fmt.write_str(response)
-    }
-}
-
-#[allow(clippy::from_over_into)]
-impl Into<String> for OutputManagerKeyManagerBranch {
-    fn into(self) -> String {
-        self.to_string()
+impl OutputManagerKeyManagerBranch {
+    /// Warning: Changing these strings will affect the backwards compatibility of the wallet with older databases or
+    /// recovery.
+    pub fn get_branch_key(&self) -> String {
+        match self {
+            OutputManagerKeyManagerBranch::Spend => "".to_string(),
+            OutputManagerKeyManagerBranch::SpendScript => "script".to_string(),
+            OutputManagerKeyManagerBranch::Coinbase => "coinbase".to_string(),
+            OutputManagerKeyManagerBranch::CoinbaseScript => "coinbase_script".to_string(),
+            OutputManagerKeyManagerBranch::RecoveryViewOnly => "recovery_viewonly".to_string(),
+            OutputManagerKeyManagerBranch::RecoveryBlinding => "recovery_blinding".to_string(),
+            OutputManagerKeyManagerBranch::RecoveryByte => "Recovery_byte".to_string(),
+        }
     }
 }

@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use tui::widgets::ListState;
-
 #[derive(Debug)]
 pub struct WindowedListState {
     offset: usize,
@@ -57,6 +56,7 @@ impl WindowedListState {
                 let diff = self.start - selected;
                 self.start -= diff;
                 self.end -= diff;
+            } else {
             }
             self.offset = self.start;
             list_state.select(Some(selected - self.start));
@@ -79,7 +79,9 @@ impl WindowedListState {
     }
 
     pub fn next(&mut self) {
-        if self.num_items != 0 {
+        if self.num_items == 0 {
+            self.selected = None;
+        } else {
             let i = match self.selected {
                 Some(i) => {
                     if i >= self.num_items - 1 {
@@ -91,13 +93,13 @@ impl WindowedListState {
                 None => 0,
             };
             self.selected = Some(i);
-        } else {
-            self.selected = None;
         }
     }
 
     pub fn previous(&mut self) {
-        if self.num_items != 0 {
+        if self.num_items == 0 {
+            self.selected = None;
+        } else {
             let i = match self.selected {
                 Some(i) => {
                     if i == 0 {
@@ -109,8 +111,6 @@ impl WindowedListState {
                 None => 0,
             };
             self.selected = Some(i);
-        } else {
-            self.selected = None;
         }
     }
 
@@ -154,8 +154,9 @@ impl WindowedListState {
 
 #[cfg(test)]
 mod test {
-    use crate::ui::widgets::WindowedListState;
+    use std::convert::TryFrom;
 
+    use crate::ui::widgets::WindowedListState;
     #[test]
     fn test_list_offset_update() {
         let slist = vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -174,7 +175,7 @@ mod test {
         for i in (0..5).rev() {
             list_state.previous();
             let state = list_state.get_list_state(height);
-            assert_eq!(state.selected(), Some((i - 2i32).max(0) as usize));
+            assert_eq!(state.selected(), Some(usize::try_from((i - 2i32).max(0)).unwrap()));
         }
         list_state.get_list_state(height);
         let window = list_state.get_start_end();

@@ -23,14 +23,17 @@
 use std::sync::Arc;
 
 use log::*;
-use tari_common::{configuration::Network, DatabaseType, GlobalConfig};
+use tari_common::{
+    configuration::Network,
+    exit_codes::{ExitCode, ExitError},
+};
 use tari_comms::{peer_manager::NodeIdentity, protocol::rpc::RpcServerHandle, CommsNode};
 use tari_comms_dht::Dht;
 use tari_core::{
     base_node::{state_machine_service::states::StatusInfo, LocalNodeCommsInterface, StateMachineHandle},
-    chain_storage::{create_lmdb_database, BlockchainDatabase, BlockchainDatabaseConfig, LMDBDatabase, Validators},
+    chain_storage::{create_lmdb_database, BlockchainDatabase, ChainStorageError, LMDBDatabase, Validators},
     consensus::ConsensusManager,
-    mempool::{service::LocalMempoolService, Mempool, MempoolConfig},
+    mempool::{service::LocalMempoolService, Mempool},
     proof_of_work::randomx_factory::RandomXFactory,
     transactions::CryptoFactories,
     validation::{
@@ -50,7 +53,7 @@ use tari_service_framework::ServiceHandles;
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::watch;
 
-use crate::bootstrap::BaseNodeBootstrapper;
+use crate::{bootstrap::BaseNodeBootstrapper, config::DatabaseType, ApplicationConfig};
 
 const LOG_TARGET: &str = "c::bn::initialization";
 
@@ -58,7 +61,7 @@ const LOG_TARGET: &str = "c::bn::initialization";
 /// communications stack, the node state machine and handles to the various services that are registered
 /// on the comms stack.
 pub struct BaseNodeContext {
-    config: Arc<GlobalConfig>,
+    config: Arc<ApplicationConfig>,
     consensus_rules: ConsensusManager,
     blockchain_db: BlockchainDatabase<LMDBDatabase>,
     base_node_comms: CommsNode,
@@ -81,7 +84,7 @@ impl BaseNodeContext {
     }
 
     /// Return the node config
-    pub fn config(&self) -> Arc<GlobalConfig> {
+    pub fn config(&self) -> Arc<ApplicationConfig> {
         self.config.clone()
     }
 
@@ -137,7 +140,7 @@ impl BaseNodeContext {
 
     /// Returns the configured network
     pub fn network(&self) -> Network {
-        self.config.network
+        self.config.base_node.network
     }
 
     /// Returns the consensus rules
@@ -151,6 +154,10 @@ impl BaseNodeContext {
             .expect_handle::<StateMachineHandle>()
             .get_status_info_watch()
     }
+
+    pub fn get_report_grpc_error(&self) -> bool {
+        self.config.base_node.report_grpc_error
+    }
 }
 
 /// Sets up and initializes the base node, creating the context and database
@@ -162,35 +169,18 @@ impl BaseNodeContext {
 /// ## Returns
 /// Result containing the NodeContainer, String will contain the reason on error
 pub async fn configure_and_initialize_node(
-    config: Arc<GlobalConfig>,
+    app_config: Arc<ApplicationConfig>,
     node_identity: Arc<NodeIdentity>,
     interrupt_signal: ShutdownSignal,
-    cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error> {
-    let result = match &config.db_type {
-        DatabaseType::Memory => {
-            // let backend = MemoryDatabase::<HashDigest>::default();
-            // build_node_context(
-            //     backend,
-            //     node_identity,
-            //     wallet_node_identity,
-            //     config,
-            //     interrupt_signal,
-            //     cleanup_orphans_at_startup,
-            // )
-            // .await?
-            unimplemented!();
-        },
-        DatabaseType::LMDB(p) => {
-            let backend = create_lmdb_database(&p, config.db_config.clone())?;
-            build_node_context(
-                backend,
-                node_identity,
-                config,
-                interrupt_signal,
-                cleanup_orphans_at_startup,
+) -> Result<BaseNodeContext, ExitError> {
+    let result = match &app_config.base_node.db_type {
+        DatabaseType::Lmdb => {
+            let backend = create_lmdb_database(
+                app_config.base_node.lmdb_path.as_path(),
+                app_config.base_node.lmdb.clone(),
             )
-            .await?
+            .map_err(|e| ExitError::new(ExitCode::DatabaseError, &e))?;
+            build_node_context(backend, app_config, node_identity, interrupt_signal).await?
         },
     };
     Ok(result)
@@ -209,58 +199,65 @@ pub async fn configure_and_initialize_node(
 /// Result containing the BaseNodeContext, String will contain the reason on error
 async fn build_node_context(
     backend: LMDBDatabase,
+    app_config: Arc<ApplicationConfig>,
     base_node_identity: Arc<NodeIdentity>,
-    config: Arc<GlobalConfig>,
     interrupt_signal: ShutdownSignal,
-    cleanup_orphans_at_startup: bool,
-) -> Result<BaseNodeContext, anyhow::Error> {
+) -> Result<BaseNodeContext, ExitError> {
     //---------------------------------- Blockchain --------------------------------------------//
     debug!(
         target: LOG_TARGET,
-        "Building base node context for {}  network", config.network
+        "Building base node context for {}  network", app_config.base_node.network
     );
-    let rules = ConsensusManager::builder(config.network).build();
+    let rules = ConsensusManager::builder(app_config.base_node.network).build();
     let factories = CryptoFactories::default();
-    let randomx_factory = RandomXFactory::new(config.max_randomx_vms);
+    let randomx_factory = RandomXFactory::new(app_config.base_node.max_randomx_vms);
     let validators = Validators::new(
         BodyOnlyValidator::new(rules.clone()),
         HeaderValidator::new(rules.clone()),
         OrphanBlockValidator::new(
             rules.clone(),
-            config.base_node_bypass_range_proof_verification,
+            app_config.base_node.bypass_range_proof_verification,
             factories.clone(),
         ),
     );
-    let db_config = BlockchainDatabaseConfig {
-        orphan_storage_capacity: config.orphan_storage_capacity,
-        pruning_horizon: config.pruning_horizon,
-        pruning_interval: config.pruned_mode_cleanup_interval,
-        track_reorgs: config.blockchain_track_reorgs,
-    };
+
     let blockchain_db = BlockchainDatabase::new(
         backend,
         rules.clone(),
         validators,
-        db_config,
+        app_config.base_node.storage.clone(),
         DifficultyCalculator::new(rules.clone(), randomx_factory),
-        cleanup_orphans_at_startup,
-    )?;
+    )
+    .map_err(|err| {
+        if let ChainStorageError::DatabaseResyncRequired(reason) = err {
+            return ExitError::new(
+                ExitCode::DbInconsistentState,
+                &format!("You may need to re-sync your database because {}", reason),
+            );
+        } else {
+            ExitError::new(ExitCode::DatabaseError, &err)
+        }
+    })?;
     let mempool_validator = MempoolValidator::new(vec![
         Box::new(TxInternalConsistencyValidator::new(
             factories.clone(),
-            config.base_node_bypass_range_proof_verification,
+            app_config.base_node.bypass_range_proof_verification,
             blockchain_db.clone(),
         )),
         Box::new(TxInputAndMaturityValidator::new(blockchain_db.clone())),
         Box::new(TxConsensusValidator::new(blockchain_db.clone())),
     ]);
-    let mempool = Mempool::new(MempoolConfig::default(), rules.clone(), Box::new(mempool_validator));
+    let mempool = Mempool::new(
+        app_config.base_node.mempool.clone(),
+        rules.clone(),
+        Box::new(mempool_validator),
+    );
 
     //---------------------------------- Base Node  --------------------------------------------//
     debug!(target: LOG_TARGET, "Creating base node state machine.");
 
     let base_node_handles = BaseNodeBootstrapper {
-        config: &config,
+        app_config: &app_config,
         node_identity: base_node_identity,
         db: blockchain_db.clone(),
         mempool,
@@ -275,7 +272,7 @@ async fn build_node_context(
     let base_node_dht = base_node_handles.expect_handle::<Dht>();
 
     Ok(BaseNodeContext {
-        config,
+        config: app_config,
         consensus_rules: rules,
         blockchain_db,
         base_node_comms,

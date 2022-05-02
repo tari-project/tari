@@ -20,7 +20,7 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::num::NonZeroU64;
+use std::{convert::TryFrom, num::NonZeroU64};
 
 use crate::transactions::aggregated_body::AggregateBody;
 
@@ -127,7 +127,7 @@ impl TransactionWeight {
         self.params()
             .metadata_bytes_per_gram
             .and_then(|per_gram| {
-                let per_gram = per_gram.get() as usize;
+                let per_gram = usize::try_from(per_gram.get()).unwrap();
                 let rem = metadata_size % per_gram;
                 if rem == 0 {
                     Some(metadata_size)

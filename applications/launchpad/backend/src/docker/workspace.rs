@@ -256,7 +256,7 @@ impl TariWorkspace {
     ) -> Result<Option<NodeIdentity>, DockerWrapperError> {
         if let Some(id_file_path) = self.config.id_path(root_path, image) {
             debug!("Loading or creating identity file {}", id_file_path.to_string_lossy());
-            let id = setup_node_identity(id_file_path, &None, true, PeerFeatures::COMMUNICATION_NODE)?
+            let id = setup_node_identity(id_file_path, None, true, PeerFeatures::COMMUNICATION_NODE)?
                 .as_ref()
                 .clone();
             Ok(Some(id))
@@ -271,7 +271,7 @@ impl TariWorkspace {
         let mut ids = HashMap::new();
         for image in ImageType::iter() {
             if let Some(id) = self.create_or_load_identity(root_path.as_str(), image)? {
-                let _ = ids.insert(image, id);
+                let _node_identity = ids.insert(image, id);
             }
         }
         Ok(ids)
@@ -386,6 +386,7 @@ impl TariWorkspace {
             ..Default::default()
         };
         info!("Creating {}", image_name);
+        debug!("Options: {:?}", options);
         debug!("{} has configuration object: {:#?}", image_name, config);
         let container = docker.create_container(options, config).await?;
         let name = image.container_name();

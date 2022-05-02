@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{
     convert::{TryFrom, TryInto},
     io,
@@ -5,10 +8,11 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use strum_macros::Display;
 
 use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq, PartialOrd)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Deserialize, Serialize, Eq, PartialOrd, Display)]
 #[repr(u8)]
 pub enum OutputFeaturesVersion {
     V0 = 0,

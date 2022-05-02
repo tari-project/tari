@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const { spawn } = require("child_process");
 const { expect } = require("chai");
 const fs = require("fs");
@@ -14,6 +17,7 @@ class BaseNodeProcess {
     this.name = name;
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.nodeFile = nodeFile;
+    this.peerSeeds = [];
     this.options = Object.assign(
       {
         baseDir: "./temp/base_nodes",
@@ -40,24 +44,30 @@ class BaseNodeProcess {
       if (fs.existsSync(this.baseDir)) {
         instance++;
       } else {
-        fs.mkdirSync(this.baseDir, { recursive: true });
+        console.log("Making base dir ", this.baseDir);
+        fs.mkdirSync(`${this.baseDir}/log`, { recursive: true });
         break;
       }
     } while (fs.existsSync(this.baseDir));
-    const args = ["--base-path", ".", "--init", "--create-id"];
+    const args = ["--base-path", ".", "--init", "--network", "localnet"];
+    const overrides = this.getOverrides();
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
 
     await this.run(await this.compile(), args);
-    // console.log("Port:", this.port);
-    // console.log("GRPC:", this.grpcPort);
-    // console.log(`Starting node ${this.name}...`);
+    console.log("Port:", this.port);
+    console.log("GRPC:", this.grpcPort);
+    console.log(`Starting node ${this.name}...`);
   }
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
+      await this.runCommand("cargo", [
         "build",
         "--release",
         "--bin",
@@ -73,10 +83,15 @@ class BaseNodeProcess {
   }
 
   ensureNodeInfo() {
-    for (;;) {
+    for (let i = 0; i < 100; i++) {
       if (fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
         break;
       }
+    }
+    if (!fs.existsSync(this.baseDir + "/" + this.nodeFile)) {
+      throw new Error(
+        `Node id file node found ${this.baseDir}/${this.nodeFile}`
+      );
     }
 
     this.nodeInfo = JSON5.parse(
@@ -99,8 +114,21 @@ class BaseNodeProcess {
     this.forceSyncPeers = addresses;
   }
 
+  getOverrides() {
+    return createEnv({
+      network: "localnet",
+      baseNodeGrpcAddress: this.getGrpcAddress(),
+      isWallet: false,
+      baseNodePort: this.port,
+      peerSeeds: this.peerSeeds,
+      forceSyncPeers: this.forceSyncPeers,
+      nodeFile: this.nodeFile,
+      options: this.options,
+    });
+  }
+
   getGrpcAddress() {
-    const address = "127.0.0.1:" + this.grpcPort;
+    const address = "/ip4/127.0.0.1/tcp/" + this.grpcPort;
     // console.log("Base Node GRPC Address:",address);
     return address;
   }
@@ -111,40 +139,30 @@ class BaseNodeProcess {
         fs.mkdirSync(this.baseDir + "/log", { recursive: true });
       }
 
-      let envs = [];
-      if (!this.excludeTestEnvars) {
-        envs = createEnv(
-          this.name,
-          false,
-          this.nodeFile,
-          "127.0.0.1",
-          "8082",
-          "8081",
-          "127.0.0.1",
-          this.grpcPort,
-          this.port,
-          "/ip4/127.0.0.1/tcp/8080",
-          "127.0.0.1:8085",
-          this.options,
-          this.peerSeeds,
-          "DirectAndStoreAndForward",
-          this.forceSyncPeers
-        );
-      }
+      let overrides = this.excludeTestEnvars ? {} : this.getOverrides();
+      console.error(overrides);
 
       // clear the .env file
-      fs.writeFileSync(`${this.baseDir}/.env`, "");
-      Object.keys(envs).forEach((key) => {
-        fs.appendFileSync(`${this.baseDir}/.env`, `${key}=${envs[key]}\n`);
+      fs.writeFileSync(`${this.baseDir}/.overrides`, "");
+      Object.keys(overrides).forEach((key) => {
+        fs.appendFileSync(
+          `${this.baseDir}/.overrides`,
+          ` -p ${key}=${overrides[key]}`
+        );
       });
+
+      // Create convenience script - this is NOT used to start the base node in cucumber
       fs.writeFileSync(
         `${this.baseDir}/start_node.sh`,
-        "export $(grep -v '^#' .env | xargs)\ncargo run --release --bin tari_base_node -- -b ."
+        "bash -c \"RUST_BACKTRACE=1 cargo run --release --bin tari_base_node -- -n --watch status -b . --network localnet $(grep -v '^#' .overrides)\"",
+        { mode: 0o777 }
       );
+
+      // console.log("Running command ", cmd, args.join(" "));
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
-        env: { ...process.env, ...envs },
+        env: { ...process.env, RUST_BACKTRACE: "1" },
       });
 
       ps.stdout.on("data", (data) => {
@@ -191,6 +209,38 @@ class BaseNodeProcess {
     });
   }
 
+  runCommand(cmd, args, opts = { env: {} }) {
+    return new Promise((resolve, reject) => {
+      const ps = spawn(cmd, args, {
+        cwd: this.baseDir,
+        // shell: true,
+        env: { ...process.env, ...opts.env },
+      });
+
+      ps.stdout.on("data", (data) => {
+        // console.log(`stdout: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+        resolve(ps);
+      });
+
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
+
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
+        if (code) {
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
+        } else {
+          resolve(ps);
+        }
+      });
+    });
+  }
+
   async startNew() {
     await this.init();
     const start = await this.start();
@@ -202,13 +252,29 @@ class BaseNodeProcess {
     return await this.createGrpcClient();
   }
 
-  async start(opts = []) {
-    const args = ["--base-path", "."];
+  async start(opts = {}) {
+    const args = [
+      "--non-interactive-mode",
+      "--watch",
+      "status",
+      "--base-path",
+      ".",
+      "--network",
+      opts.network || "localnet",
+    ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
-    args.push(...opts);
-    return await this.run(await this.compile(), args);
+    if (opts.args) {
+      args.concat(opts.args);
+    }
+    const overrides = Object.assign(this.getOverrides(), opts.config);
+    Object.keys(overrides).forEach((k) => {
+      args.push("-p");
+      args.push(`${k}=${overrides[k]}`);
+    });
+    let cmd = await this.compile();
+    return await this.run(cmd, args);
   }
 
   stop() {

@@ -30,7 +30,7 @@ use tari_crypto::{
 
 use crate::transactions::{
     crypto_factories::CryptoFactories,
-    transaction_components::TransactionOutput,
+    transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion},
     transaction_protocol::{
         build_challenge,
         recipient::RecipientSignedMessage as RD,
@@ -104,10 +104,15 @@ impl SingleReceiverTransactionProtocol {
                 .construct_proof(spending_key, sender_info.amount.into())?
         };
 
-        let sender_features = sender_info.features.clone();
+        let sender_features = OutputFeatures::features_with_updated_recovery_byte(
+            &commitment,
+            rewind_data,
+            &sender_info.features.clone(),
+        );
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
-            &sender_info.amount,
+            TransactionOutputVersion::get_current_version(),
+            sender_info.amount,
             &spending_key.clone(),
             &sender_info.script,
             &sender_features,
@@ -137,8 +142,8 @@ mod test {
     use tari_crypto::{
         commitment::HomomorphicCommitmentFactory,
         keys::{PublicKey as PK, SecretKey as SK},
-        script::TariScript,
     };
+    use tari_script::TariScript;
 
     use crate::transactions::{
         crypto_factories::CryptoFactories,
@@ -165,6 +170,7 @@ mod test {
         let factories = CryptoFactories::default();
         let info = SingleRoundSenderData::default();
         let (r, k, _) = generate_output_parms();
+        #[allow(clippy::match_wild_err_arm)]
         match SingleReceiverTransactionProtocol::create(&info, r, k, &factories, None) {
             Ok(_) => panic!("Zero amounts should fail"),
             Err(TransactionProtocolError::ValidationError(s)) => assert_eq!(s, "Cannot send zero microTari"),

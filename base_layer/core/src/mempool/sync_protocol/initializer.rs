@@ -63,7 +63,7 @@ impl MempoolSyncInitializer {
     pub fn get_protocol_extension(&self) -> impl ProtocolExtension {
         let notif_tx = self.notif_tx.clone();
         move |context: &mut ProtocolExtensionContext| -> Result<(), ProtocolExtensionError> {
-            context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], notif_tx);
+            context.add_protocol(&[MEMPOOL_SYNC_PROTOCOL.clone()], &notif_tx);
             Ok(())
         }
     }
@@ -72,7 +72,8 @@ impl MempoolSyncInitializer {
 #[async_trait]
 impl ServiceInitializer for MempoolSyncInitializer {
     async fn initialize(&mut self, context: ServiceInitializerContext) -> Result<(), ServiceInitializationError> {
-        let config = self.config;
+        debug!(target: LOG_TARGET, "Initializing Mempool Sync Service");
+        let config = self.config.clone();
         let mempool = self.mempool.clone();
         let notif_rx = self.notif_rx.take().unwrap();
 
@@ -108,6 +109,7 @@ impl ServiceInitializer for MempoolSyncInitializer {
                 .await;
         });
 
+        debug!(target: LOG_TARGET, "Mempool sync service initialized");
         Ok(())
     }
 }

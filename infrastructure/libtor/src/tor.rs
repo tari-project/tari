@@ -22,15 +22,12 @@
 
 use std::{fmt, io, net::TcpListener};
 
+use derivative::Derivative;
 use libtor::{LogDestination, LogLevel, TorFlag};
 use log::*;
-use multiaddr::Multiaddr;
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
-use tari_common::{
-    exit_codes::{ExitCode, ExitError},
-    CommsTransport,
-    TorControlAuthentication,
-};
+use tari_common::exit_codes::{ExitCode, ExitError};
+use tari_p2p::{TorControlAuthentication, TransportConfig, TransportType};
 use tari_shutdown::ShutdownSignal;
 use tempfile::{tempdir, NamedTempFile, TempDir, TempPath};
 use tor_hash_passwd::EncryptedKey;
@@ -45,12 +42,14 @@ impl fmt::Debug for TorPassword {
     }
 }
 
-#[derive(Debug)]
+#[derive(Derivative)]
+#[derivative(Debug)]
 pub struct Tor {
     control_port: u16,
     data_dir: String,
     log_destination: String,
     log_level: LogLevel,
+    #[derivative(Debug = "ignore")]
     passphrase: TorPassword,
     socks_port: u16,
     temp_dir: Option<TempDir>,
@@ -112,38 +111,20 @@ impl Tor {
     }
 
     /// Override a given Tor comms transport with the control address and auth from this instance
-    pub fn update_comms_transport(&self, transport: CommsTransport) -> Result<CommsTransport, ExitError> {
-        debug!(target: LOG_TARGET, "updating comms transport");
-        if let CommsTransport::TorHiddenService {
-            socks_address_override,
-            forward_address,
-            auth,
-            onion_port,
-            tor_proxy_bypass_addresses,
-            tor_proxy_bypass_for_outbound_tcp,
-            ..
-        } = transport
-        {
-            let control_server_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse::<Multiaddr>()?;
-            let auth = if let Some(ref passphrase) = self.passphrase.0 {
-                TorControlAuthentication::Password(passphrase.to_owned())
-            } else {
-                auth
-            };
-            let transport = CommsTransport::TorHiddenService {
-                control_server_address,
-                socks_address_override,
-                forward_address,
-                auth,
-                onion_port,
-                tor_proxy_bypass_addresses,
-                tor_proxy_bypass_for_outbound_tcp,
-            };
-            debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
-            Ok(transport)
-        } else {
-            let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
-            Err(ExitError::new(ExitCode::ConfigError, e))
+    pub fn update_comms_transport(&self, transport: &mut TransportConfig) -> Result<(), ExitError> {
+        match transport.transport_type {
+            TransportType::Tor => {
+                if let Some(ref passphrase) = self.passphrase.0 {
+                    transport.tor.control_auth = TorControlAuthentication::Password(passphrase.to_owned());
+                }
+                transport.tor.control_address = format!("/ip4/127.0.0.1/tcp/{}", self.control_port).parse().unwrap();
+                debug!(target: LOG_TARGET, "updated comms transport: {:?}", transport);
+                Ok(())
+            },
+            _ => {
+                let e = format!("Expected a TorHiddenService comms transport, received: {:?}", transport);
+                Err(ExitError::new(ExitCode::ConfigError, &e))
+            },
         }
     }
 

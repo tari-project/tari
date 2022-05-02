@@ -29,8 +29,9 @@ use tari_core::transactions::{
     transaction_protocol::TransactionProtocolError,
     CoinbaseBuildError,
 };
-use tari_crypto::{script::ScriptError, tari_utilities::ByteArrayError};
+use tari_crypto::tari_utilities::ByteArrayError;
 use tari_key_manager::error::{KeyManagerError, MnemonicError};
+use tari_script::ScriptError;
 use tari_service_framework::reply_channel::TransportChannelError;
 use tari_utilities::hex::HexError;
 use thiserror::Error;
@@ -38,7 +39,7 @@ use thiserror::Error;
 use crate::{
     base_node_service::error::BaseNodeServiceError,
     error::WalletStorageError,
-    key_manager_service::KeyManagerError as TariKeyManagerError,
+    key_manager_service::KeyManagerServiceError,
 };
 
 #[derive(Debug, Error)]
@@ -124,8 +125,8 @@ pub enum OutputManagerError {
     },
     #[error("Invalid message received:{0}")]
     InvalidMessageError(String),
-    #[error("Key manager error : {0}")]
-    TariKeyManagerError(#[from] TariKeyManagerError),
+    #[error("Key manager service error : {0}")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
 #[derive(Debug, Error)]
@@ -164,26 +165,26 @@ pub enum OutputManagerStorageError {
     DieselConnectionError(#[from] diesel::ConnectionError),
     #[error("Database migration error: `{0}`")]
     DatabaseMigrationError(String),
-    #[error("Blocking task spawn error: `{0}`")]
-    BlockingTaskSpawnError(String),
     #[error("Wallet db is already encrypted and cannot be encrypted until the previous encryption is removed")]
     AlreadyEncrypted,
     #[error("Byte array error: `{0}`")]
     ByteArrayError(#[from] ByteArrayError),
     #[error("Aead error: `{0}`")]
     AeadError(String),
+    #[error("Tried to insert a script that already exists in the database")]
+    DuplicateScript,
     #[error("Tari script error : {0}")]
     ScriptError(#[from] ScriptError),
     #[error("Binary not stored as valid hex:{0}")]
     HexError(#[from] HexError),
-    #[error("Key Manager Error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    #[error("Key Manager Service Error: `{0}`")]
+    KeyManagerServiceError(#[from] KeyManagerServiceError),
 }
 
 impl From<OutputManagerError> for ExitError {
     fn from(err: OutputManagerError) -> Self {
         log::error!(target: crate::error::LOG_TARGET, "{}", err);
-        Self::new(ExitCode::WalletError, err)
+        Self::new(ExitCode::WalletError, &err)
     }
 }
 

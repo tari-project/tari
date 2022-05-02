@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! All errors that can occur in `Merge mining proxy`.
+
 use std::io;
 
 use hex::FromHexError;
@@ -92,5 +94,22 @@ impl From<tonic::Status> for MmProxyError {
             details: String::from_utf8_lossy(status.details()).to_string(),
             status,
         }
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use tonic::Code;
+
+    use super::*;
+
+    #[test]
+    pub fn test_from() {
+        let status = tonic::Status::new(Code::Unknown, "message");
+        let error = MmProxyError::from(status);
+        assert!(matches!(error, MmProxyError::GrpcRequestError {
+            status: _,
+            details: _
+        }));
     }
 }

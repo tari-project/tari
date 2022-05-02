@@ -42,19 +42,14 @@ use tari_core::{
     transactions::{
         tari_amount::MicroTari,
         test_helpers::{create_utxo, spend_utxos},
-        transaction_components::{OutputFeatures, TransactionOutput, UnblindedOutput},
+        transaction_components::{OutputFeatures, TransactionOutput, TransactionOutputVersion, UnblindedOutput},
         CryptoFactories,
     },
     txn_schema,
     validation::{mocks::MockValidator, transaction_validators::TxInputAndMaturityValidator},
 };
-use tari_crypto::{
-    inputs,
-    keys::PublicKey as PublicKeyTrait,
-    script,
-    script::TariScript,
-    tari_utilities::hash::Hashable,
-};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::hash::Hashable};
+use tari_script::{inputs, script, TariScript};
 use tari_service_framework::reply_channel;
 use tokio::sync::{broadcast, mpsc};
 
@@ -194,7 +189,7 @@ async fn inbound_fetch_utxos() {
     let (utxo_2, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
@@ -236,21 +231,21 @@ async fn inbound_fetch_txos() {
     let (utxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
     let (pruned_utxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
     let (stxo, _, _) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &TariScript::default(),
         &Covenant::default(),
     );
@@ -320,7 +315,6 @@ async fn inbound_fetch_blocks() {
 }
 
 #[tokio::test]
-#[ignore = "broken after validator node merge"]
 async fn inbound_fetch_blocks_before_horizon_height() {
     let factories = CryptoFactories::default();
     let network = Network::LocalNet;
@@ -360,12 +354,13 @@ async fn inbound_fetch_blocks_before_horizon_height() {
     let (utxo, key, offset) = create_utxo(
         MicroTari(10_000),
         &factories,
-        Default::default(),
+        &Default::default(),
         &script,
         &Covenant::default(),
     );
     let metadata_signature = TransactionOutput::create_final_metadata_signature(
-        &MicroTari(10_000),
+        TransactionOutputVersion::get_current_version(),
+        MicroTari(10_000),
         &key,
         &script,
         &OutputFeatures::default(),

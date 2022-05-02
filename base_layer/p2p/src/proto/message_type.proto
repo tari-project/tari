@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 syntax = "proto3";
 
 package tari.p2p.message_type;
@@ -23,6 +26,7 @@ enum TariMessageType {
     TariMessageTypeMempoolResponse = 72;
     TariMessageTypeTransactionFinalized = 73;
     TariMessageTypeTransactionCancelled = 74;
+
     // -- DAN Messages --
     TariMessageTypeDanConsensusMessage = 101;
     // -- Extended --

@@ -20,6 +20,11 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+
 use log::*;
 use tari_common_types::types::PublicKey;
 use tari_shutdown::ShutdownSignal;
@@ -115,26 +120,32 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
         &mut self,
         shutdown: ShutdownSignal,
         max_views_to_process: Option<u64>,
+        stop: Arc<AtomicBool>,
     ) -> Result<(), DigitalAssetError> {
         let chain_db = self
             .db_factory
             .get_or_create_chain_db(&self.asset_definition.public_key)?;
         self.current_view_id = chain_db
             .get_tip_node()?
-            .map(|n| ViewId(n.height() as u64))
+            .map(|n| ViewId(u64::from(n.height())))
             .unwrap_or_else(|| ViewId(0));
         info!(
             target: LOG_TARGET,
             "Consensus worker started for asset '{}'. Tip: {}", self.asset_definition.public_key, self.current_view_id
         );
         let starting_view = self.current_view_id;
-        loop {
+        while !stop.load(Ordering::Relaxed) {
             if let Some(max) = max_views_to_process {
                 if max <= self.current_view_id.0 - starting_view.0 {
                     break;
                 }
             }
-            let next_event = self.next_state_event(&chain_db, &shutdown).await?;
+            let mut processor = ConsensusWorkerProcessor {
+                worker: self,
+                chain_db: &chain_db,
+                shutdown: &shutdown,
+            };
+            let next_event = processor.next_state_event().await?;
             if next_event.must_shutdown() {
                 info!(
                     target: LOG_TARGET,
@@ -155,183 +166,204 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
 
         Ok(())
     }
+}
 
-    async fn next_state_event(
-        &mut self,
-        chain_db: &ChainDb<TSpecification::ChainDbBackendAdapter>,
-        shutdown: &ShutdownSignal,
-    ) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
-        use ConsensusWorkerState::*;
-        match &mut self.state {
-            Starting => {
-                states::Starting::<TSpecification>::new()
-                    .next_event(
-                        &mut self.base_node_client,
-                        &self.asset_definition,
-                        &mut self.committee_manager,
-                        &self.db_factory,
-                        &self.node_address,
-                    )
-                    .await
-            },
-            Synchronizing => {
-                states::Synchronizing::<TSpecification>::new()
-                    .next_event(
-                        &mut self.base_node_client,
-                        &self.asset_definition,
-                        &self.db_factory,
-                        &self.validator_node_client_factory,
-                        &self.node_address,
-                    )
-                    .await
-            },
-            Prepare => {
-                let mut unit_of_work = chain_db.new_unit_of_work();
-                let mut state_tx = self
-                    .db_factory
-                    .get_state_db(&self.asset_definition.public_key)?
-                    .ok_or(DigitalAssetError::MissingDatabase)?
-                    .new_unit_of_work(self.current_view_id.as_u64());
+struct ConsensusWorkerProcessor<'a, T: ServiceSpecification> {
+    worker: &'a mut ConsensusWorker<T>,
+    chain_db: &'a ChainDb<T::ChainDbBackendAdapter>,
+    shutdown: &'a ShutdownSignal,
+}
 
-                let mut prepare = states::Prepare::<TSpecification>::new(
-                    self.node_address.clone(),
-                    self.asset_definition.public_key.clone(),
-                );
-                let res = prepare
-                    .next_event(
-                        &self.get_current_view()?,
-                        self.timeout,
-                        &self.asset_definition,
-                        self.committee_manager.current_committee()?,
-                        &self.inbound_connections,
-                        &mut self.outbound_service,
-                        &mut self.payload_provider,
-                        &self.signing_service,
-                        &mut self.payload_processor,
-                        &self.chain_storage_service,
-                        unit_of_work.clone(),
-                        &mut state_tx,
-                        &self.db_factory,
-                    )
-                    .await?;
-                // Will only be committed in DECIDE
-                self.state_db_unit_of_work = Some(state_tx);
-                unit_of_work.commit()?;
-                Ok(res)
-            },
-            PreCommit => {
-                let mut unit_of_work = chain_db.new_unit_of_work();
-                let mut state = states::PreCommitState::<TSpecification>::new(
-                    self.node_address.clone(),
-                    self.committee_manager.current_committee()?.clone(),
-                    self.asset_definition.public_key.clone(),
-                );
-                let res = state
-                    .next_event(
-                        self.timeout,
-                        &self.get_current_view()?,
-                        &self.inbound_connections,
-                        &mut self.outbound_service,
-                        &self.signing_service,
-                        unit_of_work.clone(),
-                    )
-                    .await?;
-                unit_of_work.commit()?;
-                Ok(res)
-            },
-
-            Commit => {
-                let mut unit_of_work = chain_db.new_unit_of_work();
-                let mut state = states::CommitState::<TSpecification>::new(
-                    self.node_address.clone(),
-                    self.asset_definition.public_key.clone(),
-                    self.committee_manager.current_committee()?.clone(),
-                );
-                let res = state
-                    .next_event(
-                        self.timeout,
-                        &self.get_current_view()?,
-                        &mut self.inbound_connections,
-                        &mut self.outbound_service,
-                        &self.signing_service,
-                        unit_of_work.clone(),
-                    )
-                    .await?;
-
-                unit_of_work.commit()?;
-
-                Ok(res)
-            },
-            Decide => {
-                let mut unit_of_work = chain_db.new_unit_of_work();
-                let mut state = states::DecideState::<TSpecification>::new(
-                    self.node_address.clone(),
-                    self.asset_definition.public_key.clone(),
-                    self.committee_manager.current_committee()?.clone(),
-                );
-                let res = state
-                    .next_event(
-                        self.timeout,
-                        &self.get_current_view()?,
-                        &mut self.inbound_connections,
-                        &mut self.outbound_service,
-                        unit_of_work.clone(),
-                        &mut self.payload_provider,
-                    )
-                    .await?;
-                unit_of_work.commit()?;
-                if let Some(mut state_tx) = self.state_db_unit_of_work.take() {
-                    state_tx.commit()?;
-                    self.checkpoint_manager
-                        .create_checkpoint(
-                            state_tx.calculate_root()?,
-                            self.committee_manager.current_committee()?.members.clone(),
-                        )
-                        .await?;
-                } else {
-                    // technically impossible
-                    error!(target: LOG_TARGET, "No state unit of work was present");
-                    return Err(DigitalAssetError::InvalidLogicPath {
-                        reason: "Tried to commit state after DECIDE, but no state tx was present".to_string(),
-                    });
-                }
-
-                Ok(res)
-            },
-            NextView => {
-                info!(
-                    target: LOG_TARGET,
-                    "Status: {} in mempool ",
-                    self.payload_provider.get_payload_queue().await,
-                );
-                self.state_db_unit_of_work = None;
-                let mut state = states::NextViewState::<TSpecification>::new();
-                state
-                    .next_event(
-                        &self.get_current_view()?,
-                        &self.db_factory,
-                        &mut self.outbound_service,
-                        self.committee_manager.current_committee()?,
-                        self.node_address.clone(),
-                        &self.asset_definition,
-                        &self.payload_provider,
-                        shutdown,
-                    )
-                    .await
-            },
-            Idle => {
-                info!(target: LOG_TARGET, "No work to do, idling");
-                let state = states::IdleState::default();
-                state.next_event().await
-            },
+impl<'a, T: ServiceSpecification<Addr = PublicKey>> ConsensusWorkerProcessor<'a, T> {
+    async fn next_state_event(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        use ConsensusWorkerState::{Commit, Decide, Idle, NextView, PreCommit, Prepare, Starting, Synchronizing};
+        match &mut self.worker.state {
+            Starting => self.starting().await,
+            Synchronizing => self.synchronizing().await,
+            Prepare => self.prepare().await,
+            PreCommit => self.pre_commit().await,
+            Commit => self.commit().await,
+            Decide => self.decide().await,
+            NextView => self.next_view().await,
+            Idle => self.idle().await,
         }
     }
 
+    async fn starting(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        states::Starting::<T>::new()
+            .next_event(
+                &mut self.worker.base_node_client,
+                &self.worker.asset_definition,
+                &mut self.worker.committee_manager,
+                &self.worker.db_factory,
+                &self.worker.node_address,
+            )
+            .await
+    }
+
+    async fn synchronizing(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        states::Synchronizing::<T>::new()
+            .next_event(
+                &mut self.worker.base_node_client,
+                &self.worker.asset_definition,
+                &self.worker.db_factory,
+                &self.worker.validator_node_client_factory,
+                &self.worker.node_address,
+            )
+            .await
+    }
+
+    async fn prepare(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let mut unit_of_work = self.chain_db.new_unit_of_work();
+        let mut state_tx = self
+            .worker
+            .db_factory
+            .get_state_db(&self.worker.asset_definition.public_key)?
+            .ok_or(DigitalAssetError::MissingDatabase)?
+            .new_unit_of_work(self.worker.current_view_id.as_u64());
+
+        let mut prepare = states::Prepare::<T>::new(
+            self.worker.node_address.clone(),
+            self.worker.asset_definition.public_key.clone(),
+        );
+        let res = prepare
+            .next_event(
+                &self.worker.get_current_view()?,
+                self.worker.timeout,
+                &self.worker.asset_definition,
+                self.worker.committee_manager.current_committee()?,
+                &self.worker.inbound_connections,
+                &mut self.worker.outbound_service,
+                &mut self.worker.payload_provider,
+                &self.worker.signing_service,
+                &mut self.worker.payload_processor,
+                &self.worker.chain_storage_service,
+                unit_of_work.clone(),
+                &mut state_tx,
+                &self.worker.db_factory,
+            )
+            .await?;
+        // Will only be committed in DECIDE
+        self.worker.state_db_unit_of_work = Some(state_tx);
+        unit_of_work.commit()?;
+        Ok(res)
+    }
+
+    async fn pre_commit(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let mut unit_of_work = self.chain_db.new_unit_of_work();
+        let mut state = states::PreCommitState::<T>::new(
+            self.worker.node_address.clone(),
+            self.worker.committee_manager.current_committee()?.clone(),
+            self.worker.asset_definition.public_key.clone(),
+        );
+        let res = state
+            .next_event(
+                self.worker.timeout,
+                &self.worker.get_current_view()?,
+                &self.worker.inbound_connections,
+                &mut self.worker.outbound_service,
+                &self.worker.signing_service,
+                unit_of_work.clone(),
+            )
+            .await?;
+        unit_of_work.commit()?;
+        Ok(res)
+    }
+
+    async fn commit(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let mut unit_of_work = self.chain_db.new_unit_of_work();
+        let mut state = states::CommitState::<T>::new(
+            self.worker.node_address.clone(),
+            self.worker.asset_definition.public_key.clone(),
+            self.worker.committee_manager.current_committee()?.clone(),
+        );
+        let res = state
+            .next_event(
+                self.worker.timeout,
+                &self.worker.get_current_view()?,
+                &mut self.worker.inbound_connections,
+                &mut self.worker.outbound_service,
+                &self.worker.signing_service,
+                unit_of_work.clone(),
+            )
+            .await?;
+        unit_of_work.commit()?;
+        Ok(res)
+    }
+
+    async fn decide(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        let mut unit_of_work = self.chain_db.new_unit_of_work();
+        let mut state = states::DecideState::<T>::new(
+            self.worker.node_address.clone(),
+            self.worker.asset_definition.public_key.clone(),
+            self.worker.committee_manager.current_committee()?.clone(),
+        );
+        let res = state
+            .next_event(
+                self.worker.timeout,
+                &self.worker.get_current_view()?,
+                &mut self.worker.inbound_connections,
+                &mut self.worker.outbound_service,
+                unit_of_work.clone(),
+                &mut self.worker.payload_provider,
+            )
+            .await?;
+        unit_of_work.commit()?;
+        if let Some(mut state_tx) = self.worker.state_db_unit_of_work.take() {
+            state_tx.commit()?;
+            self.worker
+                .checkpoint_manager
+                .create_checkpoint(
+                    state_tx.calculate_root()?,
+                    self.worker.committee_manager.current_committee()?.members.clone(),
+                )
+                .await?;
+            Ok(res)
+        } else {
+            // technically impossible
+            error!(target: LOG_TARGET, "No state unit of work was present");
+            Err(DigitalAssetError::InvalidLogicPath {
+                reason: "Tried to commit state after DECIDE, but no state tx was present".to_string(),
+            })
+        }
+    }
+
+    async fn next_view(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        info!(
+            target: LOG_TARGET,
+            "Status: {} in mempool ",
+            self.worker.payload_provider.get_payload_queue().await,
+        );
+        self.worker.state_db_unit_of_work = None;
+        let mut state = states::NextViewState::<T>::new();
+        state
+            .next_event(
+                &self.worker.get_current_view()?,
+                &self.worker.db_factory,
+                &mut self.worker.outbound_service,
+                self.worker.committee_manager.current_committee()?,
+                self.worker.node_address.clone(),
+                &self.worker.asset_definition,
+                &self.worker.payload_provider,
+                self.shutdown,
+            )
+            .await
+    }
+
+    async fn idle(&mut self) -> Result<ConsensusWorkerStateEvent, DigitalAssetError> {
+        info!(target: LOG_TARGET, "No work to do, idling");
+        let state = states::IdleState::default();
+        state.next_event().await
+    }
+}
+
+impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSpecification> {
     fn transition(
         &mut self,
         event: ConsensusWorkerStateEvent,
     ) -> Result<(ConsensusWorkerState, ConsensusWorkerState), DigitalAssetError> {
-        use ConsensusWorkerState::*;
+        use ConsensusWorkerState::{Commit, Decide, Idle, NextView, PreCommit, Prepare, Starting, Synchronizing};
+        #[allow(clippy::enum_glob_use)]
         use ConsensusWorkerStateEvent::*;
         let from = self.state;
         self.state = match (&self.state, event) {
@@ -355,8 +387,8 @@ impl<TSpecification: ServiceSpecification<Addr = PublicKey>> ConsensusWorker<TSp
                 unimplemented!("Base layer checkpoint not found!")
             },
             (s, e) => {
-                dbg!(&s);
-                dbg!(&e);
+                println!("{:?}", s);
+                println!("{:?}", e);
                 unimplemented!("State machine transition not implemented")
             },
         };
@@ -371,7 +403,10 @@ mod test {
 
     use super::*;
     use crate::{
-        models::{Committee, ConsensusWorkerState::*},
+        models::{
+            Committee,
+            ConsensusWorkerState::{Commit, Decide, NextView, PreCommit, Prepare},
+        },
         services::{
             infrastructure_services::mocks::{mock_outbound, MockInboundConnectionService, MockOutboundService},
             mocks::{mock_events_publisher, MockCommitteeManager, MockEventsPublisher},
@@ -471,7 +506,7 @@ mod test {
     }
 
     fn assert_state_change(events: &[ConsensusWorkerDomainEvent], states: Vec<ConsensusWorkerState>) {
-        dbg!(events);
+        println!("{:?}", events);
         let mapped_events = events.iter().map(|e| match e {
             ConsensusWorkerDomainEvent::StateChanged { from: _, to: new } => Some(new),
         });

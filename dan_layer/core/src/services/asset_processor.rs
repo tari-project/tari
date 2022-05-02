@@ -76,7 +76,7 @@ pub struct TemplateFactory {}
 
 impl TemplateFactory {
     pub fn initial_instructions(&self, template_param: &TemplateParameter) -> InstructionSet {
-        use TemplateId::*;
+        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
         // TODO: We may want to use the TemplateId type, so that we know it is known/valid
         let template_id = template_param.template_id.try_into().unwrap();
         match template_id {
@@ -95,7 +95,7 @@ impl TemplateFactory {
         instruction: &Instruction,
         state_db: &TUnitOfWork,
     ) -> Result<Option<Vec<u8>>, DigitalAssetError> {
-        use TemplateId::*;
+        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
         match instruction.template_id() {
             Tip002 => tip002_template::invoke_read_method(instruction.method(), instruction.args(), state_db),
             Tip003 => todo!(),
@@ -112,7 +112,7 @@ impl TemplateFactory {
         instruction: &Instruction,
         state_db: &mut TUnitOfWork,
     ) -> Result<(), DigitalAssetError> {
-        use TemplateId::*;
+        use TemplateId::{EditableMetadata, Tip002, Tip003, Tip004, Tip721};
         match instruction.template_id() {
             Tip002 => tip002_template::invoke_write_method(instruction.method(), instruction.args(), state_db),
             Tip003 => todo!(),

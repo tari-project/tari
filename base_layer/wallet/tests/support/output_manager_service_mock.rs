@@ -24,11 +24,12 @@ use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use log::*;
+use tari_common_types::transaction::TxId;
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tari_wallet::output_manager_service::{
     error::OutputManagerError,
-    handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse},
+    handle::{OutputManagerEvent, OutputManagerHandle, OutputManagerRequest, OutputManagerResponse, RecoveredOutput},
     storage::models::DbUnblindedOutput,
 };
 use tokio::sync::{broadcast, broadcast::Sender, oneshot};
@@ -96,47 +97,47 @@ impl OutputManagerServiceMock {
     ) {
         info!(target: LOG_TARGET, "Handling Request: {}", request);
         match request {
-            OutputManagerRequest::ScanForRecoverableOutputs {
-                outputs: requested_outputs,
-                tx_id: _tx_id,
-            } => {
+            OutputManagerRequest::ScanForRecoverableOutputs(requested_outputs) => {
                 let lock = acquire_lock!(self.state.recoverable_outputs);
                 let outputs = (*lock)
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
                         if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
-                            Some(dbuo.unblinded_output)
+                            Some(RecoveredOutput {
+                                output: dbuo.unblinded_output,
+                                tx_id: TxId::new_random(),
+                            })
                         } else {
                             None
                         }
                     })
                     .collect();
 
-                let _ = reply_tx
+                let _result = reply_tx
                     .send(Ok(OutputManagerResponse::RewoundOutputs(outputs)))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");
                         e
                     });
             },
-            OutputManagerRequest::ScanOutputs {
-                outputs: requested_outputs,
-                tx_id: _tx_id,
-            } => {
+            OutputManagerRequest::ScanOutputs(requested_outputs) => {
                 let lock = acquire_lock!(self.state.one_sided_payments);
                 let outputs = (*lock)
                     .clone()
                     .into_iter()
                     .filter_map(|dbuo| {
                         if requested_outputs.iter().any(|ro| dbuo.commitment == ro.commitment) {
-                            Some(dbuo.unblinded_output)
+                            Some(RecoveredOutput {
+                                output: dbuo.unblinded_output,
+                                tx_id: TxId::new_random(),
+                            })
                         } else {
                             None
                         }
                     })
                     .collect();
-                let _ = reply_tx
+                let _result = reply_tx
                     .send(Ok(OutputManagerResponse::ScanOutputs(outputs)))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");

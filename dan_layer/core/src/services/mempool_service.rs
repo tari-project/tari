@@ -75,7 +75,7 @@ impl MempoolService for ConcreteMempoolService {
         instruction_hash: &FixedHash,
         node_hash: TreeNodeHash,
     ) -> Result<(), DigitalAssetError> {
-        for (instruction, node_hash_mut) in self.instructions.iter_mut() {
+        for (instruction, node_hash_mut) in &mut self.instructions {
             if instruction.hash() == instruction_hash {
                 *node_hash_mut = Some(node_hash);
                 break;
@@ -95,7 +95,7 @@ impl MempoolService for ConcreteMempoolService {
     }
 
     async fn release_reservations(&mut self, block_hash: &TreeNodeHash) -> Result<(), DigitalAssetError> {
-        for (_, block_hash_mut) in self.instructions.iter_mut() {
+        for (_, block_hash_mut) in &mut self.instructions {
             if block_hash_mut.as_ref() == Some(block_hash) {
                 *block_hash_mut = None;
             }

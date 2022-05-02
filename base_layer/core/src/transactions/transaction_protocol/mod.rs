@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 //! Transaction Protocol Manager facilitates the process of constructing a Mimblewimble transaction between two parties.
 //!
 //! The Transaction Protocol Manager implements a protocol to construct a Mimwblewimble transaction between two parties
@@ -82,9 +85,10 @@
 
 // #![allow(clippy::op_ref)]
 
+use derivative::Derivative;
 use digest::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{MessageHash, PrivateKey, PublicKey};
+use tari_common_types::types::{PrivateKey, PublicKey};
 use tari_comms::types::Challenge;
 use tari_crypto::{
     range_proof::{RangeProofError, REWIND_USER_MESSAGE_LENGTH},
@@ -140,19 +144,23 @@ pub struct TransactionMetadata {
     pub lock_height: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct RewindData {
+    #[derivative(Debug = "ignore")]
     pub rewind_key: PrivateKey,
+    #[derivative(Debug = "ignore")]
     pub rewind_blinding_key: PrivateKey,
+    pub recovery_byte_key: PrivateKey,
     pub proof_message: [u8; REWIND_USER_MESSAGE_LENGTH],
 }
 
 /// Convenience function that calculates the challenge for the Schnorr signatures
-pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> MessageHash {
+pub fn build_challenge(sum_public_nonces: &PublicKey, metadata: &TransactionMetadata) -> [u8; 32] {
     Challenge::new()
         .chain(sum_public_nonces.as_bytes())
         .chain(&u64::from(metadata.fee).to_le_bytes())
         .chain(&metadata.lock_height.to_le_bytes())
         .finalize()
-        .to_vec()
+        .into()
 }

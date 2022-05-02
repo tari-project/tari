@@ -1,23 +1,22 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 #![cfg_attr(
   all(not(debug_assertions), target_os = "windows"),
   windows_subsystem = "windows"
 )]
 
-use std::{error::Error, path::PathBuf};
+use std::error::Error;
 use tauri::{Menu, MenuItem, Submenu};
 
 use clap::Parser;
-use tari_app_utilities::initialization::init_configuration;
 use tari_common::{
-  configuration::{bootstrap::ApplicationType, CollectiblesConfig},
   exit_codes::{ExitCode, ExitError},
+  load_configuration, DefaultConfigLoader,
 };
 use uuid::Uuid;
 
-use crate::{
-  app_state::ConcurrentAppState,
-  cli::{Cli, Commands},
-};
+use crate::{app_state::ConcurrentAppState, cli::Cli, config::CollectiblesConfig};
 
 #[macro_use]
 extern crate diesel;
@@ -29,6 +28,7 @@ mod app_state;
 mod cli;
 mod clients;
 mod commands;
+mod config;
 mod error;
 mod models;
 mod providers;
@@ -36,12 +36,8 @@ mod schema;
 mod status;
 mod storage;
 
-fn main() -> Result<(), Box<dyn Error>> {
-  let cli = Cli::parse();
-
-  //let (bootstrap, config, _) = init_configuration(ApplicationType::Collectibles)?;
-  let state = ConcurrentAppState::new(PathBuf::from("."), CollectiblesConfig::default());
-
+pub fn process_command(command: Command, state: &ConcurrentAppState) -> Result<(), ExitError> {
+  println!("command {:?}", command);
   match cli.command {
     Commands::MakeItRain {
       asset_public_key,
@@ -66,11 +62,26 @@ fn main() -> Result<(), Box<dyn Error>> {
       return Ok(());
     }
   };
-  // if let Some(command) = bootstrap.command {
-  //   let command = parse_command(command)?;
-  //   process_command(command, &state)?;
-  //   return Ok(());
-  // }
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+  let cli = Cli::parse();
+  let cfg = load_configuration(
+    cli.common.config_path(),
+    true,
+    &cli.config_property_overrides(),
+  )?;
+
+  let config = CollectiblesConfig::load_from(&cfg)?;
+  let state = ConcurrentAppState::new(cli.common.get_base_path(), config);
+
+  if let Some(ref command) = cli.command {
+    let command = parse_command(command)?;
+    process_command(command, &state)?;
+    return Ok(());
+  }
+  //let (bootstrap, config, _) = init_configuration(ApplicationType::Collectibles)?;
+  let state = ConcurrentAppState::new(PathBuf::from("."), CollectiblesConfig::default());
 
   tauri::Builder::default()
     .menu(build_menu())

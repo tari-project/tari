@@ -1,5 +1,8 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const SeedWords = require("./ffi/seedWords");
-const TransportType = require("./ffi/transportType");
+const TransportConfig = require("./ffi/transportConfig");
 const CommsConfig = require("./ffi/commsConfig");
 const Wallet = require("./ffi/wallet");
 const { getFreePort } = require("./util");
@@ -27,29 +30,31 @@ class WalletFFIClient {
       new Date(),
       "yyyymmddHHMM"
     )}/${name}`;
-    this.transport = TransportType.createTCP(`/ip4/127.0.0.1/tcp/${this.port}`);
+    this.transport = TransportConfig.createTCP(
+      `/ip4/127.0.0.1/tcp/${this.port}`
+    );
     this.comms_config = new CommsConfig(
       `/ip4/127.0.0.1/tcp/${this.port}`,
       this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
       30,
-      600,
-      "localnet"
+      600
     );
     this.start(seed_words_text, pass_phrase);
   }
 
   async restart(seed_words_text, pass_phrase) {
-    this.transport = TransportType.createTCP(`/ip4/127.0.0.1/tcp/${this.port}`);
+    this.transport = TransportConfig.createTCP(
+      `/ip4/127.0.0.1/tcp/${this.port}`
+    );
     this.comms_config = new CommsConfig(
       `/ip4/127.0.0.1/tcp/${this.port}`,
       this.transport.getPtr(),
       "wallet.dat",
       this.baseDir,
       30,
-      600,
-      "localnet"
+      600
     );
     this.start(seed_words_text, pass_phrase);
   }
@@ -177,7 +182,8 @@ class WalletFFIClient {
       this.pass_phrase,
       this.seed_words ? this.seed_words.getPtr() : null,
       rolling_log_files,
-      byte_size_per_log
+      byte_size_per_log,
+      "localnet"
     );
   }
 

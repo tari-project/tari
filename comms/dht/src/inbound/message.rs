@@ -26,22 +26,17 @@ use std::{
     sync::Arc,
 };
 
-use digest::Digest;
 use tari_comms::{
     message::{EnvelopeBody, MessageTag},
     peer_manager::Peer,
-    types::{Challenge, CommsPublicKey},
+    types::CommsPublicKey,
 };
+use tari_utilities::ByteArray;
 
-use crate::envelope::{DhtMessageFlags, DhtMessageHeader};
-
-fn hash_inbound_message(message: &DhtInboundMessage) -> Vec<u8> {
-    Challenge::new()
-        .chain(&message.dht_header.origin_mac)
-        .chain(&message.body)
-        .finalize()
-        .to_vec()
-}
+use crate::{
+    dedup,
+    envelope::{DhtMessageFlags, DhtMessageHeader},
+};
 
 #[derive(Debug, Clone)]
 pub struct DhtInboundMessage {
@@ -95,7 +90,7 @@ pub struct DecryptedDhtMessage {
     pub is_already_forwarded: bool,
     pub decryption_result: Result<EnvelopeBody, Vec<u8>>,
     pub dedup_hit_count: u32,
-    pub hash: Vec<u8>,
+    pub dedup_hash: Vec<u8>,
 }
 
 impl DecryptedDhtMessage {
@@ -116,7 +111,7 @@ impl DecryptedDhtMessage {
         message: DhtInboundMessage,
     ) -> Self {
         Self {
-            hash: hash_inbound_message(&message),
+            dedup_hash: dedup::hash_inbound_message(&message).to_vec(),
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin,
@@ -131,7 +126,7 @@ impl DecryptedDhtMessage {
 
     pub fn failed(message: DhtInboundMessage) -> Self {
         Self {
-            hash: hash_inbound_message(&message),
+            dedup_hash: dedup::hash_inbound_message(&message).to_vec(),
             tag: message.tag,
             source_peer: message.source_peer,
             authenticated_origin: None,

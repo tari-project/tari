@@ -29,13 +29,13 @@ use std::{
 
 use digest::Digest;
 use integer_encoding::VarIntWriter;
-use tari_common_types::types::Challenge;
+use tari_common_types::types::HashDigest;
 
 use crate::{
     consensus::ToConsensusBytes,
     covenants::{
         byte_codes,
-        decoder::{CovenantDecodeError, CovenentReadExt},
+        decoder::{CovenantDecodeError, CovenantReadExt},
         encoder::CovenentWriteExt,
         error::CovenantError,
     },
@@ -60,6 +60,7 @@ pub enum OutputField {
 impl OutputField {
     pub fn from_byte(byte: u8) -> Result<Self, CovenantDecodeError> {
         use byte_codes::*;
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match byte {
             FIELD_COMMITMENT => Ok(Commitment),
@@ -77,11 +78,12 @@ impl OutputField {
         }
     }
 
-    pub fn as_byte(&self) -> u8 {
-        *self as u8
+    pub fn as_byte(self) -> u8 {
+        self as u8
     }
 
-    pub fn get_field_value_ref<'a, T: 'static>(&self, output: &'a TransactionOutput) -> Option<&'a T> {
+    pub fn get_field_value_ref<'a, T: 'static>(self, output: &'a TransactionOutput) -> Option<&'a T> {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         let val = match self {
             Commitment => &output.commitment as &dyn Any,
@@ -98,7 +100,8 @@ impl OutputField {
         val.downcast_ref::<T>()
     }
 
-    pub fn get_field_value_bytes(&self, output: &TransactionOutput) -> Vec<u8> {
+    pub fn get_field_value_bytes(self, output: &TransactionOutput) -> Vec<u8> {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             Commitment => output.commitment.to_consensus_bytes(),
@@ -114,7 +117,8 @@ impl OutputField {
         }
     }
 
-    pub fn is_eq_input(&self, input: &TransactionInput, output: &TransactionOutput) -> bool {
+    pub fn is_eq_input(self, input: &TransactionInput, output: &TransactionOutput) -> bool {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             Commitment => input
@@ -157,18 +161,18 @@ impl OutputField {
         }
     }
 
-    pub fn is_eq<T: PartialEq + 'static>(&self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
-        use OutputField::*;
+    pub fn is_eq<T: PartialEq + 'static>(self, output: &TransactionOutput, val: &T) -> Result<bool, CovenantError> {
+        use OutputField::{FeaturesParentPublicKey, FeaturesUniqueId};
         match self {
             // Handle edge cases
             FeaturesParentPublicKey | FeaturesUniqueId => match self.get_field_value_ref::<Option<T>>(output) {
                 Some(Some(field_val)) => Ok(field_val == val),
-                _ => Ok(false),
+                Some(None) => Ok(false),
+                None => Err(CovenantError::InvalidArgument {
+                    filter: "is_eq",
+                    details: format!("Invalid type for field {}", self),
+                }),
             },
-            Features => Err(CovenantError::UnsupportedArgument {
-                arg: "features",
-                details: "OutputFeatures is not supported for operation is_eq".to_string(),
-            }),
             _ => match self.get_field_value_ref::<T>(output) {
                 Some(field_val) => Ok(field_val == val),
                 None => Err(CovenantError::InvalidArgument {
@@ -233,6 +237,7 @@ impl OutputField {
 
 impl Display for OutputField {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use OutputField::*;
         match self {
             Commitment => write!(f, "field::commitment"),
@@ -299,10 +304,10 @@ impl OutputFields {
         self.fields.is_empty()
     }
 
-    pub fn construct_challenge_from(&self, output: &TransactionOutput) -> Challenge {
-        let mut challenge = Challenge::new();
-        for field in self.fields.iter() {
-            challenge = challenge.chain(field.get_field_value_bytes(output));
+    pub fn construct_challenge_from(&self, output: &TransactionOutput) -> HashDigest {
+        let mut challenge = HashDigest::new();
+        for field in &self.fields {
+            challenge.update(field.get_field_value_bytes(output));
         }
         challenge
     }
@@ -327,25 +332,221 @@ impl FromIterator<OutputField> for OutputFields {
 
 #[cfg(test)]
 mod test {
+    use rand::rngs::OsRng;
+    use tari_common_types::types::{Commitment, PublicKey};
+    use tari_crypto::keys::PublicKey as PublicKeyTrait;
+    use tari_script::script;
+
     use super::*;
     use crate::{
-        covenants::test::create_outputs,
-        transactions::{test_helpers::UtxoTestParams, transaction_components::OutputFeatures},
+        consensus::ConsensusEncoding,
+        covenant,
+        covenants::test::{create_input, create_outputs},
+        transactions::{
+            test_helpers::UtxoTestParams,
+            transaction_components::{OutputFeatures, OutputFlags, SpentOutput},
+        },
     };
 
-    #[test]
-    fn get_field_value_ref() {
-        let features = OutputFeatures {
-            maturity: 42,
-            ..Default::default()
-        };
-        let output = create_outputs(1, UtxoTestParams {
-            features: features.clone(),
-            ..Default::default()
-        })
-        .pop()
-        .unwrap();
-        let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
-        assert_eq!(*r.unwrap(), features);
+    mod output_field {
+        use super::*;
+
+        mod is_eq {
+
+            use super::*;
+
+            #[test]
+            fn it_returns_true_if_eq() {
+                let output = create_outputs(1, UtxoTestParams {
+                    features: OutputFeatures {
+                        parent_public_key: Some(Default::default()),
+                        unique_id: Some(b"1234".to_vec()),
+                        ..Default::default()
+                    },
+                    script: script![Drop Nop],
+                    ..Default::default()
+                })
+                .remove(0);
+
+                assert!(OutputField::Commitment.is_eq(&output, &output.commitment).unwrap());
+                assert!(OutputField::Features.is_eq(&output, &output.features).unwrap());
+                assert!(OutputField::Script.is_eq(&output, &output.script).unwrap());
+                assert!(OutputField::Covenant.is_eq(&output, &output.covenant).unwrap());
+                assert!(OutputField::FeaturesMaturity
+                    .is_eq(&output, &output.features.maturity)
+                    .unwrap());
+                assert!(OutputField::FeaturesFlags
+                    .is_eq(&output, &output.features.flags)
+                    .unwrap());
+                assert!(OutputField::FeaturesParentPublicKey
+                    .is_eq(&output, output.features.parent_public_key.as_ref().unwrap())
+                    .unwrap());
+                assert!(OutputField::FeaturesMetadata
+                    .is_eq(&output, &output.features.metadata)
+                    .unwrap());
+                assert!(OutputField::FeaturesUniqueId
+                    .is_eq(&output, output.features.unique_id.as_ref().unwrap())
+                    .unwrap());
+                assert!(OutputField::SenderOffsetPublicKey
+                    .is_eq(&output, &output.sender_offset_public_key)
+                    .unwrap());
+            }
+
+            #[test]
+            fn it_returns_false_if_not_eq() {
+                let (_, parent_pk) = PublicKey::random_keypair(&mut OsRng);
+                let output = create_outputs(1, UtxoTestParams {
+                    features: OutputFeatures {
+                        parent_public_key: Some(parent_pk),
+                        unique_id: Some(b"1234".to_vec()),
+                        ..Default::default()
+                    },
+                    script: script![Drop Nop],
+                    ..Default::default()
+                })
+                .remove(0);
+
+                assert!(!OutputField::Commitment.is_eq(&output, &Commitment::default()).unwrap());
+                assert!(!OutputField::Features
+                    .is_eq(&output, &OutputFeatures::default())
+                    .unwrap());
+                assert!(!OutputField::Script.is_eq(&output, &script![Nop Drop]).unwrap());
+                assert!(!OutputField::Covenant
+                    .is_eq(&output, &covenant!(and(identity(), identity())))
+                    .unwrap());
+                assert!(!OutputField::FeaturesMaturity.is_eq(&output, &123u64).unwrap());
+                assert!(!OutputField::FeaturesFlags
+                    .is_eq(&output, &OutputFlags::COINBASE_OUTPUT)
+                    .unwrap());
+                assert!(!OutputField::FeaturesParentPublicKey
+                    .is_eq(&output, &PublicKey::default())
+                    .unwrap());
+                assert!(!OutputField::FeaturesMetadata.is_eq(&output, &vec![123u8]).unwrap());
+                assert!(!OutputField::FeaturesUniqueId.is_eq(&output, &vec![123u8]).unwrap());
+                assert!(!OutputField::SenderOffsetPublicKey
+                    .is_eq(&output, &PublicKey::default())
+                    .unwrap());
+            }
+        }
+
+        mod is_eq_input {
+            use super::*;
+
+            #[test]
+            fn it_returns_true_if_eq_input() {
+                let output = create_outputs(1, UtxoTestParams {
+                    features: OutputFeatures {
+                        maturity: 42,
+                        ..Default::default()
+                    },
+                    script: script![Drop Nop],
+                    ..Default::default()
+                })
+                .remove(0);
+                let mut input = create_input();
+                if let SpentOutput::OutputData {
+                    features,
+                    commitment,
+                    script,
+                    sender_offset_public_key,
+                    covenant,
+                    ..
+                } = &mut input.spent_output
+                {
+                    *features = output.features.clone();
+                    *commitment = output.commitment.clone();
+                    *script = output.script.clone();
+                    *sender_offset_public_key = output.sender_offset_public_key.clone();
+                    *covenant = output.covenant.clone();
+                }
+
+                assert!(OutputField::Commitment.is_eq_input(&input, &output));
+                assert!(OutputField::Features.is_eq_input(&input, &output));
+                assert!(OutputField::Script.is_eq_input(&input, &output));
+                assert!(OutputField::Covenant.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesMaturity.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesFlags.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesParentPublicKey.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesMetadata.is_eq_input(&input, &output));
+                assert!(OutputField::FeaturesUniqueId.is_eq_input(&input, &output));
+                assert!(OutputField::SenderOffsetPublicKey.is_eq_input(&input, &output));
+            }
+        }
+
+        #[test]
+        fn display() {
+            let output_fields = [
+                OutputField::Commitment,
+                OutputField::Features,
+                OutputField::FeaturesFlags,
+                OutputField::FeaturesUniqueId,
+                OutputField::FeaturesMetadata,
+                OutputField::FeaturesMaturity,
+                OutputField::FeaturesParentPublicKey,
+                OutputField::SenderOffsetPublicKey,
+                OutputField::Script,
+                OutputField::Covenant,
+            ];
+            output_fields.iter().for_each(|f| {
+                assert!(f.to_string().starts_with("field::"));
+            })
+        }
+    }
+
+    mod output_fields {
+        use super::*;
+
+        mod construct_challenge_from {
+            use super::*;
+
+            #[test]
+            fn it_constructs_challenge_using_consensus_encoding() {
+                let features = OutputFeatures {
+                    maturity: 42,
+                    flags: OutputFlags::COINBASE_OUTPUT,
+                    ..Default::default()
+                };
+                let output = create_outputs(1, UtxoTestParams {
+                    features,
+                    script: script![Drop Nop],
+                    ..Default::default()
+                })
+                .remove(0);
+
+                let mut fields = OutputFields::new();
+                fields.push(OutputField::Features);
+                fields.push(OutputField::Commitment);
+                fields.push(OutputField::Script);
+                let hash = fields.construct_challenge_from(&output).finalize();
+
+                let mut challenge = Vec::new();
+                output.features.consensus_encode(&mut challenge).unwrap();
+                output.commitment.consensus_encode(&mut challenge).unwrap();
+                output.script.consensus_encode(&mut challenge).unwrap();
+                let expected_hash = HashDigest::new().chain(&challenge).finalize();
+                assert_eq!(hash, expected_hash);
+            }
+        }
+
+        mod get_field_value_ref {
+            use super::*;
+
+            #[test]
+            fn it_retrieves_the_value_as_ref() {
+                let mut features = OutputFeatures {
+                    maturity: 42,
+                    ..Default::default()
+                };
+                let output = create_outputs(1, UtxoTestParams {
+                    features: features.clone(),
+                    ..Default::default()
+                })
+                .pop()
+                .unwrap();
+                features.set_recovery_byte(output.features.recovery_byte);
+                let r = OutputField::Features.get_field_value_ref::<OutputFeatures>(&output);
+                assert_eq!(*r.unwrap(), features);
+            }
+        }
     }
 }

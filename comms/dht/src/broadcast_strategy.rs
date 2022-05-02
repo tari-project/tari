@@ -20,6 +20,10 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Broadcast strategy
+//!
+//! Describes a strategy for selecting peers and active connections when sending messages.
+
 use std::{
     fmt,
     fmt::{Display, Formatter},
@@ -29,6 +33,7 @@ use tari_comms::{peer_manager::node_id::NodeId, types::CommsPublicKey};
 
 use crate::envelope::NodeDestination;
 
+/// Parameters for the [ClosestNodes](self::BroadcastStrategy::ClosestNodes) broadcast strategy.
 #[derive(Debug, Clone)]
 pub struct BroadcastClosestRequest {
     pub node_id: NodeId,
@@ -48,6 +53,7 @@ impl Display for BroadcastClosestRequest {
     }
 }
 
+/// Describes a strategy for selecting peers and active connections when sending messages.
 #[derive(Debug, Clone)]
 pub enum BroadcastStrategy {
     /// Send to a particular peer matching the given node ID
@@ -70,6 +76,7 @@ pub enum BroadcastStrategy {
 
 impl fmt::Display for BroadcastStrategy {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+        #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
         match self {
             DirectPublicKey(pk) => write!(f, "DirectPublicKey({})", pk),
@@ -88,7 +95,7 @@ impl fmt::Display for BroadcastStrategy {
 impl BroadcastStrategy {
     /// Returns true if this strategy will send multiple indirect messages, otherwise false
     pub fn is_multi_message(&self, chosen_peers: &[NodeId]) -> bool {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::{Broadcast, ClosestNodes, DirectOrClosestNodes, Flood, Propagate, Random};
 
         match self {
             DirectOrClosestNodes(strategy) => {
@@ -100,29 +107,36 @@ impl BroadcastStrategy {
         }
     }
 
+    /// Returns true if the strategy is to send directly to the peer, otherwise false
     pub fn is_direct(&self) -> bool {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::{DirectNodeId, DirectPublicKey};
         matches!(self, DirectNodeId(_) | DirectPublicKey(_))
     }
 
+    /// Returns a reference to the NodeId used in the `DirectNodeId` strategy, otherwise None if the strategy is not
+    /// `DirectNodeId`.
     pub fn direct_node_id(&self) -> Option<&NodeId> {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::DirectNodeId;
         match self {
             DirectNodeId(node_id) => Some(node_id),
             _ => None,
         }
     }
 
+    /// Returns a reference to the `CommsPublicKey` used in the `DirectPublicKey` strategy, otherwise None if the
+    /// strategy is not `DirectPublicKey`.
     pub fn direct_public_key(&self) -> Option<&CommsPublicKey> {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::DirectPublicKey;
         match self {
             DirectPublicKey(pk) => Some(pk),
             _ => None,
         }
     }
 
+    /// Returns the `CommsPublicKey` used in the `DirectPublicKey` strategy, otherwise None if the strategy is not
+    /// `DirectPublicKey`.
     pub fn into_direct_public_key(self) -> Option<Box<CommsPublicKey>> {
-        use BroadcastStrategy::*;
+        use BroadcastStrategy::DirectPublicKey;
         match self {
             DirectPublicKey(pk) => Some(pk),
             _ => None,

@@ -23,6 +23,8 @@ use std::{
     cmp::max,
     convert::TryInto,
     fmt::{Display, Error, Formatter},
+    io,
+    io::{Read, Write},
 };
 
 use log::*;
@@ -40,24 +42,27 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::PedersenCommitment,
-    script::ScriptContext,
     tari_utilities::hex::Hex,
 };
+use tari_script::ScriptContext;
 
-use crate::transactions::{
-    crypto_factories::CryptoFactories,
-    tari_amount::MicroTari,
-    transaction_components::{
-        KernelFeatures,
-        KernelSum,
-        OutputFlags,
-        Transaction,
-        TransactionError,
-        TransactionInput,
-        TransactionKernel,
-        TransactionOutput,
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeVec},
+    transactions::{
+        crypto_factories::CryptoFactories,
+        tari_amount::MicroTari,
+        transaction_components::{
+            KernelFeatures,
+            KernelSum,
+            OutputFlags,
+            Transaction,
+            TransactionError,
+            TransactionInput,
+            TransactionKernel,
+            TransactionOutput,
+        },
+        weight::TransactionWeight,
     },
-    weight::TransactionWeight,
 };
 
 pub const LOG_TARGET: &str = "c::tx::aggregated_body";
@@ -231,7 +236,7 @@ impl AggregateBody {
     /// will be added to the public key used in the signature verification.
     pub fn verify_kernel_signatures(&self) -> Result<(), TransactionError> {
         trace!(target: LOG_TARGET, "Checking kernel signatures",);
-        for kernel in self.kernels.iter() {
+        for kernel in &self.kernels {
             kernel.verify_signature().map_err(|e| {
                 warn!(target: LOG_TARGET, "Kernel ({}) signature failed {:?}.", kernel, e);
                 e
@@ -461,7 +466,7 @@ impl AggregateBody {
     }
 
     fn validate_covenants(&self, height: u64) -> Result<(), TransactionError> {
-        for input in self.inputs.iter() {
+        for input in &self.inputs {
             input.covenant()?.execute(height, input, &self.outputs)?;
         }
         Ok(())
@@ -549,13 +554,33 @@ impl Display for AggregateBody {
             writeln!(fmt, "{}", kernel)?;
         }
         writeln!(fmt, "--- Inputs ({}) ---", self.inputs.len())?;
-        for input in self.inputs.iter() {
+        for input in &self.inputs {
             writeln!(fmt, "{}", input)?;
         }
         writeln!(fmt, "--- Outputs ({}) ---", self.outputs.len())?;
-        for output in self.outputs.iter() {
+        for output in &self.outputs {
             writeln!(fmt, "{}", output)?;
         }
         Ok(())
+    }
+}
+
+impl ConsensusEncoding for AggregateBody {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.inputs.consensus_encode(writer)?;
+        written += self.outputs.consensus_encode(writer)?;
+        written += self.kernels.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for AggregateBody {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        const MAX_SIZE: usize = 50000;
+        let inputs = MaxSizeVec::<TransactionInput, MAX_SIZE>::consensus_decode(reader)?.into();
+        let outputs = MaxSizeVec::<TransactionOutput, MAX_SIZE>::consensus_decode(reader)?.into();
+        let kernels = MaxSizeVec::<TransactionKernel, MAX_SIZE>::consensus_decode(reader)?.into();
+        let body = AggregateBody::new(inputs, outputs, kernels);
+        Ok(body)
     }
 }

@@ -47,13 +47,7 @@ pub async fn wait_on_dial(
             send_states[0].tag,
         );
         let (sent, failed) = send_states.wait_n_timeout(direct_send_timeout, 1).await;
-        if !sent.is_empty() {
-            info!(
-                target: LOG_TARGET,
-                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent[0]
-            );
-            true
-        } else {
+        if sent.is_empty() {
             if failed.is_empty() {
                 warn!(
                     target: LOG_TARGET,
@@ -69,6 +63,12 @@ pub async fn wait_on_dial(
                 );
             }
             false
+        } else {
+            info!(
+                target: LOG_TARGET,
+                "Direct Send process for {} TX_ID: {} was successful with Message: {}", message, tx_id, sent[0]
+            );
+            true
         }
     } else {
         warn!(target: LOG_TARGET, "{} Send Direct for TxID: {} failed", message, tx_id);

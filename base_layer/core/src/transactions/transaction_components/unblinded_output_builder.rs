@@ -20,25 +20,38 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use derivative::Derivative;
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey};
-use tari_crypto::script::{ExecutionStack, TariScript};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
+use tari_script::{ExecutionStack, TariScript};
 
 use crate::{
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{OutputFeatures, TransactionError, TransactionOutput, UnblindedOutput},
+        transaction_components::{
+            OutputFeatures,
+            TransactionError,
+            TransactionOutput,
+            TransactionOutputVersion,
+            UnblindedOutput,
+        },
+        transaction_protocol::RewindData,
+        CryptoFactories,
     },
 };
 
-#[derive(Debug, Clone)]
+#[derive(Derivative, Clone)]
+#[derivative(Debug)]
 pub struct UnblindedOutputBuilder {
     pub value: MicroTari,
+    #[derivative(Debug = "ignore")]
     spending_key: BlindingFactor,
     pub features: OutputFeatures,
     pub script: Option<TariScript>,
     covenant: Covenant,
     input_data: Option<ExecutionStack>,
+    #[derivative(Debug = "ignore")]
     script_private_key: Option<PrivateKey>,
     sender_offset_public_key: Option<PublicKey>,
     metadata_signature: Option<ComSignature>,
@@ -63,6 +76,16 @@ impl UnblindedOutputBuilder {
         }
     }
 
+    pub fn update_recovery_byte_if_required(
+        &mut self,
+        factories: &CryptoFactories,
+        rewind_data: Option<&RewindData>,
+    ) -> Result<(), TransactionError> {
+        let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
+        self.features.update_recovery_byte(&commitment, rewind_data);
+        Ok(())
+    }
+
     pub fn sign_as_receiver(
         &mut self,
         sender_offset_public_key: PublicKey,
@@ -71,7 +94,8 @@ impl UnblindedOutputBuilder {
         self.sender_offset_public_key = Some(sender_offset_public_key.clone());
 
         let metadata_partial = TransactionOutput::create_partial_metadata_signature(
-            &self.value,
+            TransactionOutputVersion::get_current_version(),
+            self.value,
             &self.spending_key,
             self.script
                 .as_ref()
@@ -88,7 +112,8 @@ impl UnblindedOutputBuilder {
 
     pub fn sign_as_sender(&mut self, sender_offset_private_key: &PrivateKey) -> Result<(), TransactionError> {
         let metadata_sig = TransactionOutput::create_final_metadata_signature(
-            &self.value,
+            TransactionOutputVersion::get_current_version(),
+            self.value,
             &self.spending_key,
             self.script
                 .as_ref()
@@ -151,5 +176,38 @@ impl UnblindedOutputBuilder {
     pub fn with_script_private_key(mut self, script_private_key: PrivateKey) -> Self {
         self.script_private_key = Some(script_private_key);
         self
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use tari_crypto::ristretto::RistrettoSecretKey;
+
+    use super::*;
+
+    #[test]
+    fn test_try_build() {
+        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
+        assert!(uob
+            .sign_as_receiver(PublicKey::default(), PublicKey::default())
+            .is_err());
+        assert!(uob.sign_as_sender(&PrivateKey::default()).is_err());
+        let mut uob = uob.with_script(TariScript::new(vec![]));
+        assert!(uob.clone().try_build().is_err());
+        assert!(uob.sign_as_receiver(PublicKey::default(), PublicKey::default()).is_ok());
+        assert!(uob.clone().try_build().is_err());
+        assert!(uob.sign_as_sender(&PrivateKey::default()).is_ok());
+        let uob = uob.with_input_data(ExecutionStack::new(vec![]));
+        let uob = uob.with_script_private_key(RistrettoSecretKey::default());
+        let uob = uob.with_features(OutputFeatures::default());
+        assert!(uob.try_build().is_ok());
+    }
+
+    #[test]
+    fn test_update_recovery_byte_if_required() {
+        let mut uob = UnblindedOutputBuilder::new(100.into(), RistrettoSecretKey::default());
+        assert!(uob
+            .update_recovery_byte_if_required(&CryptoFactories::default(), None)
+            .is_ok());
     }
 }

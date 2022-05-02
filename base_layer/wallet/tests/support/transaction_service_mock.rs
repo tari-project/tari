@@ -103,7 +103,7 @@ impl TransactionServiceMock {
 
         match request {
             TransactionServiceRequest::ImportUtxoWithStatus { .. } => {
-                let _ = reply_tx
+                let _result = reply_tx
                     .send(Ok(TransactionServiceResponse::UtxoImported(TxId::from(42u64))))
                     .map_err(|e| {
                         warn!(target: LOG_TARGET, "Failed to send reply");

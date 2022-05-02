@@ -21,14 +21,14 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use diesel::result::Error as DieselError;
-use tari_crypto::script::ScriptError;
 use tari_key_manager::error::KeyManagerError as KMError;
+use tari_script::ScriptError;
 use tari_utilities::{hex::HexError, ByteArrayError};
 
 use crate::error::WalletStorageError;
-
+/// Error enum for the [KeyManagerService]
 #[derive(Debug, thiserror::Error)]
-pub enum KeyManagerError {
+pub enum KeyManagerServiceError {
     #[error("Branch does not exist")]
     UnknownKeyBranch,
     #[error("Master seed does not match stored version")]
@@ -42,7 +42,7 @@ pub enum KeyManagerError {
     #[error("Tari Key Manager error: `{0}`")]
     TariKeyManagerError(#[from] KMError),
 }
-
+/// Error enum for the [KeyManagerStorage]
 #[derive(Debug, thiserror::Error)]
 pub enum KeyManagerStorageError {
     #[error("Value not found")]

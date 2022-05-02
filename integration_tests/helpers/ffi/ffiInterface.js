@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 /**
  * NB!: Modify with caution.
  **/
@@ -36,7 +39,7 @@ class InterfaceFFI {
         "-Z",
         "unstable-options",
         "--out-dir",
-        process.cwd() + "/temp/out",
+        process.cwd() + "/temp/out/ffi",
       ];
       const baseDir = `./temp/base_nodes/${dateFormat(
         new Date(),
@@ -74,7 +77,7 @@ class InterfaceFFI {
 
   static async init() {
     let platform = process.platform === "win32" ? "" : "lib";
-    this.library = `${process.cwd()}/temp/out/${platform}tari_wallet_ffi`;
+    this.library = `${process.cwd()}/temp/out/ffi/${platform}tari_wallet_ffi`;
     // Load the library
     this.fn = ffi.Library(this.loaded ? null : this.library, {
       transport_memory_create: [this.ptr, []],
@@ -92,7 +95,7 @@ class InterfaceFFI {
         ],
       ],
       transport_memory_get_address: [this.stringPtr, [this.ptr, this.intPtr]],
-      transport_type_destroy: [this.void, [this.ptr]],
+      transport_config_destroy: [this.void, [this.ptr]],
       string_destroy: [this.void, [this.string]],
       byte_vector_create: [this.ptr, [this.ucharPtr, this.uint, this.intPtr]],
       byte_vector_get_at: [this.uchar, [this.ptr, this.uint, this.intPtr]],
@@ -257,6 +260,8 @@ class InterfaceFFI {
         [this.ptr, this.uint, this.intPtr],
       ],
       pending_inbound_transactions_destroy: [this.void, [this.ptr]],
+      transaction_send_status_decode: [this.uint, [this.ptr, this.intPtr]],
+      transaction_send_status_destroy: [this.void, [this.ptr]],
       comms_config_create: [
         this.ptr,
         [
@@ -266,7 +271,6 @@ class InterfaceFFI {
           this.string,
           this.ulonglong,
           this.ulonglong,
-          this.string,
           this.intPtr,
         ],
       ],
@@ -281,7 +285,7 @@ class InterfaceFFI {
           this.uint,
           this.string,
           this.ptr,
-          this.ptr,
+          this.string,
           this.ptr,
           this.ptr,
           this.ptr,
@@ -385,7 +389,7 @@ class InterfaceFFI {
         this.ptr,
         [this.ptr, this.ulonglong, this.intPtr],
       ],
-      wallet_import_utxo: [
+      wallet_import_external_utxo_as_non_rewindable: [
         this.ulonglong,
         [
           this.ptr,
@@ -644,8 +648,8 @@ class InterfaceFFI {
     return result;
   }
 
-  static transportTypeDestroy(transport) {
-    this.fn.transport_type_destroy(transport);
+  static transportConfigDestroy(transport) {
+    this.fn.transport_config_destroy(transport);
   }
   //endregion
 
@@ -724,8 +728,7 @@ class InterfaceFFI {
     database_name,
     datastore_path,
     discovery_timeout_in_secs,
-    saf_message_duration_in_secs,
-    network
+    saf_message_duration_in_secs
   ) {
     let error = this.initError();
     let result = this.fn.comms_config_create(
@@ -735,7 +738,6 @@ class InterfaceFFI {
       datastore_path,
       discovery_timeout_in_secs,
       saf_message_duration_in_secs,
-      network,
       error
     );
     this.checkErrorResult(error, `commsConfigCreate`);
@@ -1124,7 +1126,18 @@ class InterfaceFFI {
   }
   //endregion
 
-  //region Wallet
+  //region TransactionSendStatus
+  static transactionSendStatusDecode(ptr) {
+    let error = this.initError();
+    let result = this.fn.transaction_send_status_decode(ptr, error);
+    this.checkErrorResult(error, `transactionSendStatusDecode`);
+    return result;
+  }
+
+  static transactionSendStatusDestroy(ptr) {
+    this.fn.transaction_send_status_destroy(ptr);
+  }
+  //endregion
 
   //region Callbacks
   static createCallbackReceivedTransaction(fn) {
@@ -1159,12 +1172,8 @@ class InterfaceFFI {
     return ffi.Callback(this.void, [this.ptr, this.ulonglong], fn);
   }
 
-  static createCallbackDirectSendResult(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.bool], fn);
-  }
-
-  static createCallbackStoreAndForwardSendResult(fn) {
-    return ffi.Callback(this.void, [this.ulonglong, this.bool], fn);
+  static createCallbackTransactionSendResult(fn) {
+    return ffi.Callback(this.void, [this.ulonglong, this.ptr], fn);
   }
 
   static createCallbackTransactionCancellation(fn) {
@@ -1204,6 +1213,7 @@ class InterfaceFFI {
     size_per_log_file_bytes,
     passphrase,
     seed_words,
+    network,
     callback_received_transaction,
     callback_received_transaction_reply,
     callback_received_finalized_transaction,
@@ -1212,8 +1222,7 @@ class InterfaceFFI {
     callback_transaction_mined_unconfirmed,
     callback_faux_transaction_confirmed,
     callback_faux_transaction_unconfirmed,
-    callback_direct_send_result,
-    callback_store_and_forward_send_result,
+    callback_transaction_send_result,
     callback_transaction_cancellation,
     callback_txo_validation_complete,
     callback_contacts_liveness_data_updated,
@@ -1232,6 +1241,7 @@ class InterfaceFFI {
       size_per_log_file_bytes,
       passphrase,
       seed_words,
+      network,
       callback_received_transaction,
       callback_received_transaction_reply,
       callback_received_finalized_transaction,
@@ -1240,8 +1250,7 @@ class InterfaceFFI {
       callback_transaction_mined_unconfirmed,
       callback_faux_transaction_confirmed,
       callback_faux_transaction_unconfirmed,
-      callback_direct_send_result,
-      callback_store_and_forward_send_result,
+      callback_transaction_send_result,
       callback_transaction_cancellation,
       callback_txo_validation_complete,
       callback_contacts_liveness_data_updated,
@@ -1524,7 +1533,7 @@ class InterfaceFFI {
     message
   ) {
     let error = this.initError();
-    let result = this.fn.wallet_import_utxo(
+    let result = this.fn.wallet_import_external_utxo_as_non_rewindable(
       ptr,
       amount,
       spending_key_ptr,

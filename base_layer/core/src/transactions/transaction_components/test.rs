@@ -21,7 +21,7 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use digest::Digest;
-use rand::{self, rngs::OsRng};
+use rand::{self, rngs::OsRng, Rng};
 use tari_common_types::types::{BlindingFactor, ComSignature, PrivateKey, PublicKey, RangeProof, Signature};
 use tari_comms::types::Challenge;
 use tari_crypto::{
@@ -29,10 +29,9 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
     range_proof::{RangeProofError, RangeProofService},
     ristretto::pedersen::PedersenCommitmentFactory,
-    script,
-    script::{ExecutionStack, StackItem},
     tari_utilities::{hex::Hex, Hashable},
 };
+use tari_script::{script, ExecutionStack, StackItem};
 use tari_test_utils::unpack_enum;
 use tari_utilities::ByteArray;
 
@@ -43,7 +42,7 @@ use crate::{
         test_helpers,
         test_helpers::{create_sender_transaction_protocol_with, create_unblinded_txos, TestParams, UtxoTestParams},
         transaction_components::OutputFeatures,
-        transaction_protocol::{RewindData, TransactionProtocolError},
+        transaction_protocol::TransactionProtocolError,
         CryptoFactories,
     },
     txn_schema,
@@ -70,15 +69,45 @@ fn unblinded_input() {
     let input = i
         .as_transaction_input(&factory)
         .expect("Should be able to create transaction input");
-    assert_eq!(*input.features().unwrap(), OutputFeatures::default());
+
+    let recovery_byte = OutputFeatures::create_unique_recovery_byte(input.commitment().unwrap(), None);
+    assert_eq!(*input.features().unwrap(), OutputFeatures {
+        recovery_byte,
+        ..Default::default()
+    });
+
+    assert!(input.opened_by(&i, &factory).unwrap());
+}
+
+#[test]
+fn unblinded_input_with_rewind_data() {
+    let test_params = TestParams::new();
+    let factory = PedersenCommitmentFactory::default();
+
+    let i = test_params.create_unblinded_output_with_rewind_data(Default::default());
+    let input = i
+        .as_transaction_input(&factory)
+        .expect("Should be able to create transaction input");
+
+    let recovery_byte =
+        OutputFeatures::create_unique_recovery_byte(input.commitment().unwrap(), Some(&test_params.rewind_data));
+    assert_eq!(*input.features().unwrap(), OutputFeatures {
+        recovery_byte,
+        ..Default::default()
+    });
+
     assert!(input.opened_by(&i, &factory).unwrap());
 }
 
 #[test]
 fn with_maturity() {
-    let features = OutputFeatures::with_maturity(42);
+    let features = OutputFeatures {
+        maturity: 42,
+        ..Default::default()
+    };
     assert_eq!(features.maturity, 42);
     assert_eq!(features.flags, OutputFlags::empty());
+    assert_eq!(features.recovery_byte, 0);
 }
 
 #[test]
@@ -126,7 +155,8 @@ fn range_proof_verification() {
         script.clone(),
         test_params_2.sender_offset_public_key,
         TransactionOutput::create_final_metadata_signature(
-            &value.into(),
+            TransactionOutputVersion::get_current_version(),
+            value.into(),
             &test_params_2.spend_key,
             &script,
             &output_features,
@@ -152,7 +182,7 @@ fn sender_signature_verification() {
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
     assert!(tx_output.verify_metadata_signature().is_ok());
-    tx_output.features = OutputFeatures::create_coinbase(0);
+    tx_output.features = OutputFeatures::create_coinbase(0, rand::thread_rng().gen::<u8>());
     assert!(tx_output.verify_metadata_signature().is_err());
 
     tx_output = unblinded_output.as_transaction_output(&factories).unwrap();
@@ -343,7 +373,6 @@ fn check_duplicate_inputs_outputs() {
 }
 
 #[test]
-#[ignore = "TODO: fix script error"]
 fn inputs_not_malleable() {
     let (inputs, outputs) = test_helpers::create_unblinded_txos(
         5000.into(),
@@ -351,19 +380,18 @@ fn inputs_not_malleable() {
         1,
         2,
         15.into(),
-        Default::default(),
-        script![Drop],
-        Default::default(),
+        &Default::default(),
+        &script![Nop],
+        &Default::default(),
     );
-    let script_pk = PublicKey::from_secret_key(&outputs[0].0.script_private_key);
     let mut stack = inputs[0].input_data.clone();
     let mut tx = test_helpers::create_transaction_with(1, 15.into(), inputs, outputs);
 
     stack
         .push(StackItem::Hash(*b"Pls put this on tha tari network"))
         .unwrap();
-    stack.push(StackItem::PublicKey(script_pk)).unwrap();
 
+    tx.body.inputs_mut()[0].set_script(script![Drop]).unwrap();
     tx.body.inputs_mut()[0].input_data = stack;
 
     let factories = CryptoFactories::default();
@@ -371,7 +399,6 @@ fn inputs_not_malleable() {
         .validate_internal_consistency(false, &factories, None, None, u64::MAX)
         .unwrap_err();
     unpack_enum!(TransactionError::InvalidSignatureError(_a) = err);
-    // assert!(matches!(err, TransactionError::InvalidSignatureError(_)));
 }
 
 #[test]
@@ -379,26 +406,17 @@ fn test_output_rewinding() {
     let test_params = TestParams::new();
     let factories = CryptoFactories::new(32);
     let v = MicroTari::from(42);
-    let rewind_key = PrivateKey::random(&mut OsRng);
-    let rewind_blinding_key = PrivateKey::random(&mut OsRng);
     let random_key = PrivateKey::random(&mut OsRng);
-    let rewind_public_key = PublicKey::from_secret_key(&rewind_key);
-    let rewind_blinding_public_key = PublicKey::from_secret_key(&rewind_blinding_key);
     let public_random_key = PublicKey::from_secret_key(&random_key);
-    let proof_message = b"testing12345678910111";
+    let rewind_public_key = PublicKey::from_secret_key(&test_params.rewind_data.rewind_key);
+    let rewind_blinding_public_key = PublicKey::from_secret_key(&test_params.rewind_data.rewind_blinding_key);
 
-    let rewind_data = RewindData {
-        rewind_key: rewind_key.clone(),
-        rewind_blinding_key: rewind_blinding_key.clone(),
-        proof_message: proof_message.to_owned(),
-    };
-
-    let unblinded_output = test_params.create_unblinded_output(UtxoTestParams {
+    let unblinded_output = test_params.create_unblinded_output_with_rewind_data(UtxoTestParams {
         value: v,
         ..Default::default()
     });
     let output = unblinded_output
-        .as_rewindable_transaction_output(&factories, &rewind_data, None)
+        .as_rewindable_transaction_output(&factories, &test_params.rewind_data, None)
         .unwrap();
 
     assert!(matches!(
@@ -415,22 +433,33 @@ fn test_output_rewinding() {
         .unwrap();
 
     assert_eq!(rewind_result.committed_value, v);
-    assert_eq!(&rewind_result.proof_message, proof_message);
+    assert_eq!(&rewind_result.proof_message, &test_params.rewind_data.proof_message);
 
     assert!(matches!(
-        output.full_rewind_range_proof(&factories.range_proof, &random_key, &rewind_blinding_key),
+        output.full_rewind_range_proof(
+            &factories.range_proof,
+            &random_key,
+            &test_params.rewind_data.rewind_blinding_key
+        ),
         Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
     ));
     assert!(matches!(
-        output.full_rewind_range_proof(&factories.range_proof, &rewind_key, &random_key),
+        output.full_rewind_range_proof(&factories.range_proof, &test_params.rewind_data.rewind_key, &random_key),
         Err(TransactionError::RangeProofError(RangeProofError::InvalidRewind))
     ));
 
     let full_rewind_result = output
-        .full_rewind_range_proof(&factories.range_proof, &rewind_key, &rewind_blinding_key)
+        .full_rewind_range_proof(
+            &factories.range_proof,
+            &test_params.rewind_data.rewind_key,
+            &test_params.rewind_data.rewind_blinding_key,
+        )
         .unwrap();
     assert_eq!(full_rewind_result.committed_value, v);
-    assert_eq!(&full_rewind_result.proof_message, proof_message);
+    assert_eq!(
+        &full_rewind_result.proof_message,
+        &test_params.rewind_data.proof_message
+    );
     assert_eq!(full_rewind_result.blinding_factor, test_params.spend_key);
 }
 mod output_features {
@@ -444,6 +473,7 @@ mod output_features {
     fn consensus_encode_minimal() {
         let mut features = OutputFeatures::default();
         features.version = OutputFeaturesVersion::V0;
+
         let mut buf = Vec::new();
         let written = features.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 9);
@@ -453,38 +483,58 @@ mod output_features {
         features.version = OutputFeaturesVersion::V1;
         let mut buf = Vec::new();
         let written = features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 10);
-        assert_eq!(written, 10);
+        assert_eq!(buf.len(), 11);
+        assert_eq!(written, 11);
     }
 
     #[test]
     fn consensus_encode_decode() {
-        let mut features = OutputFeatures::create_coinbase(u64::MAX);
-        features.version = OutputFeaturesVersion::V0;
-        let known_size = features.consensus_encode_exact_size();
-        let mut buf = Vec::with_capacity(known_size);
-        assert_eq!(known_size, 18);
-        let written = features.consensus_encode(&mut buf).unwrap();
+        let mut features_u8_max = OutputFeatures::create_coinbase(u64::MAX, u8::MAX);
+        features_u8_max.version = OutputFeaturesVersion::V0;
+        let mut features_u8_min = OutputFeatures::create_coinbase(u64::MAX, u8::MIN);
+        features_u8_min.version = OutputFeaturesVersion::V0;
+        let known_size_u8_max = features_u8_max.consensus_encode_exact_size();
+        let known_size_u8_min = features_u8_min.consensus_encode_exact_size();
+        assert_eq!(known_size_u8_max, known_size_u8_min);
+        let mut buf = Vec::with_capacity(known_size_u8_max);
+        assert_eq!(known_size_u8_max, 18);
+        let written = features_u8_max.consensus_encode(&mut buf).unwrap();
         assert_eq!(buf.len(), 18);
         assert_eq!(written, 18);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
-        assert_eq!(features, decoded_features);
+        // Recovery byte is not encoded for OutputFeaturesVersion::V0; the default is returned when decoded
+        assert_ne!(features_u8_max, decoded_features);
+        features_u8_max.set_recovery_byte(0);
+        assert_eq!(features_u8_max, decoded_features);
 
-        let mut features = OutputFeatures::create_coinbase(u64::MAX);
+        features_u8_max.version = OutputFeaturesVersion::V1;
+        features_u8_min.version = OutputFeaturesVersion::V1;
+        let known_size_u8_max = features_u8_max.consensus_encode_exact_size();
+        let known_size_u8_min = features_u8_min.consensus_encode_exact_size();
+        assert_eq!(known_size_u8_max, known_size_u8_min);
+        let mut buf = Vec::with_capacity(known_size_u8_max);
+        assert_eq!(known_size_u8_max, 20);
+        let written = features_u8_max.consensus_encode(&mut buf).unwrap();
+        assert_eq!(buf.len(), 20);
+        assert_eq!(written, 20);
+        let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
+        assert_eq!(features_u8_max, decoded_features);
+
+        let mut features = OutputFeatures::create_coinbase(u64::MAX, rand::thread_rng().gen::<u8>());
         features.version = OutputFeaturesVersion::V1;
         let known_size = features.consensus_encode_exact_size();
         let mut buf = Vec::with_capacity(known_size);
-        assert_eq!(known_size, 19);
+        assert_eq!(known_size, 20);
         let written = features.consensus_encode(&mut buf).unwrap();
-        assert_eq!(buf.len(), 19);
-        assert_eq!(written, 19);
+        assert_eq!(buf.len(), 20);
+        assert_eq!(written, 20);
         let decoded_features = OutputFeatures::consensus_decode(&mut &buf[..]).unwrap();
         assert_eq!(features, decoded_features);
     }
 
     #[test]
     fn consensus_decode_bad_flags() {
-        let data = [0x00u8, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        let data = [0x00u8, 0x00, 0x02, 0x00u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
         let features = OutputFeatures::consensus_decode(&mut &data[..]).unwrap();
         // Assert the flag data is preserved
         assert_eq!(features.flags.bits() & 0x02, 0x02);
@@ -492,7 +542,7 @@ mod output_features {
 
     #[test]
     fn consensus_decode_bad_maturity() {
-        let data = [0x00u8, 0xFF];
+        let data = [0x00u8, 0xFF, 0x00u8];
         let err = OutputFeatures::consensus_decode(&mut &data[..]).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
@@ -520,9 +570,9 @@ mod validate_internal_consistency {
             0,
             1,
             5 * uT,
-            utxo_params.features.clone(),
-            utxo_params.script.clone(),
-            utxo_params.covenant.clone(),
+            &utxo_params.features.clone(),
+            &utxo_params.script.clone(),
+            &utxo_params.covenant.clone(),
         );
         inputs[0].features = input_params.features.clone();
         inputs[0].covenant = input_params.covenant.clone();

@@ -23,6 +23,15 @@
 use std::{fmt, fmt::Display};
 
 use chrono::Local;
+use strum::{Display, EnumString};
+
+#[derive(Debug, Display, EnumString)]
+pub enum StatusLineOutput {
+    #[strum(serialize = "log")]
+    Log,
+    #[strum(serialize = "all")]
+    StdOutAndLog,
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct StatusLine {

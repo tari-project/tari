@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const dateFormat = require("dateformat");
 const fs = require("fs");
 const path = require("path");
@@ -16,19 +19,17 @@ class MiningNodeProcess {
     logFilePath,
     mineOnTipOnly = true
   ) {
-    this.name = `MiningNode-${name}`;
+    this.name = `Miner-${name}`;
     this.maxBlocks = 1;
     this.mineTillHeight = 1000000;
+    this.walletAddress = walletAddress;
+    this.baseNodeAddress = baseNodeAddress;
     this.minDiff = 0;
     this.maxDiff = 100000;
-    this.nodeAddress = baseNodeAddress.split(":")[0];
-    this.nodeGrpcPort = baseNodeAddress.split(":")[1];
     this.baseNodeClient = baseNodeClient;
-    this.walletAddress = walletAddress.split(":")[0];
-    this.walletGrpcPort = walletAddress.split(":")[1];
     this.logFilePath = logFilePath ? path.resolve(logFilePath) : logFilePath;
     this.mineOnTipOnly = mineOnTipOnly;
-    this.numMiningThreads = 1;
+    this.numMiningThreads = 4;
   }
 
   async init(
@@ -54,38 +55,30 @@ class MiningNodeProcess {
         ? this.mineOnTipOnly
         : mineOnTipOnly;
     this.numMiningThreads = numMiningThreads || this.numMiningThreads;
+    if (!fs.existsSync(this.baseDir)) {
+      fs.mkdirSync(this.baseDir + "/log", { recursive: true });
+    }
   }
 
   run(cmd, args) {
     return new Promise((resolve, reject) => {
-      if (!fs.existsSync(this.baseDir)) {
-        fs.mkdirSync(this.baseDir, { recursive: true });
-        fs.mkdirSync(this.baseDir + "/log", { recursive: true });
-      }
-
-      const envs = createEnv(
-        this.name,
-        false,
-        "nodeid.json",
-        this.walletAddress,
-        this.walletGrpcPort,
-        "8080",
-        this.nodeAddress,
-        this.nodeGrpcPort,
-        this.baseNodePort,
-        "/ip4/127.0.0.1/tcp/8084",
-        "127.0.0.1:8085",
-        {
+      const envs = createEnv({
+        walletGrpcAddress: this.walletAddress,
+        baseNodeGrpcAddress: this.baseNodeAddress,
+        options: {
           mineOnTipOnly: this.mineOnTipOnly,
           numMiningThreads: this.numMiningThreads,
         },
-        []
-      );
+      });
+      Object.keys(envs).forEach((k) => {
+        args.push("-p");
+        args.push(`${k}=${envs[k]}`);
+      });
 
       const ps = spawn(cmd, args, {
         cwd: this.baseDir,
         // shell: true,
-        env: { ...process.env, ...envs },
+        env: { ...process.env },
       });
 
       ps.stdout.on("data", (data) => {
@@ -115,13 +108,43 @@ class MiningNodeProcess {
     });
   }
 
+  runCommand(cmd, args, opts = { env: {} }) {
+    return new Promise((resolve, reject) => {
+      const ps = spawn(cmd, args, {
+        cwd: this.baseDir,
+        // shell: true,
+        env: { ...process.env, ...opts.env },
+      });
+
+      ps.stdout.on("data", (data) => {
+        // console.log(`stdout: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stdout.log`, data.toString());
+        resolve(ps);
+      });
+
+      ps.stderr.on("data", (data) => {
+        console.error(`stderr: ${data}`);
+        fs.appendFileSync(`${this.baseDir}/log/stderr.log`, data.toString());
+      });
+
+      ps.on("close", (code) => {
+        const ps = this.ps;
+        this.ps = null;
+        if (code) {
+          console.log(`child process exited with code ${code}`);
+          reject(`child process exited with code ${code}`);
+        } else {
+          resolve(ps);
+        }
+      });
+    });
+  }
+
   async startNew() {
     await this.init();
     const args = [
       "--base-path",
       ".",
-      "--init",
-      "--non-interactive",
       "--max-blocks",
       this.maxBlocks,
       "--mine-until-height",
@@ -139,17 +162,17 @@ class MiningNodeProcess {
 
   async compile() {
     if (!outputProcess) {
-      await this.run("cargo", [
+      await this.runCommand("cargo", [
         "build",
         "--release",
         "--bin",
-        "tari_mining_node",
+        "tari_miner",
         "-Z",
         "unstable-options",
         "--out-dir",
         __dirname + "/../temp/out",
       ]);
-      outputProcess = __dirname + "/../temp/out/tari_mining_node";
+      outputProcess = __dirname + "/../temp/out/tari_miner";
     }
     return outputProcess;
   }

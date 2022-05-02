@@ -27,27 +27,35 @@ use std::{
     io::Write,
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::envelope::DhtMessageError;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Versions for the DHT protocol
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "u32", into = "u32")]
 pub enum DhtProtocolVersion {
     V1 { minor: u32 },
     V2 { minor: u32 },
 }
 
 impl DhtProtocolVersion {
+    /// Returns the latest version
     pub fn latest() -> Self {
         DhtProtocolVersion::v2()
     }
 
+    /// Returns v1 version
     pub fn v1() -> Self {
         DhtProtocolVersion::V1 { minor: 0 }
     }
 
+    /// Returns v2 version
     pub fn v2() -> Self {
         DhtProtocolVersion::V2 { minor: 0 }
     }
 
+    /// Returns the byte representation for the version
     pub fn to_bytes(self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(4 * 2);
         buf.write_all(&self.as_major().to_le_bytes()).unwrap();
@@ -55,16 +63,18 @@ impl DhtProtocolVersion {
         buf
     }
 
+    /// Returns the major version number
     pub fn as_major(&self) -> u32 {
-        use DhtProtocolVersion::*;
+        use DhtProtocolVersion::{V1, V2};
         match self {
             V1 { .. } => 1,
             V2 { .. } => 2,
         }
     }
 
+    /// Returns the minor version number
     pub fn as_minor(&self) -> u32 {
-        use DhtProtocolVersion::*;
+        use DhtProtocolVersion::{V1, V2};
         match self {
             V1 { minor } => *minor,
             V2 { minor } => *minor,
@@ -90,11 +100,17 @@ impl TryFrom<(u32, u32)> for DhtProtocolVersion {
     type Error = DhtMessageError;
 
     fn try_from((major, minor): (u32, u32)) -> Result<Self, Self::Error> {
-        use DhtProtocolVersion::*;
+        use DhtProtocolVersion::{V1, V2};
         match major {
             0..=1 => Ok(V1 { minor }),
             2 => Ok(V2 { minor }),
             n => Err(DhtMessageError::InvalidProtocolVersion(n)),
         }
+    }
+}
+
+impl From<DhtProtocolVersion> for u32 {
+    fn from(source: DhtProtocolVersion) -> Self {
+        source.as_major()
     }
 }

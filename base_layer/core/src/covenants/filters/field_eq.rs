@@ -36,6 +36,7 @@ impl Filter for FieldEqFilter {
         let field = context.next_arg()?.require_outputfield()?;
         let arg = context.next_arg()?;
         output_set.retain(|output| {
+            #[allow(clippy::enum_glob_use)]
             use CovenantArg::*;
             match &arg {
                 Hash(hash) => field.is_eq(output, hash),
@@ -47,7 +48,7 @@ impl Filter for FieldEqFilter {
                     let val = field
                         .get_field_value_ref::<u64>(output)
                         .copied()
-                        .or_else(|| field.get_field_value_ref::<u32>(output).map(|v| *v as u64));
+                        .or_else(|| field.get_field_value_ref::<u32>(output).map(|v| u64::from(*v)));
 
                     match val {
                         Some(val) => Ok(val == *int),
@@ -72,7 +73,7 @@ impl Filter for FieldEqFilter {
 #[cfg(test)]
 mod test {
     use tari_common_types::types::{Commitment, PublicKey};
-    use tari_crypto::script;
+    use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::Hex;
 
@@ -164,43 +165,22 @@ mod test {
         assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
     }
 
-    // #[test]
-    // fn it_filters_covenant() {
-    //     // TODO: Covenant field is not in output yet
-    //     let covenant = covenant!(identity());
-    //     let covenant = covenant!(field_eq(
-    //         @field::covenant,
-    //         @covenant(covenant.clone())
-    //     ));
-    //     let input = create_input();
-    //     let mut context = create_context(&covenant, &input, 0);
-    //     // Remove `field_eq`
-    //     context.next_filter().unwrap();
-    //     let mut outputs = create_outputs(10, Default::default());
-    //     outputs[5].covenant = covenant.clone();
-    //     outputs[7].covenant = covenant.clone();
-    //     let mut output_set = OutputSet::new(&outputs);
-    //     FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
-    //
-    //     assert_eq!(output_set.len(), 2);
-    //     assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
-    // }
-
     #[test]
-    fn it_errors_for_unsupported_features_field() {
-        let covenant = covenant!(field_eq(
-            @field::features,
-            @bytes(vec![])
-        ));
+    fn it_filters_covenant() {
+        let next_cov = covenant!(and(identity(), or(field_eq(@field::features_maturity, @uint(42)))));
+        let covenant = covenant!(field_eq(@field::covenant, @covenant(next_cov.clone())));
         let input = create_input();
         let mut context = create_context(&covenant, &input, 0);
         // Remove `field_eq`
         context.next_filter().unwrap();
-        let outputs = create_outputs(10, Default::default());
+        let mut outputs = create_outputs(10, Default::default());
+        outputs[5].covenant = next_cov.clone();
+        outputs[7].covenant = next_cov;
         let mut output_set = OutputSet::new(&outputs);
-        let err = FieldEqFilter.filter(&mut context, &mut output_set).unwrap_err();
-        unpack_enum!(CovenantError::UnsupportedArgument { arg, .. } = err);
-        assert_eq!(arg, "features");
+        FieldEqFilter.filter(&mut context, &mut output_set).unwrap();
+
+        assert_eq!(output_set.len(), 2);
+        assert_eq!(output_set.get_selected_indexes(), vec![5, 7]);
     }
 
     #[test]

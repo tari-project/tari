@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const InterfaceFFI = require("./ffiInterface");
 const utf8 = require("utf8");
 
@@ -10,21 +13,18 @@ class CommsConfig {
     database_name,
     datastore_path,
     discovery_timeout_in_secs,
-    saf_message_duration_in_secs,
-    network
+    saf_message_duration_in_secs
   ) {
     let sanitize_address = utf8.encode(public_address);
     let sanitize_db_name = utf8.encode(database_name);
     let sanitize_db_path = utf8.encode(datastore_path);
-    let sanitize_network = utf8.encode(network);
     this.ptr = InterfaceFFI.commsConfigCreate(
       sanitize_address,
       transport_ptr,
       sanitize_db_name,
       sanitize_db_path,
       discovery_timeout_in_secs,
-      saf_message_duration_in_secs,
-      sanitize_network
+      saf_message_duration_in_secs
     );
   }
 

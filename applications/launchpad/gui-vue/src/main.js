@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import { createApp } from 'vue'
 import App from './App.vue'
 import Oruga from '@oruga-ui/oruga-next'
@@ -37,11 +40,15 @@ library.add(
 
 import store from "./store";
 
-createApp(App)
-    .use(store)
-    .component('vue-fontawesome', FontAwesomeIcon)
-    .use(Oruga, {
-        iconComponent: 'vue-fontawesome',
-        iconPack: 'fas'
-    })
-    .mount('#app')
+console.log(store);
+store.dispatch("initState").then(()=> {
+    createApp(App)
+        .use(store)
+        .component('vue-fontawesome', FontAwesomeIcon)
+        .use(Oruga, {
+            iconComponent: 'vue-fontawesome',
+            iconPack: 'fas'
+        })
+        .mount('#app')
+})
+

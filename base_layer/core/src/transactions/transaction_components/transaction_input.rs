@@ -26,21 +26,21 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    io,
+    io::{ErrorKind, Read, Write},
 };
 
-use blake2::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashDigest, HashOutput, PublicKey};
+use tari_common_types::types::{ComSignature, Commitment, CommitmentFactory, HashOutput, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
-    script::{ExecutionStack, ScriptContext, StackItem, TariScript},
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
+use tari_script::{ExecutionStack, ScriptContext, StackItem, TariScript};
 
 use super::{TransactionInputVersion, TransactionOutputVersion};
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::ConsensusEncoding,
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter, MaxSizeBytes},
     covenants::Covenant,
     transactions::{
         transaction_components,
@@ -152,19 +152,22 @@ impl TransactionInput {
     }
 
     pub(super) fn build_script_challenge(
+        version: TransactionInputVersion,
         nonce_commitment: &Commitment,
         script: &TariScript,
         input_data: &ExecutionStack,
         script_public_key: &PublicKey,
         commitment: &Commitment,
-    ) -> Vec<u8> {
-        let mut writer = HashWriter::new(HashDigest::new());
-        nonce_commitment.consensus_encode(&mut writer).unwrap();
-        script.consensus_encode(&mut writer).unwrap();
-        input_data.consensus_encode(&mut writer).unwrap();
-        script_public_key.consensus_encode(&mut writer).unwrap();
-        commitment.consensus_encode(&mut writer).unwrap();
-        writer.finalize().to_vec()
+    ) -> [u8; 32] {
+        match version {
+            TransactionInputVersion::V0 | TransactionInputVersion::V1 => ConsensusHashWriter::default()
+                .chain(nonce_commitment)
+                .chain(script)
+                .chain(input_data)
+                .chain(script_public_key)
+                .chain(commitment)
+                .finalize(),
+        }
     }
 
     pub fn commitment(&self) -> Result<&Commitment, TransactionError> {
@@ -259,6 +262,7 @@ impl TransactionInput {
                 ..
             } => {
                 let challenge = TransactionInput::build_script_challenge(
+                    self.version,
                     self.script_signature.public_nonce(),
                     script,
                     &self.input_data,
@@ -324,22 +328,23 @@ impl TransactionInput {
         match self.spent_output {
             SpentOutput::OutputHash(_) => Err(TransactionError::MissingTransactionInputData),
             SpentOutput::OutputData {
-                version,
+                ref version,
                 ref features,
                 ref commitment,
                 ref script,
                 ref sender_offset_public_key,
                 ref covenant,
             } => {
-                let mut writer = HashWriter::new(HashDigest::new());
-                version.consensus_encode(&mut writer)?;
-                features.consensus_encode(&mut writer)?;
-                commitment.consensus_encode(&mut writer)?;
-                script.consensus_encode(&mut writer)?;
-                sender_offset_public_key.consensus_encode(&mut writer)?;
-                self.script_signature.consensus_encode(&mut writer)?;
-                self.input_data.consensus_encode(&mut writer)?;
-                covenant.consensus_encode(&mut writer)?;
+                // TODO: Change this hash to what is in RFC-0121/Consensus Encoding #testnet-reset
+                let writer = ConsensusHashWriter::default()
+                    .chain(version)
+                    .chain(features)
+                    .chain(commitment)
+                    .chain(script)
+                    .chain(sender_offset_public_key)
+                    .chain(&self.script_signature)
+                    .chain(&self.input_data)
+                    .chain(covenant);
 
                 Ok(writer.finalize().to_vec())
             },
@@ -349,6 +354,17 @@ impl TransactionInput {
     pub fn set_maturity(&mut self, maturity: u64) -> Result<(), TransactionError> {
         if let SpentOutput::OutputData { ref mut features, .. } = self.spent_output {
             features.maturity = maturity;
+            Ok(())
+        } else {
+            Err(TransactionError::MissingTransactionInputData)
+        }
+    }
+
+    /// Sets the input's Tari script. Only useful in tests.
+    #[cfg(test)]
+    pub fn set_script(&mut self, new_script: TariScript) -> Result<(), TransactionError> {
+        if let SpentOutput::OutputData { ref mut script, .. } = self.spent_output {
+            *script = new_script;
             Ok(())
         } else {
             Err(TransactionError::MissingTransactionInputData)
@@ -415,6 +431,27 @@ impl Ord for TransactionInput {
     }
 }
 
+impl ConsensusEncoding for TransactionInput {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.spent_output.consensus_encode(writer)?;
+        written += self.input_data.consensus_encode(writer)?;
+        written += self.script_signature.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for TransactionInput {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = TransactionInputVersion::consensus_decode(reader)?;
+        let spent_output = SpentOutput::consensus_decode(reader)?;
+        let input_data = ExecutionStack::consensus_decode(reader)?;
+        let script_signature = ComSignature::consensus_decode(reader)?;
+        let input = TransactionInput::new(version, spent_output, input_data, script_signature);
+        Ok(input)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[allow(clippy::large_enum_variant)]
 pub enum SpentOutput {
@@ -428,4 +465,70 @@ pub enum SpentOutput {
         /// The transaction covenant
         covenant: Covenant,
     },
+}
+
+impl SpentOutput {
+    pub fn get_type(&self) -> u8 {
+        match self {
+            SpentOutput::OutputHash(_) => 0,
+            SpentOutput::OutputData { .. } => 1,
+        }
+    }
+}
+
+impl ConsensusEncoding for SpentOutput {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        writer.write_all(&[self.get_type()])?;
+        let written = match self {
+            SpentOutput::OutputHash(hash) => hash.consensus_encode(writer)?,
+            SpentOutput::OutputData {
+                version,
+                features,
+                commitment,
+                script,
+                sender_offset_public_key,
+                covenant,
+            } => {
+                let mut write = version.consensus_encode(writer)?;
+                write += features.consensus_encode(writer)?;
+                write += commitment.consensus_encode(writer)?;
+                write += script.consensus_encode(writer)?;
+                write += sender_offset_public_key.consensus_encode(writer)?;
+                write += covenant.consensus_encode(writer)?;
+                write
+            },
+        };
+        Ok(written + 1)
+    }
+}
+
+impl ConsensusDecoding for SpentOutput {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        match buf[0] {
+            0 => {
+                const MAX_HASH_SIZE: usize = 32;
+                let hash = <MaxSizeBytes<MAX_HASH_SIZE> as ConsensusDecoding>::consensus_decode(reader)?.into();
+                Ok(SpentOutput::OutputHash(hash))
+            },
+            1 => {
+                let version = TransactionOutputVersion::consensus_decode(reader)?;
+                let features = OutputFeatures::consensus_decode(reader)?;
+                let commitment = Commitment::consensus_decode(reader)?;
+                let script = TariScript::consensus_decode(reader)?;
+                let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
+                let covenant = Covenant::consensus_decode(reader)?;
+                Ok(SpentOutput::OutputData {
+                    version,
+                    features,
+                    commitment,
+                    script,
+                    sender_offset_public_key,
+                    covenant,
+                })
+            },
+            _ => Err(io::Error::new(ErrorKind::InvalidInput, "Invalid SpentOutput type")),
+        }
+    }
 }

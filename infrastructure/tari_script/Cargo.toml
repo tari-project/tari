@@ -1,0 +1,25 @@
+[package]
+name = "tari_script"
+version = "0.12.0"
+edition = "2021"
+description = "Tari script library"
+authors = ["The Tari Development Community"]
+repository = "https://github.com/tari-project/tari"
+categories = ["cryptography"]
+homepage = "https://tari.com"
+readme = "README.md"
+license = "BSD-3-Clause"
+
+[dependencies]
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
+
+blake2 = "0.9"
+digest = "0.9.0"
+serde = "1.0.136"
+sha2 = "0.9"
+sha3 = "0.9"
+thiserror = "1.0.30"
+
+[dev-dependencies]
+rand = "0.8.5"

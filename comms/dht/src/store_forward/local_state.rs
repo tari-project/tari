@@ -27,8 +27,9 @@ use std::{
 
 use tari_comms::peer_manager::NodeId;
 
+/// Keeps track of the current pending SAF requests.
 #[derive(Debug, Clone, Default)]
-pub struct SafLocalState {
+pub(crate) struct SafLocalState {
     inflight_saf_requests: HashMap<NodeId, (usize, Instant)>,
 }
 

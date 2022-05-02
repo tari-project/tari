@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 // This tab will show all the notifications. With timestamp automatically added.
 // The tab title will turn green with notifications count (when there are any).
 // The notifications lives as long as the app. Once the app is closed, the notifications
@@ -79,12 +82,13 @@ impl<B: Backend> Component<B> for NotificationTab {
 
     fn format_title(&self, title: &str, app_state: &AppState) -> Spans {
         // Create custom title based on notifications count.
-        match app_state.unread_notifications_count() > 0 {
-            true => Spans::from(Span::styled(
+        if app_state.unread_notifications_count() > 0 {
+            Spans::from(Span::styled(
                 format!("{}({})", title, app_state.unread_notifications_count()),
                 Style::default().fg(Color::LightGreen),
-            )),
-            false => Spans::from(Span::styled(title.to_owned(), Style::default().fg(Color::White))),
+            ))
+        } else {
+            Spans::from(Span::styled(title.to_owned(), Style::default().fg(Color::White)))
         }
     }
 

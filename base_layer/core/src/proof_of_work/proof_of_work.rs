@@ -20,13 +20,21 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::fmt::{Display, Error, Formatter};
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Error, Formatter},
+    io,
+    io::{ErrorKind, Read, Write},
+};
 
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
 use tari_crypto::tari_utilities::hex::Hex;
 
-use crate::proof_of_work::PowAlgorithm;
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},
+    proof_of_work::PowAlgorithm,
+};
 
 pub trait AchievedDifficulty {}
 
@@ -71,21 +79,31 @@ impl ProofOfWork {
     }
 }
 
-impl Display for PowAlgorithm {
-    fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
-        let algo = match self {
-            PowAlgorithm::Monero => "Monero",
-            PowAlgorithm::Sha3 => "Sha3",
-        };
-        fmt.write_str(&algo.to_string())
-    }
-}
-
 impl Display for ProofOfWork {
     fn fmt(&self, fmt: &mut Formatter<'_>) -> Result<(), Error> {
         writeln!(fmt, "Mining algorithm: {}", self.pow_algo)?;
         writeln!(fmt, "Pow data: {}", self.pow_data.to_hex())?;
         Ok(())
+    }
+}
+
+impl ConsensusEncoding for ProofOfWork {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.pow_algo.as_u64().consensus_encode(writer)?;
+        written += self.pow_data.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for ProofOfWork {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let pow_algo = PowAlgorithm::try_from(u64::consensus_decode(reader)?)
+            .map_err(|e| io::Error::new(ErrorKind::InvalidInput, e))?;
+        let mut pow = ProofOfWork::new(pow_algo);
+        const MAX_POW_DATA_SIZE: usize = 5120;
+        let pow_data = <MaxSizeBytes<MAX_POW_DATA_SIZE> as ConsensusDecoding>::consensus_decode(reader)?;
+        pow.pow_data = pow_data.into();
+        Ok(pow)
     }
 }
 

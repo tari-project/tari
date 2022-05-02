@@ -28,10 +28,8 @@ use std::{
 };
 
 use tari_common_types::types::{BlindingFactor, BulletRangeProof, Commitment, PublicKey, BLOCK_HASH_LENGTH};
-use tari_crypto::{
-    script::{ExecutionStack, TariScript},
-    tari_utilities::{ByteArray, ByteArrayError},
-};
+use tari_crypto::tari_utilities::{ByteArray, ByteArrayError};
+use tari_script::{ExecutionStack, TariScript};
 use tari_utilities::convert::try_convert_all;
 
 use crate::{
@@ -98,7 +96,7 @@ impl TryFrom<proto::types::TransactionKernel> for TransactionKernel {
 impl From<TransactionKernel> for proto::types::TransactionKernel {
     fn from(kernel: TransactionKernel) -> Self {
         Self {
-            features: kernel.features.bits() as u32,
+            features: u32::from(kernel.features.bits()),
             excess: Some(kernel.excess.into()),
             excess_sig: Some(kernel.excess_sig.into()),
             fee: kernel.fee.into(),
@@ -290,6 +288,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
             OutputFlags::from_bits(features.flags as u8)
                 .ok_or_else(|| "Invalid or unrecognised output flags".to_string())?,
             features.maturity,
+            u8::try_from(features.recovery_byte).map_err(|_| "Invalid recovery byte: overflowed u8")?,
             features.metadata,
             unique_id,
             parent_public_key,
@@ -310,7 +309,7 @@ impl TryFrom<proto::types::OutputFeatures> for OutputFeatures {
 impl From<OutputFeatures> for proto::types::OutputFeatures {
     fn from(features: OutputFeatures) -> Self {
         Self {
-            flags: features.flags.bits() as u32,
+            flags: u32::from(features.flags.bits()),
             maturity: features.maturity,
             metadata: features.metadata,
             unique_id: features.unique_id.unwrap_or_default(),
@@ -323,6 +322,7 @@ impl From<OutputFeatures> for proto::types::OutputFeatures {
             sidechain_checkpoint: features.sidechain_checkpoint.map(|s| s.into()),
             version: features.version as u32,
             committee_definition: features.committee_definition.map(|c| c.into()),
+            recovery_byte: u32::from(features.recovery_byte),
         }
     }
 }

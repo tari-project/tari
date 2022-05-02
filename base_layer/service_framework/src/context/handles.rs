@@ -99,7 +99,7 @@ impl ServiceInitializerContext {
     {
         task::spawn(async move {
             let shutdown_signal = self.get_shutdown_signal();
-            let _ = self.ready_signal.await;
+            self.ready_signal.await;
             let fut = f(self.inner);
             futures::pin_mut!(fut);
             let either = future::select(shutdown_signal, fut).await;
@@ -112,7 +112,7 @@ impl ServiceInitializerContext {
 
     /// Wait until the service handle are ready and return them when they are.
     pub async fn wait_ready(self) -> ServiceHandles {
-        let _ = self.ready_signal.await;
+        self.ready_signal.await;
         self.inner
     }
 

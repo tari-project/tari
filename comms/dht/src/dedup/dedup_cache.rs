@@ -24,7 +24,8 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
 use tari_comms::types::CommsPublicKey;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_crypto::tari_utilities::hex::to_hex;
+use tari_utilities::hex::Hex;
 
 use crate::{
     schema::dedup_cache,
@@ -59,8 +60,8 @@ impl DedupCacheDatabase {
 
     /// Adds the body hash to the cache, returning the number of hits (inclusive) that have been recorded for this body
     /// hash
-    pub fn add_body_hash(&self, body_hash: Vec<u8>, public_key: CommsPublicKey) -> Result<u32, StorageError> {
-        let hit_count = self.insert_body_hash_or_update_stats(body_hash.to_hex(), public_key.to_hex())?;
+    pub fn add_msg_hash(&self, msg_hash: &[u8], public_key: &CommsPublicKey) -> Result<u32, StorageError> {
+        let hit_count = self.insert_body_hash_or_update_stats(&to_hex(msg_hash), &public_key.to_hex())?;
 
         if hit_count == 0 {
             warn!(
@@ -71,11 +72,11 @@ impl DedupCacheDatabase {
         Ok(hit_count)
     }
 
-    pub fn get_hit_count(&self, body_hash: Vec<u8>) -> Result<u32, StorageError> {
+    pub fn get_hit_count(&self, body_hash: &[u8]) -> Result<u32, StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         let hit_count = dedup_cache::table
             .select(dedup_cache::number_of_hits)
-            .filter(dedup_cache::body_hash.eq(&body_hash.to_hex()))
+            .filter(dedup_cache::body_hash.eq(&to_hex(body_hash)))
             .get_result::<i32>(&conn)
             .optional()?;
 
@@ -107,7 +108,7 @@ impl DedupCacheDatabase {
     }
 
     /// Insert new row into the table or updates an existing row. Returns the number of hits for this body hash.
-    fn insert_body_hash_or_update_stats(&self, body_hash: String, public_key: String) -> Result<u32, StorageError> {
+    fn insert_body_hash_or_update_stats(&self, body_hash: &str, public_key: &str) -> Result<u32, StorageError> {
         let conn = self.connection.get_pooled_connection()?;
         let insert_result = diesel::insert_into(dedup_cache::table)
             .values((
@@ -138,7 +139,6 @@ impl DedupCacheDatabase {
                         .select(dedup_cache::number_of_hits)
                         .filter(dedup_cache::body_hash.eq(&body_hash))
                         .get_result::<i32>(&conn)?;
-
                     Ok(hits as u32)
                 },
                 _ => Err(diesel::result::Error::DatabaseError(kind, e_info).into()),

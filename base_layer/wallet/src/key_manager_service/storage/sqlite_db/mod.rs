@@ -56,6 +56,9 @@ pub struct KeyManagerSqliteDatabase {
 }
 
 impl KeyManagerSqliteDatabase {
+    /// Creates a new sql backend from provided wallet db connection
+    /// * `cipher` is used to encrypt the sensitive fields in the database, if no cipher is provided, the database will
+    ///   not encrypt sensitive fields
     pub fn new(
         database_connection: WalletDbConnection,
         cipher: Option<Aes256Gcm>,
@@ -94,11 +97,11 @@ impl KeyManagerSqliteDatabase {
         if !old_state.is_empty() {
             // there should only be 1 if there is an old state.
             let spending_km = KeyManagerState {
-                branch_seed: OutputManagerKeyManagerBranch::Spend.to_string(),
+                branch_seed: OutputManagerKeyManagerBranch::Spend.get_branch_key(),
                 primary_key_index: old_state[0].primary_key_index as u64,
             };
             let spending_script_km = KeyManagerState {
-                branch_seed: OutputManagerKeyManagerBranch::SpendScript.to_string(),
+                branch_seed: OutputManagerKeyManagerBranch::SpendScript.get_branch_key(),
                 primary_key_index: old_state[0].primary_key_index as u64,
             };
             let mut km_sql_spending = NewKeyManagerStateSql::from(spending_km);
@@ -219,7 +222,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
 
         let mut key_manager_states = KeyManagerStateSql::index(&conn)?;
-        for key_manager_state in key_manager_states.iter_mut() {
+        for key_manager_state in &mut key_manager_states {
             key_manager_state
                 .encrypt(&cipher)
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;
@@ -252,7 +255,7 @@ impl KeyManagerBackend for KeyManagerSqliteDatabase {
         let acquire_lock = start.elapsed();
         let mut key_manager_states = KeyManagerStateSql::index(&conn)?;
 
-        for key_manager_state in key_manager_states.iter_mut() {
+        for key_manager_state in &mut key_manager_states {
             key_manager_state
                 .decrypt(&cipher)
                 .map_err(|_| KeyManagerStorageError::AeadError("Encryption Error".to_string()))?;

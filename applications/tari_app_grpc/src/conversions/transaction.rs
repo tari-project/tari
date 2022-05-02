@@ -77,7 +77,7 @@ impl TryFrom<grpc::Transaction> for Transaction {
 
 impl From<TransactionDirection> for grpc::TransactionDirection {
     fn from(status: TransactionDirection) -> Self {
-        use TransactionDirection::*;
+        use TransactionDirection::{Inbound, Outbound, Unknown};
         match status {
             Unknown => grpc::TransactionDirection::Unknown,
             Inbound => grpc::TransactionDirection::Inbound,
@@ -88,6 +88,7 @@ impl From<TransactionDirection> for grpc::TransactionDirection {
 
 impl From<TransactionStatus> for grpc::TransactionStatus {
     fn from(status: TransactionStatus) -> Self {
+        #[allow(clippy::enum_glob_use)]
         use TransactionStatus::*;
         match status {
             Completed => grpc::TransactionStatus::Completed,
@@ -100,6 +101,7 @@ impl From<TransactionStatus> for grpc::TransactionStatus {
             Rejected => grpc::TransactionStatus::Rejected,
             FauxUnconfirmed => grpc::TransactionStatus::FauxUnconfirmed,
             FauxConfirmed => grpc::TransactionStatus::FauxConfirmed,
+            Queued => grpc::TransactionStatus::Queued,
         }
     }
 }

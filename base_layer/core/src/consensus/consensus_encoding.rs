@@ -22,14 +22,16 @@
 
 mod bytes;
 mod crypto;
+mod epoch_time;
 mod generic;
+mod hash_writer;
 mod integers;
 mod micro_tari;
 mod script;
 mod vec;
-
 use std::io;
 
+pub use hash_writer::ConsensusHashWriter;
 pub use vec::MaxSizeVec;
 
 pub use self::bytes::MaxSizeBytes;

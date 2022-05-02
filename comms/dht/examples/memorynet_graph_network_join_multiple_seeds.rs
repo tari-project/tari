@@ -144,7 +144,7 @@ async fn main() {
 
     // Wait for all the nodes to startup and connect to seed node
     take_a_break(NUM_NODES).await;
-    let _ = network_graph_snapshot(
+    let _result = network_graph_snapshot(
         "base_node_join_multi_seed",
         &seed_nodes,
         &nodes,
@@ -175,7 +175,7 @@ async fn main() {
     }
 
     take_a_break(NUM_NODES).await;
-    let _ = network_graph_snapshot(
+    let _result = network_graph_snapshot(
         "base_node_join_multi_seed",
         &seed_nodes,
         &nodes,
@@ -185,7 +185,7 @@ async fn main() {
     if let Err(e) = run_python_network_graph_render(
         "base_node_join_multi_seed",
         graph_output_dir,
-        PythonRenderType::NetworkGraphFull,
+        &PythonRenderType::NetworkGraphFull,
     ) {
         println!("Error rendering graphs: {}", e);
     }

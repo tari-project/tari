@@ -20,6 +20,8 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Methods for converting responses to json.
+
 use json::json;
 use serde_json as json;
 
@@ -36,7 +38,7 @@ pub fn default_block_accept_response(req_id: Option<i64>) -> json::Value {
 }
 
 /// Create a JSON RPC success response
-/// More info: https://www.jsonrpc.org/specification#response_object
+/// More info: <https://www.jsonrpc.org/specification#response_object>
 pub fn success_response(req_id: Option<i64>, result: json::Value) -> json::Value {
     json!({
        "id": req_id.unwrap_or(-1),
@@ -46,7 +48,7 @@ pub fn success_response(req_id: Option<i64>, result: json::Value) -> json::Value
 }
 
 /// Create a standard JSON RPC error response
-/// More info: https://www.jsonrpc.org/specification#error_object
+/// More info: <https://www.jsonrpc.org/specification#error_object>
 pub fn standard_error_response(
     req_id: Option<i64>,
     err: jsonrpc::error::StandardError,
@@ -62,7 +64,7 @@ pub fn standard_error_response(
 }
 
 /// Create a JSON RPC error response
-/// More info: https://www.jsonrpc.org/specification#error_object
+/// More info: <https://www.jsonrpc.org/specification#error_object>
 pub fn error_response(
     req_id: Option<i64>,
     err_code: i32,
@@ -75,7 +77,7 @@ pub fn error_response(
     });
 
     if let Some(d) = err_data {
-        err["error"]["data"] = d;
+        err["data"] = d;
     }
 
     json!({
@@ -83,4 +85,62 @@ pub fn error_response(
         "jsonrpc": "2.0",
         "error": err
     })
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    pub fn test_default_block_accept_response() {
+        let resp = default_block_accept_response(Some(12));
+        assert_eq!(resp["id"], 12);
+        assert_eq!(resp["result"], "{}");
+        let resp = default_block_accept_response(None);
+        assert_eq!(resp["id"], -1);
+        assert_eq!(resp["result"], "{}");
+    }
+
+    #[test]
+    pub fn test_success_response() {
+        let result = json::json!({"test key": "test value"});
+        let resp = success_response(Some(12), result.clone());
+        assert_eq!(resp["id"], 12);
+        assert_eq!(resp["result"], result);
+        let resp = success_response(None, result.clone());
+        assert_eq!(resp["id"], -1);
+        assert_eq!(resp["result"], result);
+    }
+
+    #[test]
+    pub fn test_standard_error_response() {
+        let result = json::json!({"test key": "test value"});
+        let resp = standard_error_response(
+            Some(12),
+            jsonrpc::error::StandardError::ParseError,
+            Some(result.clone()),
+        );
+        assert!(!resp["error"].is_null());
+        assert_eq!(resp["id"], json::json!(12i64));
+        assert_eq!(resp["error"]["data"], result);
+        assert_eq!(resp["error"]["message"], "Parse error");
+    }
+
+    #[test]
+    pub fn test_error_response() {
+        let req_id = Some(12);
+        let err_code = 200;
+        let err_message = "error message";
+        let err_data = Some(json::json!({"test key":"test value"}));
+        let response = error_response(req_id, err_code, err_message, err_data.clone());
+        assert_eq!(response["id"], req_id.unwrap());
+        assert_eq!(response["error"]["data"], err_data.unwrap());
+        assert_eq!(response["error"]["code"], err_code);
+        assert_eq!(response["error"]["message"], err_message);
+        let response = error_response(None, err_code, err_message, None);
+        assert_eq!(response["id"], -1);
+        assert!(response["error"]["data"].is_null());
+        assert_eq!(response["error"]["code"], err_code);
+        assert_eq!(response["error"]["message"], err_message);
+    }
 }

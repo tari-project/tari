@@ -50,9 +50,9 @@ pub fn int_to_hash(n: usize) -> Vec<u8> {
     Hasher::digest(&n.to_le_bytes()).to_vec()
 }
 
-pub fn combine_hashes(hashes: &[&HashSlice]) -> Hash {
+pub fn combine_hashes(hashe_slices: &[&HashSlice]) -> Hash {
     let hasher = Hasher::new();
-    hashes
+    hashe_slices
         .iter()
         .fold(hasher, |hasher, h| hasher.chain(*h))
         .finalize()

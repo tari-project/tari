@@ -42,11 +42,8 @@ use tari_core::{
         SenderTransactionProtocol,
     },
 };
-use tari_crypto::{
-    keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
-    script,
-    script::{ExecutionStack, TariScript},
-};
+use tari_crypto::keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait};
+use tari_script::{script, ExecutionStack, TariScript};
 use tari_test_utils::random;
 use tari_wallet::{
     storage::sqlite_utilities::run_migration_and_create_sqlite_connection,
@@ -73,7 +70,7 @@ pub fn test_db_backend<T: TransactionBackend + 'static>(backend: T) {
     let input = create_unblinded_output(
         TariScript::default(),
         OutputFeatures::default(),
-        TestParams::new(),
+        &TestParams::new(),
         MicroTari::from(100_000),
     );
     let constants = create_consensus_constants(0);

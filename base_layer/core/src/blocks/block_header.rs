@@ -38,8 +38,11 @@
 //! This hash is called the UTXO merkle root, and is used as the output_mr
 
 use std::{
+    cmp::Ordering,
     fmt,
     fmt::{Display, Error, Formatter},
+    io,
+    io::{Read, Write},
 };
 
 use chrono::{DateTime, Utc};
@@ -51,13 +54,19 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_common_types::types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH};
+use tari_common_types::{
+    array::{copy_into_fixed_array, copy_into_fixed_array_lossy},
+    types::{BlindingFactor, BlockHash, HashDigest, BLOCK_HASH_LENGTH},
+};
 use tari_crypto::tari_utilities::{epoch_time::EpochTime, hex::Hex, ByteArray, Hashable};
 use thiserror::Error;
 
 #[cfg(feature = "base_node")]
 use crate::blocks::{BlockBuilder, NewBlockHeaderTemplate};
-use crate::proof_of_work::{PowAlgorithm, PowError, ProofOfWork};
+use crate::{
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
+    proof_of_work::{PowAlgorithm, PowError, ProofOfWork},
+};
 
 #[derive(Debug, Error)]
 pub enum BlockHeaderValidationError {
@@ -166,11 +175,25 @@ impl BlockHeader {
         BlockBuilder::new(self.version).with_header(self)
     }
 
-    /// Given a slice of headers (in reverse order), calculate the maximum, minimum and average periods between them
+    /// Given a slice of headers, calculate the maximum, minimum and average periods between them.
+    /// Expects the slice of headers to be ordered from youngest to oldest, but will reverse them if not.
+    /// This function always allocates a vec of the slice length. This is in case it needs to reverse the list.
     pub fn timing_stats(headers: &[BlockHeader]) -> (u64, u64, f64) {
         if headers.len() < 2 {
             (0, 0, 0.0)
         } else {
+            let mut headers = headers.to_vec();
+
+            // ensure the slice is in reverse order
+            let ordering = headers[0].timestamp.cmp(&headers[headers.len() - 1].timestamp);
+            if ordering == Ordering::Less {
+                headers.reverse();
+            }
+
+            // unwraps: length already checked
+            let last_ts = headers.first().unwrap().timestamp;
+            let first_ts = headers.last().unwrap().timestamp;
+
             let (max, min) = headers.windows(2).fold((0u64, std::u64::MAX), |(max, min), next| {
                 let dt = match next[0].timestamp.checked_sub(next[1].timestamp) {
                     Some(delta) => delta.as_u64(),
@@ -179,7 +202,10 @@ impl BlockHeader {
                 (max.max(dt), min.min(dt))
             });
 
-            let dt = headers.first().unwrap().timestamp - headers.last().unwrap().timestamp;
+            let dt = match last_ts.checked_sub(first_ts) {
+                Some(t) => t,
+                None => 0.into(),
+            };
             let n = headers.len() - 1;
             let avg = dt.as_u64() as f64 / n as f64;
 
@@ -190,21 +216,40 @@ impl BlockHeader {
     /// Provides a hash of the header, used for the merge mining.
     /// This differs from the normal hash by not hashing the nonce and kernel pow.
     pub fn merged_mining_hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(self.version.to_le_bytes())
-            .chain(self.height.to_le_bytes())
-            .chain(self.prev_hash.as_bytes())
-            .chain(self.timestamp.as_u64().to_le_bytes())
-            .chain(self.input_mr.as_bytes())
-            .chain(self.output_mr.as_bytes())
-            .chain(self.output_mmr_size.to_le_bytes())
-            .chain(self.witness_mr.as_bytes())
-            .chain(self.kernel_mr.as_bytes())
-            .chain(self.kernel_mmr_size.to_le_bytes())
-            .chain(self.total_kernel_offset.as_bytes())
-            .chain(self.total_script_offset.as_bytes())
-            .finalize()
-            .to_vec()
+        if self.version <= 2 {
+            // TODO: Remove deprecated header hashing #testnetreset
+            HashDigest::new()
+                .chain(self.version.to_le_bytes())
+                .chain(self.height.to_le_bytes())
+                .chain(self.prev_hash.as_bytes())
+                .chain(self.timestamp.as_u64().to_le_bytes())
+                .chain(self.input_mr.as_bytes())
+                .chain(self.output_mr.as_bytes())
+                .chain(self.output_mmr_size.to_le_bytes())
+                .chain(self.witness_mr.as_bytes())
+                .chain(self.kernel_mr.as_bytes())
+                .chain(self.kernel_mmr_size.to_le_bytes())
+                .chain(self.total_kernel_offset.as_bytes())
+                .chain(self.total_script_offset.as_bytes())
+                .finalize()
+                .to_vec()
+        } else {
+            ConsensusHashWriter::default()
+                .chain(&self.version)
+                .chain(&self.height)
+                .chain(&self.prev_hash)
+                .chain(&self.timestamp)
+                .chain(&self.input_mr)
+                // TODO: Cleanup if/when we migrate to fixed 32-byte array type for hashes
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.output_mr))
+                .chain(&self.output_mmr_size)
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr))
+                .chain(&copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr))
+                .chain(&self.kernel_mmr_size)
+                .chain(&self.total_kernel_offset)
+                .chain(&self.total_script_offset)
+                .finalize().to_vec()
+        }
     }
 
     #[inline]
@@ -243,12 +288,22 @@ impl From<NewBlockHeaderTemplate> for BlockHeader {
 
 impl Hashable for BlockHeader {
     fn hash(&self) -> Vec<u8> {
-        HashDigest::new()
-            .chain(self.merged_mining_hash())
-            .chain(self.pow.to_bytes())
-            .chain(self.nonce.to_le_bytes())
-            .finalize()
-            .to_vec()
+        if self.version <= 2 {
+            HashDigest::new()
+                .chain(self.merged_mining_hash())
+                .chain(self.pow.to_bytes())
+                .chain(self.nonce.to_le_bytes())
+                .finalize()
+                .to_vec()
+        } else {
+            ConsensusHashWriter::default()
+                // TODO: this excludes extraneous length varint used for Vec<u8> since a hash is always 32-bytes. Clean this
+                //       up if we decide to migrate to a fixed 32-byte type
+                .chain(&copy_into_fixed_array::<_, 32>(&self.merged_mining_hash()).unwrap())
+                .chain(&self.pow)
+                .chain(&self.nonce)
+                .finalize().to_vec()
+        }
     }
 }
 
@@ -333,8 +388,51 @@ pub(crate) mod hash_serializer {
     }
 }
 
+impl ConsensusEncoding for BlockHeader {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.height.consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.prev_hash).consensus_encode(writer)?;
+        written += self.timestamp.as_u64().consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.output_mr).consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.witness_mr).consensus_encode(writer)?;
+        written += self.output_mmr_size.consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.kernel_mr).consensus_encode(writer)?;
+        written += self.kernel_mmr_size.consensus_encode(writer)?;
+        written += copy_into_fixed_array_lossy::<_, 32>(&self.input_mr).consensus_encode(writer)?;
+        written += self.total_kernel_offset.consensus_encode(writer)?;
+        written += self.total_script_offset.consensus_encode(writer)?;
+        written += self.nonce.consensus_encode(writer)?;
+        written += self.pow.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for BlockHeader {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = u16::consensus_decode(reader)?;
+        let mut header = BlockHeader::new(version);
+        header.height = u64::consensus_decode(reader)?;
+        header.prev_hash = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.timestamp = EpochTime::from(u64::consensus_decode(reader)?);
+        header.output_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.witness_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.output_mmr_size = u64::consensus_decode(reader)?;
+        header.kernel_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.kernel_mmr_size = u64::consensus_decode(reader)?;
+        header.input_mr = <[u8; 32] as ConsensusDecoding>::consensus_decode(reader)?.to_vec();
+        header.total_kernel_offset = BlindingFactor::consensus_decode(reader)?;
+        header.total_script_offset = BlindingFactor::consensus_decode(reader)?;
+        header.nonce = u64::consensus_decode(reader)?;
+        header.pow = ProofOfWork::consensus_decode(reader)?;
+        Ok(header)
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use std::cmp::Ordering;
+
     use tari_crypto::tari_utilities::Hashable;
 
     use crate::blocks::BlockHeader;
@@ -412,10 +510,46 @@ mod test {
                 ..BlockHeader::default()
             })
             .collect::<Vec<BlockHeader>>();
-        let (max, min, avg) = dbg!(BlockHeader::timing_stats(&headers));
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
         assert_eq!(max, 60);
         assert_eq!(min, 60);
         let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
         assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn timing_wrong_order() {
+        let headers = vec![90, 150]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: t.into(),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+        let (max, min, avg) = BlockHeader::timing_stats(&headers);
+        assert_eq!(max, 60);
+        assert_eq!(min, 60);
+        let error_margin = f64::EPSILON; // Use machine epsilon for comparison of floats
+        assert!((avg - 60f64).abs() < error_margin);
+    }
+
+    #[test]
+    fn compare_timestamps() {
+        let headers = vec![90, 90, 150]
+            .into_iter()
+            .map(|t| BlockHeader {
+                timestamp: t.into(),
+                ..BlockHeader::default()
+            })
+            .collect::<Vec<BlockHeader>>();
+
+        let ordering = headers[0].timestamp.cmp(&headers[1].timestamp);
+        assert_eq!(ordering, Ordering::Equal);
+
+        let ordering = headers[1].timestamp.cmp(&headers[2].timestamp);
+        assert_eq!(ordering, Ordering::Less);
+
+        let ordering = headers[2].timestamp.cmp(&headers[0].timestamp);
+        assert_eq!(ordering, Ordering::Greater);
     }
 }

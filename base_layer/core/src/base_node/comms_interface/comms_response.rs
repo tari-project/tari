@@ -57,7 +57,7 @@ pub enum NodeCommsResponse {
     FetchHeadersAfterResponse(Vec<BlockHeader>),
     MmrNodes(Vec<HashOutput>, Vec<u8>),
     FetchTokensResponse {
-        outputs: Vec<TransactionOutput>,
+        outputs: Vec<(TransactionOutput, u64)>,
     },
     FetchAssetRegistrationsResponse {
         outputs: Vec<UtxoMinedInfo>,
@@ -70,6 +70,7 @@ pub enum NodeCommsResponse {
 
 impl Display for NodeCommsResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use NodeCommsResponse::*;
         match self {
             ChainMetadata(_) => write!(f, "ChainMetadata"),

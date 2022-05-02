@@ -20,11 +20,13 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! Provides a number of DHT mocks and other testing-related utilities.
+
 macro_rules! unwrap_oms_send_msg {
     ($var:expr, reply_value=$reply_value:expr) => {
         match $var {
             crate::outbound::DhtOutboundRequest::SendMessage(boxed, body, reply_tx) => {
-                let _ = reply_tx.send($reply_value);
+                let _result = reply_tx.send($reply_value);
                 (*boxed, body)
             },
         }

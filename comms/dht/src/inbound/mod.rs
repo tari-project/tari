@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! DHT middleware layers for inbound messages.
+
 mod decryption;
 pub use decryption::DecryptionLayer;
 
@@ -29,10 +31,14 @@ pub use deserialize::DeserializeLayer;
 mod dht_handler;
 pub use dht_handler::DhtHandlerLayer;
 
+mod forward;
+pub use forward::ForwardLayer;
+
 mod metrics;
 pub use metrics::MetricsLayer;
 
 mod error;
 
 mod message;
+
 pub use message::{DecryptedDhtMessage, DhtInboundMessage};

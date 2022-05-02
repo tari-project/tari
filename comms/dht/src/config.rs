@@ -20,7 +20,9 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::time::Duration;
+use std::{path::Path, time::Duration};
+
+use serde::{Deserialize, Serialize};
 
 use crate::{
     network_discovery::NetworkDiscoveryConfig,
@@ -29,7 +31,8 @@ use crate::{
     version::DhtProtocolVersion,
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DhtConfig {
     /// The major protocol version to use. Default: DhtProtocolVersion::latest()
     pub protocol_version: DhtProtocolVersion,
@@ -50,7 +53,7 @@ pub struct DhtConfig {
     /// Send to this many peers when using the propagate strategy
     /// Default: 4
     pub propagation_factor: usize,
-    pub saf_config: SafConfig,
+    pub saf: SafConfig,
     /// The max capacity of the message hash cache
     /// Default: 2,500
     pub dedup_cache_capacity: usize,
@@ -71,13 +74,7 @@ pub struct DhtConfig {
     /// change happens again after this period, another join will be sent.
     /// Default: 10 minutes
     pub join_cooldown_interval: Duration,
-    /// The interval to update the neighbouring and random pools, if necessary.
-    /// Default: 2 minutes
-    pub connectivity_update_interval: Duration,
-    /// The interval to change the random pool peers.
-    /// Default: 2 hours
-    pub connectivity_random_pool_refresh: Duration,
-    pub connectivity_high_failure_rate_cooldown: Duration,
+    pub connectivity: DhtConnectivityConfig,
     /// Network discovery config
     pub network_discovery: NetworkDiscoveryConfig,
     /// Length of time to ban a peer if the peer misbehaves at the DHT-level.
@@ -104,18 +101,21 @@ pub struct DhtConfig {
 }
 
 impl DhtConfig {
+    /// Default testnet configuration
     pub fn default_testnet() -> Self {
         Default::default()
     }
 
+    /// Default mainnet configuration
     pub fn default_mainnet() -> Self {
         Default::default()
     }
 
+    /// Default local test configuration
     pub fn default_local_test() -> Self {
         Self {
             database_url: DbConnectionUrl::Memory,
-            saf_config: SafConfig {
+            saf: SafConfig {
                 auto_request: false,
                 ..Default::default()
             },
@@ -129,6 +129,11 @@ impl DhtConfig {
             ..Default::default()
         }
     }
+
+    /// Sets relative paths to use a common base path
+    pub fn set_base_path<P: AsRef<Path>>(&mut self, base_path: P) {
+        self.database_url.set_base_path(base_path);
+    }
 }
 
 impl Default for DhtConfig {
@@ -141,15 +146,13 @@ impl Default for DhtConfig {
             propagation_factor: 4,
             broadcast_factor: 8,
             outbound_buffer_size: 20,
-            saf_config: Default::default(),
+            saf: Default::default(),
             dedup_cache_capacity: 2_500,
             dedup_cache_trim_interval: Duration::from_secs(5 * 60),
             dedup_allowed_message_occurrences: 1,
             database_url: DbConnectionUrl::Memory,
             discovery_request_timeout: Duration::from_secs(2 * 60),
-            connectivity_update_interval: Duration::from_secs(2 * 60),
-            connectivity_random_pool_refresh: Duration::from_secs(2 * 60 * 60),
-            connectivity_high_failure_rate_cooldown: Duration::from_secs(45),
+            connectivity: DhtConnectivityConfig::default(),
             auto_join: false,
             join_cooldown_interval: Duration::from_secs(10 * 60),
             network_discovery: Default::default(),
@@ -159,6 +162,35 @@ impl Default for DhtConfig {
             flood_ban_max_msg_count: 100_000,
             flood_ban_timespan: Duration::from_secs(100),
             offline_peer_cooldown: Duration::from_secs(2 * 60 * 60),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DhtConnectivityConfig {
+    /// The interval to update the neighbouring and random pools, if necessary.
+    /// Default: 2 minutes
+    pub update_interval: Duration,
+    /// The interval to change the random pool peers.
+    /// Default: 2 hours
+    pub random_pool_refresh_interval: Duration,
+    /// Length of cooldown when high connection failure rates are encountered. Default: 45s
+    pub high_failure_rate_cooldown: Duration,
+    /// The minimum desired ratio of TCPv4 to Tor connections. TCPv4 addresses have some significant cost to create,
+    /// making sybil attacks costly. This setting does not guarantee this ratio is maintained.
+    /// Currently, it only emits a warning if the ratio is below this setting.
+    /// Default: 0.1 (10%)
+    pub minimum_desired_tcpv4_node_ratio: f32,
+}
+
+impl Default for DhtConnectivityConfig {
+    fn default() -> Self {
+        Self {
+            update_interval: Duration::from_secs(2 * 60),
+            random_pool_refresh_interval: Duration::from_secs(2 * 60 * 60),
+            high_failure_rate_cooldown: Duration::from_secs(45),
+            minimum_desired_tcpv4_node_ratio: 0.1,
         }
     }
 }

@@ -24,14 +24,11 @@ use std::num::{ParseFloatError, ParseIntError};
 
 use log::*;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_core::transactions::{
-    tari_amount::{MicroTariError, TariConversionError},
-    transaction_components::TransactionError,
-};
+use tari_core::transactions::{tari_amount::MicroTariError, transaction_components::TransactionError};
 use tari_utilities::hex::HexError;
 use tari_wallet::{
     error::{WalletError, WalletStorageError},
-    key_manager_service::KeyManagerError,
+    key_manager_service::KeyManagerServiceError,
     output_manager_service::error::OutputManagerError,
     transaction_service::error::TransactionServiceError,
 };
@@ -45,8 +42,8 @@ pub const LOG_TARGET: &str = "wallet::automation::error";
 pub enum CommandError {
     #[error("Argument error - were they in the right order?")]
     Argument,
-    #[error("Tari value conversion error `{0}`")]
-    TariConversionError(#[from] TariConversionError),
+    #[error("Tari value error `{0}`")]
+    MicroTariError(#[from] MicroTariError),
     #[error("Transaction service error `{0}`")]
     TransactionError(#[from] TransactionError),
     #[error("Transaction service error `{0}`")]
@@ -54,7 +51,7 @@ pub enum CommandError {
     #[error("Output manager error: `{0}`")]
     OutputManagerError(#[from] OutputManagerError),
     #[error("Key manager error: `{0}`")]
-    KeyManagerError(#[from] KeyManagerError),
+    KeyManagerError(#[from] KeyManagerServiceError),
     #[error("Tokio join error `{0}`")]
     Join(#[from] JoinError),
     #[error("Config error `{0}`")]
@@ -76,7 +73,7 @@ pub enum CommandError {
 impl From<CommandError> for ExitError {
     fn from(err: CommandError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
-        Self::new(ExitCode::CommandError, err)
+        Self::new(ExitCode::CommandError, &err)
     }
 }
 
@@ -110,6 +107,6 @@ impl From<ParseError> for ExitError {
     fn from(err: ParseError) -> Self {
         error!(target: LOG_TARGET, "{}", err);
         let msg = format!("Failed to parse input file commands! {}", err);
-        Self::new(ExitCode::InputError, msg)
+        Self::new(ExitCode::InputError, &msg)
     }
 }

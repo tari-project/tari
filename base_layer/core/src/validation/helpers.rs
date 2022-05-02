@@ -25,13 +25,13 @@ use tari_common_types::types::{Commitment, CommitmentFactory, PublicKey};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::PublicKey as PublicKeyTrait,
-    script::TariScript,
     tari_utilities::{
         epoch_time::EpochTime,
         hash::Hashable,
         hex::{to_hex, Hex},
     },
 };
+use tari_script::TariScript;
 
 use crate::{
     blocks::{Block, BlockHeader, BlockHeaderValidationError, BlockValidationError},
@@ -151,7 +151,7 @@ pub fn check_pow_data<B: BlockchainBackend>(
     rules: &ConsensusManager,
     db: &B,
 ) -> Result<(), ValidationError> {
-    use PowAlgorithm::*;
+    use PowAlgorithm::{Monero, Sha3};
     match block_header.pow.pow_algo {
         Monero => {
             let monero_data =
@@ -745,14 +745,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
         .iter()
         .map(|input| match input.is_mature_at(height) {
             Ok(mature) => {
-                if !mature {
+                if mature {
+                    Ok(0)
+                } else {
                     warn!(
                         target: LOG_TARGET,
                         "Input found that has not yet matured to spending height: {}", input
                     );
                     Err(TransactionError::InputMaturity)
-                } else {
-                    Ok(0)
                 }
             },
             Err(e) => Err(e),
@@ -762,6 +762,14 @@ pub fn check_maturity(height: u64, inputs: &[TransactionInput]) -> Result<(), Tr
         return Err(e);
     }
     Ok(())
+}
+
+pub fn check_blockchain_version(constants: &ConsensusConstants, version: u16) -> Result<(), ValidationError> {
+    if constants.valid_blockchain_version_range().contains(&version) {
+        Ok(())
+    } else {
+        Err(ValidationError::InvalidBlockchainVersion { version })
+    }
 }
 
 #[cfg(test)]
@@ -859,7 +867,10 @@ mod test {
         fn it_checks_the_input_maturity() {
             let input = TransactionInput::new_with_output_data(
                 TransactionInputVersion::get_current_version(),
-                OutputFeatures::with_maturity(5),
+                OutputFeatures {
+                    maturity: 5,
+                    ..Default::default()
+                },
                 Default::default(),
                 Default::default(),
                 Default::default(),

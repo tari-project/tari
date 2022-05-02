@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const grpc = require("@grpc/grpc-js");
 const protoLoader = require("@grpc/proto-loader");
 const { promisifyAll } = require("grpc-promise");
@@ -38,7 +41,8 @@ function Client(address = "127.0.0.1:18142") {
     "getMempoolTransactions",
     "getTipInfo",
     "searchUtxos",
-    "getTokens"
+    "getTokens",
+    "getNetworkDifficulty"
   ];
   methods.forEach((method) => {
     this[method] = (arg) => this.inner[method]().sendMessage(arg);

@@ -25,14 +25,11 @@ use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::task;
 
+/// Error type for DHT storage
 #[derive(Debug, Error)]
 pub enum StorageError {
-    #[error("Database path contained non-UTF8 characters that are not supported by the host OS")]
-    InvalidUnicodePath,
     #[error("ConnectionError: {0}")]
     ConnectionError(#[from] diesel::ConnectionError),
-    #[error("UniqueViolation")]
-    UniqueViolation(String),
     #[error("Error when joining to tokio task : {0}")]
     JoinError(#[from] task::JoinError),
     #[error("DatabaseMigrationFailed: {0}")]

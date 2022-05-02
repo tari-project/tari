@@ -29,11 +29,8 @@ commands:
           name: Build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
-          name: Build mining_node
-          command: cargo build --release --bin tari_mining_node
-      - run:
-          name: Build stratum_transcoder
-          command: cargo build --release --bin tari_stratum_transcoder
+          name: Build miner
+          command: cargo build --release --bin tari_miner
       - run:
           name: Build validator node
           command: cargo build --release --bin tari_validator_node
@@ -80,11 +77,8 @@ commands:
           name: Build mmproxy
           command: cargo build --release --bin tari_merge_mining_proxy
       - run:
-          name: Build mining_node
-          command: cargo build --release --bin tari_mining_node
-      - run:
-          name: Build stratum_transcoder
-          command: cargo build --release --bin tari_stratum_transcoder
+          name: Build miner
+          command: cargo build --release --bin tari_miner
       - run:
           name: Build validator node
           command: cargo build --release --bin tari_validator_node

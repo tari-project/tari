@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local};
@@ -89,7 +92,7 @@ impl TransactionsTab {
 
         let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
             .iter()
-            .cloned()
+            .copied()
             .collect();
 
         let mut column0_items = Vec::new();
@@ -186,7 +189,7 @@ impl TransactionsTab {
 
         let text_colors: HashMap<bool, Color> = [(true, Color::DarkGray), (false, Color::Reset)]
             .iter()
-            .cloned()
+            .copied()
             .collect();
 
         let base_node_state = app_state.get_base_node_state();
@@ -400,7 +403,7 @@ impl TransactionsTab {
                 Style::default().fg(Color::White),
             );
             let excess = Span::styled(tx.excess_signature.as_str(), Style::default().fg(Color::White));
-            let confirmation_count = app_state.get_confirmations(&tx.tx_id);
+            let confirmation_count = app_state.get_confirmations(tx.tx_id);
             let confirmations_msg = if tx.status == TransactionStatus::MinedConfirmed && tx.cancelled.is_none() {
                 format!("{} required confirmations met", required_confirmations)
             } else if tx.status == TransactionStatus::MinedUnconfirmed && tx.cancelled.is_none() {
@@ -543,11 +546,15 @@ impl<B: Backend> Component<B> for TransactionsTab {
                 }
                 self.confirmation_dialog = false;
                 return;
+            } else {
             }
         }
 
         match c {
             'p' => {
+                if let Err(e) = Handle::current().block_on(app_state.restart_transaction_protocols()) {
+                    error!(target: LOG_TARGET, "Error rebroadcasting transactions: {}", e);
+                }
                 self.completed_list_state.select(None);
                 self.selected_tx_list = SelectedTransactionList::PendingTxs;
                 self.pending_list_state.set_num_items(app_state.get_pending_txs().len());

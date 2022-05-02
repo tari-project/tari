@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import "./login.css";
 import { useState } from "react";
 import { useDispatch } from "react-redux";

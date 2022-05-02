@@ -55,7 +55,7 @@ macro_rules! prompt {
     }}
 }
 
-pub fn user_prompt(node_identity: Arc<NodeIdentity>) -> anyhow::Result<PropagationOpts> {
+pub fn user_prompt(node_identity: &Arc<NodeIdentity>) -> anyhow::Result<PropagationOpts> {
     fn read_line<T: FromStr>(default: T) -> Option<T> {
         let mut buf = String::new();
         stdin().read_line(&mut buf).unwrap();

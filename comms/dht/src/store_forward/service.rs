@@ -60,6 +60,7 @@ const LOG_TARGET: &str = "comms::dht::storeforward::actor";
 /// This involves cleaning up messages which have been stored too long according to their priority
 const CLEANUP_INTERVAL: Duration = Duration::from_secs(10 * 60); // 10 mins
 
+/// Query object for fetching stored messages
 #[derive(Debug, Clone)]
 pub struct FetchStoredMessageQuery {
     public_key: Box<CommsPublicKey>,
@@ -69,6 +70,7 @@ pub struct FetchStoredMessageQuery {
 }
 
 impl FetchStoredMessageQuery {
+    /// Creates a new stored message request for
     pub fn new(public_key: Box<CommsPublicKey>, node_id: Box<NodeId>) -> Self {
         Self {
             public_key,
@@ -78,21 +80,25 @@ impl FetchStoredMessageQuery {
         }
     }
 
+    /// Modify query to only include messages since the given date.
     pub fn with_messages_since(&mut self, since: DateTime<Utc>) -> &mut Self {
         self.since = Some(since);
         self
     }
 
+    /// Modify query to request a certain category of messages.
     pub fn with_response_type(&mut self, response_type: SafResponseType) -> &mut Self {
         self.response_type = response_type;
         self
     }
 
-    pub fn since(&self) -> Option<DateTime<Utc>> {
+    #[cfg(test)]
+    pub(crate) fn since(&self) -> Option<DateTime<Utc>> {
         self.since
     }
 }
 
+/// Request types for the SAF actor.
 #[derive(Debug)]
 pub enum StoreAndForwardRequest {
     FetchMessages(FetchStoredMessageQuery, oneshot::Sender<SafResult<Vec<StoredMessage>>>),
@@ -104,16 +110,18 @@ pub enum StoreAndForwardRequest {
     MarkSafResponseReceived(NodeId, oneshot::Sender<Option<Duration>>),
 }
 
+/// Store and forward actor handle.
 #[derive(Clone)]
 pub struct StoreAndForwardRequester {
     sender: mpsc::Sender<StoreAndForwardRequest>,
 }
 
 impl StoreAndForwardRequester {
-    pub fn new(sender: mpsc::Sender<StoreAndForwardRequest>) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<StoreAndForwardRequest>) -> Self {
         Self { sender }
     }
 
+    /// Fetch messages according to the given query from this node's local DB and return them.
     pub async fn fetch_messages(&mut self, request: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -123,6 +131,7 @@ impl StoreAndForwardRequester {
         reply_rx.await.map_err(|_| StoreAndForwardError::RequestCancelled)?
     }
 
+    /// Insert a message into the local storage DB.
     pub async fn insert_message(&mut self, message: NewStoredMessage) -> SafResult<bool> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -132,6 +141,7 @@ impl StoreAndForwardRequester {
         reply_rx.await.map_err(|_| StoreAndForwardError::RequestCancelled)?
     }
 
+    /// Remove messages from the local storage DB.
     pub async fn remove_messages(&mut self, message_ids: Vec<i32>) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::RemoveMessages(message_ids))
@@ -140,6 +150,7 @@ impl StoreAndForwardRequester {
         Ok(())
     }
 
+    /// Remove all messages older than the given `DateTime`.
     pub async fn remove_messages_older_than(&mut self, threshold: DateTime<Utc>) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::RemoveMessagesOlderThan(threshold))
@@ -148,6 +159,7 @@ impl StoreAndForwardRequester {
         Ok(())
     }
 
+    /// Send a request for SAF messages from the given peer.
     pub async fn request_saf_messages_from_peer(&mut self, node_id: NodeId) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::SendStoreForwardRequestToPeer(node_id))
@@ -156,6 +168,7 @@ impl StoreAndForwardRequester {
         Ok(())
     }
 
+    /// Send a request for SAF messages from neighbouring peers.
     pub async fn request_saf_messages_from_neighbours(&mut self) -> SafResult<()> {
         self.sender
             .send(StoreAndForwardRequest::SendStoreForwardRequestNeighbours)
@@ -164,7 +177,8 @@ impl StoreAndForwardRequester {
         Ok(())
     }
 
-    pub async fn mark_saf_response_received(&mut self, peer: NodeId) -> SafResult<Option<Duration>> {
+    /// Updates internal SAF state that a SAF response has been received, removing it from the pending list.
+    pub(crate) async fn mark_saf_response_received(&mut self, peer: NodeId) -> SafResult<Option<Duration>> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
             .send(StoreAndForwardRequest::MarkSafResponseReceived(peer, reply_tx))
@@ -174,6 +188,7 @@ impl StoreAndForwardRequester {
     }
 }
 
+/// Store and forward actor.
 pub struct StoreAndForwardService {
     config: SafConfig,
     dht_requester: DhtRequester,
@@ -191,12 +206,13 @@ pub struct StoreAndForwardService {
 }
 
 impl StoreAndForwardService {
-    pub fn new(
+    /// Creates a new store and forward actor
+    pub(crate) fn new(
         config: SafConfig,
         conn: DbConnection,
         peer_manager: Arc<PeerManager>,
         dht_requester: DhtRequester,
-        connectivity: ConnectivityRequester,
+        connectivity: &ConnectivityRequester,
         outbound_requester: OutboundMessageRequester,
         request_rx: mpsc::Receiver<StoreAndForwardRequest>,
         saf_response_signal_rx: mpsc::Receiver<()>,
@@ -220,7 +236,7 @@ impl StoreAndForwardService {
         }
     }
 
-    pub fn spawn(self) {
+    pub(crate) fn spawn(self) {
         debug!(target: LOG_TARGET, "Store and forward service started");
         task::spawn(self.run());
     }
@@ -265,19 +281,20 @@ impl StoreAndForwardService {
     }
 
     async fn handle_request(&mut self, request: StoreAndForwardRequest) {
+        #[allow(clippy::enum_glob_use)]
         use StoreAndForwardRequest::*;
         trace!(target: LOG_TARGET, "Request: {:?}", request);
         match request {
-            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(query) {
+            FetchMessages(query, reply_tx) => match self.handle_fetch_message_query(&query) {
                 Ok(messages) => {
-                    let _ = reply_tx.send(Ok(messages));
+                    let _result = reply_tx.send(Ok(messages));
                 },
                 Err(err) => {
                     error!(
                         target: LOG_TARGET,
                         "Failed to fetch stored messages because '{:?}'", err
                     );
-                    let _ = reply_tx.send(Err(err));
+                    let _result = reply_tx.send(Err(err));
                 },
             },
             InsertMessage(msg, reply_tx) => {
@@ -289,16 +306,16 @@ impl StoreAndForwardService {
                             .map(|p| format!("public key '{}'", p))
                             .or_else(|| node_id.map(|n| format!("node id '{}'", n)))
                             .unwrap_or_else(|| "<Anonymous>".to_string());
-                        if !existed {
-                            info!(target: LOG_TARGET, "Stored message for {}", pub_key);
-                        } else {
+                        if existed {
                             info!(target: LOG_TARGET, "SAF message for {} already stored", pub_key);
+                        } else {
+                            info!(target: LOG_TARGET, "Stored message for {}", pub_key);
                         }
-                        let _ = reply_tx.send(Ok(existed));
+                        let _result = reply_tx.send(Ok(existed));
                     },
                     Err(err) => {
                         error!(target: LOG_TARGET, "InsertMessage failed because '{:?}'", err);
-                        let _ = reply_tx.send(Err(err.into()));
+                        let _result = reply_tx.send(Err(err.into()));
                     },
                 }
             },
@@ -332,7 +349,7 @@ impl StoreAndForwardService {
     }
 
     async fn handle_connectivity_event(&mut self, event: &ConnectivityEvent) -> SafResult<()> {
-        use ConnectivityEvent::*;
+        use ConnectivityEvent::{ConnectivityStateOnline, PeerConnected};
 
         #[allow(clippy::single_match)]
         match event {
@@ -454,8 +471,8 @@ impl StoreAndForwardService {
         }
     }
 
-    fn handle_fetch_message_query(&self, query: FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
-        use SafResponseType::*;
+    fn handle_fetch_message_query(&self, query: &FetchStoredMessageQuery) -> SafResult<Vec<StoredMessage>> {
+        use SafResponseType::{Anonymous, Discovery, ForMe, Join};
         let limit = i64::try_from(self.config.max_returned_messages)
             .ok()
             .or(Some(std::i64::MAX))

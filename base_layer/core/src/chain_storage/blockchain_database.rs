@@ -33,6 +33,7 @@ use std::{
 
 use croaring::Bitmap;
 use log::*;
+use serde::{Deserialize, Serialize};
 use tari_common_types::{
     chain_metadata::ChainMetadata,
     types::{BlockHash, Commitment, HashDigest, HashOutput, PublicKey, Signature},
@@ -92,12 +93,14 @@ use crate::{
 const LOG_TARGET: &str = "c::cs::database";
 
 /// Configuration for the BlockchainDatabase.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockchainDatabaseConfig {
     pub orphan_storage_capacity: usize,
     pub pruning_horizon: u64,
     pub pruning_interval: u64,
     pub track_reorgs: bool,
+    pub cleanup_orphans_at_startup: bool,
 }
 
 impl Default for BlockchainDatabaseConfig {
@@ -107,6 +110,7 @@ impl Default for BlockchainDatabaseConfig {
             pruning_horizon: BLOCKCHAIN_DATABASE_PRUNING_HORIZON,
             pruning_interval: BLOCKCHAIN_DATABASE_PRUNED_MODE_PRUNING_INTERVAL,
             track_reorgs: false,
+            cleanup_orphans_at_startup: false,
         }
     }
 }
@@ -202,14 +206,13 @@ where B: BlockchainBackend
         validators: Validators<B>,
         config: BlockchainDatabaseConfig,
         difficulty_calculator: DifficultyCalculator,
-        cleanup_orphans_at_startup: bool,
     ) -> Result<Self, ChainStorageError> {
         debug!(target: LOG_TARGET, "BlockchainDatabase config: {:?}", config);
         let is_empty = db.is_empty()?;
         let blockchain_db = BlockchainDatabase {
             db: Arc::new(RwLock::new(db)),
             validators,
-            config,
+            config: config.clone(),
             consensus_manager,
             difficulty_calculator: Arc::new(difficulty_calculator),
             disable_add_block_flag: Arc::new(AtomicBool::new(false)),
@@ -248,8 +251,9 @@ where B: BlockchainBackend
                  resync your blockchain database."
                     .into(),
             ));
+        } else {
         }
-        if cleanup_orphans_at_startup {
+        if config.cleanup_orphans_at_startup {
             match blockchain_db.cleanup_all_orphans() {
                 Ok(_) => info!(target: LOG_TARGET, "Orphan database cleaned out at startup.",),
                 Err(e) => warn!(
@@ -448,6 +452,12 @@ where B: BlockchainBackend
     ) -> Result<(Vec<PrunedOutput>, Bitmap), ChainStorageError> {
         let db = self.db_read_access()?;
         db.fetch_utxos_in_block(&hash, deleted.as_deref())
+    }
+
+    /// Returns the number of UTXOs in the current unspent set
+    pub fn utxo_count(&self) -> Result<usize, ChainStorageError> {
+        let db = self.db_read_access()?;
+        db.utxo_count()
     }
 
     /// Returns the block header at the given block height.
@@ -946,7 +956,7 @@ where B: BlockchainBackend
     /// Clean out the entire orphan pool
     pub fn cleanup_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        let _ = cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?;
+        cleanup_orphans(&mut *db, self.config.orphan_storage_capacity)?;
         Ok(())
     }
 
@@ -958,7 +968,7 @@ where B: BlockchainBackend
     /// Clean out the entire orphan pool
     pub fn cleanup_all_orphans(&self) -> Result<(), ChainStorageError> {
         let mut db = self.db_write_access()?;
-        let _ = cleanup_orphans(&mut *db, 0)?;
+        cleanup_orphans(&mut *db, 0)?;
         Ok(())
     }
 
@@ -1162,8 +1172,11 @@ where B: BlockchainBackend
     }
 }
 
-fn unexpected_result<T>(req: DbKey, res: DbValue) -> Result<T, ChainStorageError> {
-    let msg = format!("Unexpected result for database query {}. Response: {}", req, res);
+fn unexpected_result<T>(request: DbKey, response: DbValue) -> Result<T, ChainStorageError> {
+    let msg = format!(
+        "Unexpected result for database query {}. Response: {}",
+        request, response
+    );
     error!(target: LOG_TARGET, "{}", msg);
     Err(ChainStorageError::UnexpectedResult(msg))
 }
@@ -1191,6 +1204,7 @@ impl std::fmt::Display for MmrRoots {
     }
 }
 
+#[allow(clippy::similar_names)]
 pub fn calculate_mmr_roots<T: BlockchainBackend>(db: &T, block: &Block) -> Result<MmrRoots, ChainStorageError> {
     let header = &block.header;
     let body = &block.body;
@@ -1901,7 +1915,7 @@ fn handle_possible_reorg<T: BlockchainBackend>(
 }
 
 /// Reorganize the main chain with the provided fork chain, starting at the specified height.
-/// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height desc).
+/// Returns the blocks that were removed (if any), ordered from tip to fork (ie. height highest to lowest).
 fn reorganize_chain<T: BlockchainBackend>(
     backend: &mut T,
     block_validator: &dyn PostOrphanBodyValidation<T>,
@@ -2327,7 +2341,7 @@ impl<T> Clone for BlockchainDatabase<T> {
         BlockchainDatabase {
             db: self.db.clone(),
             validators: self.validators.clone(),
-            config: self.config,
+            config: self.config.clone(),
             consensus_manager: self.consensus_manager.clone(),
             difficulty_calculator: self.difficulty_calculator.clone(),
             disable_add_block_flag: self.disable_add_block_flag.clone(),
@@ -2338,7 +2352,7 @@ impl<T> Clone for BlockchainDatabase<T> {
 fn convert_to_option_bounds<T: RangeBounds<u64>>(bounds: T) -> (Option<u64>, Option<u64>) {
     let start = bounds.start_bound();
     let end = bounds.end_bound();
-    use Bound::*;
+    use Bound::{Excluded, Included, Unbounded};
     let start = match start {
         Included(n) => Some(*n),
         Excluded(n) => Some(n.saturating_add(1)),
@@ -2874,7 +2888,7 @@ mod test {
         .unwrap();
         result.assert_orphaned();
 
-        let _ = handle_possible_reorg(
+        let _error = handle_possible_reorg(
             &mut *access,
             &Default::default(),
             &MockValidator::new(false),

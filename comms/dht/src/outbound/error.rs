@@ -41,8 +41,6 @@ pub enum DhtOutboundError {
     RequesterReplyChannelClosed,
     #[error("Peer selection failed")]
     PeerSelectionFailed,
-    #[error("Failed to send broadcast message")]
-    BroadcastFailed,
     #[error("Reply channel cancelled")]
     ReplyChannelCanceled,
     #[error("Attempted to send a message to ourselves")]

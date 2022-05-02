@@ -5,130 +5,21 @@
 ########################################################################################################################
 
 [common]
-# Select the network to connect to. Valid options are:
-#   mainnet - the "real" Tari network (default)
-#   weatherwax - the Tari testnet
-network = "dibbler"
+#override_from="dibbler"
+#base_path="<HOME>/.tari"
+#data_dir="data"
 
-# Tari is a 100% peer-to-peer network, so there are no servers to hold messages for you while you're offline.
-# Instead, we rely on our peers to hold messages for us while we're offline. This settings sets maximum size of the
-# message cache that for holding our peers' messages, in MB.
-#message_cache_size = 10
-
-# When storing messages for peers, hold onto them for at most this long before discarding them. The default is 1440
-# minutes = or 24 hrs.
-#message_cache_ttl = 1440
-
-# If peer nodes spam you with messages, or are otherwise badly behaved, they will be added to your denylist and banned
-# You can set a time limit to release that ban (in minutes), or otherwise ban them for life (-1). The default is to
-# ban them for 10 days.
-#denylist_ban_period = 1440
-
-# The number of liveness sessions to allow. Liveness sessions can be established by liveness monitors over TCP by
-# sending a 0x50 (P) as the first byte. Any messages sent must be followed by newline message no longer than
-# 50 characters. That message will be echoed back.
-#liveness_max_sessions = 0
-#liveness_allowlist_cidrs = ["127.0.0.1/32"]
-
-# The buffer size constants for the publish/subscribe connector channel, connecting comms messages to the domain layer:
-# - Buffer size for the base node (min value = 30, default value = 1500).
-#buffer_size_base_node = 1500
-# - Buffer size for the console wallet (min value = 300, default value = 50000).
-#buffer_size_console_wallet = 50000
-# The rate limit constants for the publish/subscribe connector channel, i.e. maximum amount of inbound messages to
-# accept - any rate attemting to exceed this limit will be throttled.
-# - Rate limit for the base node (min value = 5, default value = 1000).
-#buffer_rate_limit_base_node = 1000
-# - Rate limit for the console wallet (min value = 5, default value = 1000).
-buffer_rate_limit_console_wallet = 1000
-# The message deduplication persistent cache size - messages with these hashes in the cache will only be processed once.
-# The cache will also be trimmed down to size periodically (min value = 0, default value = 2500).
-dedup_cache_capacity = 25000
-
-# The timeout (s) for requesting blocks from a peer during blockchain sync (min value = 10 s, default value = 150 s).
-#fetch_blocks_timeout = 150
-
-# The timeout (s) for requesting UTXOs from a base node (min value = 10 s, default value = 600 s).
-#fetch_utxos_timeout = 600
-
-# The timeout (s) for requesting other base node services (min value = 10 s, default value = 180 s).
-#service_request_timeout = 180
-
-# The maximum simultaneous comms RPC sessions allowed (default value = 1000). Setting this to -1 will allow unlimited
-# sessions.
-rpc_max_simultaneous_sessions = 10000
-
-[common.weatherwax]
-# When first logging onto the Tari network, you need to find a few peers to bootstrap the process. In the absence of
-# any servers, this is a little more challenging than usual. Our best strategy is just to try and connect to the peers
-# you knew about last time you ran the software. But what about when you run the software for the first time? That's
-# where this allowlist comes in. It's a list of known Tari nodes that are likely to be around for a long time and that
-# new nodes can use to introduce themselves to the network.
-# peer_seeds = ["public_key1::address1", "public_key2::address2",... ]
-peer_seeds = [
-    # weatherwax
-    "98bc76afc1c35ad4651bdc9ef57bbe0655a2ea3cd86c0e19b5fd5890546eb040::/onion3/33izgtjkrlxhxybj6luqowkpiy2wvte43osejnbqyieqtdfhovzghxad:18141", #jozi
-    "9a26e910288213d649b26f9a7a7ee51fe2b2a67ff7d42334523463bf4be94312::/onion3/56kq54ylttnbl5ikotqex3oqvtzlxdpn7zlx4v56rvzf4kq7eezlclid:18141", #london
-    "6afd5b3c7772ad7d4bb26e0c19668fe04f2d68f99de9e132bee50a6c1846946d::/onion3/may4ajbmcn4dlnzf6fanvqlklxzqiw6qwu6ywqwkjc3bb354rc2i5wid:18141", #ncal
-    "8e7beec9becdc44fe6015a00d97a77fa3dbafe65127dcc988df6326bd9fd040d::/onion3/3pise36l4imoopsbjic5rtw67adx7rms6w5pgjmccpdwiqx66j7oqcqd:18141", #nvir
-    "80bb590d943a46e63ae79af5dc2c7d35a3dcd7922c182b28f619dc4cfc366f44::/onion3/oaxwahri7r3h5qjlcdbveyjmg4jsttausik66bicmhixft73nmvecdad:18141", #oregon
-    "981cc8cd1e4fe2f99ea1bd3e0ab1e7821ca0bfab336a4967cfec053fee86254c::/onion3/7hxpnxrxycdfevirddau7ybofwedaamjrg2ijm57k2kevh5q46ixamid:18141", #seoul
-    "f2ce179fb733725961a5f7e1e45dacdd443dd43ba6237438d6abe344fb717058::/onion3/nvgdmjf4wucgatz7vemzvi2u4sw5o4gyzwuikagpepoj4w7mkii47zid:18141", #stockholm
-    "909c0160f4d8e815aba5c2bbccfcceb448877e7b38759fb160f3e9494484d515::/onion3/qw5uxv533sqdn2qoncfyqo35dgecy4rt4x27rexi2her6q6pcpxbm4qd:18141", #sydney
-]
-
-# DNS seeds
-# The DNS records in these hostnames should provide TXT records as per https://github.com/tari-project/tari/pull/2319
-# Enter a domain name for the TXT records:
-dns_seeds =["seeds.weatherwax.tari.com"]
-# The name server used to resolve DNS seeds format: {socket address}/{tls sni dns name} (Default: cloudflare)
-# dns_seeds_name_server = "1.1.1.1:853/cloudfare-dns.com"
-# Servers addresses, majority of them have to agree.
-# autoupdate_dns_hosts = [#server1, #server2, ...]
-# Set to true to only accept DNS records that pass DNSSEC validation (Default: true)
-dns_seeds_use_dnssec = false
-
-# Auto Update
-#
+[auto_update]
 # This interval in seconds to check for software updates. Setting this to 0 disables checking.
-# auto_update.check_interval = 300
+check_interval = 300
+
+[dibbler.auto_update]
 # Customize the hosts that are used to check for updates. These hosts must contain update information in DNS TXT records.
-# "auto_update.dns_hosts" = ["updates.weatherwax.taripulse.com"]
+update_uris = ["updates.dibbler.taripulse.com"]
 # Customize the location of the update SHA hashes and maintainer-signed signature.
 # "auto_update.hashes_url" = "https://<address>/hashes.txt"
 # "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
 
-[common.igor]
-peer_seeds = [
-    # igor
-    "8e7eb81e512f3d6347bf9b1ca9cd67d2c8e29f2836fc5bd608206505cc72af34::/onion3/l4wouomx42nezhzexjdzfh7pcou5l7df24ggmwgekuih7tkv2rsaokqd:18141",
-    "00b35047a341401bcd336b2a3d564280a72f6dc72ec4c739d30c502acce4e803::/onion3/ojhxd7z6ga7qrvjlr3px66u7eiwasmffnuklscbh5o7g6wrbysj45vid:18141",
-    "40a9d8573745072534bce7d0ecafe882b1c79570375a69841c08a98dee9ecb5f::/onion3/io37fylc2pupg4cte4siqlsmuszkeythgjsxs2i3prm6jyz2dtophaad:18141",
-    "126c7ee64f71aca36398b977dd31fbbe9f9dad615df96473fb655bef5709c540::/onion3/6ilmgndocop7ybgmcvivbdsetzr5ggj4hhsivievoa2dx2b43wqlrlid:18141",
-]
-
-dns_seeds =["seeds.igor.tari.com"]
-# dns_seeds_name_server = "1.1.1.1:853/cloudfare-dns.com"
-dns_seeds_use_dnssec = false
-
-# auto_update.check_interval = 300
-# "auto_update.dns_hosts" = ["updates.igor.taripulse.com"]
-# "auto_update.hashes_url" = "https://<address>/hashes.txt"
-# "auto_update.hashes_sig_url" = "https://<address>/hashes.txt.sig"
-
-[common.dibbler]
-dns_seeds =["seeds.dibbler.tari.com"]
-peer_seeds = [
-    # 333388d1cbe3e2bd17453d052f
-    "c2eca9cf32261a1343e21ed718e79f25bfc74386e9305350b06f62047f519347::/onion3/6yxqk2ybo43u73ukfhyc42qn25echn4zegjpod2ccxzr2jd5atipwzqd:18141",
-    # 555575715a49fc242d756e52ca
-    "42fcde82b44af1de95a505d858cb31a422c56c4ac4747fbf3da47d648d4fc346::/onion3/2l3e7ysmihc23zybapdrsbcfg6omtjtfkvwj65dstnfxkwtai2fawtyd:18141",
-    # 77771f53be07fab4be5f1e1ff7
-    "50e6aa8f6c50f1b9d9b3d438dfd2a29cfe1f3e3a650bd9e6b1e10f96b6c38f4d::/onion3/7s6y3cz5bnewlj5ypm7sekhgvqjyrq4bpaj5dyvvo7vxydj7hsmyf5ad:18141",
-    # 9999016f1f3a6162dddf5a45aa
-    "36a9df45e1423b5315ffa7a91521924210c8e1d1537ad0968450f20f21e5200d::/onion3/v24qfheti2rztlwzgk6v4kdbes3ra7mo3i2fobacqkbfrk656e3uvnid:18141",
-    # bbbb8358387d81c388fadb4649
-    "be128d570e8ec7b15c101ee1a56d6c56dd7d109199f0bd02f182b71142b8675f::/onion3/ha422qsy743ayblgolui5pg226u42wfcklhc5p7nbhiytlsp4ir2syqd:18141",
-    # eeeeb0a943ed143e613a135392
-    "3e0321c0928ca559ab3c0a396272dfaea705efce88440611a38ff3898b097217::/onion3/sl5ledjoaisst6d4fh7kde746dwweuge4m4mf5nkzdhmy57uwgtb7qqd:18141"
-]
+[metrics]
+# server_bind_address = "127.0.0.1:5577"
+# push_endpoint = http://localhost:9091/metrics/job/base-node

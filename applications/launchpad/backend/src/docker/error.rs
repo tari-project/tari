@@ -23,7 +23,7 @@
 
 use std::error::Error;
 
-use tari_app_utilities::common::exit_codes::ExitError;
+use tari_common::exit_codes::ExitError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]

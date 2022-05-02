@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
 use futures::{stream::FuturesUnordered, Stream, StreamExt};
 use log::*;
@@ -148,7 +148,11 @@ impl Discovering {
         );
         match client
             .get_peers(GetPeersRequest {
-                n: self.params.num_peers_to_request.map(|v| v as u32).unwrap_or_default(),
+                n: self
+                    .params
+                    .num_peers_to_request
+                    .map(|v| u32::try_from(v).unwrap())
+                    .unwrap_or_default(),
                 include_clients: true,
             })
             .await

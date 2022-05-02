@@ -143,7 +143,7 @@ impl Listening {
                         };
                         // If this fails, its not the end of the world, we just want to keep record of the stats of
                         // the peer
-                        let _ = shared
+                        let _old_data = shared
                             .peer_manager
                             .set_peer_metadata(peer.node_id(), 1, peer_data.to_bytes())
                             .await;
@@ -329,7 +329,7 @@ fn determine_sync_mode(
     network: &ChainMetadata,
     sync_peers: Vec<&PeerChainMetadata>,
 ) -> SyncStatus {
-    use SyncStatus::*;
+    use SyncStatus::{Lagging, UpToDate};
     let network_tip_accum_difficulty = network.accumulated_difficulty();
     let local_tip_accum_difficulty = local.accumulated_difficulty();
     if local_tip_accum_difficulty < network_tip_accum_difficulty {
@@ -369,10 +369,16 @@ fn determine_sync_mode(
             sync_peers: sync_peers.into_iter().cloned().map(Into::into).collect(),
         }
     } else {
-        info!(
+        debug!(
             target: LOG_TARGET,
-            "Our blockchain is up-to-date. We're at block {} with an accumulated difficulty of {} and the network \
-             chain tip is at {} with an accumulated difficulty of {}",
+            "{} We're at block {} with an accumulated difficulty of {} and the network chain tip is at {} with an \
+             accumulated difficulty of {}",
+            if local_tip_accum_difficulty > network_tip_accum_difficulty {
+                "Our blockchain is ahead of the network."
+            } else {
+                // Equals
+                "Our blockchain is up-to-date."
+            },
             local.height_of_longest_chain(),
             local_tip_accum_difficulty.to_formatted_string(&Locale::en),
             network.height_of_longest_chain(),

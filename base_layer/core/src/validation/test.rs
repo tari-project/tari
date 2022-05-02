@@ -22,9 +22,11 @@
 
 use std::sync::Arc;
 
+use rand::Rng;
 use tari_common::configuration::Network;
 use tari_common_types::types::Commitment;
-use tari_crypto::{commitment::HomomorphicCommitment, script};
+use tari_crypto::commitment::HomomorphicCommitment;
+use tari_script::script;
 use tari_utilities::Hashable;
 
 use crate::{
@@ -40,11 +42,17 @@ use crate::{
         transaction_components::{KernelBuilder, KernelFeatures, OutputFeatures, TransactionKernel},
         CryptoFactories,
     },
-    validation::{header_iter::HeaderIter, ChainBalanceValidator, FinalHorizonStateValidation},
+    validation::{
+        header_iter::HeaderIter,
+        header_validator::HeaderValidator,
+        ChainBalanceValidator,
+        FinalHorizonStateValidation,
+    },
 };
 
 mod header_validators {
     use super::*;
+    use crate::validation::{DifficultyCalculator, HeaderValidation, ValidationError};
 
     #[test]
     fn header_iter_empty_and_invalid_height() {
@@ -93,20 +101,39 @@ mod header_validators {
             assert_eq!(headers[i].height, i as u64);
         })
     }
+
+    #[test]
+    fn it_validates_that_version_is_in_range() {
+        let consensus_manager = ConsensusManagerBuilder::new(Network::LocalNet).build();
+        let db = create_store_with_consensus(consensus_manager.clone());
+
+        let genesis = db.fetch_chain_header(0).unwrap();
+
+        let mut header = BlockHeader::from_previous(genesis.header());
+        header.version = u16::MAX;
+
+        let validator = HeaderValidator::new(consensus_manager.clone());
+
+        let difficulty_calculator = DifficultyCalculator::new(consensus_manager, Default::default());
+        let err = validator
+            .validate(&*db.db_read_access().unwrap(), &header, &difficulty_calculator)
+            .unwrap_err();
+        assert!(matches!(err, ValidationError::InvalidBlockchainVersion {
+            version: u16::MAX
+        }));
+    }
 }
 
 #[test]
-// TODO: Fix this test with the new DB structure
-#[ignore = "to be fixed with new db structure"]
 fn chain_balance_validation() {
     let factories = CryptoFactories::default();
-    let consensus_manager = ConsensusManagerBuilder::new(Network::Weatherwax).build();
+    let consensus_manager = ConsensusManagerBuilder::new(Network::Dibbler).build();
     let genesis = consensus_manager.get_genesis_block();
     let faucet_value = 5000 * uT;
     let (faucet_utxo, faucet_key, _) = create_utxo(
         faucet_value,
         &factories,
-        OutputFeatures::default(),
+        &OutputFeatures::default(),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -152,7 +179,7 @@ fn chain_balance_validation() {
     let (coinbase, coinbase_key, _) = create_utxo(
         coinbase_value,
         &factories,
-        OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
     );
@@ -204,7 +231,7 @@ fn chain_balance_validation() {
     let (coinbase, key, _) = create_utxo(
         v,
         &factories,
-        OutputFeatures::create_coinbase(1),
+        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script!(Nop),
         &Covenant::default(),
     );

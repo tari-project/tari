@@ -44,7 +44,7 @@ use tari_core::{
     proto::base_node as base_node_proto,
     transactions::{
         tari_amount::MicroTari,
-        transaction_components::{KernelFeatures, OutputFeatures, Transaction, TransactionOutput, UnblindedOutput},
+        transaction_components::{KernelFeatures, Transaction, TransactionOutput, UnblindedOutput},
         transaction_protocol::{
             proto::protocol as proto,
             recipient::RecipientSignedMessage,
@@ -56,12 +56,11 @@ use tari_core::{
     },
 };
 use tari_crypto::{
-    inputs,
     keys::{DiffieHellmanSharedSecret, PublicKey as PKtrait, SecretKey},
-    script,
     tari_utilities::ByteArray,
 };
 use tari_p2p::domain_message::DomainMessage;
+use tari_script::{inputs, script};
 use tari_service_framework::{reply_channel, reply_channel::Receiver};
 use tari_shutdown::ShutdownSignal;
 use tokio::{
@@ -297,7 +296,7 @@ where
         let mut shutdown = self.resources.shutdown_signal.clone();
 
         let mut send_transaction_protocol_handles: FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         > = FuturesUnordered::new();
 
         let mut receive_transaction_protocol_handles: FuturesUnordered<
@@ -338,7 +337,7 @@ where
                     let (request, reply_tx) = request_context.split();
                     let event = format!("Handling Service API Request ({})", request);
                     trace!(target: LOG_TARGET, "{}", event);
-                    let _ = self.handle_request(request,
+                    let _result = self.handle_request(request,
                         &mut send_transaction_protocol_handles,
                         &mut receive_transaction_protocol_handles,
                         &mut transaction_broadcast_protocol_handles,
@@ -372,7 +371,7 @@ where
                         Err(e) => {
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction message: {} for NodeID: {}, Trace: {}",
                                 e, self.node_identity.node_id().short_str(), msg.dht_header.message_tag);
-                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
+                            let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error(format!("Error handling \
                                 Transaction Sender message: {:?}", e).to_string())));
                         }
                         _ => (),
@@ -402,7 +401,7 @@ where
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Reply message: {} \
                             for NodeId: {}, Trace: {}", e, self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag);
-                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
+                            let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling \
                             Transaction Recipient Reply message".to_string())));
                         },
                         Ok(_) => (),
@@ -439,7 +438,7 @@ where
                             warn!(target: LOG_TARGET, "Failed to handle incoming Transaction Finalized message: {} \
                             for NodeID: {}, Trace: {}", e , self.node_identity.node_id().short_str(),
                             msg.dht_header.message_tag.as_value());
-                            let _ = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
+                            let _size = self.event_publisher.send(Arc::new(TransactionEvent::Error("Error handling Transaction \
                             Finalized message".to_string(),)));
                        },
                        Ok(_) => ()
@@ -456,7 +455,7 @@ where
                     let start = Instant::now();
                     let (origin_public_key, inner_msg) = msg.clone().into_origin_and_inner();
                     trace!(target: LOG_TARGET, "Handling Base Node Response, Trace: {}", msg.dht_header.message_tag);
-                    let _ = self.handle_base_node_response(inner_msg).await.map_err(|e| {
+                    let _result = self.handle_base_node_response(inner_msg).await.map_err(|e| {
                         warn!(target: LOG_TARGET, "Error handling base node service response from {}: {:?} for \
                         NodeID: {}, Trace: {}", origin_public_key, e, self.node_identity.node_id().short_str(),
                         msg.dht_header.message_tag.as_value());
@@ -513,7 +512,10 @@ where
                 Some(join_result) = transaction_validation_protocol_handles.next() => {
                     trace!(target: LOG_TARGET, "Transaction Validation protocol has ended with result {:?}", join_result);
                     match join_result {
-                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(join_result_inner, &mut transaction_broadcast_protocol_handles,).await,
+                        Ok(join_result_inner) => self.complete_transaction_validation_protocol(
+                            join_result_inner,
+                            &mut transaction_broadcast_protocol_handles,
+                        ).await,
                         Err(e) => error!(target: LOG_TARGET, "Error resolving Transaction Validation protocol: {:?}", e),
                     };
                 }
@@ -532,7 +534,7 @@ where
         &mut self,
         request: TransactionServiceRequest,
         send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
         receive_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -722,7 +724,7 @@ where
 
         // If the individual handlers did not already send the API response then do it here.
         if let Some(rp) = reply_channel {
-            let _ = rp.send(response).map_err(|e| {
+            let _result = rp.send(response).map_err(|e| {
                 warn!(target: LOG_TARGET, "Failed to send reply");
                 e
             });
@@ -746,7 +748,7 @@ where
                 };
 
                 if trigger_validation {
-                    let _ = self
+                    let _operation_id = self
                         .start_transaction_validation_protocol(transaction_validation_join_handles)
                         .await
                         .map_err(|e| {
@@ -795,7 +797,9 @@ where
         parent_public_key: Option<PublicKey>,
         fee_per_gram: MicroTari,
         message: String,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
@@ -824,7 +828,7 @@ where
                 .await?;
 
             // Notify that the transaction was successfully resolved.
-            let _ = self
+            let _size = self
                 .event_publisher
                 .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
@@ -847,7 +851,7 @@ where
             )
             .await?;
 
-            let _ = reply_channel
+            let _result = reply_channel
                 .send(Ok(TransactionServiceResponse::TransactionSent(tx_id)))
                 .map_err(|e| {
                     warn!(target: LOG_TARGET, "Failed to send service reply");
@@ -878,8 +882,8 @@ where
             TransactionSendProtocolStage::Initial,
             None,
             self.last_seen_tip_height,
+            None,
         );
-
         let join_handle = tokio::spawn(protocol.execute());
         join_handles.push(join_handle);
 
@@ -910,7 +914,13 @@ where
         let height = self.last_seen_tip_height.unwrap_or(0) + (24 * 30);
 
         // lets create the HTLC script
-        let script = script!(HashSha256 PushHash(Box::new(hash)) Equal IfThen PushPubKey(Box::new(dest_pubkey.clone())) Else CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone())) EndIf);
+        let script = script!(
+            HashSha256 PushHash(Box::new(hash)) Equal IfThen
+                PushPubKey(Box::new(dest_pubkey.clone()))
+            Else
+                CheckHeightVerify(height) PushPubKey(Box::new(self.node_identity.public_key().clone()))
+            EndIf
+        );
 
         // Empty covenant
         let covenant = Covenant::default();
@@ -933,7 +943,7 @@ where
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
-        let _ = stp
+        let _single_round_sender_data = stp
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -955,12 +965,14 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
 
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
-            rewind_blinding_key: blinding_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: recovery_byte_key.clone(),
             proof_message: [0u8; 21],
         };
 
@@ -977,7 +989,7 @@ where
         let unblinded_output = UnblindedOutput::new_current_version(
             amount,
             spend_key,
-            OutputFeatures::default(),
+            output.features.clone(),
             script,
             inputs!(PublicKey::from_secret_key(self.node_identity.secret_key())),
             self.node_identity.secret_key().clone(),
@@ -1011,7 +1023,7 @@ where
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
-        let _ = self
+        let _size = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
@@ -1097,7 +1109,7 @@ where
 
         // This call is needed to advance the state from `SingleRoundMessageReady` to `SingleRoundMessageReady`,
         // but the returned value is not used
-        let _ = stp
+        let _single_round_sender_data = stp
             .build_single_round_message()
             .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
@@ -1119,11 +1131,13 @@ where
         .map_err(|e| TransactionServiceProtocolError::new(tx_id, e.into()))?;
 
         let sender_message = TransactionSenderMessage::new_single_round_message(stp.get_single_round_message()?);
-        let blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
-        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&blinding_key))?;
+        let rewind_blinding_key = PrivateKey::from_bytes(&hash_secret_key(&spend_key))?;
+        let rewind_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_blinding_key))?;
+        let recovery_byte_key = PrivateKey::from_bytes(&hash_secret_key(&rewind_key))?;
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
-            rewind_blinding_key: blinding_key.clone(),
+            rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: recovery_byte_key.clone(),
             proof_message: [0u8; 21],
         };
 
@@ -1161,7 +1175,7 @@ where
 
         // This event being sent is important, but not critical to the protocol being successful. Send only fails if
         // there are no subscribers.
-        let _ = self
+        let _result = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCompletedImmediately(tx_id)));
 
@@ -1330,44 +1344,49 @@ where
     /// Handle the final clean up after a Send Transaction protocol completes
     async fn complete_send_transaction_protocol(
         &mut self,
-        join_result: Result<TxId, TransactionServiceProtocolError<TxId>>,
+        join_result: Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>,
         transaction_broadcast_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
         >,
     ) {
         match join_result {
-            Ok(id) => {
-                let _ = self.pending_transaction_reply_senders.remove(&id);
-                let _ = self.send_transaction_cancellation_senders.remove(&id);
-                let completed_tx = match self.db.get_completed_transaction(id).await {
-                    Ok(v) => v,
-                    Err(e) => {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
-                        );
-                        return;
-                    },
-                };
-                let _ = self
-                    .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
-                    .await
-                    .map_err(|resp| {
-                        error!(
-                            target: LOG_TARGET,
-                            "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", resp
-                        );
-                        resp
-                    });
-                trace!(
-                    target: LOG_TARGET,
-                    "Send Transaction Protocol for TxId: {} completed successfully",
-                    id
-                );
+            Ok(val) => {
+                if val.transaction_status != TransactionStatus::Queued {
+                    let _sender = self.pending_transaction_reply_senders.remove(&val.tx_id);
+                    let _sender = self.send_transaction_cancellation_senders.remove(&val.tx_id);
+                    let completed_tx = match self.db.get_completed_transaction(val.tx_id).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            error!(
+                                target: LOG_TARGET,
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}", e
+                            );
+                            return;
+                        },
+                    };
+                    let _result = self
+                        .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
+                        .await
+                        .map_err(|resp| {
+                            error!(
+                                target: LOG_TARGET,
+                                "Error starting Broadcast Protocol after completed Send Transaction Protocol : {:?}",
+                                resp
+                            );
+                            resp
+                        });
+                } else if val.transaction_status == TransactionStatus::Queued {
+                    trace!(
+                        target: LOG_TARGET,
+                        "Send Transaction Protocol for TxId: {} not completed successfully, transaction Queued",
+                        val.tx_id
+                    );
+                } else {
+                }
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.pending_transaction_reply_senders.remove(&id);
-                let _ = self.send_transaction_cancellation_senders.remove(&id);
+                let _public_key = self.pending_transaction_reply_senders.remove(&id);
+                let _result = self.send_transaction_cancellation_senders.remove(&id);
                 if let TransactionServiceError::Shutdown = error {
                     return;
                 }
@@ -1375,7 +1394,7 @@ where
                     target: LOG_TARGET,
                     "Error completing Send Transaction Protocol (Id: {}): {:?}", id, error
                 );
-                let _ = self
+                let _size = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
@@ -1395,16 +1414,16 @@ where
         self.output_manager_service.cancel_transaction(tx_id).await?;
 
         if let Some(cancellation_sender) = self.send_transaction_cancellation_senders.remove(&tx_id) {
-            let _ = cancellation_sender.send(());
+            let _result = cancellation_sender.send(());
         }
-        let _ = self.pending_transaction_reply_senders.remove(&tx_id);
+        let _public_key = self.pending_transaction_reply_senders.remove(&tx_id);
 
         if let Some(cancellation_sender) = self.receiver_transaction_cancellation_senders.remove(&tx_id) {
-            let _ = cancellation_sender.send(());
+            let _result = cancellation_sender.send(());
         }
-        let _ = self.finalized_transaction_senders.remove(&tx_id);
+        let _public_key = self.finalized_transaction_senders.remove(&tx_id);
 
-        let _ = self
+        let _size = self
             .event_publisher
             .send(Arc::new(TransactionEvent::TransactionCancelled(
                 tx_id,
@@ -1452,20 +1471,44 @@ where
     #[allow(clippy::map_entry)]
     async fn restart_all_send_transaction_protocols(
         &mut self,
-        join_handles: &mut FuturesUnordered<JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>>,
+        join_handles: &mut FuturesUnordered<
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
+        >,
     ) -> Result<(), TransactionServiceError> {
         let outbound_txs = self.db.get_pending_outbound_transactions().await?;
         for (tx_id, tx) in outbound_txs {
-            if !self.pending_transaction_reply_senders.contains_key(&tx_id) {
+            let (sender_protocol, stage) = if tx.send_count > 0 {
+                (None, TransactionSendProtocolStage::WaitForReply)
+            } else {
+                (Some(tx.sender_protocol), TransactionSendProtocolStage::Queued)
+            };
+            let (not_yet_pending, queued) = (
+                !self.pending_transaction_reply_senders.contains_key(&tx_id),
+                stage == TransactionSendProtocolStage::Queued,
+            );
+
+            if not_yet_pending {
                 debug!(
                     target: LOG_TARGET,
                     "Restarting listening for Reply for Pending Outbound Transaction TxId: {}", tx_id
                 );
+            } else if queued {
+                debug!(
+                    target: LOG_TARGET,
+                    "Retry sending queued Pending Outbound Transaction TxId: {}", tx_id
+                );
+                let _sender = self.pending_transaction_reply_senders.remove(&tx_id);
+                let _sender = self.send_transaction_cancellation_senders.remove(&tx_id);
+            } else {
+            }
+
+            if not_yet_pending || queued {
                 let (tx_reply_sender, tx_reply_receiver) = mpsc::channel(100);
                 let (cancellation_sender, cancellation_receiver) = oneshot::channel();
                 self.pending_transaction_reply_senders.insert(tx_id, tx_reply_sender);
                 self.send_transaction_cancellation_senders
                     .insert(tx_id, cancellation_sender);
+
                 let protocol = TransactionSendProtocol::new(
                     tx_id,
                     self.resources.clone(),
@@ -1478,9 +1521,10 @@ where
                     tx.fee,
                     tx.message,
                     None,
-                    TransactionSendProtocolStage::WaitForReply,
+                    stage,
                     None,
                     self.last_seen_tip_height,
+                    sender_protocol,
                 );
 
                 let join_handle = tokio::spawn(protocol.execute());
@@ -1531,6 +1575,12 @@ where
                     "A repeated Transaction (TxId: {}) has been received but has been previously cancelled or rejected",
                     tx.tx_id
                 );
+                tokio::spawn(send_transaction_cancelled_message(
+                    tx.tx_id,
+                    source_pubkey,
+                    self.resources.outbound_message_service.clone(),
+                ));
+
                 return Ok(());
             }
 
@@ -1697,8 +1747,8 @@ where
     ) {
         match join_result {
             Ok(id) => {
-                let _ = self.finalized_transaction_senders.remove(&id);
-                let _ = self.receiver_transaction_cancellation_senders.remove(&id);
+                let _public_key = self.finalized_transaction_senders.remove(&id);
+                let _result = self.receiver_transaction_cancellation_senders.remove(&id);
 
                 let completed_tx = match self.db.get_completed_transaction(id).await {
                     Ok(v) => v,
@@ -1710,7 +1760,7 @@ where
                         return;
                     },
                 };
-                let _ = self
+                let _result = self
                     .broadcast_completed_transaction(completed_tx, transaction_broadcast_join_handles)
                     .await
                     .map_err(|e| {
@@ -1728,8 +1778,8 @@ where
                 );
             },
             Err(TransactionServiceProtocolError { id, error }) => {
-                let _ = self.finalized_transaction_senders.remove(&id);
-                let _ = self.receiver_transaction_cancellation_senders.remove(&id);
+                let _public_key = self.finalized_transaction_senders.remove(&id);
+                let _result = self.receiver_transaction_cancellation_senders.remove(&id);
                 match error {
                     TransactionServiceError::RepeatedMessageError => debug!(
                         target: LOG_TARGET,
@@ -1746,7 +1796,7 @@ where
                     ),
                 }
 
-                let _ = self
+                let _size = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
@@ -1801,7 +1851,7 @@ where
     async fn restart_transaction_negotiation_protocols(
         &mut self,
         send_transaction_join_handles: &mut FuturesUnordered<
-            JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
+            JoinHandle<Result<TransactionSendResult, TransactionServiceProtocolError<TxId>>>,
         >,
         receive_transaction_join_handles: &mut FuturesUnordered<
             JoinHandle<Result<TxId, TransactionServiceProtocolError<TxId>>>,
@@ -1896,7 +1946,7 @@ where
                     target: LOG_TARGET,
                     "Error completing Transaction Validation Protocol (id: {}): {:?}", id, error
                 );
-                let _ = self
+                let _size = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::TransactionValidationFailed(id)));
             },
@@ -2014,7 +2064,7 @@ where
                     target: LOG_TARGET,
                     "Error completing Transaction Broadcast Protocol (Id: {}): {:?}", id, error
                 );
-                let _ = self
+                let _size = self
                     .event_publisher
                     .send(Arc::new(TransactionEvent::Error(format!("{:?}", error))));
             },
@@ -2088,7 +2138,7 @@ where
             },
             ImportStatus::FauxConfirmed => TransactionEvent::FauxTransactionConfirmed { tx_id, is_valid: true },
         };
-        let _ = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+        let _size = self.event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
             trace!(
                 target: LOG_TARGET,
                 "Error sending event, usually because there are no subscribers: {:?}",
@@ -2117,8 +2167,14 @@ where
             "Launch the transaction broadcast protocol for submitted transaction ({}).",
             tx_id
         );
-        self.complete_send_transaction_protocol(Ok(tx_id), transaction_broadcast_join_handles)
-            .await;
+        self.complete_send_transaction_protocol(
+            Ok(TransactionSendResult {
+                tx_id,
+                transaction_status: TransactionStatus::Completed,
+            }),
+            transaction_broadcast_join_handles,
+        )
+        .await;
         Ok(())
     }
 
@@ -2215,7 +2271,7 @@ where
                     )
                     .await?;
 
-                let _ = self
+                let _size = self
                     .resources
                     .event_publisher
                     .send(Arc::new(TransactionEvent::ReceivedFinalizedTransaction(tx_id)))
@@ -2289,4 +2345,11 @@ pub struct PendingCoinbaseSpendingKey {
 
 fn hash_secret_key(key: &PrivateKey) -> Vec<u8> {
     HashDigest::new().chain(key.as_bytes()).finalize().to_vec()
+}
+
+/// Contains the generated TxId and TransactionStatus transaction send result
+#[derive(Debug)]
+pub struct TransactionSendResult {
+    pub tx_id: TxId,
+    pub transaction_status: TransactionStatus,
 }

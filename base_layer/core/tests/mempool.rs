@@ -39,10 +39,7 @@ use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, PrivateKey, PublicKey, Signature};
 use tari_comms_dht::domain_message::OutboundDomainMessage;
 use tari_core::{
-    base_node::{
-        service::BaseNodeServiceConfig,
-        state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
-    },
+    base_node::state_machine_service::states::{ListeningInfo, StateInfo, StatusInfo},
     consensus::{ConsensusConstantsBuilder, ConsensusManager, NetworkConsensus},
     mempool::{Mempool, MempoolConfig, MempoolServiceConfig, TxStorageResponse},
     proof_of_work::Difficulty,
@@ -66,8 +63,9 @@ use tari_core::{
     txn_schema,
     validation::transaction_validators::{TxConsensusValidator, TxInputAndMaturityValidator},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script};
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_p2p::{services::liveness::LivenessConfig, tari_message::TariMessageType};
+use tari_script::script;
 use tari_test_utils::async_assert_eventually;
 use tempfile::tempdir;
 
@@ -103,7 +101,10 @@ async fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 4,
-        features: OutputFeatures::with_maturity(1)
+        features: OutputFeatures{
+            maturity: 1,
+            ..Default::default()
+        }
     );
     let tx3 = Arc::new(spend_utxos(tx3).0);
 
@@ -112,7 +113,10 @@ async fn test_insert_and_process_published_block() {
         to: vec![1*T],
         fee: 20*uT,
         lock: 3,
-        features: OutputFeatures::with_maturity(2)
+        features: OutputFeatures{
+            maturity: 2,
+            ..Default::default()
+        }
     );
     let tx5 = Arc::new(spend_utxos(tx5).0);
     let tx6 = txn_schema!(from: vec![outputs[1][3].clone()], to: vec![1 * T], fee: 25*uT, lock: 0, features: OutputFeatures::default());
@@ -255,7 +259,10 @@ async fn test_time_locked() {
         to: vec![1*T],
         fee: 4*uT,
         lock: 4,
-        features: OutputFeatures::with_maturity(1)
+        features: OutputFeatures{
+            maturity: 1,
+            ..Default::default()
+        }
     );
     tx3.lock_height = 2;
     let tx3 = Arc::new(spend_utxos(tx3).0);
@@ -306,10 +313,16 @@ async fn test_retrieve() {
         txn_schema!(from: vec![outputs[1][5].clone()], to: vec![], fee: 20*uT, lock: 3, features: OutputFeatures::default()),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][6].clone()], to: vec![800_000*uT], fee: 60*uT, lock: 0,
-        features: OutputFeatures::with_maturity(4)),
+            features: OutputFeatures{
+                maturity: 4,
+                ..Default::default()
+        }),
         // Will be time locked when a tx is added to mempool with this as an input:
         txn_schema!(from: vec![outputs[1][7].clone()], to: vec![800_000*uT], fee: 25*uT, lock: 0,
-        features: OutputFeatures::with_maturity(3)),
+            features: OutputFeatures{
+            maturity: 3,
+            ..Default::default()
+        }),
     ];
     let (tx, utxos) = schema_to_transaction(&txs);
     for t in &tx {
@@ -785,7 +798,6 @@ async fn receive_and_propagate_transaction() {
         .build();
     let (mut alice_node, mut bob_node, mut carol_node, _consensus_manager) =
         create_network_with_3_base_nodes_with_config(
-            BaseNodeServiceConfig::default(),
             MempoolServiceConfig::default(),
             LivenessConfig::default(),
             consensus_manager,
@@ -823,7 +835,7 @@ async fn receive_and_propagate_transaction() {
         .send_direct(
             bob_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
-                TariMessageType::NewTransaction,
+                &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(tx).unwrap(),
             ),
         )
@@ -834,7 +846,7 @@ async fn receive_and_propagate_transaction() {
         .send_direct(
             carol_node.node_identity.public_key().clone(),
             OutboundDomainMessage::new(
-                TariMessageType::NewTransaction,
+                &TariMessageType::NewTransaction,
                 proto::types::Transaction::try_from(orphan).unwrap(),
             ),
         )
@@ -938,12 +950,7 @@ async fn consensus_validation_large_tx() {
         } else {
             amount_for_last_output
         };
-        let output = create_unblinded_output(
-            script!(Nop),
-            OutputFeatures::default(),
-            test_params.clone(),
-            output_amount,
-        );
+        let output = create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params, output_amount);
 
         script_offset_pvt = script_offset_pvt - test_params.sender_offset_private_key;
         unblinded_outputs.push(output.clone());
@@ -1057,6 +1064,7 @@ async fn consensus_validation_versions() {
         OutputFeaturesVersion::V1,
         OutputFlags::empty(),
         0,
+        0,
         Default::default(),
         None,
         None,
@@ -1097,7 +1105,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: tari_crypto::script![Nop],
+        script: script![Nop],
         input_data: None,
         covenant: Default::default(),
         input_version: Some(TransactionInputVersion::V1),
@@ -1117,7 +1125,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: tari_crypto::script![Nop],
+        script: script![Nop],
         input_data: None,
         covenant: Default::default(),
         input_version: None,
@@ -1137,7 +1145,7 @@ async fn consensus_validation_versions() {
         fee: 25.into(),
         lock_height: 0,
         features: Default::default(),
-        script: tari_crypto::script![Nop],
+        script: script![Nop],
         input_data: None,
         covenant: Default::default(),
         input_version: None,
@@ -1146,6 +1154,36 @@ async fn consensus_validation_versions() {
 
     let (tx, _) = spend_utxos(tx);
     let tx = Arc::new(tx);
+    let response = mempool.insert(tx).await.unwrap();
+    assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
+}
+
+#[tokio::test]
+async fn consensus_validation_unique_excess_sig() {
+    let network = Network::LocalNet;
+    let (mut store, mut blocks, mut outputs, consensus_manager) = create_new_blockchain(network);
+
+    let mempool_validator = TxConsensusValidator::new(store.clone());
+
+    let mempool = Mempool::new(
+        MempoolConfig::default(),
+        consensus_manager.clone(),
+        Box::new(mempool_validator),
+    );
+
+    // Create a block with 5 outputs
+    let txs = vec![txn_schema!(
+        from: vec![outputs[0][0].clone()],
+        to: vec![2 * T, 2 * T, 2 * T, 2 * T, 2 * T], fee: 25.into(), lock: 0, features: OutputFeatures::default()
+    )];
+    generate_new_block(&mut store, &mut blocks, &mut outputs, txs, &consensus_manager).unwrap();
+
+    let schema = txn_schema!(from: vec![outputs[1][0].clone()], to: vec![1_500_000 * uT]);
+    let (tx1, _) = spend_utxos(schema.clone());
+    generate_block(&store, &mut blocks, vec![tx1.clone()], &consensus_manager).unwrap();
+
+    // trying to submit a transaction with an existing excess signature already in the chain is an error
+    let tx = Arc::new(tx1);
     let response = mempool.insert(tx).await.unwrap();
     assert!(matches!(response, TxStorageResponse::NotStoredConsensus));
 }
@@ -1283,7 +1321,6 @@ async fn block_event_and_reorg_event_handling() {
         .with_block(block0.clone())
         .build();
     let (mut alice, mut bob, consensus_manager) = create_network_with_2_base_nodes_with_config(
-        BaseNodeServiceConfig::default(),
         MempoolServiceConfig::default(),
         LivenessConfig::default(),
         consensus_manager,

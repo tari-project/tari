@@ -92,21 +92,25 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
         "Checking {} faux transaction statuses",
         all_faux_transactions.len()
     );
-    for tx in all_faux_transactions.into_iter() {
-        let (status, mined_height, block_hash) = match output_manager.get_output_statuses_by_tx_id(tx.tx_id).await {
+    for tx in all_faux_transactions {
+        let output_statuses_by_tx_id = match output_manager.get_output_statuses_by_tx_id(tx.tx_id).await {
             Ok(s) => s,
             Err(e) => {
                 error!(target: LOG_TARGET, "Problem retrieving output statuses: {}", e);
                 return;
             },
         };
-        if !status.iter().any(|s| s != &OutputStatus::Unspent) {
-            let mined_height = if let Some(height) = mined_height {
+        if !output_statuses_by_tx_id
+            .statuses
+            .iter()
+            .any(|s| s != &OutputStatus::Unspent)
+        {
+            let mined_height = if let Some(height) = output_statuses_by_tx_id.mined_height {
                 height
             } else {
                 tip_height
             };
-            let mined_in_block: BlockHash = if let Some(hash) = block_hash {
+            let mined_in_block: BlockHash = if let Some(hash) = output_statuses_by_tx_id.block_hash {
                 hash
             } else {
                 vec![0u8; 32]
@@ -145,18 +149,19 @@ pub async fn check_faux_transactions<TBackend: 'static + TransactionBackend>(
                 // Only send an event if the transaction was not previously confirmed OR was previously confirmed and is
                 // now not confirmed (i.e. confirmation changed)
                 if !(was_confirmed && is_confirmed) {
-                    let transaction_event = match is_confirmed {
-                        false => TransactionEvent::FauxTransactionUnconfirmed {
+                    let transaction_event = if is_confirmed {
+                        TransactionEvent::FauxTransactionConfirmed {
+                            tx_id: tx.tx_id,
+                            is_valid,
+                        }
+                    } else {
+                        TransactionEvent::FauxTransactionUnconfirmed {
                             tx_id: tx.tx_id,
                             num_confirmations: 0,
                             is_valid,
-                        },
-                        true => TransactionEvent::FauxTransactionConfirmed {
-                            tx_id: tx.tx_id,
-                            is_valid,
-                        },
+                        }
                     };
-                    let _ = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
+                    let _size = event_publisher.send(Arc::new(transaction_event)).map_err(|e| {
                         trace!(
                             target: LOG_TARGET,
                             "Error sending event, usually because there are no subscribers: {:?}",

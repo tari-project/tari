@@ -23,7 +23,7 @@
 use std::{iter::repeat_with, sync::Arc};
 
 use croaring::Bitmap;
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::OsRng, Rng, RngCore};
 use tari_common::configuration::Network;
 use tari_common_types::types::{Commitment, HashDigest, HashOutput, PublicKey};
 use tari_core::{
@@ -57,10 +57,10 @@ use tari_core::{
 };
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
-    script,
     tari_utilities::{hash::Hashable, hex::Hex},
 };
 use tari_mmr::MutableMmr;
+use tari_script::script;
 
 pub fn create_coinbase(
     factories: &CryptoFactories,
@@ -78,8 +78,12 @@ pub fn create_coinbase(
         .build()
         .unwrap();
 
-    let unblinded_output =
-        create_unblinded_output(script!(Nop), OutputFeatures::create_coinbase(maturity_height), p, value);
+    let unblinded_output = create_unblinded_output(
+        script!(Nop),
+        OutputFeatures::create_coinbase(maturity_height, rand::thread_rng().gen::<u8>()),
+        &p,
+        value,
+    );
     let output = unblinded_output.as_transaction_output(factories).unwrap();
 
     (output, kernel, unblinded_output)
@@ -118,7 +122,7 @@ fn print_new_genesis_block() {
     let (utxo, key, _) = create_utxo(
         value,
         &factories,
-        OutputFeatures::create_coinbase(60),
+        &OutputFeatures::create_coinbase(1, rand::thread_rng().gen::<u8>()),
         &script![Nop],
         &Covenant::default(),
     );
@@ -214,7 +218,7 @@ pub fn create_genesis_block_with_utxos(
     let output_features = OutputFeatures::default();
     let outputs = values.iter().fold(vec![coinbase], |mut secrets, v| {
         let p = TestParams::new();
-        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), p, *v);
+        let unblinded_output = create_unblinded_output(script.clone(), output_features.clone(), &p, *v);
         secrets.push(unblinded_output.clone());
         let output = unblinded_output.as_transaction_output(factories).unwrap();
         template.body.add_output(output);

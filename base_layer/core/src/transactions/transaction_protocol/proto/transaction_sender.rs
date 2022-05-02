@@ -24,7 +24,8 @@ use std::convert::{TryFrom, TryInto};
 
 use proto::transaction_sender_message::Message as ProtoTxnSenderMessage;
 use tari_common_types::types::PublicKey;
-use tari_crypto::{script::TariScript, tari_utilities::ByteArray};
+use tari_crypto::tari_utilities::ByteArray;
+use tari_script::TariScript;
 
 use super::{protocol as proto, protocol::transaction_sender_message::Message as ProtoTransactionSenderMessage};
 use crate::{
@@ -141,5 +142,24 @@ impl From<SingleRoundSenderData> for proto::SingleRoundSenderData {
             public_commitment_nonce: sender_data.public_commitment_nonce.to_vec(),
             covenant: sender_data.covenant.to_consensus_bytes(),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_from_none() {
+        let tsm = TransactionSenderMessage::None;
+        let ptsm = proto::TransactionSenderMessage::from(tsm);
+        assert_eq!(ptsm.message, proto::TransactionSenderMessage::none().message);
+    }
+
+    #[test]
+    fn test_from_multiple() {
+        let tsm = TransactionSenderMessage::Multiple;
+        let ptsm = proto::TransactionSenderMessage::from(tsm);
+        assert_eq!(ptsm.message, proto::TransactionSenderMessage::multiple().message);
     }
 }

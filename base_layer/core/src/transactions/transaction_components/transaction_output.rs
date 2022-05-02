@@ -26,9 +26,11 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    io,
+    io::{Read, Write},
 };
 
-use digest::{Digest, FixedOutput};
+use digest::FixedOutput;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{
@@ -37,7 +39,6 @@ use tari_common_types::types::{
     ComSignature,
     Commitment,
     CommitmentFactory,
-    HashDigest,
     PrivateKey,
     PublicKey,
     RangeProof,
@@ -48,14 +49,13 @@ use tari_crypto::{
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::RangeProofService as RangeProofServiceTrait,
     ristretto::pedersen::PedersenCommitmentFactory,
-    script::TariScript,
     tari_utilities::{hex::Hex, ByteArray, Hashable},
 };
+use tari_script::TariScript;
 
 use super::TransactionOutputVersion;
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::{ConsensusEncoding, ConsensusEncodingSized, ToConsensusBytes},
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized, ConsensusHashWriter},
     covenants::Covenant,
     transactions::{
         tari_amount::MicroTari,
@@ -89,7 +89,7 @@ pub struct TransactionOutput {
     pub sender_offset_public_key: PublicKey,
     /// UTXO signature with the script offset private key, k_O
     pub metadata_signature: ComSignature,
-    /// The script that will be executed when spending this output
+    /// The covenant that will be executed when spending this output
     #[serde(default)]
     pub covenant: Covenant,
 }
@@ -165,6 +165,7 @@ impl TransactionOutput {
     /// Verify that the metadata signature is valid
     pub fn verify_metadata_signature(&self) -> Result<(), TransactionError> {
         let challenge = TransactionOutput::build_metadata_signature_challenge(
+            self.version,
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
@@ -232,6 +233,7 @@ impl TransactionOutput {
             Some(partial_nonce) => self.metadata_signature.public_nonce() + partial_nonce,
         };
         TransactionOutput::build_metadata_signature_challenge(
+            self.version,
             &self.script,
             &self.features,
             &self.sender_offset_public_key,
@@ -243,6 +245,7 @@ impl TransactionOutput {
 
     /// Convenience function that calculates the challenge for the metadata commitment signature
     pub fn build_metadata_signature_challenge(
+        version: TransactionOutputVersion,
         script: &TariScript,
         features: &OutputFeatures,
         sender_offset_public_key: &PublicKey,
@@ -250,19 +253,23 @@ impl TransactionOutput {
         commitment: &Commitment,
         covenant: &Covenant,
     ) -> Challenge {
-        Challenge::new()
-            .chain(public_commitment_nonce.to_consensus_bytes())
-            .chain(script.to_consensus_bytes())
-            .chain(features.to_consensus_bytes())
-            .chain(sender_offset_public_key.to_consensus_bytes())
-            .chain(commitment.to_consensus_bytes())
-            .chain(covenant.to_consensus_bytes())
+        match version {
+            TransactionOutputVersion::V0 | TransactionOutputVersion::V1 => ConsensusHashWriter::default()
+                .chain(public_commitment_nonce)
+                .chain(script)
+                .chain(features)
+                .chain(sender_offset_public_key)
+                .chain(commitment)
+                .chain(covenant)
+                .into_digest(),
+        }
     }
 
     // Create commitment signature for the metadata
 
     fn create_metadata_signature(
-        value: &MicroTari,
+        version: TransactionOutputVersion,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -281,6 +288,7 @@ impl TransactionOutput {
         let value = PrivateKey::from(value.as_u64());
         let commitment = PedersenCommitmentFactory::default().commit(spending_key, &value);
         let e = TransactionOutput::build_metadata_signature_challenge(
+            version,
             script,
             output_features,
             sender_offset_public_key,
@@ -304,7 +312,8 @@ impl TransactionOutput {
 
     /// Create partial commitment signature for the metadata, usually done by the receiver
     pub fn create_partial_metadata_signature(
-        value: &MicroTari,
+        version: TransactionOutputVersion,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -313,6 +322,7 @@ impl TransactionOutput {
         covenant: &Covenant,
     ) -> Result<ComSignature, TransactionError> {
         TransactionOutput::create_metadata_signature(
+            version,
             value,
             spending_key,
             script,
@@ -326,7 +336,8 @@ impl TransactionOutput {
 
     /// Create final commitment signature for the metadata, signing with both keys
     pub fn create_final_metadata_signature(
-        value: &MicroTari,
+        version: TransactionOutputVersion,
+        value: MicroTari,
         spending_key: &BlindingFactor,
         script: &TariScript,
         output_features: &OutputFeatures,
@@ -335,6 +346,7 @@ impl TransactionOutput {
     ) -> Result<ComSignature, TransactionError> {
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
         TransactionOutput::create_metadata_signature(
+            version,
             value,
             spending_key,
             script,
@@ -347,12 +359,11 @@ impl TransactionOutput {
     }
 
     pub fn witness_hash(&self) -> Vec<u8> {
-        let mut hasher = HashWriter::new(HashDigest::new());
-        // unwrap: HashWriter is infallible
-        self.proof.consensus_encode(&mut hasher).unwrap();
-        self.metadata_signature.consensus_encode(&mut hasher).unwrap();
-
-        hasher.finalize().to_vec()
+        ConsensusHashWriter::default()
+            .chain(&self.proof)
+            .chain(&self.metadata_signature)
+            .finalize()
+            .to_vec()
     }
 
     pub fn get_metadata_size(&self) -> usize {
@@ -422,5 +433,43 @@ impl PartialOrd for TransactionOutput {
 impl Ord for TransactionOutput {
     fn cmp(&self, other: &Self) -> Ordering {
         self.commitment.cmp(&other.commitment)
+    }
+}
+
+impl ConsensusEncoding for TransactionOutput {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.features.consensus_encode(writer)?;
+        written += self.commitment.consensus_encode(writer)?;
+        written += self.proof.consensus_encode(writer)?;
+        written += self.script.consensus_encode(writer)?;
+        written += self.sender_offset_public_key.consensus_encode(writer)?;
+        written += self.metadata_signature.consensus_encode(writer)?;
+        written += self.covenant.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for TransactionOutput {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = TransactionOutputVersion::consensus_decode(reader)?;
+        let features = OutputFeatures::consensus_decode(reader)?;
+        let commitment = Commitment::consensus_decode(reader)?;
+        let proof = RangeProof::consensus_decode(reader)?;
+        let script = TariScript::consensus_decode(reader)?;
+        let sender_offset_public_key = PublicKey::consensus_decode(reader)?;
+        let metadata_signature = ComSignature::consensus_decode(reader)?;
+        let covenant = Covenant::consensus_decode(reader)?;
+        let output = TransactionOutput::new(
+            version,
+            features,
+            commitment,
+            proof,
+            script,
+            sender_offset_public_key,
+            metadata_signature,
+            covenant,
+        );
+        Ok(output)
     }
 }

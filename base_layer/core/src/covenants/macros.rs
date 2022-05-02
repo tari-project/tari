@@ -77,16 +77,16 @@ macro_rules! __covenant_inner {
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
-    // @covenant(...), ...
-    (@ { $covenant:ident } @covenant($($inner:tt)*), $($tail:tt)*) => {
+    // @covenant_lit(...), ...
+    (@ { $covenant:ident } @covenant_lit($($inner:tt)*), $($tail:tt)*) => {
         let inner = $crate::covenant!($($inner)*);
         $covenant.push_token($crate::covenants::CovenantToken::covenant(inner));
         $crate::__covenant_inner!(@ { $covenant } $($tail)*)
     };
 
-    // @covenant(...)
-    (@ { $covenant:ident } @covenant($($inner:tt)*) $(,)?) => {
-        $crate::__covenant_inner!(@ { $covenant } @covenant($($inner)*),)
+    // @covenant_lit(...)
+    (@ { $covenant:ident } @covenant_lit($($inner:tt)*) $(,)?) => {
+        $crate::__covenant_inner!(@ { $covenant } @covenant_lit($($inner)*),)
     };
 
     // @arg(expr1, expr2, ...), ...
@@ -126,7 +126,7 @@ macro_rules! __covenant_inner {
 #[cfg(test)]
 mod test {
     use tari_common_types::types::PublicKey;
-    use tari_crypto::script;
+    use tari_script::script;
     use tari_test_utils::unpack_enum;
     use tari_utilities::hex::{from_hex, Hex};
 
@@ -200,7 +200,7 @@ mod test {
     #[test]
     fn covenant() {
         let bytes = vec![0xba, 0xda, 0x55];
-        let covenant = covenant!(field_eq(@field::covenant, @covenant(and(field_eq(@field::features_unique_id, @bytes(bytes), identity())))));
+        let covenant = covenant!(field_eq(@field::covenant, @covenant_lit(and(field_eq(@field::features_unique_id, @bytes(bytes), identity())))));
         assert_eq!(covenant.to_bytes().to_hex(), "330703050a213307070903bada5520");
     }
 

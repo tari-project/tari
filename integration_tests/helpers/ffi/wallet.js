@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const InterfaceFFI = require("./ffiInterface");
 const PublicKey = require("./publicKey");
 const CompletedTransaction = require("./completedTransaction");
@@ -10,7 +13,8 @@ const Contacts = require("./contacts");
 const Balance = require("./balance");
 
 const utf8 = require("utf8");
-const LivenessData = require("./liveness_data");
+const LivenessData = require("./livenessData");
+const TransactionSendStatus = require("./transactionSendStatus");
 
 class WalletBalance {
   available = 0;
@@ -47,8 +51,7 @@ class Wallet {
   callback_transaction_mined_unconfirmed;
   callback_faux_transaction_confirmed;
   callback_faux_transaction_unconfirmed;
-  callback_direct_send_result;
-  callback_store_and_forward_send_result;
+  callback_transaction_send_result;
   callback_transaction_cancellation;
   callback_contacts_liveness_data_updated;
   callback_balance_updated;
@@ -112,7 +115,8 @@ class Wallet {
     passphrase,
     seed_words_ptr,
     num_rolling_log_file = 50,
-    log_size_bytes = 102400
+    log_size_bytes = 102400,
+    network = "localnet"
   ) {
     //region Callbacks
     this.callback_received_transaction =
@@ -145,11 +149,9 @@ class Wallet {
       InterfaceFFI.createCallbackFauxTransactionUnconfirmed(
         this.onFauxTransactionUnconfirmed
       );
-    this.callback_direct_send_result =
-      InterfaceFFI.createCallbackDirectSendResult(this.onDirectSendResult);
-    this.callback_store_and_forward_send_result =
-      InterfaceFFI.createCallbackStoreAndForwardSendResult(
-        this.onStoreAndForwardSendResult
+    this.callback_transaction_send_result =
+      InterfaceFFI.createCallbackTransactionSendResult(
+        this.onTransactionSendResult
       );
     this.callback_transaction_cancellation =
       InterfaceFFI.createCallbackTransactionCancellation(
@@ -201,6 +203,10 @@ class Wallet {
     if (seed_words_ptr) {
       words = seed_words_ptr;
     }
+    if (!network) {
+      network = "localnet";
+    }
+
     this.log_path = log_path;
     this.ptr = InterfaceFFI.walletCreate(
       comms_config_ptr,
@@ -209,6 +215,7 @@ class Wallet {
       log_size_bytes,
       sanitize,
       words,
+      utf8.encode(network),
       this.callback_received_transaction,
       this.callback_received_transaction_reply,
       this.callback_received_finalized_transaction,
@@ -217,8 +224,7 @@ class Wallet {
       this.callback_transaction_mined_unconfirmed,
       this.callback_faux_transaction_confirmed,
       this.callback_faux_transaction_unconfirmed,
-      this.callback_direct_send_result,
-      this.callback_store_and_forward_send_result,
+      this.callback_transaction_send_result,
       this.callback_transaction_cancellation,
       this.callback_txo_validation_complete,
       this.callback_contacts_liveness_data_updated,
@@ -320,16 +326,13 @@ class Wallet {
     this.transactionCancelled += 1;
   };
 
-  onDirectSendResult = (id, success) => {
+  onTransactionSendResult = (id, ptr) => {
+    let status = new TransactionSendStatus(ptr);
+    status.pointerAssign(ptr);
     console.log(
-      `${new Date().toISOString()} callbackDirectSendResult(${id},${success})`
+      `${new Date().toISOString()} callbackTransactionSendResult(${id}: (${status.getSendStatus()}))`
     );
-  };
-
-  onStoreAndForwardSendResult = (id, success) => {
-    console.log(
-      `${new Date().toISOString()} callbackStoreAndForwardSendResult(${id},${success})`
-    );
+    status.destroy();
   };
 
   onTxoValidationComplete = (request_key, validation_results) => {
@@ -560,8 +563,7 @@ class Wallet {
         this.callback_transaction_mined_unconfirmed =
         this.callback_faux_transaction_confirmed =
         this.callback_faux_transaction_unconfirmed =
-        this.callback_direct_send_result =
-        this.callback_store_and_forward_send_result =
+        this.callback_transaction_send_result =
         this.callback_transaction_cancellation =
         this.callback_txo_validation_complete =
         this.callback_contacts_liveness_data_updated =

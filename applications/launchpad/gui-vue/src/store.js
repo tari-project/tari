@@ -1,21 +1,27 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 import {createStore} from 'vuex'
 import {invoke} from '@tauri-apps/api/tauri'
 import {listen} from "@tauri-apps/api/event";
 import CBuffer from 'CBuffer';
+import {cacheDir, sep} from "@tauri-apps/api/path";
 
-const settings = {
-    walletPassword: "tari",
-    moneroMiningAddress: "",
-    numMiningThreads: 1,
-    tariNetwork: "dibbler",
-    rootFolder: "/tmp/dibbler",
-    dockerRegistry: "quay.io/tarilabs",
-    dockerTag: "latest",
-    monerodUrl: "http://monero-stagenet.exan.tech:38081",
-    moneroUseAuth: false,
-    moneroUsername: "",
-    moneroPassword: ""
-};
+async function createDefaultSettings() {
+    return {
+        walletPassword: "tari",
+        moneroMiningAddress: "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48",
+        numMiningThreads: 1,
+        tariNetwork: "dibbler",
+        rootFolder: await cacheDir() + "tari" + sep + "tmp" + sep + "dibbler",
+        dockerRegistry: "quay.io/tarilabs",
+        dockerTag: "latest",
+        monerodUrl: "http://monero-stagenet.exan.tech:38081",
+        moneroUseAuth: false,
+        moneroUsername: "",
+        moneroPassword: ""
+    };
+}
 
 function handleSystemEvent(commit, payload) {
     if (payload.Type === "container") {
@@ -23,16 +29,19 @@ function handleSystemEvent(commit, payload) {
     }
 }
 
-export const store = createStore({
-    state() {
-        return {
-            settings,
-            subscribedToEvents: false,
-            unsubscribeSystemEvents: () => {},
-            containers: {}
-        }
-    },
+const store = createStore({
+
+state:  {
+    settings: {},
+    subscribedToEvents: false,
+    unsubscribeSystemEvents: () => {},
+    containers: {}
+},
     mutations: {
+        init(state, settings) {
+            // work around to get async settings from tauri
+            state.settings = settings;
+        },
         setNetwork(state, network) {
             state.settings.tariNetwork = network;
         },
@@ -147,6 +156,9 @@ export const store = createStore({
         },
     },
     actions: {
+        async initState({commit})  {
+            commit("init", await createDefaultSettings());
+        },
         async startContainer({state, commit}, type) {
             console.log(`Starting container ${type}`);
             try {
@@ -161,7 +173,7 @@ export const store = createStore({
                     commit('unsubscribeSystemEvents', eventsUnsubscribe);
                 }
 
-                const settings = Object.assign({}, this.state.settings);
+                const settings = Object.assign({}, state.settings);
                 console.log(settings);
                 let record = await invoke("start_service", {serviceName: type, settings});
                 console.log(`Got ${JSON.stringify(record)} as response`)
@@ -185,7 +197,7 @@ export const store = createStore({
         async stopContainer({state}, type) {
             console.log(`Stopping container ${type}`);
             try {
-                await invoke("stop_service", {serviceName: type, settings});
+                await invoke("stop_service", {serviceName: type, settings: state.settings});
                 let service = state.containers[type];
                 if (service.listeners) {
                     if (typeof (service.listeners.statsUnsubscribe) === 'function') {

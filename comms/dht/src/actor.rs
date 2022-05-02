@@ -63,6 +63,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::dht::actor";
 
+/// Error type for the DHT actor
 #[derive(Debug, Error)]
 pub enum DhtActorError {
     #[error("MPSC channel is disconnected")]
@@ -93,6 +94,7 @@ impl<T> From<mpsc::error::SendError<T>> for DhtActorError {
     }
 }
 
+/// Request type for the DHT actor
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum DhtRequest {
@@ -118,6 +120,7 @@ pub enum DhtRequest {
 
 impl Display for DhtRequest {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use DhtRequest::*;
         match self {
             SendJoin => write!(f, "SendJoin"),
@@ -142,20 +145,23 @@ impl Display for DhtRequest {
     }
 }
 
+/// DHT actor requester
 #[derive(Clone)]
 pub struct DhtRequester {
     sender: mpsc::Sender<DhtRequest>,
 }
 
 impl DhtRequester {
-    pub fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
+    pub(crate) fn new(sender: mpsc::Sender<DhtRequest>) -> Self {
         Self { sender }
     }
 
+    /// Send a Join message to the network
     pub async fn send_join(&mut self) -> Result<(), DhtActorError> {
         self.sender.send(DhtRequest::SendJoin).await.map_err(Into::into)
     }
 
+    /// Select peers by [BroadcastStrategy](crate::broadcast_strategy::BroadcastStrategy]
     pub async fn select_peers(&mut self, broadcast_strategy: BroadcastStrategy) -> Result<Vec<NodeId>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -164,6 +170,7 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
+    /// Adds a message hash to the dedup cache.
     pub async fn add_message_to_dedup_cache(
         &mut self,
         message_hash: Vec<u8>,
@@ -181,6 +188,7 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
+    /// Gets the number of hits for a given message hash.
     pub async fn get_message_cache_hit_count(&mut self, message_hash: Vec<u8>) -> Result<u32, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
@@ -190,6 +198,7 @@ impl DhtRequester {
         reply_rx.await.map_err(|_| DhtActorError::ReplyCanceled)
     }
 
+    /// Returns the deserialized metadata value for the given key
     pub async fn get_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey) -> Result<Option<T>, DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender.send(DhtRequest::GetMetadata(key, reply_tx)).await?;
@@ -201,6 +210,7 @@ impl DhtRequester {
         }
     }
 
+    /// Sets the metadata value for the given key
     pub async fn set_metadata<T: MessageFormat>(&mut self, key: DhtMetadataKey, value: T) -> Result<(), DhtActorError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         let bytes = value.to_binary().map_err(DhtActorError::FailedToSerializeValue)?;
@@ -222,6 +232,7 @@ impl DhtRequester {
     }
 }
 
+/// DHT actor. Responsible for executing DHT-related tasks.
 pub struct DhtActor {
     node_identity: Arc<NodeIdentity>,
     peer_manager: Arc<PeerManager>,
@@ -236,7 +247,8 @@ pub struct DhtActor {
 }
 
 impl DhtActor {
-    pub fn new(
+    /// Create a new DhtActor
+    pub(crate) fn new(
         config: Arc<DhtConfig>,
         conn: DbConnection,
         node_identity: Arc<NodeIdentity>,
@@ -251,7 +263,7 @@ impl DhtActor {
             target: LOG_TARGET,
             "Message dedup cache will be trimmed to capacity every {}s",
             config.dedup_cache_trim_interval.as_secs() as f64 +
-                config.dedup_cache_trim_interval.subsec_nanos() as f64 * 1e-9
+                f64::from(config.dedup_cache_trim_interval.subsec_nanos()) * 1e-9
         );
         Self {
             msg_hash_dedup_cache: DedupCacheDatabase::new(conn.clone(), config.dedup_cache_capacity),
@@ -267,6 +279,7 @@ impl DhtActor {
         }
     }
 
+    /// Spawns the DHT actor on a new task.
     pub fn spawn(self) {
         task::spawn(async move {
             if let Err(err) = self.run().await {
@@ -325,13 +338,14 @@ impl DhtActor {
     fn mark_shutdown_time(&self) {
         if let Err(err) = self
             .database
-            .set_metadata_value(DhtMetadataKey::OfflineTimestamp, Utc::now())
+            .set_metadata_value(DhtMetadataKey::OfflineTimestamp, &Utc::now())
         {
             warn!(target: LOG_TARGET, "Failed to mark offline time: {:?}", err);
         }
     }
 
     fn request_handler(&mut self, request: DhtRequest) -> BoxFuture<'static, Result<(), DhtActorError>> {
+        #[allow(clippy::enum_glob_use)]
         use DhtRequest::*;
         match request {
             SendJoin => {
@@ -346,7 +360,7 @@ impl DhtActor {
             } => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    match msg_hash_cache.add_body_hash(message_hash, received_from) {
+                    match msg_hash_cache.add_msg_hash(&message_hash, &received_from) {
                         Ok(hit_count) => {
                             let _ = reply_tx.send(hit_count);
                         },
@@ -364,7 +378,7 @@ impl DhtActor {
             GetMsgHashHitCount(hash, reply_tx) => {
                 let msg_hash_cache = self.msg_hash_dedup_cache.clone();
                 Box::pin(async move {
-                    let hit_count = msg_hash_cache.get_hit_count(hash)?;
+                    let hit_count = msg_hash_cache.get_hit_count(&hash)?;
                     let _ = reply_tx.send(hit_count);
                     Ok(())
                 })
@@ -389,7 +403,7 @@ impl DhtActor {
             GetMetadata(key, reply_tx) => {
                 let db = self.database.clone();
                 Box::pin(async move {
-                    let _ = reply_tx.send(db.get_metadata_value_bytes(key).map_err(Into::into));
+                    let _result = reply_tx.send(db.get_metadata_value_bytes(key).map_err(Into::into));
                     Ok(())
                 })
             },
@@ -399,11 +413,11 @@ impl DhtActor {
                     match db.set_metadata_value_bytes(key, value) {
                         Ok(_) => {
                             debug!(target: LOG_TARGET, "Dht metadata '{}' set", key);
-                            let _ = reply_tx.send(Ok(()));
+                            let _result = reply_tx.send(Ok(()));
                         },
                         Err(err) => {
                             warn!(target: LOG_TARGET, "Unable to set metadata because {:?}", err);
-                            let _ = reply_tx.send(Err(err.into()));
+                            let _result = reply_tx.send(Err(err.into()));
                         },
                     }
                     Ok(())
@@ -416,7 +430,7 @@ impl DhtActor {
                 Box::pin(async move {
                     let mut task = DiscoveryDialTask::new(connectivity, peer_manager, discovery);
                     let result = task.run(public_key).await;
-                    let _ = reply.send(result);
+                    let _result = reply.send(result);
                     Ok(())
                 })
             },
@@ -454,6 +468,7 @@ impl DhtActor {
         mut connectivity: ConnectivityRequester,
         broadcast_strategy: BroadcastStrategy,
     ) -> Result<Vec<NodeId>, DhtActorError> {
+        #[allow(clippy::enum_glob_use)]
         use BroadcastStrategy::*;
         match broadcast_strategy {
             DirectNodeId(node_id) => {
@@ -793,7 +808,7 @@ impl DiscoveryDialTask {
     async fn discover_peer(&mut self, public_key: CommsPublicKey) -> Result<PeerConnection, DhtActorError> {
         let node_id = NodeId::from_public_key(&public_key);
         let timer = Instant::now();
-        let _ = self
+        let _result = self
             .discovery
             .discover_peer(public_key.clone(), public_key.into())
             .await?;
@@ -810,7 +825,7 @@ impl DiscoveryDialTask {
 
 #[cfg(test)]
 mod test {
-    use std::time::Duration;
+    use std::{convert::TryFrom, time::Duration};
 
     use chrono::{DateTime, Utc};
     use tari_comms::{
@@ -952,7 +967,7 @@ mod test {
             let shutdown = Shutdown::new();
             let (mut dht, _, connectivity_mock, discovery_mock, _) = setup(shutdown.to_signal()).await;
             let peer = make_peer();
-            let _ = dht.dial_or_discover_peer(peer.public_key.clone()).await.unwrap_err();
+            let _result = dht.dial_or_discover_peer(peer.public_key.clone()).await.unwrap_err();
             assert_eq!(discovery_mock.call_count(), 1);
             assert_eq!(connectivity_mock.call_count().await, 0);
         }
@@ -1032,13 +1047,15 @@ mod test {
         );
 
         // Create signatures for double the dedup cache capacity
-        let signatures = (0..(capacity * 2)).map(|i| vec![1u8, 2, i as u8]).collect::<Vec<_>>();
+        let signatures = (0..(capacity * 2))
+            .map(|i| vec![1u8, 2, u8::try_from(i).unwrap()])
+            .collect::<Vec<_>>();
 
         // Pre-populate the dedup cache; everything should be accepted because the cleanup ticker has not run yet
         for key in &signatures {
             let num_hits = actor
                 .msg_hash_dedup_cache
-                .add_body_hash(key.clone(), CommsPublicKey::default())
+                .add_msg_hash(key, &CommsPublicKey::default())
                 .unwrap();
             assert_eq!(num_hits, 1);
         }
@@ -1046,7 +1063,7 @@ mod test {
         for key in &signatures {
             let num_hits = actor
                 .msg_hash_dedup_cache
-                .add_body_hash(key.clone(), CommsPublicKey::default())
+                .add_msg_hash(key, &CommsPublicKey::default())
                 .unwrap();
             assert_eq!(num_hits, 2);
         }

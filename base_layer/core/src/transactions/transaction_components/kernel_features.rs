@@ -20,11 +20,14 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use std::io::{Error, Write};
+use std::{
+    io,
+    io::{Error, Read, Write},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::consensus::{ConsensusEncoding, ConsensusEncodingSized};
+use crate::consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusEncodingSized};
 
 bitflags! {
     /// Options for a kernel's structure or use.
@@ -52,5 +55,35 @@ impl ConsensusEncoding for KernelFeatures {
 impl ConsensusEncodingSized for KernelFeatures {
     fn consensus_encode_exact_size(&self) -> usize {
         1
+    }
+}
+
+impl ConsensusDecoding for KernelFeatures {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let mut buf = [0u8; 1];
+        reader.read_exact(&mut buf)?;
+        Ok(KernelFeatures { bits: buf[0] })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::io::Cursor;
+
+    use super::*;
+
+    #[test]
+    fn test_consensus() {
+        let mut buffer = Cursor::new(vec![0; KernelFeatures::create_coinbase().consensus_encode_exact_size()]);
+        assert_eq!(
+            KernelFeatures::create_coinbase().consensus_encode(&mut buffer).unwrap(),
+            KernelFeatures::create_coinbase().consensus_encode_exact_size()
+        );
+        // Reset the buffer to original position, we are going to read.
+        buffer.set_position(0);
+        assert_eq!(
+            KernelFeatures::consensus_decode(&mut buffer).unwrap(),
+            KernelFeatures::create_coinbase()
+        );
     }
 }

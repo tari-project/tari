@@ -21,17 +21,21 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
+    convert::TryFrom,
     fmt,
     fmt::{Display, Formatter},
     str::FromStr,
 };
+
+use serde::{Deserialize, Serialize};
 
 use crate::ConfigurationError;
 
 /// Represents the available Tari p2p networks. Only nodes with matching byte values will be able to connect, so these
 /// should never be changed once released.
 #[repr(u8)]
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum Network {
     MainNet = 0x00,
     LocalNet = 0x10,
@@ -47,7 +51,8 @@ impl Network {
         self as u8
     }
 
-    pub const fn as_str(self) -> &'static str {
+    pub const fn as_key_str(self) -> &'static str {
+        #[allow(clippy::enum_glob_use)]
         use Network::*;
         match self {
             MainNet => "mainnet",
@@ -71,6 +76,7 @@ impl FromStr for Network {
     type Err = ConfigurationError;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
+        #[allow(clippy::enum_glob_use)]
         use Network::*;
         match value.to_lowercase().as_str() {
             "ridcully" => Ok(Ridcully),
@@ -88,9 +94,22 @@ impl FromStr for Network {
         }
     }
 }
+impl TryFrom<String> for Network {
+    type Error = ConfigurationError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::from_str(value.as_str())
+    }
+}
+
+impl From<Network> for String {
+    fn from(n: Network) -> Self {
+        n.to_string()
+    }
+}
 
 impl Display for Network {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(self.as_key_str())
     }
 }

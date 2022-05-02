@@ -36,9 +36,10 @@ use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     ristretto::pedersen::PedersenCommitmentFactory,
-    script::{ExecutionStack, TariScript},
-    tari_utilities::fixed_set::FixedSet,
+    tari_utilities::{fixed_set::FixedSet, hex::to_hex},
 };
+use tari_script::{ExecutionStack, TariScript};
+use tari_utilities::ByteArray;
 
 use crate::{
     consensus::{ConsensusConstants, ConsensusEncodingSized},
@@ -51,6 +52,7 @@ use crate::{
             OutputFeatures,
             TransactionInput,
             TransactionOutput,
+            TransactionOutputVersion,
             UnblindedOutput,
             MAX_TRANSACTION_INPUTS,
             MAX_TRANSACTION_OUTPUTS,
@@ -117,7 +119,7 @@ impl Debug for BuildError {
 }
 
 impl SenderTransactionInitializer {
-    pub fn new(num_recipients: usize, consensus_constants: ConsensusConstants) -> Self {
+    pub fn new(num_recipients: usize, consensus_constants: &ConsensusConstants) -> Self {
         Self {
             fee: Fee::new(*consensus_constants.transaction_weight()),
             num_recipients,
@@ -214,7 +216,19 @@ impl SenderTransactionInitializer {
     ) -> Result<&mut Self, BuildError> {
         let commitment_factory = PedersenCommitmentFactory::default();
         let commitment = commitment_factory.commit(&output.spending_key, &PrivateKey::from(output.value));
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, self.rewind_data.as_ref());
+        if recovery_byte != output.features.recovery_byte {
+            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
+            error!(
+                target: LOG_TARGET,
+                "Recovery byte set incorrectly (with output) - expected {}, got {} for commitment {}",
+                recovery_byte,
+                output.features.recovery_byte,
+                to_hex(commitment.as_bytes()),
+            );
+        }
         let e = TransactionOutput::build_metadata_signature_challenge(
+            output.version,
             &output.script,
             &output.features,
             &output.sender_offset_public_key,
@@ -227,7 +241,7 @@ impl SenderTransactionInitializer {
             &e.finalize_fixed(),
             &commitment_factory,
         ) {
-            self.clone().build_err(&*format!(
+            return self.clone().build_err(&*format!(
                 "Metadata signature not valid, cannot add output: {:?}",
                 output
             ))?;
@@ -313,7 +327,10 @@ impl SenderTransactionInitializer {
     /// Tries to make a change output with the given transaction parameters and add it to the set of outputs. The total
     /// fee, including the additional change output (if any) is returned along with the amount of change.
     /// The change output **always has default output features**.
-    fn add_change_if_required(&mut self) -> Result<(MicroTari, MicroTari, Option<UnblindedOutput>), String> {
+    fn add_change_if_required(
+        &mut self,
+        factories: &CryptoFactories,
+    ) -> Result<(MicroTari, MicroTari, Option<UnblindedOutput>), String> {
         // The number of outputs excluding a possible residual change output
         let num_outputs = self.sender_custom_outputs.len() + self.num_recipients;
         let num_inputs = self.inputs.len();
@@ -335,7 +352,7 @@ impl SenderTransactionInitializer {
             self.fee()
                 .calculate(fee_per_gram, 1, num_inputs, num_outputs, metadata_size_without_change);
 
-        let output_features = self.get_recipient_output_features();
+        let mut output_features = self.get_recipient_output_features();
         let change_metadata_size = self
             .change_script
             .as_ref()
@@ -373,9 +390,12 @@ impl SenderTransactionInitializer {
                             .change_secret
                             .as_ref()
                             .ok_or("Change spending key was not provided")?;
+                        let commitment = factories.commitment.commit_value(&change_key.clone(), v.as_u64());
+                        output_features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
                         let metadata_signature = TransactionOutput::create_final_metadata_signature(
-                            &v,
-                            &change_key.clone(),
+                            TransactionOutputVersion::get_current_version(),
+                            v,
+                            change_key,
                             &change_script,
                             &output_features,
                             &change_sender_offset_private_key,
@@ -481,7 +501,7 @@ impl SenderTransactionInitializer {
             return self.build_err("Too many inputs in transaction");
         }
         // Calculate the fee based on whether we need to add a residual change output or not
-        let (total_fee, change, change_output) = match self.add_change_if_required() {
+        let (total_fee, change, change_output) = match self.add_change_if_required(factories) {
             Ok((fee, change, output)) => (fee, change, output),
             Err(e) => return self.build_err(&e),
         };
@@ -499,10 +519,14 @@ impl SenderTransactionInitializer {
             .sender_custom_outputs
             .iter()
             .map(|o| {
+                let commitment = factories.commitment.commit_value(&o.spending_key, o.value.as_u64());
+                let mut uo = o.clone();
+                uo.features.update_recovery_byte(&commitment, self.rewind_data.as_ref());
+
                 if let Some(rewind_data) = self.rewind_data.as_ref() {
-                    o.as_rewindable_transaction_output(factories, rewind_data, None)
+                    uo.as_rewindable_transaction_output(factories, rewind_data, None)
                 } else {
-                    o.as_transaction_output(factories)
+                    uo.as_transaction_output(factories)
                 }
             })
             .collect::<Result<Vec<TransactionOutput>, _>>()
@@ -551,7 +575,7 @@ impl SenderTransactionInitializer {
         // Calculate the Inputs portion of Gamma so we don't have to store the individual script private keys in
         // RawTransactionInfo while we wait for the recipients reply
         let mut gamma = PrivateKey::default();
-        for uo in self.unblinded_inputs.iter() {
+        for uo in &self.unblinded_inputs {
             gamma = gamma + uo.script_private_key.clone();
         }
 
@@ -560,7 +584,7 @@ impl SenderTransactionInitializer {
                 .build_err("There should be the same number of sender added outputs as script offset private keys");
         }
 
-        for sender_offset_private_key in self.sender_offset_private_keys.iter() {
+        for sender_offset_private_key in &self.sender_offset_private_keys {
             gamma = gamma - sender_offset_private_key.clone();
         }
 
@@ -660,12 +684,8 @@ impl SenderTransactionInitializer {
 mod test {
     use rand::rngs::OsRng;
     use tari_common_types::types::PrivateKey;
-    use tari_crypto::{
-        common::Blake256,
-        keys::SecretKey,
-        script,
-        script::{ExecutionStack, TariScript},
-    };
+    use tari_crypto::{common::Blake256, keys::SecretKey};
+    use tari_script::{script, ExecutionStack, TariScript};
 
     use crate::{
         covenants::Covenant,
@@ -691,7 +711,7 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
         // Start the builder
-        let builder = SenderTransactionInitializer::new(0, create_consensus_constants(0));
+        let builder = SenderTransactionInitializer::new(0, &create_consensus_constants(0));
         let err = builder.build::<Blake256>(&factories, None, u64::MAX).unwrap_err();
         let script = script!(Nop);
         // We should have a bunch of fields missing still, but we can recover and continue
@@ -708,7 +728,7 @@ mod test {
             .with_private_nonce(p.nonce.clone());
         builder
             .with_output(
-                create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(100)),
+                create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(100)),
                 PrivateKey::random(&mut OsRng),
             )
             .unwrap();
@@ -771,11 +791,11 @@ mod test {
         let output = create_unblinded_output(
             TariScript::default(),
             OutputFeatures::default(),
-            p.clone(),
+            &p,
             MicroTari(5000) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -826,7 +846,7 @@ mod test {
             ..Default::default()
         });
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -857,15 +877,10 @@ mod test {
         let factories = CryptoFactories::default();
         let p = TestParams::new();
 
-        let output = create_unblinded_output(
-            TariScript::default(),
-            OutputFeatures::default(),
-            p.clone(),
-            MicroTari(500),
-        );
+        let output = create_unblinded_output(TariScript::default(), OutputFeatures::default(), &p, MicroTari(500));
         let constants = create_consensus_constants(0);
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -874,7 +889,7 @@ mod test {
             .unwrap()
             .with_fee_per_gram(MicroTari(2));
 
-        for _ in 0..MAX_TRANSACTION_INPUTS + 1 {
+        for _ in 0..=MAX_TRANSACTION_INPUTS {
             let (utxo, input) = create_test_input(MicroTari(50), 0, &factories.commitment);
             builder.with_input(utxo, input);
         }
@@ -892,10 +907,10 @@ mod test {
             .calculate(MicroTari(1), 1, 1, 1, p.get_size_for_default_metadata(1));
         let (utxo, input) = create_test_input(500 * uT + tx_fee, 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(500));
+        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(500));
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -925,10 +940,10 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(400), 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(400));
+        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(400));
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(0, constants);
+        let mut builder = SenderTransactionInitializer::new(0, &constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -961,10 +976,10 @@ mod test {
         let p = TestParams::new();
         let (utxo, input) = create_test_input(MicroTari(100_000), 0, &factories.commitment);
         let script = script!(Nop);
-        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), p.clone(), MicroTari(15000));
+        let output = create_unblinded_output(script.clone(), OutputFeatures::default(), &p, MicroTari(15000));
         // Start the builder
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(2, constants);
+        let mut builder = SenderTransactionInitializer::new(2, &constants);
         builder
             .with_lock_height(0)
             .with_offset(p.offset)
@@ -1023,11 +1038,11 @@ mod test {
         let output = create_unblinded_output(
             script.clone(),
             OutputFeatures::default(),
-            p.clone(),
+            &p,
             MicroTari(1500) - expected_fee,
         );
         // Start the builder
-        let mut builder = SenderTransactionInitializer::new(1, constants);
+        let mut builder = SenderTransactionInitializer::new(1, &constants);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)
@@ -1073,14 +1088,14 @@ mod test {
         let output = create_unblinded_output(
             script.clone(),
             OutputFeatures::default(),
-            p.clone(),
+            &p,
             (1u64.pow(32) + 1u64).into(),
         );
         // Start the builder
         let (utxo1, input1) = create_test_input((2u64.pow(32) + 20000u64).into(), 0, &factories.commitment);
         let fee_per_gram = MicroTari(6);
         let constants = create_consensus_constants(0);
-        let mut builder = SenderTransactionInitializer::new(1, constants);
+        let mut builder = SenderTransactionInitializer::new(1, &constants);
         builder
             .with_lock_height(1234)
             .with_offset(p.offset)

@@ -21,7 +21,6 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 use std::{
-    convert::TryFrom,
     fs::File,
     io::{LineWriter, Write},
     str::FromStr,
@@ -34,7 +33,6 @@ use futures::FutureExt;
 use log::*;
 use sha2::Sha256;
 use strum_macros::{Display, EnumIter, EnumString};
-use tari_common::GlobalConfig;
 use tari_common_types::{array::copy_into_fixed_array, emoji::EmojiId, transaction::TxId, types::PublicKey};
 use tari_comms::{
     connectivity::{ConnectivityEvent, ConnectivityRequester},
@@ -46,18 +44,15 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari, Tari},
     transaction_components::{TransactionOutput, UnblindedOutput},
 };
-use tari_crypto::{
-    keys::PublicKey as PublicKeyTrait,
-    ristretto::pedersen::PedersenCommitmentFactory,
-    tari_utilities::{ByteArray, Hashable},
-};
-use tari_utilities::hex::Hex;
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, ristretto::pedersen::PedersenCommitmentFactory};
+use tari_utilities::{hex::Hex, ByteArray, Hashable};
 use tari_wallet::{
     assets::KEY_MANAGER_ASSET_BRANCH,
     error::WalletError,
     key_manager_service::KeyManagerInterface,
     output_manager_service::handle::OutputManagerHandle,
     transaction_service::handle::{TransactionEvent, TransactionServiceHandle},
+    WalletConfig,
     WalletSqlite,
 };
 use tokio::{
@@ -100,7 +95,7 @@ pub enum WalletCommand {
     RevalidateWalletDb,
 }
 
-#[derive(Debug, EnumString, PartialEq, Clone)]
+#[derive(Debug, EnumString, PartialEq, Clone, Copy)]
 pub enum TransactionStage {
     Initiated,
     DirectSendOrSaf,
@@ -108,14 +103,14 @@ pub enum TransactionStage {
     Broadcast,
     MinedUnconfirmed,
     Mined,
-    Timedout,
+    TimedOut,
 }
 
 #[derive(Debug)]
 pub struct SentTransaction {}
 
 fn get_transaction_parameters(args: Vec<ParsedArgument>) -> Result<(MicroTari, PublicKey, String), CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::{Amount, PublicKey, Text};
     let amount = match args[0].clone() {
         Amount(mtari) => Ok(mtari),
         _ => Err(CommandError::Argument),
@@ -137,7 +132,7 @@ fn get_transaction_parameters(args: Vec<ParsedArgument>) -> Result<(MicroTari, P
 fn get_init_sha_atomic_swap_parameters(
     args: Vec<ParsedArgument>,
 ) -> Result<(MicroTari, PublicKey, String), CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::{Amount, PublicKey, Text};
     let amount = match args[0].clone() {
         Amount(mtari) => Ok(mtari),
         _ => Err(CommandError::Argument),
@@ -190,7 +185,7 @@ pub async fn finalise_sha_atomic_swap(
     mut transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
 ) -> Result<TxId, CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::{Hash, PublicKey};
     let output = match args[0].clone() {
         Hash(output) => Ok(output),
         _ => Err(CommandError::Argument),
@@ -215,7 +210,7 @@ pub async fn claim_htlc_refund(
     mut transaction_service: TransactionServiceHandle,
     args: Vec<ParsedArgument>,
 ) -> Result<TxId, CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::Hash;
     let output = match args[0].clone() {
         Hash(output) => Ok(output),
         _ => Err(CommandError::Argument),
@@ -248,7 +243,7 @@ pub async fn coin_split(
     output_service: &mut OutputManagerHandle,
     transaction_service: &mut TransactionServiceHandle,
 ) -> Result<TxId, CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::{Amount, Int};
     let amount_per_split = match args[0] {
         Amount(s) => Ok(s),
         _ => Err(CommandError::Argument),
@@ -323,7 +318,7 @@ pub async fn discover_peer(
     mut dht_service: DhtDiscoveryRequester,
     args: Vec<ParsedArgument>,
 ) -> Result<(), CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::PublicKey;
     let dest_public_key = match args[0].clone() {
         PublicKey(key) => Ok(key),
         _ => Err(CommandError::Argument),
@@ -355,7 +350,7 @@ pub async fn make_it_rain(
     fee_per_gram: u64,
     args: Vec<ParsedArgument>,
 ) -> Result<(), CommandError> {
-    use ParsedArgument::*;
+    use ParsedArgument::{Amount, Date, Float, Int, Negotiated, PublicKey, Text};
 
     let txps = match args[0].clone() {
         Float(r) => Ok(r),
@@ -549,24 +544,11 @@ pub async fn monitor_transactions(
     loop {
         match event_stream.recv().await {
             Ok(event) => match &*event {
-                TransactionEvent::TransactionDirectSendResult(id, success) if tx_ids.contains(id) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "tx direct send event for tx_id: {}, success: {}", *id, success
-                    );
-                    if wait_stage == TransactionStage::DirectSendOrSaf {
-                        results.push(SentTransaction {});
-                        if results.len() == tx_ids.len() {
-                            break;
-                        }
-                    }
-                },
-                TransactionEvent::TransactionStoreForwardSendResult(id, success) if tx_ids.contains(id) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "tx store and forward event for tx_id: {}, success: {}", *id, success
-                    );
-                    if wait_stage == TransactionStage::DirectSendOrSaf {
+                TransactionEvent::TransactionSendResult(id, status) if tx_ids.contains(id) => {
+                    debug!(target: LOG_TARGET, "tx send event for tx_id: {}, {}", *id, status);
+                    if wait_stage == TransactionStage::DirectSendOrSaf &&
+                        (status.direct_send_result || status.store_and_forward_send_result)
+                    {
                         results.push(SentTransaction {});
                         if results.len() == tx_ids.len() {
                             break;
@@ -642,12 +624,12 @@ pub async fn monitor_transactions(
 }
 
 pub async fn command_runner(
+    config: &WalletConfig,
     commands: Vec<ParsedCommand>,
     wallet: WalletSqlite,
-    config: GlobalConfig,
 ) -> Result<(), CommandError> {
-    let wait_stage = TransactionStage::from_str(&config.wallet_command_send_wait_stage)
-        .map_err(|e| CommandError::Config(e.to_string()))?;
+    let wait_stage =
+        TransactionStage::from_str(&config.command_send_wait_stage).map_err(|e| CommandError::Config(e.to_string()))?;
 
     let mut transaction_service = wallet.transaction_service.clone();
     let mut output_service = wallet.output_manager_service.clone();
@@ -660,8 +642,9 @@ pub async fn command_runner(
     println!("==============");
     println!("Command Runner");
     println!("==============");
+
+    #[allow(clippy::enum_glob_use)]
     use WalletCommand::*;
-    let wallet_config = config.wallet_config.clone().unwrap_or_default();
     for (idx, parsed) in commands.into_iter().enumerate() {
         println!("\n{}. {}\n", idx + 1, parsed);
 
@@ -680,18 +663,17 @@ pub async fn command_runner(
                 discover_peer(dht_service.clone(), parsed.args).await?
             },
             SendTari => {
-                let tx_id = send_tari(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
+                let tx_id = send_tari(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
                 debug!(target: LOG_TARGET, "send-tari tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
             SendOneSided => {
-                let tx_id =
-                    send_one_sided(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
+                let tx_id = send_one_sided(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
                 debug!(target: LOG_TARGET, "send-one-sided tx_id {}", tx_id);
                 tx_ids.push(tx_id);
             },
             MakeItRain => {
-                make_it_rain(transaction_service.clone(), wallet_config.fee_per_gram, parsed.args).await?;
+                make_it_rain(transaction_service.clone(), config.fee_per_gram, parsed.args).await?;
             },
             CoinSplit => {
                 let tx_id = coin_split(&parsed.args, &mut output_service, &mut transaction_service.clone()).await?;
@@ -718,6 +700,7 @@ pub async fn command_runner(
                     }
                 } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
                     write_utxos_to_csv_file(utxos, file)?;
+                } else {
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
@@ -732,6 +715,7 @@ pub async fn command_runner(
                     }
                 } else if let ParsedArgument::CSVFileName(file) = parsed.args[1].clone() {
                     write_utxos_to_csv_file(utxos, file)?;
+                } else {
                 }
                 println!("Total number of UTXOs: {}", count);
                 println!("Total value of UTXOs: {}", sum);
@@ -748,7 +732,7 @@ pub async fn command_runner(
                 }
                 if count > 0 {
                     let average = f64::from(sum) / count as f64;
-                    let average = Tari::try_from(average / 1_000_000f64)?;
+                    let average = Tari::from(MicroTari(average.round() as u64));
                     println!("Average value UTXO   : {}", average);
                 }
                 if let Some(max) = values.iter().max() {
@@ -782,12 +766,8 @@ pub async fn command_runner(
                 println!("Custom base node peer cleared from wallet database.");
             },
             InitShaAtomicSwap => {
-                let (tx_id, pre_image, output) = init_sha_atomic_swap(
-                    transaction_service.clone(),
-                    wallet_config.fee_per_gram,
-                    parsed.clone().args,
-                )
-                .await?;
+                let (tx_id, pre_image, output) =
+                    init_sha_atomic_swap(transaction_service.clone(), config.fee_per_gram, parsed.clone().args).await?;
                 debug!(target: LOG_TARGET, "tari HTLC tx_id {}", tx_id);
                 let hash: [u8; 32] = Sha256::digest(pre_image.as_bytes()).into();
                 println!("pre_image hex: {}", pre_image.to_hex());
@@ -820,15 +800,15 @@ pub async fn command_runner(
                 let (tx_id, transaction) = manager
                     .create_registration_transaction(name, public_key, vec![], None, None, vec![])
                     .await?;
-                let _result = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
                 println!("Done!");
             },
             MintTokens => {
                 println!("Minting tokens for asset");
-                let public_key = match parsed.args[0] {
-                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                let public_key = match parsed.args.get(0) {
+                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
                 }?;
 
@@ -856,19 +836,19 @@ pub async fn command_runner(
                         unique_ids.into_iter().map(|id| (id, None)).collect(),
                     )
                     .await?;
-                let _result = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
             CreateInitialCheckpoint => {
                 println!("Creating Initial Checkpoint for Asset");
-                let asset_public_key = match parsed.args[0] {
-                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                let asset_public_key = match parsed.args.get(0) {
+                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
                 }?;
 
-                let merkle_root = match parsed.args[1] {
-                    ParsedArgument::Text(ref root) => {
+                let merkle_root = match parsed.args.get(1) {
+                    Some(ParsedArgument::Text(ref root)) => {
                         let bytes = match &root[0..2] {
                             "0x" => Vec::<u8>::from_hex(&root[2..]).map_err(|_| CommandError::Argument)?,
                             _ => Vec::<u8>::from_hex(root).map_err(|_| CommandError::Argument)?,
@@ -884,13 +864,13 @@ pub async fn command_runner(
                 let (tx_id, transaction) = asset_manager
                     .create_initial_asset_checkpoint(&asset_public_key, merkle_root)
                     .await?;
-                let _result = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
             },
             CreateCommitteeDefinition => {
-                let asset_public_key = match parsed.args[0] {
-                    ParsedArgument::PublicKey(ref key) => Ok(key.clone()),
+                let asset_public_key = match parsed.args.get(0) {
+                    Some(ParsedArgument::PublicKey(ref key)) => Ok(key.clone()),
                     _ => Err(CommandError::Argument),
                 }?;
                 let public_key_hex = asset_public_key.to_hex();
@@ -922,7 +902,7 @@ pub async fn command_runner(
                     .create_committee_definition(&asset_public_key, &committee_public_keys, 0, true)
                     .await?;
 
-                let _result = transaction_service
+                transaction_service
                     .submit_transaction(tx_id, transaction, 0.into(), message)
                     .await?;
                 println!("Done!");
@@ -941,15 +921,20 @@ pub async fn command_runner(
     }
 
     // listen to event stream
-    if !tx_ids.is_empty() {
-        let duration = Duration::from_secs(config.wallet_command_send_wait_timeout);
+    if tx_ids.is_empty() {
+        trace!(
+            target: LOG_TARGET,
+            "Wallet command runner - no transactions to monitor."
+        );
+    } else {
+        let duration = config.command_send_wait_timeout;
         debug!(
             target: LOG_TARGET,
-            "wallet monitor_transactions timeout duration {:?}", duration
+            "wallet monitor_transactions timeout duration {:.2?}", duration
         );
         match timeout(
             duration,
-            monitor_transactions(transaction_service.clone(), tx_ids, wait_stage.clone()),
+            monitor_transactions(transaction_service.clone(), tx_ids, wait_stage),
         )
         .await
         {
@@ -968,11 +953,6 @@ pub async fn command_runner(
                 );
             },
         }
-    } else {
-        trace!(
-            target: LOG_TARGET,
-            "Wallet command runner - no transactions to monitor."
-        );
     }
 
     Ok(())

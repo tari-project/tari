@@ -228,7 +228,7 @@ pub struct TestBlockData {
 /// Generates a set of block headers and unblinded outputs for each header. The `birthday_offset` specifies at which
 /// block in the `num_block` the birthday timestamp will have passed i.e. it occured during the previous block period.
 /// e.g. with `num_blocks` = 10 and `birthday_offset` = 5 the birthday timestamp will occur between block 4 and 5
-fn generate_block_headers_and_utxos(
+async fn generate_block_headers_and_utxos(
     start_height: u64,
     num_blocks: u64,
     birthday_epoch_time: u64,
@@ -253,7 +253,9 @@ fn generate_block_headers_and_utxos(
                 &mut OsRng,
                 MicroTari::from(100 + OsRng.next_u64() % 1000),
                 &factories.commitment,
-            );
+                None,
+            )
+            .await;
             block_outputs.push(uo);
             if only_coinbase {
                 break;
@@ -286,7 +288,7 @@ async fn test_utxo_scanner_recovery() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = (cipher_seed.birthday() - 2) as u64 * 60 * 60 * 24;
+    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
     test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -296,7 +298,7 @@ async fn test_utxo_scanner_recovery() {
         block_headers,
         unblinded_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false);
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
     test_interface
         .rpc_service_state
@@ -318,7 +320,7 @@ async fn test_utxo_scanner_recovery() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -365,7 +367,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = (cipher_seed.birthday() - 2) as u64 * 60 * 60 * 24;
+    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
     test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
 
     test_interface
@@ -383,7 +385,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
         block_headers,
         unblinded_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false);
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
     test_interface
         .rpc_service_state
@@ -405,7 +407,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -427,7 +429,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
 
     tx.send(SYNC_INTERRUPT as usize).await.unwrap();
 
-    let _ = test_interface
+    let _result = test_interface
         .rpc_service_state
         .wait_pop_sync_utxos_by_block_calls(1, Duration::from_secs(30))
         .await
@@ -436,7 +438,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     // Confirm the recovery message and source pub key are the defaults.
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key,
@@ -502,7 +504,7 @@ async fn test_utxo_scanner_recovery_with_restart() {
     // Confirm the recovery message changed using the builder method
     let requests = test_interface2.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key: _,
@@ -524,7 +526,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut test_interface = setup(UtxoScannerMode::Recovery, None, None, None).await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = (cipher_seed.birthday() - 2) as u64 * 60 * 60 * 24;
+    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
     test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -535,7 +537,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         mut block_headers,
         mut unblinded_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false);
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
     test_interface
         .rpc_service_state
@@ -555,7 +557,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     // Adding half the outputs of the blocks to the OMS mock
     let mut db_unblinded_outputs = Vec::new();
-    for (_h, outputs) in unblinded_outputs.iter() {
+    for outputs in unblinded_outputs.values() {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             db_unblinded_outputs.push(dbo);
@@ -572,7 +574,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
 
     tx.send(SYNC_INTERRUPT as usize).await.unwrap();
 
-    let _ = test_interface
+    let _result = test_interface
         .rpc_service_state
         .wait_pop_sync_utxos_by_block_calls(1, Duration::from_secs(30))
         .await
@@ -593,7 +595,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
         block_headers: new_block_headers,
         unblinded_outputs: new_unblinded_outputs,
         utxos_by_block: mut new_utxos_by_block,
-    } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false);
+    } = generate_block_headers_and_utxos(5, 5, birthday_epoch_time + 500, 0, false).await;
 
     block_headers.extend(new_block_headers);
     utxos_by_block.append(&mut new_utxos_by_block);
@@ -622,7 +624,7 @@ async fn test_utxo_scanner_recovery_with_restart_and_reorg() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -689,7 +691,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
     }
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = (cipher_seed.birthday() - 2) as u64 * 60 * 60 * 24;
+    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
     test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -699,7 +701,7 @@ async fn test_utxo_scanner_scanned_block_cache_clearing() {
         block_headers,
         unblinded_outputs: _unblinded_outputs,
         utxos_by_block,
-    } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true);
+    } = generate_block_headers_and_utxos(800, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, true).await;
 
     test_interface
         .rpc_service_state
@@ -783,7 +785,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     .await;
 
     let cipher_seed = CipherSeed::new();
-    let birthday_epoch_time = (cipher_seed.birthday() - 2) as u64 * 60 * 60 * 24;
+    let birthday_epoch_time = u64::from(cipher_seed.birthday() - 2) * 60 * 60 * 24;
     test_interface.wallet_db.set_master_seed(cipher_seed).await.unwrap();
 
     const NUM_BLOCKS: u64 = 11;
@@ -793,7 +795,7 @@ async fn test_utxo_scanner_one_sided_payments() {
         mut block_headers,
         unblinded_outputs,
         mut utxos_by_block,
-    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false);
+    } = generate_block_headers_and_utxos(0, NUM_BLOCKS, birthday_epoch_time, BIRTHDAY_OFFSET, false).await;
 
     test_interface
         .rpc_service_state
@@ -815,7 +817,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut db_unblinded_outputs = Vec::new();
     let mut total_outputs_to_recover = 0;
     let mut total_amount_to_recover = MicroTari::from(0);
-    for (h, outputs) in unblinded_outputs.iter() {
+    for (h, outputs) in &unblinded_outputs {
         for output in outputs.iter().skip(outputs.len() / 2) {
             let dbo = DbUnblindedOutput::from_unblinded_output(output.clone(), &factories, None).unwrap();
             // Only the outputs in blocks after the birthday should be included in the recovered total
@@ -858,7 +860,7 @@ async fn test_utxo_scanner_one_sided_payments() {
 
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key: _,
@@ -878,7 +880,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let mut block_header11 = BlockHeader::new(0);
     block_header11.height = 11;
     block_header11.timestamp = EpochTime::from(block_headers.get(&10).unwrap().timestamp.as_u64() + 1000000u64);
-    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment);
+    let (_ti, uo) = make_input(&mut OsRng, MicroTari::from(666000u64), &factories.commitment, None).await;
 
     let block11 = UtxosByBlock {
         height: NUM_BLOCKS,
@@ -943,7 +945,7 @@ async fn test_utxo_scanner_one_sided_payments() {
     let requests = test_interface.transaction_service_mock_state.drain_requests();
     assert!(!requests.is_empty());
 
-    for req in requests.into_iter() {
+    for req in requests {
         if let TransactionServiceRequest::ImportUtxoWithStatus {
             amount: _,
             source_public_key: _,

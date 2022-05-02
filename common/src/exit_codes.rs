@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::fmt;
 
 use thiserror::Error;
@@ -9,7 +12,7 @@ pub struct ExitError {
 }
 
 impl ExitError {
-    pub fn new(exit_code: ExitCode, details: impl ToString) -> Self {
+    pub fn new(exit_code: ExitCode, details: &impl ToString) -> Self {
         let details = Some(details.to_string());
         Self { exit_code, details }
     }
@@ -31,25 +34,25 @@ impl fmt::Display for ExitError {
     }
 }
 
-const TOR_HINT: &str = r#"\
-Unable to connect to the Tor control port.
+impl From<anyhow::Error> for ExitError {
+    fn from(err: anyhow::Error) -> Self {
+        ExitError::new(ExitCode::UnknownError, &err)
+    }
+}
 
-Please check that you have the Tor proxy running and \
-that access to the Tor control port is turned on.
+const TOR_HINT: &str = r#"Unable to connect to the Tor control port.
 
-If you are unsure of what to do, use the following \
-command to start the Tor proxy:
-tor --allow-missing-torrc --ignore-missing-torrc \
---clientonly 1 --socksport 9050 --controlport \
-127.0.0.1:9051 --log \"warn stdout\" --clientuseipv6 1
-"#;
+Please check that you have the Tor proxy running and that access to the Tor control port is turned on.
+
+If you are unsure of what to do, use the following command to start the Tor proxy:
+tor --allow-missing-torrc --ignore-missing-torrc --clientonly 1 --socksport 9050 --controlport 127.0.0.1:9051 --log "warn stdout" --clientuseipv6 1"#;
 
 impl ExitCode {
-    pub fn hint(&self) -> &str {
-        use ExitCode::*;
+    pub fn hint(&self) -> Option<&str> {
+        use ExitCode::TorOffline;
         match self {
-            TorOffline => TOR_HINT,
-            _ => "",
+            TorOffline => Some(TOR_HINT),
+            _ => None,
         }
     }
 }
@@ -87,30 +90,34 @@ pub enum ExitCode {
     DatabaseError = 114,
     #[error("Database is in an inconsistent state!")]
     DbInconsistentState = 115,
+    #[error("DigitalAssetError")]
+    DigitalAssetError = 116,
+    #[error("Unable to create or load an identity file")]
+    IdentityError = 117,
 }
 
 impl From<super::ConfigError> for ExitError {
     fn from(err: super::ConfigError) -> Self {
         // TODO: Move it out
         // error!(target: LOG_TARGET, "{}", err);
-        Self::new(ExitCode::ConfigError, err)
+        Self::new(ExitCode::ConfigError, &err)
     }
 }
 
 impl From<crate::ConfigurationError> for ExitError {
     fn from(err: crate::ConfigurationError) -> Self {
-        Self::new(ExitCode::ConfigError, err)
+        Self::new(ExitCode::ConfigError, &err)
     }
 }
 
 impl From<multiaddr::Error> for ExitError {
     fn from(err: multiaddr::Error) -> Self {
-        Self::new(ExitCode::ConfigError, err)
+        Self::new(ExitCode::ConfigError, &err)
     }
 }
 
 impl From<std::io::Error> for ExitError {
     fn from(err: std::io::Error) -> Self {
-        Self::new(ExitCode::IOError, err)
+        Self::new(ExitCode::IOError, &err)
     }
 }

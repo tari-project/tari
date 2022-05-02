@@ -32,6 +32,7 @@ use thiserror::Error;
 
 use crate::{actor::DhtActorError, envelope::DhtMessageError, outbound::DhtOutboundError, storage::StorageError};
 
+/// Error type for SAF
 #[derive(Debug, Error)]
 pub enum StoreAndForwardError {
     #[error("DhtMessageError: {0}")]
@@ -50,8 +51,6 @@ pub enum StoreAndForwardError {
     InvalidEnvelopeBody,
     #[error("DHT header is invalid")]
     InvalidDhtHeader,
-    #[error("Received stored message which is not encrypted")]
-    StoredMessageNotEncrypted,
     #[error("Unable to decrypt received stored message")]
     DecryptionFailed,
     #[error("DhtActorError: {0}")]
@@ -62,8 +61,6 @@ pub enum StoreAndForwardError {
     DecodeError(#[from] DecodeError),
     #[error("Dht header was not provided")]
     DhtHeaderNotProvided,
-    #[error("Message origin is for all forwarded messages")]
-    MessageOriginRequired,
     #[error("The message was malformed")]
     MalformedMessage,
     #[error("StorageError: {0}")]
@@ -78,8 +75,6 @@ pub enum StoreAndForwardError {
     InvalidEnvelopeVersion,
     #[error("MalformedNodeId: {0}")]
     MalformedNodeId(#[from] ByteArrayError),
-    #[error("NodeDistance threshold was invalid")]
-    InvalidNodeDistanceThreshold,
     #[error("DHT message type should not have been forwarded")]
     InvalidDhtMessageType,
     #[error("Failed to send request for store and forward messages: {0}")]

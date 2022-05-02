@@ -56,7 +56,7 @@ use tari_core::{
         ValidationError,
     },
 };
-use tari_crypto::{inputs, script};
+use tari_script::{inputs, script};
 use tari_test_utils::unpack_enum;
 use tari_utilities::{hex::Hex, Hashable};
 
@@ -90,7 +90,6 @@ fn test_genesis_block() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let block = rules.get_genesis_block();
@@ -278,7 +277,6 @@ fn test_orphan_validator() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -398,7 +396,6 @@ fn test_orphan_body_validation() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -470,9 +467,9 @@ OutputFeatures::default()),
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let unblinded_utxo =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params1, outputs[1].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params1, outputs[1].value);
     let unblinded_utxo2 =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params2, outputs[2].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params2, outputs[2].value);
     let inputs = vec![
         unblinded_utxo.as_transaction_input(&factories.commitment).unwrap(),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),
@@ -594,7 +591,6 @@ fn test_header_validation() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     // we have created the blockchain, lets create a second valid block
@@ -704,7 +700,6 @@ async fn test_block_sync_body_validator() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let validator = BlockValidator::new(db.clone().into(), rules.clone(), factories.clone(), false, 2);
@@ -755,9 +750,9 @@ async fn test_block_sync_body_validator() {
     // We dont need proper utxo's with signatures as the post_orphan validator does not check accounting balance +
     // signatures.
     let unblinded_utxo =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params1, outputs[1].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params1, outputs[1].value);
     let unblinded_utxo2 =
-        create_unblinded_output(script!(Nop), OutputFeatures::default(), test_params2, outputs[2].value);
+        create_unblinded_output(script!(Nop), OutputFeatures::default(), &test_params2, outputs[2].value);
     let inputs = vec![
         unblinded_utxo.as_transaction_input(&factories.commitment).unwrap(),
         unblinded_utxo2.as_transaction_input(&factories.commitment).unwrap(),

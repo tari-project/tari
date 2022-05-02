@@ -20,6 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # DHT Connectivity Actor
+//!
+//! Responsible for ensuring DHT network connectivity to a neighbouring and random peer set. This includes joining the
+//! network when the node has established some peer connections (e.g to seed peers). It maintains neighbouring and
+//! random peer pools and instructs the comms `ConnectivityManager` to establish those connections. Once a configured
+//! percentage of these peers is online, the node is established on the DHT network.
+//!
+//! The DHT connectivity actor monitors the connectivity state (using `ConnectivityEvent`s) and attempts
+//! to maintain connectivity to the network as peers come and go.
+
 #[cfg(test)]
 mod test;
 
@@ -29,7 +39,14 @@ use std::{sync::Arc, time::Instant};
 use log::*;
 pub use metrics::{MetricsCollector, MetricsCollectorHandle};
 use tari_comms::{
-    connectivity::{ConnectivityError, ConnectivityEvent, ConnectivityEventRx, ConnectivityRequester},
+    connectivity::{
+        ConnectivityError,
+        ConnectivityEvent,
+        ConnectivityEventRx,
+        ConnectivityRequester,
+        ConnectivitySelection,
+    },
+    multiaddr,
     peer_manager::{NodeDistance, NodeId, PeerManagerError, PeerQuery, PeerQuerySortBy},
     NodeIdentity,
     PeerConnection,
@@ -43,6 +60,7 @@ use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError,
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
+/// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
     #[error("ConnectivityError: {0}")]
@@ -55,16 +73,8 @@ pub enum DhtConnectivityError {
     MetricError(#[from] MetricsError),
 }
 
-/// # DHT Connectivity Actor
-///
-/// Responsible for ensuring DHT network connectivity to a neighbouring and random peer set. This includes joining the
-/// network when the node has established some peer connections (e.g to seed peers). It maintains neighbouring and
-/// random peer pools and instructs the comms `ConnectivityManager` to establish those connections. Once a configured
-/// percentage of these peers is online, the node is established on the DHT network.
-///
-/// The DHT connectivity actor monitors the connectivity state (using `ConnectivityEvent`s) and attempts
-/// to maintain connectivity to the network as peers come and go.
-pub struct DhtConnectivity {
+/// DHT connectivity actor.
+pub(crate) struct DhtConnectivity {
     config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -126,7 +136,9 @@ impl DhtConnectivity {
         task::spawn(async move {
             log_mdc::extend(mdc.clone());
             debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
-            let _ = self.connectivity.wait_started().await;
+            if let Err(err) = self.connectivity.wait_started().await {
+                error!(target: LOG_TARGET, "Comms connectivity failed to start: {}", err);
+            }
             log_mdc::extend(mdc.clone());
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
@@ -142,33 +154,36 @@ impl DhtConnectivity {
         debug!(target: LOG_TARGET, "DHT connectivity starting");
         self.refresh_neighbour_pool().await?;
 
-        let mut ticker = time::interval(self.config.connectivity_update_interval);
+        let mut ticker = time::interval(self.config.connectivity.update_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 Ok(event) = connectivity_events.recv() => {
                     if let Err(err) = self.handle_connectivity_event(event).await {
-                        debug!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
+                        error!(target: LOG_TARGET, "Error handling connectivity event: {:?}", err);
                     }
                },
 
                Ok(event) = self.dht_events.recv() => {
                     if let Err(err) = self.handle_dht_event(&event).await {
-                        debug!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
+                        error!(target: LOG_TARGET, "Error handling DHT event: {:?}", err);
                     }
                },
 
                _ = ticker.tick() => {
                     if let Err(err) = self.check_and_ban_flooding_peers().await {
-                        debug!(target: LOG_TARGET, "Error checking for peer flooding: {:?}", err);
+                        error!(target: LOG_TARGET, "Error checking for peer flooding: {:?}", err);
                     }
                     if let Err(err) = self.refresh_neighbour_pool_if_required().await {
-                        debug!(target: LOG_TARGET, "Error refreshing neighbour peer pool: {:?}", err);
+                        error!(target: LOG_TARGET, "Error refreshing neighbour peer pool: {:?}", err);
                     }
                     if let Err(err) = self.refresh_random_pool_if_required().await {
-                        debug!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
+                        error!(target: LOG_TARGET, "Error refreshing random peer pool: {:?}", err);
                     }
                     self.log_status();
+                    if let Err(err) = self.check_minimum_required_tcp_nodes().await {
+                        error!(target: LOG_TARGET, "Error checking minimum required TCP nodes: {:?}", err);
+                    }
                },
 
                _ = self.shutdown_signal.wait() => {
@@ -176,6 +191,43 @@ impl DhtConnectivity {
                     break;
                }
             }
+        }
+
+        Ok(())
+    }
+
+    async fn check_minimum_required_tcp_nodes(&mut self) -> Result<(), DhtConnectivityError> {
+        let desired_ratio = self.config.connectivity.minimum_desired_tcpv4_node_ratio;
+        if desired_ratio == 0.0 {
+            return Ok(());
+        }
+
+        let conns = self
+            .connectivity
+            .select_connections(ConnectivitySelection::all_nodes(vec![]))
+            .await?;
+        if conns.len() <= 1 {
+            return Ok(());
+        }
+
+        let num_tcp_nodes = conns
+            .iter()
+            .filter(|conn| {
+                let ip = conn.address().iter().next();
+                let tcp = conn.address().iter().nth(2);
+                matches!(ip, Some(multiaddr::Protocol::Ip4(_))) && matches!(tcp, Some(multiaddr::Protocol::Tcp(_)))
+            })
+            .count();
+        let current_ratio = num_tcp_nodes as f32 / conns.len() as f32;
+        if current_ratio < desired_ratio {
+            warn!(
+                target: LOG_TARGET,
+                "{}% of this node's {} connections are using TCPv4. This node requires at least {}% of nodes to be \
+                 TCP nodes.",
+                (current_ratio * 100.0).round() as i64,
+                conns.len(),
+                (desired_ratio * 100.0).round() as i64,
+            );
         }
 
         Ok(())
@@ -198,7 +250,8 @@ impl DhtConnectivity {
                 .map(|ts| format!(
                     "COOLDOWN({:.2?} remaining) ",
                     self.config
-                        .connectivity_high_failure_rate_cooldown
+                        .connectivity
+                        .high_failure_rate_cooldown
                         .saturating_sub(ts.elapsed())
                 ))
                 .unwrap_or_else(String::new),
@@ -394,7 +447,7 @@ impl DhtConnectivity {
     async fn refresh_random_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
         let should_refresh = self.config.num_random_nodes > 0 &&
             self.random_pool_last_refresh
-                .map(|instant| instant.elapsed() >= self.config.connectivity_random_pool_refresh)
+                .map(|instant| instant.elapsed() >= self.config.connectivity.random_pool_refresh_interval)
                 .unwrap_or(true);
         if should_refresh {
             self.refresh_random_pool().await?;
@@ -511,6 +564,7 @@ impl DhtConnectivity {
     }
 
     async fn handle_connectivity_event(&mut self, event: ConnectivityEvent) -> Result<(), DhtConnectivityError> {
+        #[allow(clippy::enum_glob_use)]
         use ConnectivityEvent::*;
         debug!(target: LOG_TARGET, "Connectivity event: {}", event);
         match event {
@@ -547,7 +601,7 @@ impl DhtConnectivity {
 
                 if self
                     .cooldown_in_effect
-                    .map(|ts| ts.elapsed() >= self.config.connectivity_high_failure_rate_cooldown)
+                    .map(|ts| ts.elapsed() >= self.config.connectivity.high_failure_rate_cooldown)
                     .unwrap_or(true)
                 {
                     if self.cooldown_in_effect.is_some() {

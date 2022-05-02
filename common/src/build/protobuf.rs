@@ -1,3 +1,6 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 use std::{
     collections::HashMap,
     fmt::Display,
@@ -48,6 +51,7 @@ fn walk_files<P: AsRef<Path>>(search_path: P, search_ext: &str) -> Vec<PathBuf> 
             protos.push(path)
         } else if path.is_dir() {
             protos.extend(walk_files(&path, search_ext));
+        } else {
         }
     }
 

@@ -36,14 +36,9 @@ use crate::{
 
 const LOG_TARGET: &str = "tari::dan::workers::states::starting";
 
+#[derive(Default)]
 pub struct Starting<TSpecification> {
     _spec: PhantomData<TSpecification>,
-}
-
-impl<TSpecification: ServiceSpecification> Default for Starting<TSpecification> {
-    fn default() -> Self {
-        Self { _spec: PhantomData }
-    }
 }
 
 impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
@@ -99,7 +94,7 @@ impl<TSpecification: ServiceSpecification> Starting<TSpecification> {
         );
         // read and create the genesis block
         info!(target: LOG_TARGET, "Creating DB");
-        let _ = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
+        let _chain_db = db_factory.get_or_create_chain_db(&asset_definition.public_key)?;
 
         Ok(ConsensusWorkerStateEvent::Initialized)
     }

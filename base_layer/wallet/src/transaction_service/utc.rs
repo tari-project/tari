@@ -1,8 +1,10 @@
-use std::time::Duration;
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
+use std::{convert::TryFrom, time::Duration};
 
 use chrono::{NaiveDateTime, Utc};
 use thiserror::Error;
-
 /// The error happens when a duration is negative.
 #[derive(Debug, Error)]
 #[error("Diration is negative: {ms} ms")]
@@ -24,7 +26,7 @@ pub fn utc_duration_since(since: &NaiveDateTime) -> Result<Duration, NegativeDur
     let since_ms = since.timestamp_millis();
     let ms = now_ms - since_ms;
     if ms >= 0 {
-        Ok(Duration::from_millis(ms as u64))
+        Ok(Duration::from_millis(u64::try_from(ms).unwrap()))
     } else {
         Err(NegativeDurationError { ms })
     }

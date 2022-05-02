@@ -1,11 +1,8 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 #![doc(html_root_url = "https://docs.rs/tower-filter/0.3.0-alpha.2")]
-#![cfg_attr(not(debug_assertions), deny(unused_variables))]
-#![cfg_attr(not(debug_assertions), deny(unused_imports))]
-#![cfg_attr(not(debug_assertions), deny(dead_code))]
-#![cfg_attr(not(debug_assertions), deny(unused_extern_crates))]
-#![deny(unused_must_use)]
-#![deny(unreachable_patterns)]
-#![deny(unknown_lints)]
+
 //! # Tari Comms DHT
 //!
 //! ## Overview
@@ -32,14 +29,15 @@
 //! `InboundMessage`(comms) -> _DHT Inbound Middleware_ -> `DhtInboundMessage`(domain)
 //!
 //! The DHT inbound middleware consist of:
-//! * `DeserializeMiddleware` deserializes the body of an `InboundMessage` into a `DhtEnvelope`.
-//! * `DecryptionMiddleware` attempts to decrypt the body of a `DhtEnvelope` if required. The result of that decryption
-//!   (success or failure) is passed to the next service.
-//! * `ForwardMiddleware` uses the result of the decryption to determine if the message is destined for this node or
-//!   not. If not, the message will be forwarded to the applicable peers using the OutboundRequester (i.e. the outbound
-//!   DHT middleware).
-//! * `DhtHandlerMiddleware` handles DHT messages, such as `Join` and `Discover`. If the messages are _not_ DHT messages
-//!   the `next_service` is called.
+//! * metrics: monitors the number of inbound messages
+//! * decryption: deserializes and decrypts the `InboundMessage` and produces a
+//!   [DecryptedDhtMessage](crate::inbound::DecryptedDhtMessage).
+//! * dedup: discards the message if previously received.
+//! * logging: message logging
+//! * SAF storage: stores certain messages for other peers in the SAF store.
+//! * message storage: forwards messages for other peers.
+//! * SAF message handler: handles SAF protocol messages (requests for SAF messages, SAF message responses).
+//! * DHT message handler: handles DHT protocol messages (discovery, join etc.)
 //!
 //! #### Outbound Message Flow
 //!
@@ -53,63 +51,12 @@
 //! `DhtOutboundRequest` (domain) -> _DHT Outbound Middleware_ -> `OutboundMessage` (comms)
 //!
 //! The DHT outbound middleware consist of:
-//! * `BroadcastMiddleware` produces multiple outbound messages according on the `BroadcastStrategy` from the received
+//! * broadcast layer: produces multiple outbound messages according on the `BroadcastStrategy` from the received
 //!   `DhtOutboundRequest` message. The `next_service` is called for each resulting message.
-//! * `EncryptionMiddleware` encrypts the body of a message if `DhtMessagheFlags::ENCRYPTED` is given. The result is
-//!   passed onto the `next_service`.
-//! * `SerializeMiddleware` wraps the body in a `DhtEnvelope`, serializes the result, constructs an `OutboundMessage`
-//!   and calls `next_service`. Typically, `next_service` will be a `SinkMiddleware` which send the message to the comms
-//!   OMS.
-//
-//! ## Usage
-//!
-//! ```edition2018,compile_fail
-//! #use tari_comms::middleware::ServicePipeline;
-//! #use tari_comms_dht::DhtBuilder;
-//! #use tari_comms::middleware::sink::SinkMiddleware;
-//! #use tari_comms::peer_manager::NodeIdentity;
-//! #use rand::rngs::OsRng;
-//! #use std::sync::Arc;
-//! #use tari_comms::CommsBuilder;
-//! #use tokio::runtime::Runtime;
-//! #use tokio::sync::mpsc;
-//!
-//! let runtime = Runtime::new().unwrap();
-//! // Channel from comms to inbound dht
-//! let (comms_in_tx, comms_in_rx)= mpsc::channel(100);
-//! let (comms_out_tx, comms_out_rx)= mpsc::channel(100);
-//! let node_identity = NodeIdentity::random(&mut OsRng::new().unwrap(), "127.0.0.1:9000".parse().unwrap())
-//!     .map(Arc::new).unwrap();
-//! let comms  = CommsBuilder::new(runtime.executor())
-//!         // Messages coming from comms
-//!        .with_inbound_sink(comms_in_tx)
-//!         // Messages going to comms
-//!        .with_outbound_stream(comms_out_rx)
-//!        .with_node_identity(node_identity)
-//!        .build()
-//!        .unwrap();
-//! let peer_manager = comms.start().unwrap().peer_manager();
-//! let dht = Dht::builder().build(node_identity, peer_manager)?;
-//!
-//! let inbound_pipeline = ServicePipeline::new(
-//!    comms_in_rx,
-//!     // In Tari's case, the service would be a InboundMessageConnector in `tari_p2p`
-//!     dht.inbound_middleware_layer(/* some service which uses DhtInboundMessage */ )
-//! );
-//! // Use the given executor to spawn calls to the middleware
-//! inbound_pipeline.spawn_with(rt.executor());
-//!
-//! let outbound_pipeline = ServicePipeline::new(
-//!     dht.take_outbound_receiver(),
-//!     // SinkMiddleware sends the resulting OutboundMessages to the comms OMS
-//!     dht.outbound_middleware_layer(SinkMiddleware::new(comms_out_tx))
-//! );
-//! // Use the given executor to spawn calls to the middleware
-//! outbound_pipeline.spawn_with(rt.executor());
-//!
-//! let oms = dht.outbound_requester();
-//! oms.send_message(...).await;
-//! ```
+//! * message logger layer.
+//! * serialization: wraps the body in a [DhtOutboundMessage](crate::outbound::DhtOutboundMessage), serializes the
+//!   result, constructs an `OutboundMessage` and calls `next_service`. Typically, `next_service` will be a
+//!   `SinkMiddleware` which send the message to comms messaging.
 
 #![recursion_limit = "256"]
 #[macro_use]
@@ -134,7 +81,7 @@ mod connectivity;
 pub use connectivity::MetricsCollectorHandle;
 
 mod config;
-pub use config::DhtConfig;
+pub use config::{DhtConfig, DhtConnectivityConfig};
 
 mod crypt;
 

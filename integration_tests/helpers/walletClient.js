@@ -1,5 +1,13 @@
+// Copyright 2022 The Tari Project
+// SPDX-License-Identifier: BSD-3-Clause
+
 const { Client } = require("wallet-grpc-client");
-const { byteArrayToHex, tryConnect, convertStringToVec } = require("./util");
+const {
+  byteArrayToHex,
+  tryConnect,
+  convertStringToVec,
+  multiAddrToSocket,
+} = require("./util");
 
 function transactionStatus() {
   return [
@@ -19,8 +27,10 @@ class WalletClient {
     this.name = name;
   }
 
-  async connect(walletAddress) {
-    this.client = await tryConnect(() => Client.connect(walletAddress));
+  async connect(multiAddrOrSocket) {
+    this.client = await tryConnect(() =>
+      Client.connect(multiAddrToSocket(multiAddrOrSocket))
+    );
   }
 
   async getVersion() {
@@ -239,6 +249,22 @@ class WalletClient {
         transaction_ids: [tx_id.toString()],
       });
       if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 2) {
+        return true;
+      } else {
+        return false;
+      }
+    } catch (err) {
+      // Any error here must be treated as if the required status was not achieved
+      return false;
+    }
+  }
+
+  async isTransactionCancelled(tx_id) {
+    try {
+      const txnDetails = await this.getTransactionInfo({
+        transaction_ids: [tx_id.toString()],
+      });
+      if (transactionStatus().indexOf(txnDetails.transactions[0].status) == 7) {
         return true;
       } else {
         return false;

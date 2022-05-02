@@ -24,6 +24,7 @@ use std::{future::Future, sync::Arc};
 use futures::{future, future::Either};
 use log::*;
 use randomx_rs::RandomXFlag;
+use serde::{Deserialize, Serialize};
 use tari_comms::{connectivity::ConnectivityRequester, PeerManager};
 use tari_shutdown::ShutdownSignal;
 use tokio::sync::{broadcast, watch};
@@ -46,11 +47,11 @@ use crate::{
 const LOG_TARGET: &str = "c::bn::base_node";
 
 /// Configuration for the BaseNodeStateMachine.
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(deny_unknown_fields)]
 pub struct BaseNodeStateMachineConfig {
     pub blockchain_sync_config: BlockchainSyncConfig,
     pub orphan_db_clean_out_threshold: usize,
-    pub pruning_horizon: u64,
     pub max_randomx_vms: usize,
     pub blocks_behind_before_considered_lagging: u64,
     pub bypass_range_proof_verification: bool,
@@ -62,7 +63,6 @@ impl Default for BaseNodeStateMachineConfig {
         Self {
             blockchain_sync_config: Default::default(),
             orphan_db_clean_out_threshold: 0,
-            pruning_horizon: 0,
             max_randomx_vms: 0,
             blocks_behind_before_considered_lagging: 0,
             bypass_range_proof_verification: false,
@@ -133,7 +133,8 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
     /// transition for the node given its current state and an event that gets triggered.
     pub fn transition(&self, state: BaseNodeState, event: StateEvent) -> BaseNodeState {
         let db = self.db.inner();
-        use self::{BaseNodeState::*, StateEvent::*, SyncStatus::*};
+        #[allow(clippy::enum_glob_use)]
+        use self::{BaseNodeState::*, StateEvent::*, SyncStatus::Lagging};
         match (state, event) {
             (Starting(s), Initialized) => Listening(s.into()),
             (
@@ -229,7 +230,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     /// Start the base node runtime.
     pub async fn run(mut self) {
-        use BaseNodeState::*;
+        use BaseNodeState::{Shutdown, Starting};
         let mut state = Starting(states::Starting);
         loop {
             if let Shutdown(reason) = &state {
@@ -249,7 +250,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
             let next_event = select_next_state_event(interrupt_signal, next_state_future).await;
             log_mdc::extend(mdc);
             // Publish the event on the event bus
-            let _ = self.event_publisher.send(Arc::new(next_event.clone()));
+            let _size = self.event_publisher.send(Arc::new(next_event.clone()));
             trace!(
                 target: LOG_TARGET,
                 "Base Node event in State [{}]:  {}",
@@ -262,6 +263,7 @@ impl<B: BlockchainBackend + 'static> BaseNodeStateMachine<B> {
 
     /// Processes and returns the next `StateEvent`
     async fn next_state_event(&mut self, state: &mut BaseNodeState) -> StateEvent {
+        #[allow(clippy::enum_glob_use)]
         use states::BaseNodeState::*;
         let shared_state = self;
         match state {

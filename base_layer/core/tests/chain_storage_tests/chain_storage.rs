@@ -54,7 +54,8 @@ use tari_core::{
     txn_schema,
     validation::{mocks::MockValidator, DifficultyCalculator, ValidationError},
 };
-use tari_crypto::{keys::PublicKey as PublicKeyTrait, script::StackItem, tari_utilities::Hashable};
+use tari_crypto::{keys::PublicKey as PublicKeyTrait, tari_utilities::Hashable};
+use tari_script::StackItem;
 use tari_storage::lmdb_store::LMDBConfig;
 use tari_test_utils::{paths::create_temporary_data_path, unpack_enum};
 
@@ -241,7 +242,6 @@ fn rewind_to_height() {
 }
 
 #[test]
-#[ignore = "To be completed with pruned mode"]
 fn rewind_past_horizon_height() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_dibbler_genesis_block();
@@ -255,7 +255,7 @@ fn rewind_past_horizon_height() {
     let config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 3,
         pruning_horizon: 2,
-        pruning_interval: 2,
+        pruning_interval: 1,
         ..Default::default()
     };
     let store = BlockchainDatabase::new(
@@ -264,7 +264,6 @@ fn rewind_past_horizon_height() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
 
@@ -275,11 +274,14 @@ fn rewind_past_horizon_height() {
 
     let metadata = store.get_chain_metadata().unwrap();
     assert_eq!(metadata.height_of_longest_chain(), 4);
+    // we should not be able to rewind to the future
+    assert!(store.rewind_to_height(metadata.height_of_longest_chain() + 1).is_err());
     let horizon_height = metadata.pruned_height();
     assert_eq!(horizon_height, 2);
-    assert!(store.rewind_to_height(horizon_height - 1).is_err());
-    assert!(store.rewind_to_height(horizon_height).is_ok());
-    assert_eq!(store.get_height().unwrap(), horizon_height);
+    // rewinding past pruning horizon should set us to height 0 so we can resync from gen block.
+    assert!(store.rewind_to_height(horizon_height - 1).is_ok());
+    let metadata = store.get_chain_metadata().unwrap();
+    assert_eq!(metadata.height_of_longest_chain(), 0);
 }
 
 #[test]
@@ -346,36 +348,6 @@ fn handle_tip_reorg() {
     // Check that B2 was removed from the block orphans and A2 has been orphaned.
     assert!(store.fetch_orphan(orphan_blocks[2].hash().clone()).is_err());
     assert!(store.fetch_orphan(blocks[2].hash().clone()).is_ok());
-}
-
-#[test]
-#[ignore = "Can't create blocks on an alternate chain with a valid MMR at the moment"]
-fn blockchain_reorgs_to_stronger_chain() {
-    let mut blockchain = TestBlockchain::with_genesis("GB");
-    let blocks = blockchain.builder();
-    blockchain.add_block(blocks.new_block("A1").child_of("GB").difficulty(1));
-    blockchain.add_block(blocks.new_block("A2").child_of("A1").difficulty(3));
-    blockchain.add_block(blocks.new_block("A3").child_of("A2").difficulty(1));
-    blockchain.add_block(blocks.new_block("A4").child_of("A3").difficulty(1));
-
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
-    assert_eq!(blockchain.orphan_count(), 0);
-
-    blockchain.add_block(blocks.new_block("B2").child_of("A1").difficulty(1));
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
-    // TODO: This fails because it's difficult to create the MMR roots for a block that is not
-    // on the main chain. Will need to make it easier to generate these to solve this
-    blockchain.add_block(blocks.new_block("B3").child_of("B2").difficulty(1));
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("A4"));
-    assert_eq!(blockchain.chain(), ["GB", "A1", "A2", "A3", "A4"]);
-    blockchain.add_block(blocks.new_block("B4").child_of("B3").difficulty(5));
-    // Should reorg
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("B4"));
-
-    blockchain.add_block(blocks.new_block("C4").child_of("B3").difficulty(20));
-    assert_eq!(Some(blockchain.tip()), blockchain.get_block("C4"));
-
-    assert_eq!(blockchain.chain(), ["GB", "A1", "B2", "B3", "C4"]);
 }
 
 #[test]
@@ -1008,7 +980,6 @@ fn store_and_retrieve_blocks() {
         validators,
         BlockchainDatabaseConfig::default(),
         DifficultyCalculator::new(rules.clone(), Default::default()),
-        false,
     )
     .unwrap();
 
@@ -1055,7 +1026,7 @@ fn asset_unique_id() {
 
     // create a new NFT
     let (_, asset) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
+    let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(unique_id1.clone()),
@@ -1086,6 +1057,14 @@ fn asset_unique_id() {
         .fetch_utxo_by_unique_id(Some(&asset), &unique_id1, None)
         .unwrap()
         .unwrap();
+    features.set_recovery_byte(
+        output_info
+            .output
+            .as_transaction_output()
+            .unwrap()
+            .features
+            .recovery_byte,
+    );
     assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 
     // attempt to mint the same unique id for the same asset
@@ -1101,7 +1080,7 @@ fn asset_unique_id() {
 
     // new unique id, does not exist yet
     let unique_id2 = vec![2u8; 3];
-    let features = OutputFeatures {
+    let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset.clone()),
         unique_id: Some(unique_id2.clone()),
@@ -1129,11 +1108,19 @@ fn asset_unique_id() {
         .fetch_utxo_by_unique_id(Some(&asset), &unique_id2, None)
         .unwrap()
         .unwrap();
+    features.set_recovery_byte(
+        output_info
+            .output
+            .as_transaction_output()
+            .unwrap()
+            .features
+            .recovery_byte,
+    );
     assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 
     // same id for a different asset is fine
     let (_, asset2) = PublicKey::random_keypair(&mut rng);
-    let features = OutputFeatures {
+    let mut features = OutputFeatures {
         flags: OutputFlags::MINT_NON_FUNGIBLE,
         parent_public_key: Some(asset2.clone()),
         unique_id: Some(unique_id1.clone()),
@@ -1161,6 +1148,14 @@ fn asset_unique_id() {
         .fetch_utxo_by_unique_id(Some(&asset2), &unique_id1, None)
         .unwrap()
         .unwrap();
+    features.set_recovery_byte(
+        output_info
+            .output
+            .as_transaction_output()
+            .unwrap()
+            .features
+            .recovery_byte,
+    );
     assert_eq!(output_info.output.as_transaction_output().unwrap().features, features);
 }
 
@@ -1226,9 +1221,8 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(rules.clone(), Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1250,9 +1244,8 @@ fn restore_metadata_and_pruning_horizon_update() {
             db,
             rules.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(rules.clone(), Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1271,7 +1264,6 @@ fn restore_metadata_and_pruning_horizon_update() {
             validators,
             config,
             DifficultyCalculator::new(rules, Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1405,7 +1397,6 @@ fn orphan_cleanup_on_block_add() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
 
@@ -1452,7 +1443,6 @@ fn orphan_cleanup_on_block_add() {
 }
 
 #[test]
-#[ignore = "take a look at orphan cleanup, seems not to be implemented anymore in add block"]
 fn horizon_height_orphan_cleanup() {
     let network = Network::LocalNet;
     let block0 = genesis_block::get_dibbler_genesis_block();
@@ -1475,7 +1465,6 @@ fn horizon_height_orphan_cleanup() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let orphan1 = create_orphan_block(2, vec![], &consensus_manager);
@@ -1541,7 +1530,6 @@ fn orphan_cleanup_on_reorg() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let mut blocks = vec![block0];
@@ -1668,7 +1656,7 @@ fn orphan_cleanup_delete_all_orphans() {
         MockValidator::new(true),
         MockValidator::new(true),
     );
-    let config = BlockchainDatabaseConfig {
+    let mut config = BlockchainDatabaseConfig {
         orphan_storage_capacity: 5,
         pruning_horizon: 0,
         pruning_interval: 50,
@@ -1681,9 +1669,8 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-            false,
         )
         .unwrap();
 
@@ -1735,9 +1722,8 @@ fn orphan_cleanup_delete_all_orphans() {
             db,
             consensus_manager.clone(),
             validators.clone(),
-            config,
+            config.clone(),
             DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-            false,
         )
         .unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 5);
@@ -1746,13 +1732,13 @@ fn orphan_cleanup_delete_all_orphans() {
     // Test orphans cleanup on open
     {
         let db = create_lmdb_database(&path, LMDBConfig::default()).unwrap();
+        config.cleanup_orphans_at_startup = true;
         let store = BlockchainDatabase::new(
             db,
             consensus_manager.clone(),
             validators,
             config,
             DifficultyCalculator::new(consensus_manager, Default::default()),
-            true,
         )
         .unwrap();
         assert_eq!(store.db_read_access().unwrap().orphan_count().unwrap(), 0);
@@ -1791,7 +1777,6 @@ fn fails_validation() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let mut blocks = vec![block0];
@@ -1837,7 +1822,6 @@ fn pruned_mode_cleanup_and_fetch_block() {
         validators,
         config,
         DifficultyCalculator::new(consensus_manager.clone(), Default::default()),
-        false,
     )
     .unwrap();
     let block1 = append_block(&store, &block0, vec![], &consensus_manager, 1.into()).unwrap();

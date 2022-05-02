@@ -72,6 +72,7 @@ impl CovenantFilter {
 
     fn as_byte_code(&self) -> u8 {
         use byte_codes::*;
+        #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
 
         match self {
@@ -148,6 +149,7 @@ impl CovenantFilter {
 
 impl Filter for CovenantFilter {
     fn filter(&self, context: &mut CovenantContext<'_>, output_set: &mut OutputSet<'_>) -> Result<(), CovenantError> {
+        #[allow(clippy::enum_glob_use)]
         use CovenantFilter::*;
         match self {
             Identity(identity) => identity.filter(context, output_set),
@@ -161,5 +163,19 @@ impl Filter for CovenantFilter {
             FieldsHashedEq(fields_hashed_eq) => fields_hashed_eq.filter(context, output_set),
             AbsoluteHeight(abs_height) => abs_height.filter(context, output_set),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::covenants::byte_codes::ALL_FILTERS;
+
+    #[test]
+    fn it_returns_filter_from_byte_code() {
+        ALL_FILTERS.iter().for_each(|code| {
+            let filter = CovenantFilter::try_from_byte_code(*code).unwrap();
+            assert_eq!(filter.as_byte_code(), *code);
+        })
     }
 }

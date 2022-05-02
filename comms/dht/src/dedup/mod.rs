@@ -20,20 +20,36 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # Dedup Cache
+//!
+//! Keeps track of messages seen before by this node and discards duplicates.
+
 mod dedup_cache;
 
 use std::task::Poll;
 
 pub use dedup_cache::DedupCacheDatabase;
+use digest::Digest;
 use futures::{future::BoxFuture, task::Context};
 use log::*;
-use tari_comms::pipeline::PipelineError;
+use tari_comms::{pipeline::PipelineError, types::Challenge};
 use tari_utilities::hex::Hex;
 use tower::{layer::Layer, Service, ServiceExt};
 
-use crate::{actor::DhtRequester, inbound::DecryptedDhtMessage};
+use crate::{
+    actor::DhtRequester,
+    inbound::{DecryptedDhtMessage, DhtInboundMessage},
+};
 
 const LOG_TARGET: &str = "comms::dht::dedup";
+
+pub fn hash_inbound_message(msg: &DhtInboundMessage) -> [u8; 32] {
+    create_message_hash(&msg.dht_header.origin_mac, &msg.body)
+}
+
+pub fn create_message_hash(origin_mac: &[u8], body: &[u8]) -> [u8; 32] {
+    Challenge::new().chain(origin_mac).chain(&body).finalize().into()
+}
 
 /// # DHT Deduplication middleware
 ///
@@ -77,13 +93,13 @@ where
             trace!(
                 target: LOG_TARGET,
                 "Inserting message hash {} for message {} (Trace: {})",
-                message.hash.to_hex(),
+                message.dedup_hash.to_hex(),
                 message.tag,
                 message.dht_header.message_tag
             );
 
             message.dedup_hit_count = dht_requester
-                .add_message_to_dedup_cache(message.hash.clone(), message.source_peer.public_key.clone())
+                .add_message_to_dedup_cache(message.dedup_hash.clone(), message.source_peer.public_key.clone())
                 .await?;
 
             if message.dedup_hit_count as usize > allowed_message_occurrences {
@@ -198,8 +214,8 @@ mod test {
         );
         let decrypted2 = DecryptedDhtMessage::succeeded(wrap_in_envelope_body!(vec![]), None, dht_message);
 
-        assert_eq!(decrypted1.hash, decrypted2.hash);
-        let subjects = &[decrypted1.hash, decrypted2.hash];
+        assert_eq!(decrypted1.dedup_hash, decrypted2.dedup_hash);
+        let subjects = &[decrypted1.dedup_hash, decrypted2.dedup_hash];
         assert!(subjects.iter().all(|h| h.to_hex() == EXPECTED_HASH));
     }
 }

@@ -179,6 +179,7 @@ pub enum DbKey {
 
 impl fmt::Debug for DbKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use DbKey::*;
         // Add in i64 representatives for easy debugging in sqlite. This should probably be removed at some point
         match self {

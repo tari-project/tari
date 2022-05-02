@@ -19,7 +19,11 @@
 // SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-use std::{convert::TryFrom, str::FromStr};
+use std::{
+    convert::TryFrom,
+    fmt::{Display, Formatter},
+    str::FromStr,
+};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -73,5 +77,15 @@ impl FromStr for PowAlgorithm {
             "sha" | "sha3" | "SHA3" => Ok(Self::Sha3),
             other => Err(PowAlgorithmParseError::UnknownType(other.into())),
         }
+    }
+}
+
+impl Display for PowAlgorithm {
+    fn fmt(&self, fmt: &mut Formatter<'_>) -> std::fmt::Result {
+        let algo = match self {
+            PowAlgorithm::Monero => "Monero",
+            PowAlgorithm::Sha3 => "Sha3",
+        };
+        fmt.write_str(algo)
     }
 }

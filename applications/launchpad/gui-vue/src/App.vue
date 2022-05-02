@@ -12,7 +12,7 @@
 </template>
 
 <script>
-import containers from './components/Containers.vue';
+import containers from './components/Containers';
 import launchDocker from "./components/LaunchDocker";
 
 export default {

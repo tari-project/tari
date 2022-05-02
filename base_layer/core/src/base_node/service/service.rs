@@ -62,30 +62,6 @@ use crate::{
 
 const LOG_TARGET: &str = "c::bn::base_node_service::service";
 
-/// Configuration for the BaseNodeService.
-#[derive(Clone, Copy)]
-pub struct BaseNodeServiceConfig {
-    /// The allocated waiting time for a general request waiting for service responses from remote base nodes.
-    pub service_request_timeout: Duration,
-    /// The allocated waiting time for a block sync request waiting for service responses from remote base nodes.
-    pub fetch_blocks_timeout: Duration,
-    /// The allocated waiting time for a fetch UTXOs request waiting for service responses from remote base nodes.
-    pub fetch_utxos_timeout: Duration,
-    /// The fraction of responses that need to be received for a corresponding service request to be finalize.
-    pub desired_response_fraction: f32,
-}
-
-impl Default for BaseNodeServiceConfig {
-    fn default() -> Self {
-        Self {
-            service_request_timeout: Duration::from_secs(180),
-            fetch_blocks_timeout: Duration::from_secs(150),
-            fetch_utxos_timeout: Duration::from_secs(600),
-            desired_response_fraction: 0.6,
-        }
-    }
-}
-
 /// A convenience struct to hold all the BaseNode streams
 pub(super) struct BaseNodeStreams<SOutReq, SInReq, SInRes, SBlockIn, SLocalReq, SLocalBlock> {
     /// `NodeCommsRequest` messages to send to a remote peer. If a specific peer is not provided, a random peer is
@@ -115,7 +91,7 @@ pub(super) struct BaseNodeService<B> {
     waiting_requests: WaitingRequests<Result<NodeCommsResponse, CommsInterfaceError>>,
     timeout_sender: Sender<RequestKey>,
     timeout_receiver_stream: Option<Receiver<RequestKey>>,
-    config: BaseNodeServiceConfig,
+    service_request_timeout: Duration,
     state_machine_handle: StateMachineHandle,
 }
 
@@ -125,7 +101,7 @@ where B: BlockchainBackend + 'static
     pub fn new(
         outbound_message_service: OutboundMessageRequester,
         inbound_nch: InboundNodeCommsHandlers<B>,
-        config: BaseNodeServiceConfig,
+        service_request_timeout: Duration,
         state_machine_handle: StateMachineHandle,
     ) -> Self {
         let (timeout_sender, timeout_receiver) = mpsc::channel(100);
@@ -135,7 +111,7 @@ where B: BlockchainBackend + 'static
             waiting_requests: WaitingRequests::new(),
             timeout_sender,
             timeout_receiver_stream: Some(timeout_receiver),
-            config,
+            service_request_timeout,
             state_machine_handle,
         }
     }
@@ -234,7 +210,7 @@ where B: BlockchainBackend + 'static
         let outbound_message_service = self.outbound_message_service.clone();
         let waiting_requests = self.waiting_requests.clone();
         let timeout_sender = self.timeout_sender.clone();
-        let config = self.config;
+        let service_request_timeout = self.service_request_timeout;
         task::spawn(async move {
             let ((request, node_id), reply_tx) = request_context.split();
 
@@ -245,7 +221,7 @@ where B: BlockchainBackend + 'static
                 reply_tx,
                 request,
                 node_id,
-                config,
+                service_request_timeout,
             )
             .await;
 
@@ -406,7 +382,7 @@ async fn handle_incoming_request<B: BlockchainBackend + 'static>(
     let send_message_response = outbound_message_service
         .send_direct(
             origin_public_key,
-            OutboundDomainMessage::new(TariMessageType::BaseNodeResponse, message),
+            OutboundDomainMessage::new(&TariMessageType::BaseNodeResponse, message),
         )
         .await?;
 
@@ -470,7 +446,7 @@ async fn handle_incoming_response(
             started.elapsed().as_millis(),
             is_synced
         );
-        let _ = reply_tx.send(Ok(response).map_err(|e| {
+        let _result = reply_tx.send(Ok(response).map_err(|e| {
             warn!(
                 target: LOG_TARGET,
                 "Failed to finalize request (request key:{}): {:?}", &request_key, e
@@ -489,7 +465,7 @@ async fn handle_outbound_request(
     reply_tx: OneshotSender<Result<NodeCommsResponse, CommsInterfaceError>>,
     request: NodeCommsRequest,
     node_id: Option<NodeId>,
-    config: BaseNodeServiceConfig,
+    service_request_timeout: Duration,
 ) -> Result<(), CommsInterfaceError> {
     let request_key = generate_request_key(&mut OsRng);
     let service_request = proto::BaseNodeServiceRequest {
@@ -507,7 +483,7 @@ async fn handle_outbound_request(
     let send_result = outbound_message_service
         .send_message(
             send_msg_params.finish(),
-            OutboundDomainMessage::new(TariMessageType::BaseNodeRequest, service_request.clone()),
+            OutboundDomainMessage::new(&TariMessageType::BaseNodeRequest, service_request.clone()),
         )
         .await?;
 
@@ -531,9 +507,9 @@ async fn handle_outbound_request(
                     target: LOG_TARGET,
                     "Timeout for service request ... ({}) set at {:?}",
                     request_key,
-                    config.service_request_timeout
+                    service_request_timeout
                 );
-                spawn_request_timeout(timeout_sender, request_key, config.service_request_timeout)
+                spawn_request_timeout(timeout_sender, request_key, service_request_timeout)
             };
             // Log messages
             let msg_tag = send_states[0].tag;
@@ -580,7 +556,7 @@ async fn handle_outbound_block(
             OutboundEncryption::ClearText,
             exclude_peers,
             OutboundDomainMessage::new(
-                TariMessageType::NewBlock,
+                &TariMessageType::NewBlock,
                 shared_protos::core::NewBlock::from(new_block),
             ),
         )
@@ -606,7 +582,7 @@ async fn handle_request_timeout(
             started.elapsed().as_millis()
         );
         let reply_msg = Err(CommsInterfaceError::RequestTimedOut);
-        let _ = reply_tx.send(reply_msg.map_err(|e| {
+        let _result = reply_tx.send(reply_msg.map_err(|e| {
             error!(
                 target: LOG_TARGET,
                 "Failed to process outbound request (request key: {}): {:?}", &request_key, e

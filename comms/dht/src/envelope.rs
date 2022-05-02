@@ -49,8 +49,10 @@ pub(crate) fn datetime_to_timestamp(datetime: DateTime<Utc>) -> Timestamp {
 }
 
 /// Utility function that converts a `prost::Timestamp` to a `chrono::DateTime<Utc>`
+#[allow(clippy::needless_pass_by_value)]
 pub(crate) fn timestamp_to_datetime(timestamp: Timestamp) -> Option<DateTime<Utc>> {
-    let naive = NaiveDateTime::from_timestamp_opt(timestamp.seconds, cmp::max(0, timestamp.nanos) as u32)?;
+    let naive =
+        NaiveDateTime::from_timestamp_opt(timestamp.seconds, u32::try_from(cmp::max(0, timestamp.nanos)).unwrap())?;
     Some(DateTime::from_utc(naive, Utc))
 }
 
@@ -126,14 +128,14 @@ impl DhtMessageType {
     }
 
     pub fn is_saf_message(self) -> bool {
-        use DhtMessageType::*;
+        use DhtMessageType::{SafRequestMessages, SafStoredMessages};
         matches!(self, SafRequestMessages | SafStoredMessages)
     }
 }
 
 /// This struct mirrors the protobuf version of DhtHeader but is more ergonomic to work with.
 /// It is preferable to not to expose the generated prost structs publicly.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq)]
 pub struct DhtMessageHeader {
     pub version: DhtProtocolVersion,
     pub destination: NodeDestination,
@@ -154,6 +156,19 @@ impl DhtMessageHeader {
         } else {
             true
         }
+    }
+}
+
+impl PartialEq for DhtMessageHeader {
+    /// Checks equality between two `DhtMessageHeader`s disregarding the transient message_tag
+    fn eq(&self, other: &Self) -> bool {
+        self.version == other.version &&
+            self.destination == other.destination &&
+            self.origin_mac == other.origin_mac &&
+            self.ephemeral_public_key == other.ephemeral_public_key &&
+            self.message_type == other.message_type &&
+            self.flags == other.flags &&
+            self.expires == other.expires
     }
 }
 
@@ -235,7 +250,7 @@ impl From<DhtMessageHeader> for DhtHeader {
 }
 
 impl DhtEnvelope {
-    pub fn new(header: DhtHeader, body: Bytes) -> Self {
+    pub fn new(header: DhtHeader, body: &Bytes) -> Self {
         Self {
             header: Some(header),
             body: body.to_vec(),
@@ -256,17 +271,20 @@ pub enum NodeDestination {
 }
 
 impl NodeDestination {
-    pub fn to_inner_bytes(&self) -> Vec<u8> {
-        use NodeDestination::*;
+    /// Returns the slice of bytes of the `CommsPublicKey` or `NodeId`. Returns an empty slice if the destination is
+    /// `Unknown`.
+    pub fn as_inner_bytes(&self) -> &[u8] {
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
-            Unknown => Vec::default(),
-            PublicKey(pk) => pk.to_vec(),
-            NodeId(node_id) => node_id.to_vec(),
+            Unknown => &[],
+            PublicKey(pk) => pk.as_bytes(),
+            NodeId(node_id) => node_id.as_bytes(),
         }
     }
 
+    /// Returns a reference to the `CommsPublicKey` if the destination is `CommsPublicKey`.
     pub fn public_key(&self) -> Option<&CommsPublicKey> {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
             Unknown => None,
             PublicKey(pk) => Some(pk),
@@ -274,8 +292,9 @@ impl NodeDestination {
         }
     }
 
+    /// Returns a reference to the `NodeId` if the destination is `NodeId`.
     pub fn node_id(&self) -> Option<&NodeId> {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match self {
             Unknown => None,
             PublicKey(_) => None,
@@ -283,16 +302,20 @@ impl NodeDestination {
         }
     }
 
+    /// Returns the NodeId for this destination, deriving it from the PublicKey if necessary or returning None if the
+    /// destination is `Unknown`.
     pub fn to_derived_node_id(&self) -> Option<NodeId> {
         self.node_id()
             .cloned()
             .or_else(|| self.public_key().map(NodeId::from_public_key))
     }
 
+    /// Returns true if the destination is `Unknown`, otherwise false.
     pub fn is_unknown(&self) -> bool {
         matches!(self, NodeDestination::Unknown)
     }
 
+    /// Returns true if the NodeIdentity NodeId or PublicKey is equal to this destination.
     #[inline]
     pub fn equals_node_identity(&self, other: &NodeIdentity) -> bool {
         self == other.node_id() || self == other.public_key()
@@ -369,7 +392,7 @@ impl From<NodeId> for NodeDestination {
 
 impl From<NodeDestination> for Destination {
     fn from(destination: NodeDestination) -> Self {
-        use NodeDestination::*;
+        use NodeDestination::{NodeId, PublicKey, Unknown};
         match destination {
             Unknown => Destination::Unknown(true),
             PublicKey(pk) => Destination::PublicKey(pk.to_vec()),

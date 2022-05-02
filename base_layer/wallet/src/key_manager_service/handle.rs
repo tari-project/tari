@@ -24,18 +24,22 @@ use std::sync::Arc;
 
 use aes_gcm::Aes256Gcm;
 use tari_common_types::types::PrivateKey;
-use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::MnemonicLanguage};
+use tari_key_manager::cipher_seed::CipherSeed;
 use tokio::sync::RwLock;
 
 use crate::key_manager_service::{
-    error::KeyManagerError,
+    error::KeyManagerServiceError,
     interface::NextKeyResult,
     storage::database::{KeyManagerBackend, KeyManagerDatabase},
     AddResult,
     KeyManagerInner,
     KeyManagerInterface,
 };
-
+/// The key manager provides a hierarchical key derivation function (KDF) that derives uniformly random secret keys from
+/// a single seed key for arbitrary branches, using an implementation of `KeyManagerBackend` to store the current index
+/// for each branch.
+///
+/// This handle can be cloned cheaply and safely shared across multiple threads.
 #[derive(Clone)]
 pub struct KeyManagerHandle<TBackend> {
     key_manager_inner: Arc<RwLock<KeyManagerInner<TBackend>>>,
@@ -44,6 +48,9 @@ pub struct KeyManagerHandle<TBackend> {
 impl<TBackend> KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
+    /// Creates a new key manager.
+    /// * `master_seed` is the primary seed that will be used to derive all unique branch keys with their indexes
+    /// * `db` implements `KeyManagerBackend` and is used for persistent storage of branches and indices.
     pub fn new(master_seed: CipherSeed, db: KeyManagerDatabase<TBackend>) -> Self {
         KeyManagerHandle {
             key_manager_inner: Arc::new(RwLock::new(KeyManagerInner::new(master_seed, db))),
@@ -55,7 +62,7 @@ where TBackend: KeyManagerBackend + 'static
 impl<TBackend> KeyManagerInterface for KeyManagerHandle<TBackend>
 where TBackend: KeyManagerBackend + 'static
 {
-    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerError> {
+    async fn add_new_branch<T: Into<String> + Send>(&self, branch: T) -> Result<AddResult, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .write()
             .await
@@ -63,15 +70,15 @@ where TBackend: KeyManagerBackend + 'static
             .await
     }
 
-    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerError> {
+    async fn apply_encryption(&self, cipher: Aes256Gcm) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.apply_encryption(cipher).await
     }
 
-    async fn remove_encryption(&self) -> Result<(), KeyManagerError> {
+    async fn remove_encryption(&self) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner).write().await.remove_encryption().await
     }
 
-    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerError> {
+    async fn get_next_key<T: Into<String> + Send>(&self, branch: T) -> Result<NextKeyResult, KeyManagerServiceError> {
         (*self.key_manager_inner).read().await.get_next_key(branch.into()).await
     }
 
@@ -79,7 +86,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         index: u64,
-    ) -> Result<PrivateKey, KeyManagerError> {
+    ) -> Result<PrivateKey, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -91,7 +98,7 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         key: &PrivateKey,
-    ) -> Result<u64, KeyManagerError> {
+    ) -> Result<u64, KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
@@ -103,23 +110,11 @@ where TBackend: KeyManagerBackend + 'static
         &self,
         branch: T,
         index: u64,
-    ) -> Result<(), KeyManagerError> {
+    ) -> Result<(), KeyManagerServiceError> {
         (*self.key_manager_inner)
             .read()
             .await
             .update_current_key_index_if_higher(branch.into(), index)
-            .await
-    }
-
-    async fn get_seed_words<T: Into<String> + Send>(
-        &self,
-        branch: T,
-        language: &MnemonicLanguage,
-    ) -> Result<Vec<String>, KeyManagerError> {
-        (*self.key_manager_inner)
-            .read()
-            .await
-            .get_seed_words(branch.into(), language)
             .await
     }
 }

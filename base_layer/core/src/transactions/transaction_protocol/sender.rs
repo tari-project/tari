@@ -22,6 +22,7 @@
 
 use std::fmt;
 
+use derivative::Derivative;
 use digest::{Digest, FixedOutput};
 use serde::{Deserialize, Serialize};
 use tari_common_types::{
@@ -31,9 +32,9 @@ use tari_common_types::{
 use tari_crypto::{
     keys::PublicKey as PublicKeyTrait,
     ristretto::pedersen::{PedersenCommitment, PedersenCommitmentFactory},
-    script::TariScript,
     tari_utilities::ByteArray,
 };
+use tari_script::TariScript;
 
 use crate::{
     consensus::ConsensusConstants,
@@ -70,7 +71,8 @@ use crate::{
 /// Transaction construction process.
 // TODO: Investigate necessity to use the 'Serialize' and 'Deserialize' traits here; this could potentially leak
 // TODO:   information when least expected. #LOGGED
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Derivative, Serialize, Deserialize, PartialEq)]
+#[derivative(Debug)]
 pub(super) struct RawTransactionInfo {
     pub num_recipients: usize,
     // The sum of self-created outputs plus change
@@ -79,9 +81,11 @@ pub(super) struct RawTransactionInfo {
     pub amounts: Vec<MicroTari>,
     pub recipient_scripts: Vec<TariScript>,
     pub recipient_output_features: Vec<OutputFeatures>,
+    #[derivative(Debug = "ignore")]
     pub recipient_sender_offset_private_keys: Vec<PrivateKey>,
     pub recipient_covenants: Vec<Covenant>,
     // The sender's portion of the public commitment nonce
+    #[derivative(Debug = "ignore")]
     pub private_commitment_nonces: Vec<PrivateKey>,
     pub change: MicroTari,
     pub change_output_metadata_signature: Option<ComSignature>,
@@ -93,9 +97,11 @@ pub(super) struct RawTransactionInfo {
     pub offset: BlindingFactor,
     // The sender's blinding factor shifted by the sender-selected offset
     pub offset_blinding_factor: BlindingFactor,
+    #[derivative(Debug = "ignore")]
     pub gamma: PrivateKey,
     pub public_excess: PublicKey,
     // The sender's private nonce
+    #[derivative(Debug = "ignore")]
     pub private_nonce: PrivateKey,
     // The sender's public nonce
     pub public_nonce: PublicKey,
@@ -165,7 +171,7 @@ impl SenderTransactionProtocol {
     /// Begin constructing a new transaction. All the up-front data is collected via the
     /// `SenderTransactionInitializer` builder function
     pub fn builder(num_recipients: usize, consensus_constants: ConsensusConstants) -> SenderTransactionInitializer {
-        SenderTransactionInitializer::new(num_recipients, consensus_constants)
+        SenderTransactionInitializer::new(num_recipients, &consensus_constants)
     }
 
     /// Convenience method to check whether we're receiving recipient data
@@ -351,6 +357,17 @@ impl SenderTransactionProtocol {
         }
     }
 
+    /// Revert the sender state back to 'SingleRoundMessageReady', used if transactions gets queued
+    pub fn revert_sender_state_to_single_round_message_ready(&mut self) -> Result<(), TPE> {
+        match &self.state {
+            SenderState::CollectingSingleSignature(info) => {
+                self.state = SenderState::SingleRoundMessageReady(info.clone());
+                Ok(())
+            },
+            _ => Err(TPE::InvalidStateError),
+        }
+    }
+
     /// Return the single round sender message
     pub fn get_single_round_message(&self) -> Result<SingleRoundSenderData, TPE> {
         match &self.state {
@@ -458,17 +475,17 @@ impl SenderTransactionProtocol {
         let aggregated_metadata_signature = ComSignature::new(r_pub_aggregated, u_aggregated, v.clone());
 
         let sender_offset_public_key = PublicKey::from_secret_key(sender_offset_private_key);
-        if !aggregated_metadata_signature.verify_challenge(
+        if aggregated_metadata_signature.verify_challenge(
             &(&output.commitment + &sender_offset_public_key),
             &e,
             commitment_factory,
         ) {
+            Ok(aggregated_metadata_signature)
+        } else {
             Err(TPE::InvalidSignatureError(format!(
                 "Transaction output metadata signature not valid for {}",
                 output
             )))
-        } else {
-            Ok(aggregated_metadata_signature)
         }
     }
 
@@ -621,8 +638,8 @@ impl SenderTransactionProtocol {
 
     /// This method takes the serialized data from the previous method, deserializes it and recreates the pending Sender
     /// Transaction from it.
-    pub fn load_pending_transaction_to_be_sent(data: String) -> Result<Self, TPE> {
-        let raw_data: RawTransactionInfo = serde_json::from_str(data.as_str()).map_err(|_| TPE::SerializationError)?;
+    pub fn load_pending_transaction_to_be_sent(data: &str) -> Result<Self, TPE> {
+        let raw_data: RawTransactionInfo = serde_json::from_str(data).map_err(|_| TPE::SerializationError)?;
         Ok(Self {
             state: SenderState::CollectingSingleSignature(Box::new(raw_data)),
         })
@@ -703,6 +720,7 @@ impl SenderState {
 
 impl fmt::Display for SenderState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use SenderState::*;
         match self {
             Initializing(info) => write!(
@@ -753,11 +771,11 @@ mod test {
         keys::{PublicKey as PublicKeyTrait, SecretKey as SecretKeyTrait},
         range_proof::RangeProofService,
         ristretto::pedersen::PedersenCommitmentFactory,
-        script,
-        script::{ExecutionStack, TariScript},
         tari_utilities::{hex::Hex, ByteArray},
     };
+    use tari_script::{script, ExecutionStack, TariScript};
 
+    use super::SenderState;
     use crate::{
         covenants::Covenant,
         test_helpers::create_consensus_constants,
@@ -765,15 +783,92 @@ mod test {
             crypto_factories::CryptoFactories,
             tari_amount::*,
             test_helpers::{create_test_input, create_unblinded_output, TestParams},
-            transaction_components::{KernelFeatures, OutputFeatures, TransactionError, TransactionOutput},
+            transaction_components::{
+                KernelFeatures,
+                OutputFeatures,
+                TransactionError,
+                TransactionOutput,
+                TransactionOutputVersion,
+            },
             transaction_protocol::{
-                sender::SenderTransactionProtocol,
+                sender::{SenderTransactionProtocol, TransactionSenderMessage},
                 single_receiver::SingleReceiverTransactionProtocol,
                 RewindData,
                 TransactionProtocolError,
             },
         },
     };
+
+    #[test]
+    fn test_not_single() {
+        assert_eq!(TransactionSenderMessage::None.single(), None);
+        assert_eq!(TransactionSenderMessage::Multiple.single(), None);
+    }
+
+    #[test]
+    fn test_errors() {
+        let stp = SenderTransactionProtocol {
+            state: SenderState::Failed(TransactionProtocolError::InvalidStateError),
+        };
+        assert_eq!(
+            stp.clone().get_transaction(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().take_transaction(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(stp.clone().check_tx_id(0.into()), false);
+        assert_eq!(
+            stp.clone().get_tx_id(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_total_amount(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_amount_to_self(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_amount(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_unblinded_output(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_output_metadata_signature(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_change_sender_offset_public_key(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_recipient_sender_offset_private_key(0),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_fee_amount(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().build_single_round_message(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().revert_sender_state_to_single_round_message_ready(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(
+            stp.clone().get_single_round_message(),
+            Err(TransactionProtocolError::InvalidStateError)
+        );
+        assert_eq!(stp.clone().sign(), Err(TransactionProtocolError::InvalidStateError));
+    }
 
     #[test]
     fn test_metadata_signature_finalize() {
@@ -805,7 +900,8 @@ mod test {
         let covenant = Covenant::default();
 
         let partial_metadata_signature = TransactionOutput::create_partial_metadata_signature(
-            &value.into(),
+            TransactionOutputVersion::get_current_version(),
+            value.into(),
             &spending_key,
             &script,
             &output_features,
@@ -862,12 +958,12 @@ mod test {
             .with_change_secret(p1.change_spend_key.clone())
             .with_input(utxo, input)
             .with_output(
-                create_unblinded_output(script.clone(), output_features.clone(), p1.clone(), MicroTari(500)),
+                create_unblinded_output(script.clone(), output_features.clone(), &p1, MicroTari(500)),
                 p1.sender_offset_private_key.clone(),
             )
             .unwrap()
             .with_output(
-                create_unblinded_output(script, output_features, p2.clone(), MicroTari(400)),
+                create_unblinded_output(script, output_features, &p2, MicroTari(400)),
                 p2.sender_offset_private_key.clone(),
             )
             .unwrap();
@@ -894,14 +990,13 @@ mod test {
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let fee_per_gram = MicroTari(4);
         let fee = builder.fee().calculate(fee_per_gram, 1, 1, 1, 0);
-        let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(fee_per_gram)
             .with_offset(a.offset.clone())
             .with_private_nonce(a.nonce.clone())
             .with_input(utxo.clone(), input)
-            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), features, PrivateKey::random(&mut OsRng), Covenant::default())
+            .with_recipient_data(0, script.clone(), PrivateKey::random(&mut OsRng), OutputFeatures::default(), PrivateKey::random(&mut OsRng), Covenant::default())
             .with_change_script(script, ExecutionStack::default(), PrivateKey::default())
             // A little twist: Check the case where the change is less than the cost of another output
             .with_amount(0, MicroTari(1200) - fee - MicroTari(10));
@@ -913,7 +1008,7 @@ mod test {
 
         // Test serializing the current state to be sent and resuming from that serialized data
         let ser = alice.save_pending_transaction_to_be_sent().unwrap();
-        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
+        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
         let mut bob_info =
@@ -955,7 +1050,6 @@ mod test {
         let expected_fee = builder
             .fee()
             .calculate(MicroTari(20), 1, 1, 2, a.get_size_for_default_metadata(2));
-        let features = OutputFeatures::default();
         builder
             .with_lock_height(0)
             .with_fee_per_gram(MicroTari(20))
@@ -967,7 +1061,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features,
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -989,7 +1083,7 @@ mod test {
 
         // Test serializing the current state to be sent and resuming from that serialized data
         let ser = alice.save_pending_transaction_to_be_sent().unwrap();
-        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(ser).unwrap();
+        let mut alice = SenderTransactionProtocol::load_pending_transaction_to_be_sent(&ser).unwrap();
 
         // Receiver gets message, deserializes it etc, and creates his response
         let bob_info = SingleReceiverTransactionProtocol::create(&msg, b.nonce, b.spend_key, &factories, None).unwrap();
@@ -1034,7 +1128,6 @@ mod test {
         let (utxo, input) = create_test_input((2u64.pow(32) + 2001).into(), 0, &factories.commitment);
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         let script = script!(Nop);
-        let features = OutputFeatures::default();
 
         builder
             .with_lock_height(0)
@@ -1047,7 +1140,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features,
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )
@@ -1158,11 +1251,11 @@ mod test {
         let rewind_data = RewindData {
             rewind_key: rewind_key.clone(),
             rewind_blinding_key: rewind_blinding_key.clone(),
+            recovery_byte_key: PrivateKey::random(&mut OsRng),
             proof_message: proof_message.to_owned(),
         };
 
         let script = script!(Nop);
-        let features = OutputFeatures::default();
 
         let mut builder = SenderTransactionProtocol::builder(1, create_consensus_constants(0));
         builder
@@ -1178,7 +1271,7 @@ mod test {
                 0,
                 script.clone(),
                 PrivateKey::random(&mut OsRng),
-                features,
+                OutputFeatures::default(),
                 PrivateKey::random(&mut OsRng),
                 Covenant::default(),
             )

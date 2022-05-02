@@ -22,10 +22,8 @@
 
 use std::{
     cmp,
-    convert::TryFrom,
-    fmt::{Display, Error, Formatter},
+    convert::TryInto,
     future::Future,
-    net::SocketAddr,
     pin::Pin,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -43,9 +41,12 @@ use jsonrpc::error::StandardError;
 use reqwest::{ResponseBuilderExt, Url};
 use serde_json as json;
 use tari_app_grpc::tari_rpc as grpc;
-use tari_common::{configuration::Network, GlobalConfig};
-use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
-use tari_core::proof_of_work::{monero_rx, monero_rx::FixedByteArray};
+use tari_core::proof_of_work::{
+    monero_difficulty,
+    monero_rx,
+    monero_rx::FixedByteArray,
+    randomx_factory::RandomXFactory,
+};
 use tari_utilities::hex::Hex;
 use tracing::{debug, error, info, instrument, trace, warn};
 
@@ -53,6 +54,7 @@ use crate::{
     block_template_data::BlockTemplateRepository,
     block_template_protocol::{BlockTemplateProtocol, MoneroMiningData},
     common::{json_rpc, monero_rpc::CoreRpcErrorCode, proxy, proxy::convert_json_to_hyper_json_response},
+    config::MergeMiningProxyConfig,
     error::MmProxyError,
 };
 
@@ -61,70 +63,6 @@ const LOG_TARGET: &str = "tari_mm_proxy::proxy";
 pub(crate) const MMPROXY_AUX_KEY_NAME: &str = "_aux";
 /// The identifier used to identify the tari aux chain data
 const TARI_CHAIN_ID: &str = "xtr";
-
-#[derive(Debug, Clone)]
-pub struct MergeMiningProxyConfig {
-    pub network: Network,
-    pub monerod_url: Vec<String>,
-    pub monerod_username: String,
-    pub monerod_password: String,
-    pub monerod_use_auth: bool,
-    pub grpc_base_node_address: SocketAddr,
-    pub grpc_console_wallet_address: SocketAddr,
-    pub proxy_host_address: SocketAddr,
-    pub proxy_submit_to_origin: bool,
-    pub wait_for_initial_sync_at_startup: bool,
-}
-
-impl TryFrom<GlobalConfig> for MergeMiningProxyConfig {
-    type Error = String;
-
-    fn try_from(config: GlobalConfig) -> Result<Self, Self::Error> {
-        let merge_mining_config = config
-            .merge_mining_config
-            .ok_or_else(|| "Merge mining config settings are missing".to_string())?;
-        let proxy_host_address = multiaddr_to_socketaddr(&merge_mining_config.proxy_host_address)
-            .map_err(|e| format!("Invalid proxy_host_address: {}", e))?;
-        let grpc_base_node_address = multiaddr_to_socketaddr(&merge_mining_config.base_node_grpc_address)
-            .map_err(|e| format!("Invalid base_node_grpc_address: {}", e))?;
-        let grpc_console_wallet_address = multiaddr_to_socketaddr(&merge_mining_config.wallet_grpc_address)
-            .map_err(|e| format!("Invalid wallet_grpc_address: {}", e))?;
-        Ok(Self {
-            network: config.network,
-            monerod_url: merge_mining_config.monerod_url.clone(),
-            monerod_username: merge_mining_config.monerod_username,
-            monerod_password: merge_mining_config.monerod_password,
-            monerod_use_auth: merge_mining_config.monerod_use_auth,
-            grpc_base_node_address,
-            grpc_console_wallet_address,
-            proxy_host_address,
-            proxy_submit_to_origin: merge_mining_config.proxy_submit_to_origin,
-            wait_for_initial_sync_at_startup: merge_mining_config.wait_for_initial_sync_at_startup,
-        })
-    }
-}
-
-impl Display for MergeMiningProxyConfig {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), Error> {
-        writeln!(
-            f,
-            "Configuration:\n  network ({})\n  proxy_host_address ({})\n  grpc_base_node_address ({})\n  \
-             grpc_console_wallet_address ({})\n  proxy_submit_to_origin ({})\n  wait_for_initial_sync_at_startup \
-             ({})\n  monerod_url ({:?})\n  monerod_password ({})\n  monerod_username ({})\n  monerod_use_auth ({})",
-            self.network,
-            self.proxy_host_address,
-            self.grpc_base_node_address,
-            self.grpc_console_wallet_address,
-            self.proxy_submit_to_origin,
-            self.wait_for_initial_sync_at_startup,
-            self.monerod_url,
-            self.monerod_password,
-            self.monerod_username,
-            self.monerod_use_auth
-        )?;
-        Ok(())
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct MergeMiningProxyService {
@@ -138,6 +76,7 @@ impl MergeMiningProxyService {
         base_node_client: grpc::base_node_client::BaseNodeClient<tonic::transport::Channel>,
         wallet_client: grpc::wallet_client::WalletClient<tonic::transport::Channel>,
         block_templates: BlockTemplateRepository,
+        randomx_factory: RandomXFactory,
     ) -> Self {
         debug!(target: LOG_TARGET, "Config: {:?}", config);
         Self {
@@ -150,6 +89,7 @@ impl MergeMiningProxyService {
                 initial_sync_achieved: Arc::new(AtomicBool::new(false)),
                 current_monerod_server: Arc::new(RwLock::new(None)),
                 last_assigned_monerod_server: Arc::new(RwLock::new(None)),
+                randomx_factory,
             },
         }
     }
@@ -171,7 +111,7 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             let bytes = match proxy::read_body_until_end(request.body_mut()).await {
                 Ok(b) => b,
                 Err(err) => {
-                    eprintln!("Method: Unknown, Failed to read request: {:?}", err);
+                    warn!(target: LOG_TARGET, "Method: Unknown, Failed to read request: {:?}", err);
                     let resp = proxy::json_response(
                         StatusCode::BAD_REQUEST,
                         &json_rpc::standard_error_response(
@@ -189,8 +129,10 @@ impl Service<Request<Body>> for MergeMiningProxyService {
             match inner.handle(&method_name, request).await {
                 Ok(resp) => Ok(resp),
                 Err(err) => {
-                    error!(target: LOG_TARGET, "Error handling request: {:?}", err);
-                    eprintln!("Method: {}, Failed to handle request: {:?}", method_name, err);
+                    error!(
+                        target: LOG_TARGET,
+                        "Method \"{}\" failed handling request: {:?}", method_name, err
+                    );
                     Ok(proxy::json_response(
                         StatusCode::INTERNAL_SERVER_ERROR,
                         &json_rpc::standard_error_response(
@@ -218,6 +160,7 @@ struct InnerService {
     initial_sync_achieved: Arc<AtomicBool>,
     current_monerod_server: Arc<RwLock<Option<String>>>,
     last_assigned_monerod_server: Arc<RwLock<Option<String>>>,
+    randomx_factory: RandomXFactory,
 }
 
 impl InnerService {
@@ -326,67 +269,77 @@ impl InnerService {
             let height = header_mut.height;
             header_mut.pow.as_mut().unwrap().pow_data = monero_rx::serialize(&monero_data);
 
+            let tari_header = header_mut.clone().try_into().map_err(MmProxyError::ConversionError)?;
             let mut base_node_client = self.base_node_client.clone();
             let start = Instant::now();
-            match base_node_client.submit_block(block_data.tari_block).await {
-                Ok(resp) => {
-                    if !self.config.proxy_submit_to_origin {
-                        // self-select related, do not change.
-                        json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
-                        trace!(
-                            target: LOG_TARGET,
-                            "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
-                            self.config.proxy_submit_to_origin,
-                            json_resp
-                        );
-                    } else {
-                        json_resp = json_rpc::success_response(
-                            request["id"].as_i64(),
-                            json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
-                        );
-                        let resp = resp.into_inner();
-                        json_resp = append_aux_chain_data(
-                            json_resp,
-                            json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
-                        );
+            let achieved_target = if self.config.check_tari_difficulty_before_submit {
+                trace!(target: LOG_TARGET, "Starting calculate achieved tari difficultly");
+                let diff = monero_difficulty(&tari_header, &self.randomx_factory)?;
+                trace!(target: LOG_TARGET, "Finished calculate achieved tari difficultly");
+                diff.as_u64()
+            } else {
+                block_data.tari_difficulty
+            };
+
+            if achieved_target >= block_data.tari_difficulty {
+                match base_node_client.submit_block(block_data.tari_block).await {
+                    Ok(resp) => {
+                        if self.config.submit_to_origin {
+                            json_resp = json_rpc::success_response(
+                                request["id"].as_i64(),
+                                json!({ "status": "OK", "untrusted": !self.initial_sync_achieved.load(Ordering::Relaxed) }),
+                            );
+                            let resp = resp.into_inner();
+                            json_resp = append_aux_chain_data(
+                                json_resp,
+                                json!({"id": TARI_CHAIN_ID, "block_hash": resp.block_hash.to_hex()}),
+                            );
+                            debug!(
+                                target: LOG_TARGET,
+                                "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                                height,
+                                start.elapsed()
+                            );
+                        } else {
+                            // self-select related, do not change.
+                            json_resp = json_rpc::default_block_accept_response(request["id"].as_i64());
+                            trace!(
+                                target: LOG_TARGET,
+                                "pool merged mining proxy_submit_to_origin({}) json_resp: {}",
+                                self.config.submit_to_origin,
+                                json_resp
+                            );
+                        }
+                        self.block_templates.remove(&hash).await;
+                    },
+                    Err(err) => {
                         debug!(
                             target: LOG_TARGET,
-                            "Submitted block #{} to Tari node in {:.0?} (SubmitBlock)",
+                            "Problem submitting block #{} to Tari node, responded in  {:.0?} (SubmitBlock): {}",
                             height,
-                            start.elapsed()
+                            start.elapsed(),
+                            err
                         );
-                    }
-                    self.block_templates.remove(&hash).await;
-                },
-                Err(err) => {
-                    debug!(
-                        target: LOG_TARGET,
-                        "Problem submitting block #{} to Tari node, responded in  {:.0?} (SubmitBlock): {}",
-                        height,
-                        start.elapsed(),
-                        err
-                    );
 
-                    if !self.config.proxy_submit_to_origin {
-                        // When "submit to origin" is turned off the block is never submitted to monerod, and so we need
-                        // to construct an error message here.
-                        json_resp = json_rpc::error_response(
-                            request["id"].as_i64(),
-                            CoreRpcErrorCode::BlockNotAccepted.into(),
-                            "Block not accepted",
-                            None,
-                        );
-                    }
-                },
-            }
+                        if !self.config.submit_to_origin {
+                            // When "submit to origin" is turned off the block is never submitted to monerod, and so we
+                            // need to construct an error message here.
+                            json_resp = json_rpc::error_response(
+                                request["id"].as_i64(),
+                                CoreRpcErrorCode::BlockNotAccepted.into(),
+                                "Block not accepted",
+                                None,
+                            );
+                        }
+                    },
+                }
+            };
             self.block_templates.remove_outdated().await;
         }
 
         debug!(
             target: LOG_TARGET,
-            "Sending submit_block response (proxy_submit_to_origin({})): {}",
-            self.config.proxy_submit_to_origin,
-            json_resp
+            "Sending submit_block response (proxy_submit_to_origin({})): {}", self.config.submit_to_origin, json_resp
         );
         Ok(proxy::into_response(parts, &json_resp))
     }
@@ -445,7 +398,16 @@ impl InnerService {
                 .await?
                 .into_inner();
 
-            if !initial_sync_achieved {
+            if initial_sync_achieved {
+                self.initial_sync_achieved.store(true, Ordering::Relaxed);
+                let msg = format!(
+                    "Initial base node sync achieved. Ready to mine at height #{}",
+                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
+                );
+                debug!(target: LOG_TARGET, "{}", msg);
+                println!("{}", msg);
+                println!("Listening on {}...", self.config.listener_address);
+            } else {
                 let msg = format!(
                     "Initial base node sync not achieved, current height at #{} ... (waiting = {})",
                     metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
@@ -456,15 +418,6 @@ impl InnerService {
                 if self.config.wait_for_initial_sync_at_startup {
                     return Err(MmProxyError::MissingDataError(msg));
                 }
-            } else {
-                self.initial_sync_achieved.store(true, Ordering::Relaxed);
-                let msg = format!(
-                    "Initial base node sync achieved. Ready to mine at height #{}",
-                    metadata.as_ref().map(|h| h.height_of_longest_chain).unwrap_or_default(),
-                );
-                debug!(target: LOG_TARGET, "{}", msg);
-                println!("{}", msg);
-                println!("Listening on {}...", self.config.proxy_host_address);
             }
         }
 
@@ -743,7 +696,7 @@ impl InnerService {
                 target: LOG_TARGET,
                 "submitblock({}), proxy_submit_to_origin({})",
                 submit_block,
-                self.config.proxy_submit_to_origin
+                self.config.submit_to_origin
             );
         }
 
@@ -751,7 +704,7 @@ impl InnerService {
 
         // If the request is a block submission and we are not submitting blocks
         // to the origin (self-select mode, see next comment for a full explanation)
-        if submit_block && !self.config.proxy_submit_to_origin {
+        if submit_block && !self.config.submit_to_origin {
             debug!(
                 target: LOG_TARGET,
                 "[monerod] skip: Proxy configured for self-select mode. Pool will submit to MoneroD, submitting to \
@@ -865,7 +818,7 @@ impl InnerService {
                         "Monerod returned an error: {}",
                         monerod_resp.status()
                     );
-                    println!(
+                    debug!(
                         "Method: {}, MoneroD Status: {}, Proxy Status: N/A, Response Time: {}ms",
                         method_name,
                         monerod_status,
@@ -875,7 +828,7 @@ impl InnerService {
                 }
 
                 let response = self.get_proxy_response(request, monerod_resp).await?;
-                println!(
+                debug!(
                     "Method: {}, MoneroD Status: {}, Proxy Status: {}, Response Time: {}ms",
                     method_name,
                     monerod_status,

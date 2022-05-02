@@ -111,7 +111,8 @@ jobs:
         run: |
           echo "SHARUN=shasum --algorithm 256" >> $GITHUB_ENV
           echo "CC=gcc" >> $GITHUB_ENV
-          echo "TBN_EXT=" >> $GITHUB_ENV
+          echo "TBN_EXT=" >> $GITHUB_ENV          
+          echo "LIB_PRE=lib" >> $GITHUB_ENV
           echo "SHELL_EXT=.sh" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=linux" >> $GITHUB_ENV
           echo "TBN_DIST=/dist" >> $GITHUB_ENV
@@ -120,6 +121,12 @@ jobs:
         if: startsWith(runner.os,'macOS')
         run: |
           echo "PLATFORM_SPECIFIC_DIR=osx" >> $GITHUB_ENV
+          echo "LIB_EXT=.dylib" >> $GITHUB_ENV
+
+      - name: Set environment variables - Ubuntu
+        if: startsWith(runner.os,'Linux')
+        run: |
+          echo "LIB_EXT=.so" >> $GITHUB_ENV
 
       - name: Set environment variables - Windows
         if: startsWith(runner.os,'Windows')
@@ -127,6 +134,8 @@ jobs:
         run: |
           echo "SHARUN=pwsh C:\ProgramData\chocolatey\lib\psutils\tools\psutils-master\shasum.ps1 --algorithm 256" >> $GITHUB_ENV
           echo "TBN_EXT=.exe" >> $GITHUB_ENV
+          echo "LIB_EXT=.dll" >> $GITHUB_ENV
+          echo "LIB_PRE=" >> $GITHUB_ENV
           echo "SHELL_EXT=.bat" >> $GITHUB_ENV
           echo "TBN_DIST=\dist" >> $GITHUB_ENV
           echo "PLATFORM_SPECIFIC_DIR=windows" >> $GITHUB_ENV
@@ -186,10 +195,11 @@ jobs:
           cp -v "$GITHUB_WORKSPACE/target/release/tari_base_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_console_wallet${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_merge_mining_proxy${TBN_EXT}" .
-          cp -v "$GITHUB_WORKSPACE/target/release/tari_mining_node${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/tari_miner${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_validator_node${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_collectibles${TBN_EXT}" .
           cp -v "$GITHUB_WORKSPACE/target/release/tari_launchpad${TBN_EXT}" .
+          cp -v "$GITHUB_WORKSPACE/target/release/${LIB_PRE}tari_mining_helper_ffi${LIB_EXT}" .
           cp -v "$GITHUB_WORKSPACE/applications/tari_base_node/${PLATFORM_SPECIFIC_DIR}/runtime/start_tor${SHELL_EXT}" .
 
       - name: Build the macOS pkg
@@ -220,7 +230,7 @@ jobs:
           FILES=(
             "tari_base_node"
             "tari_console_wallet"
-            "tari_mining_node"
+            "tari_miner"
             "tari_merge_mining_proxy"
             "tari_validator_node"
             "tari_collectibles"
@@ -329,8 +339,8 @@ jobs:
       - name: Artifact upload for Miner
         uses: actions/upload-artifact@v2
         with:
-          name: tari_mining_node-${{ matrix.os }}-${{ matrix.target_cpu }}
-          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_mining_node${{ env.TBN_EXT}}"
+          name: tari_miner-${{ matrix.os }}-${{ matrix.target_cpu }}
+          path: "${{ github.workspace }}${{ env.TBN_DIST }}/tari_miner${{ env.TBN_EXT}}"
 
       - name: Sync dist to S3 - Bash
         continue-on-error: true # Don't break if s3 upload fails

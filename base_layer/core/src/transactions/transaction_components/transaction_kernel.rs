@@ -26,17 +26,17 @@
 use std::{
     cmp::Ordering,
     fmt::{Display, Formatter},
+    io,
+    io::{Read, Write},
 };
 
-use blake2::Digest;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{Commitment, HashDigest, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, ByteArray, Hashable};
+use tari_common_types::types::{Commitment, Signature};
+use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 
 use super::TransactionKernelVersion;
 use crate::{
-    common::hash_writer::HashWriter,
-    consensus::ConsensusEncoding,
+    consensus::{ConsensusDecoding, ConsensusEncoding, ConsensusHashWriter},
     transactions::{
         tari_amount::MicroTari,
         transaction_components::{KernelFeatures, TransactionError},
@@ -126,19 +126,9 @@ impl TransactionKernel {
 }
 
 impl Hashable for TransactionKernel {
-    /// Produce a canonical hash for a transaction kernel. The hash is given by
-    /// $$ H(feature_bits | fee | lock_height | P_excess | R_sum | s_sum)
+    /// Produce a canonical hash for a transaction kernel.
     fn hash(&self) -> Vec<u8> {
-        let mut writer = HashWriter::new(HashDigest::new());
-        // unwraps: HashWriter is infallible
-        self.version.consensus_encode(&mut writer).unwrap();
-        self.features.consensus_encode(&mut writer).unwrap();
-        self.fee.consensus_encode(&mut writer).unwrap();
-        self.lock_height.consensus_encode(&mut writer).unwrap();
-        self.excess.consensus_encode(&mut writer).unwrap();
-        self.excess_sig.consensus_encode(&mut writer).unwrap();
-
-        writer.finalize().to_vec()
+        ConsensusHashWriter::default().chain(self).finalize().to_vec()
     }
 }
 
@@ -167,5 +157,30 @@ impl PartialOrd for TransactionKernel {
 impl Ord for TransactionKernel {
     fn cmp(&self, other: &Self) -> Ordering {
         self.excess_sig.cmp(&other.excess_sig)
+    }
+}
+
+impl ConsensusEncoding for TransactionKernel {
+    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
+        let mut written = self.version.consensus_encode(writer)?;
+        written += self.features.consensus_encode(writer)?;
+        written += self.fee.consensus_encode(writer)?;
+        written += self.lock_height.consensus_encode(writer)?;
+        written += self.excess.consensus_encode(writer)?;
+        written += self.excess_sig.consensus_encode(writer)?;
+        Ok(written)
+    }
+}
+
+impl ConsensusDecoding for TransactionKernel {
+    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        let version = TransactionKernelVersion::consensus_decode(reader)?;
+        let features = KernelFeatures::consensus_decode(reader)?;
+        let fee = MicroTari::consensus_decode(reader)?;
+        let lock_height = u64::consensus_decode(reader)?;
+        let excess = Commitment::consensus_decode(reader)?;
+        let excess_sig = Signature::consensus_decode(reader)?;
+        let kernel = TransactionKernel::new(version, features, fee, lock_height, excess, excess_sig);
+        Ok(kernel)
     }
 }

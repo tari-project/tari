@@ -24,6 +24,7 @@
 use std::{convert::TryFrom, path::PathBuf, time::Duration};
 
 use bollard::Docker;
+use derivative::Derivative;
 use futures::StreamExt;
 use log::*;
 use serde::{Deserialize, Serialize};
@@ -52,11 +53,13 @@ use crate::{
 };
 
 /// "Global" settings from the launcher front-end
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Derivative, Deserialize)]
+#[derivative(Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct ServiceSettings {
     pub tari_network: String,
     pub root_folder: String,
+    #[derivative(Debug = "ignore")]
     pub wallet_password: String,
     pub monero_mining_address: Option<String>,
     pub num_mining_threads: i64,
@@ -64,6 +67,7 @@ pub struct ServiceSettings {
     pub docker_tag: Option<String>,
     pub monerod_url: Option<String>,
     pub monero_username: Option<String>,
+    #[derivative(Debug = "ignore")]
     pub monero_password: Option<String>,
     pub monero_use_auth: Option<bool>,
 }
@@ -83,7 +87,7 @@ impl TryFrom<ServiceSettings> for LaunchpadConfig {
         };
         let sha3_miner = Sha3MinerConfig {
             delay: zero_delay,
-            num_mining_threads: settings.num_mining_threads as usize,
+            num_mining_threads: usize::try_from(settings.num_mining_threads).unwrap(),
         };
         let mut mm_proxy = MmProxyConfig {
             delay: zero_delay,
@@ -154,6 +158,7 @@ pub async fn start_service(
     service_name: String,
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, String> {
+    debug!("start_service called {}", service_name);
     start_service_impl(app, service_name, settings).await.map_err(|e| {
         let error = e.chained_message();
         error!("{}", error);
@@ -192,7 +197,7 @@ async fn create_default_workspace_impl(app: AppHandle<Wry>, settings: ServiceSet
     }; // drop read-only lock
     if should_create_workspace {
         let package_info = &state.package_info;
-        let _ = create_workspace_folders(&config.data_directory).map_err(|e| e.chained_message());
+        create_workspace_folders(&config.data_directory)?;
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "log4rs.yml")?;
         copy_config_file(&config.data_directory, app_config.as_ref(), package_info, "config.toml")?;
         // Only get a write-lock if we need one
@@ -207,11 +212,11 @@ async fn start_service_impl(
     service_name: String,
     settings: ServiceSettings,
 ) -> Result<StartServiceResult, LauncherError> {
+    debug!("Starting {} service", service_name);
     let state = app.state::<AppState>();
     let docker = state.docker_handle().await;
     let _ = create_default_workspace_impl(app.clone(), settings).await?;
     let mut wrapper = state.workspaces.write().await;
-    debug!("Starting {} service", service_name);
     // We've just checked this, so it should never fail:
     let workspace: &mut TariWorkspace = wrapper
         .get_workspace_mut("default")

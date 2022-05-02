@@ -4,8 +4,6 @@ on:
       - development
       - main
       - ci-*
-      - staging
-      - trying
   pull_request:
     types:
       - opened
@@ -54,11 +52,16 @@ jobs:
         with:
           command: fmt
           args: --all -- --check
-      - name: Clippy check
+      - name: Install cargo-lints
         uses: actions-rs/cargo@v1
         with:
-          command: clippy
-          args: --all-targets -- -D warnings
+          command: install
+          args: cargo-lints
+      - name: Clippy check (with lints)
+        uses: actions-rs/cargo@v1
+        with:
+          command: lints
+          args: clippy --all-targets
   build:
     name: check nightly
     runs-on: ubuntu-18.04
@@ -92,6 +95,12 @@ jobs:
         with:
           command: check
           args: --release --all-targets
+      - name: cargo check ffi separately
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --package tari_wallet_ffi
+
   build-stable:
     name: check stable
     runs-on: ubuntu-18.04
@@ -127,7 +136,47 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: check
-          args: --release --all-targets
+          args: --release --all-targets --locked
+      - name: cargo check ffi separately
+        uses: actions-rs/cargo@v1
+        with:
+          command: check
+          args: --release --package tari_wallet_ffi
+  javascript:
+    name: npm packages
+    runs-on: ubuntu-18.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: build launchpad gui-vue
+        run: |
+          cd applications/launchpad/gui-vue
+          npm ci
+          npm run build
+      - name: build collectibles web-app
+        run: |
+          cd applications/tari_collectibles/web-app
+          npm ci
+          npm run build
+      - name: lint/fmt tari explorer
+        run: |
+          cd applications/tari_explorer
+          npm ci
+          npm run lint
+          npm run check-fmt
+  licenses:
+    name: file licenses
+    runs-on: ubuntu-20.04
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+      - name: install ripgrep
+        run: |
+          wget https://github.com/BurntSushi/ripgrep/releases/download/13.0.0/ripgrep_13.0.0_amd64.deb
+          sudo dpkg -i ripgrep_13.0.0_amd64.deb
+          rg --version || exit 1
+      - name: run the license check
+        run: ./scripts/file_license_check.sh
   test:
     name: test
     runs-on: ubuntu-18.04
@@ -170,3 +219,19 @@ jobs:
         with:
           command: test
           args: -v --all-features
+  # Allows other workflows to know the PR number
+  artifacts:
+    name: test
+    runs-on: ubuntu-18.04
+    steps:
+      - name: Save the PR number in an artifact
+        shell: bash
+        env:
+          PR_NUM: ${{ github.event.number }}
+        run: echo $PR_NUM > pr_num.txt
+
+      - name: Upload the PR number
+        uses: actions/upload-artifact@v2
+        with:
+          name: pr_num
+          path: ./pr_num.txt

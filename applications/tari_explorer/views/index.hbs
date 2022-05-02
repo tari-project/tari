@@ -1,55 +1,63 @@
 <h3>Tip</h3>
 <table>
-    <thead>
+  <thead>
     <tr>
-        <th>Chain height</th>
-        <th>Best block</th>
-        <th>Pruned height</th>
+      <th>Chain height</th>
+      <th>Best block</th>
+      <th>Pruned height</th>
     </tr>
-    </thead>
-    <tbody>
+  </thead>
+  <tbody>
     <tr>
-        <td>{{this.tipInfo.metadata.height_of_longest_chain}}</td>
-        <td>{{hex this.tipInfo.metadata.best_block}}</td>
-        <td>{{this.tipInfo.metadata.pruned_height}}</td>
+      <td>{{this.tipInfo.metadata.height_of_longest_chain}}</td>
+      <td>{{hex this.tipInfo.metadata.best_block}}</td>
+      <td>{{this.tipInfo.metadata.pruned_height}}</td>
     </tr>
-    </tbody>
+  </tbody>
 </table>
 <br />
 
 <h3>Proof of work split</h3>
 <table>
-    <thead>
+  <thead>
     <tr>
-        <th rowspan="2">&nbsp;</th>
-        <th colspan="4">
-            In the last x blocks
-        </th>
+      <th rowspan="2">&nbsp;</th>
+      <th colspan="4">
+        In the last x blocks
+      </th>
     </tr>
     <tr>
-        <th>10</th>
-        <th>20</th>
-        <th>50</th>
-        <th>100</th>
+      <th>10</th>
+      <th>20</th>
+      <th>50</th>
+      <th>100</th>
     </tr>
-    </thead>
-    <tbody>
+  </thead>
+  <tbody>
     <tr>
-        <th>Monero (RandomX)</th>
-        <td>{{this.algoSplit.monero10}} {{percentbar this.algoSplit.monero10 this.algoSplit.sha10}}</td>
-        <td>{{this.algoSplit.monero20}} {{percentbar this.algoSplit.monero20 this.algoSplit.sha20}}</td>
-        <td>{{this.algoSplit.monero50}} {{percentbar this.algoSplit.monero50 this.algoSplit.sha50}}</td>
-        <td>{{this.algoSplit.monero100}} {{percentbar this.algoSplit.monero100 this.algoSplit.sha100}}</td>
+      <th>Monero (RandomX)</th>
+      <td>{{this.algoSplit.monero10}}
+        {{percentbar this.algoSplit.monero10 this.algoSplit.sha10}}</td>
+      <td>{{this.algoSplit.monero20}}
+        {{percentbar this.algoSplit.monero20 this.algoSplit.sha20}}</td>
+      <td>{{this.algoSplit.monero50}}
+        {{percentbar this.algoSplit.monero50 this.algoSplit.sha50}}</td>
+      <td>{{this.algoSplit.monero100}}
+        {{percentbar this.algoSplit.monero100 this.algoSplit.sha100}}</td>
     </tr>
     <tr>
-        <th>SHA-3</th>
+      <th>SHA-3</th>
 
-        <td>{{this.algoSplit.sha10}}  {{percentbar this.algoSplit.sha10 this.algoSplit.monero10}}</td>
-        <td>{{this.algoSplit.sha20}}  {{percentbar this.algoSplit.sha20 this.algoSplit.monero20}}</td>
-        <td>{{this.algoSplit.sha50}}  {{percentbar this.algoSplit.sha50 this.algoSplit.monero50}}</td>
-        <td>{{this.algoSplit.sha100}}  {{percentbar this.algoSplit.sha100 this.algoSplit.monero100}}</td>
+      <td>{{this.algoSplit.sha10}}
+        {{percentbar this.algoSplit.sha10 this.algoSplit.monero10}}</td>
+      <td>{{this.algoSplit.sha20}}
+        {{percentbar this.algoSplit.sha20 this.algoSplit.monero20}}</td>
+      <td>{{this.algoSplit.sha50}}
+        {{percentbar this.algoSplit.sha50 this.algoSplit.monero50}}</td>
+      <td>{{this.algoSplit.sha100}}
+        {{percentbar this.algoSplit.sha100 this.algoSplit.monero100}}</td>
     </tr>
-    </tbody>
+  </tbody>
 </table>
 <br />
 
@@ -59,7 +67,7 @@
       <h3>Block times (minutes)</h3>
       Target time: 2 minutes
       <h3>All</h3>
-      <pre>{{chart this.blockTimes 15 }}
+      <pre>{{chart this.blockTimes 15}}
       </pre>
     </td>
     <td>
@@ -69,13 +77,47 @@
     <td>
       <h3>Monero</h3>
       Target time: 3.3 minutes
-      <pre>{{chart this.moneroTimes 15 }}
+      <pre>{{chart this.moneroTimes 15}}
       </pre>
     </td>
     <td>
       <h3>SHA3</h3>
       Target time: 5 minutes
-      <pre>{{chart this.shaTimes 15 }}
+      <pre>{{chart this.shaTimes 15}}
+      </pre>
+    </td>
+  </tr>
+</table>
+<br />
+
+<table class="noborder">
+  <tr>
+    <td>
+      <h3>Estimated Hash Rate</h3>
+      Current total estimated Hash Rate:
+      {{this.currentHashRate}}
+      H/s
+      <pre>{{chart this.totalHashRates 15}}
+      </pre>
+    </td>
+    <td>
+    </td>
+  </tr>
+  <tr>
+    <td>
+      <h3>Monero</h3>
+      Current estimated Hash Rate:
+      {{this.currentMoneroHashRate}}
+      H/s
+      <pre>{{chart this.moneroHashRates 15}}
+      </pre>
+    </td>
+    <td>
+      <h3>SHA3</h3>
+      Current estimated Hash Rate:
+      {{this.currentShaHashRate}}
+      H/s
+      <pre>{{chart this.shaHashRates 15}}
       </pre>
     </td>
   </tr>
@@ -84,73 +126,75 @@
 
 <h2>{{title}}</h2>
 <table>
-    <thead>
+  <thead>
     <tr>
-        <th>Height</th>
-        <th>Time</th>
-        <th>Proof of Work</th>
-        <th>Hash</th>
-        <th>Kernels</th>
-        <th>Outputs</th>
+      <th>Height</th>
+      <th>Time</th>
+      <th>Proof of Work</th>
+      <th>Hash</th>
+      <th>Kernels</th>
+      <th>Outputs</th>
     </tr>
-    </thead>
-    <tbody>
+  </thead>
+  <tbody>
     {{#each this.headers}}
-        <tr>
-            <td><a href="blocks/{{this.height}}">{{this.height}}</a></td>
-            <td>{{timestamp this.timestamp}}</td>
+      <tr>
+        <td><a href="blocks/{{this.height}}">{{this.height}}</a></td>
+        <td>{{timestamp this.timestamp}}</td>
 
-            <td>{{lookup ../pows this.pow.pow_algo}}</td>
-            <td>{{hex this.hash}}</td>
-            <td>{{kernels}}</td>
-            <td>{{outputs}}</td>
-        </tr>
+        <td>{{this.powText}}</td>
+        <td>{{hex this.hash}}</td>
+        <td>{{kernels}}</td>
+        <td>{{outputs}}</td>
+      </tr>
     {{/each}}
-    </tbody>
+  </tbody>
 </table>
 <p>
-    <a href="/?from={{prevPage}}&limit={{limit}}">&lt; Prev</a>
-    <a href="/?limit={{limit}}">Tip</a>
-    <a href="/?from={{nextPage}}&limit={{limit}}">Next &gt;</a>
+  <a href="/?from={{prevPage}}&limit={{limit}}">&lt; Prev</a>
+  <a href="/?limit={{limit}}">Tip</a>
+  <a href="/?from={{nextPage}}&limit={{limit}}">Next &gt;</a>
 </p>
 <p>
-    Show per page:
-    <a href="/?from={{from}}&limit=10">10</a>
-    <a href="/?from={{from}}&limit=20">20</a>
-    <a href="/?from={{from}}&limit=50">50</a>
-    <a href="/?from={{from}}&limit=100">100</a>
+  Show per page:
+  <a href="/?from={{from}}&limit=10">10</a>
+  <a href="/?from={{from}}&limit=20">20</a>
+  <a href="/?from={{from}}&limit=50">50</a>
+  <a href="/?from={{from}}&limit=100">100</a>
 </p>
 <br />
 
 <h2>Mempool</h2>
 <table>
-    <thead>
+  <thead>
     <tr>
-        <th>Excess</th>
-        <th>Total Fees</th>
-        <th>Outputs</th>
-        <th>Kernels</th>
-        <th>Inputs</th>
+      <th>Excess</th>
+      <th>Total Fees</th>
+      <th>Outputs</th>
+      <th>Kernels</th>
+      <th>Inputs</th>
     </tr>
-    </thead>
-    <tbody>
+  </thead>
+  <tbody>
     {{#each mempool}}
-        {{#with this.transaction.body}}
-            <tr>
-                <td><a href="/mempool/{{#each this.kernels}}{{hex this.excess_sig.signature}}+{{/each}}">{{#each this.kernels}}<span>{{hex this.excess_sig.signature}}</span>{{/each}}</a></td>
-                <td>{{this.total_fees}}</td>
-                <td>{{this.outputs.length}}</td>
-                <td>{{this.kernels.length}}</td>
-                <td>{{this.inputs.length}}</td>
-            </tr>
-        {{/with}}
+      {{#with this.transaction.body}}
+        <tr>
+          <td><a href="/mempool/{{hex this.signature}}">{{hex
+                this.signature
+              }}</a></td>
+          <td>{{this.total_fees}}</td>
+          <td>{{this.outputs.length}}</td>
+          <td>{{this.kernels.length}}</td>
+          <td>{{this.inputs.length}}</td>
+        </tr>
+      {{/with}}
     {{/each}}
-    </tbody>
+  </tbody>
 </table>
 <br />
 
 <form method="get" action="search">
-<label for="c">Find commitment</label>
-<input id="c" name="c" type="text" />
-<button type="submit">search</button>
+  <label for="c">Find commitment</label>
+  <input id="c" name="c" type="text" />
+  <button type="submit">search</button>
 </form>

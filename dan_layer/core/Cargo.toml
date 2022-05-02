@@ -8,10 +8,10 @@ license = "BSD-3-Clause"
 
 [dependencies]
 tari_common = { path = "../../common" }
-tari_comms = { path = "../../comms" }
+tari_comms = { path = "../../comms/core" }
 tari_comms_dht = { path = "../../comms/dht" }
 tari_comms_rpc_macros = { path = "../../comms/rpc_macros" }
-tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", branch = "main" }
+tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.12.5" }
 tari_mmr = { path = "../../base_layer/mmr" }
 tari_p2p = { path = "../../base_layer/p2p" }
 tari_service_framework = { path = "../../base_layer/service_framework" }
@@ -20,12 +20,12 @@ tari_storage = { path = "../../infrastructure/storage" }
 tari_core = {path = "../../base_layer/core"}
 tari_dan_common_types = {path = "../common_types"}
 tari_common_types = {path = "../../base_layer/common_types"}
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", branch = "main" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
 
 anyhow = "1.0.53"
 async-trait = "0.1.50"
 blake2 = "0.9.2"
-clap = "2.33.3"
+clap = "3.1.8"
 digest = "0.9.0"
 futures = { version = "^0.3.1" }
 log = { version = "0.4.8", features = ["std"] }
@@ -37,6 +37,7 @@ serde = "1.0.126"
 thiserror = "^1.0.20"
 tokio = { version="1.10", features = ["macros", "time"]}
 tokio-stream = { version = "0.1.7", features = ["sync"] }
+tonic = "0.6.2"
 
 # saving of patricia tree
 patricia_tree = { version = "0.3.0", features = ["binary-format"] }

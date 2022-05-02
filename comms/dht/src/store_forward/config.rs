@@ -22,7 +22,11 @@
 
 use std::time::Duration;
 
-#[derive(Debug, Clone)]
+use serde::{Deserialize, Serialize};
+
+/// Store and forward configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SafConfig {
     /// The amount of time added to the current time will be used to check if the message has expired or not
     /// Default: 3 hours

@@ -107,7 +107,7 @@ impl MockOutputManagerService {
             // Incoming requests
             let (request, reply_tx) = request_context.split();
             let response = self.handle_request(request);
-            let _ = reply_tx.send(response);
+            let _result = reply_tx.send(response);
         }
 
         Ok(())

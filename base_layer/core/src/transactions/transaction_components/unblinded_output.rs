@@ -29,16 +29,25 @@ use std::{
     ops::Shl,
 };
 
+use log::*;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_common_types::types::{BlindingFactor, ComSignature, CommitmentFactory, PrivateKey, PublicKey, RangeProof};
+use tari_common_types::types::{
+    BlindingFactor,
+    BulletRangeProof,
+    ComSignature,
+    CommitmentFactory,
+    PrivateKey,
+    PublicKey,
+    RangeProof,
+};
 use tari_crypto::{
     commitment::HomomorphicCommitmentFactory,
     keys::{PublicKey as PublicKeyTrait, SecretKey},
     range_proof::{RangeProofError, RangeProofService},
-    script::{ExecutionStack, TariScript},
-    tari_utilities::ByteArray,
+    tari_utilities::{hex::to_hex, ByteArray},
 };
+use tari_script::{ExecutionStack, TariScript};
 
 use super::TransactionOutputVersion;
 use crate::{
@@ -52,11 +61,14 @@ use crate::{
             transaction_output::TransactionOutput,
             OutputFeatures,
             TransactionError,
+            TransactionInputVersion,
         },
         transaction_protocol::RewindData,
         CryptoFactories,
     },
 };
+
+pub const LOG_TARGET: &str = "c::tx::tx_components::unblinded_output";
 
 /// An unblinded output is one where the value and spending key (blinding factor) are known. This can be used to
 /// build both inputs and outputs (every input comes from an output)
@@ -143,6 +155,7 @@ impl UnblindedOutput {
         let nonce_commitment = factory.commit(&script_nonce_b, &script_nonce_a);
 
         let challenge = TransactionInput::build_script_challenge(
+            TransactionInputVersion::get_current_version(),
             &nonce_commitment,
             &self.script,
             &self.input_data,
@@ -196,6 +209,19 @@ impl UnblindedOutput {
             ));
         }
         let commitment = factories.commitment.commit(&self.spending_key, &self.value.into());
+
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, None);
+        if self.features.recovery_byte != recovery_byte {
+            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
+            error!(
+                target: LOG_TARGET,
+                "Recovery byte set incorrectly - expected {}, got {} for commitment {}",
+                recovery_byte,
+                self.features.recovery_byte,
+                to_hex(commitment.as_bytes()),
+            );
+        }
+
         let output = TransactionOutput::new(
             self.version,
             self.features.clone(),
@@ -219,7 +245,7 @@ impl UnblindedOutput {
         &self,
         factories: &CryptoFactories,
         rewind_data: &RewindData,
-        range_proof: Option<&RangeProof>,
+        range_proof: Option<&BulletRangeProof>,
     ) -> Result<TransactionOutput, TransactionError> {
         if factories.range_proof.range() < 64 && self.value >= MicroTari::from(1u64.shl(&factories.range_proof.range()))
         {
@@ -242,6 +268,18 @@ impl UnblindedOutput {
             RangeProof::from_bytes(&proof_bytes)
                 .map_err(|_| TransactionError::RangeProofError(RangeProofError::ProofConstructionError))?
         };
+
+        let recovery_byte = OutputFeatures::create_unique_recovery_byte(&commitment, Some(rewind_data));
+        if self.features.recovery_byte != recovery_byte {
+            // This is not a hard error by choice; we allow inconsistent recovery byte data into the wallet database
+            error!(
+                target: LOG_TARGET,
+                "Recovery byte set incorrectly (with rewind) - expected {}, got {} for commitment {}",
+                recovery_byte,
+                self.features.recovery_byte,
+                to_hex(commitment.as_bytes()),
+            );
+        }
 
         let output = TransactionOutput::new(
             self.version,

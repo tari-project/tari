@@ -22,9 +22,11 @@
 
 use std::time::Duration;
 
+use serde::{Deserialize, Serialize};
 use tari_comms::peer_manager::NodeId;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BlockchainSyncConfig {
     /// The initial max sync latency. If a peer fails to stream a header/block within this deadline another sync peer
     /// will be selected. If there are no further peers the sync will be restarted with an increased by
@@ -46,7 +48,7 @@ pub struct BlockchainSyncConfig {
 impl Default for BlockchainSyncConfig {
     fn default() -> Self {
         Self {
-            initial_max_sync_latency: Duration::from_secs(3),
+            initial_max_sync_latency: Duration::from_secs(10),
             max_latency_increase: Duration::from_secs(2),
             ban_period: Duration::from_secs(30 * 60),
             short_ban_period: Duration::from_secs(60),

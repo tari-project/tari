@@ -23,7 +23,7 @@
 use std::io;
 
 use integer_encoding::VarIntReader;
-use tari_crypto::script::ScriptError;
+use tari_script::ScriptError;
 
 use crate::covenants::token::CovenantToken;
 
@@ -81,12 +81,12 @@ pub enum CovenantDecodeError {
     Io(#[from] io::Error),
 }
 
-pub(super) trait CovenentReadExt: io::Read {
+pub(super) trait CovenantReadExt: io::Read {
     fn read_next_byte_code(&mut self) -> Result<Option<u8>, io::Error>;
     fn read_variable_length_bytes(&mut self, size: usize) -> Result<Vec<u8>, io::Error>;
 }
 
-impl<R: io::Read> CovenentReadExt for R {
+impl<R: io::Read> CovenantReadExt for R {
     fn read_next_byte_code(&mut self) -> Result<Option<u8>, io::Error> {
         let mut buf = [0u8; 1];
         loop {
@@ -127,13 +127,40 @@ mod test {
     use super::*;
     use crate::{
         covenant,
-        covenants::{arguments::CovenantArg, fields::OutputField, filters::CovenantFilter},
+        covenants::{
+            arguments::CovenantArg,
+            byte_codes::ARG_OUTPUT_FIELD,
+            fields::OutputField,
+            filters::CovenantFilter,
+        },
     };
 
     #[test]
     fn it_immediately_ends_iterator_given_empty_bytes() {
         let buf = &[] as &[u8; 0];
         assert!(CovenantTokenDecoder::new(&mut &buf[..]).next().is_none());
+    }
+
+    #[test]
+    fn it_ends_after_an_error() {
+        let buf = &[0xffu8];
+        let mut reader = &buf[..];
+        let mut decoder = CovenantTokenDecoder::new(&mut reader);
+        assert!(matches!(decoder.next(), Some(Err(_))));
+        assert!(decoder.next().is_none());
+    }
+
+    #[test]
+    fn it_returns_an_error_if_arg_expected() {
+        let buf = &[ARG_OUTPUT_FIELD];
+        let mut reader = &buf[..];
+        let mut decoder = CovenantTokenDecoder::new(&mut reader);
+
+        assert!(matches!(
+            decoder.next(),
+            Some(Err(CovenantDecodeError::UnexpectedEof { .. }))
+        ));
+        assert!(decoder.next().is_none());
     }
 
     #[test]
@@ -170,5 +197,22 @@ mod test {
         );
 
         assert!(decoder.next().is_none());
+    }
+
+    mod covenant_read_ext {
+        use super::*;
+
+        #[test]
+        fn it_reads_bytes_with_length_prefix() {
+            let data = vec![0x03u8, 0x01, 0x02, 0x03];
+            let bytes = CovenantReadExt::read_variable_length_bytes(&mut data.as_slice(), 3).unwrap();
+            assert_eq!(bytes, [1u8, 2, 3]);
+        }
+
+        #[test]
+        fn it_errors_if_len_byte_exceeds_maximum() {
+            let data = vec![0x02, 0x01];
+            CovenantReadExt::read_variable_length_bytes(&mut data.as_slice(), 1).unwrap_err();
+        }
     }
 }

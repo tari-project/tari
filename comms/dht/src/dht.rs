@@ -43,7 +43,7 @@ use crate::{
     event::{DhtEventReceiver, DhtEventSender},
     filter,
     inbound,
-    inbound::{DecryptedDhtMessage, DhtInboundMessage, MetricsLayer},
+    inbound::{DecryptedDhtMessage, DhtInboundMessage, ForwardLayer, MetricsLayer},
     logging_middleware::MessageLoggingLayer,
     network_discovery::DhtNetworkDiscovery,
     outbound,
@@ -137,7 +137,7 @@ impl Dht {
             event_publisher,
         };
 
-        let conn = DbConnection::connect_and_migrate(dht.config.database_url.clone())
+        let conn = DbConnection::connect_and_migrate(&dht.config.database_url.clone())
             .map_err(DhtInitializationError::DatabaseMigrationFailed)?;
 
         dht.network_discovery_service(shutdown_signal.clone()).spawn();
@@ -235,11 +235,11 @@ impl Dht {
         saf_response_signal_rx: mpsc::Receiver<()>,
     ) -> StoreAndForwardService {
         StoreAndForwardService::new(
-            self.config.saf_config.clone(),
+            self.config.saf.clone(),
             conn,
             self.peer_manager.clone(),
             self.dht_requester(),
-            self.connectivity.clone(),
+            &self.connectivity.clone(),
             self.outbound_requester(),
             request_rx,
             saf_response_signal_rx,
@@ -313,17 +313,17 @@ impl Dht {
                 self.node_identity.node_id().short_str()
             )))
             .layer(store_forward::StoreLayer::new(
-                self.config.saf_config.clone(),
+                self.config.saf.clone(),
                 Arc::clone(&self.peer_manager),
                 Arc::clone(&self.node_identity),
                 self.store_and_forward_requester(),
             ))
-            .layer(store_forward::ForwardLayer::new(
+            .layer(ForwardLayer::new(
                 self.outbound_requester(),
                 self.node_identity.features().contains(PeerFeatures::DHT_STORE_FORWARD),
             ))
             .layer(store_forward::MessageHandlerLayer::new(
-                self.config.saf_config.clone(),
+                self.config.saf.clone(),
                 self.store_and_forward_requester(),
                 self.dht_requester(),
                 Arc::clone(&self.node_identity),
@@ -596,7 +596,7 @@ mod test {
         // Encrypt for someone else
         let node_identity2 = make_node_identity();
         let ecdh_key = crypt::generate_ecdh_secret(node_identity2.secret_key(), node_identity2.public_key());
-        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes()).unwrap();
+        let encrypted_bytes = crypt::encrypt(&ecdh_key, &msg.to_encoded_bytes());
         let dht_envelope = make_dht_envelope(
             &node_identity2,
             encrypted_bytes,

@@ -21,7 +21,8 @@
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 pub mod byte_counter;
-pub mod hash_writer;
 pub mod limited_reader;
+#[cfg(feature = "base_node")]
+pub mod rolling_avg;
 #[cfg(feature = "base_node")]
 pub mod rolling_vec;

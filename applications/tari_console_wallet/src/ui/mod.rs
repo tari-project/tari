@@ -20,20 +20,18 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+use crossterm::terminal::SetTitle;
 use log::error;
+use tari_app_utilities::consts;
 use tari_common::exit_codes::{ExitCode, ExitError};
 
 use crate::utils::crossterm_events::CrosstermEvents;
-
 mod app;
 mod components;
-mod widgets;
-
 pub mod state;
-
 mod ui_contact;
 mod ui_error;
-
+mod widgets;
 use std::io::{stdout, Stdout, Write};
 
 pub use app::*;
@@ -74,7 +72,7 @@ pub fn run(app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitError> {
             app.app_state.start_event_monitor(app.notifier.clone()).await;
             Result::<_, UiError>::Ok(())
         })
-        .map_err(|e| ExitError::new(ExitCode::WalletError, e))?;
+        .map_err(|e| ExitError::new(ExitCode::WalletError, &e))?;
     crossterm_loop(app)
 }
 /// This is the main loop of the application UI using Crossterm based events
@@ -89,6 +87,10 @@ fn crossterm_loop(mut app: App<CrosstermBackend<Stdout>>) -> Result<(), ExitErro
         error!(target: LOG_TARGET, "Error creating stdout context. {}", e);
         ExitCode::InterfaceError
     })?;
+    let terminal_title = format!("Tari Console Wallet - Version {}", consts::APP_VERSION);
+    if let Err(e) = execute!(stdout, SetTitle(terminal_title.as_str())) {
+        println!("Error setting terminal title. {}", e)
+    }
 
     let backend = CrosstermBackend::new(stdout);
 

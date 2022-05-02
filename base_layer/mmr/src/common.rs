@@ -44,7 +44,7 @@ pub fn leaf_index(node_index: u32) -> u32 {
     let n = checked_n_leaves(node_index as usize)
         .expect("checked_n_leaves can only overflow for `usize::MAX` and that is not possible");
     // Conversion is safe because n < node_index
-    n as u32
+    n.try_into().unwrap()
 }
 
 /// Is this position a leaf in the MMR?
@@ -87,13 +87,13 @@ pub fn family(pos: usize) -> Result<(usize, usize), MerkleMountainRangeError> {
 
     // Convert to i128 so that we don't over/underflow, and then we will cast back to usize after
     let pos = pos as i128;
-    let peak = peak as i128;
+    let peak = i128::from(peak);
     let peak_map = peak_map as i128;
 
-    let res = if (peak_map & peak) != 0 {
-        (pos + 1, pos + 1 - 2 * peak)
-    } else {
+    let res = if (peak_map & peak) == 0 {
         (pos + 2 * peak, pos + 2 * peak - 1)
+    } else {
+        (pos + 1, pos + 1 - 2 * peak)
     };
 
     Ok((
@@ -114,12 +114,12 @@ pub fn family_branch(pos: usize, last_pos: usize) -> Vec<(usize, usize)> {
     let mut current = pos;
     let mut sibling;
     while current < last_pos {
-        if (peak_map & peak) != 0 {
-            current += 1;
-            sibling = current - 2 * peak;
-        } else {
+        if (peak_map & peak) == 0 {
             current += 2 * peak;
             sibling = current - 1;
+        } else {
+            current += 1;
+            sibling = current - 2 * peak;
         };
         if current > last_pos {
             break;

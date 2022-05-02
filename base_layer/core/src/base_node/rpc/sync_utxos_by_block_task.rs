@@ -23,7 +23,7 @@
 use std::{sync::Arc, time::Instant};
 
 use log::*;
-use tari_comms::protocol::rpc::RpcStatus;
+use tari_comms::protocol::rpc::{RpcStatus, RpcStatusResultExt};
 use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::mpsc, task};
 
@@ -56,18 +56,18 @@ where B: BlockchainBackend + 'static
             .db
             .fetch_header_by_block_hash(request.start_header_hash.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("Start header hash is was not found"))?;
 
         let end_header = self
             .db
             .fetch_header_by_block_hash(request.end_header_hash.clone())
             .await
-            .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+            .rpc_status_internal_error(LOG_TARGET)?
             .ok_or_else(|| RpcStatus::not_found("End header hash is was not found"))?;
 
         if start_header.height > end_header.height {
-            return Err(RpcStatus::bad_request(format!(
+            return Err(RpcStatus::bad_request(&format!(
                 "start header height {} cannot be greater than the end header height ({})",
                 start_header.height, end_header.height
             )));
@@ -75,7 +75,7 @@ where B: BlockchainBackend + 'static
 
         task::spawn(async move {
             if let Err(err) = self.start_streaming(&mut tx, start_header, end_header).await {
-                let _ = tx.send(Err(err)).await;
+                let _result = tx.send(Err(err)).await;
             }
         });
 
@@ -94,7 +94,7 @@ where B: BlockchainBackend + 'static
             .await
             .map_err(|err| {
                 error!(target: LOG_TARGET, "Failed to get deleted bitmap: {}", err);
-                RpcStatus::general(format!(
+                RpcStatus::general(&format!(
                     "Could not get deleted bitmap at hash {}",
                     end_header.hash().to_hex()
                 ))
@@ -131,7 +131,7 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_utxos_in_block(current_header.hash(), Some(bitmap.clone()))
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?;
+                .rpc_status_internal_error(LOG_TARGET)?;
 
             let utxos: Vec<proto::types::TransactionOutput> = utxos
                     .into_iter()
@@ -174,9 +174,9 @@ where B: BlockchainBackend + 'static
                 .db
                 .fetch_header(current_header.height + 1)
                 .await
-                .map_err(RpcStatus::log_internal_error(LOG_TARGET))?
+                .rpc_status_internal_error(LOG_TARGET)?
                 .ok_or_else(|| {
-                    RpcStatus::general(format!(
+                    RpcStatus::general(&format!(
                         "Potential data consistency issue: header {} not found",
                         current_header.height + 1
                     ))

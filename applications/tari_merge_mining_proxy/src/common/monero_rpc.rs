@@ -24,7 +24,7 @@
 //!
 //! ## Consts
 //!
-//! Response codes taken from https://github.com/monero-project/monero/blob/8286f07b265d16a87b3fe3bb53e8d7bf37b5265a/src/rpc/core_rpc_server_error_codes.h
+//! Response codes taken from <https://github.com/monero-project/monero/blob/8286f07b265d16a87b3fe3bb53e8d7bf37b5265a/src/rpc/core_rpc_server_error_codes.h>
 
 // Even though we don't construct all variants, we want a complete list of them.
 #[allow(dead_code)]
@@ -61,5 +61,17 @@ impl CoreRpcErrorCode {
 impl Into<i32> for CoreRpcErrorCode {
     fn into(self) -> i32 {
         self.as_i32()
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+
+    #[test]
+    fn test_into() {
+        let error = CoreRpcErrorCode::WrongParam;
+        let error_code: i32 = error.into();
+        assert_eq!(error_code, -1);
     }
 }

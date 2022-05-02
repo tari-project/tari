@@ -25,6 +25,7 @@ use std::{collections::HashMap, path::PathBuf, time::Duration};
 
 use bollard::models::{Mount, MountTypeEnum, PortBinding, PortMap};
 use config::ConfigError;
+use derivative::Derivative;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tor_hash_passwd::EncryptedKey;
@@ -43,11 +44,14 @@ pub struct BaseNodeConfig {
     pub delay: Duration,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct WalletConfig {
     /// The time delay before starting the container and running the wallet executable
     pub delay: Duration,
     /// The password to de/en-crypt the wallet database
+    #[serde(skip_serializing)]
+    #[derivative(Debug = "ignore")]
     pub password: String,
 }
 
@@ -67,7 +71,8 @@ pub struct Sha3MinerConfig {
     pub num_mining_threads: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Derivative, Serialize, Deserialize)]
+#[derivative(Debug)]
 pub struct MmProxyConfig {
     /// The time delay before starting the container and running the proxy executable
     pub delay: Duration,
@@ -76,6 +81,8 @@ pub struct MmProxyConfig {
     /// If required, the monero username for the monero daemon
     pub monero_username: String,
     /// If required, the password needed to access the monero deamon
+    #[serde(skip_serializing)]
+    #[derivative(Debug = "ignore")]
     pub monero_password: String,
     /// If true, provide the monero username and password to the daemon. Otherwise those strings are ignored.
     pub monero_use_auth: bool,
@@ -109,7 +116,7 @@ impl MmProxyConfig {
 pub struct LaunchpadConfig {
     /// The directory to use for config, id files and logs
     pub data_directory: PathBuf,
-    /// The Tri network to use. Default = dibbler
+    /// The Tari network to use. Default = dibbler
     pub tari_network: TariNetwork,
     /// The tor control password to share among containers.
     pub tor_control_password: String,
@@ -184,7 +191,32 @@ impl LaunchpadConfig {
     fn build_mounts(&self, blockchain: bool, general: bool, volume_name: String) -> Vec<Mount> {
         let mut mounts = Vec::with_capacity(2);
         if general {
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(target_os = "windows")]
+            let host = format!(
+                "//{}",
+                self.data_directory
+                    .iter()
+                    .filter_map(|part| {
+                        use std::{ffi::OsStr, path};
+
+                        use regex::Regex;
+
+                        if part == OsStr::new(&path::MAIN_SEPARATOR.to_string()) {
+                            None
+                        } else {
+                            let drive = Regex::new(r"(?P<letter>[A-Za-z]):").unwrap();
+                            let part = part.to_string_lossy().to_string();
+                            if drive.is_match(part.as_str()) {
+                                Some(drive.replace(part.as_str(), "$letter").to_lowercase())
+                            } else {
+                                Some(part)
+                            }
+                        }
+                    })
+                    .collect::<Vec<String>>()
+                    .join("/")
+            );
+            #[cfg(target_os = "macos")]
             let host = format!("/host_mnt{}", self.data_directory.to_string_lossy());
             #[cfg(target_os = "linux")]
             let host = self.data_directory.to_string_lossy().to_string();
@@ -282,19 +314,13 @@ impl LaunchpadConfig {
     }
 
     fn xmrig_cmd(&self) -> Vec<String> {
-        let address = match &self.xmrig {
-            Some(config) => config.monero_mining_address.as_str(),
-            None => DEFAULT_MINING_ADDRESS,
-        };
-        let address = format!("--user={}", address);
         let args = vec![
             "--url=mm_proxy:18081",
-            address.as_str(),
+            "--user=${TARI_MONERO_WALLET_ADDRESS}",
             "--coin=monero",
             "--daemon",
             "--log-file=/var/tari/xmrig/xmrig.log",
             "--verbose",
-            // "--background"
         ];
         args.into_iter().map(String::from).collect()
     }
@@ -360,9 +386,33 @@ impl LaunchpadConfig {
         ]
     }
 
+    fn base_node_tor_config(&self, env: &mut Vec<String>) {
+        env.append(&mut vec![
+            format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
+                self.tari_network.upper_case(),
+                self.tor_control_password
+            ),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
+                self.tari_network.upper_case()
+            ),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
+                self.tari_network.upper_case()
+            ),
+            format!(
+                "TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
+                self.tari_network.upper_case()
+            ),
+        ]);
+    }
+
     /// Generate the vector of ENVAR strings for the docker environment
     fn base_node_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        self.base_node_tor_config(&mut env);
         if let Some(base_node) = &self.base_node {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", base_node.delay.as_secs()),
@@ -371,26 +421,8 @@ impl LaunchpadConfig {
                     self.tari_network.upper_case(),
                     self.tari_network.lower_case()
                 ),
-                format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
-                    self.tari_network.upper_case(),
-                    self.tor_control_password
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
-                    self.tari_network.upper_case()
-                ),
                 format!(
                     "TARI_BASE_NODE__{}__TCP_LISTENER_ADDRESS=/dns4/base_node/tcp/18189",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
                     self.tari_network.upper_case()
                 ),
                 format!("TARI_BASE_NODE__{}__GRPC_ENABLED=1", self.tari_network.upper_case()),
@@ -443,21 +475,34 @@ impl LaunchpadConfig {
 
     fn xmrig_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        let address = match &self.xmrig {
+            Some(config) if config.monero_mining_address.len() > 12 => config.monero_mining_address.as_str(),
+            _ => DEFAULT_MINING_ADDRESS,
+        };
         if let Some(config) = &self.xmrig {
-            env.append(&mut vec![format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9)]);
+            env.append(&mut vec![
+                format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 9),
+                format!("TARI_MONERO_WALLET_ADDRESS={}", address),
+            ]);
         }
         env
     }
 
     fn sha3_miner_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        self.base_node_tor_config(&mut env);
         if let Some(config) = &self.sha3_miner {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
                 "APP_NAME: sha3_miner".to_string(),
-                "APP_EXEC: tari_mining_node".to_string(),
-                format!("TARI_MINING_NODE__NUM_MINING_THREADS: {}", config.num_mining_threads),
-                "TARI_MINING_NODE__MINE_ON_TIP_ONLY: 1".to_string(),
+                "APP_EXEC: tari_miner".to_string(),
+                format!("TARI_MINER__NUM_MINING_THREADS: {}", config.num_mining_threads),
+                "TARI_MINER__MINE_ON_TIP_ONLY: 1".to_string(),
+                // This setting should be made obsolete soon:
+                format!(
+                    "TARI_BASE_NODE__{}__BASE_NODE_GRPC_ADDRESS=/dns4/base_node/tcp/18142",
+                    self.tari_network.upper_case()
+                ),
                 format!(
                     "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=/dns4/base_node/tcp/18142",
                     self.tari_network.upper_case()
@@ -470,6 +515,7 @@ impl LaunchpadConfig {
 
     fn mm_proxy_environment(&self) -> Vec<String> {
         let mut env = self.common_envars();
+        self.base_node_tor_config(&mut env);
         if let Some(config) = &self.mm_proxy {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),

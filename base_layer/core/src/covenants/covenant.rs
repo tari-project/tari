@@ -132,6 +132,9 @@ impl ConsensusEncodingSized for Covenant {
 impl ConsensusDecoding for Covenant {
     fn consensus_decode<R: io::Read>(reader: &mut R) -> Result<Self, io::Error> {
         let len = reader.read_varint::<usize>()?;
+        if len == 0 {
+            return Ok(Covenant::new());
+        };
         // Check the length varint - this may be maliciously misreported
         if len > MAX_COVENANT_BYTES {
             return Err(io::Error::new(
@@ -181,7 +184,13 @@ mod test {
         outputs[7].features.maturity = 42;
         let mut input = create_input();
         input.set_maturity(42).unwrap();
-        let covenant = covenant!(fields_preserved(@fields(@field::features)));
+        let covenant = covenant!(fields_preserved(@fields(
+            @field::features_flags,
+            @field::features_maturity,
+            @field::features_unique_id,
+            @field::features_parent_public_key,
+            @field::features_metadata))
+        );
         let num_matching_outputs = covenant.execute(0, &input, &outputs).unwrap();
         assert_eq!(num_matching_outputs, 3);
     }

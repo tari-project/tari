@@ -23,60 +23,28 @@
 
 use std::{fs, fs::File, io::Write, path::Path};
 
-use crate::configuration::bootstrap::ApplicationType;
+use crate::ConfigError;
 
 /// Set up application-level logging using the Log4rs configuration file specified in
-pub fn initialize_logging(config_file: &Path, base_path: &Path) -> bool {
+pub fn initialize_logging(config_file: &Path, default: &str) -> Result<(), ConfigError> {
     println!(
         "Initializing logging according to {:?}",
         config_file.to_str().unwrap_or("[??]")
     );
 
-    let current_working_dir = std::env::current_dir().unwrap_or_default();
-
-    if std::env::set_current_dir(&base_path).is_err() {
-        println!(
-            "Logging initialized in {}, could not initialize in {}.",
-            &current_working_dir.display(),
-            &base_path.display()
-        );
-    };
-
-    if let Err(e) = log4rs::init_file(config_file, Default::default()) {
-        println!("We couldn't load a logging configuration file. {}", e);
-        return false;
+    if !config_file.exists() {
+        if let Some(d) = config_file.parent() {
+            fs::create_dir_all(d)
+                .map_err(|e| ConfigError::new("Could not create parent directory for log file", Some(e.to_string())))?
+        };
+        let mut file = File::create(config_file)
+            .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
+        file.write_all(default.as_ref())
+            .map_err(|e| ConfigError::new("Could not create default log file", Some(e.to_string())))?;
     }
 
-    if std::env::set_current_dir(&current_working_dir).is_err() {
-        println!(
-            "Working directory could not be changed back to {} after logging has been initialized. New working \
-             directory is {}",
-            &current_working_dir.display(),
-            &std::env::current_dir().unwrap_or_default().display()
-        );
-    };
-
-    true
-}
-
-/// Installs a new default logfile configuration, copied from the specified application type sample to the given path.
-pub fn log_config_installer(application_type: ApplicationType, path: &Path) -> Result<(), std::io::Error> {
-    use ApplicationType::*;
-    let source = match application_type {
-        BaseNode => include_str!("../logging/log4rs_sample_base_node.yml"),
-        ConsoleWallet => include_str!("../logging/log4rs_sample_wallet.yml"),
-        MiningNode => include_str!("../logging/log4rs_sample_mining_node.yml"),
-        MergeMiningProxy => include_str!("../logging/log4rs_sample_proxy.yml"),
-        StratumTranscoder => include_str!("../logging/log4rs_sample_transcoder.yml"),
-        ValidatorNode => include_str!("../logging/log4rs_sample_validator_node.yml"),
-        Collectibles => include_str!("../logging/log4rs_collectibles.yml"),
-    };
-
-    if let Some(d) = path.parent() {
-        fs::create_dir_all(d)?
-    };
-    let mut file = File::create(path)?;
-    file.write_all(source.as_ref())
+    log4rs::init_file(config_file, Default::default())
+        .map_err(|e| ConfigError::new("Could not initialize logging", Some(e.to_string())))
 }
 
 /// Log an error if an `Err` is returned from the `$expr`. If the given expression is `Ok(v)`,

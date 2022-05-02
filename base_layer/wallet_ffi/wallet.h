@@ -66,6 +66,8 @@ struct TariCompletedTransactions;
 
 struct TariBalance;
 
+struct TariTransactionSendStatus;
+
 struct TariCompletedTransaction;
 
 struct TariPendingOutboundTransactions;
@@ -76,7 +78,7 @@ struct TariPendingInboundTransactions;
 
 struct TariPendingInboundTransaction;
 
-struct TariTransportType;
+struct TariTransportConfig;
 
 struct TariSeedWords;
 
@@ -87,13 +89,13 @@ struct TariTransactionKernel;
 /// -------------------------------- Transport Types ----------------------------------------------- ///
 
 // Creates a memory transport type
-struct TariTransportType *transport_memory_create();
+struct TariTransportConfig *transport_memory_create();
 
 // Creates a tcp transport type
-struct TariTransportType *transport_tcp_create(const char *listener_address, int *error_out);
+struct TariTransportConfig *transport_tcp_create(const char *listener_address, int *error_out);
 
 // Creates a tor transport type
-struct TariTransportType *transport_tor_create(
+struct TariTransportConfig *transport_tor_create(
     const char *control_server_address,
     struct ByteVector *tor_cookie,
     unsigned short tor_port,
@@ -103,10 +105,13 @@ struct TariTransportType *transport_tor_create(
     int *error_out);
 
 // Gets the address from a memory transport type
-char *transport_memory_get_address(struct TariTransportType *transport, int *error_out);
+char *transport_memory_get_address(struct TariTransportConfig *transport, int *error_out);
 
-// Frees memory for a transport type
-void transport_type_destroy(struct TariTransportType *transport);
+// Frees memory for a transport config (deprecated alias to transport_config_destroy)
+void transport_type_destroy(struct TariTransportConfig *transport);
+
+// Frees memory for a transport config
+void transport_config_destroy(struct TariTransportConfig *transport);
 
 /// -------------------------------- Strings ----------------------------------------------- ///
 
@@ -446,7 +451,7 @@ void pending_inbound_transactions_destroy(struct TariPendingInboundTransactions 
 // Creates a TariCommsConfig
 // Valid values for network are: dibbler, igor, localnet, mainnet
 struct TariCommsConfig *comms_config_create(const char *public_address,
-                                            struct TariTransportType *transport,
+                                            struct TariTransportConfig *transport,
                                             const char *database_name,
                                             const char *datastore_path,
                                             unsigned long long discovery_timeout_in_secs,
@@ -490,10 +495,15 @@ struct TariPublicKeys *comms_list_connected_public_keys(struct TariWallet *walle
 /// when a one-sided transaction is detected as mined AND confirmed.
 /// `callback_faux_transaction_unconfirmed` - The callback function pointer matching the function signature. This will
 /// be called  when a one-sided transaction is detected as mined but not yet confirmed.
-/// `callback_direct_send_result` - The callback function pointer matching the function signature. This is called
-/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
-/// `callback_store_and_forward_send_result` - The callback function pointer matching the function signature. This is called
-/// when a direct send is completed. The first parameter is the transaction id and the second is whether if was successful or not.
+/// `callback_transaction_send_result` - The callback function pointer matching the function signature. This is called
+/// when a transaction send is completed. The first parameter is the transaction id and the second contains the
+/// transaction send status, weather it was send direct and/or send via saf on the one hand or queued for further retry
+/// sending on the other hand.
+///     !direct_send & !saf_send &  queued   = 0
+///      direct_send &  saf_send & !queued   = 1
+///      direct_send & !saf_send & !queued   = 2
+///     !direct_send &  saf_send & !queued   = 3
+///     any other combination (is not valid) = 4
 /// `callback_transaction_cancellation` - The callback function pointer matching the function signature. This is called
 /// when a transaction is cancelled. The first parameter is a pointer to the cancelled transaction, the second is a reason as to
 /// why said transaction failed that is mapped to the `TxCancellationReason` enum:
@@ -550,6 +560,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  unsigned int size_per_log_file_bytes,
                                  const char *passphrase,
                                  struct TariSeedWords *seed_words,
+                                 const char *network,
                                  void (*callback_received_transaction)(struct TariPendingInboundTransaction *),
                                  void (*callback_received_transaction_reply)(struct TariCompletedTransaction *),
                                  void (*callback_received_finalized_transaction)(struct TariCompletedTransaction *),
@@ -558,8 +569,7 @@ struct TariWallet *wallet_create(struct TariCommsConfig *config,
                                  void (*callback_transaction_mined_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_faux_transaction_confirmed)(struct TariCompletedTransaction *),
                                  void (*callback_faux_transaction_unconfirmed)(struct TariCompletedTransaction *, unsigned long long),
-                                 void (*callback_direct_send_result)(unsigned long long, bool),
-                                 void (*callback_store_and_forward_send_result)(unsigned long long, bool),
+                                 void (*callback_transaction_send_result)(unsigned long long, struct TariTransactionSendStatus *),
                                  void (*callback_transaction_cancellation)(struct TariCompletedTransaction *, unsigned long long),
                                  void (*callback_txo_validation_complete)(unsigned long long, bool),
                                  void (*callback_contacts_liveness_data_updated)(struct TariContactsLivenessData *),
@@ -672,9 +682,9 @@ struct TariPendingInboundTransaction *wallet_get_pending_inbound_transaction_by_
 // Get a Cancelled transaction from a TariWallet by its TransactionId. Pending Inbound or Outbound transaction will be converted to a CompletedTransaction
 struct TariCompletedTransaction *wallet_get_cancelled_transaction_by_id(struct TariWallet *wallet, unsigned long long transaction_id, int *error_out);
 
-// Import a UTXO into the wallet. This will add a spendable UTXO and create a faux completed transaction to record the
-// event.
-unsigned long long wallet_import_utxo(
+// Import an external UTXO into the wallet as a non-rewindable (i.e. non-recoverable) output. This will add a spendable
+// UTXO and create a faux completed transaction to record the event.
+unsigned long long wallet_import_external_utxo_as_non_rewindable(
     struct TariWallet *wallet,
     unsigned long long amount,
     struct TariPrivateKey *spending_key,

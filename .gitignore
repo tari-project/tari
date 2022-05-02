@@ -50,3 +50,10 @@ buildtools/Output/
 # any specific "assets" folders should be gitignored
 # closer to where they live
 #assets/
+
+# Ignore coverage profiling artifacts
+*.profraw
+/report/
+
+# Ignore local history in Visual Studio Code
+.lh

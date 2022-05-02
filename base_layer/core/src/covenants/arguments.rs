@@ -27,7 +27,7 @@ use std::{
 
 use integer_encoding::VarIntWriter;
 use tari_common_types::types::{Commitment, PublicKey};
-use tari_crypto::script::TariScript;
+use tari_script::TariScript;
 use tari_utilities::hex::{to_hex, Hex};
 
 use crate::{
@@ -35,7 +35,7 @@ use crate::{
     covenants::{
         byte_codes,
         covenant::Covenant,
-        decoder::{CovenantDecodeError, CovenentReadExt},
+        decoder::{CovenantDecodeError, CovenantReadExt},
         encoder::CovenentWriteExt,
         error::CovenantError,
         fields::{OutputField, OutputFields},
@@ -119,7 +119,7 @@ impl CovenantArg {
 
     pub fn write_to<W: io::Write>(&self, writer: &mut W) -> Result<usize, io::Error> {
         use byte_codes::*;
-        use CovenantArg::*;
+        use CovenantArg::{Bytes, Commitment, Covenant, Hash, OutputField, OutputFields, PublicKey, TariScript, Uint};
 
         let mut written = 0;
         match self {
@@ -221,7 +221,7 @@ impl CovenantArg {
 
 impl Display for CovenantArg {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        use CovenantArg::*;
+        use CovenantArg::{Bytes, Commitment, Covenant, Hash, OutputField, OutputFields, PublicKey, TariScript, Uint};
         match self {
             Hash(hash) => write!(f, "Hash({})", to_hex(&hash[..])),
             PublicKey(public_key) => write!(f, "PublicKey({})", public_key.to_hex()),
@@ -238,7 +238,12 @@ impl Display for CovenantArg {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::Commitment;
+    use tari_script::script;
+    use tari_utilities::hex::from_hex;
+
     use super::*;
+    use crate::{covenant, covenants::byte_codes::*};
 
     mod require_x_impl {
         use super::*;
@@ -260,18 +265,18 @@ mod test {
         }
     }
 
-    mod write_to {
-        use tari_common_types::types::Commitment;
-        use tari_crypto::script;
-        use tari_utilities::hex::from_hex;
-
+    mod write_to_and_read_from {
         use super::*;
-        use crate::{covenant, covenants::byte_codes::*};
 
-        fn test_case(arg: CovenantArg, expected: &[u8]) {
+        fn test_case(argument: CovenantArg, mut data: &[u8]) {
             let mut buf = Vec::new();
-            arg.write_to(&mut buf).unwrap();
-            assert_eq!(buf, expected);
+            argument.write_to(&mut buf).unwrap();
+            assert_eq!(buf, data);
+
+            let reader = &mut data;
+            let code = reader.read_next_byte_code().unwrap().unwrap();
+            let arg = CovenantArg::read_from(&mut data, code).unwrap();
+            assert_eq!(arg, argument);
         }
 
         #[test]

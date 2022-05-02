@@ -44,6 +44,7 @@ pub struct ParsedCommand {
 
 impl Display for ParsedCommand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use WalletCommand::*;
         let command = match self.command {
             GetBalance => "get-balance",
@@ -97,6 +98,7 @@ pub enum ParsedArgument {
 
 impl Display for ParsedArgument {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[allow(clippy::enum_glob_use)]
         use ParsedArgument::*;
         match self {
             Amount(v) => write!(f, "{}", v),
@@ -121,6 +123,7 @@ pub fn parse_command(command: &str) -> Result<ParsedCommand, ParseError> {
     let command =
         WalletCommand::from_str(command_str).map_err(|_| ParseError::WalletCommand(command_str.to_string()))?;
 
+    #[allow(clippy::enum_glob_use)]
     use WalletCommand::*;
     let args = match command {
         GetBalance => Vec::new(),
@@ -322,9 +325,9 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
     // txs per second
     let txps = args.next().ok_or_else(|| ParseError::Empty("Txs/s".to_string()))?;
     let txps = txps.parse::<f64>().map_err(ParseError::Float)?;
-    if txps > 25.0 {
-        println!("Maximum transaction rate is 25/sec");
-        return Err(ParseError::Invalid("Maximum transaction rate is 25/sec".to_string()));
+    if txps > 250.0 {
+        println!("Maximum transaction rate is 250/sec");
+        return Err(ParseError::Invalid("Maximum transaction rate is 250/sec".to_string()));
     }
     parsed_args.push(ParsedArgument::Float(txps));
 
@@ -356,10 +359,10 @@ fn parse_make_it_rain(mut args: SplitWhitespace) -> Result<Vec<ParsedArgument>, 
 
     // start time utc or 'now'
     let start_time = args.next().ok_or_else(|| ParseError::Empty("start time".to_string()))?;
-    let start_time = if start_time != "now" {
-        DateTime::parse_from_rfc3339(start_time)?.with_timezone(&Utc)
-    } else {
+    let start_time = if start_time == "now" {
         Utc::now()
+    } else {
+        DateTime::parse_from_rfc3339(start_time)?.with_timezone(&Utc)
     };
     parsed_args.push(ParsedArgument::Date(start_time));
 
