@@ -3,6 +3,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
     accept: 'Accept',
     cancel: 'Cancel',
     stop: 'Stop',
+    start: 'Start',
     continue: 'Continue',
   },
   nouns: {

@@ -22,7 +22,7 @@ const renderSettings = (
   props: SettingsProps,
 ): ReactNode => {
   if (settings === Settings.Wallet) {
-    return <WalletSettings {...props} />
+    return <WalletSettings />
   }
 
   return null
