@@ -1,5 +1,4 @@
 import { useTheme } from 'styled-components'
-import { useDispatch, useSelector } from 'react-redux'
 import { animated, useSpring } from 'react-spring'
 import { appWindow } from '@tauri-apps/api/window'
 
@@ -7,8 +6,10 @@ import Button from '../Button'
 import Logo from '../Logo'
 import Switch from '../Switch'
 
+import { useAppSelector, useAppDispatch } from '../../store/hooks'
 import { selectExpertView } from '../../store/app/selectors'
 import { setExpertView } from '../../store/app'
+import { actions as settingsActions } from '../../store/settings'
 
 import SvgCloseCross from '../../styles/Icons/CloseCross'
 import SvgSetting from '../../styles/Icons/Setting2'
@@ -25,10 +26,10 @@ import {
 } from './styles'
 import { TitleBarProps } from './types'
 
-const TitleBar = ({ drawerViewWidth = '50%', openSettings }: TitleBarProps) => {
-  const dispatch = useDispatch()
+const TitleBar = ({ drawerViewWidth = '50%' }: TitleBarProps) => {
+  const dispatch = useAppDispatch()
 
-  const expertView = useSelector(selectExpertView)
+  const expertView = useAppSelector(selectExpertView)
   const theme = useTheme()
 
   const [expertViewSize] = ExpertViewUtils.convertExpertViewModeToValue(
@@ -193,7 +194,7 @@ const TitleBar = ({ drawerViewWidth = '50%', openSettings }: TitleBarProps) => {
         <Button
           variant='text'
           leftIcon={<SvgSetting width='16px' height='16px' />}
-          onClick={openSettings}
+          onClick={() => dispatch(settingsActions.open())}
         >
           {t.common.nouns.settings}
         </Button>
