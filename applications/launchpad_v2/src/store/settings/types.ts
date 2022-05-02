@@ -6,3 +6,8 @@ export enum Settings {
   Logs = 'logs',
   Security = 'security',
 }
+
+export type SettingsState = {
+  open: boolean
+  which: Settings
+}
