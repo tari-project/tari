@@ -12,7 +12,7 @@ pub struct ExitError {
 }
 
 impl ExitError {
-    pub fn new(exit_code: ExitCode, details: &impl ToString) -> Self {
+    pub fn new(exit_code: ExitCode, details: impl ToString) -> Self {
         let details = Some(details.to_string());
         Self { exit_code, details }
     }
