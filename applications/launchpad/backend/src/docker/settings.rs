@@ -278,8 +278,8 @@ impl LaunchpadConfig {
             ImageType::BaseNode => self.base_node_cmd(),
             ImageType::Wallet => self.wallet_cmd(),
             ImageType::XmRig => self.xmrig_cmd(),
-            ImageType::Sha3Miner => vec![],
-            ImageType::MmProxy => vec![],
+            ImageType::Sha3Miner => self.miner_cmd(),
+            ImageType::MmProxy => self.mm_proxy_cmd(),
             ImageType::Tor => self.tor_cmd(),
             ImageType::Monerod => self.monerod_cmd(),
             ImageType::Frontail => self.frontail_cmd(),
@@ -324,6 +324,20 @@ impl LaunchpadConfig {
     fn wallet_cmd(&self) -> Vec<String> {
         let args = vec![
             "--non-interactive-mode",
+            "--log-config=/var/tari/config/log4rs.yml"
+        ];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn miner_cmd(&self) -> Vec<String> {
+        let args = vec![
+            "--log-config=/var/tari/config/log4rs.yml"
+        ];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn mm_proxy_cmd(&self) -> Vec<String> {
+        let args = vec![
             "--log-config=/var/tari/config/log4rs.yml"
         ];
         args.into_iter().map(String::from).collect()

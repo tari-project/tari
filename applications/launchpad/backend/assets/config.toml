@@ -78,9 +78,10 @@ network = "dibbler"
 network = "igor"
 
 [miner]
-base_node_grpc_address = "/dns4/base_node/tcp/18142"
-wallet_grpc_address = "/dns4/wallet/tcp/18143"
+base_node_addr = "/dns4/base_node/tcp/18142"
+wallet_addr = "/dns4/wallet/tcp/18143"
 mine_on_tip_only = true
+num_mining_threads = 1
 
 [merge_mining_proxy]
 monerod_url = [ # stagenet
