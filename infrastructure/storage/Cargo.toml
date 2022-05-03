@@ -19,4 +19,4 @@ serde_derive = "1.0.80"
 
 [dev-dependencies]
 rand = "0.8"
-tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.3.1" }
+tari_utilities = { git = "https://github.com/tari-project/tari_utilities.git", tag = "v0.4.3" }

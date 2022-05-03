@@ -39,7 +39,7 @@ use tari_core::{
     },
     transactions::transaction_components::Transaction,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tokio::{sync::watch, time::sleep};
 
 use crate::{

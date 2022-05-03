@@ -36,7 +36,6 @@ use tari_storage::{
     lmdb_store::{db, LMDBBuilder, LMDBConfig, LMDBDatabase, LMDBError, LMDBStore},
     IterationResult,
 };
-use tari_utilities::ExtendBytes;
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct User {
@@ -68,17 +67,6 @@ impl User {
             male,
             ip,
         })
-    }
-}
-
-impl ExtendBytes for User {
-    fn append_raw_bytes(&self, buf: &mut Vec<u8>) {
-        self.id.append_raw_bytes(buf);
-        self.first.append_raw_bytes(buf);
-        self.last.append_raw_bytes(buf);
-        self.email.append_raw_bytes(buf);
-        self.male.append_raw_bytes(buf);
-        buf.extend_from_slice(self.ip.to_string().as_bytes());
     }
 }
 

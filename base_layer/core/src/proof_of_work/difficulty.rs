@@ -25,7 +25,7 @@ use std::{fmt, ops::Div};
 use newtype_ops::newtype_ops;
 use num_format::{Locale, ToFormattedString};
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
+use tari_utilities::epoch_time::EpochTime;
 
 use crate::proof_of_work::error::DifficultyAdjustmentError;
 

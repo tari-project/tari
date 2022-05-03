@@ -41,8 +41,9 @@ use tari_core::{
     },
     txn_schema,
 };
-use tari_crypto::{commitment::HomomorphicCommitmentFactory, tari_utilities::Hashable};
+use tari_crypto::commitment::HomomorphicCommitmentFactory;
 use tari_test_utils::runtime::test_async;
+use tari_utilities::Hashable;
 
 #[allow(dead_code)]
 mod helpers;

@@ -30,7 +30,7 @@ use serde::{
     Serialize,
     Serializer,
 };
-use tari_crypto::tari_utilities::{hex::*, ByteArray, ByteArrayError, Hashable};
+use tari_utilities::{hex::*, ByteArray, ByteArrayError, Hashable};
 
 use crate::types::HashDigest;
 

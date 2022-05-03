@@ -22,8 +22,8 @@
 
 use serde_json::Error as SerdeJsonError;
 use tari_comms::{connectivity::ConnectivityError, protocol::rpc::RpcError};
-use tari_crypto::tari_utilities::hex::HexError;
 use tari_service_framework::reply_channel::TransportChannelError;
+use tari_utilities::hex::HexError;
 use thiserror::Error;
 
 use crate::{error::WalletStorageError, output_manager_service::error::OutputManagerError};

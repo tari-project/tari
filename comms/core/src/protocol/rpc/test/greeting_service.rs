@@ -31,7 +31,7 @@ use std::{
     time::Duration,
 };
 
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tokio::{
     sync::{mpsc, RwLock},
     task,
