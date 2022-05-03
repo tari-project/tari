@@ -24,7 +24,7 @@ use std::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{BlindingFactor, BlockHash};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::{
     blocks::block_header::{hash_serializer, BlockHeader},

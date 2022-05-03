@@ -22,6 +22,7 @@
 
 use std::{cmp::min, time::Duration};
 
+/// Boxed backoff
 pub type BoxedBackoff = Box<dyn Backoff + Send + Sync>;
 
 pub trait Backoff {
@@ -34,6 +35,7 @@ impl Backoff for BoxedBackoff {
     }
 }
 
+/// Returns a backoff Duration that increases exponentially to the number of attempts.
 #[derive(Debug, Clone)]
 pub struct ExponentialBackoff {
     factor: f32,
@@ -61,6 +63,7 @@ impl Backoff for ExponentialBackoff {
     }
 }
 
+/// Returns a backoff Duration that increases linearly to the number of attempts.
 #[derive(Clone)]
 pub struct ConstantBackoff(Duration);
 

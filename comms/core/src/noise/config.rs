@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use log::*;
 use snow::{self, params::NoiseParams};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{

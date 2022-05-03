@@ -28,7 +28,7 @@ use tari_comms::{
     protocol::rpc::{Request, RpcStatus, RpcStatusResultExt},
     utils,
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::{hex::Hex, Hashable};
 use tokio::{sync::mpsc, task};
 
 use crate::{

@@ -56,10 +56,10 @@ cp -f -P "${app_dir}/tari_console_wallet/linux/start_tari_console_wallet" "${tar
 cp -f "${app_dir}/tari_console_wallet/linux/runtime/start_tari_console_wallet.sh" "${tarball_folder}/runtime/start_tari_console_wallet.sh"
 cp -f "${project_dir}/target/release/tari_console_wallet" "${tarball_folder}/runtime/tari_console_wallet"
 
-# Mining Node
-cp -f -P "${app_dir}/tari_mining_node/linux/start_tari_mining_node" "${tarball_folder}/start_tari_mining_node"
-cp -f "${app_dir}/tari_mining_node/linux/runtime/start_tari_mining_nodet.sh" "${tarball_folder}/runtime/start_tari_mining_node.sh"
-cp -f "${project_dir}/target/release/tari_mining_node" "${tarball_folder}/runtime/tari_mining_node"
+# Miner
+cp -f -P "${app_dir}/tari_miner/linux/start_tari_miner" "${tarball_folder}/start_tari_miner"
+cp -f "${app_dir}/tari_miner/linux/runtime/start_tari_minert.sh" "${tarball_folder}/runtime/start_tari_miner.sh"
+cp -f "${project_dir}/target/release/tari_miner" "${tarball_folder}/runtime/tari_miner"
 
 # Merge Mining Proxy
 cp -f -P "${app_dir}/tari_merge_mining_proxy/linux/start_tari_merge_mining_proxy" "${tarball_folder}/start_tari_merge_mining_proxy"

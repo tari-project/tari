@@ -1,4 +1,25 @@
-FROM quay.io/tarilabs/rust_tari-build-with-deps:nightly-2021-11-01 as builder
+FROM rust:1.60-buster as builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt update && apt -y install \
+  apt-transport-https \
+  bash \
+  ca-certificates \
+  curl \
+  gpg \
+  iputils-ping \
+  less \
+  libreadline-dev \
+  libsqlite3-0 \
+  openssl \
+  telnet \
+  cargo \
+  clang \
+  cmake
+
+RUN apt update && apt upgrade -y  && apt clean 
+
+
 WORKDIR /tari
 
 # Adding only necessary things up front and copying the entrypoint script last
@@ -65,7 +86,7 @@ ENV dockerfile_version=$VERSION
 ENV APP_NAME=base_node APP_EXEC=tari_base_node
 
 COPY --from=builder /tari/target/release/$APP_EXEC /usr/bin/
-COPY applications/launchpad/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
+COPY /applications/launchpad/docker_rig/start_tari_app.sh /usr/bin/start_tari_app.sh
+
 
 ENTRYPOINT [ "start_tari_app.sh", "-c", "/var/tari/config/config.toml", "-b", "/var/tari/base_node" ]
-# CMD [ "--non-interactive-mode" ]

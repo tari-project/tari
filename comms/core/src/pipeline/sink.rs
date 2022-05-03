@@ -32,6 +32,7 @@ use super::PipelineError;
 pub struct SinkService<TSink>(TSink);
 
 impl<TSink> SinkService<TSink> {
+    /// Creates a new service that forwards to the given sink.
     pub fn new(sink: TSink) -> Self {
         SinkService(sink)
     }

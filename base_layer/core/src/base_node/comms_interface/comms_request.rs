@@ -27,7 +27,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, HashOutput, PrivateKey, PublicKey, Signature};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::{blocks::NewBlockTemplate, chain_storage::MmrTree, proof_of_work::PowAlgorithm};
 

@@ -43,6 +43,7 @@ const LOG_TARGET: &str = "comms::protocol::messaging::outbound";
 /// and because the connection manager already retries dialing a number of times for each requested dial.
 const MAX_SEND_RETRIES: usize = 1;
 
+/// Actor for outbound messaging for a peer. This is spawned lazily when an outbound message must be sent.
 pub struct OutboundMessaging {
     connectivity: ConnectivityRequester,
     messages_rx: mpsc::UnboundedReceiver<OutboundMessage>,

@@ -56,6 +56,9 @@ pub struct KeyManagerSqliteDatabase {
 }
 
 impl KeyManagerSqliteDatabase {
+    /// Creates a new sql backend from provided wallet db connection
+    /// * `cipher` is used to encrypt the sensitive fields in the database, if no cipher is provided, the database will
+    ///   not encrypt sensitive fields
     pub fn new(
         database_connection: WalletDbConnection,
         cipher: Option<Aes256Gcm>,

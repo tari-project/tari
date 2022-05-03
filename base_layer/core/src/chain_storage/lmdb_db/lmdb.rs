@@ -37,7 +37,7 @@ use lmdb_zero::{
 };
 use log::*;
 use serde::{de::DeserializeOwned, Serialize};
-use tari_crypto::tari_utilities::hex::to_hex;
+use tari_utilities::hex::to_hex;
 
 use crate::chain_storage::{
     error::ChainStorageError,

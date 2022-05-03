@@ -89,17 +89,21 @@ impl UnspawnedCommsNode {
         self
     }
 
+    /// Adds [ProtocolExtensions](crate::protocol::ProtocolExtensions) to this node.
     pub fn add_protocol_extensions(mut self, extensions: ProtocolExtensions) -> Self {
         self.protocol_extensions.extend(extensions);
         self
     }
 
-    /// Add a protocol extension
+    /// Adds an implementation of [ProtocolExtension](crate::protocol::ProtocolExtension) to this node.
+    /// This is used to add custom protocols to Tari comms.
     pub fn add_protocol_extension<T: ProtocolExtension + 'static>(mut self, extension: T) -> Self {
         self.protocol_extensions.add(extension);
         self
     }
 
+    /// Registers custom ProtocolIds and mpsc notifier. A [ProtocolNotification](crate::protocol::ProtocolNotification)
+    /// will be sent on that channel whenever a remote peer requests to speak the given protocols.
     pub fn add_protocol<I: AsRef<[ProtocolId]>>(
         mut self,
         protocol: I,
@@ -109,7 +113,7 @@ impl UnspawnedCommsNode {
         self
     }
 
-    /// Set the listener address
+    /// Set the listener address. This is an alias to `CommsBuilder::with_listener_address`.
     pub fn with_listener_address(mut self, listener_address: Multiaddr) -> Self {
         self.builder = self.builder.with_listener_address(listener_address);
         self
@@ -121,6 +125,7 @@ impl UnspawnedCommsNode {
         self
     }
 
+    /// Spawn a new node using the specified [Transport](crate::transports::Transport).
     pub async fn spawn_with_transport<TTransport>(self, transport: TTransport) -> Result<CommsNode, CommsBuilderError>
     where
         TTransport: Transport + Unpin + Send + Sync + Clone + 'static,

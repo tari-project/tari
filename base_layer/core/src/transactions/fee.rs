@@ -84,7 +84,7 @@ mod test {
     #[test]
     pub fn test_derive_clone() {
         let f0 = Fee::new(TransactionWeight::latest());
-        let f1 = f0.clone();
+        let f1 = f0;
         assert_eq!(
             f0.weighting().params().kernel_weight,
             f1.weighting().params().kernel_weight

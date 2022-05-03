@@ -37,7 +37,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::{OutputFlags, TransactionOutput},
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,
@@ -246,6 +246,12 @@ where T: OutputManagerBackend + 'static
 
     pub fn fetch_unconfirmed_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
         let utxos = self.db.fetch_unspent_mined_unconfirmed_outputs()?;
+        Ok(utxos)
+    }
+
+    pub fn fetch_sorted_unspent_outputs(&self) -> Result<Vec<DbUnblindedOutput>, OutputManagerStorageError> {
+        let mut utxos = self.db.fetch_sorted_unspent_outputs()?;
+        utxos.sort();
         Ok(utxos)
     }
 

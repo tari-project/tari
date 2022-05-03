@@ -31,8 +31,10 @@ use crate::{
     Substream,
 };
 
+/// Error type for ProtocolExtension
 pub type ProtocolExtensionError = anyhow::Error;
 
+/// Implement this trait to install custom protocols.
 pub trait ProtocolExtension: Send {
     // TODO: The Box<Self> is easier to do for now at the cost of ProtocolExtension being less generic.
     fn install(self: Box<Self>, context: &mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionError>;
@@ -46,24 +48,29 @@ where F: FnOnce(&mut ProtocolExtensionContext) -> Result<(), ProtocolExtensionEr
     }
 }
 
+/// Collection of implementations of ProtocolExtension
 #[derive(Default)]
 pub struct ProtocolExtensions {
     inner: Vec<Box<dyn ProtocolExtension>>,
 }
 
 impl ProtocolExtensions {
+    /// New empty ProtocolExtensions
     pub fn new() -> Self {
         Self { inner: Vec::new() }
     }
 
+    /// Returns the number of extensions contained in this instance
     pub fn len(&self) -> usize {
         self.inner.len()
     }
 
+    /// Returns true if this contains at least one extension, otherwise false
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
 
+    /// Adds an extension
     pub fn add<T: ProtocolExtension + 'static>(&mut self, ext: T) -> &mut Self {
         self.inner.push(Box::new(ext));
         self
@@ -100,6 +107,7 @@ impl IntoIterator for ProtocolExtensions {
     }
 }
 
+/// Context that is passed to `ProtocolExtension::install`.
 pub struct ProtocolExtensionContext {
     connectivity: ConnectivityRequester,
     peer_manager: Arc<PeerManager>,
@@ -123,6 +131,7 @@ impl ProtocolExtensionContext {
         }
     }
 
+    /// Adds a protocol and notifier
     pub fn add_protocol<I: AsRef<[ProtocolId]>>(
         &mut self,
         protocols: I,
@@ -141,14 +150,17 @@ impl ProtocolExtensionContext {
         self
     }
 
+    /// See [ConnectivityRequester](crate::connectivity::ConnectivityRequester].
     pub fn connectivity(&self) -> ConnectivityRequester {
         self.connectivity.clone()
     }
 
+    /// See [PeerManager](crate::peer_manager::PeerManager].
     pub fn peer_manager(&self) -> Arc<PeerManager> {
         self.peer_manager.clone()
     }
 
+    /// Returns the shutdown signal that will trigger on node shutdown.
     pub fn shutdown_signal(&self) -> ShutdownSignal {
         self.shutdown_signal.clone()
     }

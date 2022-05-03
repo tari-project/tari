@@ -24,8 +24,9 @@ use digest::Digest;
 use log::*;
 use prost::Message;
 use tari_core::transactions::transaction_components::TemplateParameter;
-use tari_crypto::{common::Blake256, tari_utilities::hex::Hex};
+use tari_crypto::common::Blake256;
 use tari_dan_common_types::proto::tips::tip004;
+use tari_utilities::hex::Hex;
 
 use crate::{
     models::InstructionSet,

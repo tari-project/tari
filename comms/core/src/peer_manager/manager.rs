@@ -97,7 +97,7 @@ impl PeerManager {
 
     /// Performs the given [PeerQuery].
     ///
-    /// [PeerQuery]: crate::peer_manager::peer_query::PeerQuery
+    /// [PeerQuery]: crate::peer_manager::PeerQuery
     pub async fn perform_query(&self, peer_query: PeerQuery<'_>) -> Result<Vec<Peer>, PeerManagerError> {
         self.peer_storage.read().await.perform_query(peer_query)
     }

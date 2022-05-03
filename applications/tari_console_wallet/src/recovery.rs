@@ -25,9 +25,9 @@ use futures::FutureExt;
 use log::*;
 use rustyline::Editor;
 use tari_common::exit_codes::{ExitCode, ExitError};
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_key_manager::{cipher_seed::CipherSeed, mnemonic::Mnemonic};
 use tari_shutdown::Shutdown;
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     storage::sqlite_db::wallet::WalletSqliteDatabase,
     utxo_scanner_service::{handle::UtxoScannerEvent, service::UtxoScannerService},

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 
 use tari_comms::connectivity::ConnectivityError;
-use tari_crypto::tari_utilities::hex::HexError;
+use tari_utilities::hex::HexError;
 use tari_wallet::{
     contacts_service::error::ContactsServiceError,
     error::{WalletError, WalletStorageError},

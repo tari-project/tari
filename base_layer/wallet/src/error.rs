@@ -32,10 +32,10 @@ use tari_comms::{
 };
 use tari_comms_dht::store_forward::StoreAndForwardError;
 use tari_core::transactions::transaction_components::TransactionError;
-use tari_crypto::tari_utilities::{hex::HexError, ByteArrayError};
 use tari_key_manager::error::KeyManagerError;
 use tari_p2p::{initialization::CommsInitializationError, services::liveness::error::LivenessError};
 use tari_service_framework::{reply_channel::TransportChannelError, ServiceInitializationError};
+use tari_utilities::{hex::HexError, ByteArrayError};
 use thiserror::Error;
 
 use crate::{
@@ -91,7 +91,7 @@ pub enum WalletError {
     #[error("Transaction Error: {0}")]
     TransactionError(#[from] TransactionError),
     #[error("Byte array error")]
-    ByteArrayError(#[from] tari_crypto::tari_utilities::ByteArrayError),
+    ByteArrayError(#[from] tari_utilities::ByteArrayError),
     #[error("Utxo Scanner Error: {0}")]
     UtxoScannerError(#[from] UtxoScannerError),
     #[error("Key manager error: `{0}`")]

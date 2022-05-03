@@ -24,6 +24,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+/// Store and forward configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SafConfig {
