@@ -276,7 +276,7 @@ impl LaunchpadConfig {
     pub fn command(&self, image_type: ImageType) -> Vec<String> {
         match image_type {
             ImageType::BaseNode => self.base_node_cmd(),
-            ImageType::Wallet => vec!["--non-interactive-mode".to_string()],
+            ImageType::Wallet => self.wallet_cmd(),
             ImageType::XmRig => self.xmrig_cmd(),
             ImageType::Sha3Miner => vec![],
             ImageType::MmProxy => vec![],
@@ -314,6 +314,14 @@ impl LaunchpadConfig {
     }
 
     fn base_node_cmd(&self) -> Vec<String> {
+        let args = vec![
+            "--non-interactive-mode",
+            "--log-config=/var/tari/config/log4rs.yml"
+        ];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn wallet_cmd(&self) -> Vec<String> {
         let args = vec![
             "--non-interactive-mode",
             "--log-config=/var/tari/config/log4rs.yml"
@@ -431,7 +439,7 @@ impl LaunchpadConfig {
                 "TERM=linux".to_string(),
                 format!("TARI_WALLET_PASSWORD={}", config.password),
                 format!(
-                    "TARI_WALLET__P2P__TRANSPORT__TOR_CONTROL_AUTH=password={}",
+                    "TARI_WALLET__P2P__TRANSPORT__TOR__CONTROL_AUTH=password={}",
                     self.tor_control_password
                 ),
             ]);
