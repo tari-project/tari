@@ -318,32 +318,22 @@ impl LaunchpadConfig {
     }
 
     fn base_node_cmd(&self) -> Vec<String> {
-        let args = vec![
-            "--non-interactive-mode",
-            "--log-config=/var/tari/config/log4rs.yml"
-        ];
+        let args = vec!["--non-interactive-mode", "--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
     fn wallet_cmd(&self) -> Vec<String> {
-        let args = vec![
-            "--non-interactive-mode",
-            "--log-config=/var/tari/config/log4rs.yml"
-        ];
+        let args = vec!["--non-interactive-mode", "--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
     fn miner_cmd(&self) -> Vec<String> {
-        let args = vec![
-            "--log-config=/var/tari/config/log4rs.yml"
-        ];
+        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
     fn mm_proxy_cmd(&self) -> Vec<String> {
-        let args = vec![
-            "--log-config=/var/tari/config/log4rs.yml"
-        ];
+        let args = vec!["--log-config=/var/tari/config/log4rs.yml"];
         args.into_iter().map(String::from).collect()
     }
 
@@ -421,12 +411,10 @@ impl LaunchpadConfig {
     }
 
     fn base_node_tor_config(&self, env: &mut Vec<String>) {
-        env.append(&mut vec![
-            format!(
-                "TARI_BASE_NODE__P2P__TRANSPORT__TOR__CONTROL_AUTH=password={}",
-                self.tor_control_password
-            ),
-        ]);
+        env.append(&mut vec![format!(
+            "TARI_BASE_NODE__P2P__TRANSPORT__TOR__CONTROL_AUTH=password={}",
+            self.tor_control_password
+        )]);
     }
 
     /// Generate the vector of ENVAR strings for the docker environment
@@ -513,22 +501,10 @@ impl LaunchpadConfig {
                 format!("WAIT_FOR_TOR={}", config.delay.as_secs() + 6),
                 "APP_NAME=mm_proxy".to_string(),
                 "APP_EXEC=tari_merge_mining_proxy".to_string(),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__MONEROD_URL={}",
-                    config.monerod_url
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__MONEROD_USERNAME={}",
-                    config.monero_username
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD={}",
-                    config.monero_password
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__MONEROD_USE_AUTH={}",
-                    config.monero_use_auth()
-                )
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_URL={}", config.monerod_url),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_USERNAME={}", config.monero_username),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD={}", config.monero_password),
+                format!("TARI_MERGE_MINING_PROXY__MONEROD_USE_AUTH={}", config.monero_use_auth()),
             ]);
         }
         env
