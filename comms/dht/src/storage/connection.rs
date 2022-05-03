@@ -40,6 +40,7 @@ use crate::storage::error::StorageError;
 const LOG_TARGET: &str = "comms::dht::storage::connection";
 const SQLITE_POOL_SIZE: usize = 16;
 
+/// Describes how to connect to the database (currently, SQLite).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(into = "String", try_from = "String")]
 pub enum DbConnectionUrl {
@@ -52,10 +53,12 @@ pub enum DbConnectionUrl {
 }
 
 impl DbConnectionUrl {
+    /// Use a file to store the database
     pub fn file<P: AsRef<Path>>(path: P) -> Self {
         DbConnectionUrl::File(path.as_ref().to_path_buf())
     }
 
+    /// Returns a database connection string
     pub fn to_url_string(&self) -> String {
         use DbConnectionUrl::{File, Memory, MemoryShared};
         match self {
@@ -96,17 +99,20 @@ impl TryFrom<String> for DbConnectionUrl {
     }
 }
 
+/// A SQLite database connection
 #[derive(Clone)]
 pub struct DbConnection {
     pool: SqliteConnectionPool,
 }
 
 impl DbConnection {
+    /// Connect to an ephemeral database in memory
     #[cfg(test)]
     pub fn connect_memory(name: String) -> Result<Self, StorageError> {
         Self::connect_url(&DbConnectionUrl::MemoryShared(name))
     }
 
+    /// Connect using the given [DbConnectionUrl](self::DbConnectionUrl).
     pub fn connect_url(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
         debug!(target: LOG_TARGET, "Connecting to database using '{:?}'", db_url);
 
@@ -122,6 +128,7 @@ impl DbConnection {
         Ok(Self::new(pool))
     }
 
+    /// Connect and migrate the database, once complete, a handle to the migrated database is returned.
     pub fn connect_and_migrate(db_url: &DbConnectionUrl) -> Result<Self, StorageError> {
         let conn = Self::connect_url(db_url)?;
         let output = conn.migrate()?;
@@ -133,10 +140,13 @@ impl DbConnection {
         Self { pool }
     }
 
+    /// Fetch a connection from the pool. This function synchronously blocks the current thread for up to 60 seconds or
+    /// until a connection is available.
     pub fn get_pooled_connection(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, StorageError> {
         self.pool.get_pooled_connection().map_err(StorageError::DieselR2d2Error)
     }
 
+    /// Run database migrations
     pub fn migrate(&self) -> Result<String, StorageError> {
         embed_migrations!("./migrations");
 

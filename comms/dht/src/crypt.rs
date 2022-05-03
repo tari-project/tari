@@ -35,6 +35,7 @@ use tari_crypto::{
     keys::{DiffieHellmanSharedSecret, PublicKey},
     tari_utilities::{epoch_time::EpochTime, ByteArray},
 };
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
     envelope::{DhtMessageFlags, DhtMessageHeader, DhtMessageType, NodeDestination},
@@ -42,37 +43,42 @@ use crate::{
     version::DhtProtocolVersion,
 };
 
-pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> PK
+#[derive(Debug, Clone, Zeroize, ZeroizeOnDrop)]
+pub struct CipherKey(chacha20::Key);
+
+/// Generates a Diffie-Hellman secret `kx.G` as a `chacha20::Key` given secret scalar `k` and public key `P = x.G`.
+pub fn generate_ecdh_secret<PK>(secret_key: &PK::K, public_key: &PK) -> CipherKey
 where PK: PublicKey + DiffieHellmanSharedSecret<PK = PK> {
-    PK::shared_secret(secret_key, public_key)
+    // TODO: PK will still leave the secret in released memory. Implementing Zerioze on RistrettoPublicKey is not
+    //       currently possible because (Compressed)RistrettoPoint does not implement it.
+    let k = PK::shared_secret(secret_key, public_key);
+    CipherKey(*Key::from_slice(k.as_bytes()))
 }
 
-pub fn decrypt(cipher_key: &CommsPublicKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+/// Decrypts cipher text using ChaCha20 stream cipher given the cipher key and cipher text with integral nonce.
+pub fn decrypt(cipher_key: &CipherKey, cipher_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
     if cipher_text.len() < size_of::<Nonce>() {
         return Err(DhtOutboundError::CipherError(
             "Cipher text is not long enough to include nonce".to_string(),
         ));
     }
+
     let (nonce, cipher_text) = cipher_text.split_at(size_of::<Nonce>());
     let nonce = Nonce::from_slice(nonce);
     let mut cipher_text = cipher_text.to_vec();
 
-    let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
-    let mut cipher = ChaCha20::new(key, nonce);
-
+    let mut cipher = ChaCha20::new(&cipher_key.0, nonce);
     cipher.apply_keystream(cipher_text.as_mut_slice());
-
     Ok(cipher_text)
 }
 
-pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>, DhtOutboundError> {
+/// Encrypt the plain text using the ChaCha20 stream cipher
+pub fn encrypt(cipher_key: &CipherKey, plain_text: &[u8]) -> Vec<u8> {
     let mut nonce = [0u8; size_of::<Nonce>()];
-
     OsRng.fill_bytes(&mut nonce);
-    let nonce_ga = Nonce::from_slice(&nonce);
 
-    let key = Key::from_slice(cipher_key.as_bytes()); // 32-bytes
-    let mut cipher = ChaCha20::new(key, nonce_ga);
+    let nonce_ga = Nonce::from_slice(&nonce);
+    let mut cipher = ChaCha20::new(&cipher_key.0, nonce_ga);
 
     // Cloning the plain text to avoid a caller thinking we have encrypted in place and losing the integral nonce added
     // below
@@ -80,11 +86,13 @@ pub fn encrypt(cipher_key: &CommsPublicKey, plain_text: &[u8]) -> Result<Vec<u8>
 
     cipher.apply_keystream(plain_text_clone.as_mut_slice());
 
-    let mut ciphertext_integral_nonce = nonce.to_vec();
+    let mut ciphertext_integral_nonce = Vec::with_capacity(nonce.len() + plain_text_clone.len());
+    ciphertext_integral_nonce.extend(&nonce);
     ciphertext_integral_nonce.append(&mut plain_text_clone);
-    Ok(ciphertext_integral_nonce)
+    ciphertext_integral_nonce
 }
 
+/// Generates a challenge for the origin MAC.
 pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Challenge {
     create_origin_mac_challenge_parts(
         header.version,
@@ -97,6 +105,7 @@ pub fn create_origin_mac_challenge(header: &DhtMessageHeader, body: &[u8]) -> Ch
     )
 }
 
+/// Generates a challenge for the origin MAC.
 pub fn create_origin_mac_challenge_parts(
     protocol_version: DhtProtocolVersion,
     destination: &NodeDestination,
@@ -108,7 +117,7 @@ pub fn create_origin_mac_challenge_parts(
 ) -> Challenge {
     let mut mac_challenge = Challenge::new();
     mac_challenge.update(&protocol_version.to_bytes());
-    mac_challenge.update(destination.to_inner_bytes().as_slice());
+    mac_challenge.update(destination.as_inner_bytes());
     mac_challenge.update(&(message_type as i32).to_le_bytes());
     mac_challenge.update(&flags.bits().to_le_bytes());
     if let Some(t) = expires {
@@ -129,16 +138,18 @@ mod test {
 
     #[test]
     fn encrypt_decrypt() {
-        let key = CommsPublicKey::default();
+        let pk = CommsPublicKey::default();
+        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
         let plain_text = "Last enemy position 0830h AJ 9863".as_bytes().to_vec();
-        let encrypted = encrypt(&key, &plain_text).unwrap();
+        let encrypted = encrypt(&key, &plain_text);
         let decrypted = decrypt(&key, &encrypted).unwrap();
         assert_eq!(decrypted, plain_text);
     }
 
     #[test]
     fn decrypt_fn() {
-        let key = CommsPublicKey::default();
+        let pk = CommsPublicKey::default();
+        let key = CipherKey(*chacha20::Key::from_slice(pk.as_bytes()));
         let cipher_text =
             from_hex("24bf9e698e14938e93c09e432274af7c143f8fb831f344f244ef02ca78a07ddc28b46fec536a0ca5c04737a604")
                 .unwrap();
