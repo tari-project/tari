@@ -276,7 +276,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
         let message_tag = message.dht_header.message_tag;
 
         if let Err(err) = self.check_saf_messages_were_requested(&source_node_id).await {
-            // TODO: Peer send SAF messages we didn't request?? #banheuristics
+            // TODO: Peer sent SAF messages we didn't request?? #banheuristics
             warn!(target: LOG_TARGET, "SAF response check failed: {}", err);
             return Ok(());
         }

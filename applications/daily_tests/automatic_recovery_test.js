@@ -91,7 +91,9 @@ async function run(options = {}) {
           let recoveredAmount = 0;
           if (recoveredAmountMatch[2] === "T") {
             // convert to micro tari
-            recoveredAmount = round(parseFloat(recoveredAmountMatch[1]) * 1000000);
+            recoveredAmount = Math.round(
+              parseFloat(recoveredAmountMatch[1]) * 1000000
+            );
           } else {
             recoveredAmount = parseInt(recoveredAmountMatch[1]);
           }
