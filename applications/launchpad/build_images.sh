@@ -27,4 +27,3 @@ docker build -f docker_rig/frontail.Dockerfile -t quay.io/tarilabs/frontail:late
 docker tag quay.io/tarilabs/frontail:latest-$platform quay.io/tarilabs/frontail:$VERSION-$platform
 docker push quay.io/tarilabs/frontail:latest-$platform
 docker push quay.io/tarilabs/frontail:$VERSION
-

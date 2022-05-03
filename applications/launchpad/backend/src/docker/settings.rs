@@ -36,7 +36,11 @@ use crate::docker::{models::ImageType, TariNetwork};
 pub const DEFAULT_MINING_ADDRESS: &str =
     "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48";
 
-pub const DEFAULT_MONEROD_URL: &str = "http://monero-stagenet.exan.tech:38081";
+pub const DEFAULT_MONEROD_URL: &str = "http://stagenet.xmr-tw.org:38081,\
+http://stagenet.community.xmr.to:38081,\
+http://monero-stagenet.exan.tech:38081,\
+http://xmr-lux.boldsuck.org:38081,\
+http://singapore.node.xmr.pm:38081";
 
 #[derive(Default, Debug, Serialize, Deserialize)]
 pub struct BaseNodeConfig {
