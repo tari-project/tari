@@ -40,7 +40,7 @@ pub(crate) struct Cli {
   #[clap(subcommand)]
   pub command: Option<Commands>,
   /// Supply a network (overrides existing configuration)
-  #[clap(long, default_value = DEFAULT_NETWORK)]
+  #[clap(long, default_value = DEFAULT_NETWORK, env = "TARI_NETWORK")]
   pub network: String,
 }
 
