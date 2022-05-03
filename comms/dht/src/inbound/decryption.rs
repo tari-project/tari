@@ -39,6 +39,7 @@ use tower::{layer::Layer, Service, ServiceExt};
 
 use crate::{
     crypt,
+    crypt::CipherKey,
     envelope::DhtMessageHeader,
     inbound::message::{DecryptedDhtMessage, DhtInboundMessage},
     proto::envelope::OriginMac,
@@ -301,7 +302,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn attempt_decrypt_origin_mac(
-        shared_secret: &CommsPublicKey,
+        shared_secret: &CipherKey,
         dht_header: &DhtMessageHeader,
     ) -> Result<(CommsPublicKey, Vec<u8>), DecryptionError> {
         let encrypted_origin_mac = Some(&dht_header.origin_mac)
@@ -333,7 +334,7 @@ where S: Service<DecryptedDhtMessage, Response = (), Error = PipelineError>
     }
 
     fn attempt_decrypt_message_body(
-        shared_secret: &CommsPublicKey,
+        shared_secret: &CipherKey,
         message_body: &[u8],
     ) -> Result<EnvelopeBody, DecryptionError> {
         let decrypted =

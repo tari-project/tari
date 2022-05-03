@@ -37,7 +37,7 @@ use tari_core::transactions::{
     tari_amount::MicroTari,
     transaction_components::{OutputFlags, TransactionOutput},
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::output_manager_service::{
     error::OutputManagerStorageError,

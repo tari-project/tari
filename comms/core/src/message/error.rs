@@ -23,6 +23,7 @@
 use prost::DecodeError;
 use thiserror::Error;
 
+/// Message error type.
 #[derive(Error, Debug)]
 pub enum MessageError {
     #[error("Failed to decode protobuf message: {0}")]

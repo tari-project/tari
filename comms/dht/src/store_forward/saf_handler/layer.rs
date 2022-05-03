@@ -33,6 +33,7 @@ use crate::{
     store_forward::{SafConfig, StoreAndForwardRequester},
 };
 
+/// Layer responsible for handling SAF protocol messages.
 pub struct MessageHandlerLayer {
     config: SafConfig,
     saf_requester: StoreAndForwardRequester,

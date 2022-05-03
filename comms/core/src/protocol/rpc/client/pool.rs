@@ -122,6 +122,7 @@ where T: RpcPoolClient + From<RpcClient> + NamedProtocolService + Clone
         self.connection.is_connected()
     }
 
+    #[allow(dead_code)]
     pub(super) fn refresh_num_active_connections(&mut self) -> usize {
         self.prune();
         self.clients.len()

@@ -29,7 +29,7 @@ use std::{
 
 use bytes::BufMut;
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::{
     consensus::{ConsensusDecoding, ConsensusEncoding, MaxSizeBytes},

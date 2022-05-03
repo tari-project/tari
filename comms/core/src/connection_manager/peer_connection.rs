@@ -40,9 +40,9 @@ use tokio_stream::StreamExt;
 use tracing::{self, span, Instrument, Level};
 
 use super::{
+    direction::ConnectionDirection,
     error::{ConnectionManagerError, PeerConnectionError},
     manager::ConnectionManagerEvent,
-    types::ConnectionDirection,
 };
 #[cfg(feature = "rpc")]
 use crate::protocol::rpc::{
@@ -111,6 +111,7 @@ pub fn create(
     Ok(peer_conn)
 }
 
+/// Request types for the PeerConnection actor.
 #[derive(Debug)]
 pub enum PeerConnectionRequest {
     /// Open a new substream and negotiate the given protocol
@@ -122,6 +123,7 @@ pub enum PeerConnectionRequest {
     Disconnect(bool, oneshot::Sender<Result<(), PeerConnectionError>>),
 }
 
+/// ID type for peer connections
 pub type ConnectionId = usize;
 
 /// Request handle for an active peer connection
@@ -526,6 +528,7 @@ impl fmt::Display for PeerConnectionActor {
     }
 }
 
+/// Contains the substream and the ProtocolId that was successfully negotiated.
 pub struct NegotiatedSubstream<TSubstream> {
     pub protocol: ProtocolId,
     pub stream: TSubstream,

@@ -207,6 +207,7 @@ impl Drop for IncomingSubstreams {
     }
 }
 
+/// A yamux stream wrapper that can be read from and written to.
 #[derive(Debug)]
 pub struct Substream {
     stream: Compat<yamux::Stream>,

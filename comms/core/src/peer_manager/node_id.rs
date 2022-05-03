@@ -35,7 +35,7 @@ use blake2::{
     VarBlake2b,
 };
 use serde::{de, Deserialize, Deserializer, Serialize};
-use tari_crypto::tari_utilities::{
+use tari_utilities::{
     hex::{to_hex, Hex},
     ByteArray,
     ByteArrayError,
@@ -46,6 +46,7 @@ use crate::{peer_manager::node_distance::NodeDistance, types::CommsPublicKey};
 
 pub(super) type NodeIdArray = [u8; NodeId::byte_size()];
 
+/// Error type for NodeId
 #[derive(Debug, Error, Clone)]
 pub enum NodeIdError {
     #[error("Incorrect byte count (expected {} bytes)", NodeId::byte_size())]

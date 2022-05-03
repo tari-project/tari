@@ -106,6 +106,7 @@ pub struct BaseNodeConfig {
     pub metadata_auto_ping_interval: Duration,
     pub state_machine: BaseNodeStateMachineConfig,
     pub resize_terminal_on_startup: bool,
+    pub report_grpc_error: bool,
 }
 
 impl Default for BaseNodeConfig {
@@ -136,6 +137,7 @@ impl Default for BaseNodeConfig {
             metadata_auto_ping_interval: Duration::from_secs(30),
             state_machine: Default::default(),
             resize_terminal_on_startup: true,
+            report_grpc_error: false,
         }
     }
 }

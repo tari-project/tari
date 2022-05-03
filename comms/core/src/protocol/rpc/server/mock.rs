@@ -67,6 +67,7 @@ use crate::{
 
 pub struct RpcRequestMock {
     comms_provider: RpcCommsBackend,
+    #[allow(dead_code)]
     connectivity_mock_state: ConnectivityManagerMockState,
 }
 
@@ -204,6 +205,7 @@ pub struct MockRpcServer<TSvc> {
     inner: Option<PeerRpcServer<TSvc, MockCommsProvider>>,
     protocol_tx: ProtocolNotificationTx<Substream>,
     our_node: Arc<NodeIdentity>,
+    #[allow(dead_code)]
     request_tx: mpsc::Sender<RpcServerRequest>,
 }
 

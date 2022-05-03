@@ -20,6 +20,16 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! # DHT Connectivity Actor
+//!
+//! Responsible for ensuring DHT network connectivity to a neighbouring and random peer set. This includes joining the
+//! network when the node has established some peer connections (e.g to seed peers). It maintains neighbouring and
+//! random peer pools and instructs the comms `ConnectivityManager` to establish those connections. Once a configured
+//! percentage of these peers is online, the node is established on the DHT network.
+//!
+//! The DHT connectivity actor monitors the connectivity state (using `ConnectivityEvent`s) and attempts
+//! to maintain connectivity to the network as peers come and go.
+
 #[cfg(test)]
 mod test;
 
@@ -50,6 +60,7 @@ use crate::{connectivity::metrics::MetricsError, event::DhtEvent, DhtActorError,
 
 const LOG_TARGET: &str = "comms::dht::connectivity";
 
+/// Error type for the DHT connectivity actor.
 #[derive(Debug, Error)]
 pub enum DhtConnectivityError {
     #[error("ConnectivityError: {0}")]
@@ -62,16 +73,8 @@ pub enum DhtConnectivityError {
     MetricError(#[from] MetricsError),
 }
 
-/// # DHT Connectivity Actor
-///
-/// Responsible for ensuring DHT network connectivity to a neighbouring and random peer set. This includes joining the
-/// network when the node has established some peer connections (e.g to seed peers). It maintains neighbouring and
-/// random peer pools and instructs the comms `ConnectivityManager` to establish those connections. Once a configured
-/// percentage of these peers is online, the node is established on the DHT network.
-///
-/// The DHT connectivity actor monitors the connectivity state (using `ConnectivityEvent`s) and attempts
-/// to maintain connectivity to the network as peers come and go.
-pub struct DhtConnectivity {
+/// DHT connectivity actor.
+pub(crate) struct DhtConnectivity {
     config: Arc<DhtConfig>,
     peer_manager: Arc<PeerManager>,
     node_identity: Arc<NodeIdentity>,
@@ -133,7 +136,9 @@ impl DhtConnectivity {
         task::spawn(async move {
             log_mdc::extend(mdc.clone());
             debug!(target: LOG_TARGET, "Waiting for connectivity manager to start");
-            let _result = self.connectivity.wait_started().await;
+            if let Err(err) = self.connectivity.wait_started().await {
+                error!(target: LOG_TARGET, "Comms connectivity failed to start: {}", err);
+            }
             log_mdc::extend(mdc.clone());
             match self.run(connectivity_events).await {
                 Ok(_) => Ok(()),
@@ -442,7 +447,7 @@ impl DhtConnectivity {
     async fn refresh_random_pool_if_required(&mut self) -> Result<(), DhtConnectivityError> {
         let should_refresh = self.config.num_random_nodes > 0 &&
             self.random_pool_last_refresh
-                .map(|instant| instant.elapsed() >= self.config.connectivity.random_pool_refresh)
+                .map(|instant| instant.elapsed() >= self.config.connectivity.random_pool_refresh_interval)
                 .unwrap_or(true);
         if should_refresh {
             self.refresh_random_pool().await?;

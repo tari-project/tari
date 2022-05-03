@@ -79,13 +79,15 @@ where TBackend: WalletBackend + 'static
     pub async fn run(mut self) -> Result<(), UtxoScannerError> {
         if self.mode == UtxoScannerMode::Recovery {
             self.set_recovery_mode().await?;
-        } else if self.check_recovery_mode().await? {
-            warn!(
-                target: LOG_TARGET,
-                "Scanning round aborted as a Recovery is in progress"
-            );
-            return Ok(());
         } else {
+            let in_progress = self.check_recovery_mode().await?;
+            if in_progress {
+                warn!(
+                    target: LOG_TARGET,
+                    "Scanning round aborted as a Recovery is in progress"
+                );
+                return Ok(());
+            }
         }
 
         loop {
@@ -571,15 +573,12 @@ where TBackend: WalletBackend + 'static
     }
 
     async fn check_recovery_mode(&self) -> Result<bool, UtxoScannerError> {
-        let value: Option<String> = self
-            .resources
+        self.resources
             .db
-            .get_client_key_from_str(RECOVERY_KEY.to_owned())
-            .await?;
-        match value {
-            None => Ok(false),
-            Some(_v) => Ok(true),
-        }
+            .get_client_key_from_str::<String>(RECOVERY_KEY.to_owned())
+            .await
+            .map(|x| x.is_some())
+            .map_err(UtxoScannerError::from) // in case if `get_client_key_from_str` returns not exactly that type
     }
 
     async fn clear_recovery_mode(&self) -> Result<(), UtxoScannerError> {

@@ -39,11 +39,8 @@ use tari_comms::{
     types::{Challenge, CommsPublicKey},
     utils::signature,
 };
-use tari_crypto::{
-    keys::PublicKey,
-    tari_utilities::{epoch_time::EpochTime, message_format::MessageFormat, ByteArray},
-};
-use tari_utilities::hex::Hex;
+use tari_crypto::keys::PublicKey;
+use tari_utilities::{epoch_time::EpochTime, hex::Hex, message_format::MessageFormat, ByteArray};
 use tokio::sync::oneshot;
 use tower::{layer::Layer, Service, ServiceExt};
 
@@ -500,7 +497,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 let (e_secret_key, e_public_key) = CommsPublicKey::random_keypair(&mut OsRng);
                 let shared_ephemeral_secret = crypt::generate_ecdh_secret(&e_secret_key, &**public_key);
                 // Encrypt the message with the body
-                let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body)?;
+                let encrypted_body = crypt::encrypt(&shared_ephemeral_secret, &body);
 
                 let mac_challenge = crypt::create_origin_mac_challenge_parts(
                     self.protocol_version,
@@ -514,7 +511,7 @@ where S: Service<DhtOutboundMessage, Response = (), Error = PipelineError>
                 // Sign the encrypted message
                 let origin_mac = create_origin_mac(&self.node_identity, mac_challenge)?;
                 // Encrypt and set the origin field
-                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac)?;
+                let encrypted_origin_mac = crypt::encrypt(&shared_ephemeral_secret, &origin_mac);
                 Ok((
                     Some(Arc::new(e_public_key)),
                     Some(encrypted_origin_mac.into()),

@@ -20,6 +20,8 @@
 // WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+//! DHT middleware layers for outbound messages.
+
 mod broadcast;
 pub use broadcast::BroadcastLayer;
 
@@ -27,7 +29,7 @@ mod error;
 pub use error::DhtOutboundError;
 
 pub(crate) mod message;
-pub use message::{DhtOutboundRequest, OutboundEncryption, SendMessageResponse};
+pub use message::{DhtOutboundMessage, DhtOutboundRequest, OutboundEncryption, SendMessageResponse};
 
 mod message_params;
 pub use message_params::SendMessageParams;

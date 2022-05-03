@@ -27,7 +27,7 @@ use crate::peer_manager::{migrations::MIGRATION_VERSION_KEY, Peer, PeerId};
 // TODO: Hack to get around current peer database design. Once PeerManager uses a PeerDatabase abstraction and the LMDB
 //       implementation has access to multiple databases we can remove this wrapper.
 
-pub struct KeyValueWrapper<T> {
+pub(super) struct KeyValueWrapper<T> {
     inner: T,
 }
 

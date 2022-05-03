@@ -157,6 +157,7 @@ impl MockRpcClient {
         self.inner.request_response(request, method).await
     }
 
+    #[allow(dead_code)]
     pub async fn server_streaming<T: prost::Message, R: prost::Message + Default>(
         &mut self,
         request: T,

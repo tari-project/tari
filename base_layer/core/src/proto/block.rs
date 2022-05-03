@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::{BlindingFactor, PrivateKey};
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use super::core as proto;
 use crate::{

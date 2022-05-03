@@ -301,10 +301,10 @@ impl TransactionOutput {
             Some(key) => spending_key + key,
         };
         Ok(ComSignature::sign(
-            value,
-            secret_x,
-            nonce_a,
-            nonce_b,
+            &value,
+            &secret_x,
+            &nonce_a,
+            &nonce_b,
             &e.finalize_fixed(),
             &PedersenCommitmentFactory::default(),
         )?)

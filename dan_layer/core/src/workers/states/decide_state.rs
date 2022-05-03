@@ -24,7 +24,7 @@ use std::collections::HashMap;
 
 use log::*;
 use tari_common_types::types::PublicKey;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 use tokio::time::{sleep, Duration};
 
 use crate::{

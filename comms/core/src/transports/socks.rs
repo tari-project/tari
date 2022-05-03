@@ -38,6 +38,7 @@ use crate::{
 
 const LOG_TARGET: &str = "comms::transports::socks";
 
+/// SOCKS proxy client config
 #[derive(Clone)]
 pub struct SocksConfig {
     pub proxy_address: Multiaddr,
@@ -55,6 +56,7 @@ impl Debug for SocksConfig {
     }
 }
 
+/// Transport over the SOCKS5 protocol
 #[derive(Clone)]
 pub struct SocksTransport {
     socks_config: SocksConfig,

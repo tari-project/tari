@@ -22,8 +22,8 @@
 
 use prost::Message;
 use tari_core::transactions::transaction_components::TemplateParameter;
-use tari_crypto::tari_utilities::{hex::Hex, ByteArray};
 use tari_dan_common_types::proto::tips::tip002;
+use tari_utilities::{hex::Hex, ByteArray};
 
 use crate::{
     models::{Instruction, InstructionSet, TemplateId},

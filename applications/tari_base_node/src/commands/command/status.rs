@@ -24,9 +24,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Error};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use tari_app_utilities::consts;
+use tari_comms::connectivity::ConnectivitySelection;
 
 use super::{CommandContext, HandleCommand};
 use crate::commands::status_line::{StatusLine, StatusLineOutput};
@@ -65,7 +66,10 @@ impl CommandContext {
             .get_header(height)
             .await?
             .ok_or_else(|| anyhow!("No last header"))?;
-        let last_block_time = DateTime::<Utc>::from(last_header.header().timestamp);
+        let last_block_time = DateTime::<Utc>::from_utc(
+            NaiveDateTime::from_timestamp(last_header.header().timestamp.as_u64() as i64, 0),
+            Utc,
+        );
         status_line.add_field(
             "Tip",
             format!(
@@ -93,7 +97,10 @@ impl CommandContext {
             ),
         );
 
-        let conns = self.connectivity.get_active_connections().await?;
+        let conns = self
+            .connectivity
+            .select_connections(ConnectivitySelection::all_nodes(vec![]))
+            .await?;
         status_line.add_field("Connections", conns.len());
         let banned_peers = self.fetch_banned_peers().await?;
         status_line.add_field("Banned", banned_peers.len());
