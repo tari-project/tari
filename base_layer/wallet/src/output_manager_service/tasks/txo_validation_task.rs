@@ -29,8 +29,8 @@ use tari_core::{
     blocks::BlockHeader,
     proto::base_node::{QueryDeletedRequest, UtxoQueryRequest},
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,

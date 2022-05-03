@@ -51,7 +51,10 @@ class InterfaceFFI {
       }
       const ps = spawn(cmd, args, {
         cwd: baseDir,
-        env: { ...process.env },
+        env: {
+          ...process.env,
+          CARGO_TARGET_DIR: process.cwd() + "/temp/ffi-target",
+        },
       });
       ps.on("close", (_code) => {
         resolve(ps);

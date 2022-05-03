@@ -30,9 +30,9 @@ use tari_comms_dht::{
     envelope::NodeDestination,
     outbound::{DhtOutboundError, OutboundEncryption, OutboundMessageRequester},
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_p2p::{domain_message::DomainMessage, tari_message::TariMessageType};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use tari_utilities::hex::Hex;
 use tokio::{sync::mpsc, task};
 
 use crate::{

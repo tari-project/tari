@@ -28,8 +28,8 @@ use std::sync::{
 
 use futures::StreamExt;
 use log::*;
-use tari_crypto::tari_utilities::{acquire_read_lock, acquire_write_lock};
 use tari_service_framework::{reply_channel, reply_channel::RequestContext};
+use tari_utilities::{acquire_read_lock, acquire_write_lock};
 use tokio::sync::{broadcast, broadcast::error::SendError};
 
 use crate::services::liveness::{

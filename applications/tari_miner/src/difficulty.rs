@@ -143,7 +143,9 @@ pub mod test {
 
     pub fn get_header() -> (BlockHeader, CoreBlockHeader) {
         let mut header = CoreBlockHeader::new(0);
-        header.timestamp = DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).into();
+        header.timestamp =
+            (DateTime::<Utc>::from_utc(NaiveDate::from_ymd(2000, 1, 1).and_hms(1, 1, 1), Utc).timestamp() as u64)
+                .into();
         header.pow.pow_algo = tari_core::proof_of_work::PowAlgorithm::Sha3;
         (header.clone().into(), header)
     }

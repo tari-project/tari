@@ -23,7 +23,7 @@
 use std::convert::{TryFrom, TryInto};
 
 use tari_common_types::types::PublicKey;
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 
 use super::protocol as proto;
 use crate::transactions::transaction_protocol::recipient::RecipientSignedMessage;

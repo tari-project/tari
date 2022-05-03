@@ -23,7 +23,7 @@
 use std::fmt::{Display, Error, Formatter};
 
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::types::BlockHash;
 

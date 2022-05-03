@@ -40,7 +40,7 @@ use tari_core::{
     blocks::BlockHeader,
     proto::{base_node::Signatures as SignaturesProto, types::Signature as SignatureProto},
 };
-use tari_crypto::tari_utilities::{hex::Hex, Hashable};
+use tari_utilities::{hex::Hex, Hashable};
 
 use crate::{
     connectivity_service::WalletConnectivityInterface,

@@ -27,7 +27,8 @@ use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_crypto::{keys::SecretKey, tari_utilities::ByteArray};
+use tari_crypto::keys::SecretKey;
+use tari_utilities::ByteArray;
 
 use crate::{
     message::MessageExt,

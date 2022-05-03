@@ -625,9 +625,8 @@ mod test {
 
     use chrono::Utc;
     use tari_comms::{message::MessageExt, runtime, wrap_in_envelope_body};
-    use tari_crypto::tari_utilities::hex;
     use tari_test_utils::collect_recv;
-    use tari_utilities::hex::Hex;
+    use tari_utilities::{hex, hex::Hex};
     use tokio::{sync::mpsc, task, time::sleep};
 
     use super::*;

@@ -24,8 +24,7 @@ use chrono::{NaiveDateTime, Utc};
 use diesel::{dsl, result::DatabaseErrorKind, sql_types, ExpressionMethods, OptionalExtension, QueryDsl, RunQueryDsl};
 use log::*;
 use tari_comms::types::CommsPublicKey;
-use tari_crypto::tari_utilities::hex::to_hex;
-use tari_utilities::hex::Hex;
+use tari_utilities::hex::{to_hex, Hex};
 
 use crate::{
     schema::dedup_cache,

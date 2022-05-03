@@ -55,10 +55,9 @@ use tari_core::{
     },
     txn_schema,
 };
-use tari_crypto::tari_utilities::epoch_time::EpochTime;
 use tari_service_framework::reply_channel;
 use tari_test_utils::streams::convert_mpsc_to_stream;
-use tari_utilities::Hashable;
+use tari_utilities::{epoch_time::EpochTime, Hashable};
 use tempfile::{tempdir, TempDir};
 use tokio::sync::broadcast;
 

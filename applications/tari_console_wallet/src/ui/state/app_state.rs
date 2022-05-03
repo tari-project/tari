@@ -47,8 +47,9 @@ use tari_core::transactions::{
     tari_amount::{uT, MicroTari},
     weight::TransactionWeight,
 };
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_crypto::ristretto::RistrettoPublicKey;
 use tari_shutdown::ShutdownSignal;
+use tari_utilities::hex::Hex;
 use tari_wallet::{
     assets::Asset,
     base_node_service::{handle::BaseNodeEventReceiver, service::BaseNodeState},
