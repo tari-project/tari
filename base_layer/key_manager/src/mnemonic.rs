@@ -185,7 +185,11 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String
 
     // Pad with zeros if length not divisible by 11
     let group_bit_count = 11;
-    let padded_size = ((bits.len() as f32 / group_bit_count as f32).ceil() * group_bit_count as f32) as usize;
+    let mut padded_size = bits.len() / group_bit_count;
+    if bits.len() % group_bit_count > 0 {
+        padded_size += 1;
+    }
+    padded_size *= group_bit_count;
     bits.resize(padded_size, false);
 
     // Group each set of 11 bits to form one mnemonic word
@@ -193,12 +197,10 @@ pub fn from_bytes(bytes: &[u8], language: MnemonicLanguage) -> Result<Vec<String
     for i in 0..bits.len() / group_bit_count {
         let start_index = i * group_bit_count;
         let stop_index = start_index + group_bit_count;
-        let sub_v = &bits[start_index..stop_index].to_vec();
+        let sub_v = &bits[start_index..stop_index];
         let word_index = checked_bits_to_uint(sub_v).ok_or(MnemonicError::BitsToIntConversion)?;
-        match find_mnemonic_word_from_index(word_index, language) {
-            Ok(mnemonic_word) => mnemonic_sequence.push(mnemonic_word),
-            Err(err) => return Err(err),
-        }
+        let mnemonic_word = find_mnemonic_word_from_index(word_index, language)?;
+        mnemonic_sequence.push(mnemonic_word);
     }
 
     Ok(mnemonic_sequence)
@@ -216,10 +218,10 @@ pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
 /// look something like this:
 /// .....CCCCCCCCCCCBBBBBBBBBBBAAAAAAAAAAA, the input represented as one very large number would look like
 /// A+B*2^11+C*2^22+... And we want to cut it (from the right) to 8 bit long numbers like this:
-/// .....eddddddddccccccccbbbbbbbbaaaaaaaa, the output represented as one very large number would look liek
+/// .....eddddddddccccccccbbbbbbbbaaaaaaaa, the output represented as one very large number would look like
 /// a+b*2^8+c*2^16+... Where 'A' is the first mnemonic word in the seq and 'a' is the first byte output.
 /// So the algo works like this:
-/// We add 11bits number to what we have 'rest' shited by the number of bit representation of rest ('rest_bits').
+/// We add 11bits number to what we have 'rest' shifted by the number of bit representation of rest ('rest_bits').
 /// We now have enough bits to get some output, we take 8 bits and produce output byte. We do this as long as we have at
 /// least 8 bits in the 'rest'.
 /// Sample of couple first steps:
@@ -227,25 +229,26 @@ pub fn to_bytes(mnemonic_seq: &[String]) -> Result<Vec<u8>, MnemonicError> {
 /// 2) We add 5 bits from 'B' to generate 'b', the leftover is 6 bits from 'B'
 /// 3) We add 2 bits from 'C to generate 'c', now we have 8 bits needed to generate 'd' and we have 1 bit leftover.
 pub fn to_bytes_with_language(mnemonic_seq: &[String], language: &MnemonicLanguage) -> Result<Vec<u8>, MnemonicError> {
-    let mut bytes: Vec<u8> = Vec::new();
-    let mut rest = 0;
+    const MASK: u64 = (1u64 << 8) - 1;
+    let mut bytes = Vec::new();
+    let mut rest = 0u64;
     let mut rest_bits: u8 = 0;
 
     for curr_word in mnemonic_seq {
-        let index = find_mnemonic_index_from_word(curr_word, *language)?;
+        let index = find_mnemonic_index_from_word(curr_word, *language)? as u64;
         // Add 11 bits to the front
         rest += index << rest_bits;
         rest_bits += 11;
         while rest_bits >= 8 {
             // Get last 8 bits and shift it
-            bytes.push(rest as u8);
+            bytes.push((rest & MASK) as u8);
             rest >>= 8;
             rest_bits -= 8;
         }
     }
     // If we have any leftover, we write it.
     if rest > 0 {
-        bytes.push(rest as u8);
+        bytes.push((rest & MASK) as u8);
     }
     Ok(bytes)
 }

@@ -252,7 +252,7 @@ class BaseNodeProcess {
     return await this.createGrpcClient();
   }
 
-  async start(opts = []) {
+  async start(opts = {}) {
     const args = [
       "--non-interactive-mode",
       "--watch",
@@ -260,13 +260,15 @@ class BaseNodeProcess {
       "--base-path",
       ".",
       "--network",
-      "localnet",
+      opts.network || "localnet",
     ];
     if (this.logFilePath) {
       args.push("--log-config", this.logFilePath);
     }
-    args.concat(opts);
-    const overrides = this.getOverrides();
+    if (opts.args) {
+      args.concat(opts.args);
+    }
+    const overrides = Object.assign(this.getOverrides(), opts.config);
     Object.keys(overrides).forEach((k) => {
       args.push("-p");
       args.push(`${k}=${overrides[k]}`);

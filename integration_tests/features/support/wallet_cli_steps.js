@@ -36,7 +36,7 @@ Then(
   async function (name, is_not, password) {
     let wallet = this.getWallet(name);
     try {
-      await wallet.start(password);
+      await wallet.start({ password });
     } catch (error) {
       expect(error).to.equal(
         is_not === "not" ? "Incorrect password" : undefined
