@@ -223,7 +223,7 @@ impl TariWorkspace {
         let platform = match std::env::consts::ARCH {
             "x86_64" => "amd64",
             "aarch64" => "arm64",
-            _ => "unsupported"
+            _ => "unsupported",
         };
         format!("{}-{}", label, platform)
     }
