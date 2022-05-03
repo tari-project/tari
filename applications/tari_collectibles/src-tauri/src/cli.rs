@@ -20,8 +20,13 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-use clap::Parser;
+use crate::{
+  app_state::ConcurrentAppState, commands, commands::assets::inner_assets_list_registered_assets,
+};
+use clap::{Parser, Subcommand};
 use tari_app_utilities::common_cli_args::CommonCliArgs;
+use tari_common::exit_codes::{ExitCode, ExitError};
+use uuid::Uuid;
 
 const DEFAULT_NETWORK: &str = "dibbler";
 
@@ -33,7 +38,7 @@ pub(crate) struct Cli {
   pub common: CommonCliArgs,
   /// Command to run
   #[clap(subcommand)]
-  pub command: Commands,
+  pub command: Option<Commands>,
   /// Supply a network (overrides existing configuration)
   #[clap(long, default_value = DEFAULT_NETWORK)]
   pub network: String,
@@ -50,10 +55,12 @@ impl Cli {
   }
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Commands {
   ListAssets {
+    #[clap(default_value = "0")]
     offset: u64,
+    #[clap(default_value = "20")]
     count: u64,
   },
   MakeItRain {
@@ -63,21 +70,6 @@ pub enum Commands {
     destination_address: String,
     source_address: Option<String>,
   },
-  RegisterAsset {},
-}
-
-pub fn register_asset(state: &ConcurrentAppState) -> Result<(), ExitError> {
-  let runtime = tokio::runtime::Builder::new_multi_thread()
-    .enable_all()
-    .build()
-    .expect("Failed to build a runtime!");
-  match runtime.block_on(inner(offset, count, state)) {
-    Ok(rows) => {
-      println!("{}", serde_json::to_string_pretty(&rows).unwrap());
-      Ok(())
-    }
-    Err(e) => Err(ExitError::new(ExitCode::CommandError, e.to_string())),
-  }
 }
 
 pub fn list_assets(offset: u64, count: u64, state: &ConcurrentAppState) -> Result<(), ExitError> {
@@ -90,7 +82,7 @@ pub fn list_assets(offset: u64, count: u64, state: &ConcurrentAppState) -> Resul
       println!("{}", serde_json::to_string_pretty(&rows).unwrap());
       Ok(())
     }
-    Err(e) => Err(ExitError::new(ExitCode::CommandError, e.to_string())),
+    Err(e) => Err(ExitError::new(ExitCode::CommandError, &e)),
   }
 }
 
@@ -118,7 +110,7 @@ pub(crate) fn make_it_rain(
       match source_address {
         Some(source_address) => {
           let source_uuid = Uuid::parse_str(&source_address)
-            .map_err(|e| ExitError::new(ExitCode::CommandError, e.to_string()))?;
+            .map_err(|e| ExitError::new(ExitCode::CommandError, &e))?;
           if !rows.iter().any(|wallet| wallet.id == source_uuid) {
             return Err(ExitError::new(ExitCode::CommandError, "Wallet not found!"));
           }

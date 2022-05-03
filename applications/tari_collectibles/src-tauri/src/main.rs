@@ -10,13 +10,14 @@ use std::error::Error;
 use tauri::{Menu, MenuItem, Submenu};
 
 use clap::Parser;
-use tari_common::{
-  exit_codes::{ExitCode, ExitError},
-  load_configuration, DefaultConfigLoader,
-};
-use uuid::Uuid;
+use std::path::PathBuf;
+use tari_common::{exit_codes::ExitError, load_configuration, DefaultConfigLoader};
 
-use crate::{app_state::ConcurrentAppState, cli::Cli, config::CollectiblesConfig};
+use crate::{
+  app_state::ConcurrentAppState,
+  cli::{Cli, Commands},
+  config::CollectiblesConfig,
+};
 
 #[macro_use]
 extern crate diesel;
@@ -36,9 +37,8 @@ mod schema;
 mod status;
 mod storage;
 
-pub fn process_command(command: Command, state: &ConcurrentAppState) -> Result<(), ExitError> {
-  println!("command {:?}", command);
-  match cli.command {
+pub fn process_command(command: Commands, state: &ConcurrentAppState) -> Result<(), ExitError> {
+  match command {
     Commands::MakeItRain {
       asset_public_key,
       amount_per_transaction,
@@ -51,17 +51,10 @@ pub fn process_command(command: Command, state: &ConcurrentAppState) -> Result<(
       number_transactions,
       destination_address,
       source_address,
-      &state,
-    )?,
-    Commands::ListAssets { offset, count } => {
-      cli::list_assets(offset, count, &state)?;
-      return Ok(());
-    }
-    Commands::RegisterAsset { .. } => {
-      cli::register_asset(&state)?;
-      return Ok(());
-    }
-  };
+      state,
+    ),
+    Commands::ListAssets { offset, count } => cli::list_assets(offset, count, state),
+  }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -75,8 +68,7 @@ fn main() -> Result<(), Box<dyn Error>> {
   let config = CollectiblesConfig::load_from(&cfg)?;
   let state = ConcurrentAppState::new(cli.common.get_base_path(), config);
 
-  if let Some(ref command) = cli.command {
-    let command = parse_command(command)?;
+  if let Some(command) = cli.command {
     process_command(command, &state)?;
     return Ok(());
   }
