@@ -364,6 +364,7 @@ where TSocket: AsyncRead + Unpin
 impl<TSocket> NoiseSocket<TSocket>
 where TSocket: AsyncWrite + Unpin
 {
+    #[allow(clippy::too_many_lines)]
     fn poll_write_or_flush(&mut self, context: &mut Context, buf: Option<&[u8]>) -> Poll<io::Result<Option<usize>>> {
         loop {
             trace!(
