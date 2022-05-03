@@ -38,6 +38,7 @@
   - [RFC-0301: Namespace Registration](RFC-0301_NamespaceRegistration.md)
   - [RFC-0302: Validator Nodes](RFC-0302_ValidatorNodes.md)
   - [RFC-0304: Validator Node committee selection](RFC-0304_VNCommittees.md)
+  - [RFC-0306: DAN Template Registration](RFC-0306_DANTemplateRegistration.md)
   - [Asset Management](AssetManagement.md)
     - [RFC-0311: Digital Asset templates](RFC-0311_AssetTemplates.md)
     - [RFC-0345: Asset Life cycle](RFC-0345_AssetLifeCycle.md)
