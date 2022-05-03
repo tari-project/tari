@@ -122,7 +122,7 @@ fn main_inner() -> Result<(), ExitError> {
     let password = cli
         .password
         .as_ref()
-        .or(config.wallet.password.as_ref())
+        .or_else(|| config.wallet.password.as_ref())
         .map(|s| s.to_owned());
 
     if password.is_none() {
