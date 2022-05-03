@@ -275,7 +275,7 @@ impl LaunchpadConfig {
     /// Return the command line arguments we want for the given container execution.
     pub fn command(&self, image_type: ImageType) -> Vec<String> {
         match image_type {
-            ImageType::BaseNode => vec!["--non-interactive-mode".to_string()],
+            ImageType::BaseNode => self.base_node_cmd(),
             ImageType::Wallet => vec!["--non-interactive-mode".to_string()],
             ImageType::XmRig => self.xmrig_cmd(),
             ImageType::Sha3Miner => vec![],
@@ -309,6 +309,14 @@ impl LaunchpadConfig {
             "wallet/log/core.log",
             "sha3_miner/log/core.log",
             "mm_proxy/log/core.log",
+        ];
+        args.into_iter().map(String::from).collect()
+    }
+
+    fn base_node_cmd(&self) -> Vec<String> {
+        let args = vec![
+            "--non-interactive-mode",
+            "--log-config=/var/tari/config/log4rs.yml"
         ];
         args.into_iter().map(String::from).collect()
     }
@@ -388,23 +396,9 @@ impl LaunchpadConfig {
 
     fn base_node_tor_config(&self, env: &mut Vec<String>) {
         env.append(&mut vec![
-            format!("TARI_BASE_NODE__{}__TRANSPORT=tor", self.tari_network.upper_case()),
             format!(
-                "TARI_BASE_NODE__{}__TOR_CONTROL_AUTH=password={}",
-                self.tari_network.upper_case(),
+                "TARI_BASE_NODE__P2P__TRANSPORT__TOR__CONTROL_AUTH=password={}",
                 self.tor_control_password
-            ),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_FORWARD_ADDRESS=/dns4/base_node/tcp/18189",
-                self.tari_network.upper_case()
-            ),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
-                self.tari_network.upper_case()
-            ),
-            format!(
-                "TARI_BASE_NODE__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
-                self.tari_network.upper_case()
             ),
         ]);
     }
@@ -417,18 +411,8 @@ impl LaunchpadConfig {
             env.append(&mut vec![
                 format!("WAIT_FOR_TOR={}", base_node.delay.as_secs()),
                 format!(
-                    "TARI_COMMON__{}__DATA_DIR=/blockchain/{}",
-                    self.tari_network.upper_case(),
+                    "TARI_BASE_NODE__DATA_DIR=/blockchain/{}",
                     self.tari_network.lower_case()
-                ),
-                format!(
-                    "TARI_BASE_NODE__{}__TCP_LISTENER_ADDRESS=/dns4/base_node/tcp/18189",
-                    self.tari_network.upper_case()
-                ),
-                format!("TARI_BASE_NODE__{}__GRPC_ENABLED=1", self.tari_network.upper_case()),
-                format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=0.0.0.0:18142",
-                    self.tari_network.upper_case()
                 ),
                 "APP_NAME=base_node".to_string(),
             ]);
