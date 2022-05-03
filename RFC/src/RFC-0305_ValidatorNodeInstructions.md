@@ -73,19 +73,37 @@ This RFC proposes an instruction that represents an authorized call to a contrac
 ### Assumptions
 
 * All instruction messages are sent using the Tari messaging protocol.
-* Tari messaging protocol provides authenticates the origin of the message.
-* Tari messaging protocol provides protection against message malleability.
 * Some proof can be provided that the authenticated user is authorized to perform the requested action. This proof is 
   called a [bearer_token] within this RFC.
-  * The [bearer_token] is scoped to the [contract definition], function scope and function arguments.
-  * The [bearer_token] provides role (predefined scope group) and/or scope granularity.
-  * The [bearer_token] is obtained from a party with equal to or higher permissions.
+  * The [bearer_token] is restricted to the [contract definition], function/s scope and function arguments.
+  * The [bearer_token] provides scope granularity.
+  * The [bearer_token] is decoupled from the instruction and may be used as many times as permitted.
 * The contract or templates provide metadata that can be used for, amongst other things, authorization.
 * A function can be uniquely identified by a template id and a function id.
 
 ### Instruction format
 
 An instruction is submitted by a user in protobuf format to one or more of the validator node committee members. 
+
+#### Instruction Authentication 
+[Instruction Authentication]: #instruction-authentication
+
+The caller MUST provide an authentication signature for the instruction. This proves that the instruction was issued
+by the sender and prevents malleability. A [validator node] SHOULD verify this signature before processing the instruction.
+
+```protobuf
+message InstructionAuthentication {
+  // A signature (a Schnorr <R, s> tuple) committing to the instruction body.
+  // i.e. e = H(<sender_public_key>||<sig_public_nonce>||<serialized body>)
+  required Signature signature = 1;
+  // The public key of the signer and sender.
+  required bytes sender_public_key = 2;
+}
+```
+
+#### Instruction Body
+
+The authenticated instruction can then be deserialized and processed. 
 
 ```protobuf
 // An instruction that is validated and executed by a validator node. 
@@ -103,6 +121,7 @@ message Instruction {
    // a disambiguation between purposefully duplicate instructions.
    required uint64 nonce = 5;
 }
+
 
 message Authorization {
   required BearerToken bearer_token = 1;
@@ -129,17 +148,19 @@ message Argument {
 }
 ```
 
-On receipt of an instruction, the validator committee node performs the following checks:
-1. Check if the instruction already exists in the mempool, if so, discard the instruction.
-   * Instruction uniqueness can be determined by hashing the serialized message body.
-2. The instruction is well-formed and all required fields are present.
-3. The `contract_id` is managed by the validator and the contract has been initialized.
-4. The `template_id` and `function_id` exist within the contract.
-5. A validator MUST verify the [bearer_token] authorizes the execution of the instruction against the [contract] interface.
+On receipt of an _authenticated_ instruction, the validator committee node performs the following checks:
+1. The instruction is well-formed and all required fields are present.
+2. The `contract_id` is managed by the validator and the contract has been initialized.
+3. The `template_id` and `function_id` exist within the contract.
+4. A validator MUST verify the [bearer_token] authorizes the execution of the instruction against the [contract] interface.
+   * The instruction MUST be discarded if the [bearer_token] is revoked.
+   * The grantee in the [bearer_token] MUST match the public key in the [Instruction Authentication].
    * The [bearer_token] MUST be valid for the provided `contract_id`.
-   * The [bearer_token] MUST be valid for the caller's public key.
-   * The [bearer_token] MUST be valid for the invoked function scope and function arguments.
-6. Store the instruction in the mempool, and propagate it to other validators in the committee.
+   * The [bearer_token] MUST be valid for the invoked function scope/s and function arguments.
+5. Check if the instruction already exists in the mempool, if so, discard the instruction.
+    * Instruction uniqueness can be determined by hashing the authenticated message body.
+6. Store the instruction in the mempool, and propagate the authentication and instruction messages to other validators 
+   in the committee.
 
 ### Submission of Instructions to a Validator Node Committee
 
