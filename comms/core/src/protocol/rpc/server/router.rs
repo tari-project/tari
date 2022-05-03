@@ -101,6 +101,7 @@ impl<A, B> Router<A, B> {
         Box::new(self)
     }
 
+    #[allow(dead_code)]
     pub(crate) fn all_protocols(&mut self) -> &[ProtocolId] {
         &self.protocol_names
     }

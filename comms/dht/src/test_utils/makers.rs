@@ -100,7 +100,7 @@ pub fn make_dht_header(
         origin_mac = make_valid_origin_mac(node_identity, challenge);
         if flags.is_encrypted() {
             let shared_secret = crypt::generate_ecdh_secret(e_secret_key, node_identity.public_key());
-            origin_mac = crypt::encrypt(&shared_secret, &origin_mac).unwrap()
+            origin_mac = crypt::encrypt(&shared_secret, &origin_mac);
         }
     }
     DhtMessageHeader {
@@ -170,7 +170,7 @@ pub fn make_dht_envelope(
     let (e_secret_key, e_public_key) = make_keypair();
     if flags.is_encrypted() {
         let shared_secret = crypt::generate_ecdh_secret(&e_secret_key, node_identity.public_key());
-        message = crypt::encrypt(&shared_secret, &message).unwrap();
+        message = crypt::encrypt(&shared_secret, &message);
     }
     let header = make_dht_header(
         node_identity,

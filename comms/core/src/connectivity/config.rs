@@ -22,6 +22,7 @@
 
 use std::time::Duration;
 
+/// Connectivity actor configuration
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectivityConfig {
     /// The minimum number of connected nodes before connectivity is transitioned to ONLINE

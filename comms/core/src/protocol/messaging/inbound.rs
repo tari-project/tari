@@ -34,6 +34,7 @@ use crate::{message::InboundMessage, peer_manager::NodeId, rate_limit::RateLimit
 
 const LOG_TARGET: &str = "comms::protocol::messaging::inbound";
 
+/// Inbound messaging actor. This is lazily spawned per peer when a peer requests a messaging session.
 pub struct InboundMessaging {
     peer: NodeId,
     inbound_message_tx: mpsc::Sender<InboundMessage>,

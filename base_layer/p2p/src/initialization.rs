@@ -94,6 +94,8 @@ pub enum CommsInitializationError {
     FailedToAddSeedPeer(#[from] PeerManagerError),
     #[error("Cannot acquire exclusive file lock, another instance of the application is already running")]
     CannotAcquireFileLock,
+    #[error("Invalid tor forward address: `{0}`")]
+    InvalidTorForwardAddress(std::io::Error),
     #[error("IO Error: `{0}`")]
     IoError(#[from] std::io::Error),
 }
@@ -249,10 +251,10 @@ pub async fn spawn_comms_using_transport(
 
 async fn initialize_hidden_service(
     mut config: TorTransportConfig,
-) -> Result<tor::HiddenServiceController, tor::HiddenServiceBuilderError> {
+) -> Result<tor::HiddenServiceController, CommsInitializationError> {
     let mut builder = tor::HiddenServiceBuilder::new()
         .with_hs_flags(tor::HsFlags::DETACH)
-        .with_port_mapping(config.to_port_mapping())
+        .with_port_mapping(config.to_port_mapping()?)
         .with_socks_authentication(config.to_socks_auth())
         .with_control_server_auth(config.to_control_auth())
         .with_socks_address_override(config.socks_address_override)
@@ -267,7 +269,8 @@ async fn initialize_hidden_service(
         builder = builder.with_tor_identity(identity);
     }
 
-    builder.build().await
+    let hidden_svc_ctl = builder.build().await?;
+    Ok(hidden_svc_ctl)
 }
 
 async fn configure_comms_and_dht(
@@ -323,8 +326,6 @@ async fn configure_comms_and_dht(
     }
 
     // Hook up DHT messaging middlewares
-    // TODO: messaging events should be optional
-    let (messaging_events_sender, _) = broadcast::channel(1);
     let messaging_pipeline = pipeline::Builder::new()
         .outbound_buffer_size(config.outbound_buffer_size)
         .with_outbound_pipeline(outbound_rx, |sink| {
@@ -339,6 +340,8 @@ async fn configure_comms_and_dht(
         )
         .build();
 
+    // TODO: messaging events should be optional
+    let (messaging_events_sender, _) = broadcast::channel(1);
     comms = comms.add_protocol_extension(MessagingProtocolExtension::new(
         messaging_events_sender,
         messaging_pipeline,

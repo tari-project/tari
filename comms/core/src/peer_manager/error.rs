@@ -25,6 +25,7 @@ use std::sync::PoisonError;
 use tari_storage::KeyValStoreError;
 use thiserror::Error;
 
+/// Error type for [PeerManager](super::PeerManager).
 #[derive(Debug, Error, Clone)]
 pub enum PeerManagerError {
     #[error("The requested peer does not exist")]

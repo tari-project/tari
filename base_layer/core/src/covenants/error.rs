@@ -40,6 +40,4 @@ pub enum CovenantError {
     RemainingTokens,
     #[error("Invalid argument for filter {filter}: {details}")]
     InvalidArgument { filter: &'static str, details: String },
-    #[error("Unsupported argument {arg}: {details}")]
-    UnsupportedArgument { arg: &'static str, details: String },
 }

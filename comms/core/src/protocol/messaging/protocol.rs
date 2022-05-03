@@ -86,6 +86,7 @@ pub enum SendFailReason {
     MaxRetriesReached(usize),
 }
 
+/// Events emitted by the messaging protocol.
 #[derive(Debug)]
 pub enum MessagingEvent {
     MessageReceived(NodeId, MessageTag),
@@ -104,6 +105,7 @@ impl fmt::Display for MessagingEvent {
     }
 }
 
+/// Actor responsible for lazily spawning inbound (protocol notifications) and outbound (mpsc channel) messaging actors.
 pub struct MessagingProtocol {
     connectivity: ConnectivityRequester,
     proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
@@ -120,7 +122,8 @@ pub struct MessagingProtocol {
 }
 
 impl MessagingProtocol {
-    pub fn new(
+    /// Create a new messaging protocol actor.
+    pub(super) fn new(
         connectivity: ConnectivityRequester,
         proto_notification: mpsc::Receiver<ProtocolNotification<Substream>>,
         request_rx: mpsc::Receiver<MessagingRequest>,
@@ -148,10 +151,12 @@ impl MessagingProtocol {
         }
     }
 
+    /// Returns a signal that resolves when this actor exits.
     pub fn complete_signal(&self) -> ShutdownSignal {
         self.complete_trigger.to_signal()
     }
 
+    /// Runs the messaging protocol actor.
     pub async fn run(mut self) {
         let mut shutdown_signal = self.shutdown_signal.clone();
 
@@ -194,7 +199,7 @@ impl MessagingProtocol {
     }
 
     #[inline]
-    pub fn framed<TSubstream>(socket: TSubstream) -> Framed<TSubstream, LengthDelimitedCodec>
+    pub(super) fn framed<TSubstream>(socket: TSubstream) -> Framed<TSubstream, LengthDelimitedCodec>
     where TSubstream: AsyncRead + AsyncWrite + Unpin {
         framing::canonical(socket, MAX_FRAME_LENGTH)
     }

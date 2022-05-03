@@ -35,7 +35,7 @@ use crate::{
     covenants::{
         byte_codes,
         covenant::Covenant,
-        decoder::{CovenantDecodeError, CovenentReadExt},
+        decoder::{CovenantDecodeError, CovenantReadExt},
         encoder::CovenentWriteExt,
         error::CovenantError,
         fields::{OutputField, OutputFields},
@@ -238,7 +238,12 @@ impl Display for CovenantArg {
 
 #[cfg(test)]
 mod test {
+    use tari_common_types::types::Commitment;
+    use tari_script::script;
+    use tari_utilities::hex::from_hex;
+
     use super::*;
+    use crate::{covenant, covenants::byte_codes::*};
 
     mod require_x_impl {
         use super::*;
@@ -260,18 +265,18 @@ mod test {
         }
     }
 
-    mod write_to {
-        use tari_common_types::types::Commitment;
-        use tari_script::script;
-        use tari_utilities::hex::from_hex;
-
+    mod write_to_and_read_from {
         use super::*;
-        use crate::{covenant, covenants::byte_codes::*};
 
-        fn test_case(arg: CovenantArg, expected: &[u8]) {
+        fn test_case(argument: CovenantArg, mut data: &[u8]) {
             let mut buf = Vec::new();
-            arg.write_to(&mut buf).unwrap();
-            assert_eq!(buf, expected);
+            argument.write_to(&mut buf).unwrap();
+            assert_eq!(buf, data);
+
+            let reader = &mut data;
+            let code = reader.read_next_byte_code().unwrap().unwrap();
+            let arg = CovenantArg::read_from(&mut data, code).unwrap();
+            assert_eq!(arg, argument);
         }
 
         #[test]
