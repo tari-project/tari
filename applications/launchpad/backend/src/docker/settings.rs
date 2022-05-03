@@ -430,27 +430,9 @@ impl LaunchpadConfig {
                 "SHELL=/bin/bash".to_string(),
                 "TERM=linux".to_string(),
                 format!("TARI_WALLET_PASSWORD={}", config.password),
-                format!("TARI_WALLET__{}__TRANSPORT=tor", self.tari_network.upper_case()),
                 format!(
-                    "TARI_WALLET__{}__TOR_CONTROL_AUTH=password={}",
-                    self.tari_network.upper_case(),
+                    "TARI_WALLET__P2P__TRANSPORT__TOR_CONTROL_AUTH=password={}",
                     self.tor_control_password
-                ),
-                format!(
-                    "TARI_WALLET__{}__TOR_CONTROL_ADDRESS=/dns4/tor/tcp/9051",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_WALLET__{}__TOR_SOCKS_ADDRESS_OVERRIDE=/dns4/tor/tcp/9050",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_WALLET__{}__TOR_FORWARD_ADDRESS=/dns4/wallet/tcp/18188",
-                    self.tari_network.upper_case()
-                ),
-                format!(
-                    "TARI_WALLET__{}__TCP_LISTENER_ADDRESS=/dns4/wallet/tcp/18188",
-                    self.tari_network.upper_case()
                 ),
             ]);
         }
@@ -506,34 +488,21 @@ impl LaunchpadConfig {
                 "APP_NAME=mm_proxy".to_string(),
                 "APP_EXEC=tari_merge_mining_proxy".to_string(),
                 format!(
-                    "TARI_BASE_NODE__{}__GRPC_BASE_NODE_ADDRESS=/dns4/base_node/tcp/18142",
-                    self.tari_network.upper_case()
-                ),
-                "TARI_WALLET__GRPC_ADDRESS=/dns4/wallet/tcp/18143".to_string(),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_URL={}",
-                    self.tari_network.upper_case(),
+                    "TARI_MERGE_MINING_PROXY__MONEROD_URL={}",
                     config.monerod_url
                 ),
                 format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_USERNAME={}",
-                    self.tari_network.upper_case(),
+                    "TARI_MERGE_MINING_PROXY__MONEROD_USERNAME={}",
                     config.monero_username
                 ),
                 format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_PASSWORD={}",
-                    self.tari_network.upper_case(),
+                    "TARI_MERGE_MINING_PROXY__MONEROD_PASSWORD={}",
                     config.monero_password
                 ),
                 format!(
-                    "TARI_MERGE_MINING_PROXY__{}__MONEROD_USE_AUTH={}",
-                    self.tari_network.upper_case(),
+                    "TARI_MERGE_MINING_PROXY__MONEROD_USE_AUTH={}",
                     config.monero_use_auth()
-                ),
-                format!(
-                    "TARI_MERGE_MINING_PROXY__{}__PROXY_HOST_ADDRESS=0.0.0.0:18081",
-                    self.tari_network.upper_case()
-                ),
+                )
             ]);
         }
         env

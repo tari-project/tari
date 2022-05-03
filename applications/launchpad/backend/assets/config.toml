@@ -51,31 +51,31 @@ peer_seeds = [
     "544ed2baed414307e119d12894e27f9ddbdfa2fd5b6528dc843f27903e951c30::/ip4/13.40.189.176/tcp/18189"
 ]
 
-
-
 [wallet]
 override_from = "dibbler"
 db_file = "wallet/wallet.dat"
 grpc_address = "/ip4/0.0.0.0/tcp/18143"
 password = "tari"
+use_libtor = false
 
 [wallet.p2p]
 
 [wallet.p2p.transport]
 type = "tor"
-tor.control_auth = "password=tari"
-tor.control_address = "/dns4/tor/tcp/9051"
-tor.socks_address_override = "/dns4/tor/tcp/9050"
+
+[wallet.p2p.transport.tor]
+control_auth = "password=tari"
+socks_address_override = "/dns4/tor/tcp/9050"
+control_address = "/dns4/tor/tcp/9051"
+
+[wallet.p2p.transport.tcp]
+listener_address = "/dns4/wallet/tcp/18188"
 
 [dibbler.wallet]
 network = "dibbler"
-#use_libtor = false
-#tor_onion_port = 18141
 
 [igor.wallet]
 network = "igor"
-#use_libtor = false
-#tor_onion_port = 18141
 
 [miner]
 base_node_grpc_address = "/dns4/base_node/tcp/18142"
@@ -83,7 +83,6 @@ wallet_grpc_address = "/dns4/wallet/tcp/18143"
 mine_on_tip_only = true
 
 [merge_mining_proxy]
-#config = "dibbler"
 monerod_url = [ # stagenet
     "http://stagenet.xmr-tw.org:38081",
     "http://stagenet.community.xmr.to:38081",
