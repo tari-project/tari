@@ -14,6 +14,9 @@
     <o-field label="Root Folder">
       <o-input v-model="$store.state.settings.rootFolder"></o-input>
     </o-field>
+    <o-field label="Docker Compose File Location">
+      <o-input v-model="$store.state.settings.dockerCompose"></o-input>
+    </o-field>
     <o-field label="walletPassword">
       <o-input type="password" v-model="$store.state.settings.walletPassword" password-reveal></o-input>
     </o-field>
@@ -68,6 +71,7 @@ export default {
     ...mapMutations([
       'setNetwork',
       'setRootFolder',
+      'setDockerCompose',
       'setWalletPassword',
       'setMoneroMiningAddress',
       'setNumMiningThreads',

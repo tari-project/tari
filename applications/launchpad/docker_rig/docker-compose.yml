@@ -30,7 +30,7 @@ services:
     depends_on:
       - tor
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - ${DATA_FOLDER}: /var/tari
       - blockchain:/blockchain/${TARI_NETWORK}
     stdin_open: true
     tty: true
@@ -59,7 +59,7 @@ services:
     depends_on:
       - tor
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - ${DATA_FOLDER}: /var/tari
     #stdin_open: true
     #tty: true
 
@@ -86,7 +86,7 @@ services:
       - base_node
       - wallet
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - ${DATA_FOLDER}: /var/tari
 
   xmrig:
     image: quay.io/tarilabs/xmrig:latest
@@ -109,7 +109,7 @@ services:
     depends_on:
       - mm_proxy
     volumes:
-      - ${DATA_FOLDER}/xmrig:/var/xmrig/
+      - ${DATA_FOLDER}/xmrig: /var/xmrig/
 
   monerod:
     image: quay.io/tarilabs/monerod:latest
@@ -154,9 +154,9 @@ services:
     depends_on:
       - base_node
       - wallet
-    command: []
     volumes:
-      - ${DATA_FOLDER}:/var/tari/
+      - ${DATA_FOLDER}: /var/tari
+    command: []      
 #  pool-worker:
 #  pool-operator:
 

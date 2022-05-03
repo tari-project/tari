@@ -13,7 +13,8 @@ async function createDefaultSettings() {
         moneroMiningAddress: "5AJ8FwQge4UjT9Gbj4zn7yYcnpVQzzkqr636pKto59jQcu85CFsuYVeFgbhUdRpiPjUCkA4sQtWApUzCyTMmSigFG2hDo48",
         numMiningThreads: 1,
         tariNetwork: "dibbler",
-        rootFolder: await cacheDir() + "tari" + sep + "tmp" + sep + "dibbler",
+        dockerCompose: "/Users/matkat/launchpad/config/docker-compose.yml",
+        rootFolder: "/Users/matkat/launchpad/config",
         dockerRegistry: "quay.io/tarilabs",
         dockerTag: "latest",
         monerodUrl: "http://monero-stagenet.exan.tech:38081",
@@ -47,6 +48,9 @@ state:  {
         },
         setRootFolder(state, folder) {
             state.settings.rootFolder = folder;
+        },
+        setDockerCompose(state, dockerCompose) {
+            state.settings.dockerCompose = dockerCompose;
         },
         setWalletPassword(state, value) {
             state.settings.walletPassword = value;

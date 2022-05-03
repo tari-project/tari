@@ -16,7 +16,6 @@ use docker::{DockerWrapper, Workspaces};
 use tauri::{api::cli::get_matches, async_runtime::block_on, utils::config::CliConfig, Manager, PackageInfo, RunEvent};
 
 use crate::commands::{
-    create_default_workspace,
     create_new_workspace,
     events,
     image_list,
@@ -62,7 +61,6 @@ fn main() {
             network_list,
             pull_images,
             create_new_workspace,
-            create_default_workspace,
             events,
             launch_docker,
             start_service,

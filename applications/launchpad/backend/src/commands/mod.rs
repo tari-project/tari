@@ -38,8 +38,8 @@ mod service;
 mod shutdown;
 mod state;
 
-pub use api::{events, image_list, launch_docker, network_list, pull_images};
+pub use api::{events, image_list, launch_docker, network_list, pull_images, start_service};
 pub use create_workspace::create_new_workspace;
-pub use service::{create_default_workspace, start_service, stop_service};
+pub use service::stop_service;
 pub use shutdown::shutdown;
 pub use state::AppState;

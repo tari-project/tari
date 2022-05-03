@@ -106,7 +106,7 @@ async fn print_container_logs() {
         stderr: true,
         ..Default::default()
     };
-    let id = "9df417fc59a9";
+    let id = "config-tor-1";
     let mut logs = docker.logs(id, Some(options.clone()));
     while let Some(Ok(msg)) = logs.next().await {
         println!("msg {:?}", msg);
@@ -125,4 +125,22 @@ async fn print_container_logs() {
     // }
 
     assert!(true);
+}
+
+#[tokio::test]
+async fn container_id_test() {
+    let status = std::process::Command::new("docker-compose")
+        .env("DATA_FOLDER", "/Users/matkat/launchpad/config")
+        .env("TARI_NETWORK", "dibbler")
+        .env("TARI_MONEROD_PASSWORD", "tari")
+        .env("TARI_MONEROD_USERNAME", "tari")
+        .arg("-f")
+        .arg("/Users/matkat/launchpad/config/docker-compose.yml")
+        .arg("ps")
+        .arg("-a")
+        .arg("-q")
+        .output()
+        .expect("something went wrong");
+    let container_id  = String::from_utf8_lossy(&status.stdout).replace("\n", "");
+    println!("output: {:?}", container_id);        
 }

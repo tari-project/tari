@@ -1,6 +1,11 @@
-use std::thread::spawn;
+use std::{fmt::Debug, thread::spawn};
 
-use bollard::models::{CreateImageInfo, Image, SystemEventsResponse};
+use bollard::{
+    container::Stats,
+    models::{CreateImageInfo, Image, SystemEventsResponse},
+};
+use log::{debug, info};
+use serde::Serialize;
 use tauri::{api::clap::command, AppHandle, Manager, Wry};
 use tokio::sync::RwLockWriteGuard;
 
@@ -9,10 +14,11 @@ use super::{
     launch_docker::{launch_docker_impl, WorkspaceLaunchOptions},
     network::{enum_to_list, TARI_NETWORKS},
     pull_images::{self, pull_all_images, Payload, DEFAULT_IMAGES},
+    service::{ServiceSettings, StartServiceResult, start_docker_service},
     AppState,
 };
 use crate::{
-    docker::{ImageType, TariNetwork, Workspaces},
+    docker::{ImageType, LogMessage, TariNetwork, Workspaces},
     error::LauncherError,
 };
 
@@ -62,4 +68,32 @@ pub async fn events(app: AppHandle<Wry>) -> Result<(), String> {
     let broadcast = |event: SystemEventsResponse| app.emit_all("tari://docker-system-event", event);
     stream_docker_events(broadcast).await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn start_service (
+    app: AppHandle<Wry>,
+    service_name: String,
+    settings: ServiceSettings,
+) -> Result<StartServiceResult, String>
+{
+    let app1 = app.clone();
+    let app2 = app.clone();
+    let app3 = app.clone();
+    let app4 = app.clone();
+
+    let f1 = move |d: String, m: LogMessage| send_tauri_message::<LogMessage>(app1.clone(), d, m);
+    let f2 = move |d: String, m: String| send_tauri_message::<String>(app2.clone(), d, m);
+    let f3 = move |d: String, m: Stats| send_tauri_message::<Stats>(app3.clone(), d, m);
+    let f4 = move |d: String, m: String| send_tauri_message::<String>(app4.clone(), d, m);
+    start_docker_service(f1, f3, f2, service_name, settings).await
+}
+
+pub fn send_tauri_message<P: Debug + Clone + Serialize>(
+    app: AppHandle<Wry>,
+    event: String,
+    payload: P,
+) -> Result<(), tauri::Error> {
+    debug!("sending: {:?} to {}", payload, event.clone());
+    app.emit_all(event.as_str(), payload)
 }
