@@ -48,6 +48,7 @@ use crate::{
 
 #[derive(Derivative, Serialize, Deserialize)]
 #[derivative(Debug)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct WorkspaceLaunchOptions {
     root_folder: String,
     tari_network: String,
