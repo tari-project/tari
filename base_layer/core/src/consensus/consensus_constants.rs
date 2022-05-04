@@ -158,6 +158,9 @@ impl ConsensusConstants {
     /// This returns the FTL (Future Time Limit) for blocks.
     /// Any block with a timestamp greater than this is rejected.
     pub fn ftl(&self) -> EpochTime {
+        // Timestamp never negative
+        #[allow(clippy::cast_sign_loss)]
+        #[allow(clippy::cast_possible_wrap)]
         (Utc::now()
             .add(Duration::seconds(self.future_time_limit as i64))
             .timestamp() as u64)
