@@ -1,6 +1,8 @@
+# Source build
 FROM alpine:latest as build
 
-ARG XMRIG_VERSION="v6.15.3"
+# https://github.com/xmrig/xmrig/releases
+ARG XMRIG_VERSION="v6.17.0"
 
 RUN apk add \
     git \
@@ -23,6 +25,8 @@ RUN cmake .. -DXMRIG_DEPS=scripts/deps -DBUILD_STATIC=ON
 RUN make -j$(nproc)
 
 FROM alpine:latest as base
+
+ARG XMRIG_VERSION
 ARG VERSION=1.0.1
 COPY --from=build /xmrig/build/xmrig /usr/bin/
 
