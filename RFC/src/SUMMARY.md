@@ -42,6 +42,7 @@
     - [RFC-0311: Digital Asset templates](RFC-0311_AssetTemplates.md)
     - [RFC-0345: Asset Life cycle](RFC-0345_AssetLifeCycle.md)
   - [RFC-0340: Validator Node Consensus](RFC-0340_VNConsensusOverview.md)
+    - [RFC-0350: Optimistic Rollups](RFC-0350_OptimisticRollups.md)
   - [RFC-0360: NFT sale using MimbleWimble Invoice](RFC-0360_NFTInvoices.md)
 - [RFC-0500: Tari payment channels](RFC-0500_PaymentChannels.md)
 - [RFC-1000: Tari Use Cases](RFC-1000_TariUseCases.md)
