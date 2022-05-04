@@ -48,18 +48,18 @@ jobs:
           date
       - name: install
         run: |
-          cd applications/launchpad_v2
+          cd applications/launchpad/gui-react
           yarn install
       - name: yarn lint
         run: |
-          cd applications/launchpad_v2
+          cd applications/launchpad/gui-react
           yarn lint:ci
       - name: yarn test
         run: |
-          cd applications/launchpad_v2
+          cd applications/launchpad/gui-react
           yarn test:ci
       - name: Upload the test coverage
         uses: actions/upload-artifact@v2
         with:
           name: launchpad_v2_test_results
-          path: applications/launchpad_v2/temp/reports
+          path: applications/launchpad/gui-react/temp/reports

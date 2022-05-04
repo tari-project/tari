@@ -1,13 +1,13 @@
 {
   "package": {
     "productName": "tari-launchpad",
-    "version": "0.1.0"
+    "version": "1.1.0"
   },
   "build": {
-    "distDir": "../build",
-    "devPath": "http://localhost:3000",
-    "beforeDevCommand": "cd ../ && npm run start",
-    "beforeBuildCommand": "cd ../ && npm run build"
+    "distDir": "../gui-vue/dist",
+    "devPath": "http://localhost:8080",
+    "beforeDevCommand": " cd ../gui-vue && npm run serve",
+    "beforeBuildCommand": "cd ../gui-vue && npm run build"
   },
   "tauri": {
     "cli": {
@@ -27,11 +27,9 @@
       "targets": "all",
       "identifier": "com.tari.launchpad",
       "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
+        "icons/favicon-32x32.png",
+        "icons/apple-icon-120x120.png",
+        "icons/android-icon-192x192.png"
       ],
       "resources": ["assets/*"],
       "externalBin": [],
@@ -40,15 +38,13 @@
       "shortDescription": "",
       "longDescription": "",
       "deb": {
-        "depends": [],
-        "useBootstrapper": false
+        "depends": []
       },
       "macOS": {
         "frameworks": [],
-        "useBootstrapper": false,
+        "minimumSystemVersion": "",
         "exceptionDomain": "",
         "signingIdentity": null,
-        "providerShortName": null,
         "entitlements": null
       },
       "windows": {
@@ -69,19 +65,14 @@
     "windows": [
       {
         "title": "Tari Launchpad",
-        "width": 1200,
-        "minWidth": 700,
+        "width": 1600,
         "height": 800,
-        "minHeight": 400,
         "resizable": true,
-        "fullscreen": false,
-        "decorations": false,
-        "transparent": true
+        "fullscreen": false
       }
     ],
     "security": {
       "csp": "default-src blob: data: filesystem: ws: wss: http: https: tauri: 'unsafe-eval' 'unsafe-inline' 'self' img-src: 'self'"
-    },
-    "macOSPrivateApi": true
+    }
   }
 }

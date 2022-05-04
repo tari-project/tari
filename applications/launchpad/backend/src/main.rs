@@ -10,7 +10,18 @@ mod commands;
 mod docker;
 mod error;
 use docker::{DockerWrapper, Workspaces};
-use tauri::{api::cli::get_matches, async_runtime::block_on, utils::config::CliConfig, Manager, PackageInfo, RunEvent};
+use tauri::{
+    api::cli::get_matches,
+    async_runtime::block_on,
+    utils::config::CliConfig,
+    CustomMenuItem,
+    Manager,
+    Menu,
+    MenuItem,
+    PackageInfo,
+    RunEvent,
+    Submenu,
+};
 
 use crate::commands::{
     create_default_workspace,
@@ -43,12 +54,39 @@ fn main() {
         },
     };
 
+    let about_menu = Submenu::new(
+        "App",
+        Menu::new()
+            .add_native_item(MenuItem::Hide)
+            .add_native_item(MenuItem::HideOthers)
+            .add_native_item(MenuItem::ShowAll)
+            .add_native_item(MenuItem::Separator)
+            .add_native_item(MenuItem::Quit),
+    );
+
+    let edit_menu = Submenu::new(
+        "Edit",
+        Menu::new()
+            .add_native_item(MenuItem::Cut)
+            .add_native_item(MenuItem::Copy)
+            .add_native_item(MenuItem::Paste)
+            .add_native_item(MenuItem::SelectAll),
+    );
+
+    let view_menu = Submenu::new("View", Menu::new().add_native_item(MenuItem::EnterFullScreen));
+
+    let menu = Menu::new()
+        .add_submenu(about_menu)
+        .add_submenu(edit_menu)
+        .add_submenu(view_menu);
+
     // TODO - Load workspace definitions from persistent storage here
     let workspaces = Workspaces::default();
     info!("Using Docker version: {}", docker.version());
 
     tauri::Builder::default()
         .manage(AppState::new(docker, workspaces, package_info))
+        .menu(menu)
         .invoke_handler(tauri::generate_handler![
             image_list,
             pull_images,

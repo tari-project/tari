@@ -28,10 +28,7 @@
     "eject": "react-scripts eject",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:ci": "mkdir -p temp/reports && eslint . --format junit --output-file temp/reports/launchpad_eslint.xml",
-    "tauri": "tauri",
-    "dev": "tauri dev",
-    "bundle": "tauri build"
+    "lint:ci": "mkdir -p temp/reports && eslint . --format junit --output-file temp/reports/launchpad_eslint.xml"
   },
   "fork-ts-checker": {
     "typescript": {
@@ -71,7 +68,6 @@
     "nth-check": "^2.0.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^1.0.0-rc.8",
     "@testing-library/jest-dom": "^5.16.4",
     "@testing-library/react": "^13.0.1",
     "@testing-library/user-event": "^14.1.0",
@@ -87,7 +83,5 @@
     "prettier": "^2.6.2",
     "ts-jest": "^27.1.4"
   },
-  "optionalDependencies": {
-    "@tauri-apps/cli-linux-x64-gnu": "1.0.0-rc.8"
-  }
+  "optionalDependencies": {}
 }
