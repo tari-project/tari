@@ -36,7 +36,13 @@ const Button = ({
 
   if (type === 'link' || href) {
     return (
-      <StyledLink href={href} onClick={onClick} style={style} variant={variant}>
+      <StyledLink
+        href={href}
+        onClick={onClick}
+        style={style}
+        target='_blank'
+        variant='text'
+      >
         {btnContent}
       </StyledLink>
     )
