@@ -12,6 +12,7 @@ export const StyledInput = styled.input<{
   padding: 0px 16px;
   font-family: 'AvenirMedium';
   font-size: 14px;
+  line-height: inherit;
   color: ${({ theme, disabled }) => {
     if (disabled) {
       return theme.placeholderText
@@ -37,6 +38,7 @@ export const StyledInput = styled.input<{
 export const InputContainer = styled.div<{ disabled?: boolean }>`
   height: 42px;
   width: 369px;
+  line-height: 42px;
   display: flex;
   align-items: center;
   background-color: ${({ theme, disabled }) =>

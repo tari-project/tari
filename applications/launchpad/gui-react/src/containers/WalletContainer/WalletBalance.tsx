@@ -20,7 +20,7 @@ const WalletBalance = ({
 
   return (
     <Box>
-      <Text>{t.wallet.balance.title}</Text>
+      <Text color={theme.secondary}>{t.wallet.balance.title}</Text>
       <TariAmountContainer>
         <Text type='header'>
           <TariSignet
@@ -34,7 +34,11 @@ const WalletBalance = ({
         </Text>
         <Chart />
       </TariAmountContainer>
-      <Text type='defaultMedium' style={{ display: 'inline-block' }}>
+      <Text
+        type='defaultMedium'
+        style={{ display: 'inline-block' }}
+        color={theme.secondary}
+      >
         {t.wallet.balance.available}
       </Text>{' '}
       <Text type='defaultHeavy' style={{ display: 'inline-block' }}>
