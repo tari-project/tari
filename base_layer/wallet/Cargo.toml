@@ -8,12 +8,12 @@ edition = "2018"
 
 [dependencies]
 tari_common = { path = "../../common" }
-tari_common_types = { version = "^0.32", path = "../../base_layer/common_types" }
-tari_comms = { version = "^0.32", path = "../../comms/core" }
-tari_comms_dht = { version = "^0.32", path = "../../comms/dht" }
+tari_common_types = { version = "^0.31", path = "../../base_layer/common_types" }
+tari_comms = { version = "^0.31", path = "../../comms/core" }
+tari_comms_dht = { version = "^0.31", path = "../../comms/dht" }
 tari_crypto = { git = "https://github.com/tari-project/tari-crypto.git", tag = "v0.13.0" }
-tari_key_manager = { version = "^0.32", path = "../key_manager" }
-tari_p2p = { version = "^0.32", path = "../p2p", features = ["auto-update"] }
+tari_key_manager = { version = "^0.31", path = "../key_manager" }
+tari_p2p = { version = "^0.31", path = "../p2p", features = ["auto-update"] }
 tari_script = { path = "../../infrastructure/tari_script" }
 tari_service_framework = { version = "^0.32", path = "../service_framework" }
 tari_shutdown = { version = "^0.32", path = "../../infrastructure/shutdown" }

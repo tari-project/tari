@@ -21,35 +21,6 @@ env:
   PROTOC: protoc
 
 jobs:
-  checks:
-    name: npm checks
-    runs-on: ubuntu-latest
-    steps:
-      - name: checkout
-        uses: actions/checkout@v2
-      - name: npm audit launchpad_v2 gui
-        run: |
-          cd applications/launchpad_v2
-          npm audit
-      - name: npm audit collectibles
-        run: |
-          cd applications/tari_collectibles/web-app
-          # We have to ignore this for now because audit error is in react-scripts
-          npm audit || true
-      - name: npm audit explorer
-        run: |
-          cd applications/tari_explorer
-          npm audit
-      - name: npm audit web extensions
-        run: |
-          cd applications/tari_web_extension
-          # We have to ignore this for now because audit error is in react-scripts
-          npm audit || true
-      - name: npm audit web extensions example
-        run: |
-          cd applications/tari_web_extension_example
-          npm audit
-
   clippy:
     name: clippy
     runs-on: ubuntu-18.04

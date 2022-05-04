@@ -18,7 +18,6 @@ const lightTheme = {
   shadow: '0 0 40px #00000011',
 
   titleBar: styles.colors.light.background,
-
   controlBackground: 'transparent',
   info: styles.colors.secondary.info,
   infoText: styles.colors.secondary.infoText,

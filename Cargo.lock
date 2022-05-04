@@ -6764,7 +6764,7 @@ dependencies = [
  "tari_metrics",
  "tari_shutdown",
  "tari_storage",
- "tari_test_utils 0.32.0",
+ "tari_test_utils 0.31.1",
  "tari_utilities",
  "tempfile",
  "thiserror",
