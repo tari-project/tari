@@ -30,6 +30,9 @@ mod wrapper;
 
 pub mod helpers;
 
+use std::{sync::RwLock, collections::HashMap};
+
+use bollard::Docker;
 pub use error::DockerWrapperError;
 pub use filesystem::create_workspace_folders;
 pub use models::{ContainerId, ContainerState, ContainerStatus, ImageType, LogMessage, TariNetwork};
@@ -45,3 +48,11 @@ pub use settings::{
 };
 pub use workspace::{TariWorkspace, Workspaces};
 pub use wrapper::DockerWrapper;
+
+lazy_static! {
+    pub static ref DOCKER_INSTANCE: Docker = Docker::connect_with_local_defaults().unwrap();
+}
+
+lazy_static! {
+    pub static ref CONTAINERS: RwLock<HashMap<String,  ContainerState>> = RwLock::new(HashMap::new());
+}

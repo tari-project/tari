@@ -42,14 +42,14 @@ http://monero-stagenet.exan.tech:38081,\
 http://xmr-lux.boldsuck.org:38081,\
 http://singapore.node.xmr.pm:38081";
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct BaseNodeConfig {
     /// The time delay before starting the container and running the base node executable
     pub delay: Duration,
 }
 
 #[derive(Default, Derivative, Serialize, Deserialize)]
-#[derivative(Debug)]
+#[derivative(Debug, Clone)]
 pub struct WalletConfig {
     /// The time delay before starting the container and running the wallet executable
     pub delay: Duration,
@@ -59,7 +59,7 @@ pub struct WalletConfig {
     pub password: String,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct XmRigConfig {
     /// The time delay before starting the container and running the monero miner executable
     pub delay: Duration,
@@ -67,7 +67,7 @@ pub struct XmRigConfig {
     pub monero_mining_address: String,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct Sha3MinerConfig {
     /// The time delay before starting the container and running the SHA3 CPU miner executable
     pub delay: Duration,
@@ -76,7 +76,7 @@ pub struct Sha3MinerConfig {
 }
 
 #[derive(Derivative, Serialize, Deserialize)]
-#[derivative(Debug)]
+#[derivative(Debug, Clone)]
 pub struct MmProxyConfig {
     /// The time delay before starting the container and running the proxy executable
     pub delay: Duration,
@@ -116,7 +116,7 @@ impl MmProxyConfig {
 
 /// Tari Launchpad configuration struct. This will generally be populated from some front-end or persistent storage
 /// file and is used to generate the environment variables needed to configure and run the various docker containers.
-#[derive(Default, Debug, Serialize, Deserialize)]
+#[derive(Default, Debug, Serialize, Deserialize, Clone)]
 pub struct LaunchpadConfig {
     /// The directory to use for config, id files and logs
     pub data_directory: PathBuf,

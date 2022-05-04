@@ -5,6 +5,8 @@
 #![allow(unused_imports)]
 #![allow(dead_code)]
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#[macro_use]
+extern crate lazy_static;
 use log::*;
 mod commands;
 mod docker;

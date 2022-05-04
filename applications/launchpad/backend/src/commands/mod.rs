@@ -27,18 +27,22 @@
 /// ! - handle input parameters
 /// ! - call the the underlying function
 /// ! - Map results to JSON and errors to String.
+mod api;
 mod create_workspace;
 mod events;
 mod launch_docker;
+mod network;
 mod pull_images;
 mod service;
 mod shutdown;
 mod state;
 
+
+
 pub use create_workspace::create_new_workspace;
 pub use events::events;
 pub use launch_docker::launch_docker;
-pub use pull_images::{image_list, pull_images};
-pub use service::{create_default_workspace, start_service, stop_service};
+pub use api::{image_list, pull_images, start_service, stop_service};
+pub use service::create_default_workspace;
 pub use shutdown::shutdown;
 pub use state::AppState;

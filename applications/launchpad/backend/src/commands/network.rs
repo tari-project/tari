@@ -1,6 +1,6 @@
 // Copyright 2021. The Tari Project
 //
-// Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+// Redistribution and use in source and binary forms, with or without modification, a&re permitted provided that the
 // following conditions are met:
 //
 // 1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following
@@ -21,41 +21,24 @@
 // USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 
-use std::fmt::Debug;
+use log::*;
+use tari_common::configuration::Network;
+use tauri::{AppHandle, Manager, Wry};
 
-use futures::{Stream, StreamExt};
-use log::warn;
-use rand::distributions::{Alphanumeric, Distribution};
-use serde::Serialize;
+use super::pull_images::DEFAULT_IMAGES;
+use crate::{commands::AppState, docker::TariNetwork};
 
-use super::DockerWrapperError;
+pub static TARI_NETWORKS: [TariNetwork; 3] = [TariNetwork::Dibbler, TariNetwork::Igor, TariNetwork::Mainnet];
 
-/// Create a cryptographically secure password on length `len`
-pub fn create_password(len: usize) -> String {
-    let mut rng = rand::thread_rng();
-    Alphanumeric.sample_iter(&mut rng).take(len).map(char::from).collect()
+pub fn enum_to_list<T: Sized + ToString + Clone>(enums: &[T]) -> Vec<String> {
+    enums
+    .into_iter()
+    .map(|enum_value| enum_value.to_string())
+    .collect()
 }
 
-
-pub async fn process_stream<FnSendMsg, FnSendErr, T: Debug + Clone + Serialize>(
-    send_message: FnSendMsg,
-    send_error: FnSendErr,
-    message_destination: String,
-    error_destination: String,
-    mut stream: impl Stream<Item = Result<T, DockerWrapperError>> + Unpin,
-) where
-    FnSendMsg: Fn(String, T) -> Result<(), tauri::Error>,
-    FnSendErr: Fn(String, String) -> Result<(), tauri::Error>,
-{
-    while let Some(message) = stream.next().await {
-        let emit_result = match message {
-            Ok(payload) => {
-                send_message(message_destination.clone(), payload)
-            },
-            Err(err) => send_error(error_destination.clone(), err.chained_message()),
-        };
-        if let Err(err) = emit_result {
-            warn!("Error emitting event: {}", err.to_string());
-        }
-    }
+#[test]
+fn network_list_test() {
+    let networks = ["dibbler".to_string(), "igor".to_string(), "mainnet".to_string()].to_vec();
+    assert_eq!(networks, enum_to_list(&TARI_NETWORKS));
 }

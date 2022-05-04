@@ -44,6 +44,7 @@ use strum::IntoEnumIterator;
 use tari_app_utilities::identity_management::setup_node_identity;
 use tari_comms::{peer_manager::PeerFeatures, NodeIdentity};
 
+use super::CONTAINERS;
 use crate::docker::{
     models::{ContainerId, ContainerState},
     DockerWrapperError,
@@ -78,6 +79,7 @@ pub struct Workspaces {
 impl Workspaces {
     /// Returns a mutable reference to the `name`d workspace. For an immutable reference, see [workspace_mut].
     pub fn get_workspace_mut(&mut self, name: &str) -> Option<&mut TariWorkspace> {
+        debug!("$$$$ workspace size {}", self.workspaces.len());
         self.workspaces.get_mut(name)
     }
 
@@ -178,10 +180,10 @@ impl Workspaces {
 ///   we'd need to expose a different port to the host. e.g. 1n142 where n is the workspace number.
 /// * Wallet - 18143 and 18188
 /// * Frontail - 18130
+#[derive(Clone, Debug)]
 pub struct TariWorkspace {
     name: String,
     config: LaunchpadConfig,
-    containers: HashMap<String, ContainerState>,
 }
 
 impl TariWorkspace {
@@ -190,7 +192,6 @@ impl TariWorkspace {
         Self {
             name: name.to_string(),
             config,
-            containers: HashMap::new(),
         }
     }
 
@@ -301,7 +302,7 @@ impl TariWorkspace {
             stderr: true,
             ..Default::default()
         };
-        self.containers.get(container_name).map(move |container| {
+        CONTAINERS.read().unwrap().get(container_name).map(move |container| {
             let id = container.id();
             docker
                 .logs(id.as_str(), Some(options))
@@ -315,7 +316,7 @@ impl TariWorkspace {
         name: &str,
         docker: Docker,
     ) -> Option<impl Stream<Item = Result<Stats, DockerWrapperError>>> {
-        if let Some(container) = self.containers.get(name) {
+        if let Some(container) = CONTAINERS.read().unwrap().get(name) {
             let options = StatsOptions {
                 stream: true,
                 one_shot: false,
@@ -436,27 +437,17 @@ impl TariWorkspace {
         images
     }
 
-    /// Returns a reference to the set of managed containers. You can only retrieve immutable references from this
-    /// hash map. If you need a mutable reference tot a container's state, see [`container_mut`].
-    pub fn managed_containers(&self) -> &HashMap<String, ContainerState> {
-        &self.containers
-    }
-
-    /// Return a mutable reference to the named container's [`ContainerState`].
-    pub fn container_mut(&mut self, container_name: &str) -> Option<&mut ContainerState> {
-        self.containers.get_mut(container_name)
-    }
 
     /// Add the container info to the list of containers the wrapper is managing
     fn add_container(&mut self, name: &str, container: ContainerCreateResponse) {
         let id = ContainerId::from(container.id.clone());
         let state = ContainerState::new(name.to_string(), id, container);
-        self.containers.insert(name.to_string(), state);
+        CONTAINERS.write().unwrap().insert(name.to_string(), state);
     }
 
     // Tag the container with id `id` as Running
     fn mark_container_running(&mut self, name: &str) -> Result<(), DockerWrapperError> {
-        if let Some(container) = self.containers.get_mut(name) {
+        if let Some(container) = CONTAINERS.write().unwrap().get_mut(name) {
             container.running();
             Ok(())
         } else {
@@ -466,36 +457,24 @@ impl TariWorkspace {
 
     /// Stop the container with the given `name` and optionally delete it
     pub async fn stop_container(&mut self, name: &str, delete: bool, docker: &Docker) {
-        let container = match self.container_mut(name) {
-            Some(c) => c,
-            None => {
-                info!(
-                    "Cannot stop container {}. It was not found in the current workspace",
-                    name
-                );
-                return;
-            },
-        };
-        let options = StopContainerOptions { t: 0 };
-        let id = container.id().clone();
-        match docker.stop_container(id.as_str(), Some(options)).await {
-            Ok(_res) => {
-                info!("Container {} stopped", id);
-                container.set_stop();
-            },
-            Err(err) => {
-                warn!("Could not stop container {} due to {}", id, err.to_string());
-            },
-        }
-        // Even if stopping failed (maybe it was already stopped), try and delete it
-        if delete {
-            match docker.remove_container(id.as_str(), None).await {
-                Ok(()) => {
-                    info!("Container {} deleted", id);
-                    container.set_deleted();
+        let about_to_delete = CONTAINERS.write().unwrap().remove(name);
+        if about_to_delete.is_some() {
+            let container = about_to_delete.unwrap();
+            let id = container.id();
+            let options = StopContainerOptions { t: 0 };
+            match docker.stop_container(id.as_str(), Some(options)).await {
+                Ok(_res) => {
+                    info!("Container {} stopped", id);
+                    if !delete {
+                        let updated = ContainerState::new(container.name().to_string().clone(),
+                            id.clone(),
+                            container.info().clone());
+                        
+                        CONTAINERS.write().unwrap().insert(name.to_string(), updated);
+                    }
                 },
                 Err(err) => {
-                    warn!("Could not delete container {} due to: {}", id, err.to_string())
+                    warn!("Could not stop container {} due to {}", id, err.to_string());
                 },
             }
         }
@@ -503,7 +482,7 @@ impl TariWorkspace {
 
     /// Stop all running containers and optionally delete them
     pub async fn stop_containers(&mut self, delete: bool, docker: &Docker) {
-        let names = self.containers.keys().cloned().collect::<Vec<String>>();
+        let names = CONTAINERS.read().unwrap().keys().cloned().collect::<Vec<String>>();
         for name in names {
             // Stop the container immediately
             self.stop_container(name.as_str(), delete, docker).await;
