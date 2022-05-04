@@ -6,12 +6,7 @@ import WalletSettings from './WalletSettings'
 
 const WalletSettingsContainer = () => {
   const dispatch = useAppDispatch()
-  const { pending, running, address, unlocked } =
-    useAppSelector(selectWalletState)
-
-  if (!unlocked) {
-    return <p>unlock wallet</p>
-  }
+  const { pending, running, address } = useAppSelector(selectWalletState)
 
   return (
     <WalletSettings
