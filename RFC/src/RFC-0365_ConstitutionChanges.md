@@ -66,7 +66,7 @@ Note that changes (how and when) in both side-chain metadata record and checkpoi
 
 ***Open questions:***
 * ***Base layer ensures that the constitution changes are enforced upon activation? How exactly? Via covenants and/or scripts?***
-* ***How exactly is the VNC composition especified? This is probably better clarified in the [contract definition transaction]. It could be a fixed list of public keys for each member or allow open committees by specifying minimum/maximum member***
+* ***How exactly is the VNC composition specified? This is probably better clarified in the [contract definition transaction]. It could be a fixed list of public keys for each member or allow open committees by specifying minimum/maximum member***
 * ***In general, throughout the whole RFC, the integration with the base layer is an open question***
 
 ### Stages of a constitution change
