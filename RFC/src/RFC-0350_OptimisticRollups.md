@@ -57,7 +57,7 @@ technological merits of the potential system outlined herein.
 
 ### Overview
 
-Rollups are a scalability mechanism for layer 2. They allow offloading heavy computation from a main blockchain into a side-chain. Rollups can bundle a large amount of transactions into a single transaction into layer 1.
+Rollups are a scalability mechanism for layer 2. They allow offloading heavy computation from a main blockchain into a side-chain. Rollups can bundle a large amount of transactions into a single transaction into layer 1, significantly boosting performance.
 
 There are two approaches to rollups:
 * **Optimistic Rollups**:
@@ -70,7 +70,17 @@ There are two approaches to rollups:
     * This approach makes it unnecessary to implement a dispute mechanism or a challenge window.
     * The main con is that validity proofs are hard to create and very application specific at the moment.
 
-This document describes an implementation of **Optimistic Rollups** in the Tari network.
+This document describes an implementation of **Optimistic Rollups** in the Tari network. For clarity:
+* _Checkpoint_: periodical transactions in the base layer done by the VNC to summarize the state of a side-chain. It's an equivalent to a rollup for this document.
+* _Submitter_: the party that submits a checkpoint, i.e. a quorum-valid subset of the VNC.
+* _Challenger_: the party that claims that a checkpoint is erroneous or fraudulent. It will usually be a VNC member (it could be the asset issuer for example, if it participates in the committee).
+* _Fraud proof_: the data provided by the _challenger_ to the base layer in order to demonstrate that a particular checkpoint is invalid.
+* _Challenge window_: amount of time since the publication of a checkpoint in which a fraud proof can be accepted. Let's assume a 1-week window.
+* _Stake_: monetary amount that both the _submitter_ and the _challenger_ offer to back up their (opposing) claims. Let's assume the winner takes it all.
+* Mapping concepts from common rollup literature in Tari: 
+    * The smart contract code being run in the side-chain are _templates_.
+    * Transactions in base layer are referred simply as transactions, but transactions inside the side-chain will be referred as _instructions_.
+    * The VM state is called a _view_.
 
 ### Checkpoint structure
 
@@ -83,22 +93,22 @@ In order for the base layer to resolve any dispute, the checkpoint must include:
 * Stake to be slashed if the checkpoint is considered fraudulent in the future.
 
 The checkpoint will live as a UTXO in the base layer, and will be spent in one of the following cases:
-* A challenger submits a fraud proof that demonstrates that the checkpoint is fraudulent, so the staked amount is sent to the challenger.
-* The challenge window (let's assume 1 week) expires without any valid fraud proof, in that case the stake can be spent back by the VNC that submitted the checkpoint.
+* A challenger publishes a fraud proof that demonstrates that the checkpoint is fraudulent, so the submitter's staked amount is sent to the challenger.
+* The challenge window (let's assume 1 week) expires without any valid fraud proof, in that case the stake can be spent back by checkpoint submitter.
 
 ### Issuing a fraud proof
 
-Any honest party in the network can be monitoring the checkpoints being published in the base layer and submit a fraud proof to challenge them. The fraud proof submitter will usually be a VNC member (could be the asset issuer for example, if it participates in the committee) that detects an erroneous or fraudulent behavior in the rest of the VNC.
+Any honest party in the network can be monitoring the checkpoints being published in the base layer and submit a fraud proof to challenge them. The fraud proof submitter will usually be a VNC member that detects an erroneous or fraudulent behavior in the rest of the VNC.
 
 The fraud proof consists of a transaction in the base layer. It MUST contain all the information for the base layer to determine if a checkpoint is fraudulent or not:
-* A reference to the checkpoint being challenged. The base layer will automatically discard any fraud proof if the challenge window of the checkpoint has already expired.
+* A reference to the checkpoint being challenged.
 * The initial state (`view`), corresponding to the state represented in the previous checkpoint of the one being challenged.
 * All the instructions that were executed since the previous checkpoint of the one being challenged.
 * Stake of the challenger, to be slashed if the fraud proof is invalid.
 
 The size of the initial state and the instruction collection could be potentially huge. To avoid making it too costly, an off-chain solution could be implemented to make fraud proofs only include references (URLs?) to the raw data for those fields, but the base layer must implement a protocol to retrieve and check that off-chain data.
 
-In this document we assume that the fraud proofs are non-interactive, that means the whole initial state and all the transactions must be checked by the base layer to determine if a checkpoint is fraudulent or not. Non-interactive fraud proofs are the simplest implementation. There are also more sophisticated protocols that make fraud proof interactive, meaning that both the challenger and the challenged parties collaborate to create a fraud proof with only the disputed instructions to be checked by the base layer.
+In this document we assume that the fraud proofs are non-interactive, that means the whole initial state and all the instructions must be checked by the base layer to determine if a checkpoint is fraudulent or not. Non-interactive fraud proofs are the simplest implementation. There are also more sophisticated protocols that make fraud proof interactive, meaning that both the challenger and the challenged parties collaborate to create a fraud proof with only the individual disputed instructions to be checked by the base layer.
 
 ### Validating fraud proofs
 
@@ -106,15 +116,28 @@ The validation of fraud proofs MUST be done by base layer, to leverage the secur
 
 To determine if a fraud proof is valid, the base layer MUST:
 * Check that the challenge window for the checkpoint has not expired yet.
-* Check that the initial state in the proof corresponds to the previous checkpoint to the one being challenged. It needs to retrieve all the raw data provided in the fraud proof, calculate the hash and compare it to the one included in the previous checkpoint.
-* Check that the instructions in the proof corresponds to the ones in the challenged checkpoint. It needs to retrieve all the raw data with all instructions provided in the fraud proof, calculate the merkle tree root and compare it with the one in the challenged checkpoint.
-* Apply ALL the instructions to the initial state to calculate the final state, calculate the hash of that final state and compare it to the one being provided in the checkpoint, it must be different to the challenged checkpoint.
+* Check that the checkpoint was not already confirmed fraudulent via a previous fraud proof.
+* Check that the initial state in the proof corresponds to the previous checkpoint to the one being challenged. It needs to retrieve all the raw view data provided in the fraud proof, calculate the hash and compare it to the one included in the previous checkpoint.
+* Check that the instructions in the proof corresponds to the ones in the challenged checkpoint. It needs to retrieve all the raw instruction data provided in the fraud proof, calculate the merkle tree root and compare it with the one in the challenged checkpoint.
+* Apply ALL the instructions to the initial view to calculate the final view, calculate the hash of that final view and compare it to the one being provided in the checkpoint, it must be different to the challenged checkpoint.
 
-If all the previous checks are valid the fraud proof is considered valid, so the stake in the challenged checkpoint is transferred to the challenger party and the stake in the fraud proof can be spent. Otherwise, if any of the checks are not valid, the fraud proof is considered invalid and the stakes in the fraud proof are transferred to the checkpoint submitters.
+If all the previous checks are valid the fraud proof is considered valid, so the checkpoint is considered fraudulent:
+* The stake in the checkpoint is transferred to the challenger party.
+* The stake in the fraud proof is unlocked and can be spent.
+* All subsequent checkpoints that follow the invalidated one will be invalid as well. For the sake of reusability, they MUST be individually challenged.
+
+Otherwise, if any of the checks are invalid, the fraud proof is considered invalid, so the stakes in the fraud proof are transferred to the checkpoint submitters.
+
+### Checkpoint sequence forks
+
+There is a particular scenario that can happen if two (or more) competing subsets of the VNC disagree, and the particular quorum constraints of the contract allow them to publish competing checkpoints. From that point onwards, the sequence of checkpoints will fork into two (or more) separate paths forming a tree instead of a sequence.
+
+In this case, the honest subset of the VNC is heavily incentivized to challenge the other's checkpoints to obtain their stakes. The more an invalid branch of checkpoints is continued, the greater the rewards for challenging them are. The base layer will ultimately discard all the invalid checkpoints via validating fraud proofs.
 
 ### Open questions:
-* Currently, the base layer do not have the tools to reproduce the computations being done in the side-chains. It's needed a way to execute templates in the base layer.
-* How do we handle the dispute over the instructions themselves? Instructions could be signed by the user emitting them, so fake instructions can be checked, but there is the case of a challenger claiming that a checkpoint censored or eliminated one or more instructions. This last case is not possible to check with the current proposal.
-* Are all the raw data for the initial state and the instruction set in a fraud proof included on-chain or off-chain? If off-chain how, via URLs?
+* Currently, the base layer does not have the tools to reproduce the computations being done in the side-chains. We need a way to execute templates in the base layer for validating fraud proofs.
+* How do we handle the dispute over the instructions themselves? Instructions could be signed by the user emitting them, so fake instructions can be checked, but there is the case of a challenger claiming that a checkpoint censored or eliminated one or more instructions. This last case is not possible to verify in the base layer with the current proposal.
+* Are all the raw data for the initial state and the instructions in a fraud proof included on-chain or off-chain? If off-chain how, via URLs?
 * Do we implement a non-interactive fraud proof as proposed, or do we go for a more complicated (but more efficient) interactive way?
-* Is it convenient to implement a liquidity exit to allow to consider a checkpoint data as confirmed before the challenge window expired?
+* Is it convenient to implement a liquidity exit to allow to consider a checkpoint data as confirmed before the challenge window expires?
+* Regarding the checkpoint sequence fork scenario, could it be better if the base layer checks at every checkpoint that a sequence number increases by 1? This way a fork will never happen, and the honest party is forced to publish a fraud proof as soon as possible. The downside is that this means bloating the base layer with more checks at each checkpoint.
