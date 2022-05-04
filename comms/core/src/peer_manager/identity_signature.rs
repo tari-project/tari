@@ -27,7 +27,7 @@ use digest::Digest;
 use prost::Message;
 use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
-use tari_crypto::keys::SecretKey;
+use tari_crypto::keys::PublicKey as PublicKeyTrait;
 use tari_utilities::ByteArray;
 
 use crate::{
