@@ -57,14 +57,14 @@ The aim of this document is to describe the mechanisms of contract constitution 
 ### Overview
 After the [contract definition transaction], the asset issuer publishes the [contract constitution transaction]. 
 
-The [contract constitution transaction] is a different UTXO than the ones published for the checkpoints. The reason behind it is to easily isolate spending conditions and covenants on the constitution, as well as prevent frontrunning.
+The [contract constitution transaction] is a different UTXO than the ones published for the checkpoints. The reason behind it is to easily isolate spending conditions and covenants on the constitution, as well as prevent front-running.
 
 The [contract constitution transaction] defines how a contract is managed, including, among others:
 1. Validator Node Committee (VNC) composition, via a fixed list of public keys for each member of the committee. In practice, a VN could work as a proxy to allow open participation in the side-chain without modifying the VNC composition.
-2. Side-chain medatada record: the consensus algorithm to be used and the checkpoint quorum requirements.
-3. Checkpoint parameters record: minimum checkpoint frequency, commiteee change rules (e.g. asset issuer must sign, or a quorum of VNC members, or a whitelist of keys).
+2. Side-chain metadata record: the consensus algorithm to be used and the checkpoint quorum requirements.
+3. Checkpoint parameters record: minimum checkpoint frequency, committee change rules (e.g. asset issuer must sign, or a quorum of VNC members, or a whitelist of keys).
 
-After constitution, any authorised party can propose a change of any of those three parameters. Note that changes (how and when) in both side-chain metadata record and checkpoint parameters record MAY be specified in the contract constitution UTXO, inside a `RequirementsForConstitutionChange` record. If omitted, the checkpoint parameters and side-chain metadata records are immutable via covenant.
+After constitution, any authorized party can propose a change in any of those three parameters. Note that changes (how and when) in both side-chain metadata record and checkpoint parameters record MAY be specified in the contract constitution UTXO, inside a `RequirementsForConstitutionChange` record. If omitted, the checkpoint parameters and side-chain metadata records are immutable via covenant.
 
 The base layer MUST confirm at checkpoints that the requirements specified in the contract constitution (and/or updated via constitution changes) are met. This includes making sure that the VNC members signing the checkpoint are actually the members specified in the constitution (and/or active constitution changes).
 
@@ -73,25 +73,25 @@ A constitution change is composed of multiple stages.
 
 While a constitution change proposal is not finished (i.e. the [activation stage] hasn't finished yet), the contract is still in execution, so the VNC MAY produce any number of regular checkpoint transactions during that time.
 
-ANY number of constitution changes MAY happend in a sequence fashion or simultaneously.
+ANY number of constitution changes MAY happen in a sequence fashion or simultaneously.
 
 #### Proposal
 [proposal]: #proposal
 
-During contract execution, any authorised change proposer, as defined in the contract constitution, can propose constitution changes. More specifically, the [contract constitution] defines in the [checkpoint parameters record] the rules for a valid change proposer. It can be ONLY ONE of the following:
-* The asset issuer is the ONLY authorised for constitution changes, so it MUST sign the constitution change transaction.
+During contract execution, any authorized change proposer, as defined in the contract constitution, can propose constitution changes. More specifically, the [contract constitution] defines in the [checkpoint parameters record] the rules for a valid change proposer. It can be ONLY ONE of the following:
+* The asset issuer is the ONLY authorized for constitution changes, so it MUST sign the constitution change transaction.
 * A quorum of VNC members is needed for constitution changes, signed via a multisignature with at least the minimum required amount of members.
 * A list of public keys that each one have signing power over a constitution change transaction.
 
-The proposer MUST sign and publish a constitution change proposal transaction. The change proposal UTXO:
-* MUST include the contract id.
-* MUST include a unique constitution change proposal id, to differentiate between multiple change proposals.
-* MUST include the `ConstitutionChangeProposal` output flag.
-* MUST include at least ONE of the following information:
+The proposer MUST sign and publish a constitution change proposal transaction. The change proposal UTXO MUST include:
+* The contract ID.
+* A unique constitution change proposal ID, to differentiate between multiple change proposals.
+* The `ConstitutionChangeProposal` output flag.
+* At least ONE of the following information:
     * [side-chain metadata record], to specify a new consensus algorithm and/or a new checkpoint quorum requirement. 
-    * [checkpoint parameters record], to specify a new minimum checkpoint frequency and/or new commitee change rules.
+    * [checkpoint parameters record], to specify a new minimum checkpoint frequency and/or new committee change rules.
     * New Validator Node Committee (VNC) composition.
-* MUST include an expiry timestamp before which all VNs must sign and agree to the new terms.
+* An expiry timestamp before which all VNs must sign and agree to the new terms.
 
 ***Open questions:***
 * ***Do we need to make constitution change proposals expensive to prevent spamming?***
@@ -107,7 +107,7 @@ After the [proposal], each VNC member validates the [constitution change proposa
 * ***Is there any point in this stage at all? Does it produce any kind of UTXO?***
 
 #### Acceptance
-Each VNC member, if they accept to participate in the new constitution changes, MUST publish a constitution change acceptance transaction. The transaction format is similar to the [initial contract acceptance transaction], including the output feature `ContractAcceptance`, the only difference is that it includes the constitution change proposal id. The UTXO of the potential VNC member MUST stake the required funds via a time-lock, in this case until the end of the [constitution change activation] period.
+Each VNC member, if they accept to participate in the new constitution changes, MUST publish a constitution change acceptance transaction. The transaction format is similar to the [initial contract acceptance transaction], including the output feature `ContractAcceptance`, the only difference is that it includes the constitution change proposal ID. The UTXO of the potential VNC member MUST stake the required funds via a time-lock, in this case until the end of the [constitution change activation] period.
 
 At the end of the expiry timestamp (specified in the [constitution change proposal]), if not enough quorum validates the proposal, the constitution change cycle ends.
 
@@ -125,23 +125,23 @@ At this point, there MUST be a quorum of acceptance transactions from validator 
 * ***Does the activation transaction specify the height in which the changes are activated? Or how many checkpoints until it is activated? Is there any limit? Is it a fixed constant for the network or is it customizable?***
 
 ### Example use case: VNC composition change
-The most common use case of consitution change is expected to be changes in VNC composition.
+The most common use case of constitution change is expected to be changes in VNC composition.
 
-Let's walk through an step by step scenario, in which an asset issuer decides to constitute a contract with a handpicked set of validator nodes for the VNC. While the contract is in execution, the asset issuer decides to include more validator nodes to the VNC. For simplicity, let's assume that in the [contract constitution] the asset issuer is the only allowed constitution change proposer.
+Let's walk through a step by step scenario, in which an asset issuer decides to constitute a contract with a handpicked set of validator nodes for the VNC. While the contract is in execution, the asset issuer decides to include more validator nodes to the VNC. For simplicity, let's assume that in the [contract constitution] the asset issuer is the only allowed constitution change proposer.
 
 The steps in this particular case:
-* The [contract constitution], [contract acceptance] and the the [side-chain initialization transaction] must have been succesfully published.
+* The [contract constitution], [contract acceptance] and the [side-chain initialization transaction] must have been successfully published.
  * There are some checkpoints being published in time, so the contract is not abandoned.
  * The asset issuer decides to propose a constitution change. To initiate the process, the asset issuer publishes a [constitution change proposal transaction]:
-    * Includes the contract id and a unique constitution change proposal id.
+    * Includes the contract ID and a unique constitution change proposal ID.
     * Includes the `ConstitutionChangeProposal` output flag.
     * Does NOT include a [side-chain metadata record], because no changes in consensus algorithm and/or a checkpoint quorum requirement are proposed.
-    * Does NOT include a [checkpoint parameters record], because no changes in minimum checkpoint frequency or commitee change rules are proposed.
+    * Does NOT include a [checkpoint parameters record], because no changes in minimum checkpoint frequency or committee change rules are proposed.
     * Does include the new Validator Node Committee (VNC) composition, with the new VNC members.
     * MUST include an expiry timestamp before which all VNs must sign and agree to the new terms.
 * Each VNC member (including the new added members) publishes a constitution acceptance transaction.
 * After the minimum quorum is reached, the VNC collaborates to produce a single constitution change transaction, that specifies the height from which the changes will be considered active.
-* After reaching the specified height in the base layer, the proposal is active. All further checkpoints must be signed by the new commitee, enforced by the base layer.
+* After reaching the specified height in the base layer, the proposal is active. All further checkpoints must be signed by the new committee, enforced by the base layer.
 
 #### Contract constitutions for proof-of-work side-chains
 ***This section is still a copy-paste from the RFC-0312 (DANHighLevelSpecification) and needs further development***
