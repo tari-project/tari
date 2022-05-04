@@ -57,6 +57,8 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
    */
   const mainContainerStyle = useSpring({
     width: expertView === 'open' ? invertedExpertViewSize : '100%',
+  })
+  const dashboardContainerStyle = useSpring({
     paddingLeft: expertView === 'open' || tightSpace ? 40 : 100,
     paddingRight: expertView === 'open' || tightSpace ? 40 : 100,
   })
@@ -78,7 +80,7 @@ const MainLayout = ({ drawerViewWidth = '50%' }: MainLayoutProps) => {
             ...mainContainerStyle,
           }}
         >
-          <DashboardContainer />
+          <DashboardContainer style={{ ...dashboardContainerStyle }} />
         </MainContainer>
 
         {/* Background overlay: */}

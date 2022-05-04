@@ -29,11 +29,13 @@ const lightTheme = {
   warningText: styles.colors.secondary.warningText,
   expert: 'rgba(147, 48, 255, 0.05)',
   expertText: styles.gradients.tari,
+  lightTag: styles.colors.light.backgroundImage,
+  lightTagText: styles.colors.dark.secondary,
   placeholderText: styles.colors.dark.placeholder,
 
   inverted: {
     primary: styles.colors.light.primary,
-    secondary: styles.colors.dark.secondary,
+    secondary: styles.colors.light.textSecondary,
     tertiary: styles.colors.dark.tertiary,
     background: styles.colors.darkMode.modalBackgroundSecondary,
     backgroundSecondary: styles.colors.darkMode.modalBackground,
@@ -51,6 +53,8 @@ const lightTheme = {
     warningText: styles.colors.secondary.warningText,
     expert: 'rgba(147, 48, 255, 0.05)',
     expertText: styles.gradients.tari,
+    lightTag: styles.colors.light.backgroundImage,
+    lightTagText: styles.colors.dark.secondary,
     borderColor: styles.colors.secondary.borderLight,
     borderColorLight: styles.colors.secondary.borderLight,
     actionBackground: styles.colors.secondary.actionBackground,

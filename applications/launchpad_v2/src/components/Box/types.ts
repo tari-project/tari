@@ -11,4 +11,5 @@ export type BoxProps = {
   border?: boolean
   style?: CSSProperties
   gradient?: Gradient
+  testId?: string
 }

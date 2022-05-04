@@ -4,16 +4,23 @@ const translations: { [key: string]: { [key: string]: string } } = {
     cancel: 'Cancel',
     stop: 'Stop',
     start: 'Start',
+    pause: 'Pause',
     continue: 'Continue',
   },
   nouns: {
     baseNode: 'Base Node',
     mining: 'Mining',
+    problem: 'Problem',
     settings: 'Settings',
     wallet: 'Wallet',
   },
   adjectives: {
     running: 'Running',
+    paused: 'Paused',
+  },
+  phrases: {
+    actionRequired: 'Action required',
+    startHere: 'Start here',
   },
 }
 

@@ -1,6 +1,7 @@
+import { animated } from 'react-spring'
 import styled from 'styled-components'
 
-export const DashboardLayout = styled.div`
+export const DashboardLayout = styled(animated.div)`
   display: flex;
   flex-direction: column;
   height: 100%;

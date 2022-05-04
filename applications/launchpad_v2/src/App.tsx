@@ -12,7 +12,7 @@ const AppContainer = styled.div`
   display: flex;
   flex: 1;
   overflow: hidden;
-  borderradius: 10;
+  border-radius: 10;
 `
 
 const App = () => {
