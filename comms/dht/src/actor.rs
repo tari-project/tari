@@ -39,9 +39,11 @@ use tari_comms::{
     types::CommsPublicKey,
     PeerConnection,
 };
-use tari_crypto::tari_utilities::hex::Hex;
 use tari_shutdown::ShutdownSignal;
-use tari_utilities::message_format::{MessageFormat, MessageFormatError};
+use tari_utilities::{
+    hex::Hex,
+    message_format::{MessageFormat, MessageFormatError},
+};
 use thiserror::Error;
 use tokio::{
     sync::{mpsc, oneshot},

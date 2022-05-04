@@ -27,7 +27,7 @@ use tari_comms::{
     peer_manager::{NodeId, Peer},
     types::CommsPublicKey,
 };
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use super::error::Error;
 use crate::stress::service::{StressProtocol, StressProtocolKind};

@@ -22,7 +22,7 @@
 
 use std::{fmt, sync::Arc};
 
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::blocks::ChainBlock;
 

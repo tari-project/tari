@@ -55,7 +55,7 @@ ADD meta meta
 RUN cargo build --bin tari_console_wallet --release --features $FEATURES --locked
 
 # Create a base minimal image for the executables
-FROM quay.io/bitnami/minideb:bullseye as base
+FROM bitnami/minideb:bullseye as base
 ARG VERSION=1.0.1
 # Disable Prompt During Packages Installation
 ARG DEBIAN_FRONTEND=noninteractive

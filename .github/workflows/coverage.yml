@@ -18,7 +18,8 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           toolchain: ${{ env.toolchain }}
-      - uses: Swatinem/rust-cache@v1
+          override: true
+          components: llvm-tools-preview
       - name: ubuntu dependencies
         run: |
           sudo apt-get update && \

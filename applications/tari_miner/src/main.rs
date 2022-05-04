@@ -43,7 +43,8 @@ use tari_common::{
 };
 use tari_comms::utils::multiaddr::multiaddr_to_socketaddr;
 use tari_core::blocks::BlockHeader;
-use tari_crypto::{ristretto::RistrettoPublicKey, tari_utilities::hex::Hex};
+use tari_crypto::ristretto::RistrettoPublicKey;
+use tari_utilities::hex::Hex;
 use tokio::{runtime::Runtime, time::sleep};
 use tonic::transport::Channel;
 use utils::{coinbase_request, extract_outputs_and_kernels};

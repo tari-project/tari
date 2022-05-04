@@ -25,7 +25,7 @@ use std::{fmt, marker::PhantomData};
 use serde::{self, de, Deserialize, Deserializer, Serialize};
 use tari_common_types::types::{PublicKey, ASSET_CHECKPOINT_ID};
 use tari_core::transactions::transaction_components::TemplateParameter;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(default)]

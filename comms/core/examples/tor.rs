@@ -18,11 +18,11 @@ use tari_comms::{
     CommsBuilder,
     CommsNode,
 };
-use tari_crypto::tari_utilities::message_format::MessageFormat;
 use tari_storage::{
     lmdb_store::{LMDBBuilder, LMDBConfig},
     LMDBWrapper,
 };
+use tari_utilities::message_format::MessageFormat;
 use tempfile::Builder;
 use tokio::{
     runtime,

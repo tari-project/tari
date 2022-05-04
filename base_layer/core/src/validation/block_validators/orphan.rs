@@ -20,7 +20,7 @@
 //  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
 //  USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 use log::*;
-use tari_crypto::tari_utilities::{hash::Hashable, hex::Hex};
+use tari_utilities::{hash::Hashable, hex::Hex};
 
 use super::LOG_TARGET;
 use crate::{

@@ -24,7 +24,7 @@ use std::{fmt, fmt::Display, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::HashOutput;
-use tari_crypto::tari_utilities::hex::Hex;
+use tari_utilities::hex::Hex;
 
 use crate::blocks::{error::BlockError, Block, BlockHeader, BlockHeaderAccumulatedData, ChainBlock};
 

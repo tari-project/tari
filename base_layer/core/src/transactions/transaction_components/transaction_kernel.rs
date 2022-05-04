@@ -32,7 +32,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tari_common_types::types::{Commitment, Signature};
-use tari_crypto::tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
+use tari_utilities::{hex::Hex, message_format::MessageFormat, Hashable};
 
 use super::TransactionKernelVersion;
 use crate::{

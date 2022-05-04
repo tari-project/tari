@@ -29,7 +29,7 @@ use tari_comms::{
     CommsBuilderError,
     PeerConnectionError,
 };
-use tari_crypto::tari_utilities::message_format::MessageFormatError;
+use tari_utilities::message_format::MessageFormatError;
 use thiserror::Error;
 use tokio::{
     sync::{mpsc::error::SendError, oneshot},

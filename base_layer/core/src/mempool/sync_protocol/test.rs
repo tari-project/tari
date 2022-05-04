@@ -35,7 +35,7 @@ use tari_comms::{
     Bytes,
     BytesMut,
 };
-use tari_crypto::tari_utilities::ByteArray;
+use tari_utilities::ByteArray;
 use tokio::{
     sync::{broadcast, mpsc},
     task,

@@ -32,7 +32,7 @@ use bitflags::bitflags;
 use chrono::{NaiveDateTime, Utc};
 use multiaddr::Multiaddr;
 use serde::{Deserialize, Serialize};
-use tari_crypto::tari_utilities::hex::serialize_to_hex;
+use tari_utilities::hex::serialize_to_hex;
 
 use super::{
     connection_stats::PeerConnectionStats,
