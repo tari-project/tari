@@ -231,6 +231,7 @@ impl<'a, B: BlockchainBackend + 'static> HorizonStateSynchronization<'a, B> {
         Ok(())
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn synchronize_kernels(
         &mut self,
         mut sync_peer: SyncPeer,

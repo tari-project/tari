@@ -104,6 +104,8 @@ where B: BlockchainBackend + 'static
     }
 
     /// Handle inbound node comms requests from remote nodes and local services.
+    // TODO: Break this function up into smaller pieces
+    #[allow(clippy::too_many_lines)]
     pub async fn handle_request(&self, request: NodeCommsRequest) -> Result<NodeCommsResponse, CommsInterfaceError> {
         debug!(target: LOG_TARGET, "Handling remote request {}", request);
         match request {
@@ -803,6 +805,7 @@ where B: BlockchainBackend + 'static
 
         match block_add_result {
             BlockAddResult::Ok(ref block) => {
+                #[allow(clippy::cast_possible_wrap)]
                 metrics::tip_height().set(block.height() as i64);
                 update_target_difficulty(block);
                 let utxo_set_size = self.blockchain_db.utxo_count().await?;
