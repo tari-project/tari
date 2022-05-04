@@ -60,7 +60,7 @@ After the [contract definition transaction], the asset issuer publishes the [con
 2. Side-chain medatada record: the consensus algorithm to be used and the checkpoint quorum requirements.
 3. Checkpoint parameters record: minimum checkpoint frequency, commiteee change rules (e.g. asset issuer must sign, or a quorum of VNC members, or a whitelist of keys).
 
-Then, and ONLY during the contract execution, any authorsised party can propose a change of any of those three parameters. The constitution changes MUST happen at checkpoints. 
+Then, and ONLY during the contract execution, any authorised party can propose a change of any of those three parameters. 
 
 Note that changes (how and when) in both side-chain metadata record and checkpoint parameters record MAY be specified in the contract constitution UTXO, inside a `RequirementsForConstitutionChange` record. If omitted, the checkpoint parameters and side-chain metadata records are immutable via covenant.
 
