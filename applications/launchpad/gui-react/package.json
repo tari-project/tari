@@ -27,10 +27,7 @@
     "eject": "react-scripts eject",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "lint:ci": "mkdir -p temp/reports && eslint . --format junit --output-file temp/reports/launchpad_eslint.xml",
-    "tauri": "tauri",
-    "dev": "tauri dev",
-    "bundle": "tauri build"
+    "lint:ci": "mkdir -p temp/reports && eslint . --format junit --output-file temp/reports/launchpad_eslint.xml"
   },
   "fork-ts-checker": {
     "typescript": {
