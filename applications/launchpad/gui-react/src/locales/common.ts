@@ -16,6 +16,7 @@ const translations: { [key: string]: { [key: string]: string } } = {
   adjectives: {
     running: 'Running',
     paused: 'Paused',
+    copied: 'Copied',
   },
   phrases: {
     actionRequired: 'Action required',
