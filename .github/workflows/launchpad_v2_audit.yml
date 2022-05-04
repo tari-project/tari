@@ -16,7 +16,7 @@ jobs:
           node -v
           npm -v
           yarn -v
-      - name: npm audit launchpad_v2
+      - name: npm audit launchpad/gui-react
         run: |
           cd applications/launchpad/gui-react
           yarn audit
